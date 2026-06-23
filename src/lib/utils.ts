@@ -463,6 +463,8 @@ export function formatOriginLabel(origin?: string | null, sourceChannel?: string
     if (normalized === 'pos') return 'POS'
     if (normalized === 'instant_pos' || normalized === 'instant-pos' || normalized === 'instant pos') return 'Instant POS'
     if (normalized === 'sales_order' || normalized === 'sales-order' || normalized === 'sales order') return 'Sales Order'
+    if (normalized === 'purchase_order' || normalized === 'purchase-order' || normalized === 'purchase order') return 'Purchase Order'
+    if (normalized === 'order_report' || normalized === 'order-report' || normalized === 'order report') return 'Order Report'
     if (normalized === 'ecommerce' || normalized === 'e-commerce' || normalized === 'e commerce') return 'E-Commerce'
     if (normalized === 'travel_agency' || normalized === 'travel-agency' || normalized === 'travel agency') return 'Travel Agency'
     if (normalized === 'real_estate' || normalized === 'real-estate' || normalized === 'real estate') return 'Real Estate'
@@ -470,7 +472,9 @@ export function formatOriginLabel(origin?: string | null, sourceChannel?: string
     if (normalized === 'agents' || normalized === 'agent') return 'Agents'
     if (normalized === 'accounting' || normalized === 'budget') return 'Accounting'
     if (normalized === 'manual') return 'Manual'
+    if (normalized === 'business_partner' || normalized === 'business-partner') return 'Business Partner'
     if (normalized === 'loans' || normalized === 'loan') return 'Loans'
+    if (normalized === 'loan_report' || normalized === 'loan-report') return 'Loan Report'
     if (normalized === 'upload' || normalized === 'uploads') return 'Upload'
     if (normalized === 'exchange') return 'Exchange'
     return origin

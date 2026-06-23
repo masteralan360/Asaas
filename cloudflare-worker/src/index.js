@@ -158,7 +158,14 @@ export default {
       const headers = new Headers(corsHeaders);
       object.writeHttpMetadata(headers);
       headers.set("etag", object.httpEtag);
-      headers.set("Cache-Control", "public, max-age=3600");
+      if (/\/printed-invoices\/versions\//i.test(`/${path}`)) {
+        headers.set("Cache-Control", "public, max-age=31536000, immutable");
+      } else if (/\/printed-invoices\/(A4|receipts)\//i.test(`/${path}`)) {
+        // Stable QR aliases always represent the latest saved version.
+        headers.set("Cache-Control", "public, max-age=0, must-revalidate");
+      } else {
+        headers.set("Cache-Control", "public, max-age=3600");
+      }
 
       return new Response(object.body, { headers });
     }

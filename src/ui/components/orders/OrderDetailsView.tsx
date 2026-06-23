@@ -1149,10 +1149,12 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 module="orders"
                 features={features}
                 workspaceName={workspaceName}
+                originId={order.id}
                 invoiceData={{
+                    invoiceid: order.orderNumber,
                     totalAmount: order.total,
                     settlementCurrency: order.currency,
-                    origin: 'sales_order' as const,
+                    origin: isSales ? 'sales_order' as const : 'purchase_order' as const,
                     createdByName: user?.name || 'Unknown',
                     cashierName: user?.name || 'Unknown',
                     printFormat: 'a4' as const,

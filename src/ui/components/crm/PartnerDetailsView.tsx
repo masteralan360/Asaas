@@ -1080,7 +1080,7 @@ export function PartnerDetailsView({
             invoiceid: `PARTNER-${partner.id}`,
             totalAmount: remainingReceivableLoans + remainingPayableLoans,
             settlementCurrency: defaultCurrency,
-            origin: 'manual' as const,
+            origin: 'business_partner' as const,
             createdBy: user?.id,
             createdByName: user?.name || 'Unknown',
             cashierName: user?.name || 'Unknown',
@@ -1885,6 +1885,7 @@ export function PartnerDetailsView({
                     }}
                     title={t('businessPartners.printA4', { defaultValue: 'Print A4' })}
                     documentId={partner.id}
+                    originId={partner.id}
                     invoiceData={partnerPrintInvoiceData}
                     pdfBuilder={buildPartnerPrintPdf}
                     templatePreview={partnerPrintPreview}

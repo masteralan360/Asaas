@@ -2,7 +2,7 @@ import { createElement, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, FileText, Loader2, Printer, Save } from 'lucide-react'
 import { useAuth } from '@/auth'
-import { db } from '@/local-db'
+import { db, saveInvoiceFromSnapshot } from '@/local-db'
 import type { ManualEntryTemplate } from '@/local-db/models'
 import { Button } from '@/ui/components/button'
 import { Input } from '@/ui/components/input'
@@ -11,7 +11,7 @@ import {
   useToast,
 } from '@/ui/components'
 import { generateTemplatePdf } from '@/services/pdfGenerator'
-import { saveInvoicePdfToLocalAppData } from '@/services/localInvoiceStorage'
+import { persistInvoiceVersion } from '@/services/invoiceVersionService'
 
 const ROW_COUNT = 20
 
@@ -386,7 +386,7 @@ export function ManualEntry() {
     if (!workspaceId || !selectedTemplate) return
     const now = new Date().toISOString()
     const entryId = generateId()
-    const invoiceId = generateId()
+    const invoiceId = entryId
     try {
       await db.manual_entries.add({
         id: entryId,
@@ -411,22 +411,18 @@ export function ManualEntry() {
 
     // Create invoice record first (without PDF blob)
     try {
-      await db.invoices.add({
-        id: invoiceId,
+      await saveInvoiceFromSnapshot(workspaceId, {
+        sourceId: entryId,
         invoiceid: invoiceId,
-        workspaceId,
         totalAmount: 0,
         settlementCurrency: 'iqd',
         origin: 'manual',
         status: 'draft',
         printFormat: 'a4',
-        createdAt: now,
-        updatedAt: now,
-        syncStatus: 'synced',
-        lastSyncedAt: null,
-        version: 1,
-        isDeleted: false,
-      })
+        createdBy: user?.id,
+        createdByName: user?.name,
+        cashierName: user?.name,
+      }, invoiceId)
     } catch (err) {
       console.error('Failed to create invoice record:', err)
       toast({ title: 'Error', description: 'Failed to create invoice record.', variant: 'destructive' })
@@ -438,11 +434,19 @@ export function ManualEntry() {
       const tableElement = renderTableElement(selectedTemplate, data, detailValues)
       const pdfBlob = await generateTemplatePdf({ element: tableElement })
 
-      const localPath = await saveInvoicePdfToLocalAppData(workspaceId, invoiceId, 'a4', pdfBlob)
-
-      await db.invoices.update(invoiceId, {
-        localPathA4: localPath ?? undefined,
-        pdfBlobA4: localPath ? undefined : pdfBlob,
+      const invoice = await db.invoices.get(invoiceId)
+      if (!invoice) throw new Error('Invoice record was not created')
+      await persistInvoiceVersion({
+        invoice,
+        blob: pdfBlob,
+        format: 'a4',
+        author: { id: user?.id, name: user?.name },
+        metadata: {
+          module: 'manual_entry',
+          manualEntryId: entryId,
+          templateId: selectedTemplate.id,
+          templateName: selectedTemplate.name,
+        },
       })
     } catch (err) {
       console.error('Failed to generate or save PDF:', err)
@@ -454,7 +458,7 @@ export function ManualEntry() {
     })
 
     return invoiceId
-  }, [workspaceId, selectedTemplate, t, toast])
+  }, [workspaceId, selectedTemplate, t, toast, user?.id, user?.name])
 
   if (selectedTemplate) {
     return (

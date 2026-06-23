@@ -8,6 +8,7 @@ import { formatCurrency, formatDateTime, formatDate, formatOriginLabel, formatTi
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { isMobile } from '@/lib/platform'
+import { getReportOriginId } from '@/lib/printIdentity'
 import { useWorkspace } from '@/workspace'
 import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
@@ -101,6 +102,11 @@ export function Revenue() {
         }
         return {}
     }, [dateRange, customDates])
+    const revenueReportOriginId = useMemo(() => getReportOriginId(
+        user?.workspaceId,
+        'revenue',
+        `revenue:${dateRange}:${dateBounds.startDate || ''}:${dateBounds.endDate || ''}:${customDates.start || ''}:${customDates.end || ''}`
+    ), [customDates.end, customDates.start, dateBounds.endDate, dateBounds.startDate, dateRange, user?.workspaceId])
 
     const rawSales = useSales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const salesOrders = useSalesOrders(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
@@ -1513,6 +1519,7 @@ export function Revenue() {
                         onClose={() => setShowPrintPreview(false)}
                         module="revenue"
                         title={t('revenue.printList') || 'Print Revenue List'}
+                        originId={revenueReportOriginId}
                         onConfirm={() => setShowPrintPreview(false)}
                     >
                         <div ref={listRef} className="p-4 bg-white dark:bg-zinc-900">

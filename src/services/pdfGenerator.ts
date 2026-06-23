@@ -113,7 +113,7 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     const LOW_SCALE = 2.5
     const JPEG_QUALITY = 0.9
 
-    let sharpZones: { x: number, y: number, width: number, height: number }[] = []
+    const sharpZones: { x: number, y: number, width: number, height: number }[] = []
 
     // 1. Identify sharp zones (QRs) in the live DOM before capture
     // This ensures we get real coordinates that aren't zeroed out
@@ -195,7 +195,9 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
 
 function canvasToA4Pdf(renderResult: RenderResult, PdfDocument: JsPDFConstructor) {
     const pdf = new PdfDocument({ orientation: 'p', unit: 'mm', format: 'a4' })
-    const pageCount = Math.max(1, Math.ceil((renderResult.heightMm - 1) / A4_HEIGHT_MM))
+    // Do not subtract from the rendered height here. Even a small overflow beyond
+    // 297mm is real content and must become another page instead of being clipped.
+    const pageCount = Math.max(1, Math.ceil(renderResult.heightMm / A4_HEIGHT_MM))
 
     for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
         if (pageIndex > 0) {

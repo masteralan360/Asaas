@@ -1129,8 +1129,30 @@ export interface OrderItem {
 
 export type InvoiceStatus = "sent" | "paid" | "overdue" | "cancelled" | "draft";
 
+export type InvoiceOrigin =
+  | "pos"
+  | "instant_pos"
+  | "revenue"
+  | "inventory"
+  | "manual"
+  | "exchange"
+  | "accounting"
+  | "loans"
+  | "Loans"
+  | "loan_report"
+  | "real_estate"
+  | "sales_order"
+  | "purchase_order"
+  | "order_report"
+  | "business_partner"
+  | "travel_agency"
+  | "clinical_appointment"
+  | "upload";
+
 export interface Invoice extends BaseEntity {
   invoiceid: string;
+  /** UUID of the source record that produced this invoice. */
+  sourceId?: string;
   orderId?: string;
   customerId?: string;
   status?: InvoiceStatus;
@@ -1138,21 +1160,7 @@ export interface Invoice extends BaseEntity {
   totalAmount: number;
   settlementCurrency: CurrencyCode;
   // Print-to-Invoice tracking
-  origin?:
-    | "pos"
-    | "instant_pos"
-    | "revenue"
-    | "inventory"
-    | "manual"
-    | "exchange"
-    | "accounting"
-    | "loans"
-    | "Loans"
-    | "real_estate"
-    | "sales_order"
-    | "travel_agency"
-    | "clinical_appointment"
-    | "upload";
+  origin?: InvoiceOrigin;
   /** @deprecated Use cashierName for the name string. createdBy might map to system UUID. */
   createdBy?: string;
   cashierName?: string;
@@ -1170,6 +1178,29 @@ export interface Invoice extends BaseEntity {
   pdfBlobReceipt?: Blob;
   fileSize?: number;
   fileMimeType?: string | null;
+  latestVersionId?: string;
+  latestVersionNumber?: number;
+}
+
+/** Immutable PDF snapshot created each time an invoice is printed and saved. */
+export interface InvoiceVersion {
+  id: string;
+  invoiceId: string;
+  workspaceId: string;
+  sourceId: string;
+  origin: InvoiceOrigin;
+  versionNumber: number;
+  format: "a4" | "receipt";
+  r2Path?: string;
+  localPath?: string;
+  pdfBlob?: Blob;
+  fileSize: number;
+  createdBy?: string;
+  createdByName?: string;
+  createdAt: string;
+  syncStatus: SyncStatus;
+  lastSyncedAt: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Sale extends BaseEntity {

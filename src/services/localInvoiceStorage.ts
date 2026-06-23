@@ -36,9 +36,13 @@ export function disableInvoiceQrInLocalMode<T extends InvoicePrintFeatures | und
 export function getLocalInvoicePdfRelativePath(
     workspaceId: string,
     invoiceId: string,
-    format: PrintFormat
+    format: PrintFormat,
+    versionId?: string
 ) {
     const folder = format === 'a4' ? 'A4' : 'receipts'
+    if (versionId) {
+        return `printed-invoices/${workspaceId}/versions/${invoiceId}/${folder}/${versionId}.pdf`
+    }
     return `printed-invoices/${workspaceId}/${folder}/${invoiceId}.pdf`
 }
 
@@ -55,13 +59,14 @@ export async function saveInvoicePdfToLocalAppData(
     workspaceId: string,
     invoiceId: string,
     format: PrintFormat,
-    blob: Blob
+    blob: Blob,
+    versionId?: string
 ) {
     if (!canPersistLocalInvoiceFiles(workspaceId)) {
         return null
     }
 
-    const relativePath = getLocalInvoicePdfRelativePath(workspaceId, invoiceId, format)
+    const relativePath = getLocalInvoicePdfRelativePath(workspaceId, invoiceId, format, versionId)
     return platformService.saveFile(relativePath, await blob.arrayBuffer())
 }
 

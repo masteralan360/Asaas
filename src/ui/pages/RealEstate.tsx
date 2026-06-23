@@ -1137,6 +1137,7 @@ function RealEstateDetails({
                     title={t('realEstate.printA4', { defaultValue: 'Print A4' })}
                     showSaveButton={false}
                     documentId={transaction.id}
+                    originId={transaction.id}
                     invoiceData={realEstatePrintInvoiceData}
                     pdfBuilder={buildRealEstatePrintPdf}
                     templatePreview={selectedPrintPreview}

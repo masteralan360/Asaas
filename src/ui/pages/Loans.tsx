@@ -18,6 +18,7 @@ import {
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { getLoanLinkedPartySummary } from '@/lib/loanParties'
+import { getReportOriginId } from '@/lib/printIdentity'
 import {
     getLoanDeleteWarning,
     getLoanDetailsPath,
@@ -341,7 +342,7 @@ function LoanListView({
     const loanListInvoiceData = useMemo(() => ({
         totalAmount: metrics.totalOutstanding,
         settlementCurrency: currency,
-        origin: 'Loans' as const,
+        origin: 'loan_report' as const,
         createdByName: user?.name || 'Unknown',
         cashierName: user?.name || 'Unknown',
         printFormat: 'a4' as const
@@ -795,6 +796,7 @@ function LoanListView({
                 title={getStandardLoanModuleTitle(t)}
                 features={features}
                 workspaceName={workspaceName}
+                originId={getReportOriginId(user?.workspaceId, 'loan_report', 'standard-loan-list')}
                 invoiceData={loanListInvoiceData}
                 pdfBuilder={buildLoanListPdf}
                 printTemplate={({ effectiveId }) => renderLoanListTemplate(effectiveId)}
@@ -813,11 +815,12 @@ function LoanListView({
                 title={getLoanDetailsTitle(loanToPrint || ({} as Loan), t)}
                 features={features}
                 workspaceName={workspaceName}
+                originId={loanToPrint?.id}
                 invoiceData={loanToPrint ? {
                     sequenceId: 0,
                     totalAmount: loanToPrint.principalAmount,
                     settlementCurrency: loanToPrint.settlementCurrency,
-                    origin: 'manual',
+                    origin: 'loans',
                     cashierName: loanToPrint.borrowerName,
                     createdByName: loanToPrint.borrowerName,
                     printFormat: 'a4' as PrintFormat
@@ -926,7 +929,7 @@ function LoanDetailsView({
             invoiceid: normalizedLoanNo || loan.loanNo,
             totalAmount: loan.principalAmount,
             settlementCurrency: loan.settlementCurrency,
-            origin: 'Loans' as const,
+            origin: 'loans' as const,
             createdByName: user?.name || 'Unknown',
             cashierName: user?.name || 'Unknown',
             printFormat: 'a4' as const
@@ -1378,6 +1381,7 @@ function LoanDetailsView({
                 title={loanDetailsTitle}
                 features={features}
                 workspaceName={workspaceName}
+                originId={loan?.id}
                 invoiceData={loanDetailsInvoiceData || undefined}
                 pdfBuilder={buildLoanDetailsPdf}
                 printTemplate={loan ? ({ effectiveId }) => renderLoanDetailsTemplate(effectiveId) : undefined}

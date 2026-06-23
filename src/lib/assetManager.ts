@@ -302,6 +302,12 @@ class AssetManager extends SimpleEventEmitter {
         if (isLocalWorkspaceMode(this.workspaceId)) return;
 
         try {
+            // New invoice saves are synchronized as immutable version records first.
+            // The legacy invoice blob scan below remains for pre-versioning records.
+            await import('@/services/invoiceVersionService')
+                .then(({ syncPendingInvoiceVersions }) => syncPendingInvoiceVersions(this.workspaceId!))
+                .catch((error) => console.warn('[AssetManager] Pending invoice version sync delayed:', error));
+
             // Find invoices with pending sync status and local blobs
             const pendingInvoices = await db.invoices
                 .where('workspaceId').equals(this.workspaceId)

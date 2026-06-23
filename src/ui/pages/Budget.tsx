@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
+import { getReportOriginId } from '@/lib/printIdentity'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import {
     findLatestUnreversedPaymentTransaction,
@@ -1596,6 +1597,7 @@ export function Budget() {
                 title={t('budget.print.title', { defaultValue: 'Accounting Report' })}
                 features={features}
                 workspaceName={workspaceName}
+                originId={getReportOriginId(user?.workspaceId, 'accounting', `budget:${selectedMonth}`)}
                 invoiceData={budgetReportInvoiceData}
                 pdfBuilder={buildBudgetReportPdf}
                 printTemplate={({ effectiveId }) => renderBudgetPrintTemplate(effectiveId)}

@@ -2827,6 +2827,7 @@ export function Sales() {
                     features={features}
                     workspaceName={workspaceName}
                     module="sales"
+                    originId={printingSale?.id}
                     pdfData={!shouldUseLoanPrint && !hasActiveCustomTemplate && printingSale ? mapSaleToUniversal(printingSale, { a4Variant }) : undefined}
                     invoiceData={printingSale ? {
                         sequenceId: printingSale.sequenceId,

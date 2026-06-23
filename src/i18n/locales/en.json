@@ -1696,6 +1696,13 @@
     "searchPlaceholder": "Search invoices",
     "viewInvoice": "View Invoice",
     "listTitle": "Invoice List",
+    "versions": "Versions",
+    "version": "Version",
+    "versionsDescription": "Immutable PDF snapshots, sorted from latest to oldest.",
+    "versionsLoadError": "Failed to load invoice versions.",
+    "noVersions": "No saved versions are available.",
+    "format": "Format",
+    "size": "Size",
     "table": {
       "created": "Creation date",
       "invoiceid": "Invoice ID",

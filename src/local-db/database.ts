@@ -11,6 +11,7 @@ import type {
   ProductBarcode,
   Category,
   Invoice,
+  InvoiceVersion,
   User,
   SyncQueueItem,
   Sale,
@@ -404,6 +405,7 @@ export class AtlasDatabase extends Dexie {
   product_barcodes!: EntityTable<ProductBarcode, "id">;
   categories!: EntityTable<Category, "id">;
   invoices!: EntityTable<Invoice, "id">;
+  invoice_versions!: EntityTable<InvoiceVersion, "id">;
   users!: EntityTable<User, "id">;
   sales!: EntityTable<Sale, "id">;
   sales_exchange!: EntityTable<SalesExchange, "id">;
@@ -2755,6 +2757,76 @@ export class AtlasDatabase extends Dexie {
         await migrateOrders("purchase_orders", "purchase");
       });
 
+    this.version(79)
+      .stores({
+        invoices:
+          "id, invoiceid, sourceId, orderId, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted, origin, createdBy, cashierName, createdByName, sequenceId, printFormat, r2PathA4, r2PathReceipt, latestVersionId, latestVersionNumber, [workspaceId+origin+sourceId]",
+        invoice_versions:
+          "id, invoiceId, workspaceId, sourceId, origin, versionNumber, format, createdBy, createdAt, syncStatus, [invoiceId+versionNumber], [workspaceId+invoiceId], [workspaceId+origin+sourceId]",
+      })
+      .upgrade(async (tx) => {
+        const invoices = (await tx.table("invoices").toArray()) as Array<Record<string, unknown>>;
+        const legacyVersions: Array<Record<string, unknown>> = [];
+
+        for (const invoice of invoices) {
+          const invoiceId = String(invoice.id || "");
+          const workspaceId = String(invoice.workspaceId || "");
+          if (!invoiceId || !workspaceId) continue;
+
+          const sourceId = typeof invoice.sourceId === "string"
+            ? invoice.sourceId
+            : typeof invoice.orderId === "string" && invoice.orderId
+              ? invoice.orderId
+              : invoiceId;
+          const origin = typeof invoice.origin === "string" && invoice.origin
+            ? invoice.origin
+            : "manual";
+          const createdAt = typeof invoice.createdAt === "string"
+            ? invoice.createdAt
+            : new Date().toISOString();
+          let versionNumber = 0;
+
+          const addLegacyVersion = (format: "a4" | "receipt") => {
+            const upper = format === "a4" ? "A4" : "Receipt";
+            const r2Path = invoice[`r2Path${upper}`];
+            const localPath = invoice[`localPath${upper}`];
+            const pdfBlob = invoice[`pdfBlob${upper}`];
+            if (!r2Path && !localPath && !pdfBlob) return;
+
+            versionNumber += 1;
+            const versionId = crypto.randomUUID();
+            legacyVersions.push({
+              id: versionId,
+              invoiceId,
+              workspaceId,
+              sourceId,
+              origin,
+              versionNumber,
+              format,
+              r2Path,
+              localPath,
+              pdfBlob,
+              fileSize: pdfBlob instanceof Blob ? pdfBlob.size : Number(invoice.fileSize || 0),
+              createdBy: invoice.createdBy,
+              createdByName: invoice.createdByName,
+              createdAt,
+              syncStatus: invoice.syncStatus || "synced",
+              lastSyncedAt: invoice.lastSyncedAt || null,
+              metadata: { migratedFromLegacyInvoice: true },
+            });
+            invoice.latestVersionId = versionId;
+          };
+
+          addLegacyVersion("a4");
+          addLegacyVersion("receipt");
+          invoice.sourceId = sourceId;
+          invoice.latestVersionNumber = versionNumber;
+        }
+
+        if (invoices.length > 0) await tx.table("invoices").bulkPut(invoices);
+        if (legacyVersions.length > 0) await tx.table("invoice_versions").bulkPut(legacyVersions);
+      });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }
@@ -2880,6 +2952,7 @@ export class AtlasDatabase extends Dexie {
       "product_barcodes",
       "categories",
       "invoices",
+      "invoice_versions",
       "users",
       "sales",
       "sales_exchange",
@@ -3077,6 +3150,7 @@ export async function clearDatabase(): Promise<void> {
       db.reorder_transfer_rules,
       db.categories,
       db.invoices,
+      db.invoice_versions,
       db.travel_agency_sales,
       db.real_estate_transactions,
       db.real_estate_installments,
@@ -3111,6 +3185,7 @@ export async function clearDatabase(): Promise<void> {
       await db.reorder_transfer_rules.clear();
       await db.categories.clear();
       await db.invoices.clear();
+      await db.invoice_versions.clear();
       await db.travel_agency_sales.clear();
       await db.real_estate_transactions.clear();
       await db.real_estate_installments.clear();

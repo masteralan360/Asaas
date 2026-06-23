@@ -40,6 +40,7 @@ const SYNC_PULL_TABLES = [
   "business_partners",
   "business_partner_merge_candidates",
   "invoices",
+  "invoice_versions",
   "workspaces",
   "employees",
   "workspace_contacts",
@@ -78,6 +79,7 @@ const TABLES_WITHOUT_VERSION = new Set<string>([
   "sale_items",
   "sale_returns",
   "sale_return_items",
+  "invoice_versions",
 ]);
 const PROCESSABLE_MUTATION_STATUSES = ["pending", "syncing"] as const;
 const SALE_CREATE_RESULT_SELECT =

@@ -21,16 +21,12 @@ import { saveInvoiceFromSnapshot, useWorkspaceContacts } from '@/local-db/hooks'
 import { useAuth } from '@/auth'
 import { db, type Invoice } from '@/local-db'
 import { generateInvoicePdf, type PrintFormat } from '@/services/pdfGenerator'
-import { assetManager } from '@/lib/assetManager'
-import { isOnline } from '@/lib/network'
 import {
-    disableInvoiceQrInLocalMode,
-    saveInvoicePdfToLocalAppData,
-    shouldUseLocalInvoiceStorage
+    disableInvoiceQrInLocalMode
 } from '@/services/localInvoiceStorage'
+import { persistInvoiceVersion } from '@/services/invoiceVersionService'
 import { useWorkspace, type WorkspaceFeatures } from '@/workspace'
-import { supabase } from '@/auth/supabase'
-import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
+import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError } from '@/lib/supabaseRequest'
 import {
     setInvoicePreviewSource,
     type CustomTemplateLayout,
@@ -57,6 +53,8 @@ interface PrintPreviewModalProps {
     pdfData?: any // UniversalInvoice
     pdfBuilder?: (options: { format: PrintFormat; effectiveId: string; printLangOverride?: string }) => Promise<Blob>
     documentId?: string
+    /** UUID of the source entity/report represented by this print. */
+    originId?: string
     printTemplate?: ReactNode | ((options: { effectiveId: string }) => ReactNode)
     templatePreview?: TemplatePreview
     customTemplate?: CustomTemplatePreviewTarget
@@ -97,6 +95,7 @@ export function PrintPreviewModal({
     pdfData,
     pdfBuilder,
     documentId,
+    originId,
     printTemplate,
     templatePreview: templatePreviewProp,
     customTemplate,
@@ -129,21 +128,21 @@ export function PrintPreviewModal({
         }
     }, [isOpen])
 
-    // Generate a stable ID for new invoices to ensure QR code consistency
-    // If pdfData.id exists (history), we use that. If not (new sale), we generate one.
+    // Use the source entity/report UUID for QR, invoice tracing, and versioning.
+    // The temporary UUID is only a last-resort fallback for non-persisted previews.
     const [tempId, setTempId] = useState<string>('')
 
     // The actual ID to be used for generation and saving
     const effectiveId = useMemo(
-        () => pdfData?.id || documentId || tempId,
-        [pdfData?.id, documentId, tempId]
+        () => originId || pdfData?.id || documentId || tempId,
+        [originId, pdfData?.id, documentId, tempId]
     )
 
     useEffect(() => {
-        if (isOpen && !pdfData?.id && !documentId) {
+        if (isOpen && !originId && !pdfData?.id && !documentId) {
             setTempId(crypto.randomUUID())
         }
-    }, [isOpen, pdfData?.id, documentId])
+    }, [isOpen, originId, pdfData?.id, documentId])
 
     const [isSaving, setIsSaving] = useState(false)
     const htmlPrintRef = useRef<HTMLDivElement>(null)
@@ -186,7 +185,6 @@ export function PrintPreviewModal({
         onPrintSelection?.(format, template)
         setSelectedPrintFormat(format)
     }, [onPrintSelection])
-    const usesLocalInvoiceStorage = shouldUseLocalInvoiceStorage(workspaceId)
     const printableFeatures = useMemo(
         () => disableInvoiceQrInLocalMode(workspaceId, features),
         [features, workspaceId]
@@ -394,7 +392,13 @@ export function PrintPreviewModal({
             let savedInvoice: Invoice | null = null
 
             if (invoiceData && workspaceId) {
-                const snapshotData: any = { ...invoiceData, printFormat }
+                const snapshotData: any = {
+                    ...invoiceData,
+                    sourceId: effectiveId,
+                    createdBy: invoiceData.createdBy || user?.id,
+                    createdByName: invoiceData.createdByName || user?.name,
+                    printFormat,
+                }
                 if (printFormat === 'a4') { snapshotData.pdfBlobA4 = activeBlob }
                 else { snapshotData.pdfBlobReceipt = activeBlob }
 
@@ -403,86 +407,31 @@ export function PrintPreviewModal({
                 if (confirmedInvoice) savedInvoice = confirmedInvoice
             }
 
-            if (savedInvoice && usesLocalInvoiceStorage) {
-                try {
-                    const storageWorkspaceId = workspaceId || savedInvoice.workspaceId
-                    if (!storageWorkspaceId) throw new Error('Missing workspace ID')
+            if (savedInvoice) {
+                const finalBlob = preGeneratedBlob || (!pdfBuilder && pdfData && printableFeatures
+                    ? await generateInvoicePdf({
+                        data: { ...pdfData, ...savedInvoice, id: savedInvoice.sourceId || savedInvoice.id, invoiceid: savedInvoice.invoiceid, sequenceId: savedInvoice.sequenceId },
+                        format: printFormat,
+                        workspaceId: workspaceId || '',
+                        features: { ...printableFeatures, logo_url: printableFeatures?.logo_url || undefined },
+                        workspaceName: workspaceName || workspaceId || '',
+                        translations,
+                        workspaceFooterContacts
+                    })
+                    : activeBlob)
 
-                    const finalBlob = preGeneratedBlob || (!pdfBuilder && pdfData && printableFeatures
-                        ? await generateInvoicePdf({
-                            data: { ...pdfData, ...savedInvoice, id: savedInvoice.id, invoiceid: savedInvoice.invoiceid, sequenceId: savedInvoice.sequenceId },
-                            format: printFormat,
-                            workspaceId: workspaceId || '',
-                            features: { ...printableFeatures, logo_url: printableFeatures?.logo_url || undefined },
-                            workspaceName: workspaceName || workspaceId || '',
-                            translations,
-                            workspaceFooterContacts
-                        })
-                        : activeBlob)
-
-                    const localPath = await saveInvoicePdfToLocalAppData(storageWorkspaceId, savedInvoice.id, printFormat, finalBlob)
-                    const dbUpdate: any = { syncStatus: 'synced', lastSyncedAt: new Date().toISOString() }
-                    if (printFormat === 'a4') {
-                        dbUpdate.localPathA4 = localPath ?? undefined
-                        dbUpdate.r2PathA4 = undefined
-                        dbUpdate.pdfBlobA4 = localPath ? undefined : finalBlob
-                    } else {
-                        dbUpdate.localPathReceipt = localPath ?? undefined
-                        dbUpdate.r2PathReceipt = undefined
-                        dbUpdate.pdfBlobReceipt = localPath ? undefined : finalBlob
-                    }
-                    await db.invoices.update(savedInvoice.id, dbUpdate)
-                } catch (saveError) {
-                    console.error('Local invoice file save failed:', saveError)
-                    const dbUpdate: any = { syncStatus: 'synced', lastSyncedAt: new Date().toISOString() }
-                    if (printFormat === 'a4') { dbUpdate.pdfBlobA4 = activeBlob }
-                    else { dbUpdate.pdfBlobReceipt = activeBlob }
-                    await db.invoices.update(savedInvoice.id, dbUpdate)
-                }
-            } else if (savedInvoice && isOnline() && assetManager) {
-                try {
-                    const finalBlob = preGeneratedBlob || (!pdfBuilder && pdfData && printableFeatures
-                        ? await generateInvoicePdf({
-                            data: { ...pdfData, ...savedInvoice, id: savedInvoice.id, invoiceid: savedInvoice.invoiceid, sequenceId: savedInvoice.sequenceId },
-                            format: printFormat,
-                            workspaceId: workspaceId || '',
-                            features: { ...printableFeatures, logo_url: printableFeatures?.logo_url || undefined },
-                            workspaceName: workspaceName || workspaceId || '',
-                            translations,
-                            workspaceFooterContacts
-                        })
-                        : activeBlob)
-
-                    const path = `${workspaceId}/printed-invoices/${printFormat === 'a4' ? 'A4' : 'receipts'}/${savedInvoice.id}.pdf`
-                    await assetManager.uploadInvoicePdf(savedInvoice.id, finalBlob, printFormat, path)
-
-                    const { error: upsertError } = await runSupabaseAction('printPreview.upsertInvoiceR2Path', () =>
-                        supabase.from('invoices').upsert({
-                            id: savedInvoice.id,
-                            user_id: user?.id,
-                            workspace_id: workspaceId,
-                            invoiceid: savedInvoice.invoiceid,
-                            total_amount: savedInvoice.totalAmount,
-                            total: savedInvoice.totalAmount,
-                            settlement_currency: savedInvoice.settlementCurrency,
-                            print_format: printFormat,
-                            updated_at: new Date().toISOString(),
-                            ...(printFormat === 'a4' ? { r2_path_a4: path } : { r2_path_receipt: path })
-                        })
-                    )
-                    if (upsertError) throw normalizeSupabaseActionError(upsertError)
-
-                    const dbUpdate: any = { syncStatus: 'synced', lastSyncedAt: new Date().toISOString() }
-                    if (printFormat === 'a4') { dbUpdate.r2PathA4 = path; dbUpdate.pdfBlobA4 = undefined }
-                    else { dbUpdate.r2PathReceipt = path; dbUpdate.pdfBlobReceipt = undefined }
-                    await db.invoices.update(savedInvoice.id, dbUpdate)
-                } catch (uploadError) {
-                    console.error('PDF upload failed:', uploadError)
-                    if (!navigator.onLine) {
-                        await db.invoices.update(savedInvoice.id, { syncStatus: 'pending', lastSyncedAt: null })
-                        toast({ title: t('print.saveError') || 'Save Failed', description: 'PDF upload failed. It will retry when online.', variant: 'destructive' })
-                    } else throw normalizeSupabaseActionError(uploadError)
-                }
+                await persistInvoiceVersion({
+                    invoice: { ...savedInvoice, sourceId: savedInvoice.sourceId || effectiveId },
+                    blob: finalBlob,
+                    format: printFormat,
+                    author: { id: user?.id, name: user?.name || savedInvoice.createdByName },
+                    metadata: {
+                        module: module || null,
+                        title: title || null,
+                        templateId: customTemplate?.templateId || null,
+                        templateLabel: customTemplate?.label || null,
+                    },
+                })
             }
 
             if (savedInvoice) {
@@ -509,18 +458,21 @@ export function PrintPreviewModal({
         ensureSaveBlob,
         handleHtmlPrint,
         hasPdfData,
+        customTemplate,
         invoiceData,
         isSaving,
+        module,
         onConfirm,
         pdfBuilder,
         pdfData,
         printFormat,
         printableFeatures,
         t,
+        title,
         toast,
         translations,
         user?.id,
-        usesLocalInvoiceStorage,
+        user?.name,
         workspaceFooterContacts,
         workspaceId,
         workspaceName

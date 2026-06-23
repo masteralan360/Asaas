@@ -131,9 +131,10 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
             return { ...group, entries }
         }).filter((group) => group.entries.length > 0)
         const hasFooterContacts = footerContactGroups.length > 0
-        const minimumTableRows = hasFooterContacts
-            ? (footerContactGroups.length >= 3 ? 12 : footerContactGroups.length === 2 ? 13 : 14)
-            : 15
+        const footerDensity = Object.keys(currencyTotals).length
+            + (data.exchange_rates && data.exchange_rates.length > 0 ? 1 : 0)
+            + footerContactGroups.length
+        const minimumTableRows = Math.max(8, (hasFooterContacts ? 10 : 12) - Math.min(4, footerDensity))
 
         // Brand Color from reference
         const BRAND_COLOR = '#197fe6'
@@ -156,7 +157,7 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
             <div
                 ref={ref}
                 dir={isRTL ? 'rtl' : 'ltr'}
-                className="a4-container relative p-[15mm] md:p-[20mm] bg-white text-slate-900 antialiased overflow-hidden flex flex-col"
+                className="a4-container relative p-[15mm] md:p-[20mm] bg-white text-slate-900 antialiased overflow-visible flex flex-col"
                 style={{ width: '210mm', minHeight: '297mm', margin: '0 auto' }}
                 data-order-print-page=""
             >
@@ -171,7 +172,7 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
     @page { size: A4; margin: 0; }
     body { background: white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; display: block; padding: 0; margin: 0; }
     .no-print { display: none; }
-    .a4-container { margin: 0 !important; box-shadow: none !important; width: 100% !important; min-height: 100% !important; page-break-after: avoid; }
+    .a4-container { margin: 0 !important; box-shadow: none !important; width: 100% !important; min-height: 100% !important; overflow: visible !important; page-break-after: avoid; }
 }
 .a4-container .text-primary { color: ${BRAND_COLOR} !important; }
 .a4-container .bg-primary { background-color: ${BRAND_COLOR} !important; }
@@ -409,7 +410,7 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                 </div>
 
                 {/* FOOTER */}
-                <div className="mt-auto pt-4 border-t border-slate-200 flex flex-row gap-6 shrink-0">
+                <div className="pt-4 border-t border-slate-200 flex flex-row gap-6 shrink-0">
                     <div className="flex-1 pr-4 flex flex-col justify-between">
                         {mp(MODERN_A4_MOVABLE_COMPONENT_KEYS.terms, 'Terms & Conditions', undefined,
                             <div>

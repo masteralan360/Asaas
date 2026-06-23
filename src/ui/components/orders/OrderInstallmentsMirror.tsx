@@ -487,11 +487,12 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                 module="orders"
                 features={features}
                 workspaceName={workspaceName}
+                originId={printTarget?.order.id}
                 invoiceData={printTarget ? {
                     invoiceid: printTarget.order.orderNumber,
                     totalAmount: printTarget.order.total,
                     settlementCurrency: printTarget.order.currency,
-                    origin: 'sales_order' as const,
+                    origin: printTarget.kind === 'sales' ? 'sales_order' as const : 'purchase_order' as const,
                     createdByName: user?.name || 'Unknown',
                     cashierName: user?.name || 'Unknown',
                     printFormat: 'a4' as const

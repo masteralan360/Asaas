@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'wouter'
-import { useInvoices, type Invoice } from '@/local-db'
+import { useInvoices, type Invoice, type InvoiceVersion } from '@/local-db'
 import { formatCurrency, formatDateTime, formatDate, formatOriginLabel } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { platformService } from '@/services/platformService'
@@ -22,8 +22,13 @@ import {
     TabsList,
     TabsTrigger,
     TabsContent,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
 } from '@/ui/components'
-import { FileText, Search, Eye, Upload, RefreshCw, Share2 } from 'lucide-react'
+import { FileText, Search, Eye, Upload, RefreshCw, Share2, History } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -32,6 +37,8 @@ import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { r2Service } from '@/services/r2Service'
 import { UploadFilesTab } from './UploadFile'
 import { setInvoicePreviewSource } from '@/lib/pdfPreviewStore'
+import { loadInvoiceVersions } from '@/services/invoiceVersionService'
+import { getReadableFileSize } from '@/components/application/file-upload/file-upload-base'
 
 const UPLOAD_FILES_ROUTE = '/invoices-history/upload-files'
 
@@ -45,6 +52,34 @@ export function InvoicesHistory() {
     const [search, setSearch] = useState('')
     const [isLoadingPdf, setIsLoadingPdf] = useState(false)
     const [downloadError, setDownloadError] = useState<string | null>(null)
+    const [versionsTarget, setVersionsTarget] = useState<Invoice | null>(null)
+    const [versions, setVersions] = useState<InvoiceVersion[]>([])
+    const [isLoadingVersions, setIsLoadingVersions] = useState(false)
+
+    useEffect(() => {
+        if (!versionsTarget) {
+            setVersions([])
+            return
+        }
+
+        let cancelled = false
+        setIsLoadingVersions(true)
+        loadInvoiceVersions(versionsTarget.id, versionsTarget.workspaceId)
+            .then((rows) => {
+                if (!cancelled) setVersions(rows)
+            })
+            .catch((error) => {
+                console.error('[InvoicesHistory] Failed to load invoice versions:', error)
+                if (!cancelled) setDownloadError(t('invoices.versionsLoadError', { defaultValue: 'Failed to load invoice versions.' }))
+            })
+            .finally(() => {
+                if (!cancelled) setIsLoadingVersions(false)
+            })
+
+        return () => {
+            cancelled = true
+        }
+    }, [t, versionsTarget])
 
     const activeTab = location === UPLOAD_FILES_ROUTE ? 'uploads' : 'history'
     const historyInvoices = useMemo(
@@ -56,7 +91,13 @@ export function InvoicesHistory() {
     const filteredInvoices = useMemo(() => {
         return historyInvoices
             .filter((invoice) => {
-                const matchesSearch = invoice.invoiceid.toLowerCase().includes(search.toLowerCase())
+                const normalizedSearch = search.trim().toLowerCase()
+                const matchesSearch = !normalizedSearch || [
+                    invoice.invoiceid,
+                    invoice.sourceId,
+                    invoice.origin,
+                    invoice.createdByName,
+                ].some((value) => value?.toLowerCase().includes(normalizedSearch))
                 const invoiceDate = new Date(invoice.createdAt)
                 const now = new Date()
 
@@ -252,6 +293,46 @@ export function InvoicesHistory() {
         }
     }
 
+    const handleViewVersion = async (version: InvoiceVersion) => {
+        setIsLoadingPdf(true)
+        setDownloadError(null)
+
+        try {
+            let url: string | null = null
+            if (version.localPath) {
+                const exists = await platformService.exists(version.localPath)
+                if (exists) {
+                    const content = await platformService.readFile(version.localPath)
+                    url = `data:application/pdf;base64,${platformService.uint8ArrayToBase64(content)}`
+                }
+            }
+            if (!url && version.pdfBlob) url = URL.createObjectURL(version.pdfBlob)
+            if (!url && version.r2Path) {
+                if (!navigator.onLine) {
+                    setDownloadError(t('invoices.offlineError') || 'You must be online to view invoice PDFs.')
+                    return
+                }
+                url = r2Service.getUrl(version.r2Path)
+            }
+            if (!url) {
+                setDownloadError(t('invoices.pdfNotAvailable') || 'PDF not available.')
+                return
+            }
+
+            setInvoicePreviewSource({
+                url,
+                title: `${versionsTarget?.invoiceid || t('invoices.invoice', { defaultValue: 'Invoice' })} · ${t('invoices.version', { defaultValue: 'Version' })} ${version.versionNumber}`,
+            })
+            setVersionsTarget(null)
+            setLocation('/pdf-preview')
+        } catch (error) {
+            console.error('[InvoicesHistory] Failed to view invoice version:', error)
+            setDownloadError(t('invoices.pdfLoadError') || 'Failed to load PDF')
+        } finally {
+            setIsLoadingPdf(false)
+        }
+    }
+
     return (
         <Tabs
             value={activeTab}
@@ -399,6 +480,19 @@ export function InvoicesHistory() {
                                                         size="sm"
                                                         allowViewer={true}
                                                         className="flex items-center gap-2 rounded-xl px-3 transition-all hover:bg-primary/10 hover:text-primary"
+                                                        onClick={() => setVersionsTarget(invoice)}
+                                                    >
+                                                        <History className="h-4 w-4" />
+                                                        <span className="text-xs font-bold">
+                                                            {t('invoices.versions', { defaultValue: 'Versions' })}
+                                                            {invoice.latestVersionNumber ? ` (${invoice.latestVersionNumber})` : ''}
+                                                        </span>
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        allowViewer={true}
+                                                        className="flex items-center gap-2 rounded-xl px-3 transition-all hover:bg-primary/10 hover:text-primary"
                                                         onClick={() => {
                                                             const format = (invoice.localPathA4 || invoice.pdfBlobA4 || invoice.r2PathA4) ? 'a4' : 'receipt'
                                                             void handleShare(invoice, format)
@@ -425,6 +519,89 @@ export function InvoicesHistory() {
                     }}
                 />
             </TabsContent>
+
+            <Dialog open={!!versionsTarget} onOpenChange={(open) => !open && setVersionsTarget(null)}>
+                <DialogContent className="max-w-4xl overflow-hidden p-0">
+                    <DialogHeader className="border-b px-6 py-5">
+                        <DialogTitle className="flex items-center gap-2">
+                            <History className="h-5 w-5 text-primary" />
+                            {t('invoices.versions', { defaultValue: 'Versions' })} · {versionsTarget?.invoiceid}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {t('invoices.versionsDescription', { defaultValue: 'Immutable PDF snapshots, sorted from latest to oldest.' })}
+                            {versionsTarget && (
+                                <span className="mt-1 block font-mono text-[11px]">
+                                    {formatOriginLabel(versionsTarget.origin)} · {versionsTarget.sourceId || versionsTarget.orderId || versionsTarget.id}
+                                </span>
+                            )}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="max-h-[65vh] overflow-auto">
+                        {isLoadingVersions ? (
+                            <div className="flex items-center justify-center gap-3 py-14 text-sm text-muted-foreground">
+                                <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                                {t('common.loading') || 'Loading...'}
+                            </div>
+                        ) : versions.length === 0 ? (
+                            <div className="py-14 text-center text-sm text-muted-foreground">
+                                {t('invoices.noVersions', { defaultValue: 'No saved versions are available.' })}
+                            </div>
+                        ) : (
+                            <Table>
+                                <TableHeader className="sticky top-0 z-10 bg-background">
+                                    <TableRow>
+                                        <TableHead>{t('invoices.version', { defaultValue: 'Version' })}</TableHead>
+                                        <TableHead>{t('invoices.table.created')}</TableHead>
+                                        <TableHead>{t('invoices.table.createdBy') || 'Created By'}</TableHead>
+                                        <TableHead>{t('invoices.format', { defaultValue: 'Format' })}</TableHead>
+                                        <TableHead>{t('invoices.size', { defaultValue: 'Size' })}</TableHead>
+                                        <TableHead className="text-right">{t('common.actions')}</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {versions.map((version, index) => (
+                                        <TableRow key={version.id}>
+                                            <TableCell>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-mono font-bold">v{version.versionNumber}</span>
+                                                    {index === 0 && (
+                                                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase text-primary">
+                                                            {t('common.latest', { defaultValue: 'Latest' })}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-xs">{formatDateTime(version.createdAt)}</TableCell>
+                                            <TableCell className="text-xs font-medium">{version.createdByName || version.createdBy || 'Unknown'}</TableCell>
+                                            <TableCell>
+                                                <span className="rounded-md bg-secondary px-2 py-1 font-mono text-[10px] font-bold uppercase">
+                                                    {version.format}
+                                                </span>
+                                            </TableCell>
+                                            <TableCell className="text-xs text-muted-foreground">
+                                                {version.fileSize > 0 ? getReadableFileSize(version.fileSize) : '—'}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    allowViewer={true}
+                                                    className="gap-2 rounded-xl"
+                                                    onClick={() => void handleViewVersion(version)}
+                                                >
+                                                    <Eye className="h-4 w-4" />
+                                                    {t('common.view', { defaultValue: 'View' })}
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {isLoadingPdf && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80">

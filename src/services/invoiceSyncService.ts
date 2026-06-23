@@ -1,14 +1,8 @@
-import { supabase } from '@/auth/supabase'
-import { db } from '@/local-db'
-import { assetManager } from '@/lib/assetManager'
-import { isOnline } from '@/lib/network'
+import { db, saveInvoiceFromSnapshot } from '@/local-db'
 import { generateInvoicePdf } from './pdfGenerator'
-import {
-    disableInvoiceQrInLocalMode,
-    saveInvoicePdfToLocalAppData
-} from './localInvoiceStorage'
+import { disableInvoiceQrInLocalMode } from './localInvoiceStorage'
+import { persistInvoiceVersion } from './invoiceVersionService'
 import { toast } from '@/ui/components/use-toast'
-import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 interface SyncInvoiceOptions {
     saleData: any
@@ -26,14 +20,12 @@ interface SyncInvoiceOptions {
 /**
  * Handles the background synchronization of an invoice:
  * 1. Generates Receipt PDF
- * 2. Uploads to R2 (if online)
- * 3. Upserts to Supabase 'invoices' table
- * 4. Updates local Dexie status
+ * 2. Links the invoice to the originating sale UUID
+ * 3. Persists an immutable PDF version (R2 or local storage)
  */
 export async function triggerInvoiceSync(options: SyncInvoiceOptions): Promise<void> {
     const { saleData, features, workspaceName, user } = options;
     const invoiceId = saleData.id;
-    const isLocalMode = isLocalWorkspaceMode(options.workspaceId);
     const printableFeatures = disableInvoiceQrInLocalMode(options.workspaceId, features);
 
     if (!invoiceId) {
@@ -62,121 +54,35 @@ export async function triggerInvoiceSync(options: SyncInvoiceOptions): Promise<v
                 workspaceId: options.workspaceId
             });
 
-        if (isLocalMode) {
-            const existingInvoice = await db.invoices.get(invoiceId)
-            if (!existingInvoice) {
-                await db.invoices.put({
-                    id: invoiceId,
-                    invoiceid: saleData.invoiceid || `#${invoiceId.slice(0, 8)}`,
-                    sequenceId: saleData.sequenceId ?? saleData.sequence_id,
-                    workspaceId: options.workspaceId,
-                    customerId: saleData.customer_id || '',
-                    status: 'paid',
-                    totalAmount: saleData.total_amount ?? saleData.totalAmount ?? 0,
-                    settlementCurrency: saleData.settlement_currency ?? saleData.settlementCurrency ?? printableFeatures.default_currency ?? 'usd',
-                    origin: saleData.origin || 'pos',
-                    createdBy: user.id,
-                    cashierName: saleData.cashier_name || user.name,
-                    createdByName: saleData.created_by_name || user.name,
-                    printFormat: format,
-                    createdAt: saleData.created_at || now,
-                    updatedAt: now,
-                    syncStatus: 'synced',
-                    lastSyncedAt: now,
-                    version: 1,
-                    isDeleted: false
-                })
-            }
-
-            const localPath = await saveInvoicePdfToLocalAppData(options.workspaceId, invoiceId, format, pdfBlob)
-            const dbUpdate: any = {
-                printFormat: format,
-                syncStatus: 'synced',
-                lastSyncedAt: now,
-                updatedAt: now
-            };
-
-            if (format === 'a4') {
-                dbUpdate.localPathA4 = localPath ?? undefined;
-                dbUpdate.r2PathA4 = undefined;
-                dbUpdate.pdfBlobA4 = localPath ? undefined : pdfBlob;
-            } else {
-                dbUpdate.localPathReceipt = localPath ?? undefined;
-                dbUpdate.r2PathReceipt = undefined;
-                dbUpdate.pdfBlobReceipt = localPath ? undefined : pdfBlob;
-            }
-
-            await db.invoices.update(invoiceId, dbUpdate);
-
-            toast({
-                title: "Receipt saved",
-                description: localPath
-                    ? "Invoice snapshot was stored in this device's local workspace files."
-                    : "Invoice snapshot was stored locally for this workspace.",
-                variant: "default",
-            });
-            return;
-        }
-
-        let r2Path: string | undefined;
-
-        // 2. Upload to R2 if online
-        if (isOnline() && assetManager) {
-            try {
-                const uploadedPath = await assetManager.uploadInvoicePdf(invoiceId, pdfBlob, format);
-                if (uploadedPath) r2Path = uploadedPath;
-            } catch (uploadError) {
-                console.warn(`[InvoiceSyncService] R2 Upload failed for ${format}, will sync later:`, uploadError);
-            }
-        }
-
-        // 3. Upsert to Supabase
-        const upsertData: any = {
-            id: invoiceId,
-            user_id: user.id,
-            workspace_id: options.workspaceId || features.workspace_id || saleData.workspace_id,
+        const invoice = await saveInvoiceFromSnapshot(options.workspaceId, {
+            sourceId: invoiceId,
             invoiceid: saleData.invoiceid || `#${invoiceId.slice(0, 8)}`,
-            total_amount: saleData.total_amount,
-            total: saleData.total_amount,
-            settlement_currency: saleData.settlement_currency,
-            origin: 'pos',
-            cashier_name: saleData.cashier_name || user.name,
-            created_by: user.id,
-            created_by_name: user.name,
-            print_format: format,
-            updated_at: new Date().toISOString()
-        };
+            sequenceId: saleData.sequenceId ?? saleData.sequence_id,
+            customerId: saleData.customer_id || undefined,
+            status: 'paid',
+            totalAmount: saleData.total_amount ?? saleData.totalAmount ?? 0,
+            settlementCurrency: saleData.settlement_currency ?? saleData.settlementCurrency ?? printableFeatures.default_currency ?? 'usd',
+            origin: saleData.origin || 'pos',
+            createdBy: user.id,
+            cashierName: saleData.cashier_name || user.name,
+            createdByName: saleData.created_by_name || user.name,
+            printFormat: format,
+            ...(format === 'a4' ? { pdfBlobA4: pdfBlob } : { pdfBlobReceipt: pdfBlob }),
+        }, invoiceId)
 
-        if (format === 'a4' && r2Path) {
-            upsertData.r2_path_a4 = r2Path;
-        } else if (format === 'receipt' && r2Path) {
-            upsertData.r2_path_receipt = r2Path;
-        }
-
-        const { error: upsertError } = await supabase.from('invoices').upsert(upsertData);
-
-        if (upsertError) throw upsertError;
-
-        // 4. Update Local DB
-        const dbUpdate: any = {
-            syncStatus: r2Path ? 'synced' : 'pending',
-            lastSyncedAt: r2Path ? new Date().toISOString() : null
-        };
-
-        if (format === 'a4') {
-            dbUpdate.r2PathA4 = r2Path;
-            dbUpdate.pdfBlobA4 = r2Path ? undefined : pdfBlob;
-        } else {
-            dbUpdate.r2PathReceipt = r2Path;
-            dbUpdate.pdfBlobReceipt = r2Path ? undefined : pdfBlob;
-        }
-
-        await db.invoices.update(invoiceId, dbUpdate);
+        const confirmedInvoice = await db.invoices.get(invoice.id) || invoice
+        const version = await persistInvoiceVersion({
+            invoice: confirmedInvoice,
+            blob: pdfBlob,
+            format,
+            author: user,
+            metadata: { module: 'pos', automatic: true, generatedAt: now },
+        })
 
         // Success Toast
         toast({
             title: "Receipt saved",
-            description: `Successfully persisted #${saleData.invoiceid || invoiceId.slice(0, 8)}`,
+            description: `Saved version ${version.versionNumber} for #${saleData.invoiceid || invoiceId.slice(0, 8)}`,
             variant: "default",
         });
 

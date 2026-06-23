@@ -6,6 +6,7 @@ import { Eye, LayoutGrid, List, Plus, Printer, Search, Trash2, MessageCircle } f
 
 import { useAuth } from '@/auth'
 import { getLoanLinkedPartySummary } from '@/lib/loanParties'
+import { getReportOriginId } from '@/lib/printIdentity'
 import { isMobile } from '@/lib/platform'
 import { getLoanDeleteWarning, getLoanDetailsTitle, getLoanDirection, getLoanDirectionLabel, getSimpleLoanModuleTitle } from '@/lib/loanPresentation'
 import { cn, formatCurrency, formatDate, formatDateTime, formatLoanDetailsForWhatsApp } from '@/lib/utils'
@@ -301,7 +302,7 @@ export function SimpleLoanListView({
     const simpleLoanListInvoiceData = useMemo(() => ({
         totalAmount: metrics.totalLent + metrics.totalBorrowed,
         settlementCurrency: features.default_currency,
-        origin: 'Loans' as const,
+        origin: 'loan_report' as const,
         createdByName: user?.name || 'Unknown',
         cashierName: user?.name || 'Unknown',
         printFormat: 'a4' as const
@@ -729,6 +730,7 @@ export function SimpleLoanListView({
                 title={getSimpleLoanModuleTitle(t)}
                 features={features}
                 workspaceName={workspaceName}
+                originId={getReportOriginId(user?.workspaceId, 'loan_report', 'simple-loan-list')}
                 invoiceData={simpleLoanListInvoiceData}
                 pdfBuilder={buildSimpleLoanListPdf}
                 printTemplate={({ effectiveId }) => renderSimpleLoanListTemplate(effectiveId)}
@@ -761,11 +763,12 @@ export function SimpleLoanListView({
                 title={getLoanDetailsTitle(loanToPrint || ({} as Loan), t)}
                 features={features}
                 workspaceName={workspaceName}
+                originId={loanToPrint?.id}
                 invoiceData={loanToPrint ? {
                     sequenceId: 0,
                     totalAmount: loanToPrint.principalAmount,
                     settlementCurrency: loanToPrint.settlementCurrency,
-                    origin: 'manual',
+                    origin: 'loans',
                     cashierName: loanToPrint.borrowerName,
                     createdByName: loanToPrint.borrowerName,
                     printFormat: 'a4' as PrintFormat

@@ -11,6 +11,7 @@ import { useAuth } from '@/auth'
 import { useDateRange } from '@/context/DateRangeContext'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
+import { getReportOriginId } from '@/lib/printIdentity'
 import { buildOrderExchangeRatesSnapshot, convertCurrencyAmountWithLiveRates, getPrimaryExchangeDetails } from '@/lib/orderCurrency'
 import { formatCurrency, formatDate, formatLocalDateTimeValue, generateId, parseLocalDateTimeValue } from '@/lib/utils'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
@@ -1942,10 +1943,12 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                 module="orders"
                 features={features}
                 workspaceName={workspaceName}
+                originId={getReportOriginId(user?.workspaceId, 'order_report', `orders:${activeTab}`)}
                 invoiceData={{
+                    invoiceid: `ORDERS-${activeTab.toUpperCase()}`,
                     totalAmount: (activeTab === 'sales' ? filteredSalesOrders : filteredPurchaseOrders).reduce((s, o) => s + o.total, 0),
                     settlementCurrency: features.default_currency || 'usd',
-                    origin: 'sales_order' as const,
+                    origin: 'order_report' as const,
                     createdByName: user?.name || 'Unknown',
                     cashierName: user?.name || 'Unknown',
                     printFormat: 'a4' as const

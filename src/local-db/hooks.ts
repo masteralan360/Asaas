@@ -1463,6 +1463,7 @@ export async function createInvoice(
     const invoice: Invoice = {
         ...data,
         id,
+        sourceId: data.sourceId || overrideId || id,
         workspaceId,
         invoiceid,
         createdAt: now,
@@ -1529,6 +1530,26 @@ export async function saveInvoiceFromSnapshot(
                 updatedAt: new Date().toISOString()
             })
             return { ...existing, ...data } as Invoice
+        }
+    }
+
+    // Legacy order/report prints may have a random invoice primary key. Reuse the
+    // newest parent with the same origin identity instead of creating another row.
+    if (data.sourceId && data.origin) {
+        const identityMatches = await db.invoices
+            .where('[workspaceId+origin+sourceId]')
+            .equals([workspaceId, data.origin, data.sourceId])
+            .filter((invoice) => !invoice.isDeleted)
+            .toArray()
+        const existingByOrigin = identityMatches.sort((left, right) =>
+            new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+        )[0]
+        if (existingByOrigin) {
+            await updateInvoice(existingByOrigin.id, {
+                ...data,
+                updatedAt: new Date().toISOString()
+            })
+            return { ...existingByOrigin, ...data } as Invoice
         }
     }
 
