@@ -341,6 +341,11 @@ describe('Order Details custom print template', () => {
                 key: customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount,
                 value: 'false',
                 type: 'boolean'
+            }),
+            expect.objectContaining({
+                key: 'tableRowCount',
+                value: '10',
+                type: 'number'
             })
         ])
         expect(preview.movableComponents?.map((component) => component.key)).toEqual([

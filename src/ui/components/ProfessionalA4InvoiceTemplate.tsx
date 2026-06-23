@@ -326,22 +326,22 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
                                         >
                                             <td className="border border-slate-300 p-1 text-center text-slate-500">{index + 1}</td>
                                             <td className="border border-slate-300 p-1 font-medium">
-                                                {item?.product_name || ''}
+                                                {item?.product_name || '\u00A0'}
                                             </td>
-                                            <td className="border border-slate-300 p-1 text-slate-600">{item?.product_sku || ''}</td>
+                                            <td className="border border-slate-300 p-1 text-slate-600">{item?.product_sku || '\u00A0'}</td>
                                             <td className="border border-slate-300 p-1 text-end">
-                                                {item ? `${quantity || ''}${(!hideUnit && item.unit) ? ` ${t(`products.units.${item.unit}`, item.unit)}` : ''}` : ''}
+                                                {item ? `${quantity || ''}${(!hideUnit && item.unit) ? ` ${t(`products.units.${item.unit}`, item.unit)}` : ''}` : '\u00A0'}
                                             </td>
                                             <td className="border border-slate-300 p-1 text-end">
-                                                {item && priceToShow !== null ? formatCurrency(priceToShow, settlementCurrency, iqdPreference) : ''}
+                                                {item && priceToShow !== null ? formatCurrency(priceToShow, settlementCurrency, iqdPreference) : '\u00A0'}
                                             </td>
                                             {!hideDiscount && (
                                                 <td className="border border-slate-300 p-1 text-end text-slate-500">
-                                                    {item && discount > 0 ? formatCurrency(discount, settlementCurrency, iqdPreference) : ''}
+                                                    {item && discount > 0 ? formatCurrency(discount, settlementCurrency, iqdPreference) : '\u00A0'}
                                                 </td>
                                             )}
                                             <td className="border border-slate-300 p-1 text-end font-semibold">
-                                                {item ? formatCurrency(safeNumber(item.total_price), settlementCurrency, iqdPreference) : ''}
+                                                {item ? formatCurrency(safeNumber(item.total_price), settlementCurrency, iqdPreference) : '\u00A0'}
                                             </td>
                                         </tr>
                                     )

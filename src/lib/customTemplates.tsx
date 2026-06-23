@@ -550,6 +550,12 @@ const ORDER_DETAILS_FIELDS = [
         label: 'Hide discounts',
         value: 'false',
         type: 'boolean' as const
+    },
+    {
+        key: 'tableRowCount',
+        label: 'Table row count',
+        value: '10',
+        type: 'number' as const
     }
 ]
 
@@ -978,6 +984,7 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
                 qrValue={buildQrValue(options.workspaceId, effectiveId, options.features)}
                 hideUnit={data[ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideUnit] === 'true'}
                 hideDiscount={data[ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount] === 'true'}
+                tableRowCount={Number(data.tableRowCount) || 10}
                 componentPositions={renderOptions?.componentPositions}
                 editableComponents={renderOptions?.editableComponents}
                 onComponentPositionChange={renderOptions?.onComponentPositionChange}

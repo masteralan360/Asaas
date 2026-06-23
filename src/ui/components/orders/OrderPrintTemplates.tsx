@@ -57,6 +57,7 @@ interface OrderDetailsPrintTemplateProps {
     qrValue?: string | null
     hideUnit?: boolean
     hideDiscount?: boolean
+    tableRowCount?: number
     componentPositions?: Record<string, CustomTemplateComponentPosition>
     editableComponents?: boolean
     onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
@@ -87,6 +88,26 @@ function isRTL(lang: string): boolean {
 function resolveLogoSrc(logoUrl?: string | null) {
     if (!logoUrl) return null
     return logoUrl.startsWith('http') ? logoUrl : platformService.convertFileSrc(logoUrl)
+}
+
+const DEFAULT_ORDER_TABLE_ROW_COUNT = 10
+
+function buildOrderItemRows(items: Array<{ id: string; productName: string; productSku?: string | null; quantity: number; convertedUnitPrice: number; lineTotal: number; unit?: string | null }>, rowCount: number) {
+    const overflowItems = items.slice(rowCount - 1)
+    return Array.from({ length: rowCount }, (_, index) => {
+        if (index < rowCount - 1) return items[index] || null
+        if (items.length <= rowCount) return items[index] || null
+        const overflowTotal = overflowItems.reduce((sum, item) => sum + item.lineTotal, 0)
+        const overflowQty = overflowItems.reduce((sum, item) => sum + item.quantity, 0)
+        return {
+            id: 'additional-items',
+            productName: `Additional ${overflowItems.length} item${overflowItems.length === 1 ? '' : 's'}`,
+            productSku: '',
+            quantity: overflowQty,
+            convertedUnitPrice: 0,
+            lineTotal: overflowTotal,
+        }
+    })
 }
 
 interface OrderPrintHeaderProps {
@@ -383,6 +404,7 @@ export function OrderDetailsPrintTemplate({
     qrValue,
     hideUnit,
     hideDiscount,
+    tableRowCount,
     componentPositions,
     editableComponents,
     onComponentPositionChange,
@@ -395,6 +417,8 @@ export function OrderDetailsPrintTemplate({
     const purchaseOrder = !isSales ? (order as PurchaseOrder) : null
     const currency = order.currency
     const noteValue = order.notes?.trim()
+    const rowCount = tableRowCount || DEFAULT_ORDER_TABLE_ROW_COUNT
+    const itemRows = buildOrderItemRows(order.items || [], rowCount)
 
     const counterpartyLabel = isSales
         ? (t('orders.details.customer') || 'Customer')
@@ -528,21 +552,21 @@ export function OrderDetailsPrintTemplate({
                     </tr>
                 </thead>
                 <tbody>
-                    {order.items.length === 0 ? (
+                    {itemRows.length === 0 ? (
                         <tr>
                             <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={5}>
                                 {t('common.noData') || 'No data'}
                             </td>
                         </tr>
-                    ) : order.items.map((item) => (
-                        <tr key={item.id}>
-                            <td className="border border-slate-300 p-2 font-medium">{item.productName}</td>
-                            <td className="border border-slate-300 p-2 text-slate-600">{item.productSku || '-'}</td>
+                    ) : itemRows.map((item, index) => (
+                        <tr key={item?.id || `empty-${index}`} className="h-9">
+                            <td className="border border-slate-300 p-2 font-medium">{item?.productName || '\u00A0'}</td>
+                            <td className="border border-slate-300 p-2 text-slate-600">{item?.productSku || '\u00A0'}</td>
                             <td className="border border-slate-300 p-2 text-end">
-                                {item.quantity}{(!hideUnit && (item as any).unit) ? ` ${(item as any).unit}` : ''}
+                                {item ? `${item.quantity}${(!hideUnit && (item as any).unit) ? ` ${(item as any).unit}` : ''}` : '\u00A0'}
                             </td>
-                            <td className="border border-slate-300 p-2 text-end">{formatCurrency(item.convertedUnitPrice, currency, iqdPreference)}</td>
-                            <td className="border border-slate-300 p-2 text-end font-semibold">{formatCurrency(item.lineTotal, currency, iqdPreference)}</td>
+                            <td className="border border-slate-300 p-2 text-end">{item ? formatCurrency(item.convertedUnitPrice, currency, iqdPreference) : '\u00A0'}</td>
+                            <td className="border border-slate-300 p-2 text-end font-semibold">{item ? formatCurrency(item.lineTotal, currency, iqdPreference) : '\u00A0'}</td>
                         </tr>
                     ))}
                 </tbody>
