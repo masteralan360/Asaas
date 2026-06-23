@@ -1150,10 +1150,6 @@ export function renderCustomTemplateLayoutElement({
         ...(fieldMode === 'layoutOverrides' ? layout.fields || {} : nonBlankFields(layout.fields || {}))
     }
 
-    const isReceipt = target.printFormat === 'receipt'
-    const supportsMultiplePages = target.moduleTypeKey === PARTNER_DETAILS_TEMPLATE_KEY
-        || target.moduleTypeKey === ORDER_DETAILS_TEMPLATE_KEY
-
     return (
         <div
             className="relative mx-auto overflow-visible bg-white text-black"

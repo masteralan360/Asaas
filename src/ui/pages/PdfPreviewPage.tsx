@@ -219,10 +219,10 @@ function EditableInvoicePreview({
                 workspaceFooterContacts={workspaceFooterContacts}
                 onDataChange={onDataChange}
                 drawingMode={drawingMode}
-                    hideUnit={hideUnit}
-                    hideDiscount={hideDiscount}
-                    tableRowCount={tableRowCount}
-                />
+                hideUnit={hideUnit}
+                hideDiscount={hideDiscount}
+                tableRowCount={tableRowCount}
+            />
         </div>
     )
 }

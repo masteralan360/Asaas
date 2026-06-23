@@ -29,10 +29,11 @@ interface A4InvoiceTemplateProps {
     drawingMode?: string
     hideUnit?: boolean
     hideDiscount?: boolean
+    tableRowCount?: number
 }
 
 export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplateProps>(
-    ({ data, features, workspaceId: propWorkspaceId, workspaceName, workspaceFooterContacts, onDataChange, drawingMode, hideUnit, hideDiscount }, ref) => {
+    ({ data, features, workspaceId: propWorkspaceId, workspaceName, workspaceFooterContacts, onDataChange, drawingMode, hideUnit, hideDiscount, tableRowCount }, ref) => {
         const { i18n } = useTranslation()
         const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
         const t = i18n.getFixedT(printLang)
@@ -271,7 +272,7 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                             </tr>
                         </thead>
                         <tbody>
-                            {items.map((item, idx) => {
+                            {(tableRowCount ? items.slice(0, tableRowCount) : items).map((item, idx) => {
                                 const finalUnitPrice = item.unit_price || 0
                                 const total = item.total_price || (finalUnitPrice * item.quantity)
                                 const discountAmount = item.discount_amount || 0
