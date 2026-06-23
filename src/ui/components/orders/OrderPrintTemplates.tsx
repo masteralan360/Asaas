@@ -292,7 +292,7 @@ export function OrderListPrintTemplate({
                 qrValue={qrValue}
             />
 
-            <div className="grid grid-cols-2 gap-3 mb-4 text-xs">
+            <div className="grid grid-cols-2 items-start gap-3 mb-4 text-xs">
                 <div className="border border-slate-300 rounded-md p-2">
                     <p className="text-slate-500 text-center">{t('orders.print.totalOrders') || 'Total Orders'}</p>
                     <p className="font-bold text-center">{metrics.totalOrders}</p>
@@ -471,7 +471,7 @@ export function OrderDetailsPrintTemplate({
                 onComponentPositionChange={onComponentPositionChange}
             />
 
-            <div className="grid grid-cols-2 gap-4 mb-4 text-xs text-center">
+            <div className="grid grid-cols-2 items-start gap-4 mb-4 text-xs text-center">
                 <MovableOrderPrintBlock
                     componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.customer}
                     label={counterpartyLabel}
@@ -481,7 +481,7 @@ export function OrderDetailsPrintTemplate({
                 >
                 <HideablePrintFieldCard
                     title={counterpartyLabel}
-                    className="h-full border border-slate-300 rounded-md p-3"
+                    className="border border-slate-300 rounded-md p-3"
                     hiddenFields={hiddenFields}
                     onHiddenFieldChange={onHiddenFieldChange}
                     fields={[
@@ -509,7 +509,7 @@ export function OrderDetailsPrintTemplate({
                 >
                 <HideablePrintFieldCard
                     title={t('orders.details.commercials') || 'Order Summary'}
-                    className="h-full border border-slate-300 rounded-md p-3"
+                    className="border border-slate-300 rounded-md p-3"
                     hiddenFields={hiddenFields}
                     onHiddenFieldChange={onHiddenFieldChange}
                     fields={[
@@ -565,7 +565,7 @@ export function OrderDetailsPrintTemplate({
                 </MovableOrderPrintBlock>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mb-4 text-xs">
+            <div className="grid grid-cols-2 items-start gap-3 mb-4 text-xs">
                 <MovableOrderPrintBlock
                     componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.created}
                     label={t('orders.details.created') || 'Created'}
@@ -575,7 +575,7 @@ export function OrderDetailsPrintTemplate({
                 >
                 <HideablePrintFieldCard
                     title={t('orders.details.created') || 'Created'}
-                    className="h-full border border-slate-300 rounded-md p-2"
+                    className="border border-slate-300 rounded-md p-2"
                     titleClassName="text-slate-500 text-center font-normal mb-0"
                     hiddenFields={hiddenFields}
                     onHiddenFieldChange={onHiddenFieldChange}
@@ -598,7 +598,7 @@ export function OrderDetailsPrintTemplate({
                 >
                 <HideablePrintFieldCard
                     title={t('orders.details.expectedDelivery') || 'Expected Delivery'}
-                    className="h-full border border-slate-300 rounded-md p-2"
+                    className="border border-slate-300 rounded-md p-2"
                     titleClassName="text-slate-500 text-center font-normal mb-0"
                     hiddenFields={hiddenFields}
                     onHiddenFieldChange={onHiddenFieldChange}

@@ -253,9 +253,9 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 mb-4 text-xs text-center">
+                <div className="grid grid-cols-2 items-start gap-4 mb-4 text-xs text-center">
                     {mp(PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS.customer, 'Customer', (
-                        <div className="h-full border border-slate-300 rounded-md p-3">
+                        <div className="border border-slate-300 rounded-md p-3">
                             <h2 className="font-semibold mb-2">{t('invoice.soldTo', { defaultValue: 'Sold To' })}</h2>
                             <EditableField
                                 value={data.customer_address || data.customer_name || ''}
@@ -275,7 +275,7 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
                     {mp(PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS.saleSummary, 'Sale Summary', (
                         <HideablePrintFieldCard
                             title={t('orders.details.commercials', { defaultValue: 'Commercials' })}
-                            className="h-full border border-slate-300 rounded-md p-3"
+                            className="border border-slate-300 rounded-md p-3"
                             hiddenFields={effectiveHiddenFields}
                             onHiddenFieldChange={onHiddenFieldChange}
                             fields={[
@@ -304,11 +304,11 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
                     ))}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 mb-4 text-xs">
+                <div className="grid grid-cols-2 items-start gap-3 mb-4 text-xs">
                     {mp(PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS.created, 'Created', (
                         <HideablePrintFieldCard
                             title={t('orders.details.created', { defaultValue: 'Created' })}
-                            className="h-full border border-slate-300 rounded-md p-2"
+                            className="border border-slate-300 rounded-md p-2"
                             titleClassName="text-slate-500 text-center font-normal mb-0"
                             hiddenFields={effectiveHiddenFields}
                             onHiddenFieldChange={onHiddenFieldChange}
@@ -325,7 +325,7 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
                     {mp(PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS.payment, 'Payment', (
                         <HideablePrintFieldCard
                             title={t('pos.paymentMethod', { defaultValue: 'Payment' })}
-                            className="h-full border border-slate-300 rounded-md p-2"
+                            className="border border-slate-300 rounded-md p-2"
                             titleClassName="text-slate-500 text-center font-normal mb-0"
                             hiddenFields={effectiveHiddenFields}
                             onHiddenFieldChange={onHiddenFieldChange}

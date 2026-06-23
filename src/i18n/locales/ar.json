@@ -990,7 +990,10 @@
       "completed": "مكتمل",
       "draft": "مسودة",
       "ordered": "تم الطلب",
-      "received": "تم الاستلام"
+      "received": "تم الاستلام",
+      "paid": "مدفوع",
+      "unpaid": "غير مدفوع",
+      "partial": "جزئي"
     },
     "tabs": {
       "sales": "طلبات المبيعات",
@@ -1083,6 +1086,7 @@
       "commercials": "التجاريات",
       "created": "تم الإنشاء",
       "expectedDelivery": "التوصيل المتوقع",
+      "paidAmount": "المبلغ المدفوع",
       "notes": "الملاحظات",
       "activity": {
         "title": "النشاط",

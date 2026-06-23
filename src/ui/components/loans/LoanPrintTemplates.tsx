@@ -222,7 +222,7 @@ export function LoanListPrintTemplate({
                 qrValue={qrValue}
             />
 
-            <div className="grid grid-cols-2 gap-3 mb-4 text-xs">
+            <div className="grid grid-cols-2 items-start gap-3 mb-4 text-xs">
                 <HideablePrintFieldCard
                     title={isSimpleVariant
                         ? t('loans.totalLent', { defaultValue: 'Total Lent' })
@@ -413,7 +413,7 @@ export function LoanDetailsPrintTemplate({
                 qrValue={qrValue}
             />
 
-            <div className="grid grid-cols-2 gap-4 mb-4 text-xs text-center">
+            <div className="grid grid-cols-2 items-start gap-4 mb-4 text-xs text-center">
                 <HideablePrintFieldCard
                     title={getLoanIdentityTitle(loan, t)}
                     className="border border-slate-300 rounded-md p-3"
