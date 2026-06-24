@@ -42,6 +42,7 @@ import {
   parseLocalDateValue,
   sanitizeNumericInput,
 } from "@/lib/utils";
+import { ProductAutocompleteInput } from "@/ui/components/orders/ProductAutocompleteInput";
 import {
   Button,
   Card,
@@ -261,16 +262,6 @@ export function StockAdjustments() {
       ),
     [inventory],
   );
-
-  const filteredProductsForAdjustment = useMemo(() => {
-    const needle = adjustmentSearch.trim().toLowerCase();
-    return products.filter(
-      (product) =>
-        !needle ||
-        product.name.toLowerCase().includes(needle) ||
-        product.sku.toLowerCase().includes(needle),
-    );
-  }, [adjustmentSearch, products]);
 
   const filteredProductsForBatch = useMemo(() => {
     const needle = batchSearch.trim().toLowerCase();
@@ -1149,41 +1140,23 @@ export function StockAdjustments() {
           >
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
               <div className="grid gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="adjustment-search">{t("stockAdjustments.dialog.adjustment.productSearch", "Product search")}</Label>
-                  <Input
-                    id="adjustment-search"
-                    value={adjustmentSearch}
-                    onChange={(event) =>
-                      setAdjustmentSearch(event.target.value)
-                    }
-                    placeholder={t("stockAdjustments.dialog.adjustment.productSearchPlaceholder", "Search products by name or SKU")}
-                    className="rounded-xl"
-                  />
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                   <div className="space-y-2">
-                    <Label>{t("stockAdjustments.dialog.adjustment.product", "Product")}</Label>
-                    <Select
-                      value={adjustmentForm.productId}
-                      onValueChange={(value) =>
-                        setAdjustmentForm((current) => ({
-                          ...current,
-                          productId: value,
-                        }))
-                      }
-                    >
-                      <SelectTrigger className="rounded-xl">
-                        <SelectValue placeholder={t("stockAdjustments.dialog.adjustment.selectProduct", "Select product")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {filteredProductsForAdjustment.map((product) => (
-                          <SelectItem key={product.id} value={product.id}>
-                            {product.name} • {product.sku}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor="adjustment-search">{t("stockAdjustments.dialog.adjustment.productSearch", "Product search")}</Label>
+                    <ProductAutocompleteInput
+                      value={adjustmentSearch}
+                      onChange={(value) => {
+                        setAdjustmentSearch(value);
+                        setAdjustmentForm((current) => ({ ...current, productId: "" }));
+                      }}
+                      onSelectProduct={(product) => {
+                        setAdjustmentForm((current) => ({ ...current, productId: product.id }));
+                        setAdjustmentSearch(product.name);
+                      }}
+                      products={products}
+                      placeholder={t("stockAdjustments.dialog.adjustment.productSearchPlaceholder", "Search products by name or SKU")}
+                      hasSelection={!!adjustmentForm.productId}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>{t("stockAdjustments.dialog.adjustment.storage", "Storage")}</Label>
