@@ -906,6 +906,9 @@ function createSalesHistoryReceiptPreview(options: CustomTemplatePreviewOptions)
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.paymentMethod, label: 'Payment Method' },
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.exchangeRateSnapshots, label: 'Exchange Rate Snapshots' },
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.itemsTable, label: 'Items Table' },
+            { key: RECEIPT_MOVABLE_COMPONENT_KEYS.total, label: 'Total' },
+            { key: RECEIPT_MOVABLE_COMPONENT_KEYS.thankYou, label: 'Thank You' },
+            { key: RECEIPT_MOVABLE_COMPONENT_KEYS.keepRecord, label: 'Keep Record' },
         ],
         page: { widthMm: 80, heightMm: 200 },
         createElement: (data, _effectiveId, _printLangOverride, renderOptions) => (

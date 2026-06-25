@@ -29,6 +29,9 @@ export const RECEIPT_MOVABLE_COMPONENT_KEYS = {
     paymentMethod: 'receiptPaymentMethod',
     exchangeRateSnapshots: 'receiptExchangeRateSnapshots',
     itemsTable: 'receiptItemsTable',
+    total: 'receiptTotal',
+    thankYou: 'receiptThankYou',
+    keepRecord: 'receiptKeepRecord',
 } as const
 
 interface SaleReceiptProps {
@@ -77,7 +80,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
             onTemplateFieldChange?.(key, value)
         }
         const positionFor = (key: string) => componentPositions?.[key]
-        const mp = (key: string, label: string, children: ReactNode, wrapperClassName?: string, handleSide?: 'left' | 'right') => (
+        const mp = (key: string, label: string, children: ReactNode, wrapperClassName?: string, handleSide?: 'left' | 'right', minY?: number, pushFlow?: boolean) => (
             <MovableOrderPrintBlock
                 componentKey={key}
                 label={label}
@@ -86,6 +89,8 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                 onPositionChange={onComponentPositionChange}
                 wrapperClassName={wrapperClassName}
                 handleSide={handleSide}
+                minY={minY}
+                pushFlow={pushFlow}
             >
                 {children}
             </MovableOrderPrintBlock>
@@ -159,7 +164,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                     </h1>
                 )}
 
-                <div className="flex justify-between items-start mb-4 border-b border-gray-200 pb-4">
+                <div className="flex justify-between items-start mb-4">
                     <div className="flex flex-col flex-1">
                         {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.date, 'Date',
                             <div>
@@ -204,30 +209,28 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                     </div>
                 </div>
 
-                {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.exchangeRateSnapshots, 'Exchange Rate Snapshots',
-                    showExchangeRateSnapshots && data.exchange_rates && data.exchange_rates.length > 0 ? (
-                        <div className="mb-6 text-start">
-                            <div className={cn("text-[10px] font-bold text-gray-400 mb-2", !isRTL && "uppercase tracking-wider")}>
-                                {t('settings.exchangeRate.title')} {t('common.snapshots')}
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                                {data.exchange_rates.map((rate: any, idx: number) => (
-                                    <div key={idx} className="p-2 border border-gray-200 rounded bg-gray-50/50">
-                                        <div className="flex justify-between items-center mb-1">
-                                            <span className="text-[10px] font-bold">{rate.pair}</span>
-                                            <span className="text-[9px] text-gray-400 uppercase">{rate.source}</span>
-                                        </div>
-                                        <div className="text-xs font-bold font-mono">
-                                            {rate.priceBasisAmount || 100} {rate.pair.split('/')[0]} = {formatCurrency(rate.rate, rate.pair.split('/')[1].toLowerCase() as any, features.iqd_display_preference)}
-                                        </div>
-                                        <div className="text-[9px] text-gray-400 mt-1 font-mono opacity-80">
-                                            {formatSnapshotTime(rate.timestamp)}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                {showExchangeRateSnapshots && data.exchange_rates && data.exchange_rates.length > 0 && mp(RECEIPT_MOVABLE_COMPONENT_KEYS.exchangeRateSnapshots, 'Exchange Rate Snapshots',
+                    <div className="mb-6 text-start border-t border-gray-200 pt-4">
+                        <div className={cn("text-[10px] font-bold text-gray-400 mb-2", !isRTL && "uppercase tracking-wider")}>
+                            {t('settings.exchangeRate.title')} {t('common.snapshots')}
                         </div>
-                    ) : null
+                        <div className="grid grid-cols-2 gap-2">
+                            {data.exchange_rates.map((rate: any, idx: number) => (
+                                <div key={idx} className="p-2 border border-gray-200 rounded bg-gray-50/50">
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span className="text-[10px] font-bold">{rate.pair}</span>
+                                        <span className="text-[9px] text-gray-400 uppercase">{rate.source}</span>
+                                    </div>
+                                    <div className="text-xs font-bold font-mono">
+                                        {rate.priceBasisAmount || 100} {rate.pair.split('/')[0]} = {formatCurrency(rate.rate, rate.pair.split('/')[1].toLowerCase() as any, features.iqd_display_preference)}
+                                    </div>
+                                    <div className="text-[9px] text-gray-400 mt-1 font-mono opacity-80">
+                                        {formatSnapshotTime(rate.timestamp)}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 )}
 
                 {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.itemsTable, 'Items Table',
@@ -279,33 +282,43 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                             </tbody>
                         </table>
                         <div className="border-t-2 border-black mt-4" />
-                    </div>
+                    </div>,
+                    undefined, undefined, undefined, true
                 )}
 
-                <div className="pt-4 mb-8">
-                    <div className="flex justify-between items-end">
-                        <span className={cn("text-sm font-bold text-gray-500", !isRTL && "uppercase tracking-wider")}>{t('common.total')}</span>
-                        <span className={cn("text-3xl font-black", !isRTL && "tracking-tight")}>
-                            {formatCurrency(data.total_amount, data.settlement_currency || 'usd', features.iqd_display_preference)}
-                        </span>
-                    </div>
-                </div>
+                {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.total, 'Total',
+                    <div className="pt-4 mb-8">
+                        <div className="flex justify-between items-end">
+                            <span className={cn("text-sm font-bold text-gray-500", !isRTL && "uppercase tracking-wider")}>{t('common.total')}</span>
+                            <span className={cn("text-3xl font-black", !isRTL && "tracking-tight")}>
+                                {formatCurrency(data.total_amount, data.settlement_currency || 'usd', features.iqd_display_preference)}
+                            </span>
+                        </div>
+                    </div>,
+                    undefined, 'right', 0, true
+                )}
 
                 <div className="text-center text-[10px] text-gray-400 border-t border-gray-100 pt-6">
-                    <p className="mb-1 font-medium text-gray-900">
-                        <EditableField
-                            value={thankYouText}
-                            onChange={(value) => updateTemplateField(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.thankYou, value)}
-                            editable={editableFields}
-                        />
-                    </p>
-                    <p>
-                        <EditableField
-                            value={keepRecordText}
-                            onChange={(value) => updateTemplateField(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord, value)}
-                            editable={editableFields}
-                        />
-                    </p>
+                    {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.thankYou, 'Thank You',
+                        <p className="mb-1 font-medium text-gray-900">
+                            <EditableField
+                                value={thankYouText}
+                                onChange={(value) => updateTemplateField(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.thankYou, value)}
+                                editable={editableFields}
+                            />
+                        </p>,
+                        undefined, 'right', 0, true
+                    )}
+                    {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.keepRecord, 'Keep Record',
+                        <p>
+                            <EditableField
+                                value={keepRecordText}
+                                onChange={(value) => updateTemplateField(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord, value)}
+                                editable={editableFields}
+                            />
+                        </p>,
+                        undefined, 'right', 0, true
+                    )}
                 </div>
             </div>
         )

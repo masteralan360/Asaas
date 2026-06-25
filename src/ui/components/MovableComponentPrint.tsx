@@ -10,6 +10,8 @@ export function MovableOrderPrintBlock({
     onPositionChange,
     wrapperClassName,
     handleSide = 'right',
+    minY,
+    pushFlow,
     children
 }: {
     componentKey: string
@@ -19,12 +21,17 @@ export function MovableOrderPrintBlock({
     onPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
     wrapperClassName?: string
     handleSide?: 'left' | 'right'
+    minY?: number
+    pushFlow?: boolean
     children: ReactNode
 }) {
     const resolvedPosition = position || { x: 0, y: 0 }
 
     const updatePosition = (nextPosition: CustomTemplateComponentPosition) => {
-        onPositionChange?.(componentKey, nextPosition)
+        onPositionChange?.(componentKey, {
+            x: nextPosition.x,
+            y: minY !== undefined ? Math.max(minY, nextPosition.y) : nextPosition.y
+        })
     }
 
     const handlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
@@ -83,7 +90,11 @@ export function MovableOrderPrintBlock({
                 editable ? 'group/order-block relative outline outline-1 outline-dashed outline-transparent hover:outline-primary/60' : undefined,
                 wrapperClassName
             ].filter(Boolean).join(' ')}
-            style={{
+            style={pushFlow ? {
+                transform: `translate(${resolvedPosition.x}mm, 0)`,
+                marginTop: `${resolvedPosition.y}mm`,
+                zIndex: resolvedPosition.x !== 0 || resolvedPosition.y !== 0 ? 20 : undefined
+            } : {
                 transform: `translate(${resolvedPosition.x}mm, ${resolvedPosition.y}mm)`,
                 position: 'relative',
                 zIndex: resolvedPosition.x !== 0 || resolvedPosition.y !== 0 ? 20 : undefined
