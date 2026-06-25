@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, AlertTriangle, Loader2 } from 'lucide-react'
+import { Trash2, AlertTriangle, Loader2, Copy, Check, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
     Dialog,
@@ -8,8 +8,33 @@ import {
     DialogHeader,
     DialogTitle,
     DialogFooter,
-    Button
+    Button,
+    Input,
+    Checkbox,
+    Label
 } from '@/ui/components'
+
+const QUICK_DELETE_KEY = 'quickDeleteExpiry'
+const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000
+
+function getQuickDeleteActive(): boolean {
+    try {
+        const stored = localStorage.getItem(QUICK_DELETE_KEY)
+        if (!stored) return false
+        const expiry = Number(stored)
+        return !isNaN(expiry) && Date.now() < expiry
+    } catch {
+        return false
+    }
+}
+
+function saveQuickDelete(): void {
+    try {
+        localStorage.setItem(QUICK_DELETE_KEY, String(Date.now() + TWENTY_FOUR_HOURS))
+    } catch {
+        // localStorage not available
+    }
+}
 
 interface DeleteConfirmationModalProps {
     isOpen: boolean
@@ -19,9 +44,6 @@ interface DeleteConfirmationModalProps {
     description?: string
     isLoading?: boolean
     itemName?: string
-    requireHoldToConfirm?: boolean
-    holdToConfirmLabel?: string
-    holdDurationMs?: number
 }
 
 export function DeleteConfirmationModal({
@@ -31,15 +53,29 @@ export function DeleteConfirmationModal({
     title,
     description,
     isLoading = false,
-    itemName = '',
-    requireHoldToConfirm = false,
-    holdToConfirmLabel,
-    holdDurationMs = 1500
+    itemName = ''
 }: DeleteConfirmationModalProps) {
     const { t } = useTranslation()
+    const [typedText, setTypedText] = useState('')
+    const [copied, setCopied] = useState(false)
+    const [enableQuickDelete, setEnableQuickDelete] = useState(false)
     const [holdProgress, setHoldProgress] = useState(0)
+    const [isQuickDeleteActive, setIsQuickDeleteActive] = useState(false)
     const animationFrameRef = useRef<number | null>(null)
     const holdCompletedRef = useRef(false)
+    const isDeleteEnabled = typedText === 'delete'
+
+    useEffect(() => {
+        if (isOpen) {
+            setIsQuickDeleteActive(getQuickDeleteActive())
+            setTypedText('')
+            setCopied(false)
+            setEnableQuickDelete(false)
+            holdCompletedRef.current = false
+            cancelHold()
+            setHoldProgress(0)
+        }
+    }, [isOpen])
 
     const cancelHold = useCallback(() => {
         if (animationFrameRef.current !== null) {
@@ -52,18 +88,22 @@ export function DeleteConfirmationModal({
     }, [])
 
     const beginHold = useCallback(() => {
-        if (!requireHoldToConfirm || isLoading || animationFrameRef.current !== null) return
+        if (!isDeleteEnabled || isLoading || animationFrameRef.current !== null) return
 
         holdCompletedRef.current = false
         const startedAt = performance.now()
+        const holdDuration = 500
 
         const updateProgress = (now: number) => {
-            const progress = Math.min(((now - startedAt) / holdDurationMs) * 100, 100)
+            const progress = Math.min(((now - startedAt) / holdDuration) * 100, 100)
             setHoldProgress(progress)
 
             if (progress >= 100) {
                 animationFrameRef.current = null
                 holdCompletedRef.current = true
+                if (enableQuickDelete) {
+                    saveQuickDelete()
+                }
                 onConfirm()
                 return
             }
@@ -72,17 +112,22 @@ export function DeleteConfirmationModal({
         }
 
         animationFrameRef.current = requestAnimationFrame(updateProgress)
-    }, [holdDurationMs, isLoading, onConfirm, requireHoldToConfirm])
+    }, [isDeleteEnabled, isLoading, onConfirm, enableQuickDelete])
 
-    useEffect(() => {
-        if (!isOpen) {
-            holdCompletedRef.current = false
-            cancelHold()
-            setHoldProgress(0)
+    const handleSimpleDelete = () => {
+        if (isLoading) return
+        onConfirm()
+    }
+
+    const handleCopyDelete = async () => {
+        try {
+            await navigator.clipboard.writeText('delete')
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1500)
+        } catch {
+            // clipboard not available
         }
-
-        return cancelHold
-    }, [cancelHold, isOpen])
+    }
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -128,69 +173,149 @@ export function DeleteConfirmationModal({
                         </div>
                     )}
 
-                    {/* Actions */}
-                    <DialogFooter className="w-full grid grid-cols-2 gap-3 sm:gap-4 !flex-row sm:!flex-row">
-                        <Button
-                            variant="ghost"
-                            onClick={onClose}
-                            disabled={isLoading}
-                            className="h-12 rounded-2xl font-bold bg-secondary/30 hover:bg-secondary/50 border border-transparent hover:border-border/50 transition-all"
-                        >
-                            {t('common.cancel') || 'Cancel'}
-                        </Button>
-                        <Button
-                            variant="destructive"
-                            onClick={(event) => {
-                                if (requireHoldToConfirm) {
-                                    event.preventDefault()
-                                    return
-                                }
-                                onConfirm()
-                            }}
-                            onPointerDown={(event) => {
-                                if (!requireHoldToConfirm || event.button !== 0) return
-                                event.preventDefault()
-                                event.currentTarget.setPointerCapture(event.pointerId)
-                                beginHold()
-                            }}
-                            onPointerUp={cancelHold}
-                            onPointerCancel={cancelHold}
-                            onPointerLeave={cancelHold}
-                            onKeyDown={(event) => {
-                                if (!requireHoldToConfirm || event.repeat) return
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                    event.preventDefault()
-                                    beginHold()
-                                }
-                            }}
-                            onKeyUp={(event) => {
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                    event.preventDefault()
-                                    cancelHold()
-                                }
-                            }}
-                            disabled={isLoading}
-                            className="relative h-12 overflow-hidden rounded-2xl font-black shadow-lg shadow-destructive/20 bg-destructive hover:bg-destructive/90 border-t border-white/10 flex gap-2 items-center justify-center transition-all active:scale-95"
-                        >
-                            {requireHoldToConfirm && (
-                                <span
-                                    aria-hidden="true"
-                                    className="absolute inset-y-0 left-0 bg-white/20 transition-[width] duration-75"
-                                    style={{ width: `${holdProgress}%` }}
-                                />
-                            )}
-                            {isLoading ? (
-                                <Loader2 className="relative w-5 h-5 animate-spin" />
-                            ) : (
-                                <span className="relative flex items-center justify-center gap-2">
-                                    <Trash2 className="w-4 h-4" />
-                                    {requireHoldToConfirm
-                                        ? holdToConfirmLabel || 'Hold to delete'
-                                        : t('common.delete') || 'Delete'}
+                    {isQuickDeleteActive ? (
+                        <>
+                            {/* Quick delete badge */}
+                            <div className="w-full flex items-center justify-center gap-2 rounded-2xl bg-amber-500/10 border border-amber-500/20 px-4 py-3">
+                                <Zap className="w-4 h-4 text-amber-500" />
+                                <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
+                                    {t('common.quickDeleteActive') || 'Quick delete is active for 24 hours'}
                                 </span>
+                            </div>
+
+                            {/* Simple delete button */}
+                            <DialogFooter className="w-full grid grid-cols-2 gap-3 sm:gap-4 !flex-row sm:!flex-row">
+                                <Button
+                                    variant="ghost"
+                                    onClick={onClose}
+                                    disabled={isLoading}
+                                    className="h-12 rounded-2xl font-bold bg-secondary/30 hover:bg-secondary/50 border border-transparent hover:border-border/50 transition-all"
+                                >
+                                    {t('common.cancel') || 'Cancel'}
+                                </Button>
+                                <Button
+                                    variant="destructive"
+                                    onClick={handleSimpleDelete}
+                                    disabled={isLoading}
+                                    className="h-12 rounded-2xl font-black shadow-lg shadow-destructive/20 bg-destructive hover:bg-destructive/90 border-t border-white/10 flex gap-2 items-center justify-center transition-all"
+                                >
+                                    {isLoading ? (
+                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                    ) : (
+                                        <span className="flex items-center justify-center gap-2">
+                                            <Trash2 className="w-4 h-4" />
+                                            {t('common.delete') || 'Delete'}
+                                        </span>
+                                    )}
+                                </Button>
+                            </DialogFooter>
+                        </>
+                    ) : (
+                        <>
+                            {/* Type-to-delete confirmation */}
+                            <div className="w-full space-y-2">
+                                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center justify-center gap-1.5">
+                                    {t('common.typeToConfirm')}
+                                    <button
+                                        type="button"
+                                        onClick={handleCopyDelete}
+                                        className="inline-flex items-center gap-1 font-black text-foreground underline underline-offset-2 decoration-dashed decoration-muted-foreground/40 hover:decoration-foreground transition-all cursor-pointer"
+                                        title="Click to copy"
+                                    >
+                                        delete
+                                        {copied ? (
+                                            <Check className="w-3 h-3 text-green-500" />
+                                        ) : (
+                                            <Copy className="w-3 h-3 text-muted-foreground/60" />
+                                        )}
+                                    </button>
+                                    {t('common.toConfirm') || 'to confirm'}
+                                </label>
+                                <Input
+                                    value={typedText}
+                                    onChange={(e) => setTypedText(e.target.value)}
+                                    placeholder="delete"
+                                    disabled={isLoading}
+                                    className="h-12 rounded-2xl text-center text-base font-bold tracking-widest"
+                                />
+                            </div>
+
+                            {/* Quick-delete checkbox */}
+                            {isDeleteEnabled && (
+                                <div className="w-full flex items-center justify-center gap-2">
+                                    <Checkbox
+                                        id="quick-delete"
+                                        checked={enableQuickDelete}
+                                        onCheckedChange={(checked) => setEnableQuickDelete(checked === true)}
+                                    />
+                                    <Label
+                                        htmlFor="quick-delete"
+                                        className="text-xs font-bold text-muted-foreground/70 cursor-pointer select-none"
+                                    >
+                                        {t('common.quickDeleteEnable') || 'Enable quick delete for 24 hours'}
+                                    </Label>
+                                </div>
                             )}
-                        </Button>
-                    </DialogFooter>
+
+                            {/* Actions */}
+                            <DialogFooter className="w-full grid grid-cols-2 gap-3 sm:gap-4 !flex-row sm:!flex-row">
+                                <Button
+                                    variant="ghost"
+                                    onClick={onClose}
+                                    disabled={isLoading}
+                                    className="h-12 rounded-2xl font-bold bg-secondary/30 hover:bg-secondary/50 border border-transparent hover:border-border/50 transition-all"
+                                >
+                                    {t('common.cancel') || 'Cancel'}
+                                </Button>
+                                <Button
+                                    variant="destructive"
+                                    onClick={(event) => {
+                                        event.preventDefault()
+                                    }}
+                                    onPointerDown={(event) => {
+                                        if (!isDeleteEnabled || event.button !== 0) return
+                                        event.preventDefault()
+                                        event.currentTarget.setPointerCapture(event.pointerId)
+                                        beginHold()
+                                    }}
+                                    onPointerUp={cancelHold}
+                                    onPointerCancel={cancelHold}
+                                    onPointerLeave={cancelHold}
+                                    onKeyDown={(event) => {
+                                        if (!isDeleteEnabled || event.repeat) return
+                                        if (event.key === 'Enter' || event.key === ' ') {
+                                            event.preventDefault()
+                                            beginHold()
+                                        }
+                                    }}
+                                    onKeyUp={(event) => {
+                                        if (event.key === 'Enter' || event.key === ' ') {
+                                            event.preventDefault()
+                                            cancelHold()
+                                        }
+                                    }}
+                                    disabled={isLoading || !isDeleteEnabled}
+                                    className="relative h-12 overflow-hidden rounded-2xl font-black shadow-lg shadow-destructive/20 bg-destructive hover:bg-destructive/90 disabled:opacity-40 disabled:pointer-events-none border-t border-white/10 flex gap-2 items-center justify-center transition-all active:scale-95"
+                                >
+                                    <span
+                                        aria-hidden="true"
+                                        className="absolute inset-y-0 left-0 bg-white/20 transition-[width] duration-75"
+                                        style={{ width: `${holdProgress}%` }}
+                                    />
+                                    {isLoading ? (
+                                        <Loader2 className="relative w-5 h-5 animate-spin" />
+                                    ) : (
+                                        <span className="relative flex items-center justify-center gap-2">
+                                            <Trash2 className="w-4 h-4" />
+                                            {holdProgress > 0 && holdProgress < 100
+                                                ? t('common.holdToDelete') || 'Hold To Delete'
+                                                : t('common.delete') || 'Delete'}
+                                        </span>
+                                    )}
+                                </Button>
+                            </DialogFooter>
+                        </>
+                    )}
                 </div>
             </DialogContent>
         </Dialog>

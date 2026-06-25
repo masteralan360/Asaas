@@ -52,6 +52,10 @@
     "confirmDelete": "تأكيد الحذف",
     "deleteWarning": "هذا الإجراء لا يمكن التراجع عنه. هل أنت متأكد أنك تريد المتابعة؟",
     "targetItem": "العنصر المراد حذفه",
+    "typeToConfirm": "اكتب",
+    "toConfirm": "للتأكيد",
+    "quickDeleteEnable": "تفعيل الحذف السريع لمدة 24 ساعة",
+    "quickDeleteActive": "الحذف السريع مفعل لمدة 24 ساعة",
     "quantity": "الكمية",
     "price": "السعر",
     "total": "الإجمالي",
@@ -85,6 +89,7 @@
     "remaining": "المبلغ المتبقي",
     "address": "العنوان",
     "location": "الموقع",
+    "holdToDelete": "ابقَ ضاغط",
     "buyingPrice": "سعر الشراء",
     "sellingPrice": "سعر البيع",
     "pagination": {

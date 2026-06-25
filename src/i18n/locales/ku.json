@@ -52,6 +52,10 @@
     "confirmDelete": "پشتڕاستکردنەوەی سڕینەوە",
     "deleteWarning": "ئەم کردارە پاشگەزبوونەوەی تێدا نییە. دڵنیایت دەتەوێت بەردەوام بیت؟",
     "targetItem": "کالا بۆ سڕینەوە",
+    "typeToConfirm": "",
+    "toConfirm": "بنووسە بۆ پشتڕاستکردنەوە",
+    "quickDeleteEnable": "سڕینەوەی خێرا چالاک بکە بۆ ٢٤ کاتژمێر",
+    "quickDeleteActive": "سڕینەوەی خێرا چالاکە بۆ ٢٤ کاتژمێر",
     "quantity": "بڕ",
     "price": "نرخ",
     "total": "کۆی گشتی",
@@ -87,6 +91,7 @@
     "location": "شوێن",
     "phone": "مۆبایل",
     "email": "ئیمەیڵ",
+    "holdToDelete": "پەنجە لامەبە",
     "buyingPrice": "نرخی کڕین",
     "sellingPrice": "نرخی فرۆشتن",
     "pagination": {

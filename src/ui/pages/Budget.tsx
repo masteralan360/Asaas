@@ -1585,8 +1585,6 @@ export function Budget() {
                     ? t('budget.deleteAllMonthsWarning') || 'This removes the expense and all of its monthly occurrences. This action cannot be undone.'
                     : t('budget.deleteThisMonthWarning') || 'Only the selected month will be removed. Other recurring months will remain.'}
                 itemName={deleteTarget?.series?.name || deleteTarget?.item?.id || ''}
-                requireHoldToConfirm={deleteTarget?.type === 'series'}
-                holdToConfirmLabel={t('budget.holdToDelete') || 'Hold to delete'}
             />
 
             <PrintPreviewModal
