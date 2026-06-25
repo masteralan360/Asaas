@@ -622,6 +622,12 @@ const SALES_HISTORY_RECEIPT_FIELDS = [
         value: '',
         type: 'text' as const,
         placeholder: 'Please keep this receipt for your records.'
+    },
+    {
+        key: SALE_RECEIPT_TEMPLATE_FIELD_KEYS.labelOpacity,
+        label: 'Labels opacity',
+        value: '50',
+        type: 'number' as const
     }
 ]
 

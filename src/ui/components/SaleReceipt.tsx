@@ -17,6 +17,7 @@ export const SALE_RECEIPT_TEMPLATE_FIELD_KEYS = {
     showOriginalCurrencyPrice: 'receipt.showOriginalCurrencyPrice',
     thankYou: 'receipt.thankYou',
     keepRecord: 'receipt.keepRecord',
+    labelOpacity: 'receipt.labelOpacity',
 } as const
 
 export const RECEIPT_MOVABLE_COMPONENT_KEYS = {
@@ -76,6 +77,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
             || t('sales.receipt.thankYou')
         const keepRecordText = fieldValue(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord)?.trim()
             || t('sales.receipt.keepRecord')
+        const labelOpacity = Math.min(100, Math.max(0, parseInt(fieldValue(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.labelOpacity) || '50')))
         const updateTemplateField = (key: string, value: string) => {
             onTemplateFieldChange?.(key, value)
         }
@@ -113,7 +115,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
             return (
                 <div className="flex flex-col items-end leading-none">
                     <span className="font-bold">{formattedNum}</span>
-                    <span className="text-[9px] text-gray-500 font-medium mt-0.5">{currencyLabel}</span>
+                    <span className="text-[9px] text-black font-medium mt-0.5" style={{ opacity: labelOpacity / 100 }}>{currencyLabel}</span>
                 </div>
             )
         }
@@ -168,14 +170,14 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                     <div className="flex flex-col flex-1">
                         {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.date, 'Date',
                             <div>
-                                <span className={cn("font-semibold text-[10px] text-gray-400 block", !isRTL && "uppercase tracking-wider")}>{t('sales.date')}: </span>
+                                <span className={cn("font-semibold text-[10px] text-black block", !isRTL && "uppercase tracking-wider")} style={{ opacity: labelOpacity / 100 }}>{t('sales.date')}: </span>
                                 <span className="font-mono">{formatDateTime(data.created_at)}</span>
                             </div>,
                             'w-full', 'left'
                         )}
                         {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.saleId, 'Sale ID',
                             <div className="mt-2">
-                                <span className={cn("font-semibold text-[10px] text-gray-400 block", !isRTL && "uppercase tracking-wider")}>{t('sales.id')}: </span>
+                                <span className={cn("font-semibold text-[10px] text-black block", !isRTL && "uppercase tracking-wider")} style={{ opacity: labelOpacity / 100 }}>{t('sales.id')}: </span>
                                 <span className="font-mono">{data.invoiceid}</span>
                             </div>,
                             'w-full', 'left'
@@ -184,7 +186,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                     <div className="flex flex-col items-end flex-1">
                         {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.cashier, 'Cashier',
                             <div className="text-end">
-                                <span className={cn("font-semibold text-[10px] text-gray-400 block", !isRTL && "uppercase tracking-wider")}>{t('sales.cashier')}</span>
+                                <span className={cn("font-semibold text-[10px] text-black block", !isRTL && "uppercase tracking-wider")} style={{ opacity: labelOpacity / 100 }}>{t('sales.cashier')}</span>
                                 <span className="font-medium">{data.cashier_name}</span>
                             </div>,
                             'w-full', 'right'
@@ -192,7 +194,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                         {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.paymentMethod, 'Payment Method',
                             data.payment_method ? (
                                 <div className="text-end mt-2">
-                                    <span className={cn("font-semibold text-[10px] text-gray-400 block", !isRTL && "uppercase tracking-wider")}>{t('pos.paymentMethod') || 'Payment Method'}</span>
+                                    <span className={cn("font-semibold text-[10px] text-black block", !isRTL && "uppercase tracking-wider")} style={{ opacity: labelOpacity / 100 }}>{t('pos.paymentMethod') || 'Payment Method'}</span>
                                     <span className="font-medium">
                                         {data.payment_method === 'cash' ? (t('pos.cash') || 'Cash') :
                                             data.payment_method === 'fib' ? 'FIB' :
@@ -211,7 +213,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
 
                 {showExchangeRateSnapshots && data.exchange_rates && data.exchange_rates.length > 0 && mp(RECEIPT_MOVABLE_COMPONENT_KEYS.exchangeRateSnapshots, 'Exchange Rate Snapshots',
                     <div className="mb-6 text-start border-t border-gray-200 pt-4">
-                        <div className={cn("text-[10px] font-bold text-gray-400 mb-2", !isRTL && "uppercase tracking-wider")}>
+                        <div className={cn("text-[10px] font-bold text-black mb-2", !isRTL && "uppercase tracking-wider")} style={{ opacity: labelOpacity / 100 }}>
                             {t('settings.exchangeRate.title')} {t('common.snapshots')}
                         </div>
                         <div className="grid grid-cols-2 gap-2">
@@ -237,7 +239,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                     <div className="mb-4">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className={cn("text-[10px] text-gray-400 border-b border-gray-200", !isRTL && "uppercase")}>
+                                <tr className={cn("text-[10px] text-black border-b border-gray-200", !isRTL && "uppercase")} style={{ opacity: labelOpacity / 100 }}>
                                     <th className={cn("pb-2 text-start font-bold", !isRTL && "tracking-wider")}>{t('products.table.name')}</th>
                                     <th className={cn("pb-2 text-center font-bold", !isRTL && "tracking-wider")}>{t('common.quantity')}</th>
                                     <th className={cn("pb-2 text-end font-bold", !isRTL && "tracking-wider")}>{t('common.price')}</th>
@@ -252,7 +254,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                                             <td className="py-3 text-start align-top">
                                                 <div className="font-bold text-sm">{item.product_name}</div>
                                                 {item.product_sku && (
-                                                    <div className="text-[10px] text-gray-400 font-mono mt-0.5">{item.product_sku}</div>
+                                                    <div className="text-[10px] text-black font-mono mt-0.5" style={{ opacity: labelOpacity / 100 }}>{item.product_sku}</div>
                                                 )}
                                             </td>
                                             <td className="py-3 text-center align-top font-mono">{item.quantity}</td>
@@ -289,7 +291,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                 {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.total, 'Total',
                     <div className="pt-4 mb-8">
                         <div className="flex justify-between items-end">
-                            <span className={cn("text-sm font-bold text-gray-500", !isRTL && "uppercase tracking-wider")}>{t('common.total')}</span>
+                            <span className={cn("text-sm font-bold text-black", !isRTL && "uppercase tracking-wider")} style={{ opacity: labelOpacity / 100 }}>{t('common.total')}</span>
                             <span className={cn("text-3xl font-black", !isRTL && "tracking-tight")}>
                                 {formatCurrency(data.total_amount, data.settlement_currency || 'usd', features.iqd_display_preference)}
                             </span>
@@ -310,13 +312,13 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                         undefined, 'right', 0, true
                     )}
                     {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.keepRecord, 'Keep Record',
-                        <p>
+                        <span className="text-black" style={{ opacity: labelOpacity / 100 }}>
                             <EditableField
                                 value={keepRecordText}
                                 onChange={(value) => updateTemplateField(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord, value)}
                                 editable={editableFields}
                             />
-                        </p>,
+                        </span>,
                         undefined, 'right', 0, true
                     )}
                 </div>
