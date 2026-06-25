@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Copy, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { Boxes, Copy, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import {
@@ -34,6 +34,10 @@ import {
     CardContent,
     CardHeader,
     CardTitle,
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuTrigger,
     DeleteConfirmationModal,
     Dialog,
     DialogContent,
@@ -49,6 +53,7 @@ import {
     SelectItem,
     SelectTrigger,
     SelectValue,
+    StockAdjustmentDialog,
     Table,
     TableBody,
     TableCell,
@@ -137,6 +142,8 @@ export function Products() {
     const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false)
     const [editingCategory, setEditingCategory] = useState<Category | null>(null)
     const [categoryFormData, setCategoryFormData] = useState(emptyCategoryFormData)
+    const [adjustmentDialogOpen, setAdjustmentDialogOpen] = useState(false)
+    const [selectedProductForStock, setSelectedProductForStock] = useState<string | undefined>()
     const [isLoading, setIsLoading] = useState(false)
     const [pulseCategorySubmit, setPulseCategorySubmit] = useState(false)
     const [outsideClickCount, setOutsideClickCount] = useState(0)
@@ -753,13 +760,14 @@ export function Products() {
                             {isMobile() && (
                                 <div className="grid grid-cols-1 gap-4">
                                     {paginatedProducts.map((product) => (
-                                        <div
-                                            key={product.id}
-                                            className={cn(
-                                                'space-y-4 rounded-[2rem] border border-border bg-card p-4 shadow-sm',
-                                                canCloneToBranch && isBranchCloneSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5'
-                                            )}
-                                        >
+                                        <ContextMenu key={product.id}>
+                                            <ContextMenuTrigger asChild>
+                                                <div
+                                                    className={cn(
+                                                        'space-y-4 rounded-[2rem] border border-border bg-card p-4 shadow-sm',
+                                                        canCloneToBranch && isBranchCloneSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5'
+                                                    )}
+                                                >
                                             {canCloneToBranch && isBranchCloneSelectionMode && (
                                                 <div className="flex items-center gap-2">
                                                     <Checkbox
@@ -837,6 +845,16 @@ export function Products() {
                                                 )}
                                             </div>
                                         </div>
+                                        </ContextMenuTrigger>
+                                        <ContextMenuContent>
+                                            {canEdit && (
+                                                <ContextMenuItem className="gap-2" onSelect={() => { setSelectedProductForStock(product.id); setAdjustmentDialogOpen(true); }}>
+                                                    <Boxes className="h-4 w-4" />
+                                                    {t('products.addStock', { defaultValue: 'Add Stock' })}
+                                                </ContextMenuItem>
+                                            )}
+                                        </ContextMenuContent>
+                                    </ContextMenu>
                                     ))}
                                 </div>
                             )}
@@ -846,13 +864,14 @@ export function Products() {
                                     {viewMode === 'grid' ? (
                                         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                                             {paginatedProducts.map((product) => (
-                                                <div
-                                                    key={product.id}
-                                                    className={cn(
-                                                        'group relative flex flex-col gap-4 overflow-hidden rounded-[1.5rem] border border-border/50 bg-card p-4 transition-all duration-300 hover:-translate-y-1 hover:bg-accent/5 hover:shadow-2xl hover:shadow-primary/5',
-                                                        canCloneToBranch && isBranchCloneSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5 shadow-lg shadow-primary/10'
-                                                    )}
-                                                >
+                                                <ContextMenu key={product.id}>
+                                                    <ContextMenuTrigger asChild>
+                                                        <div
+                                                            className={cn(
+                                                                'group relative flex flex-col gap-4 overflow-hidden rounded-[1.5rem] border border-border/50 bg-card p-4 transition-all duration-300 hover:-translate-y-1 hover:bg-accent/5 hover:shadow-2xl hover:shadow-primary/5',
+                                                                canCloneToBranch && isBranchCloneSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5 shadow-lg shadow-primary/10'
+                                                            )}
+                                                        >
                                                     {canCloneToBranch && isBranchCloneSelectionMode && (
                                                         <div className="flex items-center gap-2">
                                                             <Checkbox
@@ -934,6 +953,16 @@ export function Products() {
                                                         </div>
                                                     </div>
                                                 </div>
+                                                    </ContextMenuTrigger>
+                                                <ContextMenuContent>
+                                                    {canEdit && (
+                                                        <ContextMenuItem className="gap-2" onSelect={() => { setSelectedProductForStock(product.id); setAdjustmentDialogOpen(true); }}>
+                                                            <Boxes className="h-4 w-4" />
+                                                            {t('products.addStock', { defaultValue: 'Add Stock' })}
+                                                        </ContextMenuItem>
+                                                    )}
+                                                </ContextMenuContent>
+                                                </ContextMenu>
                                             ))}
                                         </div>
                                     ) : (
@@ -953,7 +982,9 @@ export function Products() {
                                             </TableHeader>
                                             <TableBody>
                                                 {paginatedProducts.map((product) => (
-                                                    <TableRow key={product.id} className={cn(canCloneToBranch && isBranchCloneSelectionMode && selectedProductIds.has(product.id) && 'bg-primary/5')}>
+                                                    <ContextMenu key={product.id}>
+                                                        <ContextMenuTrigger asChild>
+                                                    <TableRow className={cn(canCloneToBranch && isBranchCloneSelectionMode && selectedProductIds.has(product.id) && 'bg-primary/5')}>
                                                         {canCloneToBranch && isBranchCloneSelectionMode && (
                                                             <TableCell>
                                                                 <Checkbox
@@ -1010,6 +1041,16 @@ export function Products() {
                                                             </TableCell>
                                                         )}
                                                     </TableRow>
+                                                        </ContextMenuTrigger>
+                                                        <ContextMenuContent>
+                                                            {canEdit && (
+                                                                <ContextMenuItem className="gap-2" onSelect={() => { setSelectedProductForStock(product.id); setAdjustmentDialogOpen(true); }}>
+                                                                    <Boxes className="h-4 w-4" />
+                                                                    {t('products.addStock', { defaultValue: 'Add Stock' })}
+                                                                </ContextMenuItem>
+                                                            )}
+                                                        </ContextMenuContent>
+                                                    </ContextMenu>
                                                 ))}
                                             </TableBody>
                                         </Table>
@@ -1210,6 +1251,20 @@ export function Products() {
                 isLoading={isLoading}
                 title={itemToDelete?.type === 'category' ? t('categories.confirmDelete') : t('products.confirmDelete')}
                 description={deleteConfirmationDescription}
+            />
+
+            <StockAdjustmentDialog
+                open={adjustmentDialogOpen}
+                onOpenChange={(open) => {
+                    setAdjustmentDialogOpen(open)
+                    if (!open) setSelectedProductForStock(undefined)
+                }}
+                preselectedProductId={selectedProductForStock}
+                products={products}
+                storages={storages}
+                inventory={inventoryRows ?? []}
+                workspaceId={workspaceId}
+                userId={user?.id ?? null}
             />
         </div>
     )

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowDown,
@@ -14,7 +14,6 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/auth";
 import { useWorkspace } from "@/workspace";
 import {
-  createStockAdjustment,
   createStockBatch,
   deleteStockBatch,
   filterStockAdjustments,
@@ -42,47 +41,39 @@ import {
   parseLocalDateValue,
   sanitizeNumericInput,
 } from "@/lib/utils";
-import { ProductAutocompleteInput } from "@/ui/components/orders/ProductAutocompleteInput";
 import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  CurrencySelector,
-  DateTimePicker,
-  DeleteConfirmationModal,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Input,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-  Textarea,
-  useToast,
+    Button,
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+    CurrencySelector,
+    DateTimePicker,
+    DeleteConfirmationModal,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    Input,
+    Label,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+    StockAdjustmentDialog,
+    Tabs,
+    TabsContent,
+    TabsList,
+    TabsTrigger,
+    Textarea,
+    useToast,
 } from "@/ui/components";
 
 type ActiveTab = "adjustments" | "batches";
-
-type AdjustmentFormState = {
-  productId: string;
-  storageId: string;
-  quantity: string;
-  reason: StockAdjustmentReason;
-  notes: string;
-};
 
 type BatchFormState = {
   id?: string;
@@ -112,14 +103,6 @@ function getAdjustmentReasonOptions(
     { value: "other" as StockAdjustmentReason, label: translate("stockAdjustments.reasons.other", "Other") },
   ];
 }
-
-const emptyAdjustmentForm: AdjustmentFormState = {
-  productId: "",
-  storageId: "",
-  quantity: "",
-  reason: "purchase",
-  notes: "",
-};
 
 const emptyBatchForm: BatchFormState = {
   productId: "",
@@ -225,10 +208,6 @@ export function StockAdjustments() {
   const [endDate, setEndDate] = useState<Date | undefined>();
 
   const [adjustmentDialogOpen, setAdjustmentDialogOpen] = useState(false);
-  const [adjustmentSearch, setAdjustmentSearch] = useState("");
-  const [adjustmentForm, setAdjustmentForm] =
-    useState<AdjustmentFormState>(emptyAdjustmentForm);
-  const [isSavingAdjustment, setIsSavingAdjustment] = useState(false);
 
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [batchSearch, setBatchSearch] = useState("");
@@ -236,7 +215,6 @@ export function StockAdjustments() {
   const [isSavingBatch, setIsSavingBatch] = useState(false);
   const [batchToDelete, setBatchToDelete] = useState<StockBatch | null>(null);
   const [isDeletingBatch, setIsDeletingBatch] = useState(false);
-  const adjustmentSeededSelectionKeyRef = useRef("");
 
   useEffect(() => {
     if (!canManageStockBatches && activeTab === "batches") {
@@ -273,20 +251,6 @@ export function StockAdjustments() {
     );
   }, [batchSearch, products]);
 
-  const adjustmentStorageOptions = useMemo(() => {
-    if (!adjustmentForm.productId) return storages;
-    const storageIds = Array.from(
-      new Set(
-        inventory
-          .filter((row) => row.productId === adjustmentForm.productId)
-          .map((row) => row.storageId),
-      ),
-    );
-    return storageIds.length
-      ? storages.filter((storage) => storageIds.includes(storage.id))
-      : storages;
-  }, [adjustmentForm.productId, inventory, storages]);
-
   const batchStorageOptions = useMemo(() => {
     if (!batchForm.productId) return storages;
     const storageIds = Array.from(
@@ -303,25 +267,6 @@ export function StockAdjustments() {
 
   useEffect(() => {
     if (
-      adjustmentDialogOpen &&
-      adjustmentStorageOptions.length &&
-      !adjustmentStorageOptions.some(
-        (storage) => storage.id === adjustmentForm.storageId,
-      )
-    ) {
-      setAdjustmentForm((current) => ({
-        ...current,
-        storageId: adjustmentStorageOptions[0].id,
-      }));
-    }
-  }, [
-    adjustmentDialogOpen,
-    adjustmentForm.storageId,
-    adjustmentStorageOptions,
-  ]);
-
-  useEffect(() => {
-    if (
       batchDialogOpen &&
       batchStorageOptions.length &&
       !batchStorageOptions.some((storage) => storage.id === batchForm.storageId)
@@ -333,44 +278,6 @@ export function StockAdjustments() {
     }
   }, [batchDialogOpen, batchForm.storageId, batchStorageOptions]);
 
-  const adjustmentSelectionKey =
-    adjustmentForm.productId && adjustmentForm.storageId
-      ? groupKey(adjustmentForm.productId, adjustmentForm.storageId)
-      : "";
-  const adjustmentAvailableQuantity = adjustmentSelectionKey
-    ? (inventoryByKey.get(adjustmentSelectionKey) ?? 0)
-    : null;
-  const adjustmentTargetQuantity =
-    adjustmentForm.quantity === ""
-      ? null
-      : parseFormattedNumber(adjustmentForm.quantity);
-  const adjustmentQuantityDelta =
-    adjustmentAvailableQuantity === null ||
-    adjustmentTargetQuantity === null ||
-    !Number.isInteger(adjustmentTargetQuantity)
-      ? null
-      : adjustmentTargetQuantity - adjustmentAvailableQuantity;
-  const adjustmentDeltaMeta =
-    adjustmentQuantityDelta === null || adjustmentQuantityDelta === 0
-      ? null
-      : adjustmentQuantityDelta > 0
-        ? {
-            badge: `+${adjustmentQuantityDelta}`,
-            inputClassName:
-              "border-emerald-500/40 focus-visible:border-emerald-500 focus-visible:ring-emerald-500/30",
-            textClassName: "text-emerald-700",
-            badgeClassName:
-              "border-emerald-500/20 bg-emerald-500/10 text-emerald-700",
-          }
-        : {
-            badge: `-${Math.abs(adjustmentQuantityDelta)}`,
-            inputClassName:
-              "border-rose-500/40 focus-visible:border-rose-500 focus-visible:ring-rose-500/30",
-            textClassName: "text-rose-700",
-            badgeClassName: "border-rose-500/20 bg-rose-500/10 text-rose-700",
-          };
-  const isAdjustmentIncrease =
-    adjustmentQuantityDelta !== null && adjustmentQuantityDelta > 0;
   const batchSelectionKey =
     batchForm.productId && batchForm.storageId
       ? groupKey(batchForm.productId, batchForm.storageId)
@@ -392,26 +299,6 @@ export function StockAdjustments() {
     (selectedBatchProduct.price !== batchPriceValue ||
       selectedBatchProduct.costPrice !== batchCostPriceValue ||
       selectedBatchProduct.currency !== batchForm.currency);
-
-  useEffect(() => {
-    if (!adjustmentDialogOpen) {
-      adjustmentSeededSelectionKeyRef.current = "";
-      return;
-    }
-
-    if (
-      !adjustmentSelectionKey ||
-      adjustmentSelectionKey === adjustmentSeededSelectionKeyRef.current
-    ) {
-      return;
-    }
-
-    adjustmentSeededSelectionKeyRef.current = adjustmentSelectionKey;
-    setAdjustmentForm((current) => ({
-      ...current,
-      quantity: String(inventoryByKey.get(adjustmentSelectionKey) ?? 0),
-    }));
-  }, [adjustmentDialogOpen, adjustmentSelectionKey, inventoryByKey]);
 
   const filteredAdjustments = useMemo(
     () =>
@@ -485,14 +372,6 @@ export function StockAdjustments() {
     [transactions],
   );
 
-  const canSaveAdjustment =
-    !!adjustmentForm.productId &&
-    !!adjustmentForm.storageId &&
-    adjustmentTargetQuantity !== null &&
-    Number.isInteger(adjustmentTargetQuantity) &&
-    adjustmentTargetQuantity >= 0 &&
-    adjustmentQuantityDelta !== null &&
-    adjustmentQuantityDelta !== 0;
   const canSaveBatch =
     !!batchForm.productId &&
     !!batchForm.storageId &&
@@ -506,57 +385,10 @@ export function StockAdjustments() {
     Number.isFinite(batchCostPriceValue) &&
     batchCostPriceValue >= 0;
 
-  const resetAdjustmentForm = () => {
-    setAdjustmentForm(emptyAdjustmentForm);
-    setAdjustmentSearch("");
-    setIsSavingAdjustment(false);
-  };
-
   const resetBatchForm = () => {
     setBatchForm(emptyBatchForm);
     setBatchSearch("");
     setIsSavingBatch(false);
-  };
-
-  const handleSaveAdjustment = async () => {
-    if (
-      !workspaceId ||
-      adjustmentAvailableQuantity === null ||
-      adjustmentTargetQuantity === null ||
-      !Number.isInteger(adjustmentTargetQuantity)
-    )
-      return;
-
-    const quantityDelta =
-      adjustmentTargetQuantity - adjustmentAvailableQuantity;
-    if (quantityDelta === 0) return;
-
-    setIsSavingAdjustment(true);
-    try {
-      await createStockAdjustment(workspaceId, {
-        productId: adjustmentForm.productId,
-        storageId: adjustmentForm.storageId,
-        adjustmentType: quantityDelta > 0 ? "increase" : "decrease",
-        quantity: Math.abs(quantityDelta),
-        reason: adjustmentForm.reason,
-        notes: adjustmentForm.notes,
-        createdBy: user?.id ?? null,
-      });
-      toast({
-        title: t("stockAdjustments.messages.adjustmentSaved", "Adjustment saved"),
-        description: t("stockAdjustments.messages.adjustmentSavedDesc", "Inventory and audit log were updated."),
-      });
-      setAdjustmentDialogOpen(false);
-      resetAdjustmentForm();
-    } catch (error) {
-      toast({
-        title: t("stockAdjustments.messages.adjustmentFailed", "Unable to save adjustment"),
-        description:
-          error instanceof Error ? error.message : t("stockAdjustments.messages.genericError", "Something went wrong."),
-        variant: "destructive",
-      });
-      setIsSavingAdjustment(false);
-    }
   };
 
   const handleSaveBatch = async () => {
@@ -625,11 +457,6 @@ export function StockAdjustments() {
     }
   };
 
-  const handleAdjustmentSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    void handleSaveAdjustment();
-  };
-
   const handleBatchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     void handleSaveBatch();
@@ -653,10 +480,7 @@ export function StockAdjustments() {
           <div className="flex gap-2">
             <Button
               className="gap-2 rounded-xl"
-              onClick={() => {
-                resetAdjustmentForm();
-                setAdjustmentDialogOpen(true);
-              }}
+              onClick={() => setAdjustmentDialogOpen(true)}
             >
               <Plus className="h-4 w-4" />
               {t("stockAdjustments.newAdjustment", "New Stock Adjustment")}
@@ -1120,199 +944,15 @@ export function StockAdjustments() {
         )}
       </Tabs>
 
-      <Dialog
+      <StockAdjustmentDialog
         open={adjustmentDialogOpen}
-        onOpenChange={(open) => {
-          setAdjustmentDialogOpen(open);
-          if (!open) resetAdjustmentForm();
-        }}
-      >
-        <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-0.75rem)] w-[calc(100vw-0.75rem)] max-w-3xl flex-col overflow-hidden rounded-[1.25rem] border-border/60 p-0 sm:w-full sm:max-h-[min(calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem),820px)] sm:rounded-[1.75rem]">
-          <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-start sm:px-6 sm:py-5">
-            <DialogTitle>{t("stockAdjustments.dialog.adjustment.title", "New Stock Adjustment")}</DialogTitle>
-            <DialogDescription>
-              {t("stockAdjustments.dialog.adjustment.description", "Pick the product and storage, then set the final stock quantity you want to keep there.")}
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            onSubmit={handleAdjustmentSubmit}
-            className="flex min-h-0 flex-1 flex-col"
-          >
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
-              <div className="grid gap-4">
-                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                  <div className="space-y-2">
-                    <Label htmlFor="adjustment-search">{t("stockAdjustments.dialog.adjustment.productSearch", "Product search")}</Label>
-                    <ProductAutocompleteInput
-                      value={adjustmentSearch}
-                      onChange={(value) => {
-                        setAdjustmentSearch(value);
-                        setAdjustmentForm((current) => ({ ...current, productId: "" }));
-                      }}
-                      onSelectProduct={(product) => {
-                        setAdjustmentForm((current) => ({ ...current, productId: product.id }));
-                        setAdjustmentSearch(product.name);
-                      }}
-                      products={products}
-                      placeholder={t("stockAdjustments.dialog.adjustment.productSearchPlaceholder", "Search products by name or SKU")}
-                      hasSelection={!!adjustmentForm.productId}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{t("stockAdjustments.dialog.adjustment.storage", "Storage")}</Label>
-                    <Select
-                      value={adjustmentForm.storageId}
-                      onValueChange={(value) =>
-                        setAdjustmentForm((current) => ({
-                          ...current,
-                          storageId: value,
-                        }))
-                      }
-                    >
-                      <SelectTrigger className="rounded-xl">
-                        <SelectValue placeholder={t("stockAdjustments.dialog.adjustment.selectStorage", "Select storage")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {adjustmentStorageOptions.map((storage) => (
-                          <SelectItem key={storage.id} value={storage.id}>
-                            {storage.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="grid gap-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <Label htmlFor="adjustment-quantity">
-                        {t("stockAdjustments.dialog.adjustment.finalQuantity", "Final Quantity")}
-                      </Label>
-                      {adjustmentAvailableQuantity !== null ? (
-                        <span className="text-xs text-muted-foreground">
-                          {t("stockAdjustments.dialog.adjustment.currentAvailable", "Current available {{value}}", { value: formatNumericInput(String(adjustmentAvailableQuantity)) })}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="relative">
-                      <Input
-                        id="adjustment-quantity"
-                        type="text"
-                        inputMode="numeric"
-                        placeholder="0"
-                        disabled={!adjustmentSelectionKey}
-                        value={formatNumericInput(adjustmentForm.quantity)}
-                        onChange={(event) =>
-                          setAdjustmentForm((current) => ({
-                            ...current,
-                            quantity: sanitizeNumericInput(event.target.value, {
-                              allowDecimal: false,
-                            }),
-                          }))
-                        }
-                        className={cn(
-                          "pr-20",
-                          adjustmentDeltaMeta?.inputClassName,
-                        )}
-                      />
-                      {adjustmentDeltaMeta ? (
-                        <span
-                          className={cn(
-                            "pointer-events-none absolute inset-y-0 right-3 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold",
-                            adjustmentDeltaMeta.badgeClassName,
-                          )}
-                        >
-                          {isAdjustmentIncrease ? (
-                            <ArrowUp className="h-3 w-3" />
-                          ) : (
-                            <ArrowDown className="h-3 w-3" />
-                          )}
-                          {adjustmentDeltaMeta.badge}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div
-                      className={cn(
-                        "text-xs",
-                        adjustmentDeltaMeta?.textClassName ||
-                          "text-muted-foreground",
-                      )}
-                    >
-                      {!adjustmentSelectionKey
-                        ? t("stockAdjustments.dialog.adjustment.selectPrompt", "Select a product and storage to load the current quantity.")
-                        : adjustmentTargetQuantity === null
-                          ? t("stockAdjustments.dialog.adjustment.enterQuantity", "Enter the final quantity you want after this adjustment.")
-                          : adjustmentQuantityDelta === 0
-                            ? t("stockAdjustments.dialog.adjustment.noChange", "No change yet. Adjust the quantity above to create an entry.")
-                            : adjustmentQuantityDelta &&
-                                adjustmentQuantityDelta > 0
-                              ? t("stockAdjustments.dialog.adjustment.increaseBy", "Increase by {{delta}}. {{available}} -> {{target}}.", { delta: formatNumericInput(String(adjustmentQuantityDelta)), available: formatNumericInput(String(adjustmentAvailableQuantity ?? 0)), target: formatNumericInput(String(adjustmentTargetQuantity)) })
-                              : t("stockAdjustments.dialog.adjustment.decreaseBy", "Decrease by {{delta}}. {{available}} -> {{target}}.", { delta: formatNumericInput(String(Math.abs(adjustmentQuantityDelta ?? 0))), available: formatNumericInput(String(adjustmentAvailableQuantity ?? 0)), target: formatNumericInput(String(adjustmentTargetQuantity ?? 0)) })}
-                    </div>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>{t("stockAdjustments.dialog.adjustment.reason", "Reason")}</Label>
-                    <Select
-                      value={adjustmentForm.reason}
-                      onValueChange={(value) =>
-                        setAdjustmentForm((current) => ({
-                          ...current,
-                          reason: value as StockAdjustmentReason,
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {reasonOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="adjustment-notes">{t("stockAdjustments.dialog.adjustment.notes", "Notes")}</Label>
-                  <Textarea
-                    id="adjustment-notes"
-                    value={adjustmentForm.notes}
-                    onChange={(event) =>
-                      setAdjustmentForm((current) => ({
-                        ...current,
-                        notes: event.target.value,
-                      }))
-                    }
-                    rows={4}
-                  />
-                </div>
-              </div>
-            </div>
-            <DialogFooter className="border-t bg-muted/20 px-4 py-4 pb-[calc(1rem+var(--safe-area-bottom))] sm:justify-between sm:px-6">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full sm:w-auto"
-                onClick={() => setAdjustmentDialogOpen(false)}
-                disabled={isSavingAdjustment}
-              >
-                {t("stockAdjustments.dialog.adjustment.cancel", "Cancel")}
-              </Button>
-              <Button
-                type="submit"
-                className="w-full sm:w-auto"
-                disabled={!canSaveAdjustment || isSavingAdjustment}
-              >
-                {isSavingAdjustment
-                  ? t("stockAdjustments.dialog.adjustment.saving", "Saving...")
-                  : t("stockAdjustments.dialog.adjustment.save", "Save Adjustment")}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+        onOpenChange={setAdjustmentDialogOpen}
+        products={products}
+        storages={storages}
+        inventory={inventory}
+        workspaceId={workspaceId ?? ""}
+        userId={user?.id ?? null}
+      />
 
       <Dialog
         open={batchDialogOpen}
