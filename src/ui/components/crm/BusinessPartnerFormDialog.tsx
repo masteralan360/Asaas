@@ -255,8 +255,8 @@ export function BusinessPartnerFormDialog({
             name: formState.name.trim(),
             contactName: formState.contactName.trim() || undefined,
             email: formState.email.trim() || undefined,
-            phone: formState.phone.trim() || undefined,
-            address: formState.address.trim() || undefined,
+            phone: formState.phone.trim(),
+            address: formState.address.trim(),
             city: formState.city.trim() || undefined,
             country: formState.country.trim() || undefined,
             defaultCurrency: formState.defaultCurrency,
@@ -325,12 +325,12 @@ export function BusinessPartnerFormDialog({
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="business-partner-phone">{t('customers.form.phone') || 'Phone'}</Label>
+                                <Label htmlFor="business-partner-phone">{t('customers.form.phone') || 'Phone'} <span className="text-destructive">*</span></Label>
                                 <Input
                                     id="business-partner-phone"
                                     value={formState.phone}
                                     onChange={(event) => setFormState((current) => ({ ...current, phone: event.target.value }))}
-                                    required={isAgentRole}
+                                    required
                                 />
                             </div>
                             {!lockedRole ? (
@@ -522,11 +522,12 @@ export function BusinessPartnerFormDialog({
                                 />
                             </div>
                             <div className="space-y-2 md:col-span-2">
-                                <Label htmlFor="business-partner-address">{t('customers.form.address') || 'Address'}</Label>
+                                <Label htmlFor="business-partner-address">{t('customers.form.address') || 'Address'} <span className="text-destructive">*</span></Label>
                                 <Input
                                     id="business-partner-address"
                                     value={formState.address}
                                     onChange={(event) => setFormState((current) => ({ ...current, address: event.target.value }))}
+                                    required
                                 />
                             </div>
                             {formState.role === 'customer' || formState.role === 'both' ? <div className="space-y-2">
