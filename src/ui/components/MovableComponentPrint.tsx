@@ -9,6 +9,7 @@ export function MovableOrderPrintBlock({
     editable,
     onPositionChange,
     wrapperClassName,
+    handleSide = 'right',
     children
 }: {
     componentKey: string
@@ -17,6 +18,7 @@ export function MovableOrderPrintBlock({
     editable?: boolean
     onPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
     wrapperClassName?: string
+    handleSide?: 'left' | 'right'
     children: ReactNode
 }) {
     const resolvedPosition = position || { x: 0, y: 0 }
@@ -92,7 +94,7 @@ export function MovableOrderPrintBlock({
             {editable ? (
                 <button
                     type="button"
-                    className="order-template-move-handle absolute -top-3 end-1 z-50 inline-flex h-6 touch-none items-center gap-1 rounded border border-primary/30 bg-white px-1.5 text-[9px] font-semibold text-primary opacity-70 shadow-sm hover:opacity-100 focus:opacity-100"
+                    className={`order-template-move-handle absolute -top-3 ${handleSide === 'left' ? 'start-1' : 'end-1'} z-50 inline-flex h-6 touch-none items-center gap-1 rounded border border-primary/30 bg-white px-1.5 text-[9px] font-semibold text-primary opacity-70 shadow-sm hover:opacity-100 focus:opacity-100`}
                     onPointerDown={handlePointerDown}
                     onKeyDown={handleKeyDown}
                     aria-label={`Move ${label}`}

@@ -8,12 +8,27 @@ import { useWorkspace } from '@/workspace'
 import { useAuth } from '@/auth'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { EditableField } from '@/ui/components/EditableField'
+import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
+import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
+import type { ReactNode } from 'react'
 
 export const SALE_RECEIPT_TEMPLATE_FIELD_KEYS = {
     showExchangeRateSnapshots: 'receipt.showExchangeRateSnapshots',
     showOriginalCurrencyPrice: 'receipt.showOriginalCurrencyPrice',
     thankYou: 'receipt.thankYou',
     keepRecord: 'receipt.keepRecord',
+} as const
+
+export const RECEIPT_MOVABLE_COMPONENT_KEYS = {
+    logo: 'receiptLogo',
+    workspaceName: 'receiptWorkspaceName',
+    qrCode: 'receiptQrCode',
+    date: 'receiptDate',
+    saleId: 'receiptSaleId',
+    cashier: 'receiptCashier',
+    paymentMethod: 'receiptPaymentMethod',
+    exchangeRateSnapshots: 'receiptExchangeRateSnapshots',
+    itemsTable: 'receiptItemsTable',
 } as const
 
 interface SaleReceiptProps {
@@ -27,6 +42,9 @@ interface SaleReceiptBaseProps extends SaleReceiptProps {
     templateFields?: Record<string, string>
     editableFields?: boolean
     onTemplateFieldChange?: (key: string, value: string) => void
+    componentPositions?: Record<string, CustomTemplateComponentPosition>
+    editableComponents?: boolean
+    onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
 }
 
 export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
@@ -38,6 +56,9 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
         templateFields,
         editableFields = false,
         onTemplateFieldChange,
+        componentPositions,
+        editableComponents,
+        onComponentPositionChange,
     }, ref) => {
         const { i18n } = useTranslation()
         const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
@@ -55,6 +76,20 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
         const updateTemplateField = (key: string, value: string) => {
             onTemplateFieldChange?.(key, value)
         }
+        const positionFor = (key: string) => componentPositions?.[key]
+        const mp = (key: string, label: string, children: ReactNode, wrapperClassName?: string, handleSide?: 'left' | 'right') => (
+            <MovableOrderPrintBlock
+                componentKey={key}
+                label={label}
+                position={positionFor(key)}
+                editable={editableComponents}
+                onPositionChange={onComponentPositionChange}
+                wrapperClassName={wrapperClassName}
+                handleSide={handleSide}
+            >
+                {children}
+            </MovableOrderPrintBlock>
+        )
 
         const formatReceiptPrice = (amount: number, currency: string) => {
             const code = currency.toLowerCase()
@@ -80,7 +115,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
 
 
         return (
-            <div ref={ref} dir={isRTL ? 'rtl' : 'ltr'} className="a4-container p-8 bg-white text-black print:p-0 print:w-[80mm] print:text-sm">
+            <div ref={ref} dir={isRTL ? 'rtl' : 'ltr'} className="a4-container p-8 bg-white text-black print:p-0 print:w-[80mm] print:text-sm" data-order-print-page="">
                 <style dangerouslySetInnerHTML={{
                     __html: `
 .a4-container {
@@ -93,67 +128,84 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
 }
 `}} />
 
-                <div className="text-center mb-8 relative">
-                    <div className="flex justify-between items-center mb-4">
-                        <div className="w-16"></div> {/* Spacer */}
-                        {features.logo_url && (
+                <div className="flex justify-between items-center mb-4">
+                    {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.logo, 'Logo',
+                        features.logo_url ? (
                             <img
                                 src={features.logo_url.startsWith('http') ? features.logo_url : platformService.convertFileSrc(features.logo_url)}
                                 alt="Workspace Logo"
                                 className="h-16 w-auto object-contain"
                             />
-                        )}
-                        <div className="flex justify-end w-20">
-                            {features.print_qr && effectiveWorkspaceId && (
-                                <div className="p-1 bg-white border border-gray-100 rounded-sm" data-qr-sharp="true">
-                                    <ReactQRCode
-                                        value={`https://asaas-r2-proxy.alanepic360.workers.dev/${effectiveWorkspaceId}/printed-invoices/receipts/${data.id}.pdf`}
-                                        size={64}
-                                        level="M"
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                    <h1 className="text-2xl font-bold mb-4">
+                        ) : null,
+                        'flex flex-1 justify-center'
+                    )}
+                    {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.qrCode, 'QR Code',
+                        features.print_qr && effectiveWorkspaceId ? (
+                            <div className="p-1 bg-white border border-gray-100 rounded-sm" data-qr-sharp="true">
+                                <ReactQRCode
+                                    value={`https://asaas-r2-proxy.alanepic360.workers.dev/${effectiveWorkspaceId}/printed-invoices/receipts/${data.id}.pdf`}
+                                    size={64}
+                                    level="M"
+                                />
+                            </div>
+                        ) : null,
+                        'flex justify-end'
+                    )}
+                </div>
+
+                {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.workspaceName, 'Workspace Name',
+                    <h1 className="text-2xl font-bold mb-4 text-center">
                         {workspaceName || 'Atlas'}
                     </h1>
-                    <div className="flex justify-between items-start text-xs text-gray-600 mb-4 border-b border-gray-200 pb-4">
-                        <div className="text-start space-y-1">
+                )}
+
+                <div className="flex justify-between items-start mb-4 border-b border-gray-200 pb-4">
+                    <div className="flex flex-col flex-1">
+                        {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.date, 'Date',
                             <div>
                                 <span className={cn("font-semibold text-[10px] text-gray-400 block", !isRTL && "uppercase tracking-wider")}>{t('sales.date')}: </span>
                                 <span className="font-mono">{formatDateTime(data.created_at)}</span>
-                            </div>
+                            </div>,
+                            'w-full', 'left'
+                        )}
+                        {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.saleId, 'Sale ID',
                             <div className="mt-2">
                                 <span className={cn("font-semibold text-[10px] text-gray-400 block", !isRTL && "uppercase tracking-wider")}>{t('sales.id')}: </span>
                                 <span className="font-mono">{data.invoiceid}</span>
-                            </div>
-                        </div>
-                        <div className="flex flex-col items-end space-y-2">
-                            <div className="text-end space-y-2">
-                                <div>
-                                    <span className={cn("font-semibold text-[10px] text-gray-400 block", !isRTL && "uppercase tracking-wider")}>{t('sales.cashier')}</span>
-                                    <span className="font-medium">{data.cashier_name}</span>
-                                </div>
-                                {data.payment_method && (
-                                    <div>
-                                        <span className={cn("font-semibold text-[10px] text-gray-400 block", !isRTL && "uppercase tracking-wider")}>{t('pos.paymentMethod') || 'Payment Method'}</span>
-                                        <span className="font-medium">
-                                            {data.payment_method === 'cash' ? (t('pos.cash') || 'Cash') :
-                                                data.payment_method === 'fib' ? 'FIB' :
-                                                    data.payment_method === 'qicard' ? 'QiCard' :
-                                                        data.payment_method === 'zaincash' ? 'ZainCash' :
-                                                            data.payment_method === 'fastpay' ? 'FastPay' :
-                                                                data.payment_method === 'loan' ? (t('pos.loan') || 'Loan') :
-                                                                    data.payment_method.toUpperCase()}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                            </div>,
+                            'w-full', 'left'
+                        )}
                     </div>
+                    <div className="flex flex-col items-end flex-1">
+                        {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.cashier, 'Cashier',
+                            <div className="text-end">
+                                <span className={cn("font-semibold text-[10px] text-gray-400 block", !isRTL && "uppercase tracking-wider")}>{t('sales.cashier')}</span>
+                                <span className="font-medium">{data.cashier_name}</span>
+                            </div>,
+                            'w-full', 'right'
+                        )}
+                        {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.paymentMethod, 'Payment Method',
+                            data.payment_method ? (
+                                <div className="text-end mt-2">
+                                    <span className={cn("font-semibold text-[10px] text-gray-400 block", !isRTL && "uppercase tracking-wider")}>{t('pos.paymentMethod') || 'Payment Method'}</span>
+                                    <span className="font-medium">
+                                        {data.payment_method === 'cash' ? (t('pos.cash') || 'Cash') :
+                                            data.payment_method === 'fib' ? 'FIB' :
+                                                data.payment_method === 'qicard' ? 'QiCard' :
+                                                    data.payment_method === 'zaincash' ? 'ZainCash' :
+                                                        data.payment_method === 'fastpay' ? 'FastPay' :
+                                                            data.payment_method === 'loan' ? (t('pos.loan') || 'Loan') :
+                                                                data.payment_method.toUpperCase()}
+                                    </span>
+                                </div>
+                            ) : null,
+                            'w-full', 'right'
+                        )}
+                    </div>
+                </div>
 
-                    {showExchangeRateSnapshots && data.exchange_rates && data.exchange_rates.length > 0 && (
+                {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.exchangeRateSnapshots, 'Exchange Rate Snapshots',
+                    showExchangeRateSnapshots && data.exchange_rates && data.exchange_rates.length > 0 ? (
                         <div className="mb-6 text-start">
                             <div className={cn("text-[10px] font-bold text-gray-400 mb-2", !isRTL && "uppercase tracking-wider")}>
                                 {t('settings.exchangeRate.title')} {t('common.snapshots')}
@@ -175,59 +227,62 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                                 ))}
                             </div>
                         </div>
-                    )}
-                </div>
+                    ) : null
+                )}
 
-                <div className="mb-8">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className={cn("text-[10px] text-gray-400 border-b border-gray-200", !isRTL && "uppercase")}>
-                                <th className={cn("pb-2 text-start font-bold", !isRTL && "tracking-wider")}>{t('products.table.name')}</th>
-                                <th className={cn("pb-2 text-center font-bold", !isRTL && "tracking-wider")}>{t('common.quantity')}</th>
-                                <th className={cn("pb-2 text-end font-bold", !isRTL && "tracking-wider")}>{t('common.price')}</th>
-                                <th className={cn("pb-2 text-end font-bold", !isRTL && "tracking-wider")}>{t('common.total')}</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {data.items?.map((item, idx) => {
-                                const isConverted = item.original_currency && item.settlement_currency && item.original_currency !== item.settlement_currency
-                                return (
-                                    <tr key={idx}>
-                                        <td className="py-3 text-start align-top">
-                                            <div className="font-bold text-sm">{item.product_name}</div>
-                                            {item.product_sku && (
-                                                <div className="text-[10px] text-gray-400 font-mono mt-0.5">{item.product_sku}</div>
-                                            )}
-                                        </td>
-                                        <td className="py-3 text-center align-top font-mono">{item.quantity}</td>
-                                        <td className="py-3 text-end align-top">
-                                            <div className="flex flex-col items-end">
-                                                {formatReceiptPrice(item.unit_price, data.settlement_currency || 'usd')}
-                                                {showOriginalCurrencyPrice && isConverted && (
-                                                    <div className="mt-1 opacity-60 scale-90 origin-right">
-                                                        {formatReceiptPrice(item.original_unit_price || item.unit_price, item.original_currency || 'usd')}
-                                                    </div>
+                {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.itemsTable, 'Items Table',
+                    <div className="mb-4">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className={cn("text-[10px] text-gray-400 border-b border-gray-200", !isRTL && "uppercase")}>
+                                    <th className={cn("pb-2 text-start font-bold", !isRTL && "tracking-wider")}>{t('products.table.name')}</th>
+                                    <th className={cn("pb-2 text-center font-bold", !isRTL && "tracking-wider")}>{t('common.quantity')}</th>
+                                    <th className={cn("pb-2 text-end font-bold", !isRTL && "tracking-wider")}>{t('common.price')}</th>
+                                    <th className={cn("pb-2 text-end font-bold", !isRTL && "tracking-wider")}>{t('common.total')}</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {data.items?.map((item, idx) => {
+                                    const isConverted = item.original_currency && item.settlement_currency && item.original_currency !== item.settlement_currency
+                                    return (
+                                        <tr key={idx}>
+                                            <td className="py-3 text-start align-top">
+                                                <div className="font-bold text-sm">{item.product_name}</div>
+                                                {item.product_sku && (
+                                                    <div className="text-[10px] text-gray-400 font-mono mt-0.5">{item.product_sku}</div>
                                                 )}
-                                            </div>
-                                        </td>
-                                        <td className="py-3 text-end align-top">
-                                            <div className="flex flex-col items-end">
-                                                {formatReceiptPrice(item.total_price || (item.unit_price * item.quantity), data.settlement_currency || 'usd')}
-                                                {showOriginalCurrencyPrice && isConverted && (
-                                                    <div className="mt-1 opacity-60 scale-90 origin-right line-through decoration-gray-400">
-                                                        {formatReceiptPrice((item.original_unit_price || item.unit_price) * item.quantity, item.original_currency || 'usd')}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                                            </td>
+                                            <td className="py-3 text-center align-top font-mono">{item.quantity}</td>
+                                            <td className="py-3 text-end align-top">
+                                                <div className="flex flex-col items-end">
+                                                    {formatReceiptPrice(item.unit_price, data.settlement_currency || 'usd')}
+                                                    {showOriginalCurrencyPrice && isConverted && (
+                                                        <div className="mt-1 opacity-60 scale-90 origin-right">
+                                                            {formatReceiptPrice(item.original_unit_price || item.unit_price, item.original_currency || 'usd')}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="py-3 text-end align-top">
+                                                <div className="flex flex-col items-end">
+                                                    {formatReceiptPrice(item.total_price || (item.unit_price * item.quantity), data.settlement_currency || 'usd')}
+                                                    {showOriginalCurrencyPrice && isConverted && (
+                                                        <div className="mt-1 opacity-60 scale-90 origin-right line-through decoration-gray-400">
+                                                            {formatReceiptPrice((item.original_unit_price || item.unit_price) * item.quantity, item.original_currency || 'usd')}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )
+                                })}
+                            </tbody>
+                        </table>
+                        <div className="border-t-2 border-black mt-4" />
+                    </div>
+                )}
 
-                <div className="border-t-2 border-black pt-4 mb-8">
+                <div className="pt-4 mb-8">
                     <div className="flex justify-between items-end">
                         <span className={cn("text-sm font-bold text-gray-500", !isRTL && "uppercase tracking-wider")}>{t('common.total')}</span>
                         <span className={cn("text-3xl font-black", !isRTL && "tracking-tight")}>

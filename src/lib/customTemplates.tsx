@@ -32,7 +32,8 @@ import type { UniversalInvoice } from '@/types'
 import { resolveIsolatedTextDirection } from '@/lib/textDirection'
 import {
     SaleReceiptBase,
-    SALE_RECEIPT_TEMPLATE_FIELD_KEYS
+    SALE_RECEIPT_TEMPLATE_FIELD_KEYS,
+    RECEIPT_MOVABLE_COMPONENT_KEYS
 } from '@/ui/components/SaleReceipt'
 import {
     PartnerDetailsPrintTemplate,
@@ -895,6 +896,17 @@ function createSalesHistoryReceiptPreview(options: CustomTemplatePreviewOptions)
 
     return {
         fields: SALES_HISTORY_RECEIPT_FIELDS,
+        movableComponents: [
+            { key: RECEIPT_MOVABLE_COMPONENT_KEYS.logo, label: 'Logo' },
+            { key: RECEIPT_MOVABLE_COMPONENT_KEYS.workspaceName, label: 'Workspace Name' },
+            { key: RECEIPT_MOVABLE_COMPONENT_KEYS.qrCode, label: 'QR Code' },
+            { key: RECEIPT_MOVABLE_COMPONENT_KEYS.date, label: 'Date' },
+            { key: RECEIPT_MOVABLE_COMPONENT_KEYS.saleId, label: 'Sale ID' },
+            { key: RECEIPT_MOVABLE_COMPONENT_KEYS.cashier, label: 'Cashier' },
+            { key: RECEIPT_MOVABLE_COMPONENT_KEYS.paymentMethod, label: 'Payment Method' },
+            { key: RECEIPT_MOVABLE_COMPONENT_KEYS.exchangeRateSnapshots, label: 'Exchange Rate Snapshots' },
+            { key: RECEIPT_MOVABLE_COMPONENT_KEYS.itemsTable, label: 'Items Table' },
+        ],
         page: { widthMm: 80, heightMm: 200 },
         createElement: (data, _effectiveId, _printLangOverride, renderOptions) => (
             <div className="mx-auto w-[80mm] bg-white text-black">
@@ -906,6 +918,9 @@ function createSalesHistoryReceiptPreview(options: CustomTemplatePreviewOptions)
                     templateFields={data}
                     editableFields={renderOptions?.editableFields}
                     onTemplateFieldChange={renderOptions?.onFieldChange}
+                    componentPositions={renderOptions?.componentPositions}
+                    editableComponents={renderOptions?.editableComponents}
+                    onComponentPositionChange={renderOptions?.onComponentPositionChange}
                 />
             </div>
         ),
