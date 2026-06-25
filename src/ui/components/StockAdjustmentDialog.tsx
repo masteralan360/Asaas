@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, Package } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { createStockAdjustment, type Product, type StockAdjustmentReason } from "@/local-db";
 import { cn, formatNumericInput, parseFormattedNumber, sanitizeNumericInput } from "@/lib/utils";
+import { platformService } from "@/services/platformService";
 import { ProductAutocompleteInput } from "@/ui/components/orders/ProductAutocompleteInput";
 import {
     Button,
@@ -266,23 +267,47 @@ export function StockAdjustmentDialog({
                     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
                         <div className="grid gap-4">
                             <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                                <div className="space-y-2">
-                                    <Label htmlFor="adjustment-search">{t("stockAdjustments.dialog.adjustment.productSearch", "Product search")}</Label>
-                                    <ProductAutocompleteInput
-                                        value={search}
-                                        onChange={(value) => {
-                                            setSearch(value);
-                                            setForm((current) => ({ ...current, productId: "" }));
-                                        }}
-                                        onSelectProduct={(product) => {
-                                            setForm((current) => ({ ...current, productId: product.id }));
-                                            setSearch(product.name);
-                                        }}
-                                        products={products}
-                                        placeholder={t("stockAdjustments.dialog.adjustment.productSearchPlaceholder", "Search products by name or SKU")}
-                                        hasSelection={!!form.productId}
-                                    />
-                                </div>
+                                {preselectedProductId ? (() => {
+                                    const product = productsById.get(preselectedProductId);
+                                    return (
+                                        <div className="space-y-2">
+                                            <Label>{t("stockAdjustments.dialog.adjustment.product", "Product")}</Label>
+                                            <div className="flex items-center gap-3 rounded-xl border bg-muted/30 px-4 py-3">
+                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted/40">
+                                                    {product?.imageUrl ? (
+                                                        <img src={platformService.convertFileSrc(product.imageUrl)} alt={product.name} className="h-full w-full object-cover" />
+                                                    ) : (
+                                                        <Package className="h-5 w-5 text-muted-foreground" />
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="truncate font-medium">{product?.name ?? "Loading..."}</div>
+                                                    {product?.sku ? (
+                                                        <div className="truncate text-xs text-muted-foreground">SKU: {product.sku}</div>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })() : (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="adjustment-search">{t("stockAdjustments.dialog.adjustment.productSearch", "Product search")}</Label>
+                                        <ProductAutocompleteInput
+                                            value={search}
+                                            onChange={(value) => {
+                                                setSearch(value);
+                                                setForm((current) => ({ ...current, productId: "" }));
+                                            }}
+                                            onSelectProduct={(product) => {
+                                                setForm((current) => ({ ...current, productId: product.id }));
+                                                setSearch(product.name);
+                                            }}
+                                            products={products}
+                                            placeholder={t("stockAdjustments.dialog.adjustment.productSearchPlaceholder", "Search products by name or SKU")}
+                                            hasSelection={!!form.productId}
+                                        />
+                                    </div>
+                                )}
                                 <div className="space-y-2">
                                     <Label>{t("stockAdjustments.dialog.adjustment.storage", "Storage")}</Label>
                                     <Select

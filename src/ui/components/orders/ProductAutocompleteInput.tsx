@@ -107,6 +107,7 @@ export function ProductAutocompleteInput({
                     value={value}
                     onChange={(e) => {
                         setJustSelected(false)
+                        setIsFocused(true)
                         onChange(e.target.value)
                     }}
                     onFocus={() => setIsFocused(true)}
