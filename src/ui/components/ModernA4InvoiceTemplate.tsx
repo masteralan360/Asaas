@@ -160,6 +160,7 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                 className="a4-container relative p-[15mm] md:p-[20mm] bg-white text-slate-900 antialiased overflow-visible flex flex-col"
                 style={{ width: '210mm', minHeight: '297mm', margin: '0 auto' }}
                 data-order-print-page=""
+                data-page-width-mm="210"
             >
                 <style dangerouslySetInnerHTML={{
                     __html: `

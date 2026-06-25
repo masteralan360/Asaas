@@ -43,7 +43,8 @@ export function MovableOrderPrintBlock({
         if (!page) return
 
         const pageRect = page.getBoundingClientRect()
-        const mmPerPixel = 210 / pageRect.width
+        const pageWidthMm = parseFloat(page.dataset.pageWidthMm || '210')
+        const mmPerPixel = pageWidthMm / pageRect.width
         const startX = event.clientX
         const startY = event.clientY
         const initialPosition = resolvedPosition

@@ -441,6 +441,7 @@ export function OrderDetailsPrintTemplate({
             className="bg-white text-black"
             style={{ width: '210mm', minHeight: '297mm', padding: '14mm 12mm' }}
             data-order-print-page
+            data-page-width-mm="210"
         >
             <style
                 dangerouslySetInnerHTML={{

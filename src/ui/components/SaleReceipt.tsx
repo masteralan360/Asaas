@@ -120,7 +120,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
 
 
         return (
-            <div ref={ref} dir={isRTL ? 'rtl' : 'ltr'} className="a4-container p-8 bg-white text-black print:p-0 print:w-[80mm] print:text-sm" data-order-print-page="">
+            <div ref={ref} dir={isRTL ? 'rtl' : 'ltr'} className="a4-container p-8 bg-white text-black print:p-0 print:w-[80mm] print:text-sm" data-order-print-page="" data-page-width-mm="80">
                 <style dangerouslySetInnerHTML={{
                     __html: `
 .a4-container {
