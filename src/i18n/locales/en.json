@@ -87,6 +87,7 @@
     "pm": "PM",
     "buyingPrice": "Buying Price",
     "sellingPrice": "Selling Price",
+    "holdToDelete": "Hold to Delete",
     "pagination": {
       "previous": "Previous",
       "next": "Next",
