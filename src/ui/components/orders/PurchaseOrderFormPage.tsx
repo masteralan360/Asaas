@@ -376,34 +376,32 @@ export function PurchaseOrderFormPage({
     }
 
     return (
-        <div className="flex h-full flex-col overflow-hidden bg-background">
-            <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
-                <div className="flex-1 overflow-y-auto p-4 lg:p-6 custom-scrollbar">
-                    <div className="space-y-5 pb-5">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                            <div className="space-y-1">
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    className="h-auto gap-2 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
-                                    onClick={onCancel}
-                                >
-                                    <ArrowLeft className="h-4 w-4" />
-                                    {t('orders.title', { defaultValue: 'Orders' })}
-                                </Button>
-                                <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
-                                    <ShoppingCart className="h-7 w-7" />
-                                    {editingOrderId
-                                        ? t('orders.form.editPurchaseOrder', { defaultValue: 'Edit Purchase Order' })
-                                        : t('orders.form.newPurchaseOrder', { defaultValue: 'New Purchase Order' })}
-                                </h1>
-                                <p className="text-sm text-muted-foreground">
-                                    {t('orders.form.purchaseDescription', { defaultValue: 'Create a purchase order, assign a supplier and products, then post stock on receipt.' })}
-                                </p>
-                            </div>
-                        </div>
+        <div className="w-full">
+            <form onSubmit={handleSubmit}>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-1">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            className="h-auto gap-2 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                            onClick={onCancel}
+                        >
+                            <ArrowLeft className="h-4 w-4" />
+                            {t('orders.title', { defaultValue: 'Orders' })}
+                        </Button>
+                        <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
+                            <ShoppingCart className="h-7 w-7" />
+                            {editingOrderId
+                                ? t('orders.form.editPurchaseOrder', { defaultValue: 'Edit Purchase Order' })
+                                : t('orders.form.newPurchaseOrder', { defaultValue: 'New Purchase Order' })}
+                        </h1>
+                        <p className="text-sm text-muted-foreground">
+                            {t('orders.form.purchaseDescription', { defaultValue: 'Create a purchase order, assign a supplier and products, then post stock on receipt.' })}
+                        </p>
+                    </div>
+                </div>
 
-                        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.95fr)]">
+                <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.95fr)]">
                             <div className="space-y-5">
                                 <Card>
                                     <CardHeader>
@@ -799,24 +797,27 @@ export function PurchaseOrderFormPage({
                                         </div>
                                     </CardContent>
                                 </Card>
+                                <Card className="border-border/60 shadow-sm">
+                                    <CardHeader className="space-y-1">
+                                        <CardTitle className="text-xl">{t('common.actions') || 'Actions'}</CardTitle>
+                                        <p className="text-sm text-muted-foreground">
+                                            {t('orders.form.saveHint', { defaultValue: 'Review the order details, then save or cancel.' })}
+                                        </p>
+                                    </CardHeader>
+                                    <CardContent className="space-y-3">
+                                        <Button type="submit" className="h-12 w-full rounded-xl font-black" disabled={!canSubmit || isSaving}>
+                                            {isSaving
+                                                ? (t('common.loading') || 'Loading...')
+                                                : (editingOrderId ? (t('common.save') || 'Save') : (t('orders.form.saveOrder', { defaultValue: 'Save Order' })))}
+                                        </Button>
+                                        <Button type="button" variant="outline" className="h-12 w-full rounded-xl" onClick={onCancel} disabled={isSaving}>
+                                            {t('common.cancel') || 'Cancel'}
+                                        </Button>
+                                    </CardContent>
+                                </Card>
                             </div>
                         </div>
-                    </div>
+                    </form>
                 </div>
-
-                <div className="flex-shrink-0 border-t bg-background/95 px-4 py-2 backdrop-blur lg:px-6">
-                    <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-                        <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={onCancel} disabled={isSaving}>
-                            {t('common.cancel') || 'Cancel'}
-                        </Button>
-                        <Button type="submit" className="w-full sm:w-auto" disabled={!canSubmit || isSaving}>
-                            {isSaving
-                                ? (t('common.loading') || 'Loading...')
-                                : (editingOrderId ? (t('common.save') || 'Save') : (t('orders.form.saveOrder', { defaultValue: 'Save Order' })))}
-                        </Button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    )
+            )
 }

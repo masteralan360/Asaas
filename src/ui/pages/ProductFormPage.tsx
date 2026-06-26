@@ -783,7 +783,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     }
 
     return (
-        <div className="mx-auto max-w-7xl space-y-6">
+        <div className="w-full space-y-6">
             <section className="overflow-hidden rounded-[2rem] border border-primary/15 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.16),_transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.75),rgba(255,255,255,0.94))] dark:bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.08),_transparent_42%),linear-gradient(180deg,rgba(30,41,59,0.4),rgba(30,41,59,0.7))] px-6 py-6 shadow-sm backdrop-blur sm:px-8">
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                     <div className="space-y-4">

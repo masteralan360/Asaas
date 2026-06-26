@@ -1381,7 +1381,7 @@ export function Layout({ children }: LayoutProps) {
                         <main className={cn(
                             "page-enter flex-1 min-h-0",
                             location === '/whatsapp' ? "p-0" :
-                                isPosLikeRoute ? "p-0 lg:p-6" : "p-4 lg:p-6 overflow-y-auto custom-scrollbar"
+                                isPosLikeRoute ? "p-0 lg:p-6" : "p-4 lg:p-6 overflow-y-auto overscroll-contain custom-scrollbar"
                         )}>
                             <Suspense fallback={<PageLoading />}>
                                 {children}
