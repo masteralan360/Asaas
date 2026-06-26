@@ -4,10 +4,28 @@ import { Analytics } from '@vercel/analytics/react'
 import { registerSW } from 'virtual:pwa-register'
 import { requestPersistentStorage } from '@/local-db/storagePersist'
 import { isOpfsSupported } from '@/local-db/pwaSqlite'
+import { AtlasSplashScreen } from '@/ui/components/AtlasSplashScreen'
 
 const isMarketplaceHost =
     typeof window !== 'undefined'
     && window.location.hostname === 'marketplace-atlas.vercel.app'
+
+const isTauriRuntime =
+    typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+
+function isPwaMode(): boolean {
+    if (typeof window === 'undefined') return false
+    if ((window.navigator as any).standalone) return true
+    try { return window.matchMedia('(display-mode: standalone)').matches } catch { return false }
+}
+
+function isColdStart(): boolean {
+    try {
+        const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming
+        if (nav) return nav.type === 'navigate'
+    } catch {}
+    return true
+}
 
 const initPwaLocalMode = async () => {
     if (import.meta.env.PROD && isOpfsSupported()) {
@@ -126,7 +144,12 @@ const renderMarketplace = async () => {
     )
 }
 
-const renderApp = async () => {
+const bootApp = async (splash: boolean) => {
+    const preloads: Promise<unknown>[] = []
+    if (splash) {
+        preloads.push(import('@/ui/pages/Dashboard'), import('@/ui/pages/Login'))
+    }
+
     const [
         ,
         { ThemeProvider },
@@ -139,7 +162,8 @@ const renderApp = async () => {
         import('@/services/platformService'),
         import('@/lib/connectionManager'),
         import('./App.tsx'),
-        import('./i18n/config')
+        import('./i18n/config'),
+        ...preloads,
     ])
 
     connectionManager.init()
@@ -150,11 +174,7 @@ const renderApp = async () => {
         console.error('Failed to initialize platform service:', error)
     }
 
-    renderRoot(
-        <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme" defaultStyle="emerald">
-            <App />
-        </ThemeProvider>,
-    )
+    return { ThemeProvider, App } as const
 }
 
 const init = async () => {
@@ -169,7 +189,36 @@ const init = async () => {
 
     void initPwaLocalMode()
 
-    await renderApp()
+    const canShowSplash = !isMarketplaceHost && isColdStart() && (isTauriRuntime || isPwaMode())
+
+    // Start loading immediately
+    const bootPromise = bootApp(canShowSplash)
+
+    let showSplash = false
+    if (canShowSplash) {
+        const ready = await Promise.race([
+            bootPromise.then(() => true),
+            new Promise<boolean>(resolve => setTimeout(() => resolve(false), 200)),
+        ])
+        showSplash = !ready
+    }
+
+    if (showSplash) {
+        root.render(
+            <StrictMode>
+                <AtlasSplashScreen />
+                <Analytics />
+            </StrictMode>,
+        )
+    }
+
+    const { ThemeProvider, App } = await bootPromise
+
+    renderRoot(
+        <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme" defaultStyle="emerald">
+            <App />
+        </ThemeProvider>,
+    )
 }
 
 init()
