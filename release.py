@@ -6,50 +6,54 @@ Run with: python release.py
 
 import json
 import subprocess
-import tkinter as tk
-from tkinter import messagebox, ttk
+import datetime
 from pathlib import Path
 
-# Paths
-SCRIPT_DIR = Path(__file__).parent
-TAURI_CONF = SCRIPT_DIR / "src-tauri" / "tauri.conf.json"
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QLineEdit, QTextEdit, QPushButton, QComboBox, QCheckBox,
+    QRadioButton, QFrame, QScrollArea, QMessageBox, QButtonGroup,
+    QSizePolicy, QDialog, QGroupBox, QGridLayout
+)
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QFont
+
+import sys
+
+# ── Paths ──────────────────────────────────────────────────────────────────────
+SCRIPT_DIR  = Path(__file__).parent
+TAURI_CONF  = SCRIPT_DIR / "src-tauri" / "tauri.conf.json"
 PACKAGE_JSON = SCRIPT_DIR / "package.json"
 PATCH_NOTES = SCRIPT_DIR / "src" / "data" / "patch-notes.json"
 
+RTL_LANGS = ('ar', 'ku')
 
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
 def read_version():
-    """Read current version from tauri.conf.json and min_version from package.json"""
     with open(TAURI_CONF, 'r') as f:
         tauri_data = json.load(f)
     with open(PACKAGE_JSON, 'r') as f:
         pkg_data = json.load(f)
-    
-    # Check both for migration, prioritize package.json
     min_v = pkg_data.get('min_version') or tauri_data.get('min_version', '0.0.0')
     return tauri_data.get('version', '1.0.0'), min_v
 
 
 def increment_version(version):
-    """Increment patch version (1.0.14 -> 1.0.15)"""
     parts = version.split('.')
     parts[-1] = str(int(parts[-1]) + 1)
     return '.'.join(parts)
 
 
 def update_version(new_version, new_min_version):
-    """Update version and min_version in config files"""
-    # Update tauri.conf.json
     with open(TAURI_CONF, 'r') as f:
         tauri_data = json.load(f)
     tauri_data['version'] = new_version
-    # REMOVE min_version from tauri.conf.json as it causes build errors
     if 'min_version' in tauri_data:
         del tauri_data['min_version']
-        
     with open(TAURI_CONF, 'w') as f:
         json.dump(tauri_data, f, indent=2)
-    
-    # Update package.json
+
     with open(PACKAGE_JSON, 'r') as f:
         pkg_data = json.load(f)
     pkg_data['version'] = new_version
@@ -59,11 +63,8 @@ def update_version(new_version, new_min_version):
 
 
 def update_patch_notes(version, localized_highlights, localized_team_messages):
-    """Save patch notes to src/data/patch-notes.json"""
     if not any(localized_highlights.values()) and not any(localized_team_messages.values()):
         return
-        
-    # Read existing notes
     if PATCH_NOTES.exists():
         with open(PATCH_NOTES, 'r', encoding='utf-8') as f:
             try:
@@ -73,54 +74,35 @@ def update_patch_notes(version, localized_highlights, localized_team_messages):
     else:
         data = {}
 
-    import datetime
     data[f"v{version}"] = {
         "date": datetime.datetime.now().strftime("%Y-%m-%d"),
         "highlights": localized_highlights,
-        "teamMessages": localized_team_messages
+        "teamMessages": localized_team_messages,
     }
-
-    # Save back
     with open(PATCH_NOTES, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
 def is_git_clean():
-    """Check if there are any uncommitted changes"""
     try:
-        result = subprocess.run(['git', 'status', '--porcelain'], cwd=SCRIPT_DIR, capture_output=True, text=True, check=True)
+        result = subprocess.run(
+            ['git', 'status', '--porcelain'],
+            cwd=SCRIPT_DIR, capture_output=True, text=True, check=True
+        )
         return len(result.stdout.strip()) == 0
     except subprocess.CalledProcessError:
         return False
 
 
 def run_git_commands(version, commit_msg):
-    """Run git commands to commit and push tag"""
     tag = f"v{version}"
-    
     try:
         print(f"--- Starting Release {tag} ---")
-        
-        # Stage all changes
-        print("Staging changes...")
         subprocess.run(['git', 'add', '.'], cwd=SCRIPT_DIR, check=True)
-        
-        # Commit
-        print(f"Committing with message: {commit_msg}")
         subprocess.run(['git', 'commit', '-m', commit_msg], cwd=SCRIPT_DIR, check=True)
-        
-        # Push to main
-        print("Pushing to origin main...")
         subprocess.run(['git', 'push', 'origin', 'main'], cwd=SCRIPT_DIR, check=True)
-        
-        # Create tag
-        print(f"Creating tag {tag}...")
         subprocess.run(['git', 'tag', tag], cwd=SCRIPT_DIR, check=True)
-        
-        # Push tag
-        print(f"Pushing tag {tag} to origin...")
         subprocess.run(['git', 'push', 'origin', tag], cwd=SCRIPT_DIR, check=True)
-        
         print(f"--- Successfully released {tag} ---")
         return True, f"Successfully released {tag}!"
     except subprocess.CalledProcessError as e:
@@ -129,381 +111,452 @@ def run_git_commands(version, commit_msg):
         return False, error_msg
 
 
-class ReleaseApp:
-    def __init__(self, root):
-        self.root = root
-        root.title("Asaas Release Helper")
-        root.geometry("400x550")
-        root.resizable(False, False)
-        
-        # Style
-        style = ttk.Style()
-        style.configure('TLabel', font=('Segoe UI', 10))
-        style.configure('TButton', font=('Segoe UI', 10))
-        style.configure('Header.TLabel', font=('Segoe UI', 14, 'bold'))
-        
+# ── RTL text helper ────────────────────────────────────────────────────────────
+def apply_rtl(widget, lang):
+    """Set text direction on a QLineEdit or QTextEdit based on language."""
+    is_rtl = lang in RTL_LANGS
+    direction = Qt.RightToLeft if is_rtl else Qt.LeftToRight
+    alignment = Qt.AlignRight if is_rtl else Qt.AlignLeft
+    widget.setLayoutDirection(direction)
+    if isinstance(widget, QTextEdit):
+        widget.setAlignment(alignment)
+    else:
+        widget.setAlignment(alignment)
+
+
+# ── Highlights Dialog ──────────────────────────────────────────────────────────
+class HighlightsDialog(QDialog):
+    def __init__(self, parent, localized_highlights):
+        super().__init__(parent)
+        self.setWindowTitle("Manage Highlights")
+        self.resize(540, 680)
+        self.localized_highlights = localized_highlights
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+
+        title = QLabel("Add Update Highlights")
+        title.setFont(QFont("Segoe UI", 13, QFont.Bold))
+        layout.addWidget(title)
+
+        # Language selector
+        lang_row = QHBoxLayout()
+        self.lang_group = QButtonGroup(self)
+        for i, lang in enumerate(['en', 'ar', 'ku']):
+            rb = QRadioButton(lang.upper())
+            rb.setChecked(lang == 'en')
+            rb.toggled.connect(self.refresh_list)
+            self.lang_group.addButton(rb, i)
+            lang_row.addWidget(rb)
+        lang_row.addStretch()
+        layout.addLayout(lang_row)
+
+        # Scroll area for list
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.list_container = QWidget()
+        self.list_layout = QVBoxLayout(self.list_container)
+        self.list_layout.setAlignment(Qt.AlignTop)
+        self.scroll.setWidget(self.list_container)
+        layout.addWidget(self.scroll, stretch=1)
+
+        # Add form
+        form_box = QGroupBox("Add New Highlight")
+        form = QGridLayout(form_box)
+
+        form.addWidget(QLabel("Type:"), 0, 0)
+        self.type_cb = QComboBox()
+        self.type_cb.addItems(["new", "improved", "fixed"])
+        form.addWidget(self.type_cb, 0, 1)
+
+        form.addWidget(QLabel("Title:"), 1, 0)
+        self.title_edit = QLineEdit()
+        form.addWidget(self.title_edit, 1, 1)
+
+        form.addWidget(QLabel("Content:"), 2, 0, Qt.AlignTop)
+        self.content_edit = QTextEdit()
+        self.content_edit.setFixedHeight(70)
+        form.addWidget(self.content_edit, 2, 1)
+
+        add_btn = QPushButton("➕ Add Highlight")
+        add_btn.clicked.connect(self.add_highlight)
+        form.addWidget(add_btn, 3, 1, Qt.AlignRight)
+
+        layout.addWidget(form_box)
+
+        done_btn = QPushButton("✅ Done")
+        done_btn.clicked.connect(self.accept)
+        layout.addWidget(done_btn, alignment=Qt.AlignRight)
+
+        # Connect lang change to update RTL on input fields
+        self.lang_group.buttonToggled.connect(self._update_input_direction)
+        self.refresh_list()
+
+    def current_lang(self):
+        idx = self.lang_group.checkedId()
+        return ['en', 'ar', 'ku'][idx]
+
+    def _update_input_direction(self):
+        lang = self.current_lang()
+        apply_rtl(self.title_edit, lang)
+        apply_rtl(self.content_edit, lang)
+
+    def refresh_list(self):
+        # Clear
+        while self.list_layout.count():
+            item = self.list_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        lang = self.current_lang()
+        self._update_input_direction()
+
+        for i, h in enumerate(self.localized_highlights[lang]):
+            row = QFrame()
+            row.setFrameShape(QFrame.StyledPanel)
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(6, 4, 6, 4)
+
+            color = {'new': '#2563eb', 'improved': '#16a34a', 'fixed': '#d97706'}.get(h['type'], '#000')
+            badge = QLabel(f"[{h['type'].upper()}]")
+            badge.setStyleSheet(f"color: {color}; font-weight: bold;")
+            row_layout.addWidget(badge)
+
+            preview = h['title']
+            if len(h['content']) > 0:
+                preview += f" — {h['content'][:30]}{'...' if len(h['content']) > 30 else ''}"
+            lbl = QLabel(preview)
+            lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            if lang in RTL_LANGS:
+                lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                lbl.setLayoutDirection(Qt.RightToLeft)
+            row_layout.addWidget(lbl)
+
+            del_btn = QPushButton("✕")
+            del_btn.setFixedWidth(30)
+            del_btn.clicked.connect(lambda _, idx=i, l=lang: self.remove_highlight(idx, l))
+            row_layout.addWidget(del_btn)
+
+            self.list_layout.addWidget(row)
+
+    def add_highlight(self):
+        lang = self.current_lang()
+        title = self.title_edit.text().strip()
+        content = self.content_edit.toPlainText().strip()
+        if not title:
+            QMessageBox.critical(self, "Error", "Title is required!")
+            return
+        self.localized_highlights[lang].append({
+            'type': self.type_cb.currentText(),
+            'title': title,
+            'content': content,
+        })
+        self.title_edit.clear()
+        self.content_edit.clear()
+        self.refresh_list()
+
+    def remove_highlight(self, idx, lang):
+        self.localized_highlights[lang].pop(idx)
+        self.refresh_list()
+
+
+# ── Main Window ────────────────────────────────────────────────────────────────
+class ReleaseApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Asaas Release Helper")
+        self.setFixedSize(440, 580)
+
+        self.localized_highlights = {'en': [], 'ar': [], 'ku': []}
+        self.localized_team_msg   = {'en': '', 'ar': '', 'ku': ''}
+        self.current_team_lang    = 'en'
+
+        central = QWidget()
+        self.setCentralWidget(central)
+        layout = QVBoxLayout(central)
+        layout.setSpacing(8)
+        layout.setContentsMargins(20, 16, 20, 16)
+
         # Header
-        ttk.Label(root, text="🚀 Release Helper", style='Header.TLabel').pack(pady=15)
-        
-        # Current version
-        current, current_min = read_version()
-        ttk.Label(root, text=f"Current Version: {current} (Min: {current_min})").pack()
-        
+        header = QLabel("🚀 Release Helper")
+        header.setFont(QFont("Segoe UI", 15, QFont.Bold))
+        header.setAlignment(Qt.AlignCenter)
+        layout.addWidget(header)
+
+        # Version info
+        try:
+            current, current_min = read_version()
+        except Exception:
+            current, current_min = "1.0.0", "1.0.0"
+
+        layout.addWidget(QLabel(f"Current Version: {current}   (Min: {current_min})"))
+
         # New version
-        frame = ttk.Frame(root)
-        frame.pack(pady=5)
-        ttk.Label(frame, text="New Version:").pack(side=tk.LEFT, padx=5)
-        self.version_var = tk.StringVar(value=increment_version(current))
-        self.version_entry = ttk.Entry(frame, textvariable=self.version_var, width=15)
-        self.version_entry.pack(side=tk.LEFT)
+        v_row = QHBoxLayout()
+        v_row.addWidget(QLabel("New Version:"))
+        self.version_edit = QLineEdit(increment_version(current))
+        self.version_edit.textChanged.connect(self._update_commit_msg)
+        v_row.addWidget(self.version_edit)
+        layout.addLayout(v_row)
 
         # Min version
-        min_frame = ttk.Frame(root)
-        min_frame.pack(pady=5)
-        ttk.Label(min_frame, text="Min Version:").pack(side=tk.LEFT, padx=5)
-        self.min_version_var = tk.StringVar(value=current_min)
-        self.min_version_entry = ttk.Entry(min_frame, textvariable=self.min_version_var, width=15)
-        self.min_version_entry.pack(side=tk.LEFT)
-        
+        m_row = QHBoxLayout()
+        m_row.addWidget(QLabel("Min Version:"))
+        self.min_version_edit = QLineEdit(current_min)
+        m_row.addWidget(self.min_version_edit)
+        layout.addLayout(m_row)
+
         # Commit message
-        ttk.Label(root, text="Commit Message:").pack(pady=(5, 5))
-        self.msg_var = tk.StringVar(value=f"Release v{increment_version(current)}")
-        self.msg_entry = ttk.Entry(root, textvariable=self.msg_var, width=40)
-        self.msg_entry.pack()
-        
-        # Highlights
-        self.localized_highlights = {'en': [], 'ar': [], 'ku': []}
-        self.localized_team_msg = {'en': '', 'ar': '', 'ku': ''}
-        self.current_lang = 'en'
-        
-        ttk.Button(root, text="📝 Manage Highlights", command=self.manage_highlights).pack(pady=10)
-        self.highlights_btn = root.winfo_children()[-1] # Grabbing last added button
-        self.highlights_label = ttk.Label(root, text="0 highlights (EN: 0, AR: 0, KU: 0)", foreground='gray')
-        self.highlights_label.pack()
+        layout.addWidget(QLabel("Commit Message:"))
+        self.msg_edit = QLineEdit(f"Release v{increment_version(current)}")
+        layout.addWidget(self.msg_edit)
 
-        # Stealth Update
-        self.stealth_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(root, text="🤫 Stealth Update (Skip Patch Notes)", variable=self.stealth_var, command=self.toggle_stealth).pack(pady=(10, 0))
-        
-        # Team Message
-        self.has_team_msg = tk.BooleanVar(value=False)
-        ttk.Checkbutton(root, text="Include Team Message?", variable=self.has_team_msg, command=self.toggle_team_msg).pack(pady=(10, 0))
-        
-        # Language selector for team message
-        lang_frame = ttk.Frame(root)
-        lang_frame.pack(pady=5)
-        self.team_lang_var = tk.StringVar(value="en")
-        for l in ['en', 'ar', 'ku']:
-            ttk.Radiobutton(lang_frame, text=l.upper(), variable=self.team_lang_var, value=l, command=self.switch_team_msg_lang).pack(side=tk.LEFT, padx=5)
-            
-        self.team_msg_text = tk.Text(root, width=40, height=3, font=('Segoe UI', 9), state='disabled')
-        self.team_msg_text.pack(padx=20, pady=5)
-        
-        # Update message when version changes
-        self.version_var.trace('w', self.update_msg)
-        
+        # Highlights button
+        self.highlights_btn = QPushButton("📝 Manage Highlights")
+        self.highlights_btn.clicked.connect(self.manage_highlights)
+        layout.addWidget(self.highlights_btn)
+
+        self.highlights_label = QLabel("0 highlights (EN: 0, AR: 0, KU: 0)")
+        self.highlights_label.setStyleSheet("color: gray;")
+        layout.addWidget(self.highlights_label)
+
+        # Stealth
+        self.stealth_cb = QCheckBox("🤫 Stealth Update (Skip Patch Notes)")
+        self.stealth_cb.toggled.connect(self.toggle_stealth)
+        layout.addWidget(self.stealth_cb)
+
+        # Team message
+        self.team_msg_cb = QCheckBox("Include Team Message?")
+        self.team_msg_cb.toggled.connect(self.toggle_team_msg)
+        layout.addWidget(self.team_msg_cb)
+
+        # Team message language selector
+        lang_row = QHBoxLayout()
+        self.team_lang_group = QButtonGroup(self)
+        for i, lang in enumerate(['en', 'ar', 'ku']):
+            rb = QRadioButton(lang.upper())
+            rb.setChecked(lang == 'en')
+            rb.toggled.connect(self.switch_team_msg_lang)
+            self.team_lang_group.addButton(rb, i)
+            lang_row.addWidget(rb)
+        lang_row.addStretch()
+        layout.addLayout(lang_row)
+
+        self.team_msg_edit = QTextEdit()
+        self.team_msg_edit.setFixedHeight(70)
+        self.team_msg_edit.setEnabled(False)
+        layout.addWidget(self.team_msg_edit)
+
+        # Separator
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setStyleSheet("color: #ccc;")
+        layout.addWidget(sep)
+
         # Buttons
-        btn_frame = ttk.Frame(root)
-        btn_frame.pack(pady=10)
-        
-        ttk.Button(btn_frame, text="🚀 Release", command=self.release).pack(side=tk.LEFT, padx=10)
-        ttk.Button(btn_frame, text="❌ Cancel", command=root.quit).pack(side=tk.LEFT, padx=10)
-        
-        # Status
-        self.status_var = tk.StringVar(value="Ready")
-        ttk.Label(root, textvariable=self.status_var, foreground='gray').pack(pady=5)
-        
-        # Local Build Section (Separated from Release)
-        ttk.Separator(root, orient='horizontal').pack(fill='x', padx=20, pady=10)
-        
-        ttk.Label(root, text="Local Development Tools", font=('Segoe UI', 9, 'bold')).pack()
-        
-        local_btn_frame = ttk.Frame(root)
-        local_btn_frame.pack(pady=5)
-        
-        ttk.Button(local_btn_frame, text="�️ Build Local APK", command=self.build_apk_local_cmd).pack(padx=10)
-        
-        ttk.Label(root, text="(Use this only to test the APK on your phone manually)", 
-                  foreground='#666666', font=('Segoe UI', 8, 'italic')).pack()
+        btn_row = QHBoxLayout()
+        release_btn = QPushButton("🚀 Release")
+        release_btn.clicked.connect(self.release)
+        cancel_btn = QPushButton("❌ Cancel")
+        cancel_btn.clicked.connect(self.close)
+        btn_row.addWidget(release_btn)
+        btn_row.addWidget(cancel_btn)
+        layout.addLayout(btn_row)
 
-    def toggle_stealth(self):
-        """Enable/Disable highlighting tools when stealth is on"""
-        is_stealth = self.stealth_var.get()
-        state = 'disabled' if is_stealth else 'normal'
-        
-        self.highlights_btn.config(state=state)
-        # Keep msg_entry enabled so user can edit it
-        self.msg_entry.config(state='normal')
-        
-        # Disable team message checkbox too
-        for child in self.root.winfo_children():
-            if isinstance(child, ttk.Checkbutton) and "Team Message" in child.cget("text"):
-                child.config(state=state)
-        
-        current_msg = self.msg_var.get()
-        if is_stealth:
-            self.status_var.set("Stealth mode active")
-        else:
-            self.status_var.set("Ready")
-            if " (Stealth)" in current_msg:
-                self.msg_var.set(current_msg.replace(" (Stealth)", ""))
-            elif "(Stealth)" in current_msg:
-                self.msg_var.set(current_msg.replace("(Stealth)", ""))
+        self.status_label = QLabel("Ready")
+        self.status_label.setStyleSheet("color: gray;")
+        self.status_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.status_label)
 
-    def update_msg(self, *args):
-        self.msg_var.set(f"Release v{self.version_var.get()}")
-    
-    def build_apk_local_cmd(self):
-        """Dedicated command for local build button"""
-        if not messagebox.askyesno("Confirm Local Build", 
-            "This will build the APK on your computer (takes a few minutes).\n\n"
-            "Note: GitHub already builds this automatically during release.\n\n"
-            "Continue?"):
-            return
-            
-        success, message = self.build_apk()
-        if success:
-            messagebox.showinfo("Success", message)
-        else:
-            messagebox.showerror("Error", message)
-        self.status_var.set("Ready")
+        # Local build section
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.HLine)
+        sep2.setStyleSheet("color: #ccc;")
+        layout.addWidget(sep2)
 
-    def manage_highlights(self):
-        """Open a window to manage typed highlights"""
-        win = tk.Toplevel(self.root)
-        win.title("Manage Highlights")
-        win.geometry("500x700")
-        win.grab_set()
-        
-        main_frame = ttk.Frame(win, padding=20)
-        main_frame.pack(fill='both', expand=True)
-        
-        ttk.Label(main_frame, text="Add Update Highlights", font=('Segoe UI', 12, 'bold')).pack(pady=(0, 10))
-        
-        # Language Selector for highlights list
-        self.h_lang_var = tk.StringVar(value="en")
-        l_frame = ttk.Frame(main_frame)
-        l_frame.pack(pady=5)
-        for l in ['en', 'ar', 'ku']:
-            ttk.Radiobutton(l_frame, text=l.upper(), variable=self.h_lang_var, value=l, command=lambda: refresh_list()).pack(side=tk.LEFT, padx=5)
+        local_lbl = QLabel("Local Development Tools")
+        local_lbl.setFont(QFont("Segoe UI", 9, QFont.Bold))
+        layout.addWidget(local_lbl)
 
-        # List of highlights
-        list_frame = ttk.Frame(main_frame)
-        list_frame.pack(fill='both', expand=True, pady=10)
-        
-        canvas = tk.Canvas(list_frame)
-        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        def refresh_list():
-            for widget in scrollable_frame.winfo_children():
-                widget.destroy()
-            
-            lang = self.h_lang_var.get()
-            for i, h in enumerate(self.localized_highlights[lang]):
-                item = ttk.Frame(scrollable_frame, padding=5)
-                item.pack(fill='x', pady=2)
-                
-                type_color = {'new': 'blue', 'improved': 'green', 'fixed': 'orange'}.get(h['type'], 'black')
-                label = ttk.Label(item, text=f"[{h['type'].upper()}] {h['title']}", foreground=type_color, font=('Segoe UI', 9, 'bold'))
-                label.pack(side=tk.LEFT, fill='x', expand=True)
-                
-                content_preview = ttk.Label(item, text=h['content'][:30] + "..." if len(h['content']) > 30 else h['content'], font=('Segoe UI', 8))
-                content_preview.pack(side=tk.LEFT, padx=10)
-                
-                ttk.Button(item, text="X", width=3, command=lambda idx=i: remove_h(idx, lang)).pack(side=tk.RIGHT)
-            
-            counts = [f"{l.upper()}: {len(self.localized_highlights[l])}" for l in ['en', 'ar', 'ku']]
-            self.highlights_label.config(text=f"Highlights ({', '.join(counts)})")
+        build_btn = QPushButton("🛠️ Build Local APK")
+        build_btn.clicked.connect(self.build_apk_local_cmd)
+        layout.addWidget(build_btn)
 
-        def remove_h(idx, lang):
-            self.localized_highlights[lang].pop(idx)
-            refresh_list()
+        hint = QLabel("(Use this only to test the APK on your phone manually)")
+        hint.setStyleSheet("color: #666; font-style: italic; font-size: 8pt;")
+        layout.addWidget(hint)
 
-        refresh_list()
-        
-        # Add new highlight form
-        form = ttk.LabelFrame(main_frame, text="Add New Highlight", padding=10)
-        form.pack(fill='x', pady=10)
-        
-        ttk.Label(form, text="Type:").grid(row=0, column=0, sticky='w')
-        type_var = tk.StringVar(value="new")
-        type_cb = ttk.Combobox(form, textvariable=type_var, values=["new", "improved", "fixed"], state="readonly", width=10)
-        type_cb.grid(row=0, column=1, sticky='w', padx=5)
-        
-        ttk.Label(form, text="Title:").grid(row=1, column=0, sticky='w', pady=5)
-        title_entry = ttk.Entry(form, width=40)
-        title_entry.grid(row=1, column=1, sticky='w', padx=5)
-        
-        ttk.Label(form, text="Content:").grid(row=2, column=0, sticky='nw', pady=5)
-        content_text = tk.Text(form, width=30, height=3, font=('Segoe UI', 9))
-        content_text.grid(row=2, column=1, sticky='w', padx=5, pady=5)
-        
-        def add_h():
-            title = title_entry.get().strip()
-            content = content_text.get('1.0', tk.END).strip()
-            if not title:
-                messagebox.showerror("Error", "Title is required!")
-                return
-            
-            lang = self.h_lang_var.get()
-            self.localized_highlights[lang].append({
-                'type': type_var.get(),
-                'title': title,
-                'content': content
-            })
-            title_entry.delete(0, tk.END)
-            content_text.delete('1.0', tk.END)
-            refresh_list()
-            
-        ttk.Button(form, text="➕ Add Highlight", command=add_h).grid(row=3, column=1, sticky='e', pady=5)
-        
-        ttk.Button(main_frame, text="✅ Done", command=win.destroy).pack(pady=10)
+    # ── Slots ──────────────────────────────────────────────────────────────────
+    def _update_commit_msg(self, text):
+        self.msg_edit.setText(f"Release v{text}")
+
+    def current_team_lang_str(self):
+        idx = self.team_lang_group.checkedId()
+        return ['en', 'ar', 'ku'][idx]
 
     def switch_team_msg_lang(self):
-        """Save current team message and switch view to another language"""
-        old_lang = self.current_lang
-        new_lang = self.team_lang_var.get()
-        
-        # Save current text to dictionary
-        self.localized_team_msg[old_lang] = self.team_msg_text.get('1.0', tk.END).strip()
-        
-        # Switch current language
-        self.current_lang = new_lang
-        
-        # Update text area with new language content
-        self.team_msg_text.config(state='normal')
-        self.team_msg_text.delete('1.0', tk.END)
-        self.team_msg_text.insert('1.0', self.localized_team_msg[new_lang])
-        if not self.has_team_msg.get():
-             self.team_msg_text.config(state='disabled')
+        # Save current text before switching
+        self.localized_team_msg[self.current_team_lang] = self.team_msg_edit.toPlainText().strip()
 
-    def toggle_team_msg(self):
-        """Enable/Disable team message text area"""
-        if self.has_team_msg.get():
-            self.team_msg_text.config(state='normal')
-            self.team_msg_text.focus()
+        new_lang = self.current_team_lang_str()
+        self.current_team_lang = new_lang
+
+        apply_rtl(self.team_msg_edit, new_lang)
+        self.team_msg_edit.setPlainText(self.localized_team_msg[new_lang])
+
+    def toggle_team_msg(self, checked):
+        self.team_msg_edit.setEnabled(checked)
+        if checked:
+            self.team_msg_edit.setFocus()
         else:
-            # Save before disabling
-            self.localized_team_msg[self.current_lang] = self.team_msg_text.get('1.0', tk.END).strip()
-            self.team_msg_text.delete('1.0', tk.END)
-            self.team_msg_text.config(state='disabled')
+            self.localized_team_msg[self.current_team_lang] = self.team_msg_edit.toPlainText().strip()
+            self.team_msg_edit.clear()
+
+    def toggle_stealth(self, checked):
+        self.highlights_btn.setEnabled(not checked)
+        self.team_msg_cb.setEnabled(not checked)
+        self.status_label.setText("Stealth mode active" if checked else "Ready")
+
+    def manage_highlights(self):
+        dlg = HighlightsDialog(self, self.localized_highlights)
+        dlg.exec()
+        counts = [f"{l.upper()}: {len(self.localized_highlights[l])}" for l in ['en', 'ar', 'ku']]
+        total = sum(len(v) for v in self.localized_highlights.values())
+        self.highlights_label.setText(f"{total} highlights ({', '.join(counts)})")
 
     def build_apk(self):
-        """Run android build and rename APK"""
         try:
-            self.status_var.set("Building Local Android APK...")
-            self.root.update()
-            
-            # Run npm run android:build (tauri android build --debug)
-            # This version is AUTOMATICALLY SIGNED and can be installed on phones immediately.
+            self.status_label.setText("Building Local Android APK...")
+            QApplication.processEvents()
+
             subprocess.run(['npm.cmd', 'run', 'android:build'], cwd=SCRIPT_DIR, check=True, shell=True)
-            
-            # Potential Tauri APK output paths
+
             potential_paths = [
-                SCRIPT_DIR / "src-tauri" / "gen" / "android" / "app" / "build" / "outputs" / "apk" / "universal" / "release" / "app-universal-release-unsigned.apk",
-                SCRIPT_DIR / "src-tauri" / "gen" / "android" / "app" / "build" / "outputs" / "apk" / "release" / "app-release-unsigned.apk",
-                SCRIPT_DIR / "src-tauri" / "gen" / "android" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
+                SCRIPT_DIR / "src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk",
+                SCRIPT_DIR / "src-tauri/gen/android/app/build/outputs/apk/release/app-release-unsigned.apk",
+                SCRIPT_DIR / "src-tauri/gen/android/app/build/outputs/apk/debug/app-debug.apk",
             ]
-            
-            apk_path = None
-            for p in potential_paths:
-                if p.exists():
-                    apk_path = p
-                    break
-            
+            apk_path = next((p for p in potential_paths if p.exists()), None)
             output_apk = SCRIPT_DIR / "Asaas.apk"
-            
+
             if apk_path:
                 import shutil
                 shutil.copy2(apk_path, output_apk)
-                self.status_var.set("Ready")
+                self.status_label.setText("Ready")
                 return True, "APK built and renamed to Asaas.apk"
             else:
-                self.status_var.set("Failed")
-                return False, f"APK not found at {apk_path}"
-                
+                self.status_label.setText("Failed")
+                return False, "APK not found after build"
         except subprocess.CalledProcessError as e:
-            self.status_var.set("Failed")
+            self.status_label.setText("Failed")
             return False, f"Build error: {e}"
         except Exception as e:
-            self.status_var.set("Failed")
+            self.status_label.setText("Failed")
             return False, f"Unexpected error: {e}"
 
-    def release(self):
-        # Sanitize version (remove leading 'v')
-        version = self.version_var.get().strip()
-        if version.lower().startswith('v'):
-            version = version[1:]
-            
-        msg = self.msg_var.get()
-        
-        if not version or not msg:
-            messagebox.showerror("Error", "Version and message are required!")
+    def build_apk_local_cmd(self):
+        reply = QMessageBox.question(
+            self, "Confirm Local Build",
+            "This will build the APK on your computer (takes a few minutes).\n\n"
+            "Note: GitHub already builds this automatically during release.\n\nContinue?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
             return
-        
-        # Pre-flight check
+        success, message = self.build_apk()
+        if success:
+            QMessageBox.information(self, "Success", message)
+        else:
+            QMessageBox.critical(self, "Error", message)
+        self.status_label.setText("Ready")
+
+    def release(self):
+        version = self.version_edit.text().strip().lstrip('vV')
+        msg = self.msg_edit.text().strip()
+
+        if not version or not msg:
+            QMessageBox.critical(self, "Error", "Version and message are required!")
+            return
+
         if not is_git_clean():
-            if not messagebox.askyesno("Uncommitted Changes", 
-                "You have uncommitted changes in your repository.\n\n" +
-                "These will be included in the release commit automatically.\n" +
-                "Continue?"):
+            reply = QMessageBox.question(
+                self, "Uncommitted Changes",
+                "You have uncommitted changes in your repository.\n\n"
+                "These will be included in the release commit automatically.\nContinue?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply != QMessageBox.Yes:
                 return
 
-        steps = [
+        steps = "\n".join([
             f"1. Update version to {version}",
             f"2. Commit: {msg}",
             f"3. Create tag v{version}",
-            f"4. Push to GitHub (Triggers Auto-Releases)"
-        ]
-            
-        if not messagebox.askyesno("Confirm Release", 
-            "This will start the GitHub release process:\n\n" + "\n".join(steps) + "\n\nContinue?"):
+            f"4. Push to GitHub (Triggers Auto-Releases)",
+        ])
+        reply = QMessageBox.question(
+            self, "Confirm Release",
+            f"This will start the GitHub release process:\n\n{steps}\n\nContinue?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
             return
-        
-        self.status_var.set("Updating version...")
-        self.root.update()
-        
+
+        self.status_label.setText("Updating version...")
+        QApplication.processEvents()
+
         try:
-            update_version(version, self.min_version_var.get().strip())
-            
-            if not self.stealth_var.get():
-                # Save current team message before finalizing
-                self.localized_team_msg[self.current_lang] = self.team_msg_text.get('1.0', tk.END).strip()
-                
+            update_version(version, self.min_version_edit.text().strip())
+
+            if not self.stealth_cb.isChecked():
+                self.localized_team_msg[self.current_team_lang] = self.team_msg_edit.toPlainText().strip()
                 team_messages = {l: self.localized_team_msg[l] for l in ['en', 'ar', 'ku'] if self.localized_team_msg[l]}
                 update_patch_notes(version, self.localized_highlights, team_messages)
             else:
                 print("Skipping patch notes (Stealth mode)")
-            
-            self.status_var.set("Pushing to GitHub...")
-            self.root.update()
-            
+
+            self.status_label.setText("Pushing to GitHub...")
+            QApplication.processEvents()
+
             success, message = run_git_commands(version, msg)
-            
             if success:
-                messagebox.showinfo("Success", message + "\n\nGitHub will now build both Windows and Android versions automatically!")
-                self.root.quit()
+                QMessageBox.information(
+                    self, "Success",
+                    message + "\n\nGitHub will now build both Windows and Android versions automatically!"
+                )
+                self.close()
             else:
-                messagebox.showerror("Error", message)
-                self.status_var.set("Failed")
+                QMessageBox.critical(self, "Error", message)
+                self.status_label.setText("Failed")
         except Exception as e:
-            messagebox.showerror("Error", str(e))
-            self.status_var.set("Failed")
+            QMessageBox.critical(self, "Error", str(e))
+            self.status_label.setText("Failed")
 
 
+# ── Entry point ────────────────────────────────────────────────────────────────
+# ── Entry point ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = ReleaseApp(root)
-    root.mainloop()
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+
+    # Force light mode regardless of system theme
+    from PySide6.QtGui import QPalette, QColor
+    palette = QPalette()
+    palette.setColor(QPalette.Window,          QColor(240, 240, 240))
+    palette.setColor(QPalette.WindowText,      QColor(0, 0, 0))
+    palette.setColor(QPalette.Base,            QColor(255, 255, 255))
+    palette.setColor(QPalette.AlternateBase,   QColor(233, 233, 233))
+    palette.setColor(QPalette.ToolTipBase,     QColor(255, 255, 220))
+    palette.setColor(QPalette.ToolTipText,     QColor(0, 0, 0))
+    palette.setColor(QPalette.Text,            QColor(0, 0, 0))
+    palette.setColor(QPalette.Button,          QColor(240, 240, 240))
+    palette.setColor(QPalette.ButtonText,      QColor(0, 0, 0))
+    palette.setColor(QPalette.BrightText,      QColor(255, 0, 0))
+    palette.setColor(QPalette.Link,            QColor(0, 0, 255))
+    palette.setColor(QPalette.Highlight,       QColor(0, 120, 215))
+    palette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))
+    app.setPalette(palette)
+
+    window = ReleaseApp()
+    window.show()
+    sys.exit(app.exec())

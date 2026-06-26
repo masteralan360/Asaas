@@ -120,5 +120,32 @@
       ]
     },
     "teamMessages": {}
+  },
+  "v0.1.80": {
+    "date": "2026-06-26",
+    "highlights": {
+      "en": [],
+      "ar": [],
+      "ku": [
+        {
+          "type": "new",
+          "title": "سڵاو",
+          "content": "کۆنتێنت"
+        },
+        {
+          "type": "improved",
+          "title": "ئیمپروڤد",
+          "content": "کۆنتێنت"
+        },
+        {
+          "type": "fixed",
+          "title": "فیکسد",
+          "content": "کۆنتێنت"
+        }
+      ]
+    },
+    "teamMessages": {
+      "ku": "تیم"
+    }
   }
 }
