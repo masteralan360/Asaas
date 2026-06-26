@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Boxes, Copy, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Boxes, Copy, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import {
@@ -85,6 +85,43 @@ type ProductCloneTarget = {
     storages: ProductCloneTargetStorage[]
 }
 
+export type ProductSortOption = 'name_asc' | 'name_desc' | 'sku_asc' | 'sku_desc' | 'price_asc' | 'price_desc' | 'stock_asc' | 'stock_desc' | 'date_asc' | 'date_desc'
+
+export interface ProductFilterState {
+    category: string
+    storage: string
+    currency: string
+    minPrice: string
+    maxPrice: string
+    minStock: string
+    maxStock: string
+    sort: ProductSortOption
+}
+
+export const DEFAULT_PRODUCT_FILTERS: ProductFilterState = {
+    category: 'all',
+    storage: 'all',
+    currency: 'all',
+    minPrice: '',
+    maxPrice: '',
+    minStock: '',
+    maxStock: '',
+    sort: 'name_asc'
+}
+
+function countActiveProductFilters(filters: ProductFilterState) {
+    return [
+        filters.category !== 'all',
+        filters.storage !== 'all',
+        filters.currency !== 'all',
+        !!filters.minPrice,
+        !!filters.maxPrice,
+        !!filters.minStock,
+        !!filters.maxStock,
+        filters.sort !== 'name_asc'
+    ].filter(Boolean).length
+}
+
 export function Products() {
     const { user, session } = useAuth()
     const { features, branchInfo } = useWorkspace()
@@ -131,6 +168,9 @@ export function Products() {
     const isBranchWorkspace = Boolean(branchInfo?.isBranch)
 
     const [search, setSearch] = useState('')
+    const [filters, setFilters] = useState<ProductFilterState>(DEFAULT_PRODUCT_FILTERS)
+    const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false)
+    const [draftFilters, setDraftFilters] = useState<ProductFilterState>(filters)
     const [currentPage, setCurrentPage] = useState(1)
     const [pageSize, setPageSize] = useState(() => {
         return Number(localStorage.getItem('products_page_size')) || 20
@@ -381,12 +421,58 @@ export function Products() {
         )
     }
 
-    const filteredProducts = useMemo(() => products.filter((product) =>
-        product.name.toLowerCase().includes(search.toLowerCase()) ||
-        product.sku.toLowerCase().includes(search.toLowerCase()) ||
-        getCategoryName(product.categoryId).toLowerCase().includes(search.toLowerCase()) ||
-        getStorageName(product.storageId).toLowerCase().includes(search.toLowerCase())
-    ), [products, search, categories, storages])
+    const filteredProducts = useMemo(() => {
+        let result = products.filter((product) =>
+            product.name.toLowerCase().includes(search.toLowerCase()) ||
+            product.sku.toLowerCase().includes(search.toLowerCase()) ||
+            getCategoryName(product.categoryId).toLowerCase().includes(search.toLowerCase()) ||
+            getStorageName(product.storageId).toLowerCase().includes(search.toLowerCase())
+        )
+
+        if (filters.category !== 'all') {
+            result = result.filter((product) => product.categoryId === filters.category)
+        }
+        if (filters.storage !== 'all') {
+            result = result.filter((product) => product.storageId === filters.storage)
+        }
+        if (filters.currency !== 'all') {
+            result = result.filter((product) => product.currency === filters.currency)
+        }
+        const minPrice = filters.minPrice ? Number(filters.minPrice) : null
+        const maxPrice = filters.maxPrice ? Number(filters.maxPrice) : null
+        if (minPrice !== null) {
+            result = result.filter((product) => product.price >= minPrice)
+        }
+        if (maxPrice !== null) {
+            result = result.filter((product) => product.price <= maxPrice)
+        }
+        const minStock = filters.minStock ? Number(filters.minStock) : null
+        const maxStock = filters.maxStock ? Number(filters.maxStock) : null
+        if (minStock !== null) {
+            result = result.filter((product) => product.quantity >= minStock)
+        }
+        if (maxStock !== null) {
+            result = result.filter((product) => product.quantity <= maxStock)
+        }
+
+        result.sort((a, b) => {
+            switch (filters.sort) {
+                case 'name_asc': return a.name.localeCompare(b.name)
+                case 'name_desc': return b.name.localeCompare(a.name)
+                case 'sku_asc': return a.sku.localeCompare(b.sku)
+                case 'sku_desc': return b.sku.localeCompare(a.sku)
+                case 'price_asc': return a.price - b.price
+                case 'price_desc': return b.price - a.price
+                case 'stock_asc': return a.quantity - b.quantity
+                case 'stock_desc': return b.quantity - a.quantity
+                case 'date_asc': return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                case 'date_desc': return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                default: return 0
+            }
+        })
+
+        return result
+    }, [products, search, categories, storages, filters])
 
     const totalCount = filteredProducts.length
 
@@ -397,7 +483,20 @@ export function Products() {
 
     useEffect(() => {
         setCurrentPage(1)
-    }, [search, pageSize])
+    }, [search, pageSize, filters])
+
+    useEffect(() => {
+        if (!isFilterDialogOpen) return
+        setDraftFilters(filters)
+    }, [filters, isFilterDialogOpen])
+
+    const activeFilterCount = countActiveProductFilters(filters)
+
+    const handleApplyFilters = () => {
+        setFilters(draftFilters)
+        setIsFilterDialogOpen(false)
+        setCurrentPage(1)
+    }
 
     const selectedProductsCount = selectedProductIds.size
     const allWorkspaceProductsSelected = products.length > 0 && selectedProductsCount === products.length
@@ -671,15 +770,37 @@ export function Products() {
                 </div>
             </div>
 
-            <div className="relative max-w-md">
-                <Search className="absolute left-3 top-1/3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                    placeholder={t('products.searchPlaceholder') || 'Search products...'}
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    allowViewer={true}
-                    className="pl-10"
-                />
+            <div className="flex flex-wrap items-center gap-3">
+                <div className="relative max-w-md flex-1">
+                    <Search className="absolute left-3 top-1/3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                        placeholder={t('products.searchPlaceholder') || 'Search products...'}
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                        allowViewer={true}
+                        className="pl-10"
+                    />
+                </div>
+                <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsFilterDialogOpen(true)}
+                    className="h-11 rounded-2xl border-border/60 px-4"
+                >
+                    <SlidersHorizontal className="me-2 h-4 w-4" />
+                    {t('products.filters.title', { defaultValue: 'Filters' })}
+                    {activeFilterCount > 0 ? (
+                        <span className="ms-2 inline-flex min-w-6 items-center justify-center rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
+                            {activeFilterCount}
+                        </span>
+                    ) : null}
+                </Button>
+                {activeFilterCount > 0 ? (
+                    <Button type="button" variant="ghost" onClick={() => setFilters(DEFAULT_PRODUCT_FILTERS)} className="h-11 rounded-2xl px-4 text-muted-foreground">
+                        <RotateCcw className="me-2 h-4 w-4" />
+                        {t('products.filters.clear', { defaultValue: 'Clear Filters' })}
+                    </Button>
+                ) : null}
             </div>
 
             {canCloneToBranch && products.length > 0 && isBranchCloneSelectionMode && (
@@ -971,12 +1092,69 @@ export function Products() {
                                                 <TableRow>
                                                     {canCloneToBranch && isBranchCloneSelectionMode && <TableHead className="w-[52px]" />}
                                                     <TableHead className="w-[80px]">{t('products.table.image') || 'Image'}</TableHead>
-                                                    <TableHead>{t('products.table.sku')}</TableHead>
+                                                    <TableHead
+                                                        className="cursor-pointer select-none group/sort"
+                                                        onClick={() => {
+                                                            setFilters(prev => ({
+                                                                ...prev,
+                                                                sort: prev.sort === 'sku_asc' ? 'sku_desc' : 'sku_asc'
+                                                            }))
+                                                        }}
+                                                    >
+                                                        <span className="inline-flex items-center gap-1.5">
+                                                            {t('products.table.sku')}
+                                                            {filters.sort === 'sku_asc' ? (
+                                                                <ArrowUp className="w-3.5 h-3.5 text-primary" />
+                                                            ) : filters.sort === 'sku_desc' ? (
+                                                                <ArrowDown className="w-3.5 h-3.5 text-primary" />
+                                                            ) : (
+                                                                <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground/40 opacity-0 group-hover/sort:opacity-100 transition-opacity" />
+                                                            )}
+                                                        </span>
+                                                    </TableHead>
                                                     <TableHead>{t('products.table.name')}</TableHead>
                                                     <TableHead>{t('products.table.category')}</TableHead>
                                                     <TableHead>{t('storages.title') || 'Storage'}</TableHead>
-                                                    <TableHead className="text-right">{t('products.table.price')}</TableHead>
-                                                    <TableHead className="text-right">{t('products.table.stock')}</TableHead>
+                                                    <TableHead
+                                                        className="text-right cursor-pointer select-none group/sort"
+                                                        onClick={() => {
+                                                            setFilters(prev => ({
+                                                                ...prev,
+                                                                sort: prev.sort === 'price_asc' ? 'price_desc' : 'price_asc'
+                                                            }))
+                                                        }}
+                                                    >
+                                                        <span className="inline-flex items-center gap-1.5 justify-end">
+                                                            {t('products.table.price')}
+                                                            {filters.sort === 'price_asc' ? (
+                                                                <ArrowUp className="w-3.5 h-3.5 text-primary" />
+                                                            ) : filters.sort === 'price_desc' ? (
+                                                                <ArrowDown className="w-3.5 h-3.5 text-primary" />
+                                                            ) : (
+                                                                <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground/40 opacity-0 group-hover/sort:opacity-100 transition-opacity" />
+                                                            )}
+                                                        </span>
+                                                    </TableHead>
+                                                    <TableHead
+                                                        className="text-right cursor-pointer select-none group/sort"
+                                                        onClick={() => {
+                                                            setFilters(prev => ({
+                                                                ...prev,
+                                                                sort: prev.sort === 'stock_asc' ? 'stock_desc' : 'stock_asc'
+                                                            }))
+                                                        }}
+                                                    >
+                                                        <span className="inline-flex items-center gap-1.5 justify-end">
+                                                            {t('products.table.stock')}
+                                                            {filters.sort === 'stock_asc' ? (
+                                                                <ArrowUp className="w-3.5 h-3.5 text-primary" />
+                                                            ) : filters.sort === 'stock_desc' ? (
+                                                                <ArrowDown className="w-3.5 h-3.5 text-primary" />
+                                                            ) : (
+                                                                <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground/40 opacity-0 group-hover/sort:opacity-100 transition-opacity" />
+                                                            )}
+                                                        </span>
+                                                    </TableHead>
                                                     {(canEdit || canDelete || user?.role === 'viewer') && <TableHead className="text-right">{t('common.actions')}</TableHead>}
                                                 </TableRow>
                                             </TableHeader>
@@ -1252,6 +1430,165 @@ export function Products() {
                 title={itemToDelete?.type === 'category' ? t('categories.confirmDelete') : t('products.confirmDelete')}
                 description={deleteConfirmationDescription}
             />
+
+            <Dialog open={isFilterDialogOpen} onOpenChange={setIsFilterDialogOpen}>
+                <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] w-[calc(100vw-0.75rem)] max-w-4xl overflow-hidden p-0 sm:w-[calc(100vw-2rem)] rounded-[2rem] border-border/60">
+                    <div className="flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-1rem)] flex-col">
+                        <DialogHeader className="border-b border-border/60 px-6 py-5 text-start bg-gradient-to-r from-primary/8 via-background to-emerald-500/5">
+                            <DialogTitle className="flex items-center gap-3 text-xl font-black tracking-tight">
+                                <div className="p-2.5 rounded-2xl bg-primary/10 text-primary">
+                                    <SlidersHorizontal className="h-5 w-5" />
+                                </div>
+                                {t('products.filters.dialogTitle', { defaultValue: 'Product Filters' })}
+                            </DialogTitle>
+                            <DialogDescription className="max-w-3xl">
+                                {t('products.filters.dialogDescription', { defaultValue: 'Refine the product catalog with a richer filter set.' })}
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
+                            <section className="grid gap-4 lg:grid-cols-2">
+                                <div className="space-y-4 p-5 rounded-[1.5rem] border border-border/60 bg-background/80">
+                                    <div className="space-y-1">
+                                        <h3 className="text-base font-black tracking-tight">{t('products.filters.sortTitle', { defaultValue: 'Sort & Category' })}</h3>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>{t('products.filters.sortBy', { defaultValue: 'Sort By' })}</Label>
+                                        <Select value={draftFilters.sort} onValueChange={(value: ProductSortOption) => setDraftFilters((current) => ({ ...current, sort: value }))}>
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="name_asc">{t('products.filters.sortNameAsc', { defaultValue: 'Name: A → Z' })}</SelectItem>
+                                                <SelectItem value="name_desc">{t('products.filters.sortNameDesc', { defaultValue: 'Name: Z → A' })}</SelectItem>
+                                                <SelectItem value="price_asc">{t('products.filters.sortPriceAsc', { defaultValue: 'Price: Low to High' })}</SelectItem>
+                                                <SelectItem value="price_desc">{t('products.filters.sortPriceDesc', { defaultValue: 'Price: High to Low' })}</SelectItem>
+                                                <SelectItem value="stock_asc">{t('products.filters.sortStockAsc', { defaultValue: 'Stock: Low to High' })}</SelectItem>
+                                                <SelectItem value="stock_desc">{t('products.filters.sortStockDesc', { defaultValue: 'Stock: High to Low' })}</SelectItem>
+                                                <SelectItem value="date_asc">{t('products.filters.sortDateAsc', { defaultValue: 'Date: Oldest First' })}</SelectItem>
+                                                <SelectItem value="date_desc">{t('products.filters.sortDateDesc', { defaultValue: 'Date: Newest First' })}</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>{t('products.filters.category', { defaultValue: 'Category' })}</Label>
+                                        <Select value={draftFilters.category} onValueChange={(value) => setDraftFilters((current) => ({ ...current, category: value }))}>
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">{t('products.filters.allCategories', { defaultValue: 'All Categories' })}</SelectItem>
+                                                {categories.map((cat) => (
+                                                    <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>{t('products.filters.storage', { defaultValue: 'Storage' })}</Label>
+                                        <Select value={draftFilters.storage} onValueChange={(value) => setDraftFilters((current) => ({ ...current, storage: value }))}>
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">{t('products.filters.allStorages', { defaultValue: 'All Storages' })}</SelectItem>
+                                                {storages.map((storage) => (
+                                                    <SelectItem key={storage.id} value={storage.id}>{storage.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4 p-5 rounded-[1.5rem] border border-border/60 bg-background/80">
+                                    <div className="space-y-1">
+                                        <h3 className="text-base font-black tracking-tight">{t('products.filters.pricingTitle', { defaultValue: 'Price, Currency & Stock' })}</h3>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>{t('products.filters.currency', { defaultValue: 'Currency' })}</Label>
+                                        <Select value={draftFilters.currency} onValueChange={(value) => setDraftFilters((current) => ({ ...current, currency: value }))}>
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">{t('products.filters.all', { defaultValue: 'All' })}</SelectItem>
+                                                {Array.from(new Set(products.map((p) => p.currency).filter(Boolean))).map((curr) => (
+                                                    <SelectItem key={curr} value={curr}>{curr.toUpperCase()}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label>{t('products.filters.minPrice', { defaultValue: 'Min Price' })}</Label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                value={draftFilters.minPrice}
+                                                onChange={(event) => setDraftFilters((current) => ({ ...current, minPrice: event.target.value }))}
+                                                placeholder="0"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>{t('products.filters.maxPrice', { defaultValue: 'Max Price' })}</Label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                value={draftFilters.maxPrice}
+                                                onChange={(event) => setDraftFilters((current) => ({ ...current, maxPrice: event.target.value }))}
+                                                placeholder={t('products.filters.noCap', { defaultValue: 'No cap' })}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label>{t('products.filters.minStock', { defaultValue: 'Min Stock' })}</Label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                value={draftFilters.minStock}
+                                                onChange={(event) => setDraftFilters((current) => ({ ...current, minStock: event.target.value }))}
+                                                placeholder="0"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>{t('products.filters.maxStock', { defaultValue: 'Max Stock' })}</Label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                value={draftFilters.maxStock}
+                                                onChange={(event) => setDraftFilters((current) => ({ ...current, maxStock: event.target.value }))}
+                                                placeholder={t('products.filters.noCap', { defaultValue: 'No cap' })}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+                        </div>
+
+                        <DialogFooter className="border-t border-border/60 bg-background/95 px-6 py-4 sm:justify-between">
+                            <Button type="button" variant="ghost" onClick={() => setDraftFilters(DEFAULT_PRODUCT_FILTERS)} className="rounded-2xl">
+                                <RotateCcw className="me-2 h-4 w-4" />
+                                {t('products.filters.reset', { defaultValue: 'Reset Draft' })}
+                            </Button>
+                            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+                                <Button type="button" variant="outline" onClick={() => setIsFilterDialogOpen(false)} className="rounded-2xl">
+                                    {t('common.cancel', { defaultValue: 'Cancel' })}
+                                </Button>
+                                <Button type="button" onClick={handleApplyFilters} className="rounded-2xl">
+                                    {t('products.filters.apply', { defaultValue: 'Apply Filters' })}
+                                </Button>
+                            </div>
+                        </DialogFooter>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             <StockAdjustmentDialog
                 open={adjustmentDialogOpen}
