@@ -194,22 +194,24 @@ const init = async () => {
     // Start loading immediately
     const bootPromise = bootApp(canShowSplash)
 
-    let showSplash = false
     if (canShowSplash) {
-        const ready = await Promise.race([
-            bootPromise.then(() => true),
-            new Promise<boolean>(resolve => setTimeout(() => resolve(false), 200)),
-        ])
-        showSplash = !ready
-    }
-
-    if (showSplash) {
         root.render(
             <StrictMode>
                 <AtlasSplashScreen />
                 <Analytics />
             </StrictMode>,
         )
+
+        const dismissOnKey = new Promise<void>(resolve => {
+            window.addEventListener('keydown', () => resolve(), { once: true })
+        })
+
+        if (import.meta.env.DEV) {
+            await Promise.race([dismissOnKey, new Promise<void>(r => setTimeout(r, 3000))])
+        } else {
+            await Promise.race([bootPromise, dismissOnKey])
+        }
+        await bootPromise
     }
 
     const { ThemeProvider, App } = await bootPromise
