@@ -1462,6 +1462,8 @@ export function Products() {
                                             <SelectContent>
                                                 <SelectItem value="name_asc">{t('products.filters.sortNameAsc', { defaultValue: 'Name: A → Z' })}</SelectItem>
                                                 <SelectItem value="name_desc">{t('products.filters.sortNameDesc', { defaultValue: 'Name: Z → A' })}</SelectItem>
+                                                <SelectItem value="sku_asc">{t('products.filters.sortSkuAsc', { defaultValue: 'SKU: A → Z' })}</SelectItem>
+                                                <SelectItem value="sku_desc">{t('products.filters.sortSkuDesc', { defaultValue: 'SKU: Z → A' })}</SelectItem>
                                                 <SelectItem value="price_asc">{t('products.filters.sortPriceAsc', { defaultValue: 'Price: Low to High' })}</SelectItem>
                                                 <SelectItem value="price_desc">{t('products.filters.sortPriceDesc', { defaultValue: 'Price: High to Low' })}</SelectItem>
                                                 <SelectItem value="stock_asc">{t('products.filters.sortStockAsc', { defaultValue: 'Stock: Low to High' })}</SelectItem>
