@@ -1643,7 +1643,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                     </Card>
                 </div>
 
-                <div className="space-y-6 xl:sticky xl:top-24">
+                <div className="space-y-6">
                     <Card className="border-border/60 shadow-sm">
                         <CardHeader className="space-y-1">
                             <CardTitle className="text-xl">{t('products.summaryTitle') || 'Live Summary'}</CardTitle>
@@ -1694,8 +1694,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                             </div>
                         </CardContent>
                     </Card>
-
-                    <Card className="border-border/60 shadow-sm">
+                    <Card className="border-border/60 shadow-sm xl:sticky xl:top-24">
                         <CardHeader className="space-y-1">
                             <CardTitle className="text-xl">{isReadOnly ? (t('common.view') || 'View') : (t('common.actions') || 'Actions')}</CardTitle>
                             <p className="text-sm text-muted-foreground">
