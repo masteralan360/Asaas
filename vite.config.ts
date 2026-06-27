@@ -90,7 +90,8 @@ export default defineConfig(({ mode }) => {
                         {
                             urlPattern: ({ url }) =>
                                 url.pathname.startsWith('/api-xeiqd')
-                                || url.pathname.startsWith('/api-forexfy'),
+                                || url.pathname.startsWith('/api-forexfy')
+                                || url.pathname.startsWith('/api-pmcgroup'),
                             handler: 'NetworkFirst',
                             options: {
                                 cacheName: 'atlas-api-cache',
@@ -139,6 +140,15 @@ export default defineConfig(({ mode }) => {
                     rewrite: (path) => path.replace(/^\/api-forexfy/, ''),
                     headers: {
                         'Referer': 'https://forexfy.app',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    }
+                },
+                '/api-pmcgroup': {
+                    target: 'https://t.me/s/PMCgroup',
+                    changeOrigin: true,
+                    rewrite: (path) => path.replace(/^\/api-pmcgroup/, ''),
+                    headers: {
+                        'Referer': 'https://t.me/s/PMCgroup',
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                     }
                 }

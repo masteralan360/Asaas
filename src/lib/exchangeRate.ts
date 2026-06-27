@@ -1,6 +1,6 @@
 import { getManualRateSource, getManualRateValue } from './manualExchangeRates';
 
-export type ExchangeRateSource = 'xeiqd' | 'forexfy' | 'dolardinar' | 'manual';
+export type ExchangeRateSource = 'xeiqd' | 'forexfy' | 'dolardinar' | 'pmcgroup' | 'manual';
 
 export interface ExchangeRateResult {
     rate: number;
@@ -26,7 +26,7 @@ export async function fetchUSDToIQDRate(primarySource?: ExchangeRateSource): Pro
 
     const sources: ExchangeRateSource[] = [
         favoredSource,
-        ...(['xeiqd', 'forexfy', 'dolardinar'] as ExchangeRateSource[]).filter(s => s !== favoredSource && s !== 'manual')
+        ...(['pmcgroup', 'forexfy', 'dolardinar', 'xeiqd'] as ExchangeRateSource[]).filter(s => s !== favoredSource && s !== 'manual')
     ];
 
     // --- TRY SOURCES IN ORDER ---
@@ -39,6 +39,7 @@ export async function fetchUSDToIQDRate(primarySource?: ExchangeRateSource): Pro
             if (currentSource === 'xeiqd') rate = await fetchFromXEIQD();
             else if (currentSource === 'forexfy') rate = await fetchFromForexfy();
             else if (currentSource === 'dolardinar') rate = await fetchFromDolarDinar();
+            else if (currentSource === 'pmcgroup') rate = await fetchFromPMCgroup();
 
             if (rate < 100000) {
                 throw new Error('Rate sanity check failed (< 100000)');
@@ -46,6 +47,7 @@ export async function fetchUSDToIQDRate(primarySource?: ExchangeRateSource): Pro
 
             return { rate, source: currentSource, isFallback };
         } catch (error) {
+            console.warn(`[ExchangeRate] Source ${currentSource} failed:`, error);
         }
     }
 
@@ -172,6 +174,7 @@ async function fetchUrl(url: string, isApiProxy = false): Promise<string> {
         if (isApiProxy) {
             if (url.includes('api-xeiqd')) targetUrl = 'https://xeiqd.com' + url.replace('/api-xeiqd', '');
             else if (url.includes('api-forexfy')) targetUrl = 'https://forexfy.app' + url.replace('/api-forexfy', '');
+            else if (url.includes('api-pmcgroup')) targetUrl = 'https://t.me/s/PMCgroup';
         }
 
         try {
@@ -342,6 +345,41 @@ async function fetchFromDolarDinar(currencyCode: string = 'IQD'): Promise<number
 
 
 
+async function fetchFromPMCgroup(): Promise<number> {
+    console.log('[PMCgroup] Fetching rate...');
+    const html = await fetchUrl('/api-pmcgroup', true);
+    console.log(`[PMCgroup] Received HTML (${html.length} chars)`);
+
+    const msgRegex = /tgme_widget_message_wrap[\s\S]*?tgme_widget_message_text[^>]*>100(?:&#036;|\$)\s*=\s*([\d,]+)<[\s\S]*?<time datetime="([^"]+)"/g;
+
+    const matches = Array.from(html.matchAll(msgRegex));
+    console.log(`[PMCgroup] Regex found ${matches.length} matching messages`);
+
+    if (matches.length === 0) {
+        console.log('[PMCgroup] HTML snippet around first "100":', html.slice(Math.max(0, html.indexOf('100') - 100), html.indexOf('100') + 150));
+    }
+
+    let latestRate: number | null = null;
+    let latestDate: string | null = null;
+
+    for (const match of matches) {
+        const rateStr = match[1].replace(/,/g, '');
+        const rate = parseInt(rateStr);
+        const dateStr = match[2];
+
+        if (isNaN(rate)) continue;
+
+        if (!latestDate || dateStr > latestDate) {
+            latestDate = dateStr;
+            latestRate = rate;
+        }
+    }
+
+    console.log(`[PMCgroup] Latest: rate=${latestRate}, date=${latestDate}`);
+    if (latestRate === null) throw new Error('No rate found in PMCgroup Telegram channel');
+    return latestRate;
+}
+
 async function fetchEgRate(path: ExchangePath): Promise<number> {
     const html = await fetchUrl(`/api-forexfy/en/currency/${path}/blackMarket`, true);
 
@@ -445,7 +483,7 @@ export async function fetchCrossRate(source: ExchangeRateSource, path: ExchangeP
 }
 
 export async function fetchRatesFromAllSources(): Promise<{
-    usd_iqd: { xeiqd?: number; forexfy?: number; dolardinar?: number; average?: number };
+    usd_iqd: { xeiqd?: number; forexfy?: number; dolardinar?: number; pmcgroup?: number; average?: number };
     eur_iqd: { forexfy?: number; dolardinar?: number; average?: number };
     try_iqd: { forexfy?: number; dolardinar?: number; average?: number };
 }> {
@@ -455,7 +493,8 @@ export async function fetchRatesFromAllSources(): Promise<{
     const usdPromises = [
         fetchFromXEIQD().then(r => results.usd_iqd.xeiqd = r).catch(() => { }),
         fetchFromForexfy().then(r => results.usd_iqd.forexfy = r).catch(() => { }),
-        fetchFromDolarDinar('USD').then(r => results.usd_iqd.dolardinar = r).catch(() => { })
+        fetchFromDolarDinar('USD').then(r => results.usd_iqd.dolardinar = r).catch(() => { }),
+        fetchFromPMCgroup().then(r => results.usd_iqd.pmcgroup = r).catch(() => { })
     ];
 
     // EUR/IQD

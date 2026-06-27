@@ -2548,6 +2548,9 @@ export function Settings() {
                                                     <SelectItem value="manual">
                                                         {t('settings.exchangeRate.manual')}
                                                     </SelectItem>
+                                                    <SelectItem value="pmcgroup">
+                                                        {t('settings.exchangeRate.pmcgroup')}
+                                                    </SelectItem>
                                                     <SelectItem value="xeiqd">
                                                         {t('settings.exchangeRate.xeiqd')}
                                                     </SelectItem>

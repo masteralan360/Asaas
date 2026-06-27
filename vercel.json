@@ -82,7 +82,11 @@
             "destination": "/api/forexfy"
         },
         {
-            "source": "/((?!api-xeiqd(?:/|$)|api-forexfy(?:/|$)|assets(?:/|$)|.*\\.[^/]+$).*)",
+            "source": "/api-pmcgroup",
+            "destination": "/api/pmcgroup"
+        },
+        {
+            "source": "/((?!api-xeiqd(?:/|$)|api-forexfy(?:/|$)|api-pmcgroup(?:/|$)|assets(?:/|$)|.*\\.[^/]+$).*)",
             "has": [
                 {
                     "type": "host",
@@ -92,7 +96,7 @@
             "destination": "/marketplace.html"
         },
         {
-            "source": "/((?!api-xeiqd(?:/|$)|api-forexfy(?:/|$)|assets(?:/|$)|.*\\.[^/]+$).*)",
+            "source": "/((?!api-xeiqd(?:/|$)|api-forexfy(?:/|$)|api-pmcgroup(?:/|$)|assets(?:/|$)|.*\\.[^/]+$).*)",
             "destination": "/index.html"
         }
     ]

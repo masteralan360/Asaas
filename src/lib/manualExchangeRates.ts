@@ -16,7 +16,7 @@ const MANUAL_RATE_CONFIG: Record<ManualRateCurrency, ManualRateConfig> = {
         rateKey: 'manual_rate_usd_iqd',
         expiresAtKey: 'manual_rate_usd_iqd_expires_at',
         previousSourceKey: 'manual_rate_usd_iqd_previous_source',
-        defaultSource: 'xeiqd'
+        defaultSource: 'pmcgroup'
     },
     EUR: {
         sourceKey: 'primary_eur_exchange_rate_source',
