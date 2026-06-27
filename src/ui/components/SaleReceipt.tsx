@@ -239,14 +239,14 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                     <div className="mb-4">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className={cn("text-[10px] text-black border-b border-gray-200", !isRTL && "uppercase")} style={{ opacity: labelOpacity / 100 }}>
+                                <tr className={cn("text-[10px] text-black border-b border-black", !isRTL && "uppercase")} style={{ opacity: labelOpacity / 100 }}>
                                     <th className={cn("pb-2 text-start font-bold", !isRTL && "tracking-wider")}>{t('products.table.name')}</th>
                                     <th className={cn("pb-2 text-center font-bold", !isRTL && "tracking-wider")}>{t('common.quantity')}</th>
                                     <th className={cn("pb-2 text-end font-bold", !isRTL && "tracking-wider")}>{t('common.price')}</th>
                                     <th className={cn("pb-2 text-end font-bold", !isRTL && "tracking-wider")}>{t('common.total')}</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-100">
+                            <tbody className="divide-y divide-black" style={{ '--tw-divide-opacity': labelOpacity / 100 } as React.CSSProperties}>
                                 {data.items?.map((item, idx) => {
                                     const isConverted = item.original_currency && item.settlement_currency && item.original_currency !== item.settlement_currency
                                     return (
@@ -283,7 +283,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                                 })}
                             </tbody>
                         </table>
-                        <div className="border-t-2 border-black mt-4" />
+                        <div className="border-t-2 border-black mt-4" style={{ '--tw-border-opacity': labelOpacity / 100 } as React.CSSProperties} />
                     </div>,
                     undefined, undefined, undefined, true
                 )}
