@@ -195,9 +195,32 @@ const init = async () => {
     const bootPromise = bootApp(canShowSplash)
 
     if (canShowSplash) {
+        // Phase 1: Show splash immediately. App container hidden + empty.
         root.render(
             <StrictMode>
-                <AtlasSplashScreen />
+                <div id="atlas-splash" style={{}}>
+                    <AtlasSplashScreen />
+                </div>
+                <div id="atlas-app" style={{ display: 'none' }} />
+                <Analytics />
+            </StrictMode>,
+        )
+
+        // Modules load in background while splash plays
+        const { ThemeProvider, App } = await bootPromise
+
+        // Phase 2: Inject app into hidden container. AuthProvider (inside App.tsx)
+        // mounts and starts initializing. Splash still visible.
+        root.render(
+            <StrictMode>
+                <div id="atlas-splash" style={{}}>
+                    <AtlasSplashScreen />
+                </div>
+                <div id="atlas-app" style={{ display: 'none' }}>
+                    <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme" defaultStyle="emerald">
+                        <App />
+                    </ThemeProvider>
+                </div>
                 <Analytics />
             </StrictMode>,
         )
@@ -207,7 +230,24 @@ const init = async () => {
         })
 
         await Promise.race([dismissOnKey, new Promise<void>(r => setTimeout(r, 2800))])
-        await bootPromise
+
+        // Phase 3: Show app, hide splash. Tree structure identical to Phase 2
+        // — React preserves all state (AuthProvider, etc.)
+        root.render(
+            <StrictMode>
+                <div id="atlas-splash" style={{ display: 'none' }}>
+                    <AtlasSplashScreen />
+                </div>
+                <div id="atlas-app" style={{}}>
+                    <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme" defaultStyle="emerald">
+                        <App />
+                    </ThemeProvider>
+                </div>
+                <Analytics />
+            </StrictMode>,
+        )
+
+        return
     }
 
     const { ThemeProvider, App } = await bootPromise
