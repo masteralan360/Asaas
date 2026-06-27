@@ -23,7 +23,7 @@ function isColdStart(): boolean {
     try {
         const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming
         if (nav) return nav.type === 'navigate'
-    } catch {}
+    } catch { }
     return true
 }
 
@@ -206,11 +206,7 @@ const init = async () => {
             window.addEventListener('keydown', () => resolve(), { once: true })
         })
 
-        if (import.meta.env.DEV) {
-            await Promise.race([dismissOnKey, new Promise<void>(r => setTimeout(r, 3000))])
-        } else {
-            await Promise.race([bootPromise, dismissOnKey])
-        }
+        await Promise.race([dismissOnKey, new Promise<void>(r => setTimeout(r, 2800))])
         await bootPromise
     }
 
