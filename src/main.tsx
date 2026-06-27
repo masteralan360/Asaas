@@ -189,7 +189,7 @@ const init = async () => {
 
     void initPwaLocalMode()
 
-    const canShowSplash = !isMarketplaceHost && isColdStart() && (isTauriRuntime || isPwaMode())
+    const canShowSplash = !isMarketplaceHost && isColdStart() && (isPwaMode() || (isTauriRuntime && !import.meta.env.DEV))
 
     // Start loading immediately
     const bootPromise = bootApp(canShowSplash)

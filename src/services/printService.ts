@@ -42,6 +42,11 @@ interface ThermalReceiptPrintRequest {
     workspaceId?: string
 }
 
+interface ThermalImagePrintRequest {
+    imageBase64: string
+    workspaceId: string
+}
+
 const DEFAULT_PAPER_SIZE: PaperSize = 'Mm80'
 const VIRTUAL_PRINTER_PATTERNS = [
     /onenote/i,
@@ -325,6 +330,43 @@ export const printService = {
             cut_paper: true,
             test_feed: true
         })
+    },
+
+    async silentPrintImage({ imageBase64, workspaceId }: ThermalImagePrintRequest): Promise<boolean> {
+        if (!isDesktop()) return false
+        if (!workspaceId) return false
+
+        const printer = await getStoredSelectedThermalPrinter(workspaceId)
+        if (!printer?.name) {
+            throw new Error('No thermal printer selected for this workspace on this device.')
+        }
+
+        const rollWidth = printer.roll_width_mm ?? inferRollWidthFromPaperSize(printer.paper_size)
+        const maxWidth = rollWidth === 58 ? 384 : 512
+
+        const printJob: PrintJobRequest = {
+            printer: printer.name,
+            paper_size: printer.paper_size || DEFAULT_PAPER_SIZE,
+            options: {
+                cut_paper: true,
+                beep: false,
+                open_cash_drawer: false
+            },
+            sections: [
+                {
+                    Image: {
+                        data: imageBase64,
+                        max_width: maxWidth,
+                        align: 'center',
+                        dithering: true,
+                        size: 'normal'
+                    }
+                },
+                { Feed: { feed_type: 'lines', value: 3 } }
+            ]
+        }
+
+        return print_thermal_printer(printJob)
     },
 
     async silentPrintReceipt({ saleData, features, workspaceName, workspaceId }: ThermalReceiptPrintRequest): Promise<boolean> {

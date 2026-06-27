@@ -14,6 +14,7 @@ import { formatCurrency, cn } from '@/lib/utils'
 import { triggerInvoiceSync } from '@/services/invoiceSyncService'
 import { disableInvoiceQrInLocalMode } from '@/services/localInvoiceStorage'
 import { printService } from '@/services/printService'
+import html2canvas from 'html2canvas'
 import { isSupabaseConfigured, useAuth } from '@/auth'
 import { useWorkspace, type WorkspaceFeatures } from '@/workspace'
 import { Textarea } from '@/ui/components/textarea'
@@ -222,14 +223,42 @@ export function CheckoutSuccessModal({
 
             // 2. Prefer native thermal printing when enabled and configured on this device.
             let handledByThermalPrinter = false
-            if (features.thermal_printing && !primaryReceiptLayout) {
+            if (features.thermal_printing) {
                 try {
-                    handledByThermalPrinter = await printService.silentPrintReceipt({
-                        saleData,
-                        features: printFeatures,
-                        workspaceName: workspaceName || user?.workspaceId || 'Atlas',
-                        workspaceId: activeWorkspace?.id || user.workspaceId
-                    })
+                    if (primaryReceiptLayout && primaryReceiptTarget && printRef.current) {
+                        // Capture the custom template as an image and print it via thermal printer
+                        const sourceNode = printRef.current
+                        const clone = sourceNode.cloneNode(true) as HTMLElement
+                        clone.style.position = 'fixed'
+                        clone.style.left = '-9999px'
+                        clone.style.top = '0'
+                        clone.style.width = '800px'
+                        clone.style.backgroundColor = '#ffffff'
+                        clone.style.zIndex = '-1'
+                        document.body.appendChild(clone)
+
+                        try {
+                            const canvas = await html2canvas(clone, {
+                                scale: 2,
+                                useCORS: true,
+                                backgroundColor: '#ffffff'
+                            })
+                            const imageBase64 = canvas.toDataURL('image/png')
+                            handledByThermalPrinter = await printService.silentPrintImage({
+                                imageBase64,
+                                workspaceId: activeWorkspace?.id || user.workspaceId
+                            })
+                        } finally {
+                            document.body.removeChild(clone)
+                        }
+                    } else {
+                        handledByThermalPrinter = await printService.silentPrintReceipt({
+                            saleData,
+                            features: printFeatures,
+                            workspaceName: workspaceName || user?.workspaceId || 'Atlas',
+                            workspaceId: activeWorkspace?.id || user.workspaceId
+                        })
+                    }
                 } catch (thermalError) {
                     console.error('[CheckoutSuccessModal] Thermal print failed:', thermalError)
                     toast({
