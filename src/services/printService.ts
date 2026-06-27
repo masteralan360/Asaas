@@ -50,7 +50,7 @@ interface ThermalImagePrintRequest {
 
 const THERMAL_MAX_WIDTHS = { 58: 384, 80: 576 } as const
 
-export async function getThermalPrinterMaxWidth(workspaceId: string): Promise<number> {
+async function getThermalPrinterMaxWidth(workspaceId: string): Promise<number> {
     const printer = await getStoredSelectedThermalPrinter(workspaceId)
     if (!printer) return THERMAL_MAX_WIDTHS[80]
     const rollWidth = printer.roll_width_mm ?? inferRollWidthFromPaperSize(printer.paper_size)
@@ -340,6 +340,10 @@ export const printService = {
             cut_paper: true,
             test_feed: true
         })
+    },
+
+    async getThermalPrinterMaxWidth(workspaceId: string): Promise<number> {
+        return getThermalPrinterMaxWidth(workspaceId)
     },
 
     async silentPrintImage({ imageBase64, workspaceId, maxWidth: maxWidthParam }: ThermalImagePrintRequest): Promise<boolean> {
