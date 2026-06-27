@@ -45,6 +45,16 @@ interface ThermalReceiptPrintRequest {
 interface ThermalImagePrintRequest {
     imageBase64: string
     workspaceId: string
+    maxWidth?: number
+}
+
+const THERMAL_MAX_WIDTHS = { 58: 384, 80: 576 } as const
+
+export async function getThermalPrinterMaxWidth(workspaceId: string): Promise<number> {
+    const printer = await getStoredSelectedThermalPrinter(workspaceId)
+    if (!printer) return THERMAL_MAX_WIDTHS[80]
+    const rollWidth = printer.roll_width_mm ?? inferRollWidthFromPaperSize(printer.paper_size)
+    return THERMAL_MAX_WIDTHS[rollWidth as keyof typeof THERMAL_MAX_WIDTHS] ?? THERMAL_MAX_WIDTHS[80]
 }
 
 const DEFAULT_PAPER_SIZE: PaperSize = 'Mm80'
@@ -332,7 +342,7 @@ export const printService = {
         })
     },
 
-    async silentPrintImage({ imageBase64, workspaceId }: ThermalImagePrintRequest): Promise<boolean> {
+    async silentPrintImage({ imageBase64, workspaceId, maxWidth: maxWidthParam }: ThermalImagePrintRequest): Promise<boolean> {
         if (!isDesktop()) return false
         if (!workspaceId) return false
 
@@ -341,8 +351,7 @@ export const printService = {
             throw new Error('No thermal printer selected for this workspace on this device.')
         }
 
-        const rollWidth = printer.roll_width_mm ?? inferRollWidthFromPaperSize(printer.paper_size)
-        const maxWidth = rollWidth === 58 ? 384 : 512
+        const maxWidth = maxWidthParam ?? await getThermalPrinterMaxWidth(workspaceId)
 
         const printJob: PrintJobRequest = {
             printer: printer.name,

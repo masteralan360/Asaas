@@ -227,26 +227,30 @@ export function CheckoutSuccessModal({
                 try {
                     if (primaryReceiptLayout && primaryReceiptTarget && printRef.current) {
                         // Capture the custom template as an image and print it via thermal printer
+                        const maxWidth = await printService.getThermalPrinterMaxWidth(
+                            activeWorkspace?.id || user.workspaceId
+                        )
                         const sourceNode = printRef.current
                         const clone = sourceNode.cloneNode(true) as HTMLElement
                         clone.style.position = 'fixed'
                         clone.style.left = '-9999px'
                         clone.style.top = '0'
-                        clone.style.width = '800px'
+                        clone.style.width = `${maxWidth}px`
                         clone.style.backgroundColor = '#ffffff'
                         clone.style.zIndex = '-1'
                         document.body.appendChild(clone)
 
                         try {
                             const canvas = await html2canvas(clone, {
-                                scale: 2,
+                                scale: 1,
                                 useCORS: true,
                                 backgroundColor: '#ffffff'
                             })
                             const imageBase64 = canvas.toDataURL('image/png')
                             handledByThermalPrinter = await printService.silentPrintImage({
                                 imageBase64,
-                                workspaceId: activeWorkspace?.id || user.workspaceId
+                                workspaceId: activeWorkspace?.id || user.workspaceId,
+                                maxWidth
                             })
                         } finally {
                             document.body.removeChild(clone)
