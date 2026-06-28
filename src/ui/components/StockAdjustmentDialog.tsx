@@ -380,9 +380,9 @@ export function StockAdjustmentDialog({
                                             ? t("stockAdjustments.dialog.adjustment.selectPrompt", "Select a product and storage to load the current quantity.")
                                             : targetQuantity === null
                                                 ? t("stockAdjustments.dialog.adjustment.enterQuantity", "Enter the final quantity you want after this adjustment.")
-                                                : quantitiesEqual(quantityDelta, 0)
-                                                    ? t("stockAdjustments.dialog.adjustment.noChange", "No change yet. Adjust the quantity above to create an entry.")
-                                                    : quantityDelta && quantityDelta > 0
+: quantitiesEqual(quantityDelta ?? 0, 0)
+                                                     ? t("stockAdjustments.dialog.adjustment.noChange", "No change yet. Adjust the quantity above to create an entry.")
+                                                     : quantityDelta && quantityDelta > 0
                                                         ? t("stockAdjustments.dialog.adjustment.increaseBy", "Increase by {{delta}}. {{available}} -> {{target}}.", { delta: formatNumericInput(String(quantityDelta)), available: formatNumericInput(String(availableQuantity ?? 0)), target: formatNumericInput(String(targetQuantity)) })
                                                         : t("stockAdjustments.dialog.adjustment.decreaseBy", "Decrease by {{delta}}. {{available}} -> {{target}}.", { delta: formatNumericInput(String(Math.abs(quantityDelta ?? 0))), available: formatNumericInput(String(availableQuantity ?? 0)), target: formatNumericInput(String(targetQuantity ?? 0)) })}
                                     </div>
