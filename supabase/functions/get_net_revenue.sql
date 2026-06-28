@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION public.get_net_revenue(p_workspace_id uuid DEFAULT NULL::uuid, p_start_date timestamp with time zone DEFAULT NULL::timestamp with time zone, p_end_date timestamp with time zone DEFAULT NULL::timestamp with time zone)
- RETURNS TABLE(total_revenue numeric, total_cost numeric, net_profit numeric, total_sales_count bigint, total_items_count bigint)
+ RETURNS TABLE(total_revenue numeric, total_cost numeric, net_profit numeric, total_sales_count bigint, total_items_count numeric)
  LANGUAGE plpgsql
  SECURITY DEFINER
 AS $function$
@@ -10,11 +10,11 @@ BEGIN
 
     RETURN QUERY
     SELECT 
-        COALESCE(SUM((si.quantity - si.returned_quantity) * COALESCE(si.converted_unit_price, si.unit_price)), 0) as total_revenue,
-        COALESCE(SUM((si.quantity - si.returned_quantity) * COALESCE(si.converted_cost_price, si.cost_price)), 0) as total_cost,
-        COALESCE(SUM(((si.quantity - si.returned_quantity) * COALESCE(si.converted_unit_price, si.unit_price)) - ((si.quantity - si.returned_quantity) * COALESCE(si.converted_cost_price, si.cost_price))), 0) as net_profit,
+        COALESCE(SUM((si.quantity - COALESCE(si.returned_quantity, 0)) * COALESCE(si.converted_unit_price, si.unit_price)), 0) as total_revenue,
+        COALESCE(SUM((si.quantity - COALESCE(si.returned_quantity, 0)) * COALESCE(si.converted_cost_price, si.cost_price)), 0) as total_cost,
+        COALESCE(SUM(((si.quantity - COALESCE(si.returned_quantity, 0)) * COALESCE(si.converted_unit_price, si.unit_price)) - ((si.quantity - COALESCE(si.returned_quantity, 0)) * COALESCE(si.converted_cost_price, si.cost_price))), 0) as net_profit,
         COUNT(DISTINCT s.id) as total_sales_count,
-        SUM(si.quantity - si.returned_quantity) as total_items_count
+        COALESCE(SUM(si.quantity - COALESCE(si.returned_quantity, 0)), 0) as total_items_count
     FROM public.sales s
     INNER JOIN public.sale_items si ON s.id = si.sale_id
     WHERE s.workspace_id = p_workspace_id

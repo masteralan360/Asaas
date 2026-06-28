@@ -53,6 +53,11 @@ function countDigits(value: string) {
     return value.replace(/\D/g, '').length
 }
 
+function roundQuantity(value: number) {
+    const rounded = Math.round(value * 1_000_000) / 1_000_000
+    return Object.is(rounded, -0) ? 0 : rounded
+}
+
 function resolveFunctionsBaseUrl() {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     if (!supabaseUrl) {
@@ -146,11 +151,11 @@ Deno.serve(async (req) => {
             const productId = sanitizeMarketplaceText(item.product_id, 80)
             const quantity = Number(item.quantity)
 
-            if (!productId || !Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(quantity)) {
+            if (!productId || !Number.isFinite(quantity) || quantity <= 0) {
                 return errorResponse('Order items are invalid')
             }
 
-            normalizedItems.set(productId, (normalizedItems.get(productId) ?? 0) + quantity)
+            normalizedItems.set(productId, roundQuantity((normalizedItems.get(productId) ?? 0) + quantity))
         }
 
         if (normalizedItems.size === 0) {

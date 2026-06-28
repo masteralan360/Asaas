@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { supabase } from '@/auth/supabase'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { isOnline } from '@/lib/network'
+import { QUANTITY_EPSILON, isPositiveQuantity, roundQuantity } from '@/lib/quantity'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { generateId, toCamelCase, toSnakeCase } from '@/lib/utils'
@@ -69,7 +70,7 @@ function normalizeTransactionInput(input: InventoryTransferTransactionInput) {
         sourceBatchId: allocation.sourceBatchId.trim(),
         destinationBatchId: allocation.destinationBatchId.trim(),
         batchNumber: allocation.batchNumber.trim(),
-        quantity: Number(allocation.quantity)
+        quantity: roundQuantity(Number(allocation.quantity))
     })) ?? null
     const transferType = input.transferType
     const reorderRuleId = input.reorderRuleId?.trim() || null
@@ -96,8 +97,8 @@ function normalizeTransactionInput(input: InventoryTransferTransactionInput) {
         throw new Error('Source and destination storages must be different')
     }
 
-    if (!Number.isInteger(quantity) || quantity <= 0) {
-        throw new Error('Transfer quantity must be a whole number greater than zero')
+    if (!isPositiveQuantity(quantity)) {
+        throw new Error('Transfer quantity must be greater than zero')
     }
 
     if (transferType !== 'manual' && transferType !== 'automation') {
@@ -109,8 +110,8 @@ function normalizeTransactionInput(input: InventoryTransferTransactionInput) {
             throw new Error('Batch allocation is incomplete')
         }
 
-        if (!Number.isInteger(allocation.quantity) || allocation.quantity <= 0) {
-            throw new Error('Batch allocation quantity must be a whole number greater than zero')
+        if (!isPositiveQuantity(allocation.quantity)) {
+            throw new Error('Batch allocation quantity must be greater than zero')
         }
     }
 
@@ -118,7 +119,7 @@ function normalizeTransactionInput(input: InventoryTransferTransactionInput) {
         (sum, allocation) => sum + allocation.quantity,
         0
     )
-    if (allocatedQuantity > quantity) {
+    if (allocatedQuantity - quantity > QUANTITY_EPSILON) {
         throw new Error('Batch allocation quantity exceeds transfer quantity')
     }
 
@@ -126,7 +127,7 @@ function normalizeTransactionInput(input: InventoryTransferTransactionInput) {
         productId,
         sourceStorageId,
         destinationStorageId,
-        quantity,
+        quantity: roundQuantity(quantity),
         batchAllocations,
         transferType,
         reorderRuleId,

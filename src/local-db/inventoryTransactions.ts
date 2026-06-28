@@ -3,6 +3,12 @@ import { useLiveQuery } from "dexie-react-hooks";
 
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { isOnline } from "@/lib/network";
+import {
+  QUANTITY_EPSILON,
+  isNonNegativeQuantity,
+  quantitiesEqual,
+  roundQuantity,
+} from "@/lib/quantity";
 import { getSupabaseClientForTable } from "@/lib/supabaseSchema";
 import { runSupabaseAction } from "@/lib/supabaseRequest";
 import { generateId, toCamelCase, toSnakeCase } from "@/lib/utils";
@@ -119,19 +125,19 @@ function normalizeTransactionInput(input: InventoryTransactionInput) {
     throw new Error("Transaction type is invalid");
   }
 
-  if (!Number.isInteger(quantityDelta) || quantityDelta === 0) {
-    throw new Error("Quantity delta must be a non-zero whole number");
+  if (!Number.isFinite(quantityDelta) || Math.abs(quantityDelta) <= QUANTITY_EPSILON) {
+    throw new Error("Quantity delta must be non-zero");
   }
 
-  if (!Number.isInteger(previousQuantity) || previousQuantity < 0) {
+  if (!isNonNegativeQuantity(previousQuantity)) {
     throw new Error("Previous quantity is invalid");
   }
 
-  if (!Number.isInteger(newQuantity) || newQuantity < 0) {
+  if (!isNonNegativeQuantity(newQuantity)) {
     throw new Error("New quantity is invalid");
   }
 
-  if (previousQuantity + quantityDelta !== newQuantity) {
+  if (!quantitiesEqual(previousQuantity + quantityDelta, newQuantity)) {
     throw new Error("Transaction quantities are inconsistent");
   }
 
@@ -146,9 +152,9 @@ function normalizeTransactionInput(input: InventoryTransactionInput) {
     productId,
     storageId,
     transactionType,
-    quantityDelta,
-    previousQuantity,
-    newQuantity,
+    quantityDelta: roundQuantity(quantityDelta),
+    previousQuantity: roundQuantity(previousQuantity),
+    newQuantity: roundQuantity(newQuantity),
     adjustmentReason:
       transactionType === "stock_adjustment" ? adjustmentReason : null,
     referenceId: normalizeOptionalString(input.referenceId),

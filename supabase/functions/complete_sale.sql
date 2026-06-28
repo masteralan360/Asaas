@@ -16,7 +16,7 @@ DECLARE
     v_max_discount_percent INTEGER := 100;
     v_product_id UUID;
     v_storage_id UUID;
-    v_quantity INTEGER;
+    v_quantity NUMERIC;
     v_item_index INTEGER := 0;
     v_sales_exchange JSONB;
     v_original_currency TEXT;
@@ -25,7 +25,7 @@ DECLARE
     v_negotiated_price NUMERIC;
     v_discount_percent NUMERIC;
     v_converted_unit_price NUMERIC;
-    v_inventory_snapshot INTEGER;
+    v_inventory_snapshot NUMERIC;
     v_items_total NUMERIC := 0;
     v_flags TEXT[] := ARRAY[]::TEXT[];
     v_has_mixed_currency BOOLEAN := false;
@@ -34,8 +34,8 @@ DECLARE
     v_system_review_status TEXT := 'approved';
     v_system_review_reason TEXT := NULL;
     v_has_active_batches BOOLEAN := false;
-    v_batch_remaining INTEGER := 0;
-    v_allocated_quantity INTEGER := 0;
+    v_batch_remaining NUMERIC := 0;
+    v_allocated_quantity NUMERIC := 0;
     v_batch_allocations JSONB := '[]'::jsonb;
     v_plan TEXT;
 BEGIN
@@ -86,7 +86,7 @@ BEGIN
     FOR item IN SELECT * FROM jsonb_array_elements(COALESCE(payload->'items', '[]'::jsonb))
     LOOP
         v_item_index := v_item_index + 1;
-        v_quantity := COALESCE((item->>'quantity')::INTEGER, 0);
+        v_quantity := COALESCE((item->>'quantity')::NUMERIC, 0);
         v_converted_unit_price := COALESCE((item->>'converted_unit_price')::NUMERIC, (item->>'unit_price')::NUMERIC, 0);
         v_items_total := v_items_total + (v_converted_unit_price * v_quantity);
 
@@ -125,7 +125,7 @@ BEGIN
             v_has_mixed_currency := true;
         END IF;
 
-        v_inventory_snapshot := COALESCE((item->>'inventory_snapshot')::INTEGER, 0);
+        v_inventory_snapshot := COALESCE((item->>'inventory_snapshot')::NUMERIC, 0);
         IF v_quantity > v_inventory_snapshot THEN
             v_flags := array_append(
                 v_flags,
@@ -227,7 +227,7 @@ BEGIN
     FOR item IN SELECT * FROM jsonb_array_elements(COALESCE(payload->'items', '[]'::jsonb))
     LOOP
         v_product_id := (item->>'product_id')::UUID;
-        v_quantity := COALESCE((item->>'quantity')::INTEGER, 0);
+        v_quantity := COALESCE((item->>'quantity')::NUMERIC, 0);
         v_storage_id := NULLIF(item->>'storage_id', '')::UUID;
         v_has_active_batches := false;
         v_batch_remaining := v_quantity;
@@ -343,7 +343,7 @@ BEGIN
             COALESCE((item->>'converted_unit_price')::NUMERIC, (item->>'unit_price')::NUMERIC),
             COALESCE(item->>'settlement_currency', 'usd'),
             (item->>'negotiated_price')::NUMERIC,
-            COALESCE((item->>'inventory_snapshot')::INTEGER, 0),
+            COALESCE((item->>'inventory_snapshot')::NUMERIC, 0),
             CASE
                 WHEN v_has_active_batches AND jsonb_array_length(v_batch_allocations) > 0 THEN v_batch_allocations
                 ELSE NULL

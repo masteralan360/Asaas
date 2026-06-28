@@ -3,7 +3,7 @@ CREATE TABLE public.inventory (
   workspace_id uuid NOT NULL,
   product_id uuid NOT NULL,
   storage_id uuid NOT NULL,
-  quantity integer NOT NULL DEFAULT 0,
+  quantity numeric NOT NULL DEFAULT 0,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   version integer NOT NULL DEFAULT 1,

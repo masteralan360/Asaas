@@ -67,6 +67,7 @@ import {
     calculateStockBatchUnitCost,
     getStockBatchSalePlans,
     planStockBatchTransfer,
+    splitStockBatchAllocationsForReturn,
     shouldCreatePurchaseCostBatch
 } from './stockBatches'
 
@@ -220,6 +221,17 @@ describe('multi-line stock batch allocation', () => {
         expect(plan.requestedQuantity).toBe(9)
         expect(plan.allocations.reduce((sum, allocation) => sum + allocation.quantity, 0)).toBe(7)
     })
+
+    it('allocates fractional sale quantities from batches', async () => {
+        const [plan] = await getStockBatchSalePlans([
+            { productId: 'product-1', storageId: 'storage-1', quantity: 2.5 }
+        ])
+
+        expect(plan.requestedQuantity).toBe(2.5)
+        expect(plan.allocations).toEqual([
+            expect.objectContaining({ batchId: 'batch-early', quantity: 2.5 })
+        ])
+    })
 })
 
 describe('stock batch transfer planning', () => {
@@ -280,6 +292,20 @@ describe('stock batch transfer planning', () => {
         expect(plan.unbatchedQuantity).toBe(3)
     })
 
+    it('plans fractional transfer quantities', () => {
+        const plan = planStockBatchTransfer({
+            inventoryQuantity: 8,
+            batches,
+            requestedQuantity: 3.5
+        })
+
+        expect(plan.batchAllocations).toEqual([
+            expect.objectContaining({ batchId: 'batch-early', quantity: 3 }),
+            expect.objectContaining({ batchId: 'batch-late', quantity: 0.5 })
+        ])
+        expect(plan.unbatchedQuantity).toBe(0)
+    })
+
     it('rejects regular-stock quantity beyond the unbatched balance', () => {
         expect(() => planStockBatchTransfer({
             inventoryQuantity: 8,
@@ -287,5 +313,24 @@ describe('stock batch transfer planning', () => {
             requestedQuantity: 4,
             selectedBatchAllocations: []
         })).toThrow('Insufficient regular stock')
+    })
+})
+
+describe('stock batch return splitting', () => {
+    it('splits fractional batch allocations for partial returns', () => {
+        const result = splitStockBatchAllocationsForReturn([
+            {
+                batchId: 'batch-early',
+                batchNumber: 'EARLY',
+                quantity: 2.5
+            }
+        ], 1.25)
+
+        expect(result.restoredAllocations).toEqual([
+            expect.objectContaining({ batchId: 'batch-early', quantity: 1.25 })
+        ])
+        expect(result.remainingAllocations).toEqual([
+            expect.objectContaining({ batchId: 'batch-early', quantity: 1.25 })
+        ])
     })
 })

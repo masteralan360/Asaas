@@ -70,6 +70,7 @@ import {
   formatLocalDateValue,
   parseLocalDateValue,
 } from "@/lib/utils";
+import { QUANTITY_EPSILON, isPositiveQuantity } from "@/lib/quantity";
 
 interface RuleFormState {
   productId: string;
@@ -117,6 +118,12 @@ type InventoryTransferTab = "manual" | "automation";
 
 const INVENTORY_TRANSFER_PENDING_TAB_KEY = "inventory-transfer.pending-tab";
 const INVENTORY_TRANSFER_TAB_EVENT = "inventory-transfer:open-tab";
+
+const DYNAMIC_UNITS = ["m²", "mÂ²", "Kg"];
+
+function getQuantityStep(unit?: string | null) {
+  return DYNAMIC_UNITS.includes(unit ?? "") ? "0.01" : "1";
+}
 
 function isInventoryTransferTab(
   value: string | null | undefined,
@@ -571,11 +578,10 @@ export default function InventoryTransfer() {
 
   const hasInvalidTransferQuantity = selectedTransferLines.some(
     (line) =>
-      !Number.isInteger(line.quantity) ||
-      line.quantity <= 0 ||
-      line.quantity > line.availableQuantity,
+      !isPositiveQuantity(line.quantity) ||
+      line.quantity - line.availableQuantity > QUANTITY_EPSILON,
   ) || selectedTransferItems.some(
-    (item) => item.quantity > item.availableQuantity,
+    (item) => item.quantity - item.availableQuantity > QUANTITY_EPSILON,
   );
   const selectedProductCount = selectedTransferItems.length;
   const areAllProductRowsSelected =
@@ -1112,13 +1118,17 @@ export default function InventoryTransfer() {
   const targetDisplayName = getStorageDisplayName(targetStorage);
   const sourceWorkspaceDisplayName = getWorkspaceNameById(sourceWorkspaceId);
   const targetWorkspaceDisplayName = getWorkspaceNameById(targetWorkspaceId);
+  const ruleQuantityStep = getQuantityStep(selectedProduct?.unit);
+  const ruleMinStockLevel = Number(ruleForm.minStockLevel);
+  const ruleTransferQuantity = Number(ruleForm.transferQuantity);
 
   const isRuleFormInvalid =
     !ruleForm.productId ||
     !ruleForm.sourceStorageId ||
     !ruleForm.destinationStorageId ||
-    !ruleForm.minStockLevel ||
-    !ruleForm.transferQuantity ||
+    !Number.isFinite(ruleMinStockLevel) ||
+    ruleMinStockLevel < 0 ||
+    !isPositiveQuantity(ruleTransferQuantity) ||
     (!ruleForm.isIndefinite && !ruleForm.expiresOn);
 
   return (
@@ -1367,9 +1377,9 @@ export default function InventoryTransfer() {
                             <div className="w-24">
                               <Input
                                 type="number"
-                                min="1"
+                                min={getQuantityStep(product.unit)}
                                 max={productLine.availableQuantity}
-                                step="1"
+                                step={getQuantityStep(product.unit)}
                                 value={transferQuantities[productLine.key] || ""}
                                 disabled={!productChecked}
                                 onChange={(event) =>
@@ -1439,9 +1449,9 @@ export default function InventoryTransfer() {
                                     </Label>
                                     <Input
                                       type="number"
-                                      min="1"
+                                      min={getQuantityStep(product.unit)}
                                       max={line.availableQuantity}
-                                      step="1"
+                                      step={getQuantityStep(product.unit)}
                                       value={transferQuantities[line.key] || ""}
                                       disabled={!isSelected}
                                       onChange={(event) =>
@@ -2093,7 +2103,7 @@ export default function InventoryTransfer() {
                           id="rule-min-stock"
                           type="number"
                           min="0"
-                          step="1"
+                          step={ruleQuantityStep}
                           value={ruleForm.minStockLevel}
                           onChange={(event) =>
                             setRuleForm((current) => ({
@@ -2120,8 +2130,8 @@ export default function InventoryTransfer() {
                         <Input
                           id="rule-transfer-quantity"
                           type="number"
-                          min="1"
-                          step="1"
+                          min={ruleQuantityStep}
+                          step={ruleQuantityStep}
                           value={ruleForm.transferQuantity}
                           onChange={(event) =>
                             setRuleForm((current) => ({

@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION public.get_top_products(p_workspace_id uuid DEFAULT NULL::uuid, p_start_date timestamp with time zone DEFAULT NULL::timestamp with time zone, p_end_date timestamp with time zone DEFAULT NULL::timestamp with time zone, p_limit integer DEFAULT 10)
- RETURNS TABLE(product_id uuid, product_name text, product_sku text, total_quantity_sold bigint, total_revenue numeric, total_sales_count bigint)
+ RETURNS TABLE(product_id uuid, product_name text, product_sku text, total_quantity_sold numeric, total_revenue numeric, total_sales_count bigint)
  LANGUAGE plpgsql
  SECURITY DEFINER
 AS $function$
@@ -13,8 +13,8 @@ BEGIN
         pr.id as product_id,
         pr.name as product_name,
         pr.sku as product_sku,
-        SUM(si.quantity - si.returned_quantity) as total_quantity_sold,
-        COALESCE(SUM((si.quantity - si.returned_quantity) * COALESCE(si.converted_unit_price, si.unit_price)), 0) as total_revenue,
+        COALESCE(SUM(si.quantity - COALESCE(si.returned_quantity, 0)), 0) as total_quantity_sold,
+        COALESCE(SUM((si.quantity - COALESCE(si.returned_quantity, 0)) * COALESCE(si.converted_unit_price, si.unit_price)), 0) as total_revenue,
         COUNT(DISTINCT si.sale_id) as total_sales_count
     FROM public.sale_items si
     INNER JOIN public.sales s ON si.sale_id = s.id

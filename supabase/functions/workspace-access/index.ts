@@ -1016,13 +1016,25 @@ function buildWorkspaceStorageProductKey(workspaceId: string, productId: string,
     return `${workspaceId}::${productId}::${storageId}`
 }
 
+const QUANTITY_EPSILON = 0.000001
+
+function roundQuantity(value: number) {
+    const rounded = Math.round(value * 1_000_000) / 1_000_000
+    return Object.is(rounded, -0) ? 0 : rounded
+}
+
+function isPositiveQuantity(value: unknown) {
+    const quantity = Number(value)
+    return Number.isFinite(quantity) && quantity > QUANTITY_EPSILON
+}
+
 function normalizeSkuKey(value?: string | null) {
     return value?.trim().toLowerCase() ?? ''
 }
 
 function parseTransferQuantity(value: unknown) {
     const quantity = Number(value)
-    return Number.isInteger(quantity) ? quantity : NaN
+    return isPositiveQuantity(quantity) ? roundQuantity(quantity) : NaN
 }
 
 function sortTransferBatches(batches: SourceStockBatchRow[]) {
@@ -1057,37 +1069,37 @@ function planTransferBatchAllocations(input: {
     selectedBatchAllocations?: Array<{ batchId: string; quantity: number }>
 }) {
     const activeBatches = sortTransferBatches(
-        input.batches.filter((batch) => !batch.is_deleted && Number(batch.quantity) > 0)
+        input.batches.filter((batch) => !batch.is_deleted && Number(batch.quantity) > QUANTITY_EPSILON)
     )
     const batchQuantity = activeBatches.reduce(
         (sum, batch) => sum + Number(batch.quantity),
         0
     )
-    const unbatchedAvailable = Math.max(input.inventoryQuantity - batchQuantity, 0)
+    const unbatchedAvailable = roundQuantity(Math.max(input.inventoryQuantity - batchQuantity, 0))
 
     if (input.selectedBatchAllocations === undefined) {
         const allocations: PlannedTransferBatchAllocation[] = []
         let remaining = input.requestedQuantity
 
         for (const batch of activeBatches) {
-            if (remaining <= 0) {
+            if (remaining <= QUANTITY_EPSILON) {
                 break
             }
 
             const quantity = Math.min(Number(batch.quantity), remaining)
-            if (quantity > 0) {
+            if (quantity > QUANTITY_EPSILON) {
                 allocations.push(toPlannedBatchAllocation(batch, quantity))
-                remaining -= quantity
+                remaining = roundQuantity(remaining - quantity)
             }
         }
 
-        if (remaining > unbatchedAvailable) {
+        if (remaining - unbatchedAvailable > QUANTITY_EPSILON) {
             throw new Error('Insufficient regular stock in source storage')
         }
 
         return {
             allocations,
-            unbatchedQuantity: remaining
+            unbatchedQuantity: roundQuantity(remaining)
         }
     }
 
@@ -1095,7 +1107,7 @@ function planTransferBatchAllocations(input: {
     for (const selection of input.selectedBatchAllocations) {
         selectedByBatchId.set(
             selection.batchId,
-            (selectedByBatchId.get(selection.batchId) ?? 0) + selection.quantity
+            roundQuantity((selectedByBatchId.get(selection.batchId) ?? 0) + selection.quantity)
         )
     }
 
@@ -1106,7 +1118,7 @@ function planTransferBatchAllocations(input: {
             throw new Error('One or more selected batches are no longer available')
         }
 
-        if (quantity > Number(batch.quantity)) {
+        if (quantity - Number(batch.quantity) > QUANTITY_EPSILON) {
             throw new Error(`Batch ${batch.batch_number} does not have enough stock`)
         }
 
@@ -1117,12 +1129,12 @@ function planTransferBatchAllocations(input: {
         0
     )
 
-    if (selectedBatchQuantity > input.requestedQuantity) {
+    if (selectedBatchQuantity - input.requestedQuantity > QUANTITY_EPSILON) {
         throw new Error('Selected batch quantity exceeds transfer quantity')
     }
 
-    const unbatchedQuantity = input.requestedQuantity - selectedBatchQuantity
-    if (unbatchedQuantity > unbatchedAvailable) {
+    const unbatchedQuantity = roundQuantity(input.requestedQuantity - selectedBatchQuantity)
+    if (unbatchedQuantity - unbatchedAvailable > QUANTITY_EPSILON) {
         throw new Error('Insufficient regular stock in source storage')
     }
 
@@ -1415,13 +1427,13 @@ async function handleTransferInventoryBetweenWorkspaces(
     }
 
     for (const item of normalizedItems) {
-        if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
-            return errorResponse('Transfer quantity must be a whole number greater than zero', 400)
+        if (!isPositiveQuantity(item.quantity)) {
+            return errorResponse('Transfer quantity must be greater than zero', 400)
         }
 
         for (const allocation of item.batchAllocations ?? []) {
-            if (!Number.isInteger(allocation.quantity) || allocation.quantity <= 0) {
-                return errorResponse('Batch transfer quantity must be a whole number greater than zero', 400)
+            if (!isPositiveQuantity(allocation.quantity)) {
+                return errorResponse('Batch transfer quantity must be greater than zero', 400)
             }
         }
     }
@@ -1864,7 +1876,7 @@ async function handleTransferInventoryBetweenWorkspaces(
         const availableQuantity = Number(sourceRow?.quantity ?? 0)
         const requestedQuantity = quantityBySourceProductId.get(product.id) ?? 0
 
-        if (availableQuantity < requestedQuantity) {
+        if (requestedQuantity - availableQuantity > QUANTITY_EPSILON) {
             await cleanupInsertedDestinationEntities()
             return errorResponse(`Insufficient inventory for "${product.name}" in the selected source storage`, 400)
         }
@@ -2034,26 +2046,26 @@ async function handleTransferInventoryBetweenWorkspaces(
         const sourcePositionKey = buildWorkspaceStorageProductKey(sourceWorkspaceId, sourceProduct.id, sourceStorageId)
         const previousSourceRow = inventoryRowsByPositionKey.get(sourcePositionKey)
         const previousSourceQuantity = Number(previousSourceRow?.quantity ?? 0)
-        const nextSourceQuantity = previousSourceQuantity - item.quantity
+        const nextSourceQuantity = roundQuantity(previousSourceQuantity - item.quantity)
 
         const updatedSourceRow: SourceInventoryRow = previousSourceRow
             ? {
                 ...previousSourceRow,
-                quantity: Math.max(nextSourceQuantity, 0),
+                quantity: roundQuantity(Math.max(nextSourceQuantity, 0)),
                 updated_at: transactionTimestamp,
                 version: Number(previousSourceRow.version ?? 0) + 1,
-                is_deleted: nextSourceQuantity <= 0
+                is_deleted: nextSourceQuantity <= QUANTITY_EPSILON
             }
             : {
                 id: crypto.randomUUID(),
                 workspace_id: sourceWorkspaceId,
                 product_id: sourceProduct.id,
                 storage_id: sourceStorageId,
-                quantity: Math.max(nextSourceQuantity, 0),
+                quantity: roundQuantity(Math.max(nextSourceQuantity, 0)),
                 created_at: transactionTimestamp,
                 updated_at: transactionTimestamp,
                 version: 1,
-                is_deleted: nextSourceQuantity <= 0
+                is_deleted: nextSourceQuantity <= QUANTITY_EPSILON
             }
 
         if (!previousSourceRow) {
@@ -2067,7 +2079,7 @@ async function handleTransferInventoryBetweenWorkspaces(
         const destinationPositionKey = buildWorkspaceStorageProductKey(destinationWorkspaceId, destinationProductId, destinationStorageId)
         const previousDestinationRow = inventoryRowsByPositionKey.get(destinationPositionKey)
         const previousDestinationQuantity = Number(previousDestinationRow?.quantity ?? 0)
-        const nextDestinationQuantity = previousDestinationQuantity + item.quantity
+        const nextDestinationQuantity = roundQuantity(previousDestinationQuantity + item.quantity)
 
         const updatedDestinationRow: SourceInventoryRow = previousDestinationRow
             ? {
@@ -2112,16 +2124,16 @@ async function handleTransferInventoryBetweenWorkspaces(
             }
 
             const sourceBatchQuantity = Number(sourceBatch.quantity)
-            const nextSourceBatchQuantity = sourceBatchQuantity - allocation.quantity
-            if (nextSourceBatchQuantity < 0) {
+            const nextSourceBatchQuantity = roundQuantity(sourceBatchQuantity - allocation.quantity)
+            if (nextSourceBatchQuantity < -QUANTITY_EPSILON) {
                 await cleanupInsertedDestinationEntities()
                 return errorResponse(`Batch ${allocation.batchNumber} does not have enough stock`, 400)
             }
 
             const updatedSourceBatch: SourceStockBatchRow = {
                 ...sourceBatch,
-                quantity: nextSourceBatchQuantity,
-                is_deleted: nextSourceBatchQuantity <= 0,
+                quantity: roundQuantity(Math.max(nextSourceBatchQuantity, 0)),
+                is_deleted: nextSourceBatchQuantity <= QUANTITY_EPSILON,
                 updated_at: transactionTimestamp,
                 version: Number(sourceBatch.version ?? 0) + 1
             }
@@ -2144,7 +2156,7 @@ async function handleTransferInventoryBetweenWorkspaces(
             const destinationBatch: SourceStockBatchRow = existingDestinationBatch
                 ? {
                     ...existingDestinationBatch,
-                    quantity: Number(existingDestinationBatch.quantity) + allocation.quantity,
+                    quantity: roundQuantity(Number(existingDestinationBatch.quantity) + allocation.quantity),
                     is_deleted: false,
                     updated_at: transactionTimestamp,
                     version: Number(existingDestinationBatch.version ?? 0) + 1
@@ -2189,7 +2201,7 @@ async function handleTransferInventoryBetweenWorkspaces(
             transaction_type: 'transfer_out',
             quantity_delta: -item.quantity,
             previous_quantity: previousSourceQuantity,
-            new_quantity: Math.max(nextSourceQuantity, 0),
+            new_quantity: roundQuantity(Math.max(nextSourceQuantity, 0)),
             adjustment_reason: null,
             reference_id: operationReferenceId,
             reference_type: 'transfer',
@@ -2209,7 +2221,7 @@ async function handleTransferInventoryBetweenWorkspaces(
             transaction_type: 'transfer_in',
             quantity_delta: item.quantity,
             previous_quantity: previousDestinationQuantity,
-            new_quantity: nextDestinationQuantity,
+            new_quantity: roundQuantity(nextDestinationQuantity),
             adjustment_reason: null,
             reference_id: operationReferenceId,
             reference_type: 'transfer',
@@ -2310,7 +2322,7 @@ async function handleTransferInventoryBetweenWorkspaces(
         }
 
         const activeRows = activeInventoryRowsByWorkspaceProductKey.get(productKey) ?? []
-        const totalQuantity = activeRows.reduce((sum, row) => sum + Number(row.quantity ?? 0), 0)
+        const totalQuantity = roundQuantity(activeRows.reduce((sum, row) => sum + Number(row.quantity ?? 0), 0))
         const resolvedStorageId = activeRows.length === 1 ? activeRows[0].storage_id : null
         updatedProductsToUpsert.push({
             id: product.id,

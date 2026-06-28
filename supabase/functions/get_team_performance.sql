@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION public.get_team_performance(p_workspace_id uuid DEFAULT NULL::uuid, p_start_date timestamp with time zone DEFAULT NULL::timestamp with time zone, p_end_date timestamp with time zone DEFAULT NULL::timestamp with time zone)
- RETURNS TABLE(cashier_id uuid, cashier_name text, total_sales_count bigint, total_revenue numeric, total_items_count bigint, average_sale_value numeric)
+ RETURNS TABLE(cashier_id uuid, cashier_name text, total_sales_count bigint, total_revenue numeric, total_items_count numeric, average_sale_value numeric)
  LANGUAGE plpgsql
  SECURITY DEFINER
 AS $function$
@@ -13,8 +13,8 @@ BEGIN
         s.cashier_id,
         COALESCE(p.name, 'Unknown') as cashier_name,
         COUNT(DISTINCT s.id) as total_sales_count,
-        COALESCE(SUM((si.quantity - si.returned_quantity) * COALESCE(si.converted_unit_price, si.unit_price)), 0) as total_revenue,
-        SUM(si.quantity - si.returned_quantity) as total_items_count,
+        COALESCE(SUM((si.quantity - COALESCE(si.returned_quantity, 0)) * COALESCE(si.converted_unit_price, si.unit_price)), 0) as total_revenue,
+        COALESCE(SUM(si.quantity - COALESCE(si.returned_quantity, 0)), 0) as total_items_count,
         COALESCE(AVG(s.total_amount), 0) as average_sale_value
     FROM public.sales s
     INNER JOIN public.sale_items si ON s.id = si.sale_id

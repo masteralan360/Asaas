@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { isOnline } from '@/lib/network'
+import { QUANTITY_EPSILON, isPositiveQuantity, quantitiesEqual, roundQuantity } from '@/lib/quantity'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
 import { generateId, toCamelCase, toSnakeCase } from '@/lib/utils'
@@ -54,10 +55,6 @@ function getSyncMetadata(
         syncStatus: 'synced' as const,
         lastSyncedAt: timestamp
     }
-}
-
-function isPositiveQuantity(value: number) {
-    return Number.isFinite(value) && value > 0
 }
 
 function buildInventoryPositionKey(workspaceId: string, productId: string, storageId: string) {
@@ -373,7 +370,7 @@ export async function putInventoryQuantity(
     if (activeRow) {
         const updatedRow: Inventory = {
             ...activeRow,
-            quantity,
+            quantity: roundQuantity(quantity),
             isDeleted: false,
             updatedAt: timestamp,
             version: syncSource === 'remote' ? activeRow.version : activeRow.version + 1,
@@ -387,7 +384,7 @@ export async function putInventoryQuantity(
     if (restorableRow) {
         const restoredRow: Inventory = {
             ...restorableRow,
-            quantity,
+            quantity: roundQuantity(quantity),
             isDeleted: false,
             updatedAt: timestamp,
             version: syncSource === 'remote' ? restorableRow.version : restorableRow.version + 1,
@@ -403,7 +400,7 @@ export async function putInventoryQuantity(
         workspaceId,
         productId,
         storageId,
-        quantity,
+        quantity: roundQuantity(quantity),
         createdAt: timestamp,
         updatedAt: timestamp,
         version: 1,
@@ -426,13 +423,13 @@ export async function syncProductStockSnapshot(
     }
 
     const inventoryRows = await db.inventory.where('productId').equals(productId).and((row) => !row.isDeleted).toArray()
-    const totalQuantity = inventoryRows.reduce((sum, row) => sum + row.quantity, 0)
+    const totalQuantity = roundQuantity(inventoryRows.reduce((sum, row) => sum + row.quantity, 0))
     const resolvedStorageId = inventoryRows.length === 1 ? inventoryRows[0].storageId : null
     const resolvedStorage = resolvedStorageId ? await db.storages.get(resolvedStorageId) : undefined
     const resolvedStorageName = resolvedStorageId ? resolvedStorage?.name : undefined
 
     if (
-        product.quantity === totalQuantity
+        quantitiesEqual(product.quantity, totalQuantity)
         && (product.storageId ?? null) === resolvedStorageId
         && (product.storageName ?? undefined) === resolvedStorageName
     ) {
@@ -531,7 +528,7 @@ export async function setProductInventoryFromLegacyInput(input: {
         const movedRow: Inventory = {
             ...currentRow,
             storageId: input.storageId,
-            quantity: Math.max(0, input.quantity),
+            quantity: roundQuantity(Math.max(0, input.quantity)),
             updatedAt: timestamp,
             version: syncSource === 'remote' ? currentRow.version : currentRow.version + 1,
             ...getSyncMetadata(input.workspaceId, timestamp, syncSource)
@@ -581,7 +578,7 @@ export async function adjustInventoryQuantity(input: {
 
     const updatedProduct = await db.transaction('rw', [db.inventory, db.products, db.storages], async () => {
         const currentQuantity = await getInventoryQuantityForProductStorage(input.productId, input.storageId)
-        const nextQuantity = currentQuantity + input.quantityDelta
+        const nextQuantity = roundQuantity(currentQuantity + input.quantityDelta)
 
         if (nextQuantity < 0) {
             throw new Error('Insufficient inventory')
@@ -663,7 +660,7 @@ async function transferInventoryQuantityCore(
 
     const updatedProduct = await db.transaction('rw', [db.inventory, db.products, db.storages], async () => {
         const sourceQuantity = await getInventoryQuantityForProductStorage(input.productId, input.sourceStorageId)
-        if (sourceQuantity < input.quantity) {
+        if (input.quantity - sourceQuantity > QUANTITY_EPSILON) {
             throw new Error('Insufficient inventory in source storage')
         }
 
@@ -675,7 +672,7 @@ async function transferInventoryQuantityCore(
             input.workspaceId,
             input.productId,
             input.sourceStorageId,
-            sourceQuantity - input.quantity,
+            roundQuantity(sourceQuantity - input.quantity),
             timestamp,
             syncSource
         )
@@ -683,7 +680,7 @@ async function transferInventoryQuantityCore(
             input.workspaceId,
             input.productId,
             input.targetStorageId,
-            targetQuantity + input.quantity,
+            roundQuantity(targetQuantity + input.quantity),
             timestamp,
             syncSource
         )
@@ -771,7 +768,7 @@ export async function transferInventoryQuantityWithBatches(
                     transactionType: 'transfer_out',
                     quantityDelta: -input.quantity,
                     previousQuantity: coreResult.sourcePreviousQuantity,
-                    newQuantity: Math.max(coreResult.sourcePreviousQuantity - input.quantity, 0),
+                    newQuantity: roundQuantity(Math.max(coreResult.sourcePreviousQuantity - input.quantity, 0)),
                     referenceId: input.referenceId ?? null,
                     referenceType,
                     notes: input.notes ?? null,
@@ -783,7 +780,7 @@ export async function transferInventoryQuantityWithBatches(
                     transactionType: 'transfer_in',
                     quantityDelta: input.quantity,
                     previousQuantity: coreResult.targetPreviousQuantity,
-                    newQuantity: coreResult.targetPreviousQuantity + input.quantity,
+                    newQuantity: roundQuantity(coreResult.targetPreviousQuantity + input.quantity),
                     referenceId: input.referenceId ?? null,
                     referenceType,
                     notes: input.notes ?? null,

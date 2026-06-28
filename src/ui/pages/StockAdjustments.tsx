@@ -41,6 +41,7 @@ import {
   parseLocalDateValue,
   sanitizeNumericInput,
 } from "@/lib/utils";
+import { isPositiveQuantity } from "@/lib/quantity";
 import {
     Button,
     Card,
@@ -376,8 +377,7 @@ export function StockAdjustments() {
     !!batchForm.productId &&
     !!batchForm.storageId &&
     !!batchForm.batchNumber.trim() &&
-    Number.isInteger(parseFormattedNumber(batchForm.quantity || "")) &&
-    parseFormattedNumber(batchForm.quantity || "") > 0 &&
+    isPositiveQuantity(parseFormattedNumber(batchForm.quantity || "")) &&
     batchPriceValue !== null &&
     Number.isFinite(batchPriceValue) &&
     batchPriceValue >= 0 &&
@@ -1069,14 +1069,14 @@ export function StockAdjustments() {
                     <Input
                       id="batch-quantity"
                       type="text"
-                      inputMode="numeric"
+                      inputMode="decimal"
                       placeholder="0"
                       value={formatNumericInput(batchForm.quantity)}
                       onChange={(event) =>
                         setBatchForm((current) => ({
                           ...current,
                           quantity: sanitizeNumericInput(event.target.value, {
-                            allowDecimal: false,
+                            allowDecimal: true,
                           }),
                         }))
                       }

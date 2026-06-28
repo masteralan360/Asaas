@@ -21,7 +21,7 @@ DECLARE
   v_order_id text;
   v_order_number text;
   v_customer_name text;
-  v_item_count integer;
+  v_item_count numeric;
   v_amount numeric;
   v_currency text;
 BEGIN
@@ -96,7 +96,7 @@ BEGIN
           v_customer_name := NULLIF(BTRIM(COALESCE(v_payload ->> 'customer_name', '')), '');
 
           v_item_count := CASE
-            WHEN COALESCE(v_payload ->> 'item_count', '') ~ '^-?\d+$' THEN (v_payload ->> 'item_count')::integer
+            WHEN COALESCE(v_payload ->> 'item_count', '') ~ '^-?\d+(\.\d+)?$' THEN (v_payload ->> 'item_count')::numeric
             ELSE NULL
           END;
 

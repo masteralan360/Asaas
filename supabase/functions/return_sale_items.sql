@@ -1,6 +1,6 @@
 CREATE OR REPLACE FUNCTION public.return_sale_items(
   p_sale_item_ids uuid[],
-  p_return_quantities integer[],
+  p_return_quantities numeric[],
   p_return_reason text
 )
 RETURNS jsonb

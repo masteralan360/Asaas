@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { supabase } from '@/auth/supabase'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { isOnline } from '@/lib/network'
+import { isNonNegativeQuantity, isPositiveQuantity, roundQuantity } from '@/lib/quantity'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { generateId, toCamelCase, toSnakeCase } from '@/lib/utils'
@@ -96,12 +97,12 @@ function normalizeRuleInput(input: ReorderTransferRuleInput) {
         throw new Error('Source and destination storages must be different')
     }
 
-    if (!Number.isInteger(minStockLevel) || minStockLevel < 0) {
-        throw new Error('Minimum stock level must be a whole number of zero or more')
+    if (!isNonNegativeQuantity(minStockLevel)) {
+        throw new Error('Minimum stock level must be zero or more')
     }
 
-    if (!Number.isInteger(transferQuantity) || transferQuantity <= 0) {
-        throw new Error('Transfer quantity must be a whole number greater than zero')
+    if (!isPositiveQuantity(transferQuantity)) {
+        throw new Error('Transfer quantity must be greater than zero')
     }
 
     if (!isIndefinite && !expiresOn) {
@@ -116,8 +117,8 @@ function normalizeRuleInput(input: ReorderTransferRuleInput) {
         productId,
         sourceStorageId,
         destinationStorageId,
-        minStockLevel,
-        transferQuantity,
+        minStockLevel: roundQuantity(minStockLevel),
+        transferQuantity: roundQuantity(transferQuantity),
         expiresOn,
         isIndefinite
     }

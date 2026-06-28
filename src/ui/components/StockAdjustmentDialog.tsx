@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Package } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { createStockAdjustment, type Product, type StockAdjustmentReason } from "@/local-db";
+import { isNonNegativeQuantity, quantitiesEqual, roundQuantity } from "@/lib/quantity";
 import { cn, formatNumericInput, parseFormattedNumber, sanitizeNumericInput } from "@/lib/utils";
 import { platformService } from "@/services/platformService";
 import { ProductAutocompleteInput } from "@/ui/components/orders/ProductAutocompleteInput";
@@ -161,11 +162,11 @@ export function StockAdjustmentDialog({
     const quantityDelta =
         availableQuantity === null ||
         targetQuantity === null ||
-        !Number.isInteger(targetQuantity)
+        !isNonNegativeQuantity(targetQuantity)
             ? null
-            : targetQuantity - availableQuantity;
+            : roundQuantity(targetQuantity - availableQuantity);
     const deltaMeta =
-        quantityDelta === null || quantityDelta === 0
+        quantityDelta === null || quantitiesEqual(quantityDelta, 0)
             ? null
             : quantityDelta > 0
                 ? {
@@ -199,10 +200,9 @@ export function StockAdjustmentDialog({
         !!form.productId &&
         !!form.storageId &&
         targetQuantity !== null &&
-        Number.isInteger(targetQuantity) &&
-        targetQuantity >= 0 &&
+        isNonNegativeQuantity(targetQuantity) &&
         quantityDelta !== null &&
-        quantityDelta !== 0;
+        !quantitiesEqual(quantityDelta, 0);
 
     const resetForm = () => {
         setForm(emptyAdjustmentForm);
@@ -211,10 +211,10 @@ export function StockAdjustmentDialog({
     };
 
     const handleSave = async () => {
-        if (!workspaceId || availableQuantity === null || targetQuantity === null || !Number.isInteger(targetQuantity)) return;
+        if (!workspaceId || availableQuantity === null || targetQuantity === null || !isNonNegativeQuantity(targetQuantity)) return;
 
-        const delta = targetQuantity - availableQuantity;
-        if (delta === 0) return;
+        const delta = roundQuantity(targetQuantity - availableQuantity);
+        if (quantitiesEqual(delta, 0)) return;
 
         setIsSaving(true);
         try {
@@ -345,7 +345,7 @@ export function StockAdjustmentDialog({
                                         <Input
                                             id="adjustment-quantity"
                                             type="text"
-                                            inputMode="numeric"
+                                            inputMode="decimal"
                                             placeholder="0"
                                             disabled={!selectionKey}
                                             value={formatNumericInput(form.quantity)}
@@ -353,7 +353,7 @@ export function StockAdjustmentDialog({
                                                 setForm((current) => ({
                                                     ...current,
                                                     quantity: sanitizeNumericInput(event.target.value, {
-                                                        allowDecimal: false,
+                                                        allowDecimal: true,
                                                     }),
                                                 }))
                                             }
@@ -380,7 +380,7 @@ export function StockAdjustmentDialog({
                                             ? t("stockAdjustments.dialog.adjustment.selectPrompt", "Select a product and storage to load the current quantity.")
                                             : targetQuantity === null
                                                 ? t("stockAdjustments.dialog.adjustment.enterQuantity", "Enter the final quantity you want after this adjustment.")
-                                                : quantityDelta === 0
+                                                : quantitiesEqual(quantityDelta, 0)
                                                     ? t("stockAdjustments.dialog.adjustment.noChange", "No change yet. Adjust the quantity above to create an entry.")
                                                     : quantityDelta && quantityDelta > 0
                                                         ? t("stockAdjustments.dialog.adjustment.increaseBy", "Increase by {{delta}}. {{available}} -> {{target}}.", { delta: formatNumericInput(String(quantityDelta)), available: formatNumericInput(String(availableQuantity ?? 0)), target: formatNumericInput(String(targetQuantity)) })

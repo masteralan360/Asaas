@@ -3,12 +3,12 @@ CREATE OR REPLACE FUNCTION public.refresh_product_inventory_snapshot(p_product_i
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_total_quantity integer := 0;
+    v_total_quantity numeric := 0;
     v_storage_count integer := 0;
     v_single_storage_id uuid := null;
 BEGIN
     SELECT
-        COALESCE(SUM(quantity), 0)::integer,
+        COALESCE(SUM(quantity), 0)::numeric,
         COUNT(*)::integer,
         CASE WHEN COUNT(*) = 1 THEN MIN(storage_id::text)::uuid ELSE NULL END
     INTO v_total_quantity, v_storage_count, v_single_storage_id

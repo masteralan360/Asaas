@@ -47,6 +47,7 @@ import { assetManager } from '@/lib/assetManager'
 import { normalizeBarcodeDigits, normalizeBarcodeScannerText } from '@/lib/barcodeScanner'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { isTauri } from '@/lib/platform'
+import { roundQuantity } from '@/lib/quantity'
 import { cn, formatCurrency, formatNumericInput, sanitizeNumericInput } from '@/lib/utils'
 import { getInventoryRowsForProduct } from '@/local-db/inventory'
 import { platformService } from '@/services/platformService'
@@ -640,8 +641,8 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                 costPrice: isDynamicUnit(formData.unit)
                     ? (Number(formData.costPrice) || 0) / (Number(formData.perQuantity) || 1)
                     : Number(formData.costPrice) || 0,
-                quantity: Number(formData.quantity) || 0,
-                minStockLevel: Number(formData.minStockLevel) || 0,
+                quantity: roundQuantity(Number(formData.quantity) || 0),
+                minStockLevel: roundQuantity(Number(formData.minStockLevel) || 0),
                 createdBy: user?.id || null
             }
 
@@ -1392,11 +1393,13 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             <Input
                                                 id="product-quantity"
                                                 type="number"
+                                                inputMode="decimal"
                                                 min="0"
+                                                step={isDynamicUnit(formData.unit) ? '0.01' : '1'}
                                                 value={formData.quantity}
                                                 onChange={(event) => setFormData((current) => ({
                                                     ...current,
-                                                    quantity: event.target.value === '' ? '' : parseInt(event.target.value, 10)
+                                                    quantity: event.target.value === '' ? '' : Number(event.target.value)
                                                 }))}
                                                 placeholder="0"
                                                 readOnly={isReadOnly || isEditing}
@@ -1422,11 +1425,13 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             <Input
                                                 id="product-min-stock"
                                                 type="number"
+                                                inputMode="decimal"
                                                 min="0"
+                                                step={isDynamicUnit(formData.unit) ? '0.01' : '1'}
                                                 value={formData.minStockLevel}
                                                 onChange={(event) => setFormData((current) => ({
                                                     ...current,
-                                                    minStockLevel: event.target.value === '' ? '' : parseInt(event.target.value, 10)
+                                                    minStockLevel: event.target.value === '' ? '' : Number(event.target.value)
                                                 }))}
                                                 readOnly={isReadOnly}
                                                 required

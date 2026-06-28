@@ -4,7 +4,7 @@ CREATE TABLE public.inventory_transfer_transactions (
   product_id uuid NOT NULL,
   source_storage_id uuid NOT NULL,
   destination_storage_id uuid NOT NULL,
-  quantity integer NOT NULL DEFAULT 1,
+  quantity numeric NOT NULL DEFAULT 1,
   batch_allocations jsonb NULL,
   transfer_type text NOT NULL,
   reorder_rule_id uuid NULL,

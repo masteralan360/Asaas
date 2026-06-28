@@ -3,6 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { isOnline } from "@/lib/network";
+import { isPositiveQuantity, roundQuantity } from "@/lib/quantity";
 import { getSupabaseClientForTable } from "@/lib/supabaseSchema";
 import { runSupabaseAction } from "@/lib/supabaseRequest";
 import { generateId, toCamelCase } from "@/lib/utils";
@@ -82,8 +83,8 @@ function normalizeAdjustmentInput(input: StockAdjustmentInput) {
     throw new Error("Adjustment type is invalid");
   }
 
-  if (!Number.isInteger(quantity) || quantity <= 0) {
-    throw new Error("Quantity must be a whole number greater than zero");
+  if (!isPositiveQuantity(quantity)) {
+    throw new Error("Quantity must be greater than zero");
   }
 
   if (!ALLOWED_REASONS.includes(reason)) {
@@ -94,7 +95,7 @@ function normalizeAdjustmentInput(input: StockAdjustmentInput) {
     productId,
     storageId,
     adjustmentType,
-    quantity,
+    quantity: roundQuantity(quantity),
     reason,
     notes: normalizeOptionalString(input.notes),
     createdBy: normalizeOptionalString(input.createdBy),
@@ -150,15 +151,16 @@ export async function createStockAdjustment(
 ) {
   const timestamp = options?.timestamp || new Date().toISOString();
   const normalized = normalizeAdjustmentInput(input);
-  const quantityDelta =
+  const quantityDelta = roundQuantity(
     normalized.adjustmentType === "increase"
       ? normalized.quantity
-      : -normalized.quantity;
+      : -normalized.quantity
+  );
   const previousQuantity = await getInventoryQuantityForProductStorage(
     normalized.productId,
     normalized.storageId,
   );
-  const newQuantity = previousQuantity + quantityDelta;
+  const newQuantity = roundQuantity(previousQuantity + quantityDelta);
   const transactionId = options?.id || generateId();
 
   if (newQuantity < 0) {

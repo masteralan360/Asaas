@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isPositiveQuantity, roundQuantity } from '@/lib/quantity'
 import {
     Dialog,
     DialogContent,
@@ -58,6 +59,9 @@ export function ReturnConfirmationModal({
     }
 
     const handleQuantityContinue = () => {
+        if (!isPositiveQuantity(returnQuantity)) {
+            return
+        }
         setStep('reason')
     }
 
@@ -132,11 +136,19 @@ export function ReturnConfirmationModal({
                                     <div className="relative">
                                         <input
                                             type="number"
-                                            min="1"
+                                            min="0.01"
                                             max={maxQuantity}
+                                            step="0.01"
                                             value={returnQuantity}
                                             autoFocus
-                                            onChange={(e) => setReturnQuantity(Math.min(Math.max(1, parseInt(e.target.value) || 1), maxQuantity))}
+                                            onChange={(e) => {
+                                                const parsed = Number.parseFloat(e.target.value)
+                                                if (!Number.isFinite(parsed)) {
+                                                    setReturnQuantity(0)
+                                                    return
+                                                }
+                                                setReturnQuantity(roundQuantity(Math.min(Math.max(0.01, parsed), maxQuantity)))
+                                            }}
                                             className="w-full h-16 px-6 text-2xl font-black bg-muted/30 border-2 border-border/50 rounded-2xl focus:border-primary focus:ring-0 transition-all outline-none"
                                         />
                                         <div className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">
@@ -151,7 +163,7 @@ export function ReturnConfirmationModal({
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => setReturnQuantity(1)}
+                                        onClick={() => setReturnQuantity(Math.min(1, maxQuantity))}
                                         className="h-9 px-4 rounded-lg font-bold"
                                     >
                                         1
@@ -168,7 +180,7 @@ export function ReturnConfirmationModal({
                                         <Button
                                             variant="outline"
                                             size="sm"
-                                            onClick={() => setReturnQuantity(Math.floor(maxQuantity / 2))}
+                                            onClick={() => setReturnQuantity(roundQuantity(maxQuantity / 2))}
                                             className="h-9 px-4 rounded-lg font-bold"
                                         >
                                             50%

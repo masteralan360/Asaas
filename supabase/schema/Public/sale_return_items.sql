@@ -4,7 +4,7 @@ CREATE TABLE public.sale_return_items (
   return_id uuid NOT NULL,
   sale_id uuid NOT NULL,
   sale_item_id uuid NOT NULL,
-  quantity integer NOT NULL,
+  quantity numeric NOT NULL,
   unit_refund_amount numeric NOT NULL DEFAULT 0,
   refund_amount numeric NOT NULL DEFAULT 0,
   restored_storage_id uuid NULL,

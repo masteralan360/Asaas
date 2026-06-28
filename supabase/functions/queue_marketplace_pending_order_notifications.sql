@@ -7,7 +7,7 @@ AS $function$
 DECLARE
   v_order public.marketplace_orders%ROWTYPE;
   v_due_date date;
-  v_item_count integer := 0;
+  v_item_count numeric := 0;
 BEGIN
   SELECT *
   INTO v_order
@@ -22,7 +22,7 @@ BEGIN
 
   v_due_date := timezone('utc', v_order.created_at)::date;
 
-  SELECT COALESCE(SUM(GREATEST(COALESCE((item.value ->> 'quantity')::integer, 1), 1)), 0)
+  SELECT COALESCE(SUM(GREATEST(COALESCE((item.value ->> 'quantity')::numeric, 1), 1)), 0)
   INTO v_item_count
   FROM jsonb_array_elements(COALESCE(v_order.items, '[]'::jsonb)) AS item(value);
 

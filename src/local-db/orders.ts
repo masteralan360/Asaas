@@ -6,6 +6,7 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { getTravelSaleCost } from '@/lib/travelAgency'
 import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { isOnline } from '@/lib/network'
+import { isPositiveQuantity, roundQuantity } from '@/lib/quantity'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
 import { generateId } from '@/lib/utils'
@@ -991,8 +992,7 @@ async function receiveInventoryForPurchaseOrder(order: PurchaseOrder) {
             throw new Error(`Select a target storage for ${item.productName}`)
         }
 
-        const isDynamic = product.unit === 'm²' || product.unit === 'Kg'
-        if ((!isDynamic && !Number.isInteger(receivedQuantity)) || receivedQuantity <= 0) {
+        if (!isPositiveQuantity(receivedQuantity)) {
             throw new Error(`Received quantity must be greater than zero for ${item.productName}`)
         }
         if (!Number.isFinite(actualUnitCost) || actualUnitCost < 0) {
@@ -1016,7 +1016,7 @@ async function receiveInventoryForPurchaseOrder(order: PurchaseOrder) {
             order.workspaceId,
             item.productId,
             storageId,
-            currentInventoryQuantity + receivedQuantity,
+            roundQuantity(currentInventoryQuantity + receivedQuantity),
             now
         )
         if (changedInventoryRow) {

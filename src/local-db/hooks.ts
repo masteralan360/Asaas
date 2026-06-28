@@ -64,6 +64,7 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { getActiveBusinessUserId, isOnline } from '@/lib/network'
 import { resolveActiveDiscountMap, type ResolvedActiveDiscount } from '@/lib/discounts'
 import { convertCurrencyAmountWithAvailableSnapshot, getEffectiveExchangeRatesSnapshot } from '@/lib/orderCurrency'
+import { QUANTITY_EPSILON, isPositiveQuantity, roundQuantity } from '@/lib/quantity'
 import { salesExchangeRowsToSnapshots } from '@/lib/salesExchange'
 import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
@@ -2637,12 +2638,12 @@ export async function transferInventoryBetweenStorages(
 
         for (const item of items) {
             const quantity = Number(item.quantity)
-            if (!Number.isInteger(quantity) || quantity <= 0) {
-                throw new Error('Transfer quantity must be a whole number greater than zero')
+            if (!isPositiveQuantity(quantity)) {
+                throw new Error('Transfer quantity must be greater than zero')
             }
 
             const availableQuantity = await getInventoryQuantityForProductStorage(item.productId, sourceStorageId)
-            if (availableQuantity < quantity) {
+            if (quantity - availableQuantity > QUANTITY_EPSILON) {
                 throw new Error('Insufficient inventory in source storage')
             }
 
@@ -2651,7 +2652,7 @@ export async function transferInventoryBetweenStorages(
                 productId: item.productId,
                 sourceStorageId,
                 targetStorageId,
-                quantity,
+                quantity: roundQuantity(quantity),
                 batchSelections: item.batchSelections,
                 timestamp: now,
                 skipBatchRefresh: true,
@@ -2660,7 +2661,7 @@ export async function transferInventoryBetweenStorages(
 
             completedTransfers.push({
                 productId: item.productId,
-                quantity,
+                quantity: roundQuantity(quantity),
                 batchAllocations: transferResult.batchAllocations,
                 reverseBatchSelections: transferResult.reverseBatchSelections
             })

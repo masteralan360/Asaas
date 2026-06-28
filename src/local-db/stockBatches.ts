@@ -5,6 +5,13 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { isOnline } from '@/lib/network'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
+import {
+    QUANTITY_EPSILON,
+    isNonNegativeQuantity,
+    isPositiveQuantity,
+    quantitiesEqual,
+    roundQuantity
+} from '@/lib/quantity'
 import { generateId, toCamelCase, toSnakeCase } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
@@ -166,7 +173,7 @@ export function calculateStockBatchUnitCost(
 ) {
     const normalizedFallback = normalizeMoneyValue(fallbackCost, 'Fallback cost')
     const validAllocations = allocations.filter((allocation) =>
-        Number.isInteger(allocation.quantity) && allocation.quantity > 0
+        isPositiveQuantity(allocation.quantity)
     )
     const allocatedQuantity = validAllocations.reduce((sum, allocation) => sum + allocation.quantity, 0)
     const totalQuantity = requestedQuantity == null
@@ -260,20 +267,20 @@ export function planStockBatchTransfer(input: {
     const inventoryQuantity = Number(input.inventoryQuantity)
     const requestedQuantity = Number(input.requestedQuantity)
 
-    if (!Number.isInteger(inventoryQuantity) || inventoryQuantity < 0) {
-        throw new Error('Inventory quantity must be a whole number greater than or equal to zero')
+    if (!isNonNegativeQuantity(inventoryQuantity)) {
+        throw new Error('Inventory quantity must be greater than or equal to zero')
     }
 
-    if (!Number.isInteger(requestedQuantity) || requestedQuantity <= 0) {
-        throw new Error('Transfer quantity must be a whole number greater than zero')
+    if (!isPositiveQuantity(requestedQuantity)) {
+        throw new Error('Transfer quantity must be greater than zero')
     }
 
-    if (requestedQuantity > inventoryQuantity) {
+    if (requestedQuantity - inventoryQuantity > QUANTITY_EPSILON) {
         throw new Error('Insufficient inventory in source storage')
     }
 
     const activeBatches = sortBatchesForConsumption(
-        input.batches.filter((batch) => !batch.isDeleted && batch.quantity > 0)
+        input.batches.filter((batch) => !batch.isDeleted && batch.quantity > QUANTITY_EPSILON)
     )
     const batchQuantity = activeBatches.reduce((sum, batch) => sum + batch.quantity, 0)
     const unbatchedAvailable = Math.max(inventoryQuantity - batchQuantity, 0)
@@ -283,25 +290,25 @@ export function planStockBatchTransfer(input: {
         let remaining = requestedQuantity
 
         for (const batch of activeBatches) {
-            if (remaining <= 0) {
+            if (remaining <= QUANTITY_EPSILON) {
                 break
             }
 
             const quantity = Math.min(batch.quantity, remaining)
-            if (quantity > 0) {
+            if (quantity > QUANTITY_EPSILON) {
                 batchAllocations.push(toBatchAllocation(batch, quantity))
-                remaining -= quantity
+                remaining = roundQuantity(remaining - quantity)
             }
         }
 
-        if (remaining > unbatchedAvailable) {
+        if (remaining - unbatchedAvailable > QUANTITY_EPSILON) {
             throw new Error('Insufficient regular stock in source storage')
         }
 
         return {
             requestedQuantity,
             batchAllocations,
-            unbatchedQuantity: remaining
+            unbatchedQuantity: roundQuantity(remaining)
         }
     }
 
@@ -314,11 +321,11 @@ export function planStockBatchTransfer(input: {
             throw new Error('Batch selection is missing a batch ID')
         }
 
-        if (!Number.isInteger(quantity) || quantity <= 0) {
-            throw new Error('Batch transfer quantity must be a whole number greater than zero')
+        if (!isPositiveQuantity(quantity)) {
+            throw new Error('Batch transfer quantity must be greater than zero')
         }
 
-        requestedByBatchId.set(batchId, (requestedByBatchId.get(batchId) || 0) + quantity)
+        requestedByBatchId.set(batchId, roundQuantity((requestedByBatchId.get(batchId) || 0) + quantity))
     }
 
     const batchesById = new Map(activeBatches.map((batch) => [batch.id, batch] as const))
@@ -328,7 +335,7 @@ export function planStockBatchTransfer(input: {
             throw new Error('One or more selected batches are no longer available')
         }
 
-        if (quantity > batch.quantity) {
+        if (quantity - batch.quantity > QUANTITY_EPSILON) {
             throw new Error(`Batch ${batch.batchNumber} does not have enough stock`)
         }
 
@@ -339,12 +346,12 @@ export function planStockBatchTransfer(input: {
         0
     )
 
-    if (selectedBatchQuantity > requestedQuantity) {
+    if (selectedBatchQuantity - requestedQuantity > QUANTITY_EPSILON) {
         throw new Error('Selected batch quantity exceeds the transfer quantity')
     }
 
-    const unbatchedQuantity = requestedQuantity - selectedBatchQuantity
-    if (unbatchedQuantity > unbatchedAvailable) {
+    const unbatchedQuantity = roundQuantity(requestedQuantity - selectedBatchQuantity)
+    if (unbatchedQuantity - unbatchedAvailable > QUANTITY_EPSILON) {
         throw new Error('Insufficient regular stock in source storage')
     }
 
@@ -371,15 +378,15 @@ function normalizeAllocationList(allocations: StockBatchAllocation[]) {
             throw new Error('Batch allocation is missing batch number')
         }
 
-        if (!Number.isInteger(quantity) || quantity <= 0) {
-            throw new Error('Batch allocation quantity must be a whole number greater than zero')
+        if (!isPositiveQuantity(quantity)) {
+            throw new Error('Batch allocation quantity must be greater than zero')
         }
 
         const existing = merged.get(batchId)
         merged.set(batchId, {
             batchId,
             batchNumber,
-            quantity: (existing?.quantity || 0) + quantity,
+            quantity: roundQuantity((existing?.quantity || 0) + quantity),
             price: allocation.price == null
                 ? (existing?.price ?? null)
                 : normalizeMoneyValue(allocation.price, 'Batch allocation price'),
@@ -449,8 +456,8 @@ async function normalizeBatchInput(
         throw new Error('Batch number is required')
     }
 
-    if (!Number.isInteger(quantity) || quantity <= 0) {
-        throw new Error('Batch quantity must be a whole number greater than zero')
+    if (!isPositiveQuantity(quantity)) {
+        throw new Error('Batch quantity must be greater than zero')
     }
 
     const productDefaults = await getProductBatchDefaults(productId)
@@ -459,7 +466,7 @@ async function normalizeBatchInput(
         productId,
         storageId,
         batchNumber,
-        quantity,
+        quantity: roundQuantity(quantity),
         price: normalizeMoneyValue(
             input.price ?? existing?.price ?? productDefaults.price,
             'Batch price'
@@ -581,8 +588,8 @@ async function validateBatchTotals(
         .filter((row) => row.id !== currentBatchId)
         .reduce((sum, row) => sum + row.quantity, 0)
 
-    const nextBatchQuantity = otherBatchQuantity + batch.quantity
-    if (nextBatchQuantity > inventoryQuantity) {
+    const nextBatchQuantity = roundQuantity(otherBatchQuantity + batch.quantity)
+    if (nextBatchQuantity - inventoryQuantity > QUANTITY_EPSILON) {
         throw new Error('Batch quantities cannot exceed inventory quantity')
     }
 
@@ -590,7 +597,7 @@ async function validateBatchTotals(
         workspaceId,
         inventoryQuantity,
         batchQuantity: nextBatchQuantity,
-        isBalanced: inventoryQuantity === nextBatchQuantity
+        isBalanced: quantitiesEqual(inventoryQuantity, nextBatchQuantity)
     } satisfies StockBatchCoverage & { workspaceId: string }
 }
 
@@ -607,7 +614,7 @@ export async function getStockBatchCoverage(
     return {
         inventoryQuantity,
         batchQuantity,
-        isBalanced: inventoryQuantity === batchQuantity
+        isBalanced: quantitiesEqual(inventoryQuantity, batchQuantity)
     }
 }
 
@@ -648,13 +655,13 @@ export async function getStockBatchSalePlans(
 ): Promise<StockBatchSalePlan[]> {
     const normalizedRequests = requests.map((request) => {
         const quantity = Number(request.quantity)
-        if (!Number.isInteger(quantity) || quantity <= 0) {
-            throw new Error('Sale quantity must be a whole number greater than zero')
+        if (!isPositiveQuantity(quantity)) {
+            throw new Error('Sale quantity must be greater than zero')
         }
         return {
             productId: request.productId,
             storageId: request.storageId,
-            quantity
+            quantity: roundQuantity(quantity)
         }
     })
     const positionKeys = Array.from(new Set(normalizedRequests.map((request) =>
@@ -698,7 +705,7 @@ export async function getStockBatchSalePlans(
     return normalizedRequests.map((request) => {
         const positionKey = `${request.productId}:${request.storageId}`
         const state = positionState.get(positionKey)
-        if (!state || request.quantity > state.remainingInventory) {
+        if (!state || request.quantity - state.remainingInventory > QUANTITY_EPSILON) {
             throw new Error('Insufficient inventory for this product')
         }
 
@@ -706,12 +713,12 @@ export async function getStockBatchSalePlans(
         let remaining = request.quantity
 
         for (const batch of state.batches) {
-            if (remaining <= 0) {
+            if (remaining <= QUANTITY_EPSILON) {
                 break
             }
 
             const allocatedQuantity = Math.min(remaining, batch.remainingQuantity)
-            if (allocatedQuantity <= 0) {
+            if (allocatedQuantity <= QUANTITY_EPSILON) {
                 continue
             }
 
@@ -725,11 +732,11 @@ export async function getStockBatchSalePlans(
                 expiryDate: batch.expiryDate ?? null,
                 manufacturingDate: batch.manufacturingDate ?? null
             })
-            batch.remainingQuantity -= allocatedQuantity
-            remaining -= allocatedQuantity
+            batch.remainingQuantity = roundQuantity(batch.remainingQuantity - allocatedQuantity)
+            remaining = roundQuantity(remaining - allocatedQuantity)
         }
 
-        state.remainingInventory -= request.quantity
+        state.remainingInventory = roundQuantity(state.remainingInventory - request.quantity)
         return {
             productId: request.productId,
             storageId: request.storageId,
@@ -773,15 +780,15 @@ export async function commitStockBatchAllocations(
                 throw new Error(`Batch ${allocation.batchNumber} does not belong to the selected product/storage`)
             }
 
-            if (existing.quantity < allocation.quantity) {
+            if (allocation.quantity - existing.quantity > QUANTITY_EPSILON) {
                 throw new Error(`Batch ${allocation.batchNumber} does not have enough stock`)
             }
 
-            const nextQuantity = existing.quantity - allocation.quantity
+            const nextQuantity = roundQuantity(existing.quantity - allocation.quantity)
             const updated: StockBatch = {
                 ...existing,
                 quantity: nextQuantity,
-                isDeleted: nextQuantity <= 0,
+                isDeleted: nextQuantity <= QUANTITY_EPSILON,
                 updatedAt: timestamp,
                 version: existing.version + 1,
                 ...getSyncMetadata(workspaceId, timestamp, syncSource)
@@ -805,12 +812,12 @@ export function splitStockBatchAllocationsForReturn(
     returnQuantity: number
 ) {
     const normalizedQuantity = Number(returnQuantity)
-    if (!Number.isInteger(normalizedQuantity) || normalizedQuantity < 0) {
-        throw new Error('Return quantity must be a whole number greater than or equal to zero')
+    if (!isNonNegativeQuantity(normalizedQuantity)) {
+        throw new Error('Return quantity must be greater than or equal to zero')
     }
 
     const normalizedAllocations = normalizeAllocationList(allocations ?? [])
-    if (normalizedQuantity === 0 || normalizedAllocations.length === 0) {
+    if (normalizedQuantity <= QUANTITY_EPSILON || normalizedAllocations.length === 0) {
         return {
             restoredAllocations: [] as StockBatchAllocation[],
             remainingAllocations: normalizedAllocations
@@ -818,37 +825,37 @@ export function splitStockBatchAllocationsForReturn(
     }
 
     const allocatedQuantity = normalizedAllocations.reduce((sum, allocation) => sum + allocation.quantity, 0)
-    if (normalizedQuantity > allocatedQuantity) {
+    if (normalizedQuantity - allocatedQuantity > QUANTITY_EPSILON) {
         throw new Error('Return quantity exceeds stored batch allocations')
     }
 
-    let remainingToRestore = normalizedQuantity
+    let remainingToRestore = roundQuantity(normalizedQuantity)
     const restoredAllocations: StockBatchAllocation[] = []
     const remainingAllocations: StockBatchAllocation[] = []
 
     for (const allocation of normalizedAllocations) {
-        if (remainingToRestore <= 0) {
+        if (remainingToRestore <= QUANTITY_EPSILON) {
             remainingAllocations.push(allocation)
             continue
         }
 
         const restoredQuantity = Math.min(remainingToRestore, allocation.quantity)
-        if (restoredQuantity > 0) {
+        if (restoredQuantity > QUANTITY_EPSILON) {
             restoredAllocations.push({
                 ...allocation,
                 quantity: restoredQuantity
             })
         }
 
-        const leftoverQuantity = allocation.quantity - restoredQuantity
-        if (leftoverQuantity > 0) {
+        const leftoverQuantity = roundQuantity(allocation.quantity - restoredQuantity)
+        if (leftoverQuantity > QUANTITY_EPSILON) {
             remainingAllocations.push({
                 ...allocation,
                 quantity: leftoverQuantity
             })
         }
 
-        remainingToRestore -= restoredQuantity
+        remainingToRestore = roundQuantity(remainingToRestore - restoredQuantity)
     }
 
     return {
@@ -888,7 +895,7 @@ export async function restoreStockBatchAllocations(
             if (existing && existing.productId === productId && existing.storageId === storageId) {
                 const updated: StockBatch = {
                     ...existing,
-                    quantity: existing.quantity + allocation.quantity,
+                    quantity: roundQuantity(existing.quantity + allocation.quantity),
                     batchNumber: existing.batchNumber || allocation.batchNumber,
                     price: Number.isFinite(existing.price)
                         ? existing.price
@@ -940,7 +947,7 @@ export async function restoreStockBatchAllocations(
             if (matchingBatchNumber) {
                 const updated: StockBatch = {
                     ...matchingBatchNumber,
-                    quantity: matchingBatchNumber.quantity + allocation.quantity,
+                    quantity: roundQuantity(matchingBatchNumber.quantity + allocation.quantity),
                     batchNumber: matchingBatchNumber.batchNumber || allocation.batchNumber,
                     price: Number.isFinite(matchingBatchNumber.price)
                         ? matchingBatchNumber.price
