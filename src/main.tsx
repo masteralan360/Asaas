@@ -5,6 +5,7 @@ import { registerSW } from 'virtual:pwa-register'
 import { requestPersistentStorage } from '@/local-db/storagePersist'
 import { isOpfsSupported } from '@/local-db/pwaSqlite'
 import { AtlasSplashScreen } from '@/ui/components/AtlasSplashScreen'
+import { initTauriZoomPersistence } from '@/lib/tauriZoomPersistence'
 
 const isMarketplaceHost =
     typeof window !== 'undefined'
@@ -186,6 +187,8 @@ const init = async () => {
         await renderMarketplace()
         return
     }
+
+    initTauriZoomPersistence()
 
     void initPwaLocalMode()
 

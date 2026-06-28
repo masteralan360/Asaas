@@ -24,7 +24,7 @@
         "decorations": false,
         "transparent": false,
         "devtools": false,
-        "zoomHotkeysEnabled": true
+        "zoomHotkeysEnabled": false
       }
     ],
     "security": {
