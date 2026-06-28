@@ -443,8 +443,8 @@ describe('order-linked financing', () => {
         await db.sales_orders.put(order)
         const basePayment = {
             workspaceId: WORKSPACE_ID,
-            sourceModule: 'orders',
-            sourceType: 'sales_order',
+            sourceModule: 'orders' as const,
+            sourceType: 'sales_order' as const,
             sourceRecordId: order.id,
             sourceSubrecordId: null,
             direction: 'incoming' as const,
