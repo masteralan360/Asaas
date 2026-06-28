@@ -1,9 +1,12 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url'
+import { findBottomContentRow } from './pdfRasterizerUtils'
 
 interface PdfPageImageOptions {
     maxWidthPx: number
     pageNumber?: number
+    trimBottomWhitespace?: boolean
+    bottomPaddingPx?: number
 }
 
 let isPdfWorkerConfigured = false
@@ -28,9 +31,38 @@ function resolvePdfRenderScale(pageWidthPx: number, maxWidthPx: number) {
     return maxWidthPx / pageWidthPx
 }
 
+function trimCanvasBottomWhitespace(canvas: HTMLCanvasElement, bottomPaddingPx: number) {
+    const context = canvas.getContext('2d', { alpha: false })
+    if (!context) return canvas
+
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height)
+    const bottomContentRow = findBottomContentRow(imageData.data, canvas.width, canvas.height)
+    if (bottomContentRow < 0) return canvas
+
+    const croppedHeight = Math.min(canvas.height, bottomContentRow + 1 + Math.max(0, bottomPaddingPx))
+    if (croppedHeight >= canvas.height) return canvas
+
+    const croppedCanvas = document.createElement('canvas')
+    const croppedContext = croppedCanvas.getContext('2d', { alpha: false })
+    if (!croppedContext) return canvas
+
+    croppedCanvas.width = canvas.width
+    croppedCanvas.height = croppedHeight
+    croppedContext.fillStyle = '#ffffff'
+    croppedContext.fillRect(0, 0, croppedCanvas.width, croppedCanvas.height)
+    croppedContext.drawImage(canvas, 0, 0)
+
+    return croppedCanvas
+}
+
 export async function renderPdfPageToPngDataUrl(
     pdfBlob: Blob,
-    { maxWidthPx, pageNumber = 1 }: PdfPageImageOptions
+    {
+        maxWidthPx,
+        pageNumber = 1,
+        trimBottomWhitespace = true,
+        bottomPaddingPx = 24
+    }: PdfPageImageOptions
 ): Promise<string> {
     ensurePdfWorkerConfigured()
 
@@ -65,7 +97,11 @@ export async function renderPdfPageToPngDataUrl(
             intent: 'print'
         }).promise
 
-        return canvas.toDataURL('image/png')
+        const outputCanvas = trimBottomWhitespace
+            ? trimCanvasBottomWhitespace(canvas, bottomPaddingPx)
+            : canvas
+
+        return outputCanvas.toDataURL('image/png')
     } finally {
         await loadingTask.destroy()
     }
