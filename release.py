@@ -25,6 +25,7 @@ SCRIPT_DIR  = Path(__file__).parent
 TAURI_CONF  = SCRIPT_DIR / "src-tauri" / "tauri.conf.json"
 PACKAGE_JSON = SCRIPT_DIR / "package.json"
 PATCH_NOTES = SCRIPT_DIR / "src" / "data" / "patch-notes.json"
+RELEASE_CONFIG = SCRIPT_DIR / ".release-config.json"
 
 RTL_LANGS = ('ar', 'ku')
 
@@ -322,8 +323,18 @@ class ReleaseApp(QMainWindow):
 
         # Stealth
         self.stealth_cb = QCheckBox("🤫 Stealth Update (Skip Patch Notes)")
+        self.stealth_cb.setChecked(True)
         self.stealth_cb.toggled.connect(self.toggle_stealth)
         layout.addWidget(self.stealth_cb)
+
+        # Skip latest.json (no auto-update for users)
+        self.skip_latest_cb = QCheckBox("🚫 Skip Auto-Update (Don't replace latest.json in R2)")
+        self.skip_latest_cb.setToolTip(
+            "When checked, the release will NOT upload latest.json to R2.\n"
+            "Existing users will NOT be prompted to update to this version."
+        )
+        self.skip_latest_cb.toggled.connect(self.toggle_skip_latest)
+        layout.addWidget(self.skip_latest_cb)
 
         # Team message
         self.team_msg_cb = QCheckBox("Include Team Message?")
@@ -417,6 +428,14 @@ class ReleaseApp(QMainWindow):
         self.team_msg_cb.setEnabled(not checked)
         self.status_label.setText("Stealth mode active" if checked else "Ready")
 
+    def toggle_skip_latest(self, checked):
+        self.min_version_edit.setEnabled(not checked)
+        text = self.msg_edit.text()
+        if checked and not text.endswith(" SAU"):
+            self.msg_edit.setText(text + " SAU")
+        elif not checked and text.endswith(" SAU"):
+            self.msg_edit.setText(text[:-4])
+
     def manage_highlights(self):
         dlg = HighlightsDialog(self, self.localized_highlights)
         dlg.exec()
@@ -507,6 +526,11 @@ class ReleaseApp(QMainWindow):
 
         try:
             update_version(version, self.min_version_edit.text().strip())
+
+            # Write release config for CI to read
+            release_config = {"skip_latest_json": self.skip_latest_cb.isChecked()}
+            with open(RELEASE_CONFIG, 'w') as f:
+                json.dump(release_config, f, indent=2)
 
             if not self.stealth_cb.isChecked():
                 self.localized_team_msg[self.current_team_lang] = self.team_msg_edit.toPlainText().strip()

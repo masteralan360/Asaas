@@ -219,9 +219,22 @@ def upload_assets():
         json.dump(data, f, indent=2)
     print(f"Generated final {final_latest_json} with platforms: {list(data.get('platforms', {}).keys())}")
     
+    # Check if latest.json upload should be skipped via .release-config.json
+    skip_latest = False
+    try:
+        if os.path.exists(".release-config.json"):
+            with open(".release-config.json", 'r') as f:
+                release_config = json.load(f)
+            skip_latest = release_config.get("skip_latest_json", False)
+            if skip_latest:
+                print("⚠️  skip_latest_json is TRUE — latest.json will NOT be uploaded to R2")
+                print("   Existing users will NOT be prompted to update.")
+    except Exception as e:
+        print(f"Warning: Could not read .release-config.json: {e}")
+
     # Filter files for upload
     files_to_upload = []
-    if len(data.get("platforms", {})) > 0:
+    if not skip_latest and len(data.get("platforms", {})) > 0:
         files_to_upload.append(final_latest_json)
     
     for f in all_files:
