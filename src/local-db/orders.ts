@@ -15,6 +15,7 @@ import { supabase } from '@/auth/supabase'
 
 import { db } from './database'
 import {
+    ORDER_AMOUNT_EPSILON,
     getOrderBalanceAmount,
     getOrderPaidAmount,
     rebuildOrderInstallmentsFromPayments,
@@ -70,7 +71,7 @@ export function isOrderFinancingMethod(method?: OrderPaymentMethod | null): meth
 type SimpleEntityTableName = 'customers' | 'suppliers'
 type OrderTableName = 'sales_orders' | 'purchase_orders'
 type OrderInstallmentTableName = 'order_installments'
-type SyncableTableName = SimpleEntityTableName | OrderTableName | OrderInstallmentTableName | 'products'
+type SyncableTableName = SimpleEntityTableName | OrderTableName | OrderInstallmentTableName | 'products' | 'payment_transactions'
 
 const PURCHASE_BATCH_UUID_NAMESPACE = '82244d4d-29dd-55b5-a907-50f74e8b49bb'
 
@@ -868,6 +869,75 @@ async function listActiveOrderPayments(workspaceId: string, sourceType: 'sales_o
     return getActiveOrderPayments(rows)
 }
 
+function isFullOrderPaymentAttempt(
+    payment: PaymentTransaction,
+    total: number,
+    currency: CurrencyCode,
+    installmentId?: string | null
+) {
+    const amount = roundOrderAmount(Number(payment.amount || 0), currency)
+    const targetSubrecordId = installmentId ?? null
+    if ((payment.sourceSubrecordId ?? null) !== targetSubrecordId || amount <= 0) {
+        return false
+    }
+
+    if (Math.abs(amount - total) <= ORDER_AMOUNT_EPSILON) {
+        return true
+    }
+
+    return currency === 'iqd'
+        && Math.abs(amount - Math.round(total)) <= ORDER_AMOUNT_EPSILON
+        && Math.abs(amount - total) <= 0.5
+}
+
+async function repairStaleFullOrderPaymentAttempts(
+    workspaceId: string,
+    order: SalesOrder | PurchaseOrder,
+    activePayments: PaymentTransaction[],
+    input: {
+        amount: number
+        installmentId?: string | null
+    }
+) {
+    const total = roundOrderAmount(Math.max(0, Number(order.total || 0)), order.currency)
+    const amount = roundOrderAmount(Number(input.amount || 0), order.currency)
+    if (
+        activePayments.length === 0
+        || getOrderPaidAmount(order) > ORDER_AMOUNT_EPSILON
+        || Math.abs(amount - total) > ORDER_AMOUNT_EPSILON
+        || activePayments.some((payment) => !isFullOrderPaymentAttempt(payment, total, order.currency, input.installmentId))
+    ) {
+        return null
+    }
+
+    const exactPayment = activePayments.filter((payment) =>
+        Math.abs(roundOrderAmount(Number(payment.amount || 0), order.currency) - total) <= ORDER_AMOUNT_EPSILON
+    ).at(-1)
+    const retainedPayment = exactPayment ?? activePayments.at(-1)
+    if (!retainedPayment) {
+        return null
+    }
+
+    const now = new Date().toISOString()
+    const repairedPayments = activePayments.map((payment) => ({
+        ...payment,
+        amount: payment.id === retainedPayment.id ? total : payment.amount,
+        isDeleted: payment.id !== retainedPayment.id,
+        updatedAt: now,
+        version: payment.version + 1,
+        ...getSyncMetadata(workspaceId, now)
+    }))
+
+    await db.payment_transactions.bulkPut(repairedPayments)
+    await syncUpsertEntities(
+        'payment_transactions',
+        repairedPayments as unknown as Array<Record<string, unknown> & { id: string; version: number }>,
+        workspaceId
+    )
+
+    return repairedPayments.find((payment) => payment.id === retainedPayment.id) ?? null
+}
+
 export async function mirrorLinkedOrderPaymentState(loan: Loan) {
     if (loan.source !== 'order' || !loan.orderId || !loan.orderType) {
         return
@@ -1225,11 +1295,13 @@ export async function rebuildOrderPaymentState(orderType: OrderType, orderId: st
         activePayments.reduce((sum, payment) => sum + payment.amount, 0),
         order.currency
     )
-    if (paidAmount > order.total) {
+    const total = roundOrderAmount(Math.max(0, Number(order.total || 0)), order.currency)
+    if (paidAmount - total > ORDER_AMOUNT_EPSILON) {
         throw new Error('Order payment total exceeds the order balance')
     }
 
-    const balanceAmount = roundOrderAmount(Math.max(order.total - paidAmount, 0), order.currency)
+    const normalizedPaidAmount = paidAmount > total ? total : paidAmount
+    const balanceAmount = roundOrderAmount(Math.max(total - normalizedPaidAmount, 0), order.currency)
     const paymentStatus: OrderPaymentStatus = balanceAmount <= 0
         ? 'paid'
         : paidAmount > 0
@@ -1265,7 +1337,7 @@ export async function rebuildOrderPaymentState(orderType: OrderType, orderId: st
         ...order,
         isPaid: paymentStatus === 'paid',
         paymentStatus,
-        paidAmount,
+        paidAmount: normalizedPaidAmount,
         balanceAmount,
         paidAt: paymentStatus === 'paid' ? latestPayment?.paidAt || now : null,
         paymentMethod: (latestPayment?.paymentMethod as OrderPaymentMethod | undefined) || order.paymentMethod || 'cash',
@@ -1340,12 +1412,40 @@ export async function recordOrderPayment(
         throw new Error('locked_order_immutable')
     }
 
-    const balanceAmount = getOrderBalanceAmount(order)
+    const activePayments = await listActiveOrderPayments(workspaceId, sourceType, order.id)
+    const activePaidAmount = roundOrderAmount(
+        activePayments.reduce((sum, payment) => sum + payment.amount, 0),
+        order.currency
+    )
+    const total = roundOrderAmount(Math.max(0, Number(order.total || 0)), order.currency)
     const amount = roundOrderAmount(Number(input.amount || 0), order.currency)
+    if (activePaidAmount - total > ORDER_AMOUNT_EPSILON) {
+        const repairedPayment = await repairStaleFullOrderPaymentAttempts(workspaceId, order, activePayments, {
+            amount,
+            installmentId: input.installmentId
+        })
+
+        if (!repairedPayment) {
+            throw new Error('Order payment total exceeds the order balance')
+        }
+
+        const updatedOrder = await rebuildOrderPaymentState(input.orderType, order.id)
+        return { order: updatedOrder, transaction: repairedPayment }
+    }
+
+    const balanceAmount = roundOrderAmount(Math.max(total - activePaidAmount, 0), order.currency)
     if (amount <= 0) {
         throw new Error('Invalid payment amount')
     }
-    if (amount > balanceAmount) {
+    if (balanceAmount <= ORDER_AMOUNT_EPSILON) {
+        const updatedOrder = await rebuildOrderPaymentState(input.orderType, order.id)
+        const latestPayment = activePayments.at(-1)
+        if (!latestPayment) {
+            throw new Error('Payment amount cannot exceed the remaining balance')
+        }
+        return { order: updatedOrder, transaction: latestPayment }
+    }
+    if (amount - balanceAmount > ORDER_AMOUNT_EPSILON) {
         throw new Error('Payment amount cannot exceed the remaining balance')
     }
 

@@ -201,9 +201,9 @@ export function SettlementDialog({
                                         <Label>{t('payments.table.amount', { defaultValue: 'Amount' })}</Label>
                                         <Input
                                             type="text"
-                                            inputMode={obligation.currency === 'iqd' ? 'numeric' : 'decimal'}
+                                            inputMode="decimal"
                                             value={formatNumericInput(amount)}
-                                            onChange={(event) => setAmount(sanitizeNumericInput(event.target.value, { allowDecimal: obligation.currency !== 'iqd' }))}
+                                            onChange={(event) => setAmount(sanitizeNumericInput(event.target.value, { allowDecimal: true }))}
                                             disabled={isSubmitting}
                                         />
                                         {parsedAmount > obligation.amount && !allowsOverpayment ? (

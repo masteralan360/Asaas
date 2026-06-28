@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { clearWorkspaceModeSnapshot, writeWorkspaceModeSnapshot } from '@/workspace/workspaceMode'
 
 import { db } from './database'
-import type { PurchaseOrder } from './models'
+import type { PurchaseOrder, SalesOrder } from './models'
 
 const WORKSPACE_ID = '00000000-0000-4000-8000-000000000201'
 const PRODUCT_ID = '00000000-0000-4000-8000-000000000202'
@@ -25,6 +25,7 @@ type PurchaseOrderCreateInput = Omit<
 let createBusinessPartner: typeof import('./businessPartners').createBusinessPartner
 let createPurchaseOrder: typeof import('./orders').createPurchaseOrder
 let updatePurchaseOrderStatus: typeof import('./orders').updatePurchaseOrderStatus
+let recordOrderPayment: typeof import('./orders').recordOrderPayment
 let recordLoanPayment: typeof import('./hooks').recordLoanPayment
 let reversePaymentTransaction: typeof import('./payments').reversePaymentTransaction
 
@@ -76,6 +77,83 @@ async function createSupplier(payableCreditLimit: number | null) {
         payableCreditLimit,
         role: 'supplier'
     })
+}
+
+async function createCustomer() {
+    return createBusinessPartner(WORKSPACE_ID, {
+        name: 'Order Customer',
+        phone: '07500000202',
+        defaultCurrency: 'iqd',
+        creditLimit: 0,
+        receivableCreditLimit: null,
+        payableCreditLimit: null,
+        role: 'customer'
+    })
+}
+
+function salesOrderWithStaleRoundedBalance(customerId: string): SalesOrder {
+    const now = '2026-06-28T12:00:00.000Z'
+    return {
+        id: crypto.randomUUID(),
+        workspaceId: WORKSPACE_ID,
+        orderNumber: 'SO-ROUNDING-001',
+        businessPartnerId: customerId,
+        customerId,
+        customerName: 'Order Customer',
+        sourceStorageId: null,
+        items: [{
+            id: crypto.randomUUID(),
+            productId: PRODUCT_ID,
+            productName: 'Fractional IQD Product',
+            productSku: 'IQD-001',
+            quantity: 25.5,
+            lineTotal: 688.5,
+            originalCurrency: 'iqd',
+            originalUnitPrice: 27,
+            convertedUnitPrice: 27,
+            settlementCurrency: 'iqd',
+            costPrice: 10,
+            convertedCostPrice: 10
+        }],
+        subtotal: 688.5,
+        discount: 0,
+        tax: 0,
+        total: 688.5,
+        currency: 'iqd',
+        exchangeRate: null,
+        exchangeRateSource: null,
+        exchangeRateTimestamp: null,
+        exchangeRates: null,
+        status: 'completed',
+        expectedDeliveryDate: null,
+        actualDeliveryDate: now,
+        isPaid: false,
+        paymentStatus: 'unpaid',
+        paidAmount: 0,
+        balanceAmount: 689,
+        paidAt: null,
+        paymentMethod: 'cash',
+        initialPaymentAmount: 0,
+        linkedLoanId: null,
+        isInstallmentBased: false,
+        installmentCount: 0,
+        installmentFrequency: null,
+        firstDueDate: null,
+        nextDueDate: null,
+        reservedAt: null,
+        shippingAddress: '',
+        notes: '',
+        isLocked: false,
+        sourceChannel: 'manual',
+        marketplaceOrderId: null,
+        createdBy: null,
+        createdAt: now,
+        updatedAt: now,
+        syncStatus: 'synced',
+        lastSyncedAt: now,
+        version: 1,
+        isDeleted: false
+    }
 }
 
 function purchaseOrderInput(
@@ -154,6 +232,7 @@ describe('order-linked financing', () => {
         createBusinessPartner = partners.createBusinessPartner
         createPurchaseOrder = orders.createPurchaseOrder
         updatePurchaseOrderStatus = orders.updatePurchaseOrderStatus
+        recordOrderPayment = orders.recordOrderPayment
         recordLoanPayment = loans.recordLoanPayment
         reversePaymentTransaction = payments.reversePaymentTransaction
     })
@@ -285,6 +364,129 @@ describe('order-linked financing', () => {
         })
         expect(datedSchedule).toHaveLength(1)
         expect(datedSchedule[0]).toMatchObject({ dueDate: '2026-08-20', plannedAmount: 60 })
+    })
+
+    it('records fractional IQD order payments against old rounded balances', async () => {
+        const customer = await createCustomer()
+        const order = salesOrderWithStaleRoundedBalance(customer.id)
+        await db.sales_orders.put(order)
+
+        await recordOrderPayment(WORKSPACE_ID, {
+            orderType: 'sales',
+            orderId: order.id,
+            amount: 688.5,
+            paymentMethod: 'cash',
+            paidAt: '2026-06-28T16:08:00.000Z'
+        })
+
+        expect(await db.sales_orders.get(order.id)).toMatchObject({
+            paidAmount: 688.5,
+            balanceAmount: 0,
+            paymentStatus: 'paid',
+            isPaid: true
+        })
+        expect(await db.payment_transactions.where('sourceRecordId').equals(order.id).count()).toBe(1)
+    })
+
+    it('repairs an order if a stale rounded payment exists from a failed attempt', async () => {
+        const customer = await createCustomer()
+        const order = salesOrderWithStaleRoundedBalance(customer.id)
+        await db.sales_orders.put(order)
+        await db.payment_transactions.put({
+            id: crypto.randomUUID(),
+            workspaceId: WORKSPACE_ID,
+            sourceModule: 'orders',
+            sourceType: 'sales_order',
+            sourceRecordId: order.id,
+            sourceSubrecordId: null,
+            direction: 'incoming',
+            amount: 689,
+            currency: 'iqd',
+            paymentMethod: 'cash',
+            paidAt: '2026-06-28T16:08:00.000Z',
+            counterpartyName: order.customerName,
+            referenceLabel: order.orderNumber,
+            note: null,
+            createdBy: null,
+            reversalOfTransactionId: null,
+            metadata: { orderType: 'sales' },
+            createdAt: '2026-06-28T16:08:00.000Z',
+            updatedAt: '2026-06-28T16:08:00.000Z',
+            syncStatus: 'synced',
+            lastSyncedAt: '2026-06-28T16:08:00.000Z',
+            version: 1,
+            isDeleted: false
+        })
+
+        await recordOrderPayment(WORKSPACE_ID, {
+            orderType: 'sales',
+            orderId: order.id,
+            amount: 688.5,
+            paymentMethod: 'cash',
+            paidAt: '2026-06-28T16:09:00.000Z'
+        })
+
+        expect(await db.sales_orders.get(order.id)).toMatchObject({
+            paidAmount: 688.5,
+            balanceAmount: 0,
+            paymentStatus: 'paid',
+            isPaid: true
+        })
+        const transactions = await db.payment_transactions.where('sourceRecordId').equals(order.id).toArray()
+        expect(transactions).toHaveLength(1)
+        expect(transactions[0].amount).toBe(688.5)
+    })
+
+    it('collapses duplicate failed full-payment attempts before rebuilding the order', async () => {
+        const customer = await createCustomer()
+        const order = salesOrderWithStaleRoundedBalance(customer.id)
+        await db.sales_orders.put(order)
+        const basePayment = {
+            workspaceId: WORKSPACE_ID,
+            sourceModule: 'orders',
+            sourceType: 'sales_order',
+            sourceRecordId: order.id,
+            sourceSubrecordId: null,
+            direction: 'incoming' as const,
+            currency: 'iqd' as const,
+            paymentMethod: 'cash' as const,
+            paidAt: '2026-06-28T16:08:00.000Z',
+            counterpartyName: order.customerName,
+            referenceLabel: order.orderNumber,
+            note: null,
+            createdBy: null,
+            reversalOfTransactionId: null,
+            metadata: { orderType: 'sales' },
+            createdAt: '2026-06-28T16:08:00.000Z',
+            updatedAt: '2026-06-28T16:08:00.000Z',
+            syncStatus: 'synced' as const,
+            lastSyncedAt: '2026-06-28T16:08:00.000Z',
+            version: 1,
+            isDeleted: false
+        }
+        await db.payment_transactions.bulkPut([
+            { ...basePayment, id: crypto.randomUUID(), amount: 689 },
+            { ...basePayment, id: crypto.randomUUID(), amount: 688.5, paidAt: '2026-06-28T16:09:00.000Z' }
+        ])
+
+        await recordOrderPayment(WORKSPACE_ID, {
+            orderType: 'sales',
+            orderId: order.id,
+            amount: 688.5,
+            paymentMethod: 'cash',
+            paidAt: '2026-06-28T16:10:00.000Z'
+        })
+
+        expect(await db.sales_orders.get(order.id)).toMatchObject({
+            paidAmount: 688.5,
+            balanceAmount: 0,
+            paymentStatus: 'paid',
+            isPaid: true
+        })
+        const transactions = await db.payment_transactions.where('sourceRecordId').equals(order.id).toArray()
+        expect(transactions.filter((transaction) => !transaction.isDeleted)).toHaveLength(1)
+        expect(transactions.find((transaction) => !transaction.isDeleted)?.amount).toBe(688.5)
+        expect(transactions.filter((transaction) => transaction.isDeleted)).toHaveLength(1)
     })
 
     it('enforces the payable credit limit and requires regular tenders to be fully paid', async () => {

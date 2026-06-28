@@ -29,7 +29,22 @@ def get_s3_client():
         region_name='auto' # R2 uses 'auto'
     )
 
+def is_sau_enabled():
+    """Check if Skip Auto-Update (SAU) is enabled via .release-config.json."""
+    try:
+        if os.path.exists(".release-config.json"):
+            with open(".release-config.json", 'r') as f:
+                release_config = json.load(f)
+            return release_config.get("skip_latest_json", False)
+    except Exception as e:
+        print(f"Warning: Could not read .release-config.json: {e}")
+    return False
+
 def clear_updates():
+    if is_sau_enabled():
+        print("⚠️  SAU is enabled — skipping atlas-updates/ clear entirely.")
+        return
+
     print("Clearing atlas-updates/ in R2...")
     bucket_name = os.environ.get("R2_BUCKET_NAME", "atlas")
     s3 = get_s3_client()
@@ -50,6 +65,11 @@ def clear_updates():
         exit(1)
 
 def upload_assets():
+    if is_sau_enabled():
+        print("⚠️  SAU is enabled — skipping all atlas-updates/ uploads entirely.")
+        print("   Existing R2 update files will remain untouched.")
+        return
+
     print("Starting asset upload to R2...")
     bucket_name = os.environ.get("R2_BUCKET_NAME", "atlas")
     s3 = get_s3_client()
@@ -219,22 +239,9 @@ def upload_assets():
         json.dump(data, f, indent=2)
     print(f"Generated final {final_latest_json} with platforms: {list(data.get('platforms', {}).keys())}")
     
-    # Check if latest.json upload should be skipped via .release-config.json
-    skip_latest = False
-    try:
-        if os.path.exists(".release-config.json"):
-            with open(".release-config.json", 'r') as f:
-                release_config = json.load(f)
-            skip_latest = release_config.get("skip_latest_json", False)
-            if skip_latest:
-                print("⚠️  skip_latest_json is TRUE — latest.json will NOT be uploaded to R2")
-                print("   Existing users will NOT be prompted to update.")
-    except Exception as e:
-        print(f"Warning: Could not read .release-config.json: {e}")
-
     # Filter files for upload
     files_to_upload = []
-    if not skip_latest and len(data.get("platforms", {})) > 0:
+    if len(data.get("platforms", {})) > 0:
         files_to_upload.append(final_latest_json)
     
     for f in all_files:

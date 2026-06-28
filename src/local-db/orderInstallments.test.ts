@@ -4,6 +4,7 @@ import type { OrderInstallment } from './models'
 import {
     addOrderInstallmentDate,
     createOrderInstallmentPlan,
+    getOrderBalanceAmount,
     rebuildOrderInstallmentsFromPayments
 } from './orderInstallments'
 
@@ -45,6 +46,33 @@ describe('order installment schedules', () => {
         expect(addOrderInstallmentDate('2026-07-01', 'weekly', 1)).toBe('2026-07-08')
     })
 
+    it('preserves fractional IQD order balances', () => {
+        expect(getOrderBalanceAmount({
+            total: 688.5,
+            currency: 'iqd',
+            isPaid: false,
+            paidAmount: 0,
+            balanceAmount: 688.5
+        })).toBe(688.5)
+    })
+
+    it('corrects old rounded IQD balances from stored order rows', () => {
+        expect(getOrderBalanceAmount({
+            total: 688.5,
+            currency: 'iqd',
+            isPaid: false,
+            paidAmount: 0,
+            balanceAmount: 689
+        })).toBe(688.5)
+    })
+
+    it('splits fractional IQD installments without rounding to whole dinars', () => {
+        expect(createOrderInstallmentPlan(688.5, 'iqd', 2, 'monthly', '2026-07-01')).toEqual([
+            { installmentNo: 1, dueDate: '2026-07-01', plannedAmount: 344.25 },
+            { installmentNo: 2, dueDate: '2026-08-01', plannedAmount: 344.25 }
+        ])
+    })
+
     it('allocates partial payments to the selected installment and then the next open one', () => {
         const rebuilt = rebuildOrderInstallmentsFromPayments(
             [
@@ -74,6 +102,35 @@ describe('order installment schedules', () => {
             balanceAmount: 30,
             status: 'partial',
             paidAt: null
+        })
+    })
+
+    it('allocates fractional IQD payments exactly', () => {
+        const rebuilt = rebuildOrderInstallmentsFromPayments(
+            [
+                installment({
+                    id: 'installment-iqd',
+                    plannedAmount: 688.5,
+                    balanceAmount: 688.5
+                })
+            ],
+            [
+                {
+                    id: 'payment-iqd',
+                    amount: 688.5,
+                    paidAt: '2026-07-01T12:00:00.000Z',
+                    targetInstallmentId: 'installment-iqd'
+                }
+            ],
+            'iqd',
+            '2026-07-01T12:00:00.000Z'
+        )
+
+        expect(rebuilt[0]).toMatchObject({
+            paidAmount: 688.5,
+            balanceAmount: 0,
+            status: 'paid',
+            paidAt: '2026-07-01T12:00:00.000Z'
         })
     })
 })

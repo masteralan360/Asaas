@@ -21,24 +21,48 @@ export type OrderPaymentAllocationInput = {
     targetInstallmentId?: string | null
 }
 
-export function roundOrderAmount(value: number, currency: CurrencyCode) {
-    return currency === 'iqd' ? Math.round(value) : Math.round(value * 100) / 100
+export const ORDER_AMOUNT_EPSILON = 0.005
+
+export function roundOrderAmount(value: number, _currency: CurrencyCode) {
+    return Math.round(value * 100) / 100
 }
 
 export function getOrderPaidAmount(order: OrderLike) {
     if (Number.isFinite(order.paidAmount)) {
-        return roundOrderAmount(Math.max(0, Number(order.paidAmount)), order.currency)
+        const paidAmount = roundOrderAmount(Math.max(0, Number(order.paidAmount)), order.currency)
+        const total = roundOrderAmount(Math.max(0, Number(order.total || 0)), order.currency)
+        const balanceAmount = Number.isFinite(order.balanceAmount)
+            ? roundOrderAmount(Math.max(0, Number(order.balanceAmount)), order.currency)
+            : null
+
+        if (
+            order.isPaid
+            && balanceAmount !== null
+            && balanceAmount <= ORDER_AMOUNT_EPSILON
+            && Math.abs(paidAmount - total) > ORDER_AMOUNT_EPSILON
+        ) {
+            return total
+        }
+
+        return paidAmount
     }
 
     return order.isPaid ? roundOrderAmount(order.total, order.currency) : 0
 }
 
 export function getOrderBalanceAmount(order: OrderLike) {
+    const total = roundOrderAmount(Math.max(0, Number(order.total || 0)), order.currency)
+    const paidAmount = getOrderPaidAmount(order)
+    const derivedBalance = roundOrderAmount(Math.max(total - paidAmount, 0), order.currency)
+
     if (Number.isFinite(order.balanceAmount)) {
-        return roundOrderAmount(Math.max(0, Number(order.balanceAmount)), order.currency)
+        const storedBalance = roundOrderAmount(Math.max(0, Number(order.balanceAmount)), order.currency)
+        return Math.abs(storedBalance - derivedBalance) > ORDER_AMOUNT_EPSILON
+            ? derivedBalance
+            : storedBalance
     }
 
-    return roundOrderAmount(Math.max(order.total - getOrderPaidAmount(order), 0), order.currency)
+    return derivedBalance
 }
 
 export function getOrderPaymentStatus(order: OrderLike): OrderPaymentStatus {

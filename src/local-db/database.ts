@@ -2629,9 +2629,7 @@ export class AtlasDatabase extends Dexie {
                 if (existingSchedule.length === 0) {
                   const count = Math.max(1, Math.trunc(Number(order.installmentCount || 1)));
                   const frequency = String(order.installmentFrequency || "monthly");
-                  const roundAmount = (amount: number) => order.currency === "iqd"
-                    ? Math.round(amount)
-                    : Number(amount.toFixed(2));
+                  const roundAmount = (amount: number) => Number(amount.toFixed(2));
                   const baseAmount = roundAmount(balanceAmount / count);
                   let allocated = 0;
                   const advanceDueDate = (index: number) => {
