@@ -2294,7 +2294,11 @@
     "you": "You",
     "permissions": {
       "currencyExchangeManagePrices": "Manage FX Prices",
-      "currencyExchangeManagePricesDescription": "Edit manual buy and sell prices for currency exchange pairs."
+      "currencyExchangeManagePricesDescription": "Edit manual buy and sell prices for currency exchange pairs.",
+      "posHideModifyPriceButton": "Hide Modify price button",
+      "posHideModifyPriceButtonDescription": "Hide the pencil icon to modify item prices in the POS cart.",
+      "posHidePriceBelowCostIndicator": "Hide \"Price is Below cost\" indicator",
+      "posHidePriceBelowCostIndicatorDescription": "Hide the warning indicator when the negotiated price is below cost inside the Modify Price modal."
     }
   },
   "profileCard": {

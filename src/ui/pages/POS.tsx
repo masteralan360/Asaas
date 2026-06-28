@@ -26,6 +26,7 @@ import { db } from '@/local-db/database'
 import { formatCurrency, generateId, cn } from '@/lib/utils'
 import { CartItem } from '@/types'
 import { useWorkspace, type WorkspaceFeatures } from '@/workspace'
+import { useWorkspacePermissions } from '@/permissions'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import {
     BARCODE_SCANNER_ACTIVE_FAST_KEY_COUNT,
@@ -486,6 +487,9 @@ export function POS() {
     const [editingPriceItemKey, setEditingPriceItemKey] = useState<string | null>(null)
     const [negotiatedPriceInput, setNegotiatedPriceInput] = useState('')
     const isAdmin = user?.role === 'admin'
+    const { permissionKeys } = useWorkspacePermissions()
+    const isModifyPriceHidden = !isAdmin && permissionKeys.includes('pos.hideModifyPriceButton' as any)
+    const isPriceBelowCostHidden = !isAdmin && permissionKeys.includes('pos.hidePriceBelowCostIndicator' as any)
 
     const [paymentType, setPaymentType] = useState<'cash' | 'digital' | 'loan'>('cash')
     const [digitalProvider, setDigitalProvider] = useState<'fib' | 'qicard' | 'zaincash' | 'fastpay'>('fib')
@@ -2421,7 +2425,7 @@ export function POS() {
                                                         <div className="font-bold flex items-center gap-1">
                                                             <span>{formatCurrency(convertedPrice * item.quantity, settlementCurrency, features.iqd_display_preference)}</span>
                                                             {/* Admin-only Pencil icon */}
-                                                            {isAdmin && (
+                                                            {!isModifyPriceHidden && (
                                                                 <button
                                                                     onClick={() => openPriceEdit(item)}
                                                                     className="transition-opacity p-1 hover:bg-muted rounded bg-muted/30 border border-border/50"
@@ -2979,7 +2983,7 @@ export function POS() {
                                     <p className="text-xs text-muted-foreground mt-1">
                                         {t('pos.originalPriceDesc') || 'Original price will be preserved in records.'}
                                     </p>
-                                    {(() => {
+                                    {!isPriceBelowCostHidden && (() => {
                                         const parsedPrice = parseFormattedNumber(negotiatedPriceInput)
                                         const costPrice = editingProduct?.costPrice
                                         if (costPrice != null && costPrice > 0 && !isNaN(parsedPrice) && parsedPrice < costPrice) {

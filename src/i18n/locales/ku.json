@@ -1518,7 +1518,11 @@
     "you": "تۆ",
     "permissions": {
       "currencyExchangeManagePrices": "بەڕێوەبردنی نرخی FX",
-      "currencyExchangeManagePricesDescription": "دەستکاریکردنی نرخی کڕین و فرۆشتنی دەستی بۆ جوتە دراوەکان."
+      "currencyExchangeManagePricesDescription": "دەستکاریکردنی نرخی کڕین و فرۆشتنی دەستی بۆ جوتە دراوەکان.",
+      "posHideModifyPriceButton": "شاردنەوەی دوگمەی دەستکاریکردنی نرخ",
+      "posHideModifyPriceButtonDescription": "شاردنەوەی ئایکۆنی پێنووس بۆ دەستکاریکردنی نرخی کاڵاکان لە سەبەتەی POS.",
+      "posHidePriceBelowCostIndicator": "شاردنەوەی ئاماژەی \"نرخ لە تێچوو کەمترە\"",
+      "posHidePriceBelowCostIndicatorDescription": "شاردنەوەی ئاگادارکردنەوە کاتێک نرخی ڕێکخراو لە تێچوو کەمترە لە ناو دەستکاریکردنی نرخ."
     }
   },
   "profileCard": {

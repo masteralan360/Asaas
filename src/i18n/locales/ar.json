@@ -1504,7 +1504,11 @@
     "you": "أنت",
     "permissions": {
       "currencyExchangeManagePrices": "إدارة أسعار الصرف",
-      "currencyExchangeManagePricesDescription": "تعديل أسعار الشراء والبيع اليدوية لأزواج العملات."
+      "currencyExchangeManagePricesDescription": "تعديل أسعار الشراء والبيع اليدوية لأزواج العملات.",
+      "posHideModifyPriceButton": "إخفاء زر تعديل السعر",
+      "posHideModifyPriceButtonDescription": "إخفاء أيقونة القلم لتعديل أسعار العناصر في سلة POS.",
+      "posHidePriceBelowCostIndicator": "إخفاء مؤشر \"السعر أقل من التكلفة\"",
+      "posHidePriceBelowCostIndicatorDescription": "إخفاء التحذير عندما يكون السعر المتفاوض عليه أقل من التكلفة داخل نافذة تعديل السعر."
     }
   },
   "profileCard": {
