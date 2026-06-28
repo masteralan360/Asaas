@@ -1,20 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useReactToPrint } from 'react-to-print'
 import {
     Dialog,
     DialogContent,
     DialogTitle,
     Button,
-    SaleReceiptBase,
     useToast
 } from '@/ui/components'
 import { CheckCircle2, Printer, Coins } from 'lucide-react'
 import { formatCurrency, cn } from '@/lib/utils'
 import { triggerInvoiceSync } from '@/services/invoiceSyncService'
 import { disableInvoiceQrInLocalMode } from '@/services/localInvoiceStorage'
+import { generateInvoicePdf } from '@/services/pdfGenerator'
+import { printPdfBlob } from '@/services/pdfPrintService'
+import { renderPdfPageToPngDataUrl } from '@/services/pdfRasterizer'
 import { printService } from '@/services/printService'
-import html2canvas from 'html2canvas'
 import { isSupabaseConfigured, useAuth } from '@/auth'
 import { useWorkspace, type WorkspaceFeatures } from '@/workspace'
 import { Textarea } from '@/ui/components/textarea'
@@ -29,7 +29,6 @@ import {
     getCustomTemplateTarget,
     isCustomTemplatePrintLanguageCompatible,
     readCustomTemplateLayout,
-    renderCustomTemplateLayoutElement,
     resolveCustomTemplatePrintLanguage,
     type StoredCustomTemplateRow
 } from '@/lib/customTemplates'
@@ -57,7 +56,6 @@ export function CheckoutSuccessModal({
     const [isProcessing, setIsProcessing] = useState(false)
     const [note, setNote] = useState(saleData?.notes || '')
     const debouncedNote = useDebounce(note, 1000)
-    const printRef = useRef<HTMLDivElement>(null)
     const [primaryReceiptTemplate, setPrimaryReceiptTemplate] = useState<StoredCustomTemplateRow | null>(null)
     const [isLoadingPrimaryReceiptTemplate, setIsLoadingPrimaryReceiptTemplate] = useState(false)
     const printFeatures = useMemo(
@@ -68,14 +66,6 @@ export function CheckoutSuccessModal({
         printFeatures.print_lang,
         i18n.language
     )
-
-    const handlePrint = useReactToPrint({
-        contentRef: printRef,
-        documentTitle: `Receipt_${saleData?.invoiceid || saleData?.id || 'Sale'}`,
-        onAfterPrint: () => {
-            // Optional: Close modal after print? No, leave it for the timer or manual close
-        }
-    })
 
     useEffect(() => {
         const workspaceId = activeWorkspace?.id || user?.workspaceId
@@ -125,22 +115,35 @@ export function CheckoutSuccessModal({
             : null,
         [currentTemplatePrintLanguage, primaryReceiptTemplate]
     )
-    const buildPrimaryReceiptPdf = useCallback(async () => {
-        if (!primaryReceiptTarget || !primaryReceiptLayout || !saleData) {
-            throw new Error('Primary receipt template is not available.')
+    const buildCheckoutReceiptPdf = useCallback(async () => {
+        if (!saleData) {
+            throw new Error('Receipt data is not available.')
         }
 
-        return buildCustomTemplateLayoutPdf({
-            target: primaryReceiptTarget,
-            layout: primaryReceiptLayout,
-            values: {},
-            options: {
-                workspaceId: activeWorkspace?.id || user?.workspaceId,
-                workspaceName,
-                features: printFeatures,
-                receiptData: saleData
-            },
-            effectiveId: saleData.id
+        const workspaceId = activeWorkspace?.id || user?.workspaceId || ''
+        const resolvedWorkspaceName = workspaceName || workspaceId || 'Atlas'
+
+        if (primaryReceiptTarget && primaryReceiptLayout) {
+            return buildCustomTemplateLayoutPdf({
+                target: primaryReceiptTarget,
+                layout: primaryReceiptLayout,
+                values: {},
+                options: {
+                    workspaceId,
+                    workspaceName,
+                    features: printFeatures,
+                    receiptData: saleData
+                },
+                effectiveId: saleData.id
+            })
+        }
+
+        return generateInvoicePdf({
+            data: { ...saleData },
+            format: 'receipt',
+            features: printFeatures,
+            workspaceName: resolvedWorkspaceName,
+            workspaceId
         })
     }, [activeWorkspace?.id, primaryReceiptLayout, primaryReceiptTarget, printFeatures, saleData, user?.workspaceId, workspaceName])
 
@@ -207,62 +210,41 @@ export function CheckoutSuccessModal({
 
         setIsProcessing(true)
         try {
-            // 1. Trigger background sync (non-blocking for UI)
+            const workspaceId = activeWorkspace?.id || user.workspaceId
+            const resolvedWorkspaceName = workspaceName || workspaceId || 'Atlas'
+            let receiptPdfPromise: Promise<Blob> | null = null
+            const getReceiptPdf = () => {
+                receiptPdfPromise ||= buildCheckoutReceiptPdf()
+                return receiptPdfPromise
+            }
+
+            // 1. Trigger background sync with the same receipt PDF used for printing.
             triggerInvoiceSync({
                 saleData,
                 features: printFeatures,
-                workspaceName: workspaceName || user?.workspaceId || 'Atlas',
-                workspaceId: activeWorkspace?.id || user.workspaceId,
+                workspaceName: resolvedWorkspaceName,
+                workspaceId,
                 user: {
                     id: user.id,
                     name: user.name || 'System'
                 },
                 format: 'receipt',
-                pdfBuilder: primaryReceiptLayout ? buildPrimaryReceiptPdf : undefined
+                pdfBuilder: getReceiptPdf
             });
 
             // 2. Prefer native thermal printing when enabled and configured on this device.
             let handledByThermalPrinter = false
             if (features.thermal_printing) {
                 try {
-                    if (primaryReceiptLayout && primaryReceiptTarget && printRef.current) {
-                        // Capture the custom template as an image and print it via thermal printer
-                        const maxWidth = await printService.getThermalPrinterMaxWidth(
-                            activeWorkspace?.id || user.workspaceId
-                        )
-                        const sourceNode = printRef.current
-                        const clone = sourceNode.cloneNode(true) as HTMLElement
-                        clone.style.position = 'fixed'
-                        clone.style.left = '-9999px'
-                        clone.style.top = '0'
-                        clone.style.width = `${maxWidth}px`
-                        clone.style.backgroundColor = '#ffffff'
-                        clone.style.zIndex = '-1'
-                        document.body.appendChild(clone)
+                    const maxWidth = await printService.getThermalPrinterMaxWidth(workspaceId)
+                    const receiptPdf = await getReceiptPdf()
+                    const imageBase64 = await renderPdfPageToPngDataUrl(receiptPdf, { maxWidthPx: maxWidth })
 
-                        try {
-                            const canvas = await html2canvas(clone, {
-                                scale: 1,
-                                useCORS: true,
-                                backgroundColor: '#ffffff'
-                            })
-                            const imageBase64 = canvas.toDataURL('image/png')
-                            handledByThermalPrinter = await printService.silentPrintImage({
-                                imageBase64,
-                                workspaceId: activeWorkspace?.id || user.workspaceId,
-                                maxWidth
-                            })
-                        } finally {
-                            document.body.removeChild(clone)
-                        }
-                    } else {
-                        handledByThermalPrinter = await printService.silentPrintReceipt({
-                            saleData,
-                            features: printFeatures,
-                            workspaceName: workspaceName || user?.workspaceId || 'Atlas',
-                            workspaceId: activeWorkspace?.id || user.workspaceId
-                        })
-                    }
+                    handledByThermalPrinter = await printService.silentPrintImage({
+                        imageBase64,
+                        workspaceId,
+                        maxWidth
+                    })
                 } catch (thermalError) {
                     console.error('[CheckoutSuccessModal] Thermal print failed:', thermalError)
                     toast({
@@ -275,16 +257,14 @@ export function CheckoutSuccessModal({
                 }
             }
 
-            // 3. Fall back to the original browser print flow when thermal printing is disabled or unavailable.
+            // 3. Fall back to regular PDF printing when thermal printing is disabled or unavailable.
             if (!handledByThermalPrinter) {
-                handlePrint()
+                await printPdfBlob(await getReceiptPdf(), {
+                    title: `Receipt_${saleData?.invoiceid || saleData?.id || 'Sale'}`
+                })
             }
 
-            // Note: We don't onClose() immediately here because handlePrint() 
-            // is async in nature (browser dialog), but we want to stay in 
-            // success modal until user is done. If we want to auto-close 
-            // after print, we'd use onAfterPrint in the hook.
-            // For now, let the timer handle auto-close or manual New Sale.
+            // Keep the success modal open; the timer or manual New Sale action closes it.
         } catch (error) {
             console.error('[CheckoutSuccessModal] Failed to start background sync or print:', error)
             // Even if there's an error, we want to close the modal to not block the user
@@ -393,34 +373,6 @@ export function CheckoutSuccessModal({
                     </div>
                 </div>
 
-                {/* Hidden SaleReceipt for printing */}
-                <div className="hidden">
-                    <div ref={printRef} className="bg-white">
-                        {saleData && (
-                            primaryReceiptTarget && primaryReceiptLayout
-                                ? renderCustomTemplateLayoutElement({
-                                    target: primaryReceiptTarget,
-                                    layout: primaryReceiptLayout,
-                                    values: {},
-                                    options: {
-                                        workspaceId: activeWorkspace?.id || user?.workspaceId,
-                                        workspaceName,
-                                        features: printFeatures,
-                                        receiptData: saleData
-                                    },
-                                    effectiveId: saleData.id
-                                })
-                                : (
-                                    <SaleReceiptBase
-                                        data={saleData}
-                                        features={printFeatures}
-                                        workspaceName={workspaceName || user?.workspaceId || 'Atlas'}
-                                        workspaceId={activeWorkspace?.id || user?.workspaceId}
-                                    />
-                                )
-                        )}
-                    </div>
-                </div>
             </DialogContent>
         </Dialog>
     )

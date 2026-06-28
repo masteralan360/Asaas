@@ -1,7 +1,7 @@
 {
   "name": "atlas",
   "private": true,
-  "version": "0.1.88",
+  "version": "0.1.89",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -96,6 +96,7 @@
     "maplibre-gl": "^5.19.0",
     "motion": "^12.38.0",
     "mrz": "^5.0.2",
+    "pdfjs-dist": "^6.1.200",
     "radix-ui": "^1.4.3",
     "react": "^18.3.1",
     "react-aria": "^3.47.0",
@@ -146,5 +147,5 @@
     "vitest": "^4.1.8",
     "workbox-window": "^7.1.0"
   },
-  "min_version": "0.1.88"
+  "min_version": "0.1.89"
 }
