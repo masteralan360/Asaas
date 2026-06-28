@@ -969,6 +969,7 @@ export function InstantPOS() {
 
         const checkoutPayload = {
             id: saleId,
+            workspace_id: user.workspaceId,
             items: itemsWithMetadata,
             total_amount: totalAmount,
             settlement_currency: settlementCurrency,

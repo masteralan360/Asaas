@@ -1,3 +1,5 @@
+-- Ensure branch POS checkout uses the workspace selected by the client after
+-- validating it against the caller's source workspace and branch mappings.
 CREATE OR REPLACE FUNCTION public.complete_sale(payload jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
