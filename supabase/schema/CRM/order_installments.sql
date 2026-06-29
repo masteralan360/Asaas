@@ -39,26 +39,61 @@ CREATE POLICY crm_order_installments_select
   ON crm.order_installments
   FOR SELECT
   TO authenticated
-  USING (workspace_id = public.current_workspace_id());
+  USING (
+    workspace_id = public.current_workspace_id()
+    AND public.workspace_module_allowed(
+      workspace_id,
+      (SELECT w.plan::text FROM public.workspaces w WHERE w.id = order_installments.workspace_id),
+      'orders'
+    )
+  );
 
 DROP POLICY IF EXISTS crm_order_installments_insert ON crm.order_installments;
 CREATE POLICY crm_order_installments_insert
   ON crm.order_installments
   FOR INSERT
   TO authenticated
-  WITH CHECK (workspace_id = public.current_workspace_id());
+  WITH CHECK (
+    workspace_id = public.current_workspace_id()
+    AND public.workspace_module_allowed(
+      workspace_id,
+      (SELECT w.plan::text FROM public.workspaces w WHERE w.id = order_installments.workspace_id),
+      'orders'
+    )
+  );
 
 DROP POLICY IF EXISTS crm_order_installments_update ON crm.order_installments;
 CREATE POLICY crm_order_installments_update
   ON crm.order_installments
   FOR UPDATE
   TO authenticated
-  USING (workspace_id = public.current_workspace_id())
-  WITH CHECK (workspace_id = public.current_workspace_id());
+  USING (
+    workspace_id = public.current_workspace_id()
+    AND public.workspace_module_allowed(
+      workspace_id,
+      (SELECT w.plan::text FROM public.workspaces w WHERE w.id = order_installments.workspace_id),
+      'orders'
+    )
+  )
+  WITH CHECK (
+    workspace_id = public.current_workspace_id()
+    AND public.workspace_module_allowed(
+      workspace_id,
+      (SELECT w.plan::text FROM public.workspaces w WHERE w.id = order_installments.workspace_id),
+      'orders'
+    )
+  );
 
 DROP POLICY IF EXISTS crm_order_installments_delete ON crm.order_installments;
 CREATE POLICY crm_order_installments_delete
   ON crm.order_installments
   FOR DELETE
   TO authenticated
-  USING (workspace_id = public.current_workspace_id());
+  USING (
+    workspace_id = public.current_workspace_id()
+    AND public.workspace_module_allowed(
+      workspace_id,
+      (SELECT w.plan::text FROM public.workspaces w WHERE w.id = order_installments.workspace_id),
+      'orders'
+    )
+  );

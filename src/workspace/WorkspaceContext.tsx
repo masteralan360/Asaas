@@ -49,6 +49,7 @@ export interface WorkspaceFeatures {
     instant_pos: boolean
     sales_history: boolean
     crm: boolean
+    orders: boolean
     agents: boolean
     ecommerce: boolean
     travel_agency: boolean
@@ -135,6 +136,7 @@ const PLAN_DERIVED_FEATURE_KEYS: ModuleFeatureKey[] = [
     'instant_pos',
     'sales_history',
     'crm',
+    'orders',
     'agents',
     'ecommerce',
     'travel_agency',
@@ -453,6 +455,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             instant_pos: nextFeatures.instant_pos,
             sales_history: nextFeatures.sales_history,
             crm: nextFeatures.crm,
+            orders: nextFeatures.orders,
             ecommerce: nextFeatures.ecommerce,
             travel_agency: nextFeatures.travel_agency,
             real_estate: nextFeatures.real_estate,
@@ -1041,7 +1044,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 plan: newFeatures.plan,
                 data_mode: newFeatures.data_mode,
                 is_configured: newFeatures.is_configured,
+                pos: newFeatures.pos,
                 instant_pos: newFeatures.instant_pos,
+                sales_history: newFeatures.sales_history,
+                crm: newFeatures.crm,
+                orders: newFeatures.orders,
+                ecommerce: newFeatures.ecommerce,
                 travel_agency: newFeatures.travel_agency,
                 real_estate: newFeatures.real_estate,
                 currency_exchange: newFeatures.currency_exchange,

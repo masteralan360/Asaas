@@ -20,7 +20,7 @@ import type { ClinicalAppointment, ClinicalAppointmentStatus, ClinicalAppointmen
 import { useClinicalPresetsByCategory, useClinicalRegistryType } from '@/local-db/clinicalPresets'
 import { isBeautyClinicalRegistryType } from '@/local-db/clinicalRegistryPreset'
 import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, Label, Card, CardContent, CardHeader, CardTitle, DateTimePicker, SettlementDialog, useToast, DeleteConfirmationModal, Dialog, DialogContent } from '@/ui/components'
-import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit, Check, ChevronDown, LayoutGrid, List, HandCoins, UserPlus, Phone, MapPin } from 'lucide-react'
+import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit, Check, ChevronDown, LayoutGrid, List, HandCoins, UserPlus, Phone } from 'lucide-react'
 import { generateId, formatCurrency, formatLocalDateValue, formatNumberWithCommas, formatTime, formatNumericInput, parseFormattedNumber, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
@@ -600,7 +600,7 @@ function Beauty2AppointmentForm({ workspaceId, appointment, onCancel, onSaved }:
         </div>
       </form>
 
-      <Dialog open={showSavePartner} onOpenChange={() => {}}>
+      <Dialog open={showSavePartner} onOpenChange={() => { }}>
         <DialogContent
           className="sm:max-w-md overflow-hidden [&>button:last-child]:hidden"
           onPointerDownOutside={(e) => e.preventDefault()}
@@ -877,11 +877,10 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
             key={chip.value}
             type="button"
             onClick={() => setFilter(chip.value)}
-            className={`px-3 py-1.5 text-sm font-medium rounded-full border transition-colors ${
-              filter === chip.value
+            className={`px-3 py-1.5 text-sm font-medium rounded-full border transition-colors ${filter === chip.value
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'bg-background text-muted-foreground border-border hover:bg-accent hover:text-accent-foreground'
-            }`}
+              }`}
           >
             {chip.label}
           </button>
@@ -932,10 +931,10 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="capitalize text-muted-foreground">
-                  {t('clinicalAppointments.types.' + appt.appointmentType, {defaultValue: appt.appointmentType.replace(/_/g, ' ')})}
+                  {t('clinicalAppointments.types.' + appt.appointmentType, { defaultValue: appt.appointmentType.replace(/_/g, ' ') })}
                 </span>
                 <span className="capitalize text-xs font-medium text-muted-foreground">
-                  {t('clinicalAppointments.priorities.' + appt.priority, {defaultValue: appt.priority})}
+                  {t('clinicalAppointments.priorities.' + appt.priority, { defaultValue: appt.priority })}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
@@ -996,10 +995,10 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="capitalize text-muted-foreground">
-                      {t('clinicalAppointments.types.' + appt.appointmentType, {defaultValue: appt.appointmentType.replace(/_/g, ' ')})}
+                      {t('clinicalAppointments.types.' + appt.appointmentType, { defaultValue: appt.appointmentType.replace(/_/g, ' ') })}
                     </span>
                     <span className="capitalize text-xs font-medium text-muted-foreground">
-                      {t('clinicalAppointments.priorities.' + appt.priority, {defaultValue: appt.priority})}
+                      {t('clinicalAppointments.priorities.' + appt.priority, { defaultValue: appt.priority })}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
@@ -1033,72 +1032,72 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
             )}
           </div>
         ) : (
-        <div className="border rounded-lg">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('clinicalAppointments.patient', { defaultValue: 'Patient' })}</TableHead>
-                <TableHead>{t('clinicalAppointments.dateTime', { defaultValue: 'Date & Time' })}</TableHead>
-                <TableHead>{t('clinicalAppointments.type', { defaultValue: 'Type' })}</TableHead>
-                <TableHead>{t('clinicalAppointments.status', { defaultValue: 'Status' })}</TableHead>
-                <TableHead>{t('clinicalAppointments.priority', { defaultValue: 'Priority' })}</TableHead>
-                <TableHead>{t('clinicalAppointments.consultationFee', { defaultValue: 'Service Fee' })}</TableHead>
-                <TableHead>{t('clinicalAppointments.finalPayment', { defaultValue: 'Final Payment' })}</TableHead>
-                <TableHead>{t('clinicalAppointments.currency', { defaultValue: 'Currency' })}</TableHead>
-                <TableHead>{t('clinicalAppointments.paymentStatus', { defaultValue: 'Payment Status' })}</TableHead>
-                <TableHead>{t('clinicalAppointments.actions', { defaultValue: 'Actions' })}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
+          <div className="border rounded-lg">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
-                    {t('clinicalAppointments.noAppointments', { defaultValue: 'No appointments found' })}
-                  </TableCell>
+                  <TableHead>{t('clinicalAppointments.patient', { defaultValue: 'Patient' })}</TableHead>
+                  <TableHead>{t('clinicalAppointments.dateTime', { defaultValue: 'Date & Time' })}</TableHead>
+                  <TableHead>{t('clinicalAppointments.type', { defaultValue: 'Type' })}</TableHead>
+                  <TableHead>{t('clinicalAppointments.status', { defaultValue: 'Status' })}</TableHead>
+                  <TableHead>{t('clinicalAppointments.priority', { defaultValue: 'Priority' })}</TableHead>
+                  <TableHead>{t('clinicalAppointments.consultationFee', { defaultValue: 'Service Fee' })}</TableHead>
+                  <TableHead>{t('clinicalAppointments.finalPayment', { defaultValue: 'Final Payment' })}</TableHead>
+                  <TableHead>{t('clinicalAppointments.currency', { defaultValue: 'Currency' })}</TableHead>
+                  <TableHead>{t('clinicalAppointments.paymentStatus', { defaultValue: 'Payment Status' })}</TableHead>
+                  <TableHead>{t('clinicalAppointments.actions', { defaultValue: 'Actions' })}</TableHead>
                 </TableRow>
-              ) : (
-                filtered.map((appt) => (
-                  <TableRow key={appt.id}>
-                    <TableCell className="font-medium">{appt.patientName}</TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {appt.appointmentDate}{' '}
-                      <span className="text-muted-foreground">{formatTime(`${appt.appointmentDate}T${appt.startTime}`)}</span>
-                    </TableCell>
-                    <TableCell className="capitalize">{t('clinicalAppointments.types.' + appt.appointmentType, {defaultValue: appt.appointmentType.replace(/_/g, ' ')})}</TableCell>
-                    <TableCell>
-                      <StatusCell
-                        status={appt.status}
-                        appointmentId={appt.id}
-                        onStatusChange={handleStatusChange}
-                        disabled={updatingId === appt.id}
-                      />
-                    </TableCell>
-                    <TableCell className="capitalize">{t('clinicalAppointments.priorities.' + appt.priority, {defaultValue: appt.priority})}</TableCell>
-                    <TableCell className="whitespace-nowrap font-medium">
-                      {formatCurrency(appt.consultationFee, appt.currency || features.default_currency, features.iqd_display_preference)}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap font-medium">
-                      {formatCurrency(getDisplayedPaidAmount(appt), appt.currency || features.default_currency, features.iqd_display_preference)}
-                    </TableCell>
-                    <TableCell className="font-semibold uppercase">{appt.currency || features.default_currency}</TableCell>
-                    <TableCell>{renderPaymentStatus(appt)}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {renderPaymentAction(appt)}
-                        <Button variant="ghost" size="icon" onClick={() => navigate(`/clinical-appointments/${appt.id}/edit`)}>
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => setDeleteConfirmId(appt.id)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
+              </TableHeader>
+              <TableBody>
+                {filtered.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
+                      {t('clinicalAppointments.noAppointments', { defaultValue: 'No appointments found' })}
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                ) : (
+                  filtered.map((appt) => (
+                    <TableRow key={appt.id}>
+                      <TableCell className="font-medium">{appt.patientName}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {appt.appointmentDate}{' '}
+                        <span className="text-muted-foreground">{formatTime(`${appt.appointmentDate}T${appt.startTime}`)}</span>
+                      </TableCell>
+                      <TableCell className="capitalize">{t('clinicalAppointments.types.' + appt.appointmentType, { defaultValue: appt.appointmentType.replace(/_/g, ' ') })}</TableCell>
+                      <TableCell>
+                        <StatusCell
+                          status={appt.status}
+                          appointmentId={appt.id}
+                          onStatusChange={handleStatusChange}
+                          disabled={updatingId === appt.id}
+                        />
+                      </TableCell>
+                      <TableCell className="capitalize">{t('clinicalAppointments.priorities.' + appt.priority, { defaultValue: appt.priority })}</TableCell>
+                      <TableCell className="whitespace-nowrap font-medium">
+                        {formatCurrency(appt.consultationFee, appt.currency || features.default_currency, features.iqd_display_preference)}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap font-medium">
+                        {formatCurrency(getDisplayedPaidAmount(appt), appt.currency || features.default_currency, features.iqd_display_preference)}
+                      </TableCell>
+                      <TableCell className="font-semibold uppercase">{appt.currency || features.default_currency}</TableCell>
+                      <TableCell>{renderPaymentStatus(appt)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {renderPaymentAction(appt)}
+                          <Button variant="ghost" size="icon" onClick={() => navigate(`/clinical-appointments/${appt.id}/edit`)}>
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => setDeleteConfirmId(appt.id)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         )}
       </div>
       <SettlementDialog
@@ -1199,22 +1198,22 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
   const appointmentPaymentSummary = useMemo(
     () => appointment
       ? getClinicalAppointmentPaymentSummary(
-          { ...appointment, consultationFee, currency },
-          appointmentPaymentTransactions,
-        )
+        { ...appointment, consultationFee, currency },
+        appointmentPaymentTransactions,
+      )
       : null,
     [appointment, appointmentPaymentTransactions, consultationFee, currency],
   )
   const formPaymentStatus: ClinicalPaymentStatus = appointmentPaymentSummary?.activeTransactions.length
     ? appointmentPaymentSummary.paymentStatus
     : appointment?.paymentStatus
-      || appointmentPaymentSummary?.paymentStatus
-      || (consultationFee > 0 ? 'unpaid' : 'no_fee')
+    || appointmentPaymentSummary?.paymentStatus
+    || (consultationFee > 0 ? 'unpaid' : 'no_fee')
   const formPaidAmount = appointmentPaymentSummary?.activeTransactions.length
     ? appointmentPaymentSummary.paidAmount
     : appointment?.paidAmount
-      ?? appointmentPaymentSummary?.paidAmount
-      ?? 0
+    ?? appointmentPaymentSummary?.paidAmount
+    ?? 0
   const hasActivePayments = (appointmentPaymentSummary?.activeTransactions.length || 0) > 0
     || appointment?.paymentStatus === 'partial'
     || appointment?.paymentStatus === 'paid'
@@ -1519,7 +1518,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                         <SelectContent>
                           {['consultation', 'follow_up', 'emergency', 'checkup', 'procedure', 'treatment'].map((type) => (
                             <SelectItem key={type} value={type}>
-                              {t('clinicalAppointments.types.' + type, {defaultValue: type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())})}
+                              {t('clinicalAppointments.types.' + type, { defaultValue: type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) })}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1532,7 +1531,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                         onChange={(e) => { setReasonForVisit(e.target.value); setShowReasonSuggestions(true) }}
                         onFocus={() => setShowReasonSuggestions(true)}
                         onBlur={() => setShowReasonSuggestions(false)}
-                        placeholder={t('clinicalAppointments.reasonForVisitPlaceholder', {defaultValue: 'e.g. Tooth pain'})}
+                        placeholder={t('clinicalAppointments.reasonForVisitPlaceholder', { defaultValue: 'e.g. Tooth pain' })}
                       />
                       {showReasonSuggestions && reasonForVisit.trim() && reasonForVisitPresets && reasonForVisitPresets.length > 0 && (
                         <div className="absolute top-full mt-1 left-0 right-0 border rounded-md max-h-40 overflow-y-auto bg-background z-10 shadow-lg">
@@ -1577,13 +1576,13 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                     </div>
                   </div>
                   {!isBeautyClinicalRegistryType(registryType) && (
-                  <div className="grid gap-2">
-                    <Label>{t('clinicalAppointments.estimatedPrice', { defaultValue: 'Estimated Price' })}</Label>
-                    <div className="relative">
-                      <Input className="pr-12" value={estimatedPrice ? formatNumberWithCommas(estimatedPrice) : ''} onChange={(e) => setEstimatedPrice(Number(e.target.value.replace(/,/g, '')))} />
-                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currency}</span>
+                    <div className="grid gap-2">
+                      <Label>{t('clinicalAppointments.estimatedPrice', { defaultValue: 'Estimated Price' })}</Label>
+                      <div className="relative">
+                        <Input className="pr-12" value={estimatedPrice ? formatNumberWithCommas(estimatedPrice) : ''} onChange={(e) => setEstimatedPrice(Number(e.target.value.replace(/,/g, '')))} />
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currency}</span>
+                      </div>
                     </div>
-                  </div>
                   )}
                   <div className="grid gap-2">
                     <Label>{t('clinicalAppointments.currency', { defaultValue: 'Currency' })}</Label>
@@ -1624,7 +1623,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {['draft', 'booked', 'arrived', 'in_progress', 'completed', 'cancelled', 'no_show'].map((s) => (
-                            <SelectItem key={s} value={s}>{t('clinicalAppointments.statuses.' + s, {defaultValue: s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())})}</SelectItem>
+                            <SelectItem key={s} value={s}>{t('clinicalAppointments.statuses.' + s, { defaultValue: s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) })}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -1635,7 +1634,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {['phone', 'sms', 'whatsapp', 'email', 'other'].map((m) => (
-                            <SelectItem key={m} value={m}>{t('clinicalAppointments.confirmationMethods.' + m, {defaultValue: m.charAt(0).toUpperCase() + m.slice(1)})}</SelectItem>
+                            <SelectItem key={m} value={m}>{t('clinicalAppointments.confirmationMethods.' + m, { defaultValue: m.charAt(0).toUpperCase() + m.slice(1) })}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -1645,9 +1644,9 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                       <Select value={priority} onValueChange={(v: ClinicalAppointmentPriority) => setPriority(v)}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="normal">{t('clinicalAppointments.priorities.normal', {defaultValue: 'Normal'})}</SelectItem>
-                          <SelectItem value="urgent">{t('clinicalAppointments.priorities.urgent', {defaultValue: 'Urgent'})}</SelectItem>
-                          <SelectItem value="emergency">{t('clinicalAppointments.priorities.emergency', {defaultValue: 'Emergency'})}</SelectItem>
+                          <SelectItem value="normal">{t('clinicalAppointments.priorities.normal', { defaultValue: 'Normal' })}</SelectItem>
+                          <SelectItem value="urgent">{t('clinicalAppointments.priorities.urgent', { defaultValue: 'Urgent' })}</SelectItem>
+                          <SelectItem value="emergency">{t('clinicalAppointments.priorities.emergency', { defaultValue: 'Emergency' })}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

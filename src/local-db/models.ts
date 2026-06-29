@@ -1466,6 +1466,7 @@ export interface Workspace extends BaseEntity {
   instant_pos?: boolean;
   sales_history?: boolean;
   crm?: boolean;
+  orders?: boolean;
   travel_agency?: boolean;
   real_estate?: boolean;
   currency_exchange?: boolean;

@@ -44,6 +44,7 @@ export type WorkspaceFeatureKey =
     | 'instant_pos'
     | 'sales_history'
     | 'crm'
+    | 'orders'
     | 'agents'
     | 'ecommerce'
     | 'travel_agency'
@@ -230,6 +231,7 @@ export const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModul
     crm: 'customers',
     agents: 'agents',
     ecommerce: 'ecommerce',
+    orders: 'orders',
     travel_agency: 'travel_agency',
     real_estate: 'real_estate',
     currency_exchange: 'currency_exchange',

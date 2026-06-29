@@ -69,26 +69,61 @@ CREATE POLICY crm_purchase_orders_select
   ON crm.purchase_orders
   FOR SELECT
   TO authenticated
-  USING (workspace_id = public.current_workspace_id());
+  USING (
+    workspace_id = public.current_workspace_id()
+    AND public.workspace_module_allowed(
+      workspace_id,
+      (SELECT w.plan::text FROM public.workspaces w WHERE w.id = purchase_orders.workspace_id),
+      'orders'
+    )
+  );
 
 DROP POLICY IF EXISTS crm_purchase_orders_insert ON crm.purchase_orders;
 CREATE POLICY crm_purchase_orders_insert
   ON crm.purchase_orders
   FOR INSERT
   TO authenticated
-  WITH CHECK (workspace_id = public.current_workspace_id());
+  WITH CHECK (
+    workspace_id = public.current_workspace_id()
+    AND public.workspace_module_allowed(
+      workspace_id,
+      (SELECT w.plan::text FROM public.workspaces w WHERE w.id = purchase_orders.workspace_id),
+      'orders'
+    )
+  );
 
 DROP POLICY IF EXISTS crm_purchase_orders_update ON crm.purchase_orders;
 CREATE POLICY crm_purchase_orders_update
   ON crm.purchase_orders
   FOR UPDATE
   TO authenticated
-  USING (workspace_id = public.current_workspace_id())
-  WITH CHECK (workspace_id = public.current_workspace_id());
+  USING (
+    workspace_id = public.current_workspace_id()
+    AND public.workspace_module_allowed(
+      workspace_id,
+      (SELECT w.plan::text FROM public.workspaces w WHERE w.id = purchase_orders.workspace_id),
+      'orders'
+    )
+  )
+  WITH CHECK (
+    workspace_id = public.current_workspace_id()
+    AND public.workspace_module_allowed(
+      workspace_id,
+      (SELECT w.plan::text FROM public.workspaces w WHERE w.id = purchase_orders.workspace_id),
+      'orders'
+    )
+  );
 
 DROP POLICY IF EXISTS crm_purchase_orders_delete ON crm.purchase_orders;
 CREATE POLICY crm_purchase_orders_delete
   ON crm.purchase_orders
   FOR DELETE
   TO authenticated
-  USING (workspace_id = public.current_workspace_id());
+  USING (
+    workspace_id = public.current_workspace_id()
+    AND public.workspace_module_allowed(
+      workspace_id,
+      (SELECT w.plan::text FROM public.workspaces w WHERE w.id = purchase_orders.workspace_id),
+      'orders'
+    )
+  );

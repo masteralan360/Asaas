@@ -11,6 +11,7 @@ export type PartnerDetailsPrintTransactionSource =
     | 'loan'
     | 'simple_loan'
     | 'direct_transaction'
+    | 'clinical_appointment'
 
 export type PartnerDetailsPrintTransaction = {
     id: string
@@ -124,6 +125,8 @@ function resolveSourceLabel(
             return t('loans.simpleTab', { defaultValue: 'Loans' })
         case 'direct_transaction':
             return t('ledger.type.direct_transaction', { defaultValue: 'Direct Transaction' })
+        case 'clinical_appointment':
+            return t('clinicalAppointments.title', { defaultValue: 'Appointment' })
         default:
             return t('loans.installmentRepayment', { defaultValue: 'Installment Repayment' })
     }
