@@ -1,8 +1,11 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, CalendarDays, CreditCard, Plus, ShoppingCart, Trash2, Truck, Users, X } from 'lucide-react'
+import { ArrowLeft, CalendarDays, CreditCard, Plus, ShoppingCart, Star, Trash2, Truck, Users, X } from 'lucide-react'
 
 import { useAuth } from '@/auth'
+import { useUiAccess } from '@/context/UiAccessContext'
+import { isMobile } from '@/lib/platform'
+import { getPrioritizedPaymentMethod, setPrioritizedPaymentMethod } from '@/lib/prioritizedPaymentMethod'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { buildOrderExchangeRatesSnapshot, convertCurrencyAmountWithLiveRates, getPrimaryExchangeDetails } from '@/lib/orderCurrency'
 import {
@@ -103,6 +106,8 @@ export function SalesOrderFormPage({
     const customerPartners = useBusinessPartners(workspaceId, { roles: ['customer'] })
     const editingOrder = useSalesOrder(editingOrderId)
     const defaultStorageId = getPrimaryStorageFromList(storages)?.id || ''
+    const { isAccessKeyHeld } = useUiAccess()
+    const [prioritizedMethod, setPrioritizedMethod] = useState<string | null>(getPrioritizedPaymentMethod)
 
     const [isSaving, setIsSaving] = useState(false)
     const [customerId, setCustomerId] = useState(editingOrder?.businessPartnerId || editingOrder?.customerId || '')
@@ -116,7 +121,7 @@ export function SalesOrderFormPage({
     const [tax, setTax] = useState(editingOrder?.tax ? String(editingOrder.tax) : '')
     const [notes, setNotes] = useState(editingOrder?.notes || '')
     const [isPaid, setIsPaid] = useState(editingOrder?.isPaid || false)
-    const [paymentMethod, setPaymentMethod] = useState<string>(editingOrder?.paymentMethod || 'cash')
+    const [paymentMethod, setPaymentMethod] = useState<string>(editingOrder?.paymentMethod || prioritizedMethod || 'cash')
     const [installmentCount, setInstallmentCount] = useState(String(editingOrder?.installmentCount || 3))
     const [installmentFrequency, setInstallmentFrequency] = useState<InstallmentFrequency>(editingOrder?.installmentFrequency || 'monthly')
     const [firstDueDate, setFirstDueDate] = useState(editingOrder?.firstDueDate?.slice(0, 10) || '')
@@ -605,17 +610,26 @@ export function SalesOrderFormPage({
                                             <Select value={paymentMethod} onValueChange={(value) => {
                                                 setPaymentMethod(value)
                                                 if (value === 'loan' || value === 'installments') setIsPaid(false)
+                                                if (isAccessKeyHeld && !isMobile()) {
+                                                    if (prioritizedMethod === value) {
+                                                        setPrioritizedPaymentMethod(null)
+                                                        setPrioritizedMethod(null)
+                                                    } else {
+                                                        setPrioritizedPaymentMethod(value)
+                                                        setPrioritizedMethod(value)
+                                                    }
+                                                }
                                             }}>
                                                 <SelectTrigger id="sales-payment"><SelectValue /></SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="cash">{t('directTransactions.paymentMethod.cash', { defaultValue: 'Cash' })}</SelectItem>
-                                                    <SelectItem value="fib">{t('directTransactions.paymentMethod.fib', { defaultValue: 'FIB' })}</SelectItem>
-                                                    <SelectItem value="qicard">{t('directTransactions.paymentMethod.qicard', { defaultValue: 'QiCard' })}</SelectItem>
-                                                    <SelectItem value="zaincash">{t('directTransactions.paymentMethod.zaincash', { defaultValue: 'ZainCash' })}</SelectItem>
-                                                    <SelectItem value="fastpay">{t('directTransactions.paymentMethod.fastpay', { defaultValue: 'FastPay' })}</SelectItem>
-                                                    <SelectItem value="bank_transfer">{t('directTransactions.paymentMethod.bankTransfer', { defaultValue: 'Bank Transfer' })}</SelectItem>
-                                                    {hasFeature('loans') ? <SelectItem value="loan">{t('nav.loans', { defaultValue: 'Loans' })}</SelectItem> : null}
-                                                    {hasFeature('installments') ? <SelectItem value="installments">{t('nav.installments', { defaultValue: 'Installments' })}</SelectItem> : null}
+                                                    <SelectItem value="cash">{t('directTransactions.paymentMethod.cash', { defaultValue: 'Cash' })}{prioritizedMethod === 'cash' ? <Star className="ml-2 h-3 w-3 fill-yellow-400 inline" /> : null}</SelectItem>
+                                                    <SelectItem value="fib">{t('directTransactions.paymentMethod.fib', { defaultValue: 'FIB' })}{prioritizedMethod === 'fib' ? <Star className="ml-2 h-3 w-3 fill-yellow-400 inline" /> : null}</SelectItem>
+                                                    <SelectItem value="qicard">{t('directTransactions.paymentMethod.qicard', { defaultValue: 'QiCard' })}{prioritizedMethod === 'qicard' ? <Star className="ml-2 h-3 w-3 fill-yellow-400 inline" /> : null}</SelectItem>
+                                                    <SelectItem value="zaincash">{t('directTransactions.paymentMethod.zaincash', { defaultValue: 'ZainCash' })}{prioritizedMethod === 'zaincash' ? <Star className="ml-2 h-3 w-3 fill-yellow-400 inline" /> : null}</SelectItem>
+                                                    <SelectItem value="fastpay">{t('directTransactions.paymentMethod.fastpay', { defaultValue: 'FastPay' })}{prioritizedMethod === 'fastpay' ? <Star className="ml-2 h-3 w-3 fill-yellow-400 inline" /> : null}</SelectItem>
+                                                    <SelectItem value="bank_transfer">{t('directTransactions.paymentMethod.bankTransfer', { defaultValue: 'Bank Transfer' })}{prioritizedMethod === 'bank_transfer' ? <Star className="ml-2 h-3 w-3 fill-yellow-400 inline" /> : null}</SelectItem>
+                                                    {hasFeature('loans') ? <SelectItem value="loan">{t('nav.loans', { defaultValue: 'Loans' })}{prioritizedMethod === 'loan' ? <Star className="ml-2 h-3 w-3 fill-yellow-400 inline" /> : null}</SelectItem> : null}
+                                                    {hasFeature('installments') ? <SelectItem value="installments">{t('nav.installments', { defaultValue: 'Installments' })}{prioritizedMethod === 'installments' ? <Star className="ml-2 h-3 w-3 fill-yellow-400 inline" /> : null}</SelectItem> : null}
                                                 </SelectContent>
                                             </Select>
                                         </div>
