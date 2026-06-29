@@ -45,6 +45,7 @@ import {
 import { launcherSections, launcherSectionOrder } from '@/ui/navigation/navigationMeta'
 import type { PlanModuleKey } from '@/plans/workspacePlans'
 import { db } from '@/local-db'
+import { getLocalModeSqliteConnection } from '@/local-db/localModeSqlite'
 
 interface Member {
     id: string
@@ -153,17 +154,32 @@ export function Members() {
         setPermissionsLoading(true)
         try {
             if (isLocalMode) {
-                const rows = await db.workspace_permissions
-                    .where('workspaceId')
-                    .equals(user.workspaceId)
-                    .toArray()
-                setPermissions(rows.map(r => ({
-                    id: r.id,
-                    workspace_id: r.workspaceId,
-                    user_uuid: r.userUuid,
-                    key: r.key,
-                    module: r.module,
-                })))
+                const connection = await getLocalModeSqliteConnection()
+                const rows: WorkspacePermission[] = []
+                if (connection) {
+                    const entities = await connection.select<Array<{
+                        entity_id: string
+                        workspace_id: string
+                        payload: string
+                    }>>(
+                        `SELECT entity_id, workspace_id, payload
+                         FROM local_entities
+                         WHERE entity_type = 'workspace_permissions'
+                           AND workspace_id = $1`,
+                        [user.workspaceId]
+                    )
+                    for (const entity of entities) {
+                        const data = JSON.parse(entity.payload) as Record<string, unknown>
+                        rows.push({
+                            id: entity.entity_id,
+                            workspace_id: entity.workspace_id,
+                            user_uuid: data.userUuid as string,
+                            key: data.key as string,
+                            module: data.module as string,
+                        })
+                    }
+                }
+                setPermissions(rows)
             } else {
                 const { data, error } = await runSupabaseAction('members.permissions.fetch', () =>
                     supabase
@@ -190,7 +206,7 @@ export function Members() {
         setIsLoading(true)
         setError(null)
         try {
-            if (isDemoMode) {
+            if (isDemoMode || isLocalMode) {
                 const localProfiles = await db.profiles
                     .where('workspaceId')
                     .equals(user.workspaceId)
@@ -202,7 +218,11 @@ export function Members() {
                     profile_url: profile.profile_url ?? undefined,
                     created_at: profile.created_at ?? new Date().toISOString()
                 })))
-                setPermissions([])
+                if (user.role === 'admin') {
+                    await fetchPermissions()
+                } else {
+                    setPermissions([])
+                }
                 return
             }
 
@@ -377,7 +397,7 @@ export function Members() {
     }
 
     const handleKick = async () => {
-        if (!memberToKick || isDemoMode) return
+        if (!memberToKick || isDemoMode || isLocalMode) return
 
         setKickingMemberId(memberToKick.id)
         setError(null)
@@ -407,7 +427,7 @@ export function Members() {
     }
 
     const canKick = (member: Member) => {
-        if (isDemoMode) return false
+        if (isDemoMode || isLocalMode) return false
         // Can't kick yourself
         if (member.id === user?.id) return false
         // Can't kick admins
