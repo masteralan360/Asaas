@@ -1021,6 +1021,8 @@ export interface ClinicalAppointment extends BaseEntity {
   priority: ClinicalAppointmentPriority;
   internalNotes?: string | null;
   createdBy?: string | null;
+  sentByName?: string | null;
+  sentByPartnerId?: string | null;
 }
 
 export interface ClinicalAttachment extends BaseEntity {

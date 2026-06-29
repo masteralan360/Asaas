@@ -29,6 +29,7 @@ import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
     useAgent,
     useBusinessPartner,
+    useClinicalAppointments,
     useCustomerSalesOrders,
     useLoans,
     usePaymentTransactions,
@@ -37,6 +38,7 @@ import {
     useSupplierTravelAgencySales,
     useWorkspaceUsers,
     type BusinessPartnerRole,
+    type ClinicalAppointment,
     type Loan,
     type PurchaseOrder,
     type PaymentTransaction,
@@ -68,7 +70,7 @@ type PartnerKind = 'customer' | 'supplier' | 'agent' | 'business_partner'
 type RelatedProductOrder = SalesOrder | PurchaseOrder
 type RelatedTransaction = {
     id: string
-    source: 'sales_order' | 'purchase_order' | 'travel_sale' | 'loan' | 'simple_loan' | 'direct_transaction'
+    source: 'sales_order' | 'purchase_order' | 'travel_sale' | 'loan' | 'simple_loan' | 'direct_transaction' | 'clinical_appointment'
     reference: string
     displayDate: string
     sortDate: string
@@ -133,6 +135,8 @@ function sourceLabel(source: RelatedTransaction['source'], t: TranslationFn) {
             return t('loans.simpleTab', { defaultValue: 'Loans' })
         case 'direct_transaction':
             return t('ledger.type.direct_transaction', { defaultValue: 'Direct Transaction' })
+        case 'clinical_appointment':
+            return t('clinicalAppointments.title', { defaultValue: 'Appointment' })
         default:
             return t('loans.installmentRepayment', { defaultValue: 'Installment Repayment' })
     }
@@ -148,6 +152,8 @@ function sourceBadgeClass(source: RelatedTransaction['source']) {
             return 'border-violet-200 bg-violet-500/10 text-violet-700'
         case 'direct_transaction':
             return 'border-fuchsia-200 bg-fuchsia-500/10 text-fuchsia-700'
+        case 'clinical_appointment':
+            return 'border-cyan-200 bg-cyan-500/10 text-cyan-700'
         default:
             return 'border-orange-200 bg-orange-500/10 text-orange-700'
     }
@@ -390,6 +396,38 @@ function normalizePaymentTransaction(
     }
 }
 
+function normalizeClinicalAppointment(
+    appointment: ClinicalAppointment,
+    baseCurrency: string,
+    conversionRates: any,
+    t: TranslationFn
+): RelatedTransaction {
+    const total = appointment.calculatedAmount || appointment.consultationFee || 0
+    return {
+        id: appointment.id,
+        source: 'clinical_appointment',
+        reference: appointment.appointmentNumber || appointment.id.slice(0, 8),
+        displayDate: appointment.appointmentDate || appointment.createdAt,
+        sortDate: appointment.updatedAt || appointment.createdAt,
+        activityDate: appointment.updatedAt || appointment.createdAt,
+        status: appointment.status,
+        statusLabel: t('clinicalAppointments.statuses.' + appointment.status, { defaultValue: appointment.status.replace(/_/g, ' ') }),
+        isPaid: appointment.paymentStatus === 'paid',
+        summary: appointment.patientName,
+        total,
+        originalAmount: total,
+        paidAmount: appointment.paidAmount || 0,
+        remainingAmount: Math.max(0, total - (appointment.paidAmount || 0)),
+        currency: appointment.currency || baseCurrency,
+        totalInPartnerCurrency: convertToStoreBase(total, appointment.currency || baseCurrency, baseCurrency, conversionRates),
+        units: 0,
+        viewHref: `/clinical-appointments/${appointment.id}/edit`,
+        isActive: !['completed', 'cancelled', 'no_show'].includes(appointment.status),
+        isCompleted: appointment.status === 'completed',
+        isOutstanding: appointment.paymentStatus !== 'paid' && appointment.status !== 'cancelled'
+    }
+}
+
 export function PartnerDetailsView({
     workspaceId,
     partnerId,
@@ -418,6 +456,7 @@ export function PartnerDetailsView({
     const sales = useSales(workspaceId)
     const loans = useLoans(workspaceId)
     const paymentTransactions = usePaymentTransactions(workspaceId)
+    const clinicalAppointments = useClinicalAppointments(workspaceId)
     const { dateRange, customDates } = useDateRange()
     const [customPrintTemplates, setCustomPrintTemplates] = useState<StoredCustomTemplateRow[]>([])
     const [selectedPrintTemplate, setSelectedPrintTemplate] = useState<StoredCustomTemplateRow | null>(null)
@@ -489,6 +528,14 @@ export function PartnerDetailsView({
     }), [dateBounds.endDate, dateBounds.startDate, dateRange])
     const dateFilteredCustomerOrders = useMemo(() => filterByDate(customerOrders), [customerOrders, filterByDate])
     const dateFilteredSupplierOrders = useMemo(() => filterByDate(supplierOrders), [filterByDate, supplierOrders])
+    const partnerClinicalAppointments = useMemo(
+        () => (clinicalAppointments || []).filter((a) => a.sentByPartnerId === partner?.id),
+        [clinicalAppointments, partner?.id]
+    )
+    const dateFilteredClinicalAppointments = useMemo(
+        () => filterByDate(partnerClinicalAppointments, (a) => a.appointmentDate || a.createdAt),
+        [filterByDate, partnerClinicalAppointments]
+    )
     const dateFilteredTravelSales = useMemo(
         () => filterByDate(supplierTravelSales, (s) => s.updatedAt || s.saleDate || s.createdAt),
         [filterByDate, supplierTravelSales]
@@ -684,6 +731,7 @@ export function PartnerDetailsView({
         const rows: RelatedTransaction[] = [
             ...dateFilteredSupplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t, linkedLoanByOrderId.get(order.id))),
             ...dateFilteredTravelSales.map((sale) => normalizeTravelSale(sale, defaultCurrency)),
+            ...dateFilteredClinicalAppointments.map((a) => normalizeClinicalAppointment(a, defaultCurrency, conversionRates, t)),
             ...dateFilteredPayments
                 .filter((tx) => tx.direction === 'incoming')
                 .map((tx) => normalizePaymentTransaction(tx, defaultCurrency, conversionRates, t)),
@@ -704,7 +752,7 @@ export function PartnerDetailsView({
             }
         }
         return rows.sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
-    }, [dateFilteredSupplierOrders, dateFilteredTravelSales, dateFilteredPayments, standaloneDateFilteredLoans, dateFilteredInstallments, defaultCurrency, conversionRates, linkedLoanByOrderId, linkedSaleReferenceById, t])
+    }, [dateFilteredSupplierOrders, dateFilteredTravelSales, dateFilteredClinicalAppointments, dateFilteredPayments, standaloneDateFilteredLoans, dateFilteredInstallments, defaultCurrency, conversionRates, linkedLoanByOrderId, linkedSaleReferenceById, t])
     const directTransactionsVolume = useMemo(
         () => dateFilteredPayments.reduce((sum, tx) => sum + convertToStoreBase(tx.amount, tx.currency, defaultCurrency, conversionRates), 0),
         [dateFilteredPayments, defaultCurrency, conversionRates]

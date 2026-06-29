@@ -19,6 +19,7 @@ import {
 } from './workspaceUsageFetch'
 
 const workspaceId = '2f3c9c52-1d56-42d0-9643-a381f14bac6d'
+const branchWorkspaceId = 'f33a3adc-5507-4f6a-9ee1-27e75d00bd21'
 
 describe('workspace usage fetch metering', () => {
     beforeEach(() => {
@@ -71,6 +72,76 @@ describe('workspace usage fetch metering', () => {
             p_source: 'table_fetch:products'
         })
         expect(JSON.parse(String(usageCall.init?.body)).p_bytes).toBeGreaterThan(0)
+    })
+
+    it('counts branch metadata reads against the active workspace', async () => {
+        testState.activeWorkspaceId = workspaceId
+
+        const calls: Array<{ url: string; init?: RequestInit }> = []
+        const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            calls.push({ url: String(input), init })
+
+            if (String(input).includes('/rpc/record_workspace_data_transfer')) {
+                return new Response(JSON.stringify({ success: true }), { status: 200 })
+            }
+
+            return new Response(JSON.stringify([{ id: branchWorkspaceId, name: 'Branch' }]), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            })
+        }) as unknown as typeof fetch
+
+        const meteredFetch = createWorkspaceUsageFetch({
+            supabaseUrl: 'https://example.supabase.co',
+            supabaseAnonKey: 'anon-key',
+            fetchImpl
+        })
+
+        const response = await meteredFetch(
+            `https://example.supabase.co/rest/v1/workspaces?id=in.(${branchWorkspaceId})`,
+            {
+                headers: {
+                    Authorization: 'Bearer token'
+                }
+            }
+        )
+
+        expect(response.ok).toBe(true)
+        expect(JSON.parse(String(calls[1].init?.body))).toMatchObject({
+            p_workspace_id: workspaceId,
+            p_source: 'table_fetch:workspaces'
+        })
+    })
+
+    it('does not fail the original table fetch when usage recording fails for a non-limit reason', async () => {
+        const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+            if (String(input).includes('/rpc/record_workspace_data_transfer')) {
+                return new Response(JSON.stringify({ message: 'Workspace access denied' }), { status: 400 })
+            }
+
+            return new Response(JSON.stringify([{ id: 'branch-1' }]), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            })
+        }) as unknown as typeof fetch
+
+        const meteredFetch = createWorkspaceUsageFetch({
+            supabaseUrl: 'https://example.supabase.co',
+            supabaseAnonKey: 'anon-key',
+            fetchImpl
+        })
+
+        const response = await meteredFetch(
+            `https://example.supabase.co/rest/v1/workspaces?id=eq.${branchWorkspaceId}`,
+            {
+                headers: {
+                    Authorization: 'Bearer token'
+                }
+            }
+        )
+
+        expect(response.ok).toBe(true)
+        await expect(response.json()).resolves.toEqual([{ id: 'branch-1' }])
     })
 
     it('does not count RPC responses or local workspaces', async () => {

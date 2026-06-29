@@ -19,10 +19,12 @@ import {
 import type { ClinicalAppointment, ClinicalAppointmentStatus, ClinicalAppointmentType, ClinicalAppointmentPriority, ClinicalConfirmationMethod } from '@/local-db/clinicalAppointments'
 import { useClinicalPresetsByCategory, useClinicalRegistryType } from '@/local-db/clinicalPresets'
 import { isBeautyClinicalRegistryType } from '@/local-db/clinicalRegistryPreset'
-import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, Label, Card, CardContent, CardHeader, CardTitle, DateTimePicker, SettlementDialog, useToast, DeleteConfirmationModal } from '@/ui/components'
-import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit, Check, ChevronDown, LayoutGrid, List, HandCoins } from 'lucide-react'
+import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, Label, Card, CardContent, CardHeader, CardTitle, DateTimePicker, SettlementDialog, useToast, DeleteConfirmationModal, Dialog, DialogContent } from '@/ui/components'
+import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit, Check, ChevronDown, LayoutGrid, List, HandCoins, UserPlus, Phone, MapPin } from 'lucide-react'
 import { generateId, formatCurrency, formatLocalDateValue, formatNumberWithCommas, formatTime, formatNumericInput, parseFormattedNumber, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
+import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
+import { createBusinessPartner, useBusinessPartners, recalculateBusinessPartnerSummary } from '@/local-db'
 import { useDateRange } from '@/context/DateRangeContext'
 import { r2Service } from '@/services/r2Service'
 import { platformService } from '@/services/platformService'
@@ -419,7 +421,13 @@ function Beauty2AppointmentForm({ workspaceId, appointment, onCancel, onSaved }:
   const [appointmentNumber, setAppointmentNumber] = useState(appointment?.appointmentNumber || '')
   const [issueDate, setIssueDate] = useState(appointment?.issueDate || appointment?.appointmentDate || '')
   const [nextVisitDate, setNextVisitDate] = useState(appointment?.nextVisitDate || '')
+  const [sentByName, setSentByName] = useState(appointment?.sentByName || '')
+  const [sentByPartnerId, setSentByPartnerId] = useState<string | null>(appointment?.sentByPartnerId || null)
+  const [showSavePartner, setShowSavePartner] = useState(false)
+  const [savePartnerPhone, setSavePartnerPhone] = useState('')
   const [saving, setSaving] = useState(false)
+  const supplierPartners = useBusinessPartners(workspaceId, { roles: ['supplier'] })
+  const sentByPartner = useMemo(() => supplierPartners.find(p => p.id === sentByPartnerId), [supplierPartners, sentByPartnerId])
 
   const handleSubmit = async () => {
     if (!appointmentNumber.trim() || !receivedFromName.trim() || !issueDate) return
@@ -440,6 +448,8 @@ function Beauty2AppointmentForm({ workspaceId, appointment, onCancel, onSaved }:
         consultationFee: parseFormattedNumber(calculatedAmount || '0'),
         currency: calculatedAmountCurrency,
         internalNotes: note.trim() || null,
+        sentByName: sentByName.trim() || null,
+        sentByPartnerId: sentByPartnerId || null,
       }
 
       let savedAppointment: ClinicalAppointment | null
@@ -463,7 +473,13 @@ function Beauty2AppointmentForm({ workspaceId, appointment, onCancel, onSaved }:
       }
       if (!savedAppointment) throw new Error('Appointment could not be saved')
       await syncBeauty2AppointmentPayment(workspaceId, savedAppointment, user?.id || null)
-      onSaved()
+      const typedCustomName = sentByName.trim() && !sentByPartnerId
+      if (typedCustomName) {
+        setSavePartnerPhone(phoneNumber)
+        setShowSavePartner(true)
+      } else {
+        onSaved()
+      }
     } catch (error) {
       console.error('[ClinicalAppointments] Failed to save beauty2 appointment:', error)
       toast({
@@ -526,6 +542,36 @@ function Beauty2AppointmentForm({ workspaceId, appointment, onCancel, onSaved }:
           <Input id="beauty2-appointment-number" value={appointmentNumber} onChange={(event) => setAppointmentNumber(event.target.value)} required />
         </div>
         <div className="grid gap-2">
+          <Label htmlFor="beauty2-sent-by">{t('clinicalAppointments.sentBy', { defaultValue: 'Sent by' })}</Label>
+          <PartnerAutocompleteInput
+            workspaceId={workspaceId}
+            value={sentByName}
+            onChange={(value) => { setSentByName(value); if (value !== sentByName) setSentByPartnerId(null) }}
+            onSelectPartner={(partner) => { setSentByName(partner.name); setSentByPartnerId(partner.id) }}
+            roles={['supplier']}
+            placeholder={t('clinicalAppointments.sentByPlaceholder', { defaultValue: 'Search supplier or type a name...' })}
+          />
+          {sentByPartner ? (
+            <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-primary">
+                  {t('businessPartners.linked', { defaultValue: 'Linked' })}
+                </div>
+                <div className="truncate text-sm font-semibold">{sentByPartner.name}</div>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 shrink-0 px-2 text-muted-foreground"
+                onClick={() => { setSentByPartnerId(null); setSentByName('') }}
+              >
+                {t('common.remove', { defaultValue: 'Remove' })}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+        <div className="grid gap-2">
           <Label htmlFor="beauty2-issue-date">{t('clinicalAppointments.issueDate', { defaultValue: 'Issue Date' })}</Label>
           <DateTimePicker
             id="beauty2-issue-date"
@@ -553,6 +599,79 @@ function Beauty2AppointmentForm({ workspaceId, appointment, onCancel, onSaved }:
           </Button>
         </div>
       </form>
+
+      <Dialog open={showSavePartner} onOpenChange={() => {}}>
+        <DialogContent
+          className="sm:max-w-md overflow-hidden [&>button:last-child]:hidden"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
+          <div className="flex flex-col items-center gap-3 pb-1 pt-2 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-4 ring-primary/5">
+              <UserPlus className="h-7 w-7" />
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-semibold leading-tight">
+                {t('clinicalAppointments.saveAsPartnerTitle', { defaultValue: 'Save as Business Partner?' })}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {t('clinicalAppointments.saveAsPartnerDescription', {
+                  name: sentByName,
+                  defaultValue: '{{name}} is not linked to a business partner. Would you like to save them as a supplier for future use?'
+                })}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-muted/30 px-4 py-3">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">
+              {t('clinicalAppointments.partnerDetails', { defaultValue: 'Partner Details' })}
+            </div>
+            <div className="mt-2 space-y-1.5">
+              <div className="text-[15px] font-semibold leading-tight">{sentByName}</div>
+              {savePartnerPhone && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Phone className="h-3.5 w-3.5 shrink-0" />
+                  <span>{savePartnerPhone}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 pt-1">
+            <Button
+              type="button"
+              className="w-full gap-2"
+              onClick={async () => {
+                try {
+                  const partner = await createBusinessPartner(workspaceId, {
+                    name: sentByName,
+                    phone: savePartnerPhone || undefined,
+                    role: 'supplier',
+                    creditLimit: 0,
+                    defaultCurrency: 'iqd',
+                  })
+                  await recalculateBusinessPartnerSummary(workspaceId, partner.id)
+                } catch (e) {
+                  console.error('[ClinicalAppointments] Failed to save partner:', e)
+                }
+                setShowSavePartner(false)
+                onSaved()
+              }}
+            >
+              <UserPlus className="h-4 w-4" />
+              {t('clinicalAppointments.saveAsPartner', { defaultValue: 'Save as Partner' })}
+            </Button>
+            <button
+              type="button"
+              className="mx-auto py-1.5 text-sm text-muted-foreground underline-offset-4 hover:underline"
+              onClick={() => { setShowSavePartner(false); onSaved() }}
+            >
+              {t('common.skip', { defaultValue: 'Skip' })}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

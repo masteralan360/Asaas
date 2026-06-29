@@ -147,22 +147,16 @@ function getWorkspaceIdFromJwt(authHeader: string | null) {
 
 function resolveWorkspaceId(url: URL, tableName: string, authHeader: string | null) {
     const activeWorkspaceId = getActiveBusinessWorkspaceId()
+    const authenticatedWorkspaceId = isUuid(activeWorkspaceId)
+        ? activeWorkspaceId
+        : getWorkspaceIdFromJwt(authHeader)
     const urlWorkspaceIds = extractWorkspaceIdsFromUrl(url, tableName)
 
-    if (activeWorkspaceId && urlWorkspaceIds.includes(activeWorkspaceId)) {
-        return activeWorkspaceId
+    if (authenticatedWorkspaceId) {
+        return authenticatedWorkspaceId
     }
 
-    if (urlWorkspaceIds.length === 1) {
-        return urlWorkspaceIds[0]
-    }
-
-    const jwtWorkspaceId = getWorkspaceIdFromJwt(authHeader)
-    if (jwtWorkspaceId) {
-        return jwtWorkspaceId
-    }
-
-    return isUuid(activeWorkspaceId) ? activeWorkspaceId : null
+    return urlWorkspaceIds.length === 1 ? urlWorkspaceIds[0] : null
 }
 
 function shouldCountTableFetch(
@@ -279,12 +273,13 @@ export function createWorkspaceUsageFetch(options: WorkspaceUsageFetchOptions): 
             `table_fetch:${countContext.tableName}`
         )
 
-        return result.ok ? response : usageErrorResponse(result)
+        return result.ok || !result.limitExceeded ? response : usageErrorResponse(result)
     }
 }
 
 export const workspaceUsageFetchInternals = {
     extractWorkspaceIdsFromUrl,
     getWorkspaceIdFromJwt,
-    getRestTableName
+    getRestTableName,
+    resolveWorkspaceId
 }
