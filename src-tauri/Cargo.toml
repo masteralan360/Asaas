@@ -30,12 +30,12 @@ tauri-plugin-http = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
-tauri-plugin-thermal-printer = "1.0.1"
+tauri-plugin-thermal-printer = "2"
 axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.5", features = ["fs", "cors"] }
 futures-util = "0.3"
-if-addrs = "0.7"
+if-addrs = "0.15"
 tauri-plugin-sql = { version = "2.3.2", features = ["sqlite"] }
 
 
