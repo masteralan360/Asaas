@@ -12,8 +12,7 @@ import {
     type PaperSize,
     type PrinterInfo,
     type PrintJobRequest,
-    type PrintSections,
-    cut as tpCut
+    type PrintSections
 } from 'tauri-plugin-thermal-printer'
 
 export type ThermalRollWidth = 58 | 76 | 80 | 112
@@ -59,6 +58,11 @@ async function getThermalPrinterMaxWidth(workspaceId: string): Promise<number> {
 }
 
 const DEFAULT_PAPER_SIZE: PaperSize = 'Mm80'
+const DEFAULT_THERMAL_PRINTER_OPTIONS: PrintJobRequest['options'] = {
+    cut_paper: true,
+    beep: false,
+    open_cash_drawer: false
+}
 const VIRTUAL_PRINTER_PATTERNS = [
     /onenote/i,
     /print to pdf/i,
@@ -323,7 +327,7 @@ export const printService = {
             printer_info: {
                 printer: selectedPrinter.name,
                 paper_size: selectedPrinter.paper_size,
-                options: { code_page: 0 },
+                options: DEFAULT_THERMAL_PRINTER_OPTIONS,
                 sections: []
             },
             include_text: true,
@@ -358,7 +362,7 @@ export const printService = {
         const printJob: PrintJobRequest = {
             printer: printer.name,
             paper_size: printer.paper_size || DEFAULT_PAPER_SIZE,
-            options: { code_page: 0 },
+            options: DEFAULT_THERMAL_PRINTER_OPTIONS,
             sections: [
                 {
                     Image: {
@@ -369,8 +373,7 @@ export const printService = {
                         size: 'normal'
                     }
                 },
-                { Feed: { feed_type: 'lines', value: 3 } },
-                tpCut('full', 3)
+                { Feed: { feed_type: 'lines', value: 3 } }
             ]
         }
 
@@ -390,11 +393,8 @@ export const printService = {
         const printJob: PrintJobRequest = {
             printer: printer.name,
             paper_size: printer.paper_size || DEFAULT_PAPER_SIZE,
-            options: { code_page: 0 },
-            sections: [
-                ...buildReceiptSections(saleData, features, workspaceName, workspaceId),
-                tpCut('full', 3)
-            ]
+            options: DEFAULT_THERMAL_PRINTER_OPTIONS,
+            sections: buildReceiptSections(saleData, features, workspaceName, workspaceId)
         }
 
         await print_thermal_printer(printJob)
