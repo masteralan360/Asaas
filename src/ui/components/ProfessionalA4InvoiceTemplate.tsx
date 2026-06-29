@@ -1,4 +1,4 @@
-import { forwardRef, type ReactNode } from 'react'
+import { forwardRef, useState, type ReactNode } from 'react'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { MapPin, Phone } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -29,7 +29,8 @@ export const PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS = {
     terms: 'terms',
     exchangeRates: 'exchangeRates',
     contacts: 'contacts',
-    generatedBy: 'generatedBy'
+    generatedBy: 'generatedBy',
+    notes: 'notes'
 } as const
 
 interface WorkspaceContactPair {
@@ -53,6 +54,7 @@ interface ProfessionalA4InvoiceTemplateProps {
     drawingMode?: string
     hideUnit?: boolean
     hideDiscount?: boolean
+    showNotes?: boolean
     tableRowCount?: number
     componentPositions?: Record<string, CustomTemplateComponentPosition>
     hiddenFields?: Record<string, boolean>
@@ -121,6 +123,7 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
         drawingMode,
         hideUnit,
         hideDiscount,
+        showNotes,
         tableRowCount,
         componentPositions,
         hiddenFields,
@@ -168,6 +171,9 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
             if (group.nonPrimary) entries.push({ value: group.nonPrimary })
             return { ...group, entries }
         }).filter((group) => group.entries.length > 0)
+
+        const noteText = data.notes?.trim()
+        const [notesFontSize, setNotesFontSize] = useState(0)
 
         const mp = (key: string, label: string, children: ReactNode, wrapperClassName?: string) => (
             <MovableOrderPrintBlock
@@ -421,6 +427,38 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
                                 />
                             </div>
                         ))}
+
+                        {showNotes && noteText ? mp(PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS.notes, 'Notes', (
+                            <div>
+                                <div className="font-semibold text-slate-600">{t('orders.details.notes', { defaultValue: 'Notes' })}:</div>
+                                <div className={`mt-2 whitespace-pre-wrap break-words text-slate-800 ${['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl'][notesFontSize] || 'text-xs'}`}>
+                                    {noteText}
+                                </div>
+                                {editableComponents ? (
+                                    <div className="flex items-center gap-1 mt-1">
+                                        <button
+                                            type="button"
+                                            className="inline-flex h-5 w-5 items-center justify-center rounded border border-slate-300 bg-white text-[10px] font-bold text-slate-600 hover:bg-slate-100"
+                                            onClick={() => setNotesFontSize(s => Math.max(0, s - 1))}
+                                            disabled={notesFontSize <= 0}
+                                            aria-label="Decrease notes font size"
+                                        >
+                                            -
+                                        </button>
+                                        <span className="text-[9px] text-slate-400 w-8 text-center">{['xs', 'sm', 'base', 'lg', 'xl'][notesFontSize] || 'xs'}</span>
+                                        <button
+                                            type="button"
+                                            className="inline-flex h-5 w-5 items-center justify-center rounded border border-slate-300 bg-white text-[10px] font-bold text-slate-600 hover:bg-slate-100"
+                                            onClick={() => setNotesFontSize(s => Math.min(4, s + 1))}
+                                            disabled={notesFontSize >= 4}
+                                            aria-label="Increase notes font size"
+                                        >
+                                            +
+                                        </button>
+                                    </div>
+                                ) : null}
+                            </div>
+                        )) : null}
 
                         {data.exchange_rates && data.exchange_rates.length > 0 ? mp(PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS.exchangeRates, 'Exchange Rates', (
                             <div>

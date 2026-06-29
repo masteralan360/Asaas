@@ -116,6 +116,7 @@ function EditableInvoicePreview({
     drawingMode,
     hideUnit,
     hideDiscount,
+    showNotes,
     tableRowCount,
     hiddenFields,
     onHiddenFieldChange,
@@ -130,6 +131,7 @@ function EditableInvoicePreview({
     drawingMode?: string
     hideUnit?: boolean
     hideDiscount?: boolean
+    showNotes?: boolean
     tableRowCount?: number
     hiddenFields?: Record<string, boolean>
     onHiddenFieldChange?: (key: string, hidden: boolean) => void
@@ -193,6 +195,7 @@ function EditableInvoicePreview({
                     drawingMode={drawingMode}
                     hideUnit={hideUnit}
                     hideDiscount={hideDiscount}
+                    showNotes={showNotes}
                     hiddenFields={hiddenFields || data.hiddenPrintFields}
                     onHiddenFieldChange={onHiddenFieldChange}
                 />
@@ -345,6 +348,7 @@ export function PdfPreviewPage() {
             const initial: Record<string, string> = {
                 hideUnit: localStorage.getItem('atlas_print_hide_unit') || 'false',
                 hideDiscount: localStorage.getItem('atlas_print_hide_discount') || 'false',
+                showNotes: localStorage.getItem('atlas_print_show_notes') || 'false',
                 hideNextDue: localStorage.getItem('atlas_print_hide_next_due') || 'false',
                 hideDueDate: localStorage.getItem('atlas_print_hide_due_date') || 'false',
                 tableRowCount: localStorage.getItem('atlas_print_table_row_count') || '10',
@@ -643,6 +647,8 @@ export function PdfPreviewPage() {
             localStorage.setItem('atlas_print_hide_unit', value)
         } else if (key === 'hideDiscount') {
             localStorage.setItem('atlas_print_hide_discount', value)
+        } else if (key === 'showNotes') {
+            localStorage.setItem('atlas_print_show_notes', value)
         } else if (key === 'tableRowCount') {
             localStorage.setItem('atlas_print_table_row_count', value)
         }
@@ -1924,6 +1930,7 @@ export function PdfPreviewPage() {
                                 drawingMode={drawingMode}
                                 hideUnit={fieldValues.hideUnit === 'true'}
                                 hideDiscount={fieldValues.hideDiscount === 'true'}
+                                showNotes={fieldValues.showNotes === 'true'}
                                 tableRowCount={Number(fieldValues.tableRowCount) || 10}
                                 hiddenFields={editableData.hiddenPrintFields}
                                 onHiddenFieldChange={drawingMode === 'none' ? handleInvoiceHiddenFieldChange : undefined}
@@ -2029,19 +2036,45 @@ export function PdfPreviewPage() {
                             </div>
 
                             {source.features?.a4_template === 'professional' && (
-                                <div className="pt-2 border-t space-y-1">
-                                    <label className="text-[11px] font-medium text-muted-foreground">
-                                        {'Table row count'}
-                                    </label>
-                                    <input
-                                        type="number"
-                                        min={1}
-                                        max={50}
-                                        value={fieldValues.tableRowCount ?? '10'}
-                                        onChange={(e) => handleFieldChange('tableRowCount', e.target.value)}
-                                        className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                                    />
-                                </div>
+                                <>
+                                    <div className="pt-2 border-t">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span className="text-[11px] font-medium text-muted-foreground">
+                                                {'Show notes'}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                role="switch"
+                                                aria-checked={fieldValues.showNotes === 'true'}
+                                                onClick={() => handleFieldChange('showNotes', fieldValues.showNotes === 'true' ? 'false' : 'true')}
+                                                className={cn(
+                                                    'relative h-5 w-9 shrink-0 rounded-full transition-colors',
+                                                    fieldValues.showNotes === 'true' ? 'bg-primary' : 'bg-muted'
+                                                )}
+                                            >
+                                                <span
+                                                    className={cn(
+                                                        'absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
+                                                        fieldValues.showNotes === 'true' ? 'translate-x-[18px]' : 'translate-x-0.5'
+                                                    )}
+                                                />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="pt-2 border-t space-y-1">
+                                        <label className="text-[11px] font-medium text-muted-foreground">
+                                            {'Table row count'}
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={50}
+                                            value={fieldValues.tableRowCount ?? '10'}
+                                            onChange={(e) => handleFieldChange('tableRowCount', e.target.value)}
+                                            className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                        />
+                                    </div>
+                                </>
                             )}
 
                             <div className="pt-2">

@@ -85,7 +85,8 @@ export function mapSaleToUniversal(sale: Sale, options: MapSaleToUniversalOption
         items: baseItems,
         status: 'paid',
         customer_id: (sale as any).customerId || (sale as any).customer_id || '',
-        order_id: (sale as any).orderId || (sale as any).order_id || ''
+        order_id: (sale as any).orderId || (sale as any).order_id || '',
+        notes: sale.notes
     }
 
     if (!shouldBuildRefundInvoice) {

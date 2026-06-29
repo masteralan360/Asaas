@@ -12,7 +12,8 @@ import {
     type PaperSize,
     type PrinterInfo,
     type PrintJobRequest,
-    type PrintSections
+    type PrintSections,
+    cut as tpCut
 } from 'tauri-plugin-thermal-printer'
 
 export type ThermalRollWidth = 58 | 76 | 80 | 112
@@ -318,15 +319,11 @@ export const printService = {
             throw new Error('No thermal printer selected for this workspace on this device.')
         }
 
-        return test_thermal_printer({
+        await test_thermal_printer({
             printer_info: {
                 printer: selectedPrinter.name,
                 paper_size: selectedPrinter.paper_size,
-                options: {
-                    cut_paper: true,
-                    beep: false,
-                    open_cash_drawer: false
-                },
+                options: { code_page: 0 },
                 sections: []
             },
             include_text: true,
@@ -340,6 +337,7 @@ export const printService = {
             cut_paper: true,
             test_feed: true
         })
+        return true
     },
 
     async getThermalPrinterMaxWidth(workspaceId: string): Promise<number> {
@@ -360,11 +358,7 @@ export const printService = {
         const printJob: PrintJobRequest = {
             printer: printer.name,
             paper_size: printer.paper_size || DEFAULT_PAPER_SIZE,
-            options: {
-                cut_paper: true,
-                beep: false,
-                open_cash_drawer: false
-            },
+            options: { code_page: 0 },
             sections: [
                 {
                     Image: {
@@ -375,11 +369,13 @@ export const printService = {
                         size: 'normal'
                     }
                 },
-                { Feed: { feed_type: 'lines', value: 3 } }
+                { Feed: { feed_type: 'lines', value: 3 } },
+                tpCut('full', 3)
             ]
         }
 
-        return print_thermal_printer(printJob)
+        await print_thermal_printer(printJob)
+        return true
     },
 
     async silentPrintReceipt({ saleData, features, workspaceName, workspaceId }: ThermalReceiptPrintRequest): Promise<boolean> {
@@ -394,14 +390,14 @@ export const printService = {
         const printJob: PrintJobRequest = {
             printer: printer.name,
             paper_size: printer.paper_size || DEFAULT_PAPER_SIZE,
-            options: {
-                cut_paper: true,
-                beep: false,
-                open_cash_drawer: false
-            },
-            sections: buildReceiptSections(saleData, features, workspaceName, workspaceId)
+            options: { code_page: 0 },
+            sections: [
+                ...buildReceiptSections(saleData, features, workspaceName, workspaceId),
+                tpCut('full', 3)
+            ]
         }
 
-        return print_thermal_printer(printJob)
+        await print_thermal_printer(printJob)
+        return true
     }
 }
