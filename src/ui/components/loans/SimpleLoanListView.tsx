@@ -311,13 +311,13 @@ export function SimpleLoanListView({
     }, [loanToPrint, workspaceName, printLang, features, loanPrintInstallments, loanPrintPayments, t, buildQrValue])
 
     const simpleLoanListInvoiceData = useMemo(() => ({
-        totalAmount: metrics.totalLent + metrics.totalBorrowed,
+        totalAmount: Object.values(metrics.totalLentByCurrency).reduce((a, b) => a + b, 0) + Object.values(metrics.totalBorrowedByCurrency).reduce((a, b) => a + b, 0),
         settlementCurrency: features.default_currency,
         origin: 'loan_report' as const,
         createdByName: user?.name || 'Unknown',
         cashierName: user?.name || 'Unknown',
         printFormat: 'a4' as const
-    }), [features.default_currency, metrics.totalBorrowed, metrics.totalLent, user?.name])
+    }), [features.default_currency, metrics.totalLentByCurrency, metrics.totalBorrowedByCurrency, user?.name])
     const canDeleteLoanRecord = (loan: Loan) => loan.source !== 'order'
         && isLoanDeletionAllowed(loan, false, loanPaymentHistoryIdSet.has(loan.id))
 

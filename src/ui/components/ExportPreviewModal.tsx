@@ -1,4 +1,5 @@
-import { lazy, Suspense, useState, useMemo, useEffect } from 'react'
+import { lazy, Suspense, useCallback, useState, useMemo, useEffect } from 'react'
+import { EntireColumnsSelection, type CellBase, type Matrix, type Selection } from 'react-spreadsheet'
 import { useTranslation } from 'react-i18next'
 import { FileSpreadsheet, Download, ArrowLeft, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -12,6 +13,36 @@ const SpreadsheetPreview = lazy(() =>
     import('react-spreadsheet').then((module) => ({ default: module.default }))
 )
 
+type PreviewCell = CellBase<string | number | boolean | null | undefined>
+type PreviewMatrix = Matrix<PreviewCell>
+
+function getSelectedColumnRange(selection: Selection | null, columnCount: number) {
+    if (!(selection instanceof EntireColumnsSelection) || columnCount === 0) {
+        return null
+    }
+
+    const start = Math.max(0, Math.min(selection.start, selection.end))
+    const end = Math.min(columnCount - 1, Math.max(selection.start, selection.end))
+
+    return start <= end ? { start, end } : null
+}
+
+function matrixToExportRows(matrix: PreviewMatrix) {
+    const headerRow = matrix[0] || []
+    const headers = headerRow.map((cell) => String(cell?.value ?? '').trim())
+    const activeColumns = headers
+        .map((header, index) => ({ header, index }))
+        .filter(({ header }) => header.length > 0)
+
+    if (activeColumns.length === 0) {
+        return []
+    }
+
+    return matrix.slice(1).map((row) => Object.fromEntries(
+        activeColumns.map(({ header, index }) => [header, row?.[index]?.value ?? ''])
+    ))
+}
+
 interface ExportPreviewModalProps {
     isOpen: boolean
     onClose: () => void
@@ -20,7 +51,7 @@ interface ExportPreviewModalProps {
         customDates: { start: string | null; end: string | null }
         selectedCashier: string
     }
-    type?: 'sales' | 'revenue' | 'finance'
+    type?: 'sales' | 'revenue' | 'finance' | 'products'
     records?: any[]
 }
 
@@ -36,9 +67,11 @@ export function ExportPreviewModal({
     const [isExporting, setIsExporting] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
     const [data, setData] = useState<any[]>([])
+    const [previewData, setPreviewData] = useState<PreviewMatrix>([])
+    const [selectedPreviewCells, setSelectedPreviewCells] = useState<Selection | null>(null)
 
     useEffect(() => {
-        if (isOpen && (type === 'revenue' || type === 'finance') && records) {
+        if (isOpen && (type === 'revenue' || type === 'finance' || type === 'products') && records) {
             setData(records)
             setIsLoading(false)
         } else if (isOpen && filters) {
@@ -232,11 +265,12 @@ export function ExportPreviewModal({
     const exportData = useMemo(() => {
         if (!data) return []
         if (type === 'finance') return mapFinanceForExport(data)
+        if (type === 'products') return mapFinanceForExport(data)
         if (type === 'revenue') return mapRevenueForExport(data, t)
         return mapSalesForExport(data, t)
     }, [data, t, type])
 
-    const spreadsheetData = useMemo(() => {
+    const spreadsheetData = useMemo<PreviewMatrix>(() => {
         if (exportData.length === 0) return []
         const headers = Object.keys(exportData[0]).map(header => ({ value: header, readOnly: true }))
         const rows = exportData.map(row =>
@@ -244,6 +278,43 @@ export function ExportPreviewModal({
         )
         return [headers, ...rows]
     }, [exportData])
+
+    useEffect(() => {
+        if (!isOpen) {
+            setPreviewData([])
+            setSelectedPreviewCells(null)
+            return
+        }
+
+        setPreviewData(spreadsheetData)
+        setSelectedPreviewCells(null)
+    }, [isOpen, spreadsheetData])
+
+    const previewExportData = useMemo(() => matrixToExportRows(previewData), [previewData])
+
+    const handlePreviewKeyDown = useCallback((event: React.KeyboardEvent) => {
+        if (event.key !== 'Delete') {
+            return
+        }
+
+        const target = event.target as HTMLElement | null
+        if (target?.closest('input, textarea, [contenteditable="true"]')) {
+            return
+        }
+
+        const columnRange = getSelectedColumnRange(selectedPreviewCells, previewData[0]?.length ?? 0)
+        if (!columnRange) {
+            return
+        }
+
+        event.preventDefault()
+        event.stopPropagation()
+
+        setPreviewData((current) => current.map((row) =>
+            row?.filter((_, columnIndex) => columnIndex < columnRange.start || columnIndex > columnRange.end) ?? []
+        ))
+        setSelectedPreviewCells(null)
+    }, [previewData, selectedPreviewCells])
 
     const handleExport = async () => {
         setIsExporting(true)
@@ -253,8 +324,10 @@ export function ExportPreviewModal({
                 ? 'Revenue_Export'
                 : type === 'finance'
                     ? 'Finance_Export'
-                    : 'Sales_Export'
-            const success = await exportToExcel(exportData, `${prefix}_${new Date().toISOString().split('T')[0]}`)
+                    : type === 'products'
+                        ? 'Products_Export'
+                        : 'Sales_Export'
+            const success = await exportToExcel(previewExportData, `${prefix}_${new Date().toISOString().split('T')[0]}`)
             if (success) {
                 onClose()
             }
@@ -309,7 +382,7 @@ export function ExportPreviewModal({
                     </Button>
                     <Button
                         onClick={handleExport}
-                        disabled={isExporting || isLoading || data.length === 0}
+                        disabled={isExporting || isLoading || previewExportData.length === 0}
                         className={cn(
                             "h-10 px-6 rounded-xl font-black shadow-lg transition-all active:scale-95 flex gap-2 items-center justify-center",
                             "bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20 border-t border-white/10"
@@ -331,7 +404,7 @@ export function ExportPreviewModal({
                         <Loader2 className="w-6 h-6 animate-spin text-primary" />
                         <span className="text-sm font-semibold">{t('sales.export.preparingData') || 'Preparing data for export...'}</span>
                     </div>
-                ) : spreadsheetData.length > 0 ? (
+                ) : previewData.length > 0 && (previewData[0]?.length ?? 0) > 0 ? (
                     <div className="overflow-auto">
                         <div className="inline-block min-w-full">
                             <Suspense
@@ -343,7 +416,10 @@ export function ExportPreviewModal({
                                 )}
                             >
                                 <SpreadsheetPreview
-                                    data={spreadsheetData}
+                                    data={previewData}
+                                    onChange={setPreviewData}
+                                    onSelect={setSelectedPreviewCells}
+                                    onKeyDown={handlePreviewKeyDown}
                                     className="atlas-spreadsheet text-sm font-medium"
                                 />
                             </Suspense>
@@ -356,9 +432,9 @@ export function ExportPreviewModal({
                 )}
             </div>
 
-            {spreadsheetData.length > 0 && (
+            {previewData.length > 0 && (previewData[0]?.length ?? 0) > 0 && (
                 <div className="text-xs text-muted-foreground font-medium text-center">
-                    {spreadsheetData.length - 1} rows &middot; {Object.keys(exportData[0] || {}).length} columns
+                    {Math.max(0, previewData.length - 1)} rows &middot; {previewData[0]?.length ?? 0} columns
                 </div>
             )}
         </div>

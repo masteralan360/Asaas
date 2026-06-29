@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowDown, ArrowUp, ArrowUpDown, Boxes, Copy, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Boxes, Copy, FileSpreadsheet, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import {
@@ -48,6 +48,7 @@ import {
     Input,
     Label,
     Checkbox,
+    ExportPreviewModal,
     Select,
     SelectContent,
     SelectItem,
@@ -185,6 +186,7 @@ export function Products() {
     const [adjustmentDialogOpen, setAdjustmentDialogOpen] = useState(false)
     const [selectedProductForStock, setSelectedProductForStock] = useState<string | undefined>()
     const [isLoading, setIsLoading] = useState(false)
+    const [isProductsExportOpen, setIsProductsExportOpen] = useState(false)
     const [pulseCategorySubmit, setPulseCategorySubmit] = useState(false)
     const [outsideClickCount, setOutsideClickCount] = useState(0)
     const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false)
@@ -419,6 +421,20 @@ export function Products() {
                 </Tooltip>
             </TooltipProvider>
         )
+    }
+
+    const getProductStorageSummary = (product: Product) => {
+        const entries = productStorageMap.get(product.id)
+        if (!entries || entries.length === 0) {
+            return getStorageName(product.storageId) || t('products.export.noStorage', { defaultValue: 'No Storage' })
+        }
+        if (entries.length === 1) {
+            return entries[0].name
+        }
+        return [...entries]
+            .sort((a, b) => b.quantity - a.quantity)
+            .map((entry) => `${entry.name} (${entry.quantity})`)
+            .join(', ')
     }
 
     const filteredProducts = useMemo(() => {
@@ -687,6 +703,11 @@ export function Products() {
         }
     }
 
+    const handleExportProducts = () => {
+        if (filteredProducts.length === 0) return
+        setIsProductsExportOpen(true)
+    }
+
     const confirmDelete = async () => {
         if (!itemToDelete) return
 
@@ -706,6 +727,36 @@ export function Products() {
         } finally {
             setIsLoading(false)
         }
+    }
+
+    const productsExportRows = [...filteredProducts]
+        .sort((left, right) => right.quantity - left.quantity || left.name.localeCompare(right.name))
+        .map((product) => ({
+            [t('products.table.sku', { defaultValue: 'SKU' })]: product.sku,
+            [t('products.table.name', { defaultValue: 'Name' })]: product.name,
+            [t('products.table.category', { defaultValue: 'Category' })]: getCategoryName(product.categoryId),
+            [t('storages.title', { defaultValue: 'Storage' })]: getProductStorageSummary(product),
+            [t('products.table.price', { defaultValue: 'Price' })]: product.price,
+            [t('products.form.cost', { defaultValue: 'Cost Price' })]: product.costPrice,
+            [t('products.form.currency', { defaultValue: 'Currency' })]: product.currency.toUpperCase(),
+            [t('products.table.stock', { defaultValue: 'Stock' })]: product.quantity,
+            [t('products.form.minStock', { defaultValue: 'Min Stock Level' })]: product.minStockLevel,
+            [t('products.form.unit', { defaultValue: 'Unit' })]: t(`products.units.${product.unit}`, product.unit),
+            [t('products.form.description', { defaultValue: 'Description' })]: product.description || '',
+            [t('common.createdAt', { defaultValue: 'Created At' })]: product.createdAt ? new Date(product.createdAt).toLocaleString() : ''
+        }))
+
+    if (isProductsExportOpen) {
+        return (
+            <TooltipProvider>
+                <ExportPreviewModal
+                    isOpen={isProductsExportOpen}
+                    onClose={() => setIsProductsExportOpen(false)}
+                    type="products"
+                    records={productsExportRows}
+                />
+            </TooltipProvider>
+        )
     }
 
     return (
@@ -861,17 +912,34 @@ export function Products() {
                             </p>
                         )}
                     </div>
-                    <AppPagination
-                        currentPage={currentPage}
-                        totalCount={totalCount}
-                        pageSize={pageSize}
-                        onPageChange={setCurrentPage}
-                        onPageSizeChange={(newSize) => {
-                            setPageSize(newSize)
-                            setCurrentPage(1)
-                        }}
-                        className="w-auto"
-                    />
+                    <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+                        <AppPagination
+                            currentPage={currentPage}
+                            totalCount={totalCount}
+                            pageSize={pageSize}
+                            onPageChange={setCurrentPage}
+                            onPageSizeChange={(newSize) => {
+                                setPageSize(newSize)
+                                setCurrentPage(1)
+                            }}
+                            className="w-auto"
+                        />
+                        <Button
+                            type="button"
+                            variant="outline"
+                            allowViewer={true}
+                            onClick={handleExportProducts}
+                            disabled={filteredProducts.length === 0}
+                            className={cn(
+                                "h-10 gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-5 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition-all",
+                                "hover:bg-emerald-100 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] active:scale-95",
+                                "dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400 dark:hover:bg-emerald-500/20"
+                            )}
+                        >
+                            <FileSpreadsheet className="h-4 w-4" />
+                            {t('sales.export.button', { defaultValue: 'Excel Export' })}
+                        </Button>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     {filteredProducts.length === 0 ? (
