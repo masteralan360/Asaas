@@ -2,7 +2,7 @@ function createCorsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Workspace-Usage-Client-Recorded",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -28,11 +28,107 @@ function getSupabaseConfig(env) {
   return { supabaseUrl, supabaseAnonKey };
 }
 
+function getSupabaseServiceConfig(env) {
+  const supabaseUrl = (env.SUPABASE_URL || env.VITE_SUPABASE_URL || "").replace(/\/+$/, "");
+  const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_KEY || "";
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return null;
+  }
+
+  return { supabaseUrl, serviceRoleKey };
+}
+
+function timingSafeEqual(left, right) {
+  const encoder = new TextEncoder();
+  const leftBytes = encoder.encode(left);
+  const rightBytes = encoder.encode(right);
+
+  if (leftBytes.length !== rightBytes.length) {
+    return false;
+  }
+
+  let diff = 0;
+  for (let index = 0; index < leftBytes.length; index += 1) {
+    diff |= leftBytes[index] ^ rightBytes[index];
+  }
+
+  return diff === 0;
+}
+
+function getWorkspaceIdFromPath(path) {
+  const parts = path.replace(/^\/+/, "").split("/").filter(Boolean);
+  if (parts.length === 0) return null;
+
+  if (parts[0] === "local-backup") {
+    return parts[1] || null;
+  }
+
+  return parts[0] || null;
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value || "");
+}
+
+function parseContentLength(value) {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : null;
+}
+
+function wasUsageClientRecorded(request) {
+  const url = new URL(request.url);
+  return request.headers.get("X-Workspace-Usage-Client-Recorded") === "1"
+    || url.searchParams.get("usage_client_recorded") === "1";
+}
+
+async function recordWorkspaceDataTransfer(env, workspaceId, bytes, source) {
+  const byteCount = Math.trunc(Number(bytes) || 0);
+  if (!isUuid(workspaceId) || byteCount <= 0) return { ok: true };
+
+  const config = getSupabaseServiceConfig(env);
+  if (!config) return { ok: true, skipped: true };
+
+  const response = await fetch(`${config.supabaseUrl}/rest/v1/rpc/record_workspace_data_transfer`, {
+    method: "POST",
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      p_workspace_id: workspaceId,
+      p_bytes: byteCount,
+      p_source: source,
+    }),
+  });
+
+  if (response.ok) {
+    return { ok: true };
+  }
+
+  const errorText = await response.text().catch(() => "");
+  const limitExceeded = errorText.includes("Workspace monthly data transfer limit exceeded");
+
+  return {
+    ok: false,
+    response: jsonResponse(
+      {
+        error: limitExceeded
+          ? "Workspace monthly data transfer limit exceeded"
+          : "Workspace usage could not be recorded",
+      },
+      { status: limitExceeded ? 429 : 502, headers: createCorsHeaders() },
+    ),
+  };
+}
+
 function isAuthenticatedServiceRequest(request, env) {
   const serviceToken = env.R2_WORKER_SERVICE_TOKEN || env.R2_SERVICE_TOKEN || "";
   const providedToken = request.headers.get("X-R2-Service-Token") || "";
 
-  return Boolean(serviceToken && providedToken && providedToken === serviceToken);
+  return Boolean(serviceToken && providedToken && timingSafeEqual(providedToken, serviceToken));
 }
 
 async function requireAuthenticatedUser(request, env, corsHeaders) {
@@ -155,9 +251,16 @@ export default {
         });
       }
 
+      if (!wasUsageClientRecorded(request)) {
+        const workspaceId = getWorkspaceIdFromPath(path);
+        const usageResult = await recordWorkspaceDataTransfer(env, workspaceId, object.size, "r2_download");
+        if (!usageResult.ok) return usageResult.response;
+      }
+
       const headers = new Headers(corsHeaders);
       object.writeHttpMetadata(headers);
       headers.set("etag", object.httpEtag);
+      headers.set("Content-Length", String(object.size));
       if (/\/printed-invoices\/versions\//i.test(`/${path}`)) {
         headers.set("Cache-Control", "public, max-age=31536000, immutable");
       } else if (/\/printed-invoices\/(A4|receipts)\//i.test(`/${path}`)) {
@@ -175,11 +278,22 @@ export default {
       if (authResult.response) return authResult.response;
 
       try {
-        await env.MY_BUCKET.put(path, request.body, {
+        const clientRecorded = wasUsageClientRecorded(request);
+        const contentLength = parseContentLength(request.headers.get("Content-Length"));
+        const workspaceId = getWorkspaceIdFromPath(path);
+
+        const object = await env.MY_BUCKET.put(path, request.body, {
           httpMetadata: {
             contentType: request.headers.get("Content-Type") || "application/octet-stream",
           },
         });
+
+        const uploadedBytes = object?.size || contentLength;
+        if (!clientRecorded && uploadedBytes !== null) {
+          const usageResult = await recordWorkspaceDataTransfer(env, workspaceId, uploadedBytes, "r2_upload");
+          if (!usageResult.ok) return usageResult.response;
+        }
+
         return jsonResponse({ success: true, key: path }, { headers: corsHeaders });
       } catch (error) {
         return new Response(error?.message || "Failed to upload object", {

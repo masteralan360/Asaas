@@ -57,6 +57,29 @@ type DeleteOverrideRequest = {
     overrideId?: string
 }
 
+type ListWorkspaceUsageRequest = {
+    action: 'listWorkspaceUsage'
+    passkey?: string
+}
+
+type UpdateWorkspaceUsageRequest = {
+    action: 'updateWorkspaceUsage'
+    passkey?: string
+    workspaceId?: string
+    storageUnits?: string | number | null
+    dataTransferBytes?: string | number | null
+    transferPeriodStart?: string | null
+    storageUnitLimit?: string | number | null
+    monthlyDataTransferLimitBytes?: string | number | null
+    notes?: string | null
+}
+
+type RefreshWorkspaceUsageRequest = {
+    action: 'refreshWorkspaceUsage'
+    passkey?: string
+    workspaceId?: string | null
+}
+
 type AdminConsoleRequest =
     | VerifyRequest
     | ListUsersRequest
@@ -67,6 +90,63 @@ type AdminConsoleRequest =
     | ListOverridesRequest
     | UpsertOverrideRequest
     | DeleteOverrideRequest
+    | ListWorkspaceUsageRequest
+    | UpdateWorkspaceUsageRequest
+    | RefreshWorkspaceUsageRequest
+
+function currentUsagePeriodStart() {
+    const now = new Date()
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+        .toISOString()
+        .slice(0, 10)
+}
+
+function normalizeNullableBigint(value: unknown, field: string): { value: string | null; error?: string } {
+    if (value === null || value === undefined || value === '') {
+        return { value: null }
+    }
+
+    if (typeof value === 'number') {
+        if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+            return { value: null, error: `${field} must be a non-negative integer` }
+        }
+        return { value: String(value) }
+    }
+
+    if (typeof value === 'string') {
+        const normalized = value.trim()
+        if (!normalized) {
+            return { value: null }
+        }
+        if (!/^\d+$/.test(normalized)) {
+            return { value: null, error: `${field} must be a non-negative integer` }
+        }
+        return { value: BigInt(normalized).toString() }
+    }
+
+    return { value: null, error: `${field} must be a non-negative integer` }
+}
+
+function normalizeUsagePeriodStart(value: unknown): { value: string; error?: string } {
+    if (value === null || value === undefined || value === '') {
+        return { value: currentUsagePeriodStart() }
+    }
+
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return { value: currentUsagePeriodStart(), error: 'Transfer period must be a YYYY-MM-DD date' }
+    }
+
+    const parsed = new Date(`${value}T00:00:00Z`)
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+        return { value: currentUsagePeriodStart(), error: 'Transfer period is invalid' }
+    }
+
+    if (!value.endsWith('-01')) {
+        return { value: currentUsagePeriodStart(), error: 'Transfer period must be the first day of a month' }
+    }
+
+    return { value }
+}
 
 async function isValidAdminPasskey(adminClient: ReturnType<typeof createAdminClient>, passkey: string) {
     const { data, error } = await adminClient
@@ -362,6 +442,266 @@ async function deleteOverride(
     return jsonResponse({ success: true })
 }
 
+async function getLimitedWorkspaceIds(adminClient: ReturnType<typeof createAdminClient>) {
+    const { data, error } = await adminClient
+        .from('workspace_usage_limits')
+        .select('workspace_id')
+
+    if (error) {
+        throw error
+    }
+
+    return (data ?? []).map((row) => String(row.workspace_id))
+}
+
+async function syncWorkspaceUsagePeriod(
+    adminClient: ReturnType<typeof createAdminClient>,
+    limitedWorkspaceIds: string[]
+) {
+    const periodStart = currentUsagePeriodStart()
+    const now = new Date().toISOString()
+
+    if (limitedWorkspaceIds.length === 0) {
+        const { error: deleteAllError } = await adminClient
+            .from('workspace_usage')
+            .delete()
+            .gte('storage_units', '0')
+
+        if (deleteAllError) {
+            throw deleteAllError
+        }
+
+        return
+    }
+
+    const { error: cleanupError } = await adminClient
+        .from('workspace_usage')
+        .delete()
+        .not('workspace_id', 'in', `(${limitedWorkspaceIds.join(',')})`)
+
+    if (cleanupError) {
+        throw cleanupError
+    }
+
+    if (limitedWorkspaceIds.length > 0) {
+        const { error: insertError } = await adminClient
+            .from('workspace_usage')
+            .upsert(
+                limitedWorkspaceIds.map((workspaceId) => ({
+                    workspace_id: workspaceId,
+                    transfer_period_start: periodStart,
+                    storage_updated_at: now,
+                    transfer_updated_at: now,
+                    updated_at: now
+                })),
+                { onConflict: 'workspace_id', ignoreDuplicates: true }
+            )
+
+        if (insertError) {
+            throw insertError
+        }
+    }
+
+    const { error: resetError } = await adminClient
+        .from('workspace_usage')
+        .update({
+            data_transfer_bytes: '0',
+            transfer_period_start: periodStart,
+            transfer_updated_at: now,
+            updated_at: now
+        })
+        .neq('transfer_period_start', periodStart)
+
+    if (resetError) {
+        throw resetError
+    }
+}
+
+async function listWorkspaceUsage(adminClient: ReturnType<typeof createAdminClient>) {
+    try {
+        const limitedWorkspaceIds = await getLimitedWorkspaceIds(adminClient)
+        await syncWorkspaceUsagePeriod(adminClient, limitedWorkspaceIds)
+
+        if (limitedWorkspaceIds.length === 0) {
+            return jsonResponse([])
+        }
+
+        const { data: usageRows, error: usageError } = await adminClient
+            .from('workspace_usage')
+            .select('workspace_id, storage_units, data_transfer_bytes, transfer_period_start, storage_updated_at, transfer_updated_at, updated_at')
+            .in('workspace_id', limitedWorkspaceIds)
+
+        if (usageError) {
+            return errorResponse(usageError.message, 500)
+        }
+
+        const { data: limitRows, error: limitError } = await adminClient
+            .from('workspace_usage_limits')
+            .select('workspace_id, storage_unit_limit, monthly_data_transfer_limit_bytes, notes, created_at, updated_at')
+            .in('workspace_id', limitedWorkspaceIds)
+
+        if (limitError) {
+            return errorResponse(limitError.message, 500)
+        }
+
+        const usageByWorkspaceId = new Map((usageRows ?? []).map((row) => [String(row.workspace_id), row]))
+        const limitsByWorkspaceId = new Map((limitRows ?? []).map((row) => [String(row.workspace_id), row]))
+        const periodStart = currentUsagePeriodStart()
+
+        return jsonResponse(limitedWorkspaceIds.map((workspaceId) => {
+            const usage = usageByWorkspaceId.get(workspaceId)
+            const limits = limitsByWorkspaceId.get(workspaceId)
+
+            return {
+                workspace_id: workspaceId,
+                storage_units: String(usage?.storage_units ?? 0),
+                data_transfer_bytes: String(usage?.data_transfer_bytes ?? 0),
+                transfer_period_start: String(usage?.transfer_period_start ?? periodStart),
+                storage_updated_at: usage?.storage_updated_at ?? null,
+                transfer_updated_at: usage?.transfer_updated_at ?? null,
+                updated_at: usage?.updated_at ?? null,
+                has_limits: Boolean(limits),
+                storage_unit_limit: limits?.storage_unit_limit === null || limits?.storage_unit_limit === undefined
+                    ? null
+                    : String(limits.storage_unit_limit),
+                monthly_data_transfer_limit_bytes: limits?.monthly_data_transfer_limit_bytes === null || limits?.monthly_data_transfer_limit_bytes === undefined
+                    ? null
+                    : String(limits.monthly_data_transfer_limit_bytes),
+                notes: limits?.notes ?? null,
+                limits_created_at: limits?.created_at ?? null,
+                limits_updated_at: limits?.updated_at ?? null
+            }
+        }))
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to list workspace usage'
+        return errorResponse(message, 500)
+    }
+}
+
+async function updateWorkspaceUsage(
+    adminClient: ReturnType<typeof createAdminClient>,
+    body: UpdateWorkspaceUsageRequest
+) {
+    const workspaceId = body.workspaceId?.trim() ?? ''
+    if (!workspaceId) {
+        return errorResponse('Workspace is required')
+    }
+
+    const { data: workspace, error: workspaceError } = await adminClient
+        .from('workspaces')
+        .select('id')
+        .eq('id', workspaceId)
+        .maybeSingle()
+
+    if (workspaceError) {
+        return errorResponse(workspaceError.message, 500)
+    }
+
+    if (!workspace) {
+        return errorResponse('Workspace not found', 404)
+    }
+
+    const storageUnits = normalizeNullableBigint(body.storageUnits, 'Storage usage')
+    const dataTransferBytes = normalizeNullableBigint(body.dataTransferBytes, 'Monthly data transfer')
+    const storageUnitLimit = normalizeNullableBigint(body.storageUnitLimit, 'Storage limit')
+    const monthlyDataTransferLimitBytes = normalizeNullableBigint(body.monthlyDataTransferLimitBytes, 'Monthly data transfer limit')
+    const periodStart = normalizeUsagePeriodStart(body.transferPeriodStart)
+
+    const validationError = storageUnits.error
+        ?? dataTransferBytes.error
+        ?? storageUnitLimit.error
+        ?? monthlyDataTransferLimitBytes.error
+        ?? periodStart.error
+
+    if (validationError) {
+        return errorResponse(validationError)
+    }
+
+    if (storageUnits.value === null || dataTransferBytes.value === null) {
+        return errorResponse('Usage counters are required')
+    }
+
+    const now = new Date().toISOString()
+    const notes = typeof body.notes === 'string' && body.notes.trim()
+        ? body.notes.trim().slice(0, 500)
+        : null
+
+    if (storageUnitLimit.value === null && monthlyDataTransferLimitBytes.value === null) {
+        const { error: usageDeleteError } = await adminClient
+            .from('workspace_usage')
+            .delete()
+            .eq('workspace_id', workspaceId)
+
+        if (usageDeleteError) {
+            return errorResponse(usageDeleteError.message, 500)
+        }
+
+        const { error } = await adminClient
+            .from('workspace_usage_limits')
+            .delete()
+            .eq('workspace_id', workspaceId)
+
+        if (error) {
+            return errorResponse(error.message, 500)
+        }
+    } else {
+        const { error: limitsError } = await adminClient
+            .from('workspace_usage_limits')
+            .upsert({
+                workspace_id: workspaceId,
+                storage_unit_limit: storageUnitLimit.value,
+                monthly_data_transfer_limit_bytes: monthlyDataTransferLimitBytes.value,
+                notes
+            }, { onConflict: 'workspace_id' })
+
+        if (limitsError) {
+            return errorResponse(limitsError.message, 500)
+        }
+
+        const { error: usageError } = await adminClient
+            .from('workspace_usage')
+            .upsert({
+                workspace_id: workspaceId,
+                storage_units: storageUnits.value,
+                data_transfer_bytes: dataTransferBytes.value,
+                transfer_period_start: periodStart.value,
+                storage_updated_at: now,
+                transfer_updated_at: now,
+                updated_at: now
+            }, { onConflict: 'workspace_id' })
+
+        if (usageError) {
+            return errorResponse(usageError.message, 500)
+        }
+    }
+
+    return jsonResponse({ success: true })
+}
+
+async function refreshWorkspaceUsage(
+    adminClient: ReturnType<typeof createAdminClient>,
+    body: RefreshWorkspaceUsageRequest
+) {
+    const workspaceId = body.workspaceId?.trim() || null
+
+    const { error } = await adminClient.rpc('refresh_workspace_storage_usage', {
+        p_workspace_id: workspaceId
+    })
+
+    if (error) {
+        return errorResponse(error.message, 500)
+    }
+
+    try {
+        await syncWorkspaceUsagePeriod(adminClient, await getLimitedWorkspaceIds(adminClient))
+    } catch (syncError) {
+        const message = syncError instanceof Error ? syncError.message : 'Failed to sync usage period'
+        return errorResponse(message, 500)
+    }
+
+    return jsonResponse({ success: true })
+}
+
 Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
@@ -419,6 +759,18 @@ Deno.serve(async (req) => {
 
         if (body.action === 'deleteOverride') {
             return await deleteOverride(adminClient, body)
+        }
+
+        if (body.action === 'listWorkspaceUsage') {
+            return await listWorkspaceUsage(adminClient)
+        }
+
+        if (body.action === 'updateWorkspaceUsage') {
+            return await updateWorkspaceUsage(adminClient, body)
+        }
+
+        if (body.action === 'refreshWorkspaceUsage') {
+            return await refreshWorkspaceUsage(adminClient, body)
         }
 
         return errorResponse('Unsupported action', 400)

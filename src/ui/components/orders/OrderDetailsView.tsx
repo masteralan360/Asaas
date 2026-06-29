@@ -68,6 +68,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { platformService } from '@/services/platformService'
 import { getStoredLocalInvoicePdfPath } from '@/services/localInvoiceStorage'
 import { r2Service } from '@/services/r2Service'
+import { getWorkspaceUsageLimitMessage, isWorkspaceUsageLimitError } from '@/lib/workspaceUsage'
 import { OrderDetailsPrintTemplate } from './OrderPrintTemplates'
 import { OrderStatusBadge } from './OrderStatusBadge'
 import { useOrderCustomPrint } from './useOrderCustomPrint'
@@ -316,7 +317,12 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
             }
 
             if (!url && r2Path) {
-                url = r2Service.getUrl(r2Path)
+                const content = await r2Service.download(r2Path)
+                if (content) {
+                    const bytes = new Uint8Array(content)
+                    const base64 = platformService.uint8ArrayToBase64(bytes)
+                    url = `data:application/pdf;base64,${base64}`
+                }
             }
 
             if (!url) return
@@ -326,10 +332,19 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 title: `Invoice ${orderInvoice.invoiceid}`
             })
             navigate('/pdf-preview')
+        } catch (error) {
+            console.error('[OrderDetailsView] Failed to load invoice PDF:', error)
+            toast({
+                title: 'Unable to open invoice',
+                description: isWorkspaceUsageLimitError(error)
+                    ? getWorkspaceUsageLimitMessage(error)
+                    : 'Failed to load invoice PDF.',
+                variant: 'destructive'
+            })
         } finally {
             setIsLoadingOrderInvoice(false)
         }
-    }, [orderInvoice, navigate])
+    }, [orderInvoice, navigate, toast])
 
     const orderDetailsPreview = useMemo<TemplatePreview | undefined>(() => {
         if (!resolved) return undefined

@@ -39,6 +39,7 @@ import { UploadFilesTab } from './UploadFile'
 import { setInvoicePreviewSource } from '@/lib/pdfPreviewStore'
 import { loadInvoiceVersions } from '@/services/invoiceVersionService'
 import { getReadableFileSize } from '@/components/application/file-upload/file-upload-base'
+import { getWorkspaceUsageLimitMessage, isWorkspaceUsageLimitError } from '@/lib/workspaceUsage'
 
 const UPLOAD_FILES_ROUTE = '/invoices-history/upload-files'
 
@@ -201,7 +202,20 @@ export function InvoicesHistory() {
                     setDownloadError(t('invoices.offlineError') || 'You must be online to view invoice PDFs.')
                     return
                 }
-                url = r2Service.getUrl(r2Path)
+                try {
+                    const content = await r2Service.download(r2Path)
+                    if (content) {
+                        const bytes = new Uint8Array(content)
+                        const base64 = platformService.uint8ArrayToBase64(bytes)
+                        url = `data:application/pdf;base64,${base64}`
+                    }
+                } catch (error) {
+                    if (isWorkspaceUsageLimitError(error)) {
+                        setDownloadError(getWorkspaceUsageLimitMessage(error))
+                        return
+                    }
+                    throw error
+                }
             }
 
             if (!url) {
@@ -251,12 +265,15 @@ export function InvoicesHistory() {
                     return
                 }
                 try {
-                    const response = await fetch(r2Service.getUrl(r2Path))
-                    if (response.ok) {
-                        blob = await response.blob()
+                    const content = await r2Service.download(r2Path)
+                    if (content) {
+                        blob = new Blob([content], { type: 'application/pdf' })
                     }
-                } catch {
-                    // fall through
+                } catch (error) {
+                    if (isWorkspaceUsageLimitError(error)) {
+                        setDownloadError(getWorkspaceUsageLimitMessage(error))
+                        return
+                    }
                 }
             }
 
@@ -312,7 +329,19 @@ export function InvoicesHistory() {
                     setDownloadError(t('invoices.offlineError') || 'You must be online to view invoice PDFs.')
                     return
                 }
-                url = r2Service.getUrl(version.r2Path)
+                try {
+                    const content = await r2Service.download(version.r2Path)
+                    if (content) {
+                        const bytes = new Uint8Array(content)
+                        url = `data:application/pdf;base64,${platformService.uint8ArrayToBase64(bytes)}`
+                    }
+                } catch (error) {
+                    if (isWorkspaceUsageLimitError(error)) {
+                        setDownloadError(getWorkspaceUsageLimitMessage(error))
+                        return
+                    }
+                    throw error
+                }
             }
             if (!url) {
                 setDownloadError(t('invoices.pdfNotAvailable') || 'PDF not available.')

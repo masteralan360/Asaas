@@ -4,6 +4,12 @@
  */
 import { supabase } from '@/auth/supabase';
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode';
+import {
+    getTransferBodySize,
+    recordWorkspaceDataTransfer
+} from '@/lib/workspaceUsage';
+
+const WORKSPACE_USAGE_CLIENT_RECORDED_PARAM = 'usage_client_recorded';
 
 class R2Service {
     constructor() {
@@ -27,6 +33,28 @@ class R2Service {
                 return encodeURIComponent(decoded);
             })
             .join('/');
+    }
+
+    private getWorkspaceIdFromPath(path: string): string | null {
+        const parts = path.replace(/^\/+/, '').split('/').filter(Boolean);
+        if (parts.length === 0) return null;
+
+        if (parts[0] === 'local-backup') {
+            return parts[1] || null;
+        }
+
+        return parts[0] || null;
+    }
+
+    private isWorkspaceId(value: string | null): value is string {
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value || '');
+    }
+
+    private async recordTransfer(path: string, bytes: number, source: string): Promise<void> {
+        const workspaceId = this.getWorkspaceIdFromPath(path);
+        if (!this.isWorkspaceId(workspaceId) || isLocalWorkspaceMode(workspaceId)) return;
+
+        await recordWorkspaceDataTransfer(workspaceId, bytes, source);
     }
 
     private readEnvValue(value?: string | null): string | undefined {
@@ -126,12 +154,18 @@ class R2Service {
         return `${baseUrl}${cleanPath}`;
     }
 
+    private getClientRecordedUsageUrl(path: string): string {
+        const url = new URL(this.getUrl(path));
+        url.searchParams.set(WORKSPACE_USAGE_CLIENT_RECORDED_PARAM, '1');
+        return url.toString();
+    }
+
     /**
      * Upload an object to R2
      */
     public async upload(path: string, data: Blob | ArrayBuffer | string, contentType?: string, force?: boolean): Promise<string> {
         if (!force) {
-            const workspaceId = path.split('/')[0];
+            const workspaceId = this.getWorkspaceIdFromPath(path);
             if (workspaceId && isLocalWorkspaceMode(workspaceId)) {
                 return '';
             }
@@ -142,7 +176,10 @@ class R2Service {
         }
 
         const url = this.getUrl(path);
-        const response = await this.fetchPrivileged(url, {
+        const requestUrl = this.getClientRecordedUsageUrl(path);
+        const uploadBytes = getTransferBodySize(data);
+
+        const response = await this.fetchPrivileged(requestUrl, {
             method: 'PUT',
             headers: {
                 'Content-Type': contentType || 'application/octet-stream'
@@ -155,6 +192,7 @@ class R2Service {
             throw new Error(`R2 Upload Failed: ${response.status} ${errorText}`);
         }
 
+        await this.recordTransfer(path, uploadBytes, 'r2_upload');
         return url;
     }
 
@@ -162,7 +200,7 @@ class R2Service {
      * Delete an object from R2
      */
     public async delete(path: string): Promise<void> {
-        const workspaceId = path.split('/')[0];
+        const workspaceId = this.getWorkspaceIdFromPath(path);
         if (workspaceId && isLocalWorkspaceMode(workspaceId)) {
             return;
         }
@@ -233,7 +271,7 @@ class R2Service {
     public async download(path: string): Promise<ArrayBuffer | null> {
         if (!this.workerUrl) return null;
 
-        const url = this.getUrl(path);
+        const url = this.getClientRecordedUsageUrl(path);
         const response = await fetch(url);
 
         if (!response.ok) {
@@ -241,7 +279,9 @@ class R2Service {
             throw new Error(`R2 Download Failed: ${response.status}`);
         }
 
-        return await response.arrayBuffer();
+        const data = await response.arrayBuffer();
+        await this.recordTransfer(path, data.byteLength, 'r2_download');
+        return data;
     }
 }
 

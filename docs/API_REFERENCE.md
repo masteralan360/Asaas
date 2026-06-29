@@ -52,6 +52,15 @@ Supported actions:
   - body: `{ action: 'updateWorkspaceFeatures', passkey, workspaceId, pos, crm, invoices_history, locked_workspace }`
 - `updateWorkspaceSubscription`
   - body: `{ action: 'updateWorkspaceSubscription', passkey, workspaceId, newExpiry }`
+- `listWorkspaceUsage`
+  - body: `{ action: 'listWorkspaceUsage', passkey }`
+  - returns: current workspace usage counters only for workspaces with saved usage limits; a missing limits row means unlimited usage
+- `updateWorkspaceUsage`
+  - body: `{ action: 'updateWorkspaceUsage', passkey, workspaceId, storageUnits, dataTransferBytes, transferPeriodStart, storageUnitLimit, monthlyDataTransferLimitBytes, notes }`
+  - use: adjust current workspace usage counters and upsert/delete optional limits; reaching the monthly data transfer limit locks the workspace, while reaching the storage unit limit does not
+- `refreshWorkspaceUsage`
+  - body: `{ action: 'refreshWorkspaceUsage', passkey, workspaceId? }`
+  - use: recalculate counted workspace storage units from configured parent/business tables
 
 ## Kept SQL RPCs
 

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { getAppSettingSync } from '@/local-db/settings'
 import { decrypt, encrypt } from '@/lib/encryption'
+import { createWorkspaceUsageFetch } from '@/lib/workspaceUsageFetch'
 
 // Custom storage adapter that encrypts everything in local storage
 const EncryptedStorage = {
@@ -49,6 +50,12 @@ const clientUrl = isUrlValid ? resolvedSupabaseUrl : 'https://placeholder.supaba
 const clientKey = isKeyValid ? resolvedSupabaseAnonKey : 'placeholder-key'
 
 export const supabase = createClient(clientUrl, clientKey, {
+    global: {
+        fetch: createWorkspaceUsageFetch({
+            supabaseUrl: clientUrl,
+            supabaseAnonKey: clientKey
+        })
+    },
     auth: {
         persistSession: true,
         autoRefreshToken: true,
