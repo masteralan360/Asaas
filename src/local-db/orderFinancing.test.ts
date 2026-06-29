@@ -319,7 +319,7 @@ describe('order-linked financing', () => {
         })
     })
 
-    it('creates and accepts payments for a simple loan without a due date or installment rows', async () => {
+    it('creates and accepts payments for a simple loan with a blank due-date entry', async () => {
         const supplier = await createSupplier(null)
         const draft = await createPurchaseOrder(
             WORKSPACE_ID,
@@ -332,10 +332,19 @@ describe('order-linked financing', () => {
             loanCategory: 'simple',
             firstDueDate: null,
             nextDueDate: null,
-            installmentCount: 0,
+            installmentCount: 1,
             principalAmount: 75
         })
-        expect(await db.loan_installments.where('loanId').equals(loan!.id).count()).toBe(0)
+        const undatedSchedule = await db.loan_installments.where('loanId').equals(loan!.id).toArray()
+        expect(undatedSchedule).toHaveLength(1)
+        expect(undatedSchedule[0]).toMatchObject({
+            installmentNo: 1,
+            dueDate: null,
+            plannedAmount: 75,
+            paidAmount: 0,
+            balanceAmount: 75,
+            status: 'unpaid'
+        })
 
         await recordLoanPayment(WORKSPACE_ID, {
             loanId: loan!.id,
@@ -343,6 +352,11 @@ describe('order-linked financing', () => {
             paymentMethod: 'cash'
         })
         expect(await db.loans.get(loan!.id)).toMatchObject({ totalPaidAmount: 25, balanceAmount: 50 })
+        expect(await db.loan_installments.get(undatedSchedule[0].id)).toMatchObject({
+            paidAmount: 25,
+            balanceAmount: 50,
+            status: 'partial'
+        })
         expect(await db.purchase_orders.get(draft.id)).toMatchObject({ paidAmount: 25, balanceAmount: 50 })
 
         const datedDraft = await createPurchaseOrder(

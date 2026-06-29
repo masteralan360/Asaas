@@ -2676,7 +2676,7 @@ export class AtlasDatabase extends Dexie {
                     });
                   }
                 }
-              } else if (firstDueDate) {
+              } else {
                 loanInstallments.push({
                   id: crypto.randomUUID(),
                   workspaceId: order.workspaceId,
@@ -2686,7 +2686,7 @@ export class AtlasDatabase extends Dexie {
                   plannedAmount: balanceAmount,
                   paidAmount: 0,
                   balanceAmount,
-                  status: firstDueDate < now.slice(0, 10) ? "overdue" : "unpaid",
+                  status: firstDueDate && firstDueDate < now.slice(0, 10) ? "overdue" : "unpaid",
                   paidAt: null,
                   createdAt: now,
                   updatedAt: now,
@@ -2720,7 +2720,7 @@ export class AtlasDatabase extends Dexie {
                 balanceAmount,
                 settlementCurrency: order.currency,
                 exchangeRateSnapshot: order.exchangeRates ?? null,
-                installmentCount: installmentFinancing ? loanInstallments.filter((row) => row.loanId === linkedLoanId).length : firstDueDate ? 1 : 0,
+                installmentCount: loanInstallments.filter((row) => row.loanId === linkedLoanId).length,
                 installmentFrequency: order.installmentFrequency || "monthly",
                 firstDueDate,
                 nextDueDate,
@@ -2824,6 +2824,111 @@ export class AtlasDatabase extends Dexie {
         if (invoices.length > 0) await tx.table("invoices").bulkPut(invoices);
         if (legacyVersions.length > 0) await tx.table("invoice_versions").bulkPut(legacyVersions);
       });
+
+    this.version(80).upgrade(async (tx) => {
+      const [loanRows, installmentRows, workspaceRows] = await Promise.all([
+        tx.table("loans").toArray() as Promise<Array<Record<string, unknown>>>,
+        tx.table("loan_installments").toArray() as Promise<Array<Record<string, unknown>>>,
+        tx.table("workspaces").toArray() as Promise<Array<Record<string, unknown>>>,
+      ]);
+      if (loanRows.length === 0) return;
+
+      const localWorkspaceIds = new Set(
+        workspaceRows
+          .filter((row) => row.data_mode === "local" || row.data_mode === "demo")
+          .map((row) => row.id)
+          .filter((id): id is string => typeof id === "string"),
+      );
+      const activeInstallmentLoanIds = new Set(
+        installmentRows
+          .filter((row) => row.isDeleted !== true && typeof row.loanId === "string")
+          .map((row) => row.loanId as string),
+      );
+      const now = new Date().toISOString();
+      const today = now.slice(0, 10);
+      const backfilledInstallments: Array<Record<string, unknown>> = [];
+      const updatedLoans: Array<Record<string, unknown>> = [];
+
+      for (const loan of loanRows) {
+        const loanId = typeof loan.id === "string" ? loan.id : "";
+        const workspaceId = typeof loan.workspaceId === "string" ? loan.workspaceId : "";
+        if (
+          !loanId ||
+          !workspaceId ||
+          (!localWorkspaceIds.has(workspaceId) && !isLocalWorkspaceMode(workspaceId)) ||
+          loan.isDeleted === true ||
+          loan.source !== "order" ||
+          loan.loanCategory !== "simple" ||
+          activeInstallmentLoanIds.has(loanId)
+        ) {
+          continue;
+        }
+
+        const principalAmount = Math.max(0, Number(loan.principalAmount || 0));
+        const paidAmount = Math.max(0, Number(loan.totalPaidAmount || 0));
+        const balanceAmount = Math.max(
+          0,
+          Number(
+            loan.balanceAmount ??
+              Math.max(principalAmount - paidAmount, 0),
+          ),
+        );
+        const firstDueDate = typeof loan.firstDueDate === "string" && loan.firstDueDate
+          ? loan.firstDueDate.slice(0, 10)
+          : null;
+        const installmentStatus = balanceAmount <= 0
+          ? "paid"
+          : paidAmount > 0
+            ? "partial"
+            : firstDueDate && firstDueDate < today
+              ? "overdue"
+              : "unpaid";
+
+        backfilledInstallments.push({
+          id: crypto.randomUUID(),
+          workspaceId,
+          loanId,
+          installmentNo: 1,
+          dueDate: firstDueDate,
+          plannedAmount: principalAmount,
+          paidAmount,
+          balanceAmount,
+          status: installmentStatus,
+          paidAt: installmentStatus === "paid"
+            ? (typeof loan.updatedAt === "string" ? loan.updatedAt : now)
+            : null,
+          createdAt: typeof loan.createdAt === "string" ? loan.createdAt : now,
+          updatedAt: now,
+          syncStatus: "synced",
+          lastSyncedAt: now,
+          version: 1,
+          isDeleted: false,
+        });
+
+        updatedLoans.push({
+          ...loan,
+          installmentCount: 1,
+          nextDueDate: balanceAmount > 0 ? firstDueDate : null,
+          status: balanceAmount <= 0
+            ? "completed"
+            : firstDueDate && firstDueDate < today
+              ? "overdue"
+              : "active",
+          updatedAt: now,
+          version: Number(loan.version || 0) + 1,
+          syncStatus: "synced",
+          lastSyncedAt: now,
+        });
+        activeInstallmentLoanIds.add(loanId);
+      }
+
+      if (backfilledInstallments.length > 0) {
+        await tx.table("loan_installments").bulkPut(backfilledInstallments);
+      }
+      if (updatedLoans.length > 0) {
+        await tx.table("loans").bulkPut(updatedLoans);
+      }
+    });
 
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();

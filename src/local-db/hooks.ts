@@ -4230,15 +4230,13 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
         })
     }
 
-    const plan = input.source === 'order' && loanCategory === 'simple' && !firstDueDate
-        ? []
-        : createInstallmentPlan(
-            principalAmount,
-            input.settlementCurrency,
-            input.installmentCount,
-            input.installmentFrequency,
-            firstDueDate
-        )
+    const plan = createInstallmentPlan(
+        principalAmount,
+        input.settlementCurrency,
+        input.installmentCount,
+        input.installmentFrequency,
+        firstDueDate
+    )
 
     const installments: LoanInstallment[] = plan.map(entry => {
         const status = computeInstallmentStatus(entry.dueDate, entry.plannedAmount)

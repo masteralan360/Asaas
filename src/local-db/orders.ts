@@ -1705,7 +1705,7 @@ async function activateOrderFinancing(orderType: OrderType, order: SalesOrder | 
         exchangeRateSnapshot: order.exchangeRates || null,
         installmentCount: order.paymentMethod === 'installments'
             ? Math.max(1, order.installmentCount)
-            : order.firstDueDate ? 1 : 0,
+            : 1,
         installmentFrequency: order.installmentFrequency || 'monthly',
         firstDueDate: order.firstDueDate || null,
         notes: `Financing for ${orderType} order ${order.orderNumber}`,
