@@ -561,6 +561,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             if (fallback) {
                 setFeatures(fallback.features)
                 setWorkspaceName(fallback.workspaceName)
+                if (cachedSnapshot?.overrides) {
+                    setOverrides(cachedSnapshot.overrides)
+                }
             } else if (!silent) {
                 setFeatures(defaultFeatures)
                 setWorkspaceName(user?.workspaceName ?? null)
@@ -670,7 +673,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             writeWorkspaceCache({
                 workspaceId,
                 features: fetchedFeatures,
-                workspaceName: nextWorkspaceName
+                workspaceName: nextWorkspaceName,
+                overrides: fetchedOverrides
             })
             await persistWorkspaceState(workspaceId, fetchedFeatures, nextWorkspaceName)
         } catch (err) {
@@ -785,6 +789,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (cachedSnapshot) {
             setFeatures(mergeWorkspaceFeatures(cachedSnapshot.features))
             setWorkspaceName(cachedSnapshot.workspaceName)
+            if (cachedSnapshot.overrides) {
+                setOverrides(cachedSnapshot.overrides)
+            }
         }
 
         void fetchFeatures(false, { workspaceId, cachedSnapshot })
@@ -845,7 +852,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                         writeWorkspaceCache({
                             workspaceId: user.workspaceId,
                             features: updatedFeatures,
-                            workspaceName: nextWorkspaceName
+                            workspaceName: nextWorkspaceName,
+                            overrides: overridesRef.current
                         })
                         await persistWorkspaceState(user.workspaceId, updatedFeatures, nextWorkspaceName)
                     } catch (error) {
@@ -877,7 +885,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                         writeWorkspaceCache({
                             workspaceId: user.workspaceId,
                             features: updatedFeatures,
-                            workspaceName: workspaceNameRef.current ?? user.workspaceName ?? 'My Workspace'
+                            workspaceName: workspaceNameRef.current ?? user.workspaceName ?? 'My Workspace',
+                            overrides: nextOverrides
                         })
                         await persistWorkspaceState(user.workspaceId, updatedFeatures, workspaceNameRef.current ?? user.workspaceName ?? 'My Workspace')
                     } catch (error) {
@@ -995,7 +1004,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         writeWorkspaceCache({
             workspaceId,
             features: newFeatures,
-            workspaceName: nextWorkspaceName
+            workspaceName: nextWorkspaceName,
+            overrides: overridesRef.current
         })
 
         const existing = await db.workspaces.get(workspaceId)
@@ -1123,7 +1133,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                         writeWorkspaceCache({
                             workspaceId,
                             features: corrected,
-                            workspaceName: workspaceNameRef.current || nextWorkspaceName
+                            workspaceName: workspaceNameRef.current || nextWorkspaceName,
+                            overrides: overridesRef.current
                         })
                     }
                 }
@@ -1193,7 +1204,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             writeWorkspaceCache({
                 workspaceId,
                 features: updatedFeatures,
-                workspaceName: workspaceNameRef.current ?? user?.workspaceName ?? 'My Workspace'
+                workspaceName: workspaceNameRef.current ?? user?.workspaceName ?? 'My Workspace',
+                overrides: overridesRef.current
             })
 
             // Update workspace mode snapshot

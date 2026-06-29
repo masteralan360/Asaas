@@ -1,3 +1,5 @@
+import type { WorkspaceAccessOverride } from "@/plans/workspacePlans";
+
 const LEGACY_WORKSPACE_CACHE_KEY = 'atlas_workspace_cache'
 const WORKSPACE_CACHE_VERSION = 2
 const WORKSPACE_CACHE_PREFIX = `${LEGACY_WORKSPACE_CACHE_KEY}:v${WORKSPACE_CACHE_VERSION}:`
@@ -8,6 +10,7 @@ export interface WorkspaceCacheSnapshot<TFeatures = Record<string, unknown>> {
     workspaceName: string | null
     updatedAt: string
     features: TFeatures
+    overrides?: WorkspaceAccessOverride[]
 }
 
 function canUseLocalStorage() {
@@ -72,7 +75,8 @@ export function writeWorkspaceCache<TFeatures>(
         workspaceId: snapshot.workspaceId,
         workspaceName: snapshot.workspaceName,
         updatedAt: snapshot.updatedAt ?? new Date().toISOString(),
-        features: snapshot.features
+        features: snapshot.features,
+        ...(snapshot.overrides ? { overrides: snapshot.overrides } : {})
     }
 
     if (!canUseLocalStorage() || !snapshot.workspaceId) {

@@ -25,6 +25,7 @@ import {
   writeCachedPermissions,
 } from "./workspacePermissionCache";
 import { db } from "@/local-db";
+import { getLocalModeSqliteConnection } from "@/local-db/localModeSqlite";
 
 interface WorkspacePermissionsContextType {
   permissionKeys: WorkspacePermissionKey[];
@@ -42,7 +43,7 @@ export function WorkspacePermissionsProvider({
   children: ReactNode;
 }) {
   const { user, isAuthenticated } = useAuth();
-  const { hasCapability } = useWorkspace();
+  const { hasCapability, isLocalMode } = useWorkspace();
   const [permissionKeys, setPermissionKeys] = useState<WorkspacePermissionKey[]>(
     [],
   );
@@ -51,8 +52,6 @@ export function WorkspacePermissionsProvider({
   const workspaceId = user?.workspaceId ?? "";
   const userId = user?.id ?? "";
   const userRole = user?.role;
-  const isLocalMode =
-    user?.workspaceMode === "local" || user?.workspaceMode === "demo";
   const permissionsEnabled = hasCapability("workspaceManagementPermissions");
 
   const refreshPermissions = useCallback(async () => {
@@ -70,13 +69,27 @@ export function WorkspacePermissionsProvider({
 
     if (isLocalMode || !isSupabaseConfigured) {
       if (isLocalMode) {
-        const rows = await db.workspace_permissions
-          .where("userUuid")
-          .equals(userId)
-          .toArray();
-        const keys = rows
-          .map((r) => r.key)
-          .filter(isSupportedWorkspacePermissionKey);
+        const connection = await getLocalModeSqliteConnection()
+        const keys: WorkspacePermissionKey[] = []
+        if (connection) {
+          const entities = await connection.select<Array<{
+            entity_id: string
+            payload: string
+          }>>(
+            `SELECT entity_id, payload
+             FROM local_entities
+             WHERE entity_type = 'workspace_permissions'
+               AND workspace_id = $1
+               AND json_extract(payload, '$.userUuid') = $2`,
+            [workspaceId, userId]
+          )
+          for (const entity of entities) {
+            const data = JSON.parse(entity.payload) as Record<string, unknown>
+            if (typeof data.key === 'string' && isSupportedWorkspacePermissionKey(data.key)) {
+              keys.push(data.key)
+            }
+          }
+        }
         setPermissionKeys(keys);
         writeCachedPermissions(workspaceId, userId, keys);
       } else {
