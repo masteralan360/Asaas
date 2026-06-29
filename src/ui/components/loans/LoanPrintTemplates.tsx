@@ -40,6 +40,8 @@ interface LoanListPrintTemplateProps {
         dueToday?: number
         totalLent?: number
         totalBorrowed?: number
+        totalLentByCurrency?: Record<string, number>
+        totalBorrowedByCurrency?: Record<string, number>
         activeEntries?: number
         settledEntries?: number
     }
@@ -238,7 +240,11 @@ export function LoanListPrintTemplate({
                                 ? t('loans.totalLent', { defaultValue: 'Total Lent' })
                                 : (t('loans.totalOutstanding') || 'Total Outstanding'),
                             value: formatCurrency(isSimpleVariant ? (metrics.totalLent || 0) : (metrics.totalOutstanding || 0), displayCurrency as any, iqdPreference),
-                            render: <p className="font-bold text-center">{formatCurrency(isSimpleVariant ? (metrics.totalLent || 0) : (metrics.totalOutstanding || 0), displayCurrency as any, iqdPreference)}</p>
+                            render: isSimpleVariant && metrics.totalLentByCurrency && Object.keys(metrics.totalLentByCurrency).length > 0
+                                ? <div className="text-center">{Object.entries(metrics.totalLentByCurrency).map(([curr, val]) => (
+                                    <p key={curr} className="font-bold">{formatCurrency(val, curr as any, iqdPreference)}</p>
+                                ))}</div>
+                                : <p className="font-bold text-center">{formatCurrency(isSimpleVariant ? (metrics.totalLent || 0) : (metrics.totalOutstanding || 0), displayCurrency as any, iqdPreference)}</p>
                         }
                     ]}
                 />
@@ -257,7 +263,11 @@ export function LoanListPrintTemplate({
                                 ? t('loans.totalBorrowed', { defaultValue: 'Total Borrowed' })
                                 : (t('loans.dueToday') || 'Due Today'),
                             value: formatCurrency(isSimpleVariant ? (metrics.totalBorrowed || 0) : (metrics.dueToday || 0), displayCurrency as any, iqdPreference),
-                            render: <p className="font-bold text-center">{formatCurrency(isSimpleVariant ? (metrics.totalBorrowed || 0) : (metrics.dueToday || 0), displayCurrency as any, iqdPreference)}</p>
+                            render: isSimpleVariant && metrics.totalBorrowedByCurrency && Object.keys(metrics.totalBorrowedByCurrency).length > 0
+                                ? <div className="text-center">{Object.entries(metrics.totalBorrowedByCurrency).map(([curr, val]) => (
+                                    <p key={curr} className="font-bold">{formatCurrency(val, curr as any, iqdPreference)}</p>
+                                ))}</div>
+                                : <p className="font-bold text-center">{formatCurrency(isSimpleVariant ? (metrics.totalBorrowed || 0) : (metrics.dueToday || 0), displayCurrency as any, iqdPreference)}</p>
                         }
                     ]}
                 />

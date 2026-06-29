@@ -132,17 +132,24 @@ export function SimpleLoanListView({
 
     const metrics = useMemo(() => {
         const activeLoans = simpleLoans.filter((loan) => loan.balanceAmount > 0 && loan.status !== 'completed')
+        const totalLentByCurrency: Record<string, number> = {}
+        const totalBorrowedByCurrency: Record<string, number> = {}
+        for (const loan of activeLoans) {
+            const currency = loan.settlementCurrency ?? features.default_currency
+            const direction = getLoanDirection(loan)
+            if (direction === 'lent') {
+                totalLentByCurrency[currency] = (totalLentByCurrency[currency] || 0) + loan.balanceAmount
+            } else {
+                totalBorrowedByCurrency[currency] = (totalBorrowedByCurrency[currency] || 0) + loan.balanceAmount
+            }
+        }
         return {
-            totalLent: activeLoans
-                .filter((loan) => getLoanDirection(loan) === 'lent')
-                .reduce((sum, loan) => sum + loan.balanceAmount, 0),
-            totalBorrowed: activeLoans
-                .filter((loan) => getLoanDirection(loan) === 'borrowed')
-                .reduce((sum, loan) => sum + loan.balanceAmount, 0),
+            totalLentByCurrency,
+            totalBorrowedByCurrency,
             activeCount: activeLoans.length,
             settledCount: simpleLoans.filter((loan) => loan.balanceAmount <= 0 || loan.status === 'completed').length
         }
-    }, [simpleLoans])
+    }, [simpleLoans, features.default_currency])
 
     const filtered = useMemo(() => {
         const query = search.trim().toLowerCase()
@@ -183,8 +190,8 @@ export function SimpleLoanListView({
             displayCurrency={features.default_currency}
             iqdPreference={features.iqd_display_preference}
             metrics={{
-                totalLent: metrics.totalLent,
-                totalBorrowed: metrics.totalBorrowed,
+                totalLentByCurrency: metrics.totalLentByCurrency,
+                totalBorrowedByCurrency: metrics.totalBorrowedByCurrency,
                 activeEntries: metrics.activeCount,
                 settledEntries: metrics.settledCount
             }}
@@ -192,7 +199,7 @@ export function SimpleLoanListView({
             qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
             hideNextDue={localStorage.getItem('atlas_print_hide_next_due') === 'true'}
         />
-    ), [buildQrValue, features.default_currency, features.iqd_display_preference, features.logo_url, filter, filtered, metrics.activeCount, metrics.settledCount, metrics.totalBorrowed, metrics.totalLent, printLang, workspaceName])
+    ), [buildQrValue, features.default_currency, features.iqd_display_preference, features.logo_url, filter, filtered, metrics.activeCount, metrics.settledCount, metrics.totalBorrowedByCurrency, metrics.totalLentByCurrency, printLang, workspaceName])
     const buildSimpleLoanListPdf = useCallback(async ({ format, effectiveId }: { format: PrintFormat; effectiveId: string }) => {
         return generateTemplatePdf({
             element: renderSimpleLoanListTemplate(effectiveId),
@@ -219,8 +226,8 @@ export function SimpleLoanListView({
                 displayCurrency={features.default_currency}
                 iqdPreference={features.iqd_display_preference}
                 metrics={{
-                    totalLent: metrics.totalLent,
-                    totalBorrowed: metrics.totalBorrowed,
+                    totalLentByCurrency: metrics.totalLentByCurrency,
+                    totalBorrowedByCurrency: metrics.totalBorrowedByCurrency,
                     activeEntries: metrics.activeCount,
                     settledEntries: metrics.settledCount
                 }}
@@ -346,13 +353,31 @@ export function SimpleLoanListView({
                 <Card>
                     <CardContent className="pt-6">
                         <div className="text-xs text-muted-foreground mb-1">{t('loans.totalLent', { defaultValue: 'Total Lent' })}</div>
-                        <div className="text-2xl font-bold">{formatCurrency(metrics.totalLent, features.default_currency, features.iqd_display_preference)}</div>
+                        <div className="space-y-1">
+                            {Object.keys(metrics.totalLentByCurrency).length > 0
+                                ? Object.entries(metrics.totalLentByCurrency).map(([curr, val]) => (
+                                    <div key={curr} className="text-2xl font-bold tabular-nums leading-none">
+                                        {formatCurrency(val, curr as any, features.iqd_display_preference)}
+                                    </div>
+                                ))
+                                : <div className="text-2xl font-bold tabular-nums leading-none">{formatCurrency(0, features.default_currency as any, features.iqd_display_preference)}</div>
+                            }
+                        </div>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardContent className="pt-6">
                         <div className="text-xs text-muted-foreground mb-1">{t('loans.totalBorrowed', { defaultValue: 'Total Borrowed' })}</div>
-                        <div className="text-2xl font-bold">{formatCurrency(metrics.totalBorrowed, features.default_currency, features.iqd_display_preference)}</div>
+                        <div className="space-y-1">
+                            {Object.keys(metrics.totalBorrowedByCurrency).length > 0
+                                ? Object.entries(metrics.totalBorrowedByCurrency).map(([curr, val]) => (
+                                    <div key={curr} className="text-2xl font-bold tabular-nums leading-none">
+                                        {formatCurrency(val, curr as any, features.iqd_display_preference)}
+                                    </div>
+                                ))
+                                : <div className="text-2xl font-bold tabular-nums leading-none">{formatCurrency(0, features.default_currency as any, features.iqd_display_preference)}</div>
+                            }
+                        </div>
                     </CardContent>
                 </Card>
                 <Card>
