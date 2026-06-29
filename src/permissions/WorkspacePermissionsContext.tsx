@@ -24,7 +24,6 @@ import {
   readCachedPermissions,
   writeCachedPermissions,
 } from "./workspacePermissionCache";
-import { db } from "@/local-db";
 import { getLocalModeSqliteConnection } from "@/local-db/localModeSqlite";
 
 interface WorkspacePermissionsContextType {
