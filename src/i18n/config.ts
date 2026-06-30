@@ -3,12 +3,12 @@ import { initReactI18next } from 'react-i18next'
 import en from './locales/en.json'
 import ar from './locales/ar.json'
 import ku from './locales/ku.json'
-import { parseLangFromHash } from '@/lib/i18nRouting'
+import { getLanguageDirection, parseLangFromHash } from '@/lib/i18nRouting'
 
 const hash = window.location.hash.replace(/^#/, '') || '/'
 const { lang: urlLang } = parseLangFromHash(hash)
 const savedLanguage = localStorage.getItem('i18nextLng') || urlLang || 'en'
-const direction = savedLanguage === 'ar' || savedLanguage === 'ku' ? 'rtl' : 'ltr'
+const direction = getLanguageDirection(savedLanguage)
 document.dir = direction
 document.documentElement.lang = savedLanguage
 document.documentElement.dir = direction

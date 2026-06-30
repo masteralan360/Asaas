@@ -1,7 +1,13 @@
 const SUPPORTED_LANGS = ['en', 'ar', 'ku']
+const RTL_LANGS = new Set(['ar', 'ku', 'ckb'])
 
 export function getSupportedLangs(): string[] {
     return SUPPORTED_LANGS
+}
+
+export function getLanguageDirection(lang: string | null | undefined): 'ltr' | 'rtl' {
+    const baseLang = lang?.toLowerCase().split(/[-_]/)[0]
+    return baseLang && RTL_LANGS.has(baseLang) ? 'rtl' : 'ltr'
 }
 
 export function parseLangFromHash(hash: string): { lang: string | null; path: string } {

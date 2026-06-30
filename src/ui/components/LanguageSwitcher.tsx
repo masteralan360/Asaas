@@ -7,7 +7,7 @@ import {
     SelectValue,
 } from '@/ui/components/select'
 import { cn } from '@/lib/utils'
-import { parseLangFromHash, getPathWithLang } from '@/lib/i18nRouting'
+import { getLanguageDirection, parseLangFromHash, getPathWithLang } from '@/lib/i18nRouting'
 
 export function LanguageSwitcher({ className }: { className?: string }) {
     const { i18n } = useTranslation()
@@ -16,8 +16,9 @@ export function LanguageSwitcher({ className }: { className?: string }) {
         i18n.changeLanguage(lng)
         localStorage.setItem('i18nextLng', lng)
 
-        const dir = lng === 'ar' || lng === 'ku' ? 'rtl' : 'ltr'
+        const dir = getLanguageDirection(lng)
         document.dir = dir
+        document.documentElement.dir = dir
         document.documentElement.lang = lng
 
         const hash = window.location.hash.replace(/^#/, '') || '/'

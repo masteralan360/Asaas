@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import i18n from "@/i18n/config";
-import { parseLangFromHash, getPathWithLang } from "@/lib/i18nRouting";
+import { getLanguageDirection, parseLangFromHash, getPathWithLang } from "@/lib/i18nRouting";
 
 const currentLoc = () => {
     const hash = window.location.hash.replace(/^#/, "") || "/";
@@ -20,8 +20,9 @@ export const useHashLocation = () => {
             if (lang && lang !== i18n.language) {
                 i18n.changeLanguage(lang);
                 localStorage.setItem("i18nextLng", lang);
-                const dir = lang === "ar" || lang === "ku" ? "rtl" : "ltr";
+                const dir = getLanguageDirection(lang);
                 document.dir = dir;
+                document.documentElement.dir = dir;
                 document.documentElement.lang = lang;
             }
         };

@@ -99,6 +99,7 @@ import { SaveBorrowerAsPartnerDialog, usePendingSavePartnerPrompt } from '@/ui/c
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { isOnline } from '@/lib/network'
 import { useWebHaptics } from 'web-haptics/react'
+import { getLanguageDirection } from '@/lib/i18nRouting'
 
 const CART_IMAGE_VISIBILITY_THRESHOLD = 450
 const DYNAMIC_UNITS = ['m²', 'Kg']
@@ -319,7 +320,7 @@ export function POS() {
     const { user } = useAuth()
     const { t, i18n } = useTranslation()
     const { features, isLocalMode } = useWorkspace()
-    const isRTL = i18n.dir() === 'rtl'
+    const isRTL = getLanguageDirection(i18n.resolvedLanguage || i18n.language) === 'rtl'
     const products = useBatchAwareInventoryProducts(user?.workspaceId)
     const productBarcodes = useWorkspaceProductBarcodes(user?.workspaceId)
     const activeDiscountMap = useActiveDiscountMap(user?.workspaceId)
