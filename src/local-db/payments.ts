@@ -800,7 +800,7 @@ function buildPayrollObligations(
     })
 }
 
-async function buildPaymentObligations(workspaceId: string, filters: PaymentObligationFilterOptions) {
+export async function buildPaymentObligations(workspaceId: string, filters: PaymentObligationFilterOptions) {
     const todayKey = new Date().toISOString().slice(0, 10)
     const [
         loans,

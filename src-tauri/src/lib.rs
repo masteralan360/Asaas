@@ -9,6 +9,7 @@ use tauri::{Emitter, Manager};
 use tokio::sync::broadcast;
 
 mod kds_server;
+mod sorani_asr;
 
 const SINGLE_INSTANCE_PORT: u16 = 41931;
 
@@ -366,7 +367,9 @@ pub fn run() {
             check_path_exists,
             get_file_size,
             backup_db_to_usb,
-            create_desktop_shortcut
+            create_desktop_shortcut,
+            sorani_asr::atlas_assistant_sorani_asr_status,
+            sorani_asr::atlas_assistant_transcribe_sorani
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

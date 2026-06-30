@@ -24,6 +24,7 @@ import { LoanPaymentModalProvider } from './loans/LoanPaymentModalProvider'
 import { UnifiedSnoozeProvider } from '@/context/UnifiedSnoozeContext'
 import { GlobalExchangeRateReminders } from './exchange/GlobalExchangeRateReminders'
 import { CurrencyConverterPopup } from './CurrencyConverterPopup'
+import { AtlasAssistantPopup } from './AtlasAssistantPopup'
 import { UnifiedSnoozedRemindersBell } from './reminders/UnifiedSnoozedRemindersBell'
 import { ThemeAwareLogo } from './ThemeAwareLogo'
 import { LocalAccountSwitcher } from './LocalAccountSwitcher'
@@ -204,6 +205,8 @@ export function Layout({ children }: LayoutProps) {
     const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false)
     const [pendingEcommerceCount, setPendingEcommerceCount] = useState(0)
     const [currencyConverterOpen, setCurrencyConverterOpen] = useState(false)
+    const [assistantOpen, setAssistantOpen] = useState(false)
+    const [assistantInitialQuery, setAssistantInitialQuery] = useState<string | undefined>(undefined)
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text)
@@ -397,6 +400,22 @@ export function Layout({ children }: LayoutProps) {
             setCurrencyConverterOpen(false)
         }
     }, [location])
+
+    // Listen for global assistant popup events from the titlebar/topbar.
+    useEffect(() => {
+        const openHandler = (event: Event) => {
+            const detail = (event as CustomEvent<{ initialQuery?: string }>).detail
+            setAssistantInitialQuery(detail?.initialQuery)
+            setAssistantOpen(true)
+        }
+        const closeHandler = () => setAssistantOpen(false)
+        window.addEventListener('open-atlas-assistant', openHandler)
+        window.addEventListener('close-atlas-assistant', closeHandler)
+        return () => {
+            window.removeEventListener('open-atlas-assistant', openHandler)
+            window.removeEventListener('close-atlas-assistant', closeHandler)
+        }
+    }, [])
 
     // Demo workspace expiration auto-delete
     useEffect(() => {
@@ -1357,6 +1376,25 @@ export function Layout({ children }: LayoutProps) {
                                         </span>
                                     </Button>
                                 )}
+                                {(!isTauri || isMobile()) && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            window.dispatchEvent(new CustomEvent('open-atlas-assistant'))
+                                            triggerHaptic('selection')
+                                        }}
+                                        className={cn(
+                                            "p-2 hover:bg-secondary border transition-all group",
+                                            assistantOpen
+                                                ? "rounded-lg border-primary/20 bg-primary/10 text-primary"
+                                                : "rounded-lg border-transparent text-muted-foreground hover:border-border hover:text-primary"
+                                        )}
+                                        title={t('assistant.title', { defaultValue: 'Atlas Assistant' })}
+                                        aria-label={t('assistant.title', { defaultValue: 'Atlas Assistant' })}
+                                    >
+                                        <Bot className="w-4 h-4" />
+                                    </button>
+                                )}
                                 <P2PSyncIndicator />
                                 {features.allowed_currencies.length > 1 && <ExchangeRateIndicator />}
                                 <div className="w-px h-4 bg-border mx-1" />
@@ -1439,6 +1477,11 @@ export function Layout({ children }: LayoutProps) {
                         </Dialog>
                     )}
                     <CurrencyConverterPopup open={currencyConverterOpen} onClose={() => setCurrencyConverterOpen(false)} />
+                    <AtlasAssistantPopup
+                        open={assistantOpen}
+                        initialQuery={assistantInitialQuery}
+                        onClose={() => setAssistantOpen(false)}
+                    />
                 </div>
             </LoanPaymentModalProvider>
         </UnifiedSnoozeProvider>

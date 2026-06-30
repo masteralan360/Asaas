@@ -1639,7 +1639,7 @@ export async function deleteInvoice(id: string): Promise<void> {
 // SALES HOOKS
 // ===================
 
-async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
+export async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
     if (sales.length === 0) {
         return sales
     }

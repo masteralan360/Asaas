@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Minus, Square, X, Sun, Moon, ArrowUpCircle, RotateCw, GitBranch } from 'lucide-react'
+import { Minus, Square, X, Sun, Moon, ArrowUpCircle, RotateCw, GitBranch, Bot } from 'lucide-react'
 import { useWorkspace } from '@/workspace/WorkspaceContext'
 import { useTheme } from '@/ui/components/theme-provider'
 import { useTranslation } from 'react-i18next'
@@ -174,6 +174,17 @@ export function TitleBar() {
                     ) : (
                         <Moon className="w-4 h-4" />
                     )}
+                </button>
+                <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('open-atlas-assistant'))}
+                    className={cn(
+                        "p-2 transition-colors mr-1",
+                        style === 'neo-orange' ? "neo-indicator" : "hover:bg-secondary rounded-md text-muted-foreground hover:text-primary"
+                    )}
+                    title={t('assistant.title', 'Atlas Assistant')}
+                    aria-label={t('assistant.title', 'Atlas Assistant')}
+                >
+                    <Bot className="w-4 h-4" />
                 </button>
                 <NotificationCenter />
                 <button
