@@ -61,6 +61,7 @@ function hasMicrophoneRecordingSupport() {
   return !!(
     typeof navigator !== "undefined"
     && typeof navigator.mediaDevices?.getUserMedia === "function"
+    && typeof MediaRecorder === "function"
     && getAudioContextConstructor()
   );
 }
@@ -84,6 +85,13 @@ async function queryTauriAsrStatus(): Promise<AssistantSpeechAvailability> {
     return unavailable(
       "missing_audio_context",
       "This device/browser cannot prepare microphone audio for the local Sorani ASR engine.",
+    );
+  }
+
+  if (typeof MediaRecorder !== "function") {
+    return unavailable(
+      "missing_media_recorder",
+      "This device/browser cannot record microphone audio for Sorani voice-to-text.",
     );
   }
 
@@ -115,19 +123,6 @@ export async function getSoraniSpeechAvailability(forceRefresh = false): Promise
 
   cachedAvailability = await queryTauriAsrStatus();
   return cachedAvailability;
-}
-
-function mergeChunks(chunks: Float32Array[]) {
-  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const merged = new Float32Array(totalLength);
-  let offset = 0;
-
-  chunks.forEach((chunk) => {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  });
-
-  return merged;
 }
 
 function resampleLinear(input: Float32Array, sourceRate: number, targetRate: number) {
@@ -197,6 +192,56 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
   return btoa(binary);
 }
 
+function preferredRecordingMimeType() {
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg;codecs=opus",
+  ];
+
+  return candidates.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
+}
+
+function downmixAudioBuffer(audioBuffer: AudioBuffer) {
+  const { length, numberOfChannels } = audioBuffer;
+  if (numberOfChannels === 0 || length === 0) {
+    return new Float32Array();
+  }
+
+  if (numberOfChannels === 1) {
+    return new Float32Array(audioBuffer.getChannelData(0));
+  }
+
+  const output = new Float32Array(length);
+  for (let channel = 0; channel < numberOfChannels; channel += 1) {
+    const channelData = audioBuffer.getChannelData(channel);
+    for (let index = 0; index < length; index += 1) {
+      output[index] += channelData[index] / numberOfChannels;
+    }
+  }
+
+  return output;
+}
+
+async function decodeRecordedAudio(blob: Blob, AudioContextConstructor: typeof AudioContext) {
+  const audioContext = new AudioContextConstructor();
+  try {
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    return {
+      samples: downmixAudioBuffer(audioBuffer),
+      sampleRate: audioBuffer.sampleRate,
+    };
+  } finally {
+    await audioContext.close();
+  }
+}
+
+function stopMediaStream(stream: MediaStream) {
+  stream.getTracks().forEach((track) => track.stop());
+}
+
 async function recordSoraniQuestion(recordingMs: number): Promise<RecordedAudio> {
   if (!hasMicrophoneRecordingSupport()) {
     throw new Error("Microphone recording is not available on this device.");
@@ -215,33 +260,46 @@ async function recordSoraniQuestion(recordingMs: number): Promise<RecordedAudio>
       autoGainControl: true,
     },
   });
-  const audioContext = new AudioContextConstructor();
-  const source = audioContext.createMediaStreamSource(stream);
-  const processor = audioContext.createScriptProcessor(4096, 1, 1);
-  const chunks: Float32Array[] = [];
+  const mimeType = preferredRecordingMimeType();
+  const recorder = new MediaRecorder(
+    stream,
+    mimeType ? { mimeType } : undefined,
+  );
+  const chunks: Blob[] = [];
   const startedAt = performance.now();
-  const sourceSampleRate = audioContext.sampleRate;
 
-  processor.onaudioprocess = (event) => {
-    chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
-  };
+  try {
+    const stopped = new Promise<void>((resolve, reject) => {
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+      recorder.onerror = () => reject(new Error("Microphone recording failed."));
+      recorder.onstop = () => resolve();
+    });
 
-  source.connect(processor);
-  processor.connect(audioContext.destination);
+    recorder.start();
+    await new Promise((resolve) => window.setTimeout(resolve, recordingMs));
+    if (recorder.state === "recording") {
+      recorder.stop();
+    }
+    await stopped;
+  } finally {
+    stopMediaStream(stream);
+  }
 
-  await new Promise((resolve) => window.setTimeout(resolve, recordingMs));
-
-  processor.disconnect();
-  source.disconnect();
-  stream.getTracks().forEach((track) => track.stop());
-  await audioContext.close();
-
-  const merged = mergeChunks(chunks);
-  if (merged.length === 0) {
+  if (chunks.length === 0) {
     throw new Error("No microphone audio was captured. Check the microphone permission and try again.");
   }
 
-  const resampled = resampleLinear(merged, sourceSampleRate, TARGET_SAMPLE_RATE);
+  const recordedBlob = new Blob(chunks, { type: recorder.mimeType || mimeType || "audio/webm" });
+  const decoded = await decodeRecordedAudio(recordedBlob, AudioContextConstructor);
+  if (decoded.samples.length === 0) {
+    throw new Error("No microphone audio was decoded. Check the microphone permission and try again.");
+  }
+
+  const resampled = resampleLinear(decoded.samples, decoded.sampleRate, TARGET_SAMPLE_RATE);
   const wav = encodePcm16Wav(resampled, TARGET_SAMPLE_RATE);
 
   return {

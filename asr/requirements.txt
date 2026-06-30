@@ -1,0 +1,4 @@
+numpy>=1.26,<3
+transformers>=4.41,<5
+safetensors>=0.4,<1
+sentencepiece>=0.2,<1

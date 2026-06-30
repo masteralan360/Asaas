@@ -45,6 +45,13 @@ Preferred JSON:
 - No network/API calls from Atlas
 - Atlas does not mutate ERP data from voice results; the transcript is reviewed in the assistant input before sending
 
-## Model Recommendation
+## Bundled Sidecar
 
-Start with a local Whisper/faster-whisper or wav2vec-style model fine-tuned for Central Kurdish/Sorani, then evaluate only against the approved Atlas assistant question set before enabling the mic by default.
+The repo includes a Windows sidecar builder in `asr/`.
+
+```powershell
+.\asr\build_windows.ps1
+.\asr\setup_runtime.ps1
+```
+
+The generated `asr/atlas-sorani-asr.exe`, Python virtual environment, and model cache are local artifacts and are ignored by Git.

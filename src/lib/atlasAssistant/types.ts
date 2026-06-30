@@ -107,6 +107,7 @@ export type AssistantSpeechStatusCode =
   | "not_tauri"
   | "missing_microphone"
   | "missing_audio_context"
+  | "missing_media_recorder"
   | "engine_not_installed"
   | "command_unavailable"
   | "error";
