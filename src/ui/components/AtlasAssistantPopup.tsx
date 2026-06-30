@@ -23,6 +23,7 @@ import {
   assistantIntentCatalog,
   createSoraniSpeechAdapter,
   type AssistantAnswer,
+  type AssistantLanguage,
   type AssistantSpeechAvailability,
 } from "@/lib/atlasAssistant";
 import { useExchangeRate } from "@/context/ExchangeRateContext";
@@ -97,6 +98,7 @@ function statusColor(status: AssistantAnswer["status"]) {
 
 export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssistantPopupProps) {
   const { t, i18n } = useTranslation();
+  const catalogLang: AssistantLanguage = i18n.language === "ar" ? "ar" : i18n.language === "ku" ? "ku" : "en";
   const { user } = useAuth();
   const { activeWorkspace, features, hasFeature } = useWorkspace();
   const { hasPermission } = useWorkspacePermissions();
@@ -112,6 +114,9 @@ export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssist
   const [isCheckingSpeech, setIsCheckingSpeech] = useState(false);
   const [isRecordingSpeech, setIsRecordingSpeech] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const autoContainerRef = useRef<HTMLDivElement>(null);
+  const [autoFocused, setAutoFocused] = useState(false);
+  const [justAutoSelected, setJustAutoSelected] = useState(false);
   const speechAdapter = useMemo(() => createSoraniSpeechAdapter(), []);
 
   const workspaceId = activeWorkspace?.id || user?.workspaceId;
@@ -177,6 +182,23 @@ export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssist
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [open]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (autoContainerRef.current && !autoContainerRef.current.contains(event.target as Node)) {
+        setAutoFocused(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (justAutoSelected) {
+      const timeout = setTimeout(() => setJustAutoSelected(false), 200);
+      return () => clearTimeout(timeout);
+    }
+  }, [justAutoSelected]);
 
   const submitQuery = useCallback(async (value: string) => {
     const trimmed = value.trim();
@@ -266,9 +288,30 @@ export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssist
   }, [isCheckingSpeech, isRecordingSpeech, speechAdapter, speechAvailability, t]);
 
   const promptExamples = useMemo(
-    () => assistantIntentCatalog.slice(0, 6).map((entry) => entry.phrases.en[0]),
+    () => assistantIntentCatalog.slice(0, 6).map((entry) => entry.phrases[catalogLang][0]),
     [],
   );
+
+  const filteredCatalog = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q || q.length < 1) return [];
+    return assistantIntentCatalog
+      .filter((entry) =>
+        Object.values(entry.phrases).flat().some((phrase) =>
+          phrase.toLowerCase().includes(q),
+        ),
+      )
+      .slice(0, 8);
+  }, [query]);
+
+  const showAutoComplete = autoFocused && !justAutoSelected && filteredCatalog.length > 0;
+
+  const handleSelectCatalog = useCallback((entry: typeof assistantIntentCatalog[number]) => {
+    setJustAutoSelected(true);
+    setQuery(entry.phrases[catalogLang][0]);
+    setAutoFocused(false);
+    inputRef.current?.focus();
+  }, []);
 
   if (!open) return null;
 
@@ -404,113 +447,144 @@ export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssist
           </div>
         )}
 
-        <div className="overflow-hidden rounded-[30px] border border-white/10 bg-[#101010] text-zinc-100 shadow-2xl shadow-black/40">
-          <div
-            className="h-2 cursor-grab active:cursor-grabbing"
-            onPointerDown={(event) => dragControls.start(event)}
-          />
-          <form
-            className="px-4 pb-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submitQuery(query);
-            }}
-          >
-            <input
-              ref={inputRef}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t("assistant.placeholder", "Ask Atlas anything locally")}
-              className="h-10 w-full bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
-              dir={resolveIsolatedTextDirection(query)}
-              autoComplete="off"
-              spellCheck={false}
+        <div ref={autoContainerRef} className="relative">
+          {showAutoComplete ? (
+            <div className="absolute bottom-full left-4 right-4 z-[200] mb-2 max-h-56 overflow-y-auto rounded-xl border border-white/10 bg-zinc-950 p-1 shadow-lg">
+              {filteredCatalog.map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-zinc-300 transition-colors hover:bg-white/10 hover:text-zinc-50"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handleSelectCatalog(entry);
+                  }}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-zinc-100">{entry.phrases[catalogLang][0]}</div>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-zinc-400">
+                    {entry.module}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="rounded-[30px] border border-white/10 bg-[#101010] text-zinc-100 shadow-2xl shadow-black/40">
+            <div
+              className="h-2 cursor-grab active:cursor-grabbing"
+              onPointerDown={(event) => dragControls.start(event)}
             />
-
-            <div className="relative flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setQuickPromptsOpen((value) => !value)}
-                  className="rounded-full p-2 text-zinc-400 transition-colors hover:bg-white/10 hover:text-zinc-100"
-                  title={t("assistant.quickPrompts", "Quick prompts")}
-                  aria-label={t("assistant.quickPrompts", "Quick prompts")}
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-                <span
-                  className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-orange-300"
-                  title={t("assistant.localRulesOnly", "Local deterministic rules only")}
-                >
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                  <ChevronDown className="h-3 w-3" />
-                </span>
+            <form
+              className="px-4 pb-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitQuery(query);
+              }}
+            >
+              <div className="relative">
+                <input
+                  ref={inputRef}
+                  value={query}
+                  onChange={(event) => {
+                    setJustAutoSelected(false);
+                    setQuery(event.target.value);
+                  }}
+                  onFocus={() => setAutoFocused(true)}
+                  placeholder={t("assistant.placeholder", "Ask Atlas anything locally")}
+                  className="h-10 w-full bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+                  dir={resolveIsolatedTextDirection(query)}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
               </div>
 
-              <div className="flex items-center gap-1">
-                <span className="rounded-full px-2 py-1 text-xs font-semibold text-zinc-200">Local</span>
-                <button
-                  type="button"
-                  className="rounded-full p-2 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-100"
-                  title={t("assistant.more", "More")}
-                  aria-label={t("assistant.more", "More")}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSpeechClick}
-                  className={cn(
-                    "rounded-full p-2 transition-colors hover:bg-white/10",
-                    speechAvailability?.available
-                      ? "text-emerald-300 hover:text-emerald-100"
-                      : "text-zinc-500 hover:text-zinc-100",
-                    isRecordingSpeech && "bg-red-500/15 text-red-200",
-                  )}
-                  title={speechTitle}
-                  aria-label={t("assistant.soraniVoice", "Sorani voice-to-text")}
-                >
-                  {isCheckingSpeech || isRecordingSpeech
-                    ? <Loader2 className="h-4 w-4 animate-spin" />
-                    : <Mic className="h-4 w-4" />}
-                </button>
-                <button
-                  type="submit"
-                  disabled={!query.trim() || isLoading || !workspaceId}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-zinc-200 text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-                  title={t("assistant.send", "Send")}
-                  aria-label={t("assistant.send", "Send")}
-                >
-                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
-                </button>
+              <div className="relative flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setQuickPromptsOpen((value) => !value)}
+                    className="rounded-full p-2 text-zinc-400 transition-colors hover:bg-white/10 hover:text-zinc-100"
+                    title={t("assistant.quickPrompts", "Quick prompts")}
+                    aria-label={t("assistant.quickPrompts", "Quick prompts")}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-orange-300"
+                    title={t("assistant.localRulesOnly", "Local deterministic rules only")}
+                  >
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    <ChevronDown className="h-3 w-3" />
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <span className="rounded-full px-2 py-1 text-xs font-semibold text-zinc-200">Local</span>
+                  <button
+                    type="button"
+                    className="rounded-full p-2 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-100"
+                    title={t("assistant.more", "More")}
+                    aria-label={t("assistant.more", "More")}
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSpeechClick}
+                    className={cn(
+                      "rounded-full p-2 transition-colors hover:bg-white/10",
+                      speechAvailability?.available
+                        ? "text-emerald-300 hover:text-emerald-100"
+                        : "text-zinc-500 hover:text-zinc-100",
+                      isRecordingSpeech && "bg-red-500/15 text-red-200",
+                    )}
+                    title={speechTitle}
+                    aria-label={t("assistant.soraniVoice", "Sorani voice-to-text")}
+                  >
+                    {isCheckingSpeech || isRecordingSpeech
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <Mic className="h-4 w-4" />}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!query.trim() || isLoading || !workspaceId}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-zinc-200 text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                    title={t("assistant.send", "Send")}
+                    aria-label={t("assistant.send", "Send")}
+                  >
+                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
+                  </button>
+                </div>
+
+                {quickPromptsOpen && (
+                  <div className="absolute bottom-full left-0 mb-3 w-[min(360px,calc(100vw-40px))] overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 p-2 shadow-2xl">
+                    {promptExamples.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        className="block w-full rounded-xl px-3 py-2 text-left text-xs text-zinc-300 transition-colors hover:bg-white/10 hover:text-zinc-50"
+                        onClick={() => {
+                          setQuery(prompt);
+                          setQuickPromptsOpen(false);
+                          inputRef.current?.focus();
+                        }}
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {quickPromptsOpen && (
-                <div className="absolute bottom-full left-0 mb-3 w-[min(360px,calc(100vw-40px))] overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 p-2 shadow-2xl">
-                  {promptExamples.map((prompt) => (
-                    <button
-                      key={prompt}
-                      type="button"
-                      className="block w-full rounded-xl px-3 py-2 text-left text-xs text-zinc-300 transition-colors hover:bg-white/10 hover:text-zinc-50"
-                      onClick={() => {
-                        setQuery(prompt);
-                        setQuickPromptsOpen(false);
-                        inputRef.current?.focus();
-                      }}
-                    >
-                      {prompt}
-                    </button>
-                  ))}
+              {speechNotice && (
+                <div className="mt-2 rounded-full bg-amber-500/10 px-3 py-1 text-[11px] text-amber-200">
+                  {speechNotice}
                 </div>
               )}
-            </div>
-
-            {speechNotice && (
-              <div className="mt-2 rounded-full bg-amber-500/10 px-3 py-1 text-[11px] text-amber-200">
-                {speechNotice}
-              </div>
-            )}
-          </form>
+            </form>
+          </div>
         </div>
       </motion.div>
     </div>
