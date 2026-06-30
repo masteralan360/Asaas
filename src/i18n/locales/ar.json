@@ -3924,6 +3924,7 @@
     "estimatedPrice": "السعر التقديري",
     "confirmationMethod": "طريقة التأكيد",
     "internalNotes": "ملاحظات داخلية",
+    "sentBy": "أرسلت بواسطة",
     "date": "التاريخ",
     "time": "الوقت",
     "patient": "المريض",
