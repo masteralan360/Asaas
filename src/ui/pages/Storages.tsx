@@ -107,19 +107,46 @@ export default function Storages() {
     }, [exchangeData, eurRates, tryRates])
 
     const totalStorageValue = useMemo(() => {
+        if (!selectedStorageId) return {} as Record<string, number>
+        const byCurrency: Record<string, number> = {}
+        inventory.forEach((row) => {
+            if (row.storageId !== selectedStorageId) return
+            const product = products.find((entry) => entry.id === row.productId)
+            if (!product || product.isDeleted) return
+            byCurrency[product.currency] = (byCurrency[product.currency] || 0) + (product.price * row.quantity)
+        })
+        return byCurrency
+    }, [inventory, products, selectedStorageId])
+
+    const totalCostValue = useMemo(() => {
+        if (!selectedStorageId) return {} as Record<string, number>
+        const byCurrency: Record<string, number> = {}
+        inventory.forEach((row) => {
+            if (row.storageId !== selectedStorageId) return
+            const product = products.find((entry) => entry.id === row.productId)
+            if (!product || product.isDeleted) return
+            byCurrency[product.currency] = (byCurrency[product.currency] || 0) + (product.costPrice * row.quantity)
+        })
+        return byCurrency
+    }, [inventory, products, selectedStorageId])
+
+    const totalStorageValueConverted = useMemo(() => {
         if (!selectedStorageId) return 0
         return inventory.reduce((sum, row) => {
-            if (row.storageId !== selectedStorageId) {
-                return sum
-            }
-
+            if (row.storageId !== selectedStorageId) return sum
             const product = products.find((entry) => entry.id === row.productId)
-            if (!product || product.isDeleted) {
-                return sum
-            }
+            if (!product || product.isDeleted) return sum
+            return sum + (convertPrice(product.price, product.currency, settlementCurrency) * row.quantity)
+        }, 0)
+    }, [inventory, products, selectedStorageId, convertPrice, settlementCurrency])
 
-            const converted = convertPrice(product.price, product.currency, settlementCurrency)
-            return sum + (converted * row.quantity)
+    const totalCostValueConverted = useMemo(() => {
+        if (!selectedStorageId) return 0
+        return inventory.reduce((sum, row) => {
+            if (row.storageId !== selectedStorageId) return sum
+            const product = products.find((entry) => entry.id === row.productId)
+            if (!product || product.isDeleted) return sum
+            return sum + (convertPrice(product.costPrice, product.currency, settlementCurrency) * row.quantity)
         }, 0)
     }, [inventory, products, selectedStorageId, convertPrice, settlementCurrency])
 
@@ -521,14 +548,59 @@ export default function Storages() {
                                         </div>
                                     </div>
 
-                                    <div className="px-5 py-2.5 rounded-2xl bg-primary/10 border border-primary/20 border-solid">
-                                        <div className="text-[10px] font-black uppercase tracking-widest text-primary/70 mb-0.5">
-                                            {t('storages.totalValue', 'Storage Value')}
-                                        </div>
-                                        <div className="text-xl font-black text-primary leading-none">
-                                            {formatCurrency(totalStorageValue, settlementCurrency, features.iqd_display_preference)}
-                                        </div>
-                                    </div>
+                                    <TooltipProvider delayDuration={300}>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <div className="px-5 py-2.5 rounded-2xl bg-primary/10 border border-primary/20 border-solid cursor-help">
+                                                    <div className="text-[10px] font-black uppercase tracking-widest text-primary/70 mb-0.5">
+                                                        {t('storages.totalValue', 'Storage Value')}
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        {Object.entries(totalStorageValue).map(([curr, value]) => (
+                                                            <div key={curr} className="text-xl font-black text-primary leading-none">
+                                                                {formatCurrency(value, curr as any, features.iqd_display_preference)}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="bottom" align="start" className="p-3 space-y-1">
+                                                <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                                                    {t('common.totalIn', 'Total in')} {settlementCurrency.toUpperCase()}
+                                                </div>
+                                                <div className="text-base font-black">
+                                                    {formatCurrency(totalStorageValueConverted, settlementCurrency, features.iqd_display_preference)}
+                                                </div>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+
+                                    <TooltipProvider delayDuration={300}>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <div className="px-5 py-2.5 rounded-2xl bg-orange-500/10 border border-orange-500/20 border-solid cursor-help">
+                                                    <div className="text-[10px] font-black uppercase tracking-widest text-orange-600/70 mb-0.5">
+                                                        {t('storages.totalCostValue', 'Storage Cost Value')}
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        {Object.entries(totalCostValue).map(([curr, value]) => (
+                                                            <div key={curr} className="text-xl font-black text-orange-600 leading-none">
+                                                                {formatCurrency(value, curr as any, features.iqd_display_preference)}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="bottom" align="start" className="p-3 space-y-1">
+                                                <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                                                    {t('common.totalIn', 'Total in')} {settlementCurrency.toUpperCase()}
+                                                </div>
+                                                <div className="text-base font-black">
+                                                    {formatCurrency(totalCostValueConverted, settlementCurrency, features.iqd_display_preference)}
+                                                </div>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
                                 </div>
                             </div>
                         </CardHeader>
