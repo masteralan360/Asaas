@@ -410,8 +410,8 @@ function normalizeClinicalAppointment(
         displayDate: appointment.appointmentDate || appointment.createdAt,
         sortDate: appointment.updatedAt || appointment.createdAt,
         activityDate: appointment.updatedAt || appointment.createdAt,
-        status: appointment.status,
-        statusLabel: t('clinicalAppointments.statuses.' + appointment.status, { defaultValue: appointment.status.replace(/_/g, ' ') }),
+        status: 'completed',
+        statusLabel: t('businessPartners.statuses.completed', { defaultValue: 'Completed' }),
         isPaid: appointment.paymentStatus === 'paid',
         summary: appointment.patientName,
         total,
@@ -824,6 +824,10 @@ export function PartnerDetailsView({
             }
         }
 
+        for (const a of dateFilteredClinicalAppointments) {
+            incoming += convertToStoreBase(a.calculatedAmount || a.consultationFee || 0, a.currency || defaultCurrency, defaultCurrency, conversionRates)
+        }
+
         return {
             incoming,
             outgoing,
@@ -834,6 +838,7 @@ export function PartnerDetailsView({
         partnerId,
         dateFilteredCustomerOrders,
         dateFilteredSupplierOrders,
+        dateFilteredClinicalAppointments,
         dateFilteredLoans,
         defaultCurrency,
         conversionRates
