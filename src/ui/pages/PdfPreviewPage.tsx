@@ -5,6 +5,7 @@ import {
     A4_PAGE_HEIGHT_MM,
     getInvoicePreviewSource,
     clearInvoicePreviewSource,
+    setPendingInvoiceView,
     getCustomTemplateLayoutHeightMm,
     getFixedPageCountForHeight,
     type CustomTemplateAnnotation,
@@ -489,17 +490,21 @@ export function PdfPreviewPage() {
             if (source.generatePdfBlob) {
                 const langOverride = tempPrintLang !== 'auto' ? tempPrintLang : undefined
                 const blob = await source.generatePdfBlob(editableData, langOverride)
-                await source.onSave?.(blob)
+                const invoiceId = await source.onSave?.(blob)
+                setPendingInvoiceView({ url: URL.createObjectURL(blob), title: invoiceId ? `Invoice ${invoiceId}` : title })
+                setIsSaving(false)
+                clearInvoicePreviewSource()
+                window.history.back()
+                return
             } else {
                 await source.onSave?.(new Blob())
             }
         } catch (err) {
             console.error('Failed to save:', err)
-        } finally {
-            setIsSaving(false)
-            clearInvoicePreviewSource()
-            window.history.back()
         }
+        setIsSaving(false)
+        clearInvoicePreviewSource()
+        window.history.back()
     }, [source, editableData, isSaving, tempPrintLang])
 
     if (!source) {
@@ -515,14 +520,21 @@ export function PdfPreviewPage() {
         if (!source || isSaving) return
         setIsSaving(true)
         try {
-            await source.onSave?.(new Blob([]))
-        } catch (err) {
-            console.error('Failed to save:', err)
-        } finally {
+            const invoiceId = await source.onSave?.(new Blob([]))
+            const viewUrl = source.url
+            if (viewUrl) {
+                setPendingInvoiceView({ url: viewUrl, title: invoiceId ? `Invoice ${invoiceId}` : title })
+            }
             setIsSaving(false)
             clearInvoicePreviewSource()
             window.history.back()
+            return
+        } catch (err) {
+            console.error('Failed to save:', err)
         }
+        setIsSaving(false)
+        clearInvoicePreviewSource()
+        window.history.back()
     }, [source, isSaving])
 
     const buildTemplateLayout = useCallback((): CustomTemplateLayout | null => {
@@ -586,7 +598,14 @@ export function PdfPreviewPage() {
                     return
                 }
 
-                await source.onSave(blob)
+                const invoiceId = await source.onSave(blob)
+                setPendingInvoiceView({ url: URL.createObjectURL(blob), title: invoiceId ? `Invoice ${invoiceId}` : title })
+                setIsSaving(false)
+                setIsTemplateLabelDialogOpen(false)
+                setPendingTemplateLayout(null)
+                clearInvoicePreviewSource()
+                window.history.back()
+                return
             }
         } catch (err) {
             console.error('Failed to save template preview:', err)
@@ -804,9 +823,9 @@ export function PdfPreviewPage() {
     }, [isDrawing, currentPath, drawingMode, brushColor, brushSize])
 
     if (templatePreview && fieldValues) {
-        return (
-            <div className="flex h-screen w-screen flex-col bg-gray-50 overflow-hidden"
-                style={{ marginTop: 'var(--titlebar-height)', height: 'calc(100vh - var(--titlebar-height))' }}>
+    return (
+        <div className="flex h-screen w-screen flex-col bg-gray-50 overflow-hidden"
+            style={{ marginTop: 'var(--titlebar-height)', height: 'calc(100vh - var(--titlebar-height))' }}>
                 <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-2 py-1.5 shrink-0 bg-card z-20 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:px-4 md:py-2">
                     <div className="order-1 flex min-w-0 flex-1 items-center gap-2 md:order-none md:justify-self-start md:gap-3">
                         <button
@@ -1596,51 +1615,51 @@ export function PdfPreviewPage() {
     if (showNativePdf) {
         return (
             <div className="flex h-screen w-screen flex-col bg-background overflow-hidden"
-                style={{ marginTop: 'var(--titlebar-height)', height: 'calc(100vh - var(--titlebar-height))' }}>
-                <header className="flex items-center gap-2 border-b px-2 py-1.5 shrink-0 bg-card z-10 md:justify-between md:px-4 md:py-2">
-                    <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
-                        <button
-                            className="inline-flex items-center justify-center rounded-md h-8 w-8 hover:bg-accent transition-colors shrink-0"
-                            onClick={handleBack}
-                        >
-                            <ArrowLeft className="h-4 w-4" />
-                        </button>
-                        <h1 className="text-sm font-semibold truncate">{title}</h1>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1 md:gap-2">
-                        {source.onSave && (
+                    style={{ marginTop: 'var(--titlebar-height)', height: 'calc(100vh - var(--titlebar-height))' }}>
+                    <header className="flex items-center gap-2 border-b px-2 py-1.5 shrink-0 bg-card z-10 md:justify-between md:px-4 md:py-2">
+                        <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
                             <button
-                                className="inline-flex items-center justify-center rounded-md h-8 w-8 px-0 text-xs font-medium transition-colors gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 md:w-auto md:px-3"
-                                onClick={handleNativeSave}
-                                disabled={isSaving}
-                                aria-label={t('print.printAndSave') || 'Print & Save'}
+                                className="inline-flex items-center justify-center rounded-md h-8 w-8 hover:bg-accent transition-colors shrink-0"
+                                onClick={handleBack}
                             >
-                                {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
-                                <span className="hidden md:inline">{t('print.printAndSave') || 'Print & Save'}</span>
+                                <ArrowLeft className="h-4 w-4" />
                             </button>
-                        )}
-                        <button
-                            onClick={() => window.open(source.url, '_blank')}
-                            className="inline-flex items-center justify-center rounded-md h-8 w-8 px-0 text-xs font-medium transition-colors gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/90 md:w-auto md:px-3"
-                            aria-label={t('common.open') || 'Open'}
-                        >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            <span className="hidden md:inline">{t('common.open') || 'Open'}</span>
-                        </button>
+                            <h1 className="text-sm font-semibold truncate">{title}</h1>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1 md:gap-2">
+                            {source.onSave && (
+                                <button
+                                    className="inline-flex items-center justify-center rounded-md h-8 w-8 px-0 text-xs font-medium transition-colors gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 md:w-auto md:px-3"
+                                    onClick={handleNativeSave}
+                                    disabled={isSaving}
+                                    aria-label={t('print.printAndSave') || 'Print & Save'}
+                                >
+                                    {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+                                    <span className="hidden md:inline">{t('print.printAndSave') || 'Print & Save'}</span>
+                                </button>
+                            )}
+                            <button
+                                onClick={() => window.open(source.url, '_blank')}
+                                className="inline-flex items-center justify-center rounded-md h-8 w-8 px-0 text-xs font-medium transition-colors gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/90 md:w-auto md:px-3"
+                                aria-label={t('common.open') || 'Open'}
+                            >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                <span className="hidden md:inline">{t('common.open') || 'Open'}</span>
+                            </button>
+                        </div>
+                    </header>
+                    <div className="flex-1">
+                        <object data={source.url} type="application/pdf" className="w-full h-full">
+                            <iframe src={source.url} className="w-full h-full" title={title} />
+                        </object>
                     </div>
-                </header>
-                <div className="flex-1">
-                    <object data={source.url} type="application/pdf" className="w-full h-full">
-                        <iframe src={source.url} className="w-full h-full" title={title} />
-                    </object>
                 </div>
-            </div>
         )
     }
 
     return (
-        <div className="flex h-screen w-screen flex-col bg-gray-50 overflow-hidden"
-            style={{ marginTop: 'var(--titlebar-height)', height: 'calc(100vh - var(--titlebar-height))' }}>
+            <div className="flex h-screen w-screen flex-col bg-gray-50 overflow-hidden"
+                style={{ marginTop: 'var(--titlebar-height)', height: 'calc(100vh - var(--titlebar-height))' }}>
             <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-2 py-1.5 shrink-0 bg-card z-10 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:px-4 md:py-2">
                 <div className="order-1 flex min-w-0 flex-1 items-center gap-2 md:order-none md:justify-self-start md:gap-3">
                     <button

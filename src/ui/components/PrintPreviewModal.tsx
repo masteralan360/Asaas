@@ -451,6 +451,7 @@ export function PrintPreviewModal({
             }
 
             if (onConfirm) onConfirm()
+            return savedInvoice?.invoiceid
         } catch (error) {
             console.error('Error saving invoice snapshot:', error)
             const normalized = normalizeSupabaseActionError(error)

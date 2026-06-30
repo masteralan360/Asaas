@@ -190,7 +190,7 @@ export type InvoicePreviewSource = {
     workspaceFooterContacts?: any
     printFormat?: PrintFormat
     title: string
-    onSave?: (blob: Blob) => Promise<void>
+    onSave?: (blob: Blob) => Promise<string | undefined | void>
     invoiceData?: any
     effectiveId?: string
     generatePdfBlob?: (editedData: UniversalInvoice, printLangOverride?: string) => Promise<Blob>
@@ -219,4 +219,35 @@ export function getInvoicePreviewSource(): InvoicePreviewSource | null {
 
 export function clearInvoicePreviewSource() {
     _source = null
+}
+
+export type PendingInvoiceView = {
+    url: string
+    title: string
+}
+
+let _pendingView: PendingInvoiceView | null = null
+let _pendingViewListeners: Set<() => void> = new Set()
+
+function notifyPendingViewListeners() {
+    _pendingViewListeners.forEach(cb => cb())
+}
+
+export function subscribeToPendingInvoiceView(callback: () => void): () => void {
+    _pendingViewListeners.add(callback)
+    return () => { _pendingViewListeners.delete(callback) }
+}
+
+export function setPendingInvoiceView(view: PendingInvoiceView) {
+    _pendingView = view
+    notifyPendingViewListeners()
+}
+
+export function getPendingInvoiceView(): PendingInvoiceView | null {
+    return _pendingView
+}
+
+export function clearPendingInvoiceView() {
+    _pendingView = null
+    notifyPendingViewListeners()
 }

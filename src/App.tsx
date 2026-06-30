@@ -3,7 +3,7 @@ import { useHashLocation } from "@/hooks/useHashLocation";
 import { AuthProvider, ProtectedRoute, GuestRoute, useAuth } from "@/auth";
 import { WorkspaceProvider } from "@/workspace";
 import { WorkspaceWarmup } from "@/workspace/WorkspaceWarmup";
-import { Layout, Toaster, TitleBar, PatchNoteModal } from "@/ui/components";
+import { Layout, Toaster, TitleBar, PatchNoteModal, PostSaveInvoiceDialog } from "@/ui/components";
 import { DeviceTokenBootstrap } from "@/ui/components/DeviceTokenBootstrap";
 import { lazy, Suspense, useEffect, useCallback, useState } from "react";
 import { usePatchNotes } from "@/hooks/usePatchNotes";
@@ -1751,6 +1751,7 @@ function App() {
                         </div>
                       </Route>
                     </Switch>
+                  <PostSaveInvoiceDialog />
                   </Router>
                 </Suspense>
               </KdsSecurityGuard>
