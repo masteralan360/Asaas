@@ -103,34 +103,29 @@ export interface AssistantDetection {
 }
 
 export type AssistantSpeechStatusCode =
-  | "available"
-  | "not_tauri"
-  | "missing_microphone"
-  | "missing_audio_context"
-  | "missing_media_recorder"
-  | "engine_not_installed"
-  | "command_unavailable"
+  | "placeholder_unavailable"
+  | "kurdishtts_website_available"
+  | "kurdishtts_website_unavailable"
+  | "desktop_only"
+  | "microphone_unavailable"
   | "error";
 
 export interface AssistantSpeechAvailability {
   available: boolean;
   status: AssistantSpeechStatusCode;
   message: string;
-  enginePath?: string | null;
-  modelPath?: string | null;
-  expectedInterface?: string | null;
 }
 
 export interface AssistantSpeechTranscript {
   transcript: string;
-  language: "ckb" | "ku" | "sorani";
+  language?: AssistantLanguage;
   confidence?: number | null;
   durationMs?: number | null;
-  engine?: string | null;
 }
 
 export interface AssistantSpeechAdapter {
   isAvailable: () => boolean;
   getAvailability: (forceRefresh?: boolean) => Promise<AssistantSpeechAvailability>;
-  startSoraniDictation: () => Promise<AssistantSpeechTranscript>;
+  startDictation: () => Promise<AssistantSpeechTranscript>;
+  stopDictation?: () => boolean;
 }

@@ -176,7 +176,7 @@ export function TitleBar() {
                     )}
                 </button>
                 <button
-                    onClick={() => window.dispatchEvent(new CustomEvent('open-atlas-assistant'))}
+                    onClick={() => window.dispatchEvent(new CustomEvent('toggle-atlas-assistant'))}
                     className={cn(
                         "p-2 transition-colors mr-1",
                         style === 'neo-orange' ? "neo-indicator" : "hover:bg-secondary rounded-md text-muted-foreground hover:text-primary"

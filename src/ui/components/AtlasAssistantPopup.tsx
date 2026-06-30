@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { motion, useDragControls, type PanInfo } from "motion/react";
+import { motion, useDragControls, useMotionValue } from "motion/react";
 import {
   ArrowUp,
   Bot,
@@ -21,7 +21,7 @@ import { resolveIsolatedTextDirection } from "@/lib/textDirection";
 import {
   answerAssistantQuery,
   assistantIntentCatalog,
-  createSoraniSpeechAdapter,
+  createAtlasSpeechAdapter,
   type AssistantAnswer,
   type AssistantLanguage,
   type AssistantSpeechAvailability,
@@ -51,6 +51,8 @@ interface ConversationItem {
   query: string;
   answer: AssistantAnswer;
 }
+
+type SpeechPhase = "idle" | "recording" | "processing";
 
 function getDefaultPosition(): PopupPosition {
   if (typeof window === "undefined") {
@@ -96,6 +98,24 @@ function statusColor(status: AssistantAnswer["status"]) {
   return "text-zinc-300";
 }
 
+function getSpeechErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (typeof error === "string" && error.trim()) {
+    return error.trim();
+  }
+  try {
+    const serialized = JSON.stringify(error);
+    if (serialized && serialized !== "{}") {
+      return serialized;
+    }
+  } catch {
+    // Keep the fallback.
+  }
+  return fallback;
+}
+
 export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssistantPopupProps) {
   const { t, i18n } = useTranslation();
   const catalogLang: AssistantLanguage = i18n.language === "ar" ? "ar" : i18n.language === "ku" ? "ku" : "en";
@@ -105,6 +125,8 @@ export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssist
   const { exchangeData, eurRates, tryRates } = useExchangeRate();
   const dragControls = useDragControls();
   const [position, setPosition] = useState<PopupPosition>(() => loadPosition());
+  const dragX = useMotionValue(position.x);
+  const dragY = useMotionValue(position.y);
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<ConversationItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -112,15 +134,18 @@ export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssist
   const [speechNotice, setSpeechNotice] = useState<string | null>(null);
   const [speechAvailability, setSpeechAvailability] = useState<AssistantSpeechAvailability | null>(null);
   const [isCheckingSpeech, setIsCheckingSpeech] = useState(false);
-  const [isRecordingSpeech, setIsRecordingSpeech] = useState(false);
+  const [speechPhase, setSpeechPhase] = useState<SpeechPhase>("idle");
   const inputRef = useRef<HTMLInputElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
   const autoContainerRef = useRef<HTMLDivElement>(null);
   const [autoFocused, setAutoFocused] = useState(false);
   const [justAutoSelected, setJustAutoSelected] = useState(false);
-  const speechAdapter = useMemo(() => createSoraniSpeechAdapter(), []);
+  const speechAdapter = useMemo(() => createAtlasSpeechAdapter(), []);
 
   const workspaceId = activeWorkspace?.id || user?.workspaceId;
   const isExpanded = items.length > 0 || isLoading;
+  const isRecordingSpeech = speechPhase === "recording";
+  const isProcessingSpeech = speechPhase === "processing";
   const rates = useMemo(
     () => buildConversionRates(exchangeData, eurRates, tryRates),
     [exchangeData, eurRates, tryRates],
@@ -128,9 +153,14 @@ export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssist
 
   useEffect(() => {
     if (!open) return;
-    setPosition((current) => clampPosition(current));
+    setPosition((current) => {
+      const clamped = clampPosition(current, popupRef.current?.getBoundingClientRect().width ?? DEFAULT_WIDTH);
+      dragX.set(clamped.x);
+      dragY.set(clamped.y);
+      return clamped;
+    });
     window.setTimeout(() => inputRef.current?.focus(), 40);
-  }, [open]);
+  }, [dragX, dragY, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -145,13 +175,15 @@ export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssist
         }
       })
       .catch((error) => {
+        console.error("[Atlas Voice] availability check failed", error);
         if (!cancelled) {
           setSpeechAvailability({
             available: false,
             status: "error",
-            message: error instanceof Error
-              ? error.message
-              : "Sorani voice-to-text availability could not be checked.",
+            message: getSpeechErrorMessage(
+              error,
+              "KurdishTTS website transcription availability could not be checked.",
+            ),
           });
         }
       })
@@ -178,10 +210,15 @@ export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssist
 
   useEffect(() => {
     if (!open) return;
-    const handleResize = () => setPosition((current) => clampPosition(current));
+    const handleResize = () => setPosition((current) => {
+      const clamped = clampPosition(current, popupRef.current?.getBoundingClientRect().width ?? DEFAULT_WIDTH);
+      dragX.set(clamped.x);
+      dragY.set(clamped.y);
+      return clamped;
+    });
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, [open]);
+  }, [dragX, dragY, open]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -199,6 +236,23 @@ export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssist
       return () => clearTimeout(timeout);
     }
   }, [justAutoSelected]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleRecordingStopped = (event: Event) => {
+      const detail = (event as CustomEvent<{ reason?: "silence" | "limit" }>).detail;
+      setSpeechPhase((current) => current === "recording" ? "processing" : current);
+      setSpeechNotice(
+        detail?.reason === "silence"
+          ? t("assistant.voiceSilenceProcessing", "Silence detected. Processing voice with KurdishTTS...")
+          : t("assistant.voiceProcessing", "Processing voice with KurdishTTS..."),
+      );
+    };
+
+    window.addEventListener("atlas-assistant-voice-recording-stopped", handleRecordingStopped);
+    return () => window.removeEventListener("atlas-assistant-voice-recording-stopped", handleRecordingStopped);
+  }, [open, t]);
 
   const submitQuery = useCallback(async (value: string) => {
     const trimmed = value.trim();
@@ -237,15 +291,32 @@ export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssist
     workspaceId,
   ]);
 
-  const handleDragEnd = useCallback((_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    setPosition((current) => clampPosition({
-      x: current.x + info.offset.x,
-      y: current.y + info.offset.y,
-    }));
-  }, []);
+  const handleDragEnd = useCallback(() => {
+    const clamped = clampPosition(
+      {
+        x: dragX.get(),
+        y: dragY.get(),
+      },
+      popupRef.current?.getBoundingClientRect().width ?? DEFAULT_WIDTH,
+    );
+    dragX.set(clamped.x);
+    dragY.set(clamped.y);
+    setPosition(clamped);
+  }, [dragX, dragY]);
 
   const handleSpeechClick = useCallback(async () => {
-    if (isCheckingSpeech || isRecordingSpeech) {
+    if (isCheckingSpeech || isProcessingSpeech) {
+      return;
+    }
+
+    if (isRecordingSpeech) {
+      const stopped = speechAdapter.stopDictation?.() ?? false;
+      if (stopped) {
+        setSpeechPhase("processing");
+        setSpeechNotice(t("assistant.voiceProcessing", "Processing voice with KurdishTTS..."));
+      } else {
+        setSpeechNotice(t("assistant.voiceStarting", "Recording is starting. Click again in a moment to stop."));
+      }
       return;
     }
 
@@ -254,38 +325,43 @@ export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssist
 
     if (!availability.available) {
       setSpeechNotice(t(
-        "assistant.soraniVoiceUnavailable",
-        availability.message || "Sorani voice-to-text is not installed yet. Type your question for now.",
+        "assistant.voiceUnavailable",
+        availability.message || "Voice-to-text is available only in the Tauri desktop app.",
       ));
       return;
     }
 
-    setIsRecordingSpeech(true);
-    setSpeechNotice(t("assistant.soraniListening", "Listening in Sorani Kurdish..."));
+    setSpeechPhase("recording");
+    setSpeechNotice(t(
+      "assistant.voiceListening",
+      "Recording... it will stop after 1 second of silence, or click the mic again to stop.",
+    ));
 
     try {
-      const result = await speechAdapter.startSoraniDictation();
+      const result = await speechAdapter.startDictation();
       setQuery(result.transcript);
       setSpeechNotice(
         result.confidence == null
-          ? t("assistant.soraniTranscriptReady", "Sorani transcript is ready. Review it, then send.")
+          ? t("assistant.voiceTranscriptReady", "Transcript is ready. Review it, then send.")
           : t(
-            "assistant.soraniTranscriptReadyWithConfidence",
+            "assistant.voiceTranscriptReadyWithConfidence",
             {
-              defaultValue: "Sorani transcript is ready. Confidence: {{confidence}}%.",
+              defaultValue: "Transcript is ready. Confidence: {{confidence}}%.",
               confidence: Math.round(result.confidence * 100),
             },
           ),
       );
       inputRef.current?.focus();
     } catch (error) {
-      setSpeechNotice(error instanceof Error
-        ? error.message
-        : t("assistant.soraniVoiceFailed", "Sorani voice-to-text failed. Type your question for now."));
+      console.error("[Atlas Voice] transcription failed", error);
+      setSpeechNotice(getSpeechErrorMessage(
+        error,
+        t("assistant.voiceFailed", "KurdishTTS transcription failed. Type your question for now."),
+      ));
     } finally {
-      setIsRecordingSpeech(false);
+      setSpeechPhase("idle");
     }
-  }, [isCheckingSpeech, isRecordingSpeech, speechAdapter, speechAvailability, t]);
+  }, [isCheckingSpeech, isProcessingSpeech, isRecordingSpeech, speechAdapter, speechAvailability, t]);
 
   const promptExamples = useMemo(
     () => assistantIntentCatalog.slice(0, 6).map((entry) => entry.phrases[catalogLang][0]),
@@ -316,37 +392,41 @@ export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssist
   if (!open) return null;
 
   const latestAnswer = items[0]?.answer;
-  const speechTitle = speechAvailability?.available
-    ? t("assistant.soraniVoiceReady", "Record a Sorani Kurdish voice question")
-    : t(
-      "assistant.soraniVoiceUnavailable",
-      speechAvailability?.message || "Sorani voice-to-text is not installed yet. Type your question for now.",
-    );
+  const speechTitle = isRecordingSpeech
+    ? t("assistant.voiceStop", "Stop recording and transcribe")
+    : isProcessingSpeech
+      ? t("assistant.voiceProcessing", "Processing voice with KurdishTTS...")
+      : speechAvailability?.available
+        ? t("assistant.voiceReady", "Record a Sorani voice question")
+        : t(
+          "assistant.voiceUnavailable",
+          speechAvailability?.message || "Voice-to-text is available only in the Tauri desktop app.",
+        );
 
   return (
     <div className="fixed inset-0 z-[120] pointer-events-none">
       <motion.div
+        ref={popupRef}
         drag
         dragControls={dragControls}
         dragListener={false}
         dragMomentum={false}
         onDragEnd={handleDragEnd}
-        initial={{ opacity: 0, scale: 0.96, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 8 }}
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96 }}
         className="pointer-events-auto absolute max-w-[calc(100vw-24px)] select-none"
         style={{
-          left: position.x,
-          top: position.y,
+          left: 0,
+          top: 0,
+          x: dragX,
+          y: dragY,
           width: `min(${DEFAULT_WIDTH}px, calc(100vw - 24px))`,
         }}
       >
         {isExpanded && (
           <div className="absolute bottom-[calc(100%+0.5rem)] left-0 right-0 overflow-hidden rounded-[22px] border border-white/10 bg-zinc-950/95 text-zinc-100 shadow-2xl shadow-black/40 backdrop-blur-xl">
-            <div
-              className="flex cursor-grab items-center justify-between border-b border-white/10 px-4 py-2 active:cursor-grabbing"
-              onPointerDown={(event) => dragControls.start(event)}
-            >
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-2">
               <div className="flex items-center gap-2 text-xs font-medium text-zinc-300">
                 <Bot className="h-4 w-4 text-orange-300" />
                 <span>{t("assistant.title", "Atlas Assistant")}</span>
@@ -472,12 +552,8 @@ export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssist
           ) : null}
 
           <div className="rounded-[30px] border border-white/10 bg-[#101010] text-zinc-100 shadow-2xl shadow-black/40">
-            <div
-              className="h-2 cursor-grab active:cursor-grabbing"
-              onPointerDown={(event) => dragControls.start(event)}
-            />
             <form
-              className="px-4 pb-3"
+              className="px-4 pb-2 pt-2"
               onSubmit={(event) => {
                 event.preventDefault();
                 void submitQuery(query);
@@ -539,11 +615,12 @@ export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssist
                         ? "text-emerald-300 hover:text-emerald-100"
                         : "text-zinc-500 hover:text-zinc-100",
                       isRecordingSpeech && "bg-red-500/15 text-red-200",
+                      isProcessingSpeech && "bg-amber-500/15 text-amber-200",
                     )}
                     title={speechTitle}
-                    aria-label={t("assistant.soraniVoice", "Sorani voice-to-text")}
+                    aria-label={t("assistant.voice", "Voice-to-text")}
                   >
-                    {isCheckingSpeech || isRecordingSpeech
+                    {isCheckingSpeech || isProcessingSpeech
                       ? <Loader2 className="h-4 w-4 animate-spin" />
                       : <Mic className="h-4 w-4" />}
                   </button>
@@ -584,6 +661,15 @@ export function AtlasAssistantPopup({ open, initialQuery, onClose }: AtlasAssist
                 </div>
               )}
             </form>
+            <div className="flex justify-center pb-2">
+              <button
+                type="button"
+                className="h-1.5 w-[25rem] max-w-[85%] cursor-grab rounded-full bg-zinc-500/70 transition-colors hover:bg-zinc-300/80 active:cursor-grabbing"
+                onPointerDown={(event) => dragControls.start(event)}
+                title={t("assistant.dragHandle", "Drag assistant")}
+                aria-label={t("assistant.dragHandle", "Drag assistant")}
+              />
+            </div>
           </div>
         </div>
       </motion.div>

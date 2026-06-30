@@ -3143,6 +3143,7 @@
     "label": "Select Storage",
     "totalItems": "Matched Items",
     "totalValue": "Storage Value",
+    "totalCostValue": "Storage Cost Value",
     "tryDifferentFilter": "Try adjusting your filters or search",
     "noReserve": "Reserve storage not found",
     "created": "Storage created successfully",

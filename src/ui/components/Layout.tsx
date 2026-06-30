@@ -408,12 +408,25 @@ export function Layout({ children }: LayoutProps) {
             setAssistantInitialQuery(detail?.initialQuery)
             setAssistantOpen(true)
         }
-        const closeHandler = () => setAssistantOpen(false)
+        const closeHandler = () => {
+            setAssistantInitialQuery(undefined)
+            setAssistantOpen(false)
+        }
+        const toggleHandler = (event: Event) => {
+            const detail = (event as CustomEvent<{ initialQuery?: string }>).detail
+            setAssistantOpen((current) => {
+                const nextOpen = !current
+                setAssistantInitialQuery(nextOpen ? detail?.initialQuery : undefined)
+                return nextOpen
+            })
+        }
         window.addEventListener('open-atlas-assistant', openHandler)
         window.addEventListener('close-atlas-assistant', closeHandler)
+        window.addEventListener('toggle-atlas-assistant', toggleHandler)
         return () => {
             window.removeEventListener('open-atlas-assistant', openHandler)
             window.removeEventListener('close-atlas-assistant', closeHandler)
+            window.removeEventListener('toggle-atlas-assistant', toggleHandler)
         }
     }, [])
 
@@ -1380,7 +1393,7 @@ export function Layout({ children }: LayoutProps) {
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            window.dispatchEvent(new CustomEvent('open-atlas-assistant'))
+                                            window.dispatchEvent(new CustomEvent('toggle-atlas-assistant'))
                                             triggerHaptic('selection')
                                         }}
                                         className={cn(

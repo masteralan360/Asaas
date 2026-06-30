@@ -9,7 +9,7 @@ use tauri::{Emitter, Manager};
 use tokio::sync::broadcast;
 
 mod kds_server;
-mod sorani_asr;
+mod kurdishtts_website_stt;
 
 const SINGLE_INSTANCE_PORT: u16 = 41931;
 
@@ -368,8 +368,8 @@ pub fn run() {
             get_file_size,
             backup_db_to_usb,
             create_desktop_shortcut,
-            sorani_asr::atlas_assistant_sorani_asr_status,
-            sorani_asr::atlas_assistant_transcribe_sorani
+            kurdishtts_website_stt::atlas_assistant_kurdishtts_website_status,
+            kurdishtts_website_stt::atlas_assistant_transcribe_kurdishtts_website
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

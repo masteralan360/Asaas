@@ -87,12 +87,6 @@ out
 .nuxt
 dist
 
-# Atlas local ASR generated artifacts
-asr/.build/
-asr/.venv/
-asr/models/
-asr/atlas-sorani-asr.exe
-
 # Gatsby files
 .cache/
 # Comment in the public line in if your project uses Gatsby and not Next.js
