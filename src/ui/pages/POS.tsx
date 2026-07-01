@@ -321,12 +321,22 @@ export function POS() {
     const { t, i18n } = useTranslation()
     const { features, isLocalMode } = useWorkspace()
     const isRTL = getLanguageDirection(i18n.resolvedLanguage || i18n.language) === 'rtl'
-    const products = useBatchAwareInventoryProducts(user?.workspaceId)
-    const productBarcodes = useWorkspaceProductBarcodes(user?.workspaceId)
-    const activeDiscountMap = useActiveDiscountMap(user?.workspaceId)
     const storages = useStorages(user?.workspaceId)
     const [selectedStorageId, setSelectedStorageId] = useState<string>(() => {
         return localStorage.getItem('pos_selected_storage') || ''
+    })
+    const products = useBatchAwareInventoryProducts(user?.workspaceId, {
+        enabled: !!selectedStorageId,
+        storageId: selectedStorageId || undefined
+    })
+    const productBarcodes = useWorkspaceProductBarcodes(user?.workspaceId, {
+        syncProductCache: false
+    })
+    const activeDiscountMap = useActiveDiscountMap(user?.workspaceId, {
+        products,
+        inventoryRows: selectedStorageId ? undefined : [],
+        storageId: selectedStorageId || undefined,
+        syncRemote: false
     })
     const [crossStorageWarning, setCrossStorageWarning] = useState<{
         product: InventoryProduct;
@@ -611,23 +621,28 @@ export function POS() {
     }, [isResizing, handleMouseMove, handleMouseUp, cartWidth])
 
     // Filter products
-    const filteredProducts = products.filter((p) => {
-        const matchesSearch = (p.name || '').toLowerCase().includes(search.toLowerCase()) ||
-            (p.sku || '').toLowerCase().includes(search.toLowerCase())
+    const filteredProducts = useMemo(() => {
+        const normalizedSearch = search.trim().toLowerCase()
 
-        // Storage Filter
-        if (selectedStorageId && p.storageId !== selectedStorageId) {
-            return false
-        }
+        return products.filter((p) => {
+            const matchesSearch = !normalizedSearch ||
+                (p.name || '').toLowerCase().includes(normalizedSearch) ||
+                (p.sku || '').toLowerCase().includes(normalizedSearch)
 
-        if (selectedCategory !== 'all') {
-            if (selectedCategory === 'none') {
-                return matchesSearch && !p.categoryId
+            // Storage Filter
+            if (selectedStorageId && p.storageId !== selectedStorageId) {
+                return false
             }
-            return matchesSearch && p.categoryId === selectedCategory
-        }
-        return matchesSearch
-    })
+
+            if (selectedCategory !== 'all') {
+                if (selectedCategory === 'none') {
+                    return matchesSearch && !p.categoryId
+                }
+                return matchesSearch && p.categoryId === selectedCategory
+            }
+            return matchesSearch
+        })
+    }, [products, search, selectedCategory, selectedStorageId])
 
     const barcodeMap = useMemo(() => {
         const map = new Map<string, string>()

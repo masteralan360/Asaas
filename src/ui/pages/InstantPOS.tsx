@@ -482,9 +482,20 @@ export function InstantPOS() {
     const { toast } = useToast()
     const { user } = useAuth()
     const { features, isLocalMode } = useWorkspace()
-    const products = useBatchAwareInventoryProducts(user?.workspaceId)
-    const activeDiscountMap = useActiveDiscountMap(user?.workspaceId)
     const storages = useStorages(user?.workspaceId)
+    const [selectedStorageId, setSelectedStorageId] = useState<string>(() => {
+        return localStorage.getItem('instant_pos_selected_storage') || ''
+    })
+    const products = useBatchAwareInventoryProducts(user?.workspaceId, {
+        enabled: !!selectedStorageId,
+        storageId: selectedStorageId || undefined
+    })
+    const activeDiscountMap = useActiveDiscountMap(user?.workspaceId, {
+        products,
+        inventoryRows: selectedStorageId ? undefined : [],
+        storageId: selectedStorageId || undefined,
+        syncRemote: false
+    })
     const categories = useCategories(user?.workspaceId)
 
     // KDS Streaming
@@ -498,9 +509,6 @@ export function InstantPOS() {
 
     const [tickets, setTickets] = useState<InstantPosTicket[]>(() => loadTickets())
     const [activeTicketId, setActiveTicketId] = useState<string | null>(null)
-    const [selectedStorageId, setSelectedStorageId] = useState<string>(() => {
-        return localStorage.getItem('instant_pos_selected_storage') || ''
-    })
     const [search, setSearch] = useState('')
     const [selectedCategory, setSelectedCategory] = useState<string>('all')
     const [isCheckoutLoading, setIsCheckoutLoading] = useState(false)

@@ -26,6 +26,17 @@ import type {
 } from './models'
 
 const TABLE_NAME = 'stock_batches'
+const STOCK_BATCH_FETCH_PAGE_SIZE = 1000
+const stockBatchFetchesInFlight = new Map<string, Promise<void>>()
+
+export interface StockBatchFetchOptions {
+    storageId?: string
+}
+
+export interface UseStockBatchesOptions extends StockBatchFetchOptions {
+    syncRemote?: boolean
+    enabled?: boolean
+}
 
 export interface StockBatchInput {
     productId: string
@@ -1232,53 +1243,80 @@ export async function deleteStockBatch(id: string) {
     await syncStockBatchesBestEffort([deleted], existing.workspaceId)
 }
 
-export async function refreshStockBatchesFromSupabase(workspaceId: string) {
-    if (!workspaceId || !shouldUseCloudBusinessData(workspaceId) || !isOnline()) {
-        return
-    }
-
+async function refreshStockBatchesFromSupabaseInternal(
+    workspaceId: string,
+    options: StockBatchFetchOptions
+) {
+    const storageId = options.storageId?.trim()
     const client = getSupabaseClientForTable(TABLE_NAME)
-    const { data, error } = await runSupabaseAction(`${TABLE_NAME}.fetch`, () =>
-        client
+    const remoteRows: Record<string, unknown>[] = []
+
+    for (let from = 0; ; from += STOCK_BATCH_FETCH_PAGE_SIZE) {
+        let query = client
             .from(TABLE_NAME)
             .select('*')
             .eq('workspace_id', workspaceId)
             .eq('is_deleted', false)
-    )
 
-    if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
-        return
+        if (storageId) {
+            query = query.eq('storage_id', storageId)
+        }
+
+        query = query
+            .order('id', { ascending: true })
+            .range(from, from + STOCK_BATCH_FETCH_PAGE_SIZE - 1)
+
+        const { data, error } = await runSupabaseAction(`${TABLE_NAME}.fetch.page`, () => query)
+        if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
+            return
+        }
+
+        remoteRows.push(...(data as Record<string, unknown>[]))
+        if (data.length < STOCK_BATCH_FETCH_PAGE_SIZE) {
+            break
+        }
     }
 
     const syncedAt = new Date().toISOString()
-    const remoteIds = new Set(data.map((row: Record<string, unknown>) => row.id as string))
-    const productRows = await db.products.where('workspaceId').equals(workspaceId).and((row) => !row.isDeleted).toArray()
+    const remoteIds = new Set(remoteRows.map((row) => row.id as string))
+    const remoteProductIds = Array.from(new Set(
+        remoteRows
+            .map((row) => row.product_id ?? row.productId)
+            .filter((productId): productId is string => typeof productId === 'string')
+    ))
+    const productRows = storageId
+        ? (await db.products.bulkGet(remoteProductIds)).filter((product): product is NonNullable<typeof product> =>
+            !!product && product.workspaceId === workspaceId && !product.isDeleted
+        )
+        : await db.products.where('workspaceId').equals(workspaceId).and((row) => !row.isDeleted).toArray()
     const productDefaultsById = new Map(productRows.map((product) => [product.id, {
         price: normalizeMoneyValue(product.price, 'Batch price'),
         costPrice: normalizeMoneyValue(product.costPrice, 'Batch cost'),
         currency: normalizeCurrencyCode(product.currency, 'usd')
     }] as const))
 
-    await db.transaction('rw', db.stock_batches, async () => {
-        for (const remoteItem of data) {
-            const localItem = toCamelCase(remoteItem as Record<string, unknown>) as unknown as StockBatch
-            const productDefaults = productDefaultsById.get(localItem.productId)
-            localItem.price = Number.isFinite(localItem.price)
-                ? localItem.price
-                : productDefaults?.price ?? 0
-            localItem.costPrice = Number.isFinite(localItem.costPrice)
-                ? localItem.costPrice
-                : productDefaults?.costPrice ?? 0
-            localItem.currency = normalizeCurrencyCode(
-                localItem.currency,
-                productDefaults?.currency ?? 'usd'
-            )
-            localItem.syncStatus = 'synced'
-            localItem.lastSyncedAt = syncedAt
-            await db.stock_batches.put(localItem)
-        }
+    const localItems = remoteRows.map((remoteItem) => {
+        const localItem = toCamelCase(remoteItem) as unknown as StockBatch
+        const productDefaults = productDefaultsById.get(localItem.productId)
+        localItem.price = Number.isFinite(localItem.price)
+            ? localItem.price
+            : productDefaults?.price ?? 0
+        localItem.costPrice = Number.isFinite(localItem.costPrice)
+            ? localItem.costPrice
+            : productDefaults?.costPrice ?? 0
+        localItem.currency = normalizeCurrencyCode(
+            localItem.currency,
+            productDefaults?.currency ?? 'usd'
+        )
+        localItem.syncStatus = 'synced'
+        localItem.lastSyncedAt = syncedAt
+        return localItem
+    })
 
-        const localRows = await db.stock_batches.where('workspaceId').equals(workspaceId).toArray()
+    await db.transaction('rw', db.stock_batches, async () => {
+        const localRows = storageId
+            ? await db.stock_batches.where('[workspaceId+storageId]').equals([workspaceId, storageId]).toArray()
+            : await db.stock_batches.where('workspaceId').equals(workspaceId).toArray()
         const staleIds = localRows
             .filter((row) => row.syncStatus === 'synced' && !remoteIds.has(row.id))
             .map((row) => row.id)
@@ -1286,7 +1324,37 @@ export async function refreshStockBatchesFromSupabase(workspaceId: string) {
         if (staleIds.length > 0) {
             await db.stock_batches.bulkDelete(staleIds)
         }
+
+        if (localItems.length > 0) {
+            await db.stock_batches.bulkPut(localItems)
+        }
     })
+}
+
+export async function refreshStockBatchesFromSupabase(
+    workspaceId: string,
+    options: StockBatchFetchOptions = {}
+) {
+    if (!workspaceId || !shouldUseCloudBusinessData(workspaceId) || !isOnline()) {
+        return
+    }
+
+    const storageId = options.storageId?.trim()
+    const key = `${workspaceId}:${storageId || 'all'}`
+    const existing = stockBatchFetchesInFlight.get(key)
+    if (existing) {
+        return existing
+    }
+
+    const request = refreshStockBatchesFromSupabaseInternal(workspaceId, { storageId })
+        .finally(() => {
+            if (stockBatchFetchesInFlight.get(key) === request) {
+                stockBatchFetchesInFlight.delete(key)
+            }
+        })
+
+    stockBatchFetchesInFlight.set(key, request)
+    return request
 }
 
 export async function hydrateStockBatchesForPurchaseOrder(
@@ -1320,20 +1388,29 @@ export async function hydrateStockBatchesForPurchaseOrder(
     })
 }
 
-export function useStockBatches(workspaceId: string | undefined) {
+export function useStockBatches(workspaceId: string | undefined, options: UseStockBatchesOptions = {}) {
     const online = useNetworkStatus()
+    const enabled = options.enabled ?? true
+    const syncRemote = options.syncRemote ?? true
+    const storageId = options.storageId?.trim()
 
     const batches = useLiveQuery(
         async () => {
-            if (!workspaceId) {
+            if (!enabled || !workspaceId) {
                 return []
             }
 
-            const rows = await db.stock_batches
-                .where('workspaceId')
-                .equals(workspaceId)
-                .and((row) => !row.isDeleted)
-                .toArray()
+            const rows = storageId
+                ? await db.stock_batches
+                    .where('[workspaceId+storageId]')
+                    .equals([workspaceId, storageId])
+                    .and((row) => !row.isDeleted)
+                    .toArray()
+                : await db.stock_batches
+                    .where('workspaceId')
+                    .equals(workspaceId)
+                    .and((row) => !row.isDeleted)
+                    .toArray()
 
             return rows.sort((left, right) => {
                 if (left.productId !== right.productId) {
@@ -1347,27 +1424,27 @@ export function useStockBatches(workspaceId: string | undefined) {
                 return left.batchNumber.localeCompare(right.batchNumber)
             })
         },
-        [workspaceId]
+        [enabled, storageId, workspaceId]
     )
 
     useEffect(() => {
         async function fetchFromSupabase() {
-            if (!online || !workspaceId) {
+            if (!enabled || !syncRemote || !online || !workspaceId) {
                 return
             }
 
-            await refreshStockBatchesFromSupabase(workspaceId)
+            await refreshStockBatchesFromSupabase(workspaceId, { storageId })
         }
 
         void fetchFromSupabase()
-    }, [online, workspaceId])
+    }, [enabled, online, storageId, syncRemote, workspaceId])
 
     return batches ?? []
 }
 
-export function useBatchAwareInventoryProducts(workspaceId: string | undefined) {
-    const inventoryProducts = useInventoryProducts(workspaceId)
-    const stockBatches = useStockBatches(workspaceId)
+export function useBatchAwareInventoryProducts(workspaceId: string | undefined, options: UseStockBatchesOptions = {}) {
+    const inventoryProducts = useInventoryProducts(workspaceId, options)
+    const stockBatches = useStockBatches(workspaceId, options)
 
     return useMemo(() => {
         const batchRowsByPosition = new Map<string, StockBatch[]>()

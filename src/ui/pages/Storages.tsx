@@ -36,10 +36,18 @@ export default function Storages() {
         s.name.toLowerCase().includes(searchQuery.toLowerCase())
     )
 
-    const products = useProducts(activeWorkspace?.id)
+    const products = useProducts(activeWorkspace?.id, { syncBarcodeCache: false })
     const inventory = useInventory(activeWorkspace?.id)
     const categories = useCategories(activeWorkspace?.id)
     const { features } = useWorkspace()
+    const productById = useMemo(
+        () => new Map(products.map((product) => [product.id, product] as const)),
+        [products]
+    )
+    const categoryById = useMemo(
+        () => new Map(categories.map((category) => [category.id, category] as const)),
+        [categories]
+    )
 
     const [selectedStorageId, setSelectedStorageId] = useState<string>(() => {
         return localStorage.getItem('storages_inventory_selected_storage') || ''
@@ -111,44 +119,44 @@ export default function Storages() {
         const byCurrency: Record<string, number> = {}
         inventory.forEach((row) => {
             if (row.storageId !== selectedStorageId) return
-            const product = products.find((entry) => entry.id === row.productId)
+            const product = productById.get(row.productId)
             if (!product || product.isDeleted) return
             byCurrency[product.currency] = (byCurrency[product.currency] || 0) + (product.price * row.quantity)
         })
         return byCurrency
-    }, [inventory, products, selectedStorageId])
+    }, [inventory, productById, selectedStorageId])
 
     const totalCostValue = useMemo(() => {
         if (!selectedStorageId) return {} as Record<string, number>
         const byCurrency: Record<string, number> = {}
         inventory.forEach((row) => {
             if (row.storageId !== selectedStorageId) return
-            const product = products.find((entry) => entry.id === row.productId)
+            const product = productById.get(row.productId)
             if (!product || product.isDeleted) return
             byCurrency[product.currency] = (byCurrency[product.currency] || 0) + (product.costPrice * row.quantity)
         })
         return byCurrency
-    }, [inventory, products, selectedStorageId])
+    }, [inventory, productById, selectedStorageId])
 
     const totalStorageValueConverted = useMemo(() => {
         if (!selectedStorageId) return 0
         return inventory.reduce((sum, row) => {
             if (row.storageId !== selectedStorageId) return sum
-            const product = products.find((entry) => entry.id === row.productId)
+            const product = productById.get(row.productId)
             if (!product || product.isDeleted) return sum
             return sum + (convertPrice(product.price, product.currency, settlementCurrency) * row.quantity)
         }, 0)
-    }, [inventory, products, selectedStorageId, convertPrice, settlementCurrency])
+    }, [inventory, productById, selectedStorageId, convertPrice, settlementCurrency])
 
     const totalCostValueConverted = useMemo(() => {
         if (!selectedStorageId) return 0
         return inventory.reduce((sum, row) => {
             if (row.storageId !== selectedStorageId) return sum
-            const product = products.find((entry) => entry.id === row.productId)
+            const product = productById.get(row.productId)
             if (!product || product.isDeleted) return sum
             return sum + (convertPrice(product.costPrice, product.currency, settlementCurrency) * row.quantity)
         }, 0)
-    }, [inventory, products, selectedStorageId, convertPrice, settlementCurrency])
+    }, [inventory, productById, selectedStorageId, convertPrice, settlementCurrency])
 
     useEffect(() => {
         if (selectedStorageId) {
@@ -166,7 +174,7 @@ export default function Storages() {
     const inventoryProducts = useMemo(() => inventory
         .filter((row) => row.storageId === selectedStorageId)
         .map((row) => {
-            const product = products.find((entry) => entry.id === row.productId)
+            const product = productById.get(row.productId)
             if (!product || product.isDeleted) {
                 return null
             }
@@ -182,7 +190,7 @@ export default function Storages() {
             return { row, product }
         })
         .filter((entry): entry is { row: (typeof inventory)[number]; product: (typeof products)[number] } => !!entry),
-        [inventory, inventorySearch, products, selectedCategoryId, selectedStorageId])
+        [inventory, inventorySearch, productById, selectedCategoryId, selectedStorageId])
 
     const getDisplayImageUrl = (url?: string) => {
         if (!url) return '';
@@ -401,7 +409,7 @@ export default function Storages() {
                                                                     </TooltipTrigger>
                                                                     <TooltipContent side="bottom" align="start" className="max-h-60 overflow-y-auto p-2 space-y-1">
                                                                         {visible.map((item) => {
-                                                                            const product = products.find((p) => p.id === item.productId)
+                                                                            const product = productById.get(item.productId)
                                                                             return (
                                                                                 <div key={item.productId} className="flex items-center justify-between gap-4 text-xs">
                                                                                     <span className="font-medium truncate max-w-[180px]">
@@ -651,7 +659,7 @@ export default function Storages() {
                                                     {product.name}
                                                 </h3>
                                                 <div className="text-[11px] font-bold text-primary/70 uppercase tracking-wide">
-                                                    {categories.find(c => c.id === product.categoryId)?.name || t('categories.noCategory')}
+                                                    {categoryById.get(product.categoryId || '')?.name || t('categories.noCategory')}
                                                 </div>
                                             </div>
 

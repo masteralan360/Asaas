@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -129,10 +129,18 @@ export function Products() {
     const { t } = useTranslation()
     const { toast } = useToast()
     const [, navigate] = useLocation()
-    const products = useProducts(user?.workspaceId)
+    const products = useProducts(user?.workspaceId, { syncBarcodeCache: false })
     const categories = useCategories(user?.workspaceId)
     const storages = useStorages(user?.workspaceId)
     const workspaceId = user?.workspaceId || ''
+    const categoryById = useMemo(
+        () => new Map(categories.map((category) => [category.id, category] as const)),
+        [categories]
+    )
+    const storageById = useMemo(
+        () => new Map(storages.map((storage) => [storage.id, storage] as const)),
+        [storages]
+    )
 
     const inventoryRows = useLiveQuery(
         () => workspaceId
@@ -143,10 +151,10 @@ export function Products() {
 
     const productStorageMap = useMemo(() => {
         const map = new Map<string, { name: string; quantity: number }[]>()
-        if (!inventoryRows) return map
+        const rows = inventoryRows ?? []
         const temp = new Map<string, Map<string, number>>()
-        for (const row of inventoryRows) {
-            const storage = storages.find((s) => s.id === row.storageId)
+        for (const row of rows) {
+            const storage = storageById.get(row.storageId)
             if (!storage) continue
             const productEntry = temp.get(row.productId) ?? new Map()
             const currentQty = productEntry.get(storage.name) ?? 0
@@ -160,8 +168,17 @@ export function Products() {
             }
             map.set(productId, entries)
         }
+        for (const product of products) {
+            if (map.has(product.id) || !product.storageId) continue
+            const storage = storageById.get(product.storageId)
+            if (!storage) continue
+            map.set(product.id, [{
+                name: product.storageName || storage.name,
+                quantity: Number(product.quantity) || 0
+            }])
+        }
         return map
-    }, [inventoryRows, storages])
+    }, [inventoryRows, products, storageById])
 
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
@@ -385,17 +402,17 @@ export function Products() {
         return platformService.convertFileSrc(url)
     }
 
-    const getCategoryName = (id?: string | null) => {
+    const getCategoryName = useCallback((id?: string | null) => {
         if (!id) return t('categories.noCategory')
-        const category = categories.find((item) => item.id === id)
+        const category = categoryById.get(id)
         return category?.name || t('categories.noCategory')
-    }
+    }, [categoryById, t])
 
-    const getStorageName = (id?: string | null) => {
+    const getStorageName = useCallback((id?: string | null) => {
         if (!id) return ''
-        const storage = storages.find((item) => item.id === id)
+        const storage = storageById.get(id)
         return storage ? storage.name : ''
-    }
+    }, [storageById])
 
     const renderStorage = (productId: string) => {
         const entries = productStorageMap.get(productId)
@@ -488,7 +505,7 @@ export function Products() {
         })
 
         return result
-    }, [products, search, categories, storages, filters])
+    }, [products, search, getCategoryName, getStorageName, filters])
 
     const totalCount = filteredProducts.length
 

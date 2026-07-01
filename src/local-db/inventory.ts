@@ -28,6 +28,19 @@ export type InventoryProduct = Product & {
     storageId: string
 }
 
+const INVENTORY_FETCH_PAGE_SIZE = 1000
+const INVENTORY_PRODUCT_FETCH_CHUNK_SIZE = 500
+const inventoryWorkspaceFetchesInFlight = new Map<string, Promise<void>>()
+
+export interface InventoryWorkspaceFetchOptions {
+    storageId?: string
+}
+
+export interface UseInventoryOptions extends InventoryWorkspaceFetchOptions {
+    syncRemote?: boolean
+    enabled?: boolean
+}
+
 function shouldUseCloudBusinessData(workspaceId?: string | null) {
     return !!workspaceId && !isLocalWorkspaceMode(workspaceId)
 }
@@ -235,101 +248,254 @@ async function evaluateReorderRulesIfNeeded(input: {
     await evaluateReorderTransferRulesForProduct(input.workspaceId, input.productId)
 }
 
-export async function fetchInventoryWorkspaceFromSupabase(workspaceId: string) {
-    if (!shouldUseCloudBusinessData(workspaceId)) {
-        return
+async function fetchPagedWorkspaceRows(
+    tableName: 'inventory' | 'products',
+    workspaceId: string,
+    applyFilters?: (query: any) => any
+) {
+    const client = getSupabaseClientForTable(tableName)
+    const rows: Record<string, unknown>[] = []
+
+    for (let from = 0; ; from += INVENTORY_FETCH_PAGE_SIZE) {
+        let query = client
+            .from(tableName)
+            .select('*')
+            .eq('workspace_id', workspaceId)
+            .eq('is_deleted', false)
+
+        if (applyFilters) {
+            query = applyFilters(query)
+        }
+
+        query = query
+            .order('id', { ascending: true })
+            .range(from, from + INVENTORY_FETCH_PAGE_SIZE - 1)
+
+        const { data, error } = await runSupabaseAction(`${tableName}.fetch.page`, () => query)
+        if (error || !data || !shouldUseCloudBusinessData(workspaceId)) {
+            return null
+        }
+
+        rows.push(...(data as Record<string, unknown>[]))
+        if (data.length < INVENTORY_FETCH_PAGE_SIZE) {
+            break
+        }
     }
 
-    const inventoryClient = getSupabaseClientForTable('inventory')
-    const fetchedAt = new Date().toISOString()
+    return rows
+}
 
-    const [{ data: remoteInventory, error: inventoryError }, { data: remoteProducts, error: productError }] = await Promise.all([
-        runSupabaseAction('inventory.fetch', () =>
-            inventoryClient
-                .from('inventory')
-                .select('*')
-                .eq('workspace_id', workspaceId)
-                .eq('is_deleted', false)
-        ),
-        runSupabaseAction('inventory.products.fetch', () =>
-            getSupabaseClientForTable('products')
+function getRemoteInventoryProductId(row: Record<string, unknown>) {
+    const productId = row.product_id ?? row.productId
+    return typeof productId === 'string' ? productId : null
+}
+
+async function fetchProductsForInventoryRows(
+    workspaceId: string,
+    remoteInventoryRows: Record<string, unknown>[],
+    options: InventoryWorkspaceFetchOptions
+) {
+    if (!options.storageId) {
+        return fetchPagedWorkspaceRows('products', workspaceId)
+    }
+
+    const productIds = Array.from(new Set(
+        remoteInventoryRows
+            .map(getRemoteInventoryProductId)
+            .filter((productId): productId is string => !!productId)
+    ))
+
+    if (productIds.length === 0) {
+        return []
+    }
+
+    const client = getSupabaseClientForTable('products')
+    const rows: Record<string, unknown>[] = []
+
+    for (let index = 0; index < productIds.length; index += INVENTORY_PRODUCT_FETCH_CHUNK_SIZE) {
+        const chunk = productIds.slice(index, index + INVENTORY_PRODUCT_FETCH_CHUNK_SIZE)
+        const { data, error } = await runSupabaseAction('inventory.products.fetchByIds', () =>
+            client
                 .from('products')
                 .select('*')
                 .eq('workspace_id', workspaceId)
                 .eq('is_deleted', false)
+                .in('id', chunk)
+                .order('id', { ascending: true })
         )
-    ])
 
-    if (inventoryError || productError || !remoteInventory || !remoteProducts || !shouldUseCloudBusinessData(workspaceId)) {
+        if (error || !data || !shouldUseCloudBusinessData(workspaceId)) {
+            return null
+        }
+
+        rows.push(...(data as Record<string, unknown>[]))
+    }
+
+    return rows
+}
+
+async function fetchInventoryWorkspaceFromSupabaseInternal(
+    workspaceId: string,
+    options: InventoryWorkspaceFetchOptions
+) {
+    const storageId = options.storageId?.trim()
+    const fetchedAt = new Date().toISOString()
+
+    const [remoteInventory, remoteProducts] = storageId
+        ? await (async () => {
+            const inventoryRows = await fetchPagedWorkspaceRows(
+                'inventory',
+                workspaceId,
+                (query) => query.eq('storage_id', storageId)
+            )
+            if (!inventoryRows) {
+                return [null, null] as const
+            }
+
+            return [
+                inventoryRows,
+                await fetchProductsForInventoryRows(workspaceId, inventoryRows, { storageId })
+            ] as const
+        })()
+        : await Promise.all([
+            fetchPagedWorkspaceRows('inventory', workspaceId),
+            fetchProductsForInventoryRows(workspaceId, [], {})
+        ])
+
+    if (!remoteInventory) {
         return
     }
+
+    if (!remoteProducts) {
+        return
+    }
+
+    const normalizedRemoteProducts = remoteProducts.map((remoteProduct) => {
+        const localProduct = toCamelCase(remoteProduct) as unknown as Product
+        localProduct.syncStatus = 'synced'
+        localProduct.lastSyncedAt = fetchedAt
+        return localProduct
+    })
+
+    const normalizedRemoteInventory = remoteInventory.map((remoteRow) => {
+        const localRow = toCamelCase(remoteRow) as unknown as Inventory
+        localRow.syncStatus = 'synced'
+        localRow.lastSyncedAt = fetchedAt
+        return localRow
+    })
 
     const affectedProductIds = new Set<string>()
 
     await db.transaction('rw', [db.inventory, db.products], async () => {
-        const remoteInventoryIds = new Set(remoteInventory.map((item) => item.id))
-        const remoteProductIds = new Set(remoteProducts.map((item) => item.id))
+        const remoteInventoryIds = new Set(normalizedRemoteInventory.map((item) => item.id))
+        const remoteProductIds = new Set(normalizedRemoteProducts.map((item) => item.id))
 
-        const [localInventoryRows, localProducts] = await Promise.all([
-            db.inventory.where('workspaceId').equals(workspaceId).toArray(),
-            db.products.where('workspaceId').equals(workspaceId).toArray()
-        ])
+        const localInventoryRows = storageId
+            ? await db.inventory.where('[workspaceId+storageId]').equals([workspaceId, storageId]).toArray()
+            : await db.inventory.where('workspaceId').equals(workspaceId).toArray()
 
-        for (const localRow of localInventoryRows) {
-            if (!remoteInventoryIds.has(localRow.id) && localRow.syncStatus === 'synced') {
+        const staleInventoryIds = localInventoryRows
+            .filter((localRow) => !remoteInventoryIds.has(localRow.id) && localRow.syncStatus === 'synced')
+            .map((localRow) => {
                 affectedProductIds.add(localRow.productId)
-                await db.inventory.delete(localRow.id)
+                return localRow.id
+            })
+
+        if (staleInventoryIds.length > 0) {
+            await db.inventory.bulkDelete(staleInventoryIds)
+        }
+
+        if (!storageId) {
+            const localProducts = await db.products.where('workspaceId').equals(workspaceId).toArray()
+            const staleProductIds = localProducts
+                .filter((localProduct) => !remoteProductIds.has(localProduct.id) && localProduct.syncStatus === 'synced')
+                .map((localProduct) => localProduct.id)
+
+            if (staleProductIds.length > 0) {
+                await db.products.bulkDelete(staleProductIds)
             }
         }
 
-        for (const localProduct of localProducts) {
-            if (!remoteProductIds.has(localProduct.id) && localProduct.syncStatus === 'synced') {
-                await db.products.delete(localProduct.id)
+        if (normalizedRemoteProducts.length > 0) {
+            await db.products.bulkPut(normalizedRemoteProducts)
+        }
+
+        if (normalizedRemoteInventory.length > 0) {
+            for (const row of normalizedRemoteInventory) {
+                affectedProductIds.add(row.productId)
             }
-        }
-
-        for (const remoteProduct of remoteProducts) {
-            const localProduct = toCamelCase(remoteProduct as Record<string, unknown>) as unknown as Product
-            localProduct.syncStatus = 'synced'
-            localProduct.lastSyncedAt = fetchedAt
-            await db.products.put(localProduct)
-        }
-
-        for (const remoteRow of remoteInventory) {
-            const localRow = toCamelCase(remoteRow as Record<string, unknown>) as unknown as Inventory
-            localRow.syncStatus = 'synced'
-            localRow.lastSyncedAt = fetchedAt
-            affectedProductIds.add(localRow.productId)
-            await db.inventory.put(localRow)
+            await db.inventory.bulkPut(normalizedRemoteInventory)
         }
     })
 
-    await Promise.all(Array.from(affectedProductIds).map((productId) =>
-        syncProductStockSnapshot(productId, fetchedAt, 'remote')
-    ))
+    // A scoped storage fetch only contains a partial inventory view. Avoid updating
+    // product.quantity snapshots from partial data.
+    if (storageId) {
+        return
+    }
+
+    const affectedIds = Array.from(affectedProductIds)
+    for (let index = 0; index < affectedIds.length; index += 100) {
+        const chunk = affectedIds.slice(index, index + 100)
+        await Promise.all(chunk.map((productId) =>
+            syncProductStockSnapshot(productId, fetchedAt, 'remote')
+        ))
+    }
 
     await syncProductBarcodeCachesForWorkspace(workspaceId)
 
-    if (affectedProductIds.size > 0) {
+    if (affectedIds.length > 0) {
         const { evaluateReorderTransferRulesForProduct } = await import('./reorderTransferRules')
-        await Promise.all(Array.from(affectedProductIds).map((productId) =>
-            evaluateReorderTransferRulesForProduct(workspaceId, productId)
-        ))
+        for (let index = 0; index < affectedIds.length; index += 100) {
+            const chunk = affectedIds.slice(index, index + 100)
+            await Promise.all(chunk.map((productId) =>
+                evaluateReorderTransferRulesForProduct(workspaceId, productId)
+            ))
+        }
     }
 }
 
-function useInventoryCloudSync(workspaceId: string | undefined) {
+export async function fetchInventoryWorkspaceFromSupabase(
+    workspaceId: string,
+    options: InventoryWorkspaceFetchOptions = {}
+) {
+    if (!shouldUseCloudBusinessData(workspaceId)) {
+        return
+    }
+
+    const storageId = options.storageId?.trim()
+    const key = `${workspaceId}:${storageId || 'all'}`
+    const existing = inventoryWorkspaceFetchesInFlight.get(key)
+    if (existing) {
+        return existing
+    }
+
+    const request = fetchInventoryWorkspaceFromSupabaseInternal(workspaceId, { storageId })
+        .finally(() => {
+            if (inventoryWorkspaceFetchesInFlight.get(key) === request) {
+                inventoryWorkspaceFetchesInFlight.delete(key)
+            }
+        })
+
+    inventoryWorkspaceFetchesInFlight.set(key, request)
+    return request
+}
+
+function useInventoryCloudSync(workspaceId: string | undefined, options: UseInventoryOptions = {}) {
     const online = useNetworkStatus()
+    const enabled = options.enabled ?? true
+    const syncRemote = options.syncRemote ?? true
+    const storageId = options.storageId?.trim()
 
     useEffect(() => {
         async function syncFromSupabase() {
-            if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
-                await fetchInventoryWorkspaceFromSupabase(workspaceId)
+            if (enabled && syncRemote && online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+                await fetchInventoryWorkspaceFromSupabase(workspaceId, { storageId })
             }
         }
 
         void syncFromSupabase()
-    }, [online, workspaceId])
+    }, [enabled, online, storageId, syncRemote, workspaceId])
 }
 
 async function getInventoryRowsForProductStorage(productId: string, storageId: string) {
@@ -876,29 +1042,47 @@ export async function deleteInventoryForProduct(
     }
 }
 
-export function useInventory(workspaceId: string | undefined) {
-    useInventoryCloudSync(workspaceId)
+export function useInventory(workspaceId: string | undefined, options: UseInventoryOptions = {}) {
+    const enabled = options.enabled ?? true
+    const storageId = options.storageId?.trim()
+    useInventoryCloudSync(workspaceId, { ...options, storageId })
 
     const inventory = useLiveQuery(
-        () => workspaceId ? db.inventory.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).toArray() : [],
-        [workspaceId]
+        () => {
+            if (!enabled || !workspaceId) {
+                return []
+            }
+
+            return storageId
+                ? db.inventory.where('[workspaceId+storageId]').equals([workspaceId, storageId]).and((item) => !item.isDeleted).toArray()
+                : db.inventory.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).toArray()
+        },
+        [enabled, storageId, workspaceId]
     )
 
     return inventory ?? []
 }
 
-export function useInventoryProducts(workspaceId: string | undefined) {
-    useInventoryCloudSync(workspaceId)
+export function useInventoryProducts(workspaceId: string | undefined, options: UseInventoryOptions = {}) {
+    const enabled = options.enabled ?? true
+    const storageId = options.storageId?.trim()
+    useInventoryCloudSync(workspaceId, { ...options, storageId })
 
     const products = useLiveQuery(async () => {
-        if (!workspaceId) {
+        if (!enabled || !workspaceId) {
             return []
         }
 
-        const [inventoryRows, productRows] = await Promise.all([
-            db.inventory.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).toArray(),
-            db.products.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).toArray()
-        ])
+        const inventoryRows = storageId
+            ? await db.inventory.where('[workspaceId+storageId]').equals([workspaceId, storageId]).and((item) => !item.isDeleted).toArray()
+            : await db.inventory.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).toArray()
+
+        const productIds = Array.from(new Set(inventoryRows.map((row) => row.productId)))
+        const productRows = storageId
+            ? (await db.products.bulkGet(productIds)).filter((product): product is Product =>
+                !!product && product.workspaceId === workspaceId && !product.isDeleted
+            )
+            : await db.products.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).toArray()
 
         const productMap = new Map(productRows.map((product) => [product.id, product]))
 
@@ -918,7 +1102,7 @@ export function useInventoryProducts(workspaceId: string | undefined) {
                 } satisfies InventoryProduct
             })
             .filter((item): item is InventoryProduct => !!item)
-    }, [workspaceId])
+    }, [enabled, storageId, workspaceId])
 
     return products ?? []
 }

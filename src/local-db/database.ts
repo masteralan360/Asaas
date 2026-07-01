@@ -2930,6 +2930,19 @@ export class AtlasDatabase extends Dexie {
       }
     });
 
+    this.version(81).stores({
+      products:
+        "id, sku, name, categoryId, storageId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned, [workspaceId+name], [workspaceId+sku], [workspaceId+categoryId], [workspaceId+currency], [workspaceId+updatedAt], [workspaceId+storageId]",
+      categories:
+        "id, name, workspaceId, syncStatus, updatedAt, isDeleted, [workspaceId+name], [workspaceId+updatedAt]",
+      storages:
+        "id, name, workspaceId, isSystem, isProtected, isPrimary, isMarketplace, syncStatus, updatedAt, isDeleted, [workspaceId+name], [workspaceId+updatedAt]",
+      inventory:
+        "id, workspaceId, productId, storageId, quantity, syncStatus, updatedAt, isDeleted, [workspaceId+storageId], [workspaceId+productId], [productId+storageId], [workspaceId+storageId+productId], [workspaceId+updatedAt]",
+      stock_batches:
+        "id, workspaceId, productId, storageId, batchNumber, expiryDate, sourcePurchaseOrderId, sourcePurchaseOrderItemId, updatedAt, isDeleted, [workspaceId+productId], [productId+storageId], [workspaceId+storageId], [workspaceId+storageId+productId], [workspaceId+updatedAt], [sourcePurchaseOrderId+sourcePurchaseOrderItemId]",
+    });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }

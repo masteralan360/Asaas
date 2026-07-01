@@ -17,6 +17,7 @@ import {
 } from './inventory'
 import type {
     Product,
+    Inventory,
     ProductBarcode,
     Category,
     ProductDiscount,
@@ -229,41 +230,11 @@ export function useCategories(workspaceId: string | undefined) {
 
     // 2. Online: Fetch fresh data from Supabase & cleanup cache
     useEffect(() => {
-        async function fetchFromSupabase() {
-            if (isOnline && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
-                const { data, error } = await supabase
-                    .from('categories')
-                    .select('*')
-                    .eq('workspace_id', workspaceId)
-                    .eq('is_deleted', false)
-
-                if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
-                    return
-                }
-
-                if (data && !error) {
-                    await db.transaction('rw', db.categories, async () => {
-                        const remoteIds = new Set(data.map(d => d.id))
-                        const localItems = await db.categories.where('workspaceId').equals(workspaceId).toArray()
-
-                        // Delete local items that are 'synced' but missing from server
-                        for (const local of localItems) {
-                            if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
-                                await db.categories.delete(local.id)
-                            }
-                        }
-
-                        for (const remoteItem of data) {
-                            const localItem = toCamelCase(remoteItem as any) as unknown as Category
-                            localItem.syncStatus = 'synced'
-                            localItem.lastSyncedAt = new Date().toISOString()
-                            await db.categories.put(localItem)
-                        }
-                    })
-                }
-            }
+        if (!isOnline || !workspaceId || !shouldUseCloudBusinessData(workspaceId)) {
+            return
         }
-        fetchFromSupabase()
+
+        void fetchTableFromSupabase('categories', db.categories, workspaceId)
     }, [isOnline, workspaceId])
 
     return categories ?? []
@@ -430,66 +401,54 @@ export async function deleteCategory(id: string): Promise<void> {
 // PRODUCTS HOOKS
 // ===================
 
-export function useProducts(workspaceId: string | undefined) {
+export interface UseProductsOptions {
+    syncRemote?: boolean
+    syncBarcodeCache?: boolean
+    enabled?: boolean
+}
+
+export function useProducts(workspaceId: string | undefined, options: UseProductsOptions = {}) {
     const isOnline = useNetworkStatus()
+    const enabled = options.enabled ?? true
+    const syncRemote = options.syncRemote ?? true
+    const syncBarcodeCache = options.syncBarcodeCache ?? true
 
     const products = useLiveQuery(
-        () => workspaceId ? db.products.where('workspaceId').equals(workspaceId).and(p => !p.isDeleted).toArray() : [],
-        [workspaceId]
+        () => enabled && workspaceId ? db.products.where('workspaceId').equals(workspaceId).and(p => !p.isDeleted).toArray() : [],
+        [enabled, workspaceId]
     )
 
     useEffect(() => {
-        async function fetchFromSupabase() {
-            if (isOnline && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
-                const { data, error } = await supabase
-                    .from('products')
-                    .select('*')
-                    .eq('workspace_id', workspaceId)
-                    .eq('is_deleted', false)
-
-                if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
-                    return
-                }
-
-                if (data && !error) {
-                    await db.transaction('rw', db.products, async () => {
-                        const remoteIds = new Set(data.map(d => d.id))
-                        const localItems = await db.products.where('workspaceId').equals(workspaceId).toArray()
-
-                        // Delete local items that are 'synced' but missing from server
-                        for (const local of localItems) {
-                            if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
-                                await db.products.delete(local.id)
-                            }
-                        }
-
-                        for (const remoteItem of data) {
-                            const localItem = toCamelCase(remoteItem as any) as unknown as Product
-                            localItem.syncStatus = 'synced'
-                            localItem.lastSyncedAt = new Date().toISOString()
-                            await db.products.put(localItem)
-                        }
-                    })
-
-                    await syncProductBarcodeCachesForWorkspace(workspaceId)
-
-                    for (const remoteItem of data) {
-                        const localItem = toCamelCase(remoteItem as any) as unknown as Product
-                        await setProductInventoryFromLegacyInput({
-                            workspaceId,
-                            productId: localItem.id,
-                            storageId: localItem.storageId ?? null,
-                            quantity: Number(localItem.quantity) || 0,
-                            timestamp: localItem.updatedAt,
-                            syncSource: 'remote',
-                            skipRemoteSync: true
-                        })
-                    }
-                }
-            }
+        if (!enabled || !syncRemote || !isOnline || !workspaceId || !shouldUseCloudBusinessData(workspaceId)) {
+            return
         }
-        fetchFromSupabase()
-    }, [isOnline, workspaceId])
+
+        void fetchTableFromSupabase('products', db.products, workspaceId)
+            .then(() => syncBarcodeCache ? syncProductBarcodeCachesForWorkspace(workspaceId) : undefined)
+            .catch((error) => {
+                console.error('[Products] Failed to hydrate products:', error)
+            })
+    }, [enabled, isOnline, syncBarcodeCache, syncRemote, workspaceId])
+
+    return products ?? []
+}
+
+export function useProductsByIds(workspaceId: string | undefined, productIds: string[]) {
+    const productIdKey = productIds.join('|')
+
+    const products = useLiveQuery(
+        async () => {
+            if (!workspaceId || productIds.length === 0) {
+                return []
+            }
+
+            const rows = await db.products.bulkGet(productIds)
+            return rows.filter((product): product is Product =>
+                !!product && product.workspaceId === workspaceId && !product.isDeleted
+            )
+        },
+        [workspaceId, productIdKey]
+    )
 
     return products ?? []
 }
@@ -674,11 +633,17 @@ export async function deleteProduct(id: string): Promise<void> {
     await deleteInventoryForProduct(id, now)
 }
 
+interface UseProductBarcodeTableOptions {
+    syncProductCache?: boolean
+}
+
 function useProductBarcodeTable(
     workspaceId: string | undefined,
-    query: () => Promise<ProductBarcode[]>
+    query: () => Promise<ProductBarcode[]>,
+    options: UseProductBarcodeTableOptions = {}
 ) {
     const online = useNetworkStatus()
+    const syncProductCache = options.syncProductCache ?? true
 
     const rows = useLiveQuery(
         () => query().then(sortProductBarcodes),
@@ -691,18 +656,22 @@ function useProductBarcodeTable(
         }
 
         void fetchTableFromSupabase('product_barcodes', db.product_barcodes, workspaceId)
-            .then(() => syncProductBarcodeCachesForWorkspace(workspaceId))
-    }, [online, workspaceId])
+            .then(() => syncProductCache ? syncProductBarcodeCachesForWorkspace(workspaceId) : undefined)
+    }, [online, syncProductCache, workspaceId])
 
     return rows ?? []
 }
 
-export function useWorkspaceProductBarcodes(workspaceId: string | undefined) {
+export function useWorkspaceProductBarcodes(
+    workspaceId: string | undefined,
+    options: UseProductBarcodeTableOptions = {}
+) {
     return useProductBarcodeTable(
         workspaceId,
         () => workspaceId
             ? db.product_barcodes.where('workspaceId').equals(workspaceId).and((row) => !row.isDeleted).toArray()
-            : Promise.resolve([])
+            : Promise.resolve([]),
+        options
     )
 }
 
@@ -1170,11 +1139,31 @@ export function useCategoryDiscounts(workspaceId: string | undefined) {
     return useDiscountTable<CategoryDiscount>(workspaceId, 'category_discounts', db.category_discounts)
 }
 
-export function useActiveDiscountMap(workspaceId: string | undefined) {
-    const products = useProducts(workspaceId)
-    const inventory = useInventory(workspaceId)
+export interface UseActiveDiscountMapOptions {
+    products?: Product[]
+    inventoryRows?: Inventory[]
+    syncRemote?: boolean
+    storageId?: string
+}
+
+export function useActiveDiscountMap(workspaceId: string | undefined, options: UseActiveDiscountMapOptions = {}) {
+    const hasProductOverride = options.products !== undefined
+    const hasInventoryOverride = options.inventoryRows !== undefined
+    const syncRemote = options.syncRemote ?? true
+
+    const localProducts = useProducts(workspaceId, {
+        enabled: !hasProductOverride,
+        syncRemote: syncRemote && !hasProductOverride
+    })
+    const localInventory = useInventory(workspaceId, {
+        enabled: !hasInventoryOverride,
+        storageId: options.storageId,
+        syncRemote: syncRemote && !hasInventoryOverride
+    })
     const productDiscounts = useProductDiscounts(workspaceId)
     const categoryDiscounts = useCategoryDiscounts(workspaceId)
+    const products = options.products ?? localProducts
+    const inventory = options.inventoryRows ?? localInventory
 
     return useMemo<Map<string, ResolvedActiveDiscount>>(() => resolveActiveDiscountMap({
         products,
@@ -2360,40 +2349,14 @@ export function useStorages(workspaceId: string | undefined) {
     )
 
     useEffect(() => {
-        async function fetchFromSupabase() {
-            if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
-                const { data, error } = await supabase
-                    .from('storages')
-                    .select('*')
-                    .eq('workspace_id', workspaceId)
-                    .eq('is_deleted', false)
-
-                if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
-                    return
-                }
-
-                if (data && !error) {
-                    await db.transaction('rw', db.storages, async () => {
-                        const remoteIds = new Set(data.map(d => d.id))
-                        const localItems = await db.storages.where('workspaceId').equals(workspaceId).toArray()
-
-                        for (const local of localItems) {
-                            if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
-                                await db.storages.delete(local.id)
-                            }
-                        }
-
-                        for (const remoteItem of data) {
-                            const localItem = normalizeStorageRecord(toCamelCase(remoteItem as any) as unknown as Storage)
-                            localItem.syncStatus = 'synced'
-                            localItem.lastSyncedAt = new Date().toISOString()
-                            await db.storages.put(localItem)
-                        }
-                    })
-                }
-            }
+        if (!online || !workspaceId || !shouldUseCloudBusinessData(workspaceId)) {
+            return
         }
-        fetchFromSupabase()
+
+        void fetchTableFromSupabase('storages', db.storages, workspaceId)
+            .catch((error) => {
+                console.error('[Storages] Failed to hydrate storages:', error)
+            })
     }, [online, workspaceId])
 
     return storages ?? []
