@@ -7,6 +7,14 @@
     "contactAdmin": "Contact an Admin",
     "additionalInfo": "If you believe this is an error, please reach out to your workspace administrator."
   },
+  "subscriptionExpiryWarning": {
+    "title": "Subscription expiring soon",
+    "description": "Your subscription is expiring in {{count}} days. Please renew it to keep using this workspace without interruption.",
+    "expiresOn": "Expires on {{date}}",
+    "acknowledge": "Got it",
+    "indicatorShort": "{{count}}d left",
+    "indicatorTooltip": "Subscription expires in {{count}} days on {{date}}"
+  },
   "notifications": {
     "tabs": {
       "all": "All",

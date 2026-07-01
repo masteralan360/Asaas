@@ -5,6 +5,7 @@ import { WorkspaceProvider } from "@/workspace";
 import { WorkspaceWarmup } from "@/workspace/WorkspaceWarmup";
 import { Layout, Toaster, TitleBar, PatchNoteModal, PostSaveInvoiceDialog } from "@/ui/components";
 import { DeviceTokenBootstrap } from "@/ui/components/DeviceTokenBootstrap";
+import { SubscriptionExpiryWarningModal } from "@/ui/components/SubscriptionExpiryWarningModal";
 import { lazy, Suspense, useEffect, useCallback, useState } from "react";
 import { usePatchNotes } from "@/hooks/usePatchNotes";
 import { RotateCw } from "lucide-react";
@@ -903,6 +904,7 @@ function App() {
               <WorkspaceWarmup />
               <DeepLinkHandler />
               <UsbBackupStartupValidator />
+              <SubscriptionExpiryWarningModal />
               <FaviconHandler />
               <AutoSyncOverlay />
               {!isMobile() && <TitleBar />}

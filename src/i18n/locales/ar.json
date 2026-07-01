@@ -7,6 +7,14 @@
     "contactAdmin": "الاتصال بالمسؤول",
     "additionalInfo": "إذا كنت تعتقد أن هذا خطأ، يرجى التواصل مع مسؤول مساحة العمل."
   },
+  "subscriptionExpiryWarning": {
+    "title": "الاشتراك على وشك الانتهاء",
+    "description": "سينتهي اشتراكك خلال {{count}} أيام. يرجى تجديده لمواصلة استخدام مساحة العمل دون انقطاع.",
+    "expiresOn": "ينتهي في {{date}}",
+    "acknowledge": "فهمت",
+    "indicatorShort": "باقي {{count}} يوم",
+    "indicatorTooltip": "سينتهي الاشتراك خلال {{count}} أيام في {{date}}"
+  },
   "notifications": {
     "tabs": {
       "all": "الكل",

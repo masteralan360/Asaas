@@ -1,22 +1,26 @@
 import { useState, useEffect } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Minus, Square, X, Sun, Moon, ArrowUpCircle, RotateCw, GitBranch, Bot } from 'lucide-react'
+import { Minus, Square, X, Sun, Moon, ArrowUpCircle, RotateCw, GitBranch, Bot, AlertTriangle } from 'lucide-react'
 import { useWorkspace } from '@/workspace/WorkspaceContext'
 import { useTheme } from '@/ui/components/theme-provider'
 import { useTranslation } from 'react-i18next'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { GlobalSearch } from './GlobalSearch'
 import { NotificationCenter } from './NotificationCenter'
 import { ThemeAwareTitleLogo } from './ThemeAwareTitleLogo'
+import { useSubscriptionExpiryWarning } from '@/hooks/useSubscriptionExpiryWarning'
 
 
 export function TitleBar() {
     const [isMaximized, setIsMaximized] = useState(false)
-    const { workspaceName, branchInfo, pendingUpdate, isFullscreen } = useWorkspace()
+    const { workspaceName, branchInfo, pendingUpdate, isFullscreen, features, isDemoMode } = useWorkspace()
     const { theme, setTheme, style } = useTheme()
     const { t } = useTranslation()
     // @ts-ignore
     const isTauri = !!window.__TAURI_INTERNALS__
+    const subscriptionWarning = useSubscriptionExpiryWarning(
+        isTauri && !isDemoMode ? features.subscription_expires_at : null
+    )
 
     useEffect(() => {
         if (!isTauri) return
@@ -136,6 +140,30 @@ export function TitleBar() {
 
             {/* Right: Window Controls */}
             <div data-tauri-drag-region className="flex items-center justify-end gap-1 w-1/3">
+                {subscriptionWarning && (
+                    <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('open-subscription-expiry-warning'))}
+                        className="mr-2 flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-400/15 px-2.5 py-1.5 text-amber-700 transition-colors hover:bg-amber-400/25 dark:text-amber-300"
+                        title={t('subscriptionExpiryWarning.indicatorTooltip', {
+                            count: subscriptionWarning.daysRemaining,
+                            date: formatDate(subscriptionWarning.expiresAt),
+                            defaultValue: 'Subscription expires in {{count}} days on {{date}}'
+                        })}
+                        aria-label={t('subscriptionExpiryWarning.indicatorTooltip', {
+                            count: subscriptionWarning.daysRemaining,
+                            date: formatDate(subscriptionWarning.expiresAt),
+                            defaultValue: 'Subscription expires in {{count}} days on {{date}}'
+                        })}
+                    >
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        <span className="text-xs font-semibold">
+                            {t('subscriptionExpiryWarning.indicatorShort', {
+                                count: subscriptionWarning.daysRemaining,
+                                defaultValue: '{{count}}d left'
+                            })}
+                        </span>
+                    </button>
+                )}
                 {pendingUpdate && (
                     <button
                         onClick={() => {
