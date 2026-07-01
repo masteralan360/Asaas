@@ -1,5 +1,6 @@
 import { db } from './database'
 import type { Product, ProductBarcode } from './models'
+import { normalizeBarcodeScannerText } from '@/lib/barcodeScanner'
 
 export class DuplicateProductBarcodeError extends Error {
     readonly code = 'PRODUCT_BARCODE_DUPLICATE'
@@ -11,7 +12,7 @@ export class DuplicateProductBarcodeError extends Error {
 }
 
 export function normalizeProductBarcodeValue(value: string): string {
-    return value.trim()
+    return normalizeBarcodeScannerText(value)
 }
 
 export function normalizeProductBarcodeLabel(value?: string | null): string | undefined {

@@ -4,8 +4,12 @@ import { BarcodeScanner } from 'react-barcode-scanner'
 import 'react-barcode-scanner/polyfill'
 import {
     BARCODE_SCANNER_ACTIVE_FAST_KEY_COUNT,
+    BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS,
     BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS,
     BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS,
+    getBarcodeScannerEventKey,
+    isBarcodeScannerIgnoredKey,
+    isBarcodeScannerTerminatorKey,
     normalizeBarcodeDigits,
     normalizeBarcodeScannerText
 } from '@/lib/barcodeScanner'
@@ -62,6 +66,7 @@ export function BarcodeScannerModal({
         return (localStorage.getItem('pos_barcode_scanner_mode') as 'camera' | 'device') || 'camera'
     })
     const [deviceInput, setDeviceInput] = useState('')
+    const deviceInputValueRef = useRef('')
     const deviceInputRef = useRef<HTMLInputElement>(null)
     const deviceScanTimeoutRef = useRef<number | null>(null)
     const lastKeyTimeRef = useRef(0)
@@ -79,6 +84,10 @@ export function BarcodeScannerModal({
         if (typeof localStorage === 'undefined') return
         localStorage.setItem('pos_barcode_scanner_mode', scannerMode)
     }, [scannerMode])
+
+    useEffect(() => {
+        deviceInputValueRef.current = deviceInput
+    }, [deviceInput])
 
     useEffect(() => {
         if (!open) return
@@ -190,6 +199,7 @@ export function BarcodeScannerModal({
         const trimmed = normalizeBarcodeScannerText(value)
         if (!trimmed) return
         handleBarcodeDetected([{ rawValue: trimmed }], 'device')
+        deviceInputValueRef.current = ''
         setDeviceInput('')
         scannerActiveRef.current = false
         fastKeyCountRef.current = 0
@@ -208,16 +218,39 @@ export function BarcodeScannerModal({
     const registerScannerKeystroke = () => {
         const now = Date.now()
         const delta = now - lastKeyTimeRef.current
+        const wasActive = scannerActiveRef.current
         lastKeyTimeRef.current = now
 
-        if (delta > 0 && delta <= BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS) {
-            fastKeyCountRef.current += 1
-        } else {
+        if (delta <= 0 || delta > (wasActive ? BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS : BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS)) {
             fastKeyCountRef.current = 0
+            scannerActiveRef.current = false
+        } else if (delta <= BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS) {
+            fastKeyCountRef.current += 1
         }
 
         if (fastKeyCountRef.current >= BARCODE_SCANNER_ACTIVE_FAST_KEY_COUNT) {
             scannerActiveRef.current = true
+        }
+    }
+
+    const insertDeviceScannerKey = (input: HTMLInputElement, key: string) => {
+        const currentValue = deviceInputValueRef.current
+        const selectionStart = input.selectionStart ?? currentValue.length
+        const selectionEnd = input.selectionEnd ?? currentValue.length
+        const nextValue = normalizeBarcodeDigits(
+            `${currentValue.slice(0, selectionStart)}${key}${currentValue.slice(selectionEnd)}`
+        )
+        const nextCursor = selectionStart + key.length
+
+        deviceInputValueRef.current = nextValue
+        input.value = nextValue
+        setDeviceInput(nextValue)
+        window.requestAnimationFrame(() => {
+            input.setSelectionRange(nextCursor, nextCursor)
+        })
+
+        if (scannerActiveRef.current && isDeviceScannerAutoEnabled) {
+            scheduleDeviceScan(nextValue)
         }
     }
 
@@ -420,6 +453,7 @@ export function BarcodeScannerModal({
                                 value={deviceInput}
                                 onChange={(e) => {
                                     const nextValue = normalizeBarcodeDigits(e.target.value)
+                                    deviceInputValueRef.current = nextValue
                                     setDeviceInput(nextValue)
                                     if (!nextValue) {
                                         scannerActiveRef.current = false
@@ -431,15 +465,22 @@ export function BarcodeScannerModal({
                                     }
                                 }}
                                 onKeyDown={(e) => {
-                                    if (e.key === 'Enter' || e.key === 'Tab') {
+                                    if (isBarcodeScannerTerminatorKey(e.key)) {
                                         e.preventDefault()
-                                        commitDeviceScan(deviceInput)
+                                        commitDeviceScan(deviceInputValueRef.current)
                                         return
                                     }
 
-                                    if (e.key.length === 1) {
-                                        if (isDeviceScannerAutoEnabled) {
+                                    if (isBarcodeScannerIgnoredKey(e.key)) {
+                                        return
+                                    }
+
+                                    if (isDeviceScannerAutoEnabled) {
+                                        const scannerKey = getBarcodeScannerEventKey(e.nativeEvent)
+                                        if (scannerKey.length === 1) {
                                             registerScannerKeystroke()
+                                            e.preventDefault()
+                                            insertDeviceScannerKey(e.currentTarget, scannerKey)
                                         }
                                     }
                                 }}

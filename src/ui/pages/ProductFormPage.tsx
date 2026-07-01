@@ -95,6 +95,7 @@ const PRODUCT_SKU_SCANNER_ENABLED_KEY = 'products_sku_scanner_enabled'
 const PRODUCT_BARCODE_SCANNER_ENABLED_KEY = 'products_barcode_scanner_enabled'
 const PRODUCT_SKU_HID_DEVICE_KEY = 'products_sku_hid_device_id'
 const PRODUCT_BARCODE_HID_DEVICE_KEY = 'products_barcode_hid_device_id'
+const PRODUCT_FORM_SCANNER_IDLE_COMMIT_DELAY_MS = 1200
 
 type ProductFormMode = 'create' | 'edit' | 'clone'
 
@@ -896,6 +897,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                     inactiveLabel={scannerDisabledLabel}
                                                     deviceStorageKey={PRODUCT_SKU_HID_DEVICE_KEY}
                                                     targetInputRef={skuInputRef}
+                                                    idleCommitDelayMs={PRODUCT_FORM_SCANNER_IDLE_COMMIT_DELAY_MS}
                                                 />
                                             )}
                                         </div>
@@ -1069,6 +1071,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                         inactiveLabel={scannerDisabledLabel}
                                         deviceStorageKey={PRODUCT_BARCODE_HID_DEVICE_KEY}
                                         targetInputRef={newBarcodeInputRef}
+                                        idleCommitDelayMs={PRODUCT_FORM_SCANNER_IDLE_COMMIT_DELAY_MS}
                                     />
                                 )}
                             </div>
@@ -1171,7 +1174,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                 <Input
                                                     ref={newBarcodeInputRef}
                                                     value={newBarcodeValue}
-                                                    onChange={(event) => setNewBarcodeValue(normalizeBarcodeDigits(event.target.value))}
+                                                    onChange={(event) => setNewBarcodeValue(normalizeBarcodeScannerText(event.target.value))}
                                                     onKeyDown={(event) => {
                                                         if (event.key === 'Enter') {
                                                             event.preventDefault()

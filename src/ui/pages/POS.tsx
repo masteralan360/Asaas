@@ -30,10 +30,17 @@ import { useWorkspacePermissions } from '@/permissions'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import {
     BARCODE_SCANNER_ACTIVE_FAST_KEY_COUNT,
+    BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS,
     BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS,
     BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS,
-    normalizeBarcodeScannerKey,
-    normalizeBarcodeScannerText
+    BARCODE_SCANNER_STALE_RESET_MS,
+    createBarcodeScannerCodeIndex,
+    getBarcodeScannerEventKey,
+    hasBarcodeScannerKnownPrefix,
+    isBarcodeScannerIgnoredKey,
+    isBarcodeScannerTerminatorKey,
+    normalizeBarcodeScannerText,
+    shouldCommitBarcodeScannerValue
 } from '@/lib/barcodeScanner'
 import { ExchangeRateResult } from '@/lib/exchangeRate'
 import { buildCheckoutRatesSnapshot, getPrimaryCheckoutRate } from '@/lib/currencyRates'
@@ -131,6 +138,19 @@ function isLoanRegistrationData(value: unknown): value is LoanRegistrationData {
 
 function buildCartItemKey(productId: string, storageId?: string | null) {
     return `${productId}:${storageId ?? ''}`
+}
+
+function addBarcodeLookupCode(map: Map<string, string>, code: string | undefined | null, productId: string, prefer = false) {
+    const normalized = normalizeBarcodeScannerText(code ?? '')
+    if (!normalized) {
+        return
+    }
+
+    for (const key of new Set([normalized, normalized.toLowerCase()])) {
+        if (prefer || !map.has(key)) {
+            map.set(key, productId)
+        }
+    }
 }
 
 function getCartBasePrice(item: CartItem) {
@@ -255,6 +275,16 @@ function createEditableScanSnapshot(element: EditableScanElement): EditableScanS
     }
 }
 
+function setNativeEditableValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) {
+    const valueSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), 'value')?.set
+
+    if (valueSetter) {
+        valueSetter.call(element, value)
+    } else {
+        element.value = value
+    }
+}
+
 function restoreEditableScanSnapshot(snapshot: EditableScanSnapshot | null) {
     if (!snapshot) {
         return
@@ -263,7 +293,8 @@ function restoreEditableScanSnapshot(snapshot: EditableScanSnapshot | null) {
     const { element } = snapshot
 
     if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-        element.value = snapshot.value ?? ''
+        setNativeEditableValue(element, snapshot.value ?? '')
+        element.dispatchEvent(new Event('input', { bubbles: true }))
         if (
             typeof snapshot.selectionStart === 'number'
             && typeof snapshot.selectionEnd === 'number'
@@ -276,12 +307,14 @@ function restoreEditableScanSnapshot(snapshot: EditableScanSnapshot | null) {
     }
 
     if (element instanceof HTMLSelectElement) {
-        element.value = snapshot.value ?? ''
+        setNativeEditableValue(element, snapshot.value ?? '')
+        element.dispatchEvent(new Event('change', { bubbles: true }))
         element.blur()
         return
     }
 
     element.textContent = snapshot.textContent ?? ''
+    element.dispatchEvent(new Event('input', { bubbles: true }))
     element.blur()
 }
 
@@ -647,12 +680,31 @@ export function POS() {
     const barcodeMap = useMemo(() => {
         const map = new Map<string, string>()
         for (const barcodeRow of productBarcodes) {
-            if (!map.has(barcodeRow.barcode) || barcodeRow.isPrimary) {
-                map.set(barcodeRow.barcode, barcodeRow.productId)
+            addBarcodeLookupCode(map, barcodeRow.barcode, barcodeRow.productId, barcodeRow.isPrimary)
+        }
+        for (const product of products) {
+            addBarcodeLookupCode(map, product.barcode, product.id)
+            for (const barcode of product.barcodes ?? []) {
+                addBarcodeLookupCode(map, barcode, product.id)
             }
         }
         return map
-    }, [productBarcodes])
+    }, [productBarcodes, products])
+
+    const knownScannerCodeIndex = useMemo(() => {
+        const codes: string[] = []
+
+        for (const barcodeRow of productBarcodes) {
+            codes.push(barcodeRow.barcode)
+        }
+
+        for (const product of products) {
+            codes.push(product.sku, product.barcode ?? '')
+            codes.push(...(product.barcodes ?? []))
+        }
+
+        return createBarcodeScannerCodeIndex(codes)
+    }, [productBarcodes, products])
 
     const getDisplayImageUrl = (url?: string) => {
         if (!url) return '';
@@ -1195,13 +1247,13 @@ export function POS() {
 
     const handleSkuSubmit = (e: React.FormEvent) => {
         e.preventDefault()
-        const normalizedInput = skuInput.trim()
+        const normalizedInput = normalizeBarcodeScannerText(skuInput)
         const term = normalizedInput.toLowerCase()
         if (!normalizedInput) {
             return
         }
 
-        const barcodeProductId = barcodeMap.get(normalizedInput)
+        const barcodeProductId = barcodeMap.get(normalizedInput) ?? barcodeMap.get(term)
         const candidates = barcodeProductId
             ? products.filter((product) => product.id === barcodeProductId)
             : products.filter((product) => product.sku.toLowerCase() === term)
@@ -1251,7 +1303,7 @@ export function POS() {
         lastScannedTime.current = now
 
         const term = text.toLowerCase()
-        const barcodeProductId = barcodeMap.get(text)
+        const barcodeProductId = barcodeMap.get(text) ?? barcodeMap.get(term)
         const candidates = barcodeProductId
             ? products.filter((product) => product.id === barcodeProductId)
             : products.filter((product) => product.sku.toLowerCase() === term)
@@ -1281,24 +1333,36 @@ export function POS() {
     }, [isCameraScannerAutoEnabled, isDeviceScannerAutoEnabled, scanDelay, barcodeMap, products, addToCart, t, toast, selectedStorageId, storages, hapticTrigger])
 
     useEffect(() => {
-        if (!isDeviceScannerAutoEnabled) {
-            deviceScanBuffer.current = ''
-            deviceScanActive.current = false
-            deviceScanFastCount.current = 0
-            deviceScanLastTime.current = 0
-            deviceScanEditableSnapshot.current = null
+        const clearDeviceScanTimeout = () => {
             if (deviceScanTimeout.current) {
                 window.clearTimeout(deviceScanTimeout.current)
+                deviceScanTimeout.current = null
             }
-            return
         }
 
         const resetDeviceScanState = () => {
+            clearDeviceScanTimeout()
             deviceScanBuffer.current = ''
             deviceScanActive.current = false
             deviceScanFastCount.current = 0
             deviceScanLastTime.current = 0
             deviceScanEditableSnapshot.current = null
+        }
+
+        if (
+            !isDeviceScannerAutoEnabled
+            || isSkuModalOpen
+            || isBarcodeModalOpen
+            || isLoanRegistrationModalOpen
+            || editingPriceItemKey
+        ) {
+            resetDeviceScanState()
+            return
+        }
+
+        const scheduleDeviceScanReset = () => {
+            clearDeviceScanTimeout()
+            deviceScanTimeout.current = window.setTimeout(resetDeviceScanState, BARCODE_SCANNER_STALE_RESET_MS)
         }
 
         const activateDeviceScannerCapture = () => {
@@ -1310,40 +1374,66 @@ export function POS() {
             restoreEditableScanSnapshot(deviceScanEditableSnapshot.current)
         }
 
-        const commitDeviceScan = () => {
+        const commitDeviceScan = (hasTerminator = false) => {
             if (!deviceScanBuffer.current) return
             const payload = normalizeBarcodeScannerText(deviceScanBuffer.current)
-            resetDeviceScanState()
             if (!payload) {
+                resetDeviceScanState()
                 return
             }
+
+            const shouldCommit = shouldCommitBarcodeScannerValue(payload, knownScannerCodeIndex, {
+                hasTerminator,
+                allowUnknown: hasTerminator
+            })
+
+            if (!shouldCommit) {
+                if (!hasTerminator && hasBarcodeScannerKnownPrefix(payload, knownScannerCodeIndex)) {
+                    scheduleDeviceScanReset()
+                    return
+                }
+
+                resetDeviceScanState()
+                return
+            }
+
+            resetDeviceScanState()
             handleBarcodeDetected([{ rawValue: payload }], 'device')
         }
 
         const onKeyDown = (event: KeyboardEvent) => {
-            if (!isDeviceScannerAutoEnabled) return
-            if (isLoanRegistrationModalOpen) return
             if (event.ctrlKey || event.metaKey || event.altKey) return
-            if (event.key === 'Shift' || event.key === 'CapsLock' || event.key === 'Escape') return
+            if (isBarcodeScannerIgnoredKey(event.key)) return
 
-            if (event.key === 'Enter' || event.key === 'Tab') {
-                if (deviceScanBuffer.current) {
+            if (isBarcodeScannerTerminatorKey(event.key)) {
+                const isLikelyScan = deviceScanActive.current
+                    || shouldCommitBarcodeScannerValue(deviceScanBuffer.current, knownScannerCodeIndex, {
+                        hasTerminator: true,
+                        allowUnknown: false
+                    })
+
+                if (deviceScanBuffer.current && isLikelyScan) {
                     event.preventDefault()
                     event.stopPropagation()
                     restoreEditableScanSnapshot(deviceScanEditableSnapshot.current)
-                    commitDeviceScan()
+                    commitDeviceScan(true)
                 }
                 return
             }
 
-            if (event.key.length !== 1) return
-            const normalizedKey = normalizeBarcodeScannerKey(event.key)
+            const normalizedKey = getBarcodeScannerEventKey(event)
             if (normalizedKey.length !== 1) return
 
             const now = Date.now()
             const delta = now - deviceScanLastTime.current
+            const wasActive = deviceScanActive.current
 
-            if (!deviceScanBuffer.current || delta <= 0 || delta > BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS) {
+            if (
+                !deviceScanBuffer.current
+                || delta <= 0
+                || delta > (wasActive ? BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS : BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS)
+            ) {
+                clearDeviceScanTimeout()
                 const focusedEditableElement = getFocusedEditableScanElement()
                 deviceScanBuffer.current = ''
                 deviceScanActive.current = false
@@ -1357,6 +1447,8 @@ export function POS() {
 
             if (delta > 0 && delta <= BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS) {
                 deviceScanFastCount.current += 1
+            } else if (!wasActive) {
+                deviceScanFastCount.current = 0
             }
 
             deviceScanBuffer.current += normalizedKey
@@ -1368,11 +1460,9 @@ export function POS() {
             if (deviceScanActive.current) {
                 event.preventDefault()
                 event.stopPropagation()
-                if (deviceScanTimeout.current) {
-                    window.clearTimeout(deviceScanTimeout.current)
-                }
+                clearDeviceScanTimeout()
                 deviceScanTimeout.current = window.setTimeout(() => {
-                    commitDeviceScan()
+                    commitDeviceScan(false)
                 }, BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS)
             }
         }
@@ -1380,12 +1470,17 @@ export function POS() {
         window.addEventListener('keydown', onKeyDown, true)
         return () => {
             window.removeEventListener('keydown', onKeyDown, true)
-            if (deviceScanTimeout.current) {
-                window.clearTimeout(deviceScanTimeout.current)
-                deviceScanTimeout.current = null
-            }
+            clearDeviceScanTimeout()
         }
-    }, [isDeviceScannerAutoEnabled, handleBarcodeDetected])
+    }, [
+        editingPriceItemKey,
+        handleBarcodeDetected,
+        isBarcodeModalOpen,
+        isDeviceScannerAutoEnabled,
+        isLoanRegistrationModalOpen,
+        isSkuModalOpen,
+        knownScannerCodeIndex
+    ])
 
     const handleHoldSale = () => {
         if (cart.length === 0) return

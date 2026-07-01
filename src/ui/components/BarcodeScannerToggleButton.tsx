@@ -3,9 +3,12 @@ import { ScanBarcode } from 'lucide-react'
 
 import {
     BARCODE_SCANNER_ACTIVE_FAST_KEY_COUNT,
+    BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS,
     BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS,
     BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS,
-    normalizeBarcodeScannerKey,
+    getBarcodeScannerEventKey,
+    isBarcodeScannerIgnoredKey,
+    isBarcodeScannerTerminatorKey,
     normalizeBarcodeScannerText
 } from '@/lib/barcodeScanner'
 import { cn } from '@/lib/utils'
@@ -25,9 +28,20 @@ interface BarcodeScannerToggleButtonProps {
     className?: string
     deviceStorageKey?: string
     targetInputRef?: RefObject<HTMLInputElement | null>
+    idleCommitDelayMs?: number
 }
 
-function getFocusedEditableElement() {
+type EditableScannerElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLElement
+
+type EditableScannerSnapshot = {
+    element: EditableScannerElement
+    value?: string
+    selectionStart?: number | null
+    selectionEnd?: number | null
+    textContent?: string | null
+}
+
+function getFocusedEditableElement(): EditableScannerElement | null {
     const activeElement = document.activeElement
     if (activeElement instanceof HTMLInputElement) {
         return activeElement
@@ -48,6 +62,72 @@ function getFocusedEditableElement() {
     return null
 }
 
+function createEditableSnapshot(element: EditableScannerElement): EditableScannerSnapshot {
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+        return {
+            element,
+            value: element.value,
+            selectionStart: element.selectionStart,
+            selectionEnd: element.selectionEnd
+        }
+    }
+
+    if (element instanceof HTMLSelectElement) {
+        return {
+            element,
+            value: element.value
+        }
+    }
+
+    return {
+        element,
+        textContent: element.textContent
+    }
+}
+
+function setNativeEditableValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) {
+    const valueSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), 'value')?.set
+
+    if (valueSetter) {
+        valueSetter.call(element, value)
+    } else {
+        element.value = value
+    }
+}
+
+function restoreEditableSnapshot(snapshot: EditableScannerSnapshot | null) {
+    if (!snapshot) {
+        return
+    }
+
+    const { element } = snapshot
+
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+        setNativeEditableValue(element, snapshot.value ?? '')
+        element.dispatchEvent(new Event('input', { bubbles: true }))
+        if (
+            typeof snapshot.selectionStart === 'number'
+            && typeof snapshot.selectionEnd === 'number'
+            && typeof element.setSelectionRange === 'function'
+        ) {
+            element.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd)
+        }
+        element.blur()
+        return
+    }
+
+    if (element instanceof HTMLSelectElement) {
+        setNativeEditableValue(element, snapshot.value ?? '')
+        element.dispatchEvent(new Event('change', { bubbles: true }))
+        element.blur()
+        return
+    }
+
+    element.textContent = snapshot.textContent ?? ''
+    element.dispatchEvent(new Event('input', { bubbles: true }))
+    element.blur()
+}
+
 function buildHidDeviceId(device: any) {
     const vendorId = typeof device?.vendorId === 'number' ? device.vendorId : 0
     const productId = typeof device?.productId === 'number' ? device.productId : 0
@@ -65,7 +145,8 @@ export function BarcodeScannerToggleButton({
     disabled = false,
     className,
     deviceStorageKey,
-    targetInputRef
+    targetInputRef,
+    idleCommitDelayMs = BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS
 }: BarcodeScannerToggleButtonProps) {
     const onScanRef = useRef(onScan)
     const scanBufferRef = useRef('')
@@ -77,30 +158,46 @@ export function BarcodeScannerToggleButton({
     const lastScannedTimeRef = useRef(0)
     const longPressTimerRef = useRef<number | null>(null)
     const suppressClickRef = useRef(false)
+    const editableSnapshotRef = useRef<EditableScannerSnapshot | null>(null)
 
     useEffect(() => {
         onScanRef.current = onScan
     }, [onScan])
 
     useEffect(() => {
-        if (!enabled || disabled) {
-            scanBufferRef.current = ''
-            scannerActiveRef.current = false
-            fastKeyCountRef.current = 0
-            lastKeyTimeRef.current = 0
+        const clearScanTimeout = () => {
             if (scanTimeoutRef.current) {
                 window.clearTimeout(scanTimeoutRef.current)
                 scanTimeoutRef.current = null
             }
-            return
         }
 
-        const commitScan = () => {
-            const payload = normalizeBarcodeScannerText(scanBufferRef.current)
+        const resetScanState = () => {
+            clearScanTimeout()
             scanBufferRef.current = ''
             scannerActiveRef.current = false
             fastKeyCountRef.current = 0
             lastKeyTimeRef.current = 0
+            editableSnapshotRef.current = null
+        }
+
+        if (!enabled || disabled) {
+            resetScanState()
+            return
+        }
+
+        const activateScannerCapture = () => {
+            if (scannerActiveRef.current) {
+                return
+            }
+
+            scannerActiveRef.current = true
+            restoreEditableSnapshot(editableSnapshotRef.current)
+        }
+
+        const commitScan = () => {
+            const payload = normalizeBarcodeScannerText(scanBufferRef.current)
+            resetScanState()
 
             if (!payload) {
                 return
@@ -121,72 +218,70 @@ export function BarcodeScannerToggleButton({
 
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.ctrlKey || event.metaKey || event.altKey) return
-            if (event.key === 'Shift' || event.key === 'CapsLock' || event.key === 'Escape') return
+            if (isBarcodeScannerIgnoredKey(event.key)) return
 
-            const focusedEditableElement = getFocusedEditableElement()
-
-            if (event.key === 'Enter' || event.key === 'Tab') {
-                if (scanBufferRef.current) {
+            if (isBarcodeScannerTerminatorKey(event.key)) {
+                if (scannerActiveRef.current && scanBufferRef.current) {
                     event.preventDefault()
                     event.stopPropagation()
-                    if (focusedEditableElement) {
-                        focusedEditableElement.blur()
-                    }
+                    restoreEditableSnapshot(editableSnapshotRef.current)
                     commitScan()
                 }
                 return
             }
 
-            if (event.key.length !== 1) {
-                return
-            }
-
-            const normalizedKey = normalizeBarcodeScannerKey(event.key)
+            const normalizedKey = getBarcodeScannerEventKey(event)
             if (normalizedKey.length !== 1) {
                 return
             }
 
             const now = Date.now()
             const delta = now - lastKeyTimeRef.current
+            const wasActive = scannerActiveRef.current
             lastKeyTimeRef.current = now
 
-            if (delta > 0 && delta <= BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS) {
-                fastKeyCountRef.current += 1
-            } else {
+            if (
+                !scanBufferRef.current
+                || delta <= 0
+                || delta > (wasActive ? BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS : BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS)
+            ) {
+                clearScanTimeout()
+                const focusedEditableElement = getFocusedEditableElement()
                 fastKeyCountRef.current = 0
                 scanBufferRef.current = ''
                 scannerActiveRef.current = false
+                editableSnapshotRef.current = focusedEditableElement
+                    ? createEditableSnapshot(focusedEditableElement)
+                    : null
+            }
+
+            if (delta > 0 && delta <= BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS) {
+                fastKeyCountRef.current += 1
+            } else if (!wasActive) {
+                fastKeyCountRef.current = 0
             }
 
             scanBufferRef.current += normalizedKey
 
             if (fastKeyCountRef.current >= BARCODE_SCANNER_ACTIVE_FAST_KEY_COUNT) {
-                scannerActiveRef.current = true
+                activateScannerCapture()
             }
 
             if (scannerActiveRef.current) {
-                if (focusedEditableElement) {
-                    focusedEditableElement.blur()
-                }
                 event.preventDefault()
                 event.stopPropagation()
 
-                if (scanTimeoutRef.current) {
-                    window.clearTimeout(scanTimeoutRef.current)
-                }
-                scanTimeoutRef.current = window.setTimeout(commitScan, BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS)
+                clearScanTimeout()
+                scanTimeoutRef.current = window.setTimeout(commitScan, idleCommitDelayMs)
             }
         }
 
         window.addEventListener('keydown', handleKeyDown, true)
         return () => {
             window.removeEventListener('keydown', handleKeyDown, true)
-            if (scanTimeoutRef.current) {
-                window.clearTimeout(scanTimeoutRef.current)
-                scanTimeoutRef.current = null
-            }
+            clearScanTimeout()
         }
-    }, [disabled, enabled, targetInputRef])
+    }, [disabled, enabled, idleCommitDelayMs, targetInputRef])
 
     useEffect(() => {
         return () => {
