@@ -14,6 +14,7 @@ import { assetManager } from '@/lib/assetManager'
 import { startR2BackupInterval, stopR2BackupInterval } from '@/local-db/sqliteBackup'
 import { platformService } from '@/services/platformService'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
+import { recordTauriStartupVersion } from '@/lib/tauriVersionReporting'
 import { ResourceSyncOverlay } from './p2p/ResourceSyncOverlay'
 import { NotificationCenter } from './NotificationCenter'
 import { ManualRateModals } from './exchange/ManualRateModals'
@@ -137,7 +138,7 @@ function prefetchRoute(href: string) {
 
 export function Layout({ children }: LayoutProps) {
     const [location, setLocation] = useLocation()
-    const { user, signOut } = useAuth()
+    const { user, signOut, session } = useAuth()
     const clinicalRegistryType = useClinicalRegistryType(user?.workspaceId)
     const { hasFeature, hasCapability, workspaceName, isFullscreen, features, activeWorkspace, isLocalMode } = useWorkspace()
     const { hasPermission } = useWorkspacePermissions()
@@ -267,7 +268,18 @@ export function Layout({ children }: LayoutProps) {
         // @ts-ignore
         if (window.__TAURI_INTERNALS__) {
             import('@tauri-apps/api/app').then(({ getVersion }) => {
-                getVersion().then(setVersion).catch(console.error)
+                getVersion()
+                    .then((appVersion) => {
+                        setVersion(appVersion)
+                        if (session?.user?.id === user.id) {
+                            void recordTauriStartupVersion({
+                                userId: user.id,
+                                workspaceId: user.workspaceId,
+                                version: appVersion
+                            })
+                        }
+                    })
+                    .catch(console.error)
             })
         }
 
@@ -290,7 +302,7 @@ export function Layout({ children }: LayoutProps) {
             window.removeEventListener('whatsapp-status-change', handleWhatsAppStatusChange)
             stopR2BackupInterval()
         }
-    }, [isLocalMode, user?.id, user?.workspaceId])
+    }, [isLocalMode, session?.user?.id, user?.id, user?.workspaceId])
 
     useEffect(() => {
         if (
