@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef } from 'react'
-import { Archive, Bell, CheckCheck, ExternalLink, Inbox, Info, Package, ShieldAlert } from 'lucide-react'
+import { Archive, Bell, CheckCheck, ExternalLink, Inbox, Info, Loader2, Package, Settings, ShieldAlert } from 'lucide-react'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { useTranslation } from 'react-i18next'
@@ -12,6 +12,14 @@ import { useTheme } from './theme-provider'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { Button } from './button'
 import { Tabs, TabsList, TabsTrigger } from './tabs'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './dialog'
+import { Label } from './label'
+import { Switch } from './switch'
+import { WORKSPACE_NOTIFICATION_TYPES, type WorkspaceNotificationType } from '@/lib/notificationTypes'
+import {
+    listDisabledWorkspaceNotificationTypes,
+    setWorkspaceNotificationTypeDisabled,
+} from '@/services/notificationSettings'
 import {
     listNotificationInbox,
     markAllNotificationInboxRead,
@@ -168,8 +176,14 @@ export function NotificationCenter() {
     const [items, setItems] = useState<NotificationInboxRecord[]>([])
     const [isSyncing, setIsSyncing] = useState(false)
     const [syncError, setSyncError] = useState<string | null>(null)
+    const [settingsOpen, setSettingsOpen] = useState(false)
+    const [disabledTypes, setDisabledTypes] = useState<Set<WorkspaceNotificationType>>(() => new Set())
+    const [settingsLoading, setSettingsLoading] = useState(false)
+    const [settingsError, setSettingsError] = useState<string | null>(null)
+    const [settingsSavingType, setSettingsSavingType] = useState<WorkspaceNotificationType | null>(null)
     const refreshRequestRef = useRef(0)
     const isLocalMode = user?.workspaceMode === 'local' || user?.workspaceMode === 'demo'
+    const isAdmin = user?.role === 'admin'
     const trackerKey = isLocalMode ? '' : `${user?.id ?? ''}:${user?.workspaceId ?? ''}`
 
     useEffect(() => {
@@ -247,6 +261,28 @@ export function NotificationCenter() {
         setIsSyncing(false)
     }, [applyInboxSnapshot, isLocalMode, user?.id])
 
+    const refreshNotificationSettings = useCallback(async () => {
+        if (!isAdmin || !user?.workspaceId || isLocalMode) {
+            setDisabledTypes(new Set())
+            setSettingsError(null)
+            setSettingsLoading(false)
+            return
+        }
+
+        setSettingsLoading(true)
+        const { data, error } = await listDisabledWorkspaceNotificationTypes(user.workspaceId)
+        if (error) {
+            console.error('[NotificationCenter] Failed to load notification settings:', error)
+            setSettingsError(error.message)
+            setSettingsLoading(false)
+            return
+        }
+
+        setSettingsError(null)
+        setDisabledTypes(new Set(data))
+        setSettingsLoading(false)
+    }, [isAdmin, isLocalMode, user?.workspaceId])
+
     useEffect(() => {
         if (!user?.id || isLocalMode) return
         void refreshInbox()
@@ -275,6 +311,11 @@ export function NotificationCenter() {
             unsubscribeConnection()
         }
     }, [isLocalMode, refreshInbox, sendDesktopNotification, showNotificationToast, user?.id])
+
+    useEffect(() => {
+        if (!settingsOpen) return
+        void refreshNotificationSettings()
+    }, [refreshNotificationSettings, settingsOpen])
 
     const navigateToUrl = useCallback((url: string) => {
         if (/^https?:\/\//i.test(url)) {
@@ -316,6 +357,28 @@ export function NotificationCenter() {
         }
     }, [refreshInbox])
 
+    const handleToggleNotificationType = useCallback(async (notificationType: WorkspaceNotificationType, enabled: boolean) => {
+        if (!user?.workspaceId || settingsSavingType) return
+
+        const previousDisabledTypes = new Set(disabledTypes)
+        const nextDisabledTypes = new Set(disabledTypes)
+        if (enabled) nextDisabledTypes.delete(notificationType)
+        else nextDisabledTypes.add(notificationType)
+
+        setDisabledTypes(nextDisabledTypes)
+        setSettingsError(null)
+        setSettingsSavingType(notificationType)
+
+        const { error } = await setWorkspaceNotificationTypeDisabled(user.workspaceId, notificationType, !enabled)
+        if (error) {
+            console.error('[NotificationCenter] Failed to update notification settings:', error)
+            setDisabledTypes(previousDisabledTypes)
+            setSettingsError(error.message || t('notifications.settings.saveError', { defaultValue: 'Failed to update notification settings' }))
+        }
+
+        setSettingsSavingType(null)
+    }, [disabledTypes, settingsSavingType, t, user?.workspaceId])
+
     const handleOpenNotification = useCallback((item: NotificationInboxRecord, actionUrl?: string) => {
         if (!item.read_at) void handleMarkRead(item, true)
         const targetUrl = actionUrl || readString(item.action_url) || readString(item.payload.route)
@@ -329,6 +392,10 @@ export function NotificationCenter() {
     const archivedItems = useMemo(() => items.filter((item) => Boolean(item.archived_at)), [items])
     const visibleItems = useMemo(() => tab === 'unread' ? unreadItems : tab === 'archived' ? archivedItems : activeItems, [activeItems, archivedItems, tab, unreadItems])
     const unreadCount = unreadItems.length
+    const notificationTypeOptions = useMemo(() => WORKSPACE_NOTIFICATION_TYPES.map((notificationType) => ({
+        notificationType,
+        label: localizeNotification({ notificationType }, i18n.language).typeLabel,
+    })), [i18n.language])
 
     if (isLoading) {
         return <button className="relative p-2 rounded-md text-muted-foreground animate-pulse" type="button"><Bell className="w-4 h-4" /></button>
@@ -339,6 +406,7 @@ export function NotificationCenter() {
     }
 
     return (
+        <>
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild><BellButton unreadCount={unreadCount} style={style} /></PopoverTrigger>
             <PopoverContent align="end" side="bottom" sideOffset={10} className="w-[440px] max-w-[calc(100vw-1rem)] border-none bg-transparent p-0 shadow-none">
@@ -350,7 +418,10 @@ export function NotificationCenter() {
                                     <div className="flex items-center gap-2"><Inbox className="h-4 w-4 text-primary" /><h3 className="text-sm font-semibold">{t('notifications.title', { defaultValue: 'Notifications' })}</h3>{isSyncing && <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />}</div>
                                     <p className="text-xs text-muted-foreground">{unreadCount > 0 ? `${unreadCount} ${t('notifications.unread', { defaultValue: 'unread' })}` : t('notifications.allCaughtUp', { defaultValue: 'You are all caught up' })}</p>
                                 </div>
-                                <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => void handleMarkAllRead()} disabled={unreadCount === 0}><CheckCheck className="h-3.5 w-3.5" />{t('notifications.markAllRead', { defaultValue: 'Mark all read' })}</Button>
+                                <div className="flex shrink-0 items-center gap-1">
+                                    {isAdmin && <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-xl" title={t('notifications.settings.title', { defaultValue: 'Notification Settings' })} onClick={() => { setOpen(false); setSettingsOpen(true) }}><Settings className="h-3.5 w-3.5" /><span className="sr-only">{t('notifications.settings.title', { defaultValue: 'Notification Settings' })}</span></Button>}
+                                    <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => void handleMarkAllRead()} disabled={unreadCount === 0}><CheckCheck className="h-3.5 w-3.5" />{t('notifications.markAllRead', { defaultValue: 'Mark all read' })}</Button>
+                                </div>
                             </div>
                             <TabsList className="mt-4 grid w-full grid-cols-3 rounded-xl bg-muted/60 p-1">
                                 <TabsTrigger value="all" className="rounded-lg text-xs font-bold uppercase tracking-wide">{t('notifications.tabs.all', { defaultValue: 'All' })}<span className="ml-1.5 text-[10px] opacity-70">{activeItems.length}</span></TabsTrigger>
@@ -396,5 +467,46 @@ export function NotificationCenter() {
                 </div>
             </PopoverContent>
         </Popover>
+        {isAdmin && (
+            <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+                <DialogContent className="max-w-xl gap-0 overflow-hidden p-0">
+                    <DialogHeader className="border-b border-border/70 px-5 py-4">
+                        <DialogTitle className="flex items-center gap-2 text-base"><Settings className="h-4 w-4 text-primary" />{t('notifications.settings.title', { defaultValue: 'Notification Settings' })}</DialogTitle>
+                        <DialogDescription className="sr-only">{t('notifications.settings.description', { defaultValue: 'Workspace notification type settings' })}</DialogDescription>
+                    </DialogHeader>
+                    <div className="max-h-[60vh] overflow-y-auto p-4">
+                        {settingsError && <div className="mb-3 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">{settingsError}</div>}
+                        {settingsLoading ? (
+                            <div className="space-y-2">
+                                {WORKSPACE_NOTIFICATION_TYPES.map((notificationType) => <div key={notificationType} className="h-[74px] rounded-xl border border-border/70 bg-muted/30 animate-pulse" />)}
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {notificationTypeOptions.map(({ notificationType, label }) => {
+                                    const enabled = !disabledTypes.has(notificationType)
+                                    const isSaving = settingsSavingType === notificationType
+                                    const switchId = `workspace-notification-${notificationType}`
+
+                                    return (
+                                        <div key={notificationType} className="flex min-h-[74px] items-center justify-between gap-4 rounded-xl border border-border/70 bg-background px-3 py-3">
+                                            <div className="min-w-0">
+                                                <Label htmlFor={switchId} className="block truncate text-sm font-semibold">{label}</Label>
+                                                <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{notificationType}</div>
+                                            </div>
+                                            <div className="flex shrink-0 items-center gap-2">
+                                                {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                                                <span className="w-16 text-right text-xs font-medium text-muted-foreground">{enabled ? t('common.enabled', { defaultValue: 'Enabled' }) : t('common.disabled', { defaultValue: 'Disabled' })}</span>
+                                                <Switch id={switchId} checked={enabled} disabled={settingsLoading || Boolean(settingsSavingType)} onCheckedChange={(checked) => void handleToggleNotificationType(notificationType, checked)} />
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
+        )}
+        </>
     )
 }

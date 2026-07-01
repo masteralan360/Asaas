@@ -7,6 +7,15 @@ AS $function$
 DECLARE
   v_notification_id uuid;
 BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM notifications.workspace_disabled_types disabled_type
+    WHERE disabled_type.workspace_id = p_workspace_id
+      AND disabled_type.notification_type = p_notification_type
+  ) THEN
+    RETURN NULL;
+  END IF;
+
   INSERT INTO notifications.inbox (
     event_id,
     workspace_id,
