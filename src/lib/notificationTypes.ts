@@ -1,5 +1,7 @@
 export const WORKSPACE_NOTIFICATION_TYPES = [
     'marketplace_order_pending',
+    'order_approval_request',
+    'order_approval_approved',
     'loan_installment_overdue',
     'expense_item_overdue',
     'payroll_overdue',

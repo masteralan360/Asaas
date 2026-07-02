@@ -171,6 +171,40 @@ export function localizeNotification(input: NotificationLocalizationInput, reque
     }
   }
 
+  if (notificationType === 'order_approval_request') {
+    const orderNumber = readString(payload.order_number)
+    const orderType = readString(payload.order_type)
+    const partnerName = readString(payload.partner_name)
+    const amountText = formatAmount(readNumber(payload.amount), readString(payload.currency), language)
+    const orderLabel = orderType === 'purchase' ? 'Purchase order' : 'Sales order'
+
+    return {
+      language,
+      title: readString(input.title) || (orderNumber ? `${orderLabel} request ${orderNumber}` : `${orderLabel} request`),
+      body: joinParts([partnerName, amountText]) || fallbackBody,
+      actionLabel: readString(input.actionLabel) || 'Review request',
+      actionUrl,
+      typeLabel: 'Order Requests',
+    }
+  }
+
+  if (notificationType === 'order_approval_approved') {
+    const orderNumber = readString(payload.order_number)
+    const orderType = readString(payload.order_type)
+    const partnerName = readString(payload.partner_name)
+    const amountText = formatAmount(readNumber(payload.amount), readString(payload.currency), language)
+    const orderLabel = orderType === 'purchase' ? 'Purchase order' : 'Sales order'
+
+    return {
+      language,
+      title: readString(input.title) || (orderNumber ? `${orderLabel} approved ${orderNumber}` : `${orderLabel} approved`),
+      body: joinParts([partnerName, amountText]) || fallbackBody,
+      actionLabel: readString(input.actionLabel) || 'Open order',
+      actionUrl,
+      typeLabel: 'Order Approvals',
+    }
+  }
+
   if (notificationType === 'loan_installment_overdue') {
     const loanNo = readString(payload.loan_no)
     const borrowerName = readString(payload.borrower_name)

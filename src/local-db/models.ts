@@ -451,6 +451,7 @@ export type PurchaseOrderStatus =
   | "completed"
   | "cancelled";
 export type OrderType = "sales" | "purchase";
+export type OrderApprovalStatus = "requested" | "approved" | "rejected";
 export type OrderPaymentStatus = "unpaid" | "partial" | "paid";
 export type OrderPaymentMethod =
   | PaymentMethod
@@ -540,6 +541,11 @@ export interface SalesOrder extends BaseEntity {
   exchangeRateTimestamp: string | null;
   exchangeRates?: ExchangeRateSnapshot[] | null;
   status: SalesOrderStatus;
+  approvalStatus?: OrderApprovalStatus | null;
+  approvalRequestedBy?: string | null;
+  approvalRequestedAt?: string | null;
+  approvalReviewedBy?: string | null;
+  approvalReviewedAt?: string | null;
   expectedDeliveryDate?: string | null;
   actualDeliveryDate?: string | null;
   isPaid: boolean;
@@ -580,6 +586,11 @@ export interface PurchaseOrder extends BaseEntity {
   exchangeRateTimestamp: string | null;
   exchangeRates?: ExchangeRateSnapshot[] | null;
   status: PurchaseOrderStatus;
+  approvalStatus?: OrderApprovalStatus | null;
+  approvalRequestedBy?: string | null;
+  approvalRequestedAt?: string | null;
+  approvalReviewedBy?: string | null;
+  approvalReviewedAt?: string | null;
   expectedDeliveryDate?: string | null;
   actualDeliveryDate?: string | null;
   isPaid: boolean;

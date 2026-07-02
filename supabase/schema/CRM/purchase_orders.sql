@@ -32,6 +32,11 @@ CREATE TABLE crm.purchase_orders (
   destination_storage_id uuid NULL,
   notes text NULL,
   items jsonb NULL DEFAULT '[]'::jsonb,
+  approval_status text NULL,
+  approval_requested_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  approval_requested_at timestamp with time zone NULL,
+  approval_reviewed_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  approval_reviewed_at timestamp with time zone NULL,
   created_at timestamp with time zone NULL DEFAULT now(),
   updated_at timestamp with time zone NULL DEFAULT now(),
   sync_status text NULL DEFAULT 'synced'::text,
@@ -43,6 +48,10 @@ CREATE TABLE crm.purchase_orders (
 ALTER TABLE crm.purchase_orders
   ADD CONSTRAINT purchase_orders_payment_method_check
   CHECK (payment_method IS NULL OR payment_method IN ('cash', 'fib', 'qicard', 'zaincash', 'fastpay', 'bank_transfer', 'loan', 'installments'));
+
+ALTER TABLE crm.purchase_orders
+  ADD CONSTRAINT crm_purchase_orders_approval_status_check
+  CHECK (approval_status IS NULL OR approval_status IN ('requested', 'approved', 'rejected'));
 
 CREATE INDEX IF NOT EXISTS idx_crm_purchase_orders_workspace
   ON crm.purchase_orders (workspace_id);
@@ -61,6 +70,10 @@ CREATE INDEX IF NOT EXISTS idx_crm_purchase_orders_supplier
 
 CREATE INDEX IF NOT EXISTS idx_crm_purchase_orders_business_partner
   ON crm.purchase_orders (business_partner_id);
+
+CREATE INDEX IF NOT EXISTS idx_crm_purchase_orders_workspace_approval_status
+  ON crm.purchase_orders (workspace_id, approval_status, updated_at DESC)
+  WHERE COALESCE(is_deleted, false) = false;
 
 ALTER TABLE crm.purchase_orders ENABLE ROW LEVEL SECURITY;
 
@@ -90,6 +103,13 @@ CREATE POLICY crm_purchase_orders_insert
       (SELECT w.plan::text FROM public.workspaces w WHERE w.id = purchase_orders.workspace_id),
       'orders'
     )
+    AND crm.order_request_write_allowed(
+      purchase_orders.workspace_id,
+      'orders.requirePurchaseOrderRequest',
+      purchase_orders.approval_status,
+      purchase_orders.approval_requested_by,
+      purchase_orders.approval_requested_at
+    )
   );
 
 DROP POLICY IF EXISTS crm_purchase_orders_update ON crm.purchase_orders;
@@ -111,6 +131,13 @@ CREATE POLICY crm_purchase_orders_update
       workspace_id,
       (SELECT w.plan::text FROM public.workspaces w WHERE w.id = purchase_orders.workspace_id),
       'orders'
+    )
+    AND crm.order_request_write_allowed(
+      purchase_orders.workspace_id,
+      'orders.requirePurchaseOrderRequest',
+      purchase_orders.approval_status,
+      purchase_orders.approval_requested_by,
+      purchase_orders.approval_requested_at
     )
   );
 

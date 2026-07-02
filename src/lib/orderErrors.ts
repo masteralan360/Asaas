@@ -4,6 +4,10 @@ const ORDER_ERROR_TRANSLATIONS: Record<string, { key: string; fallback: string }
     non_financed_order_must_be_paid: {
         key: 'orders.form.errors.non_financed_order_must_be_paid',
         fallback: 'This order must be paid in full before it can be reserved. To reserve it with an outstanding balance, select Loans or Installments as the payment method.'
+    },
+    order_request_requires_approval: {
+        key: 'orders.form.errors.orderRequestRequiresApproval',
+        fallback: 'This order request must be approved by an admin before the normal order workflow can continue.'
     }
 }
 

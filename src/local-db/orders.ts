@@ -100,6 +100,11 @@ type ProductLike = {
     storageName?: string
 }
 
+type OrderWithApproval = Pick<
+    SalesOrder | PurchaseOrder,
+    'approvalStatus' | 'approvalRequestedAt' | 'approvalRequestedBy' | 'approvalReviewedAt' | 'approvalReviewedBy'
+>
+
 function shouldUseCloudBusinessData(workspaceId?: string | null) {
     return !!workspaceId && !isLocalWorkspaceMode(workspaceId)
 }
@@ -220,6 +225,25 @@ async function syncSoftDelete(tableName: SimpleEntityTableName | OrderTableName 
         console.error(`[Orders] Failed to delete ${tableName}:`, error)
         await addToOfflineMutations(tableName, entityId, 'delete', { id: entityId }, workspaceId)
     }
+}
+
+export function isOrderApprovalRequested(order: OrderWithApproval) {
+    return order.approvalStatus === 'requested'
+}
+
+function buildApprovalReviewPatch<T extends SalesOrder | PurchaseOrder>(
+    existing: T,
+    reviewedBy?: string | null
+): Pick<T, 'approvalStatus' | 'approvalReviewedBy' | 'approvalReviewedAt' | 'updatedAt' | 'version' | 'syncStatus' | 'lastSyncedAt'> {
+    const now = new Date().toISOString()
+    return {
+        approvalStatus: 'approved',
+        approvalReviewedBy: reviewedBy ?? null,
+        approvalReviewedAt: now,
+        updatedAt: now,
+        version: existing.version + 1,
+        ...getSyncMetadata(existing.workspaceId, now)
+    } as Pick<T, 'approvalStatus' | 'approvalReviewedBy' | 'approvalReviewedAt' | 'updatedAt' | 'version' | 'syncStatus' | 'lastSyncedAt'>
 }
 
 async function generateDocumentNumber(tableName: OrderTableName, workspaceId: string) {
@@ -867,6 +891,41 @@ async function listActiveOrderPayments(workspaceId: string, sourceType: 'sales_o
         .equals([workspaceId, sourceType, orderId])
         .toArray()
     return getActiveOrderPayments(rows)
+}
+
+async function appendInitialOrderPaymentTransaction(orderType: OrderType, order: SalesOrder | PurchaseOrder) {
+    const sourceType = orderType === 'sales' ? 'sales_order' : 'purchase_order'
+    if (order.paidAmount <= 0 || isOrderFinancingMethod(order.paymentMethod)) {
+        return
+    }
+
+    const activePayments = await listActiveOrderPayments(order.workspaceId, sourceType, order.id)
+    if (activePayments.length > 0) {
+        return
+    }
+
+    const { appendPaymentTransaction } = await import('./payments')
+    await appendPaymentTransaction(order.workspaceId, {
+        sourceModule: 'orders',
+        sourceType,
+        sourceRecordId: order.id,
+        sourceSubrecordId: null,
+        direction: orderType === 'sales' ? 'incoming' : 'outgoing',
+        amount: order.paidAmount,
+        currency: order.currency,
+        paymentMethod: order.paymentMethod || 'unknown',
+        paidAt: order.paidAt || order.updatedAt,
+        counterpartyName: orderType === 'sales'
+            ? (order as SalesOrder).customerName
+            : (order as PurchaseOrder).supplierName,
+        referenceLabel: order.orderNumber,
+        note: order.notes || null,
+        metadata: {
+            orderStatus: order.status,
+            ...(orderType === 'sales' ? { sourceChannel: (order as SalesOrder).sourceChannel || 'manual' } : {}),
+            isDownPayment: false
+        }
+    })
 }
 
 function isFullOrderPaymentAttempt(
@@ -1542,27 +1601,8 @@ export async function createSalesOrder(
     await recalculateCustomerAndPartnerSummaries(workspaceId, order.customerId, order.businessPartnerId)
     const createdOrder = (await db.sales_orders.get(order.id)) as SalesOrder
 
-    if (createdOrder.paidAmount > 0 && !isOrderFinancingMethod(createdOrder.paymentMethod)) {
-        const { appendPaymentTransaction } = await import('./payments')
-        await appendPaymentTransaction(workspaceId, {
-            sourceModule: 'orders',
-            sourceType: 'sales_order',
-            sourceRecordId: createdOrder.id,
-            sourceSubrecordId: null,
-            direction: 'incoming',
-            amount: createdOrder.paidAmount,
-            currency: createdOrder.currency,
-            paymentMethod: createdOrder.paymentMethod || 'unknown',
-            paidAt: createdOrder.paidAt || createdOrder.updatedAt,
-            counterpartyName: createdOrder.customerName,
-            referenceLabel: createdOrder.orderNumber,
-            note: createdOrder.notes || null,
-            metadata: {
-                orderStatus: createdOrder.status,
-                sourceChannel: createdOrder.sourceChannel || 'manual',
-                isDownPayment: false
-            }
-        })
+    if (!isOrderApprovalRequested(createdOrder)) {
+        await appendInitialOrderPaymentTransaction('sales', createdOrder)
     }
 
     return createdOrder
@@ -1720,6 +1760,10 @@ export async function updateSalesOrderStatus(id: string, status: SalesOrderStatu
         throw new Error('Sales order not found')
     }
 
+    if (isOrderApprovalRequested(existing)) {
+        throw new Error('order_request_requires_approval')
+    }
+
     if (existing.status === 'completed' && status !== 'completed') {
         throw new Error('Completed sales orders are immutable')
     }
@@ -1788,6 +1832,29 @@ export async function updateSalesOrderStatus(id: string, status: SalesOrderStatu
             )
         })
     )
+    return updated
+}
+
+export async function approveSalesOrderRequest(id: string, reviewedBy?: string | null) {
+    const existing = await db.sales_orders.get(id)
+    if (!existing || existing.isDeleted) {
+        throw new Error('Sales order not found')
+    }
+    if (!isOrderApprovalRequested(existing)) {
+        throw new Error('Order request is not pending approval')
+    }
+    if (existing.status !== 'draft') {
+        throw new Error('Only draft sales order requests can be approved')
+    }
+
+    const updated: SalesOrder = {
+        ...existing,
+        ...buildApprovalReviewPatch(existing, reviewedBy)
+    }
+
+    await db.sales_orders.put(updated)
+    await syncUpsertEntities('sales_orders', [updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
+    await appendInitialOrderPaymentTransaction('sales', updated)
     return updated
 }
 
@@ -1951,26 +2018,8 @@ export async function createPurchaseOrder(
     await recalculateSupplierAndPartnerSummaries(workspaceId, order.supplierId, order.businessPartnerId)
     const createdOrder = (await db.purchase_orders.get(order.id)) as PurchaseOrder
 
-    if (createdOrder.paidAmount > 0 && !isOrderFinancingMethod(createdOrder.paymentMethod)) {
-        const { appendPaymentTransaction } = await import('./payments')
-        await appendPaymentTransaction(workspaceId, {
-            sourceModule: 'orders',
-            sourceType: 'purchase_order',
-            sourceRecordId: createdOrder.id,
-            sourceSubrecordId: null,
-            direction: 'outgoing',
-            amount: createdOrder.paidAmount,
-            currency: createdOrder.currency,
-            paymentMethod: createdOrder.paymentMethod || 'unknown',
-            paidAt: createdOrder.paidAt || createdOrder.updatedAt,
-            counterpartyName: createdOrder.supplierName,
-            referenceLabel: createdOrder.orderNumber,
-            note: createdOrder.notes || null,
-            metadata: {
-                orderStatus: createdOrder.status,
-                isDownPayment: false
-            }
-        })
+    if (!isOrderApprovalRequested(createdOrder)) {
+        await appendInitialOrderPaymentTransaction('purchase', createdOrder)
     }
 
     return createdOrder
@@ -2051,6 +2100,10 @@ export async function updatePurchaseOrderStatus(id: string, status: PurchaseOrde
         throw new Error('Purchase order not found')
     }
 
+    if (isOrderApprovalRequested(existing)) {
+        throw new Error('order_request_requires_approval')
+    }
+
     if ((existing.status === 'received' || existing.status === 'completed') && status === 'cancelled') {
         throw new Error('Received purchase orders cannot be cancelled')
     }
@@ -2127,6 +2180,29 @@ export async function updatePurchaseOrderStatus(id: string, status: PurchaseOrde
             )
         })
     )
+    return updated
+}
+
+export async function approvePurchaseOrderRequest(id: string, reviewedBy?: string | null) {
+    const existing = await db.purchase_orders.get(id)
+    if (!existing || existing.isDeleted) {
+        throw new Error('Purchase order not found')
+    }
+    if (!isOrderApprovalRequested(existing)) {
+        throw new Error('Order request is not pending approval')
+    }
+    if (existing.status !== 'draft') {
+        throw new Error('Only draft purchase order requests can be approved')
+    }
+
+    const updated: PurchaseOrder = {
+        ...existing,
+        ...buildApprovalReviewPatch(existing, reviewedBy)
+    }
+
+    await db.purchase_orders.put(updated)
+    await syncUpsertEntities('purchase_orders', [updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
+    await appendInitialOrderPaymentTransaction('purchase', updated)
     return updated
 }
 

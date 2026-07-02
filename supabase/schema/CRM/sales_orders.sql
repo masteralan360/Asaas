@@ -35,6 +35,11 @@ CREATE TABLE crm.sales_orders (
   shipping_address text NULL,
   notes text NULL,
   items jsonb NULL DEFAULT '[]'::jsonb,
+  approval_status text NULL,
+  approval_requested_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  approval_requested_at timestamp with time zone NULL,
+  approval_reviewed_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  approval_reviewed_at timestamp with time zone NULL,
   is_locked boolean NOT NULL DEFAULT false,
   source_channel text NOT NULL DEFAULT 'manual'::text,
   marketplace_order_id uuid NULL,
@@ -49,6 +54,10 @@ CREATE TABLE crm.sales_orders (
 ALTER TABLE crm.sales_orders
   ADD CONSTRAINT sales_orders_payment_method_check
   CHECK (payment_method IS NULL OR payment_method IN ('cash', 'fib', 'qicard', 'zaincash', 'fastpay', 'bank_transfer', 'loan', 'installments'));
+
+ALTER TABLE crm.sales_orders
+  ADD CONSTRAINT crm_sales_orders_approval_status_check
+  CHECK (approval_status IS NULL OR approval_status IN ('requested', 'approved', 'rejected'));
 
 CREATE INDEX IF NOT EXISTS idx_crm_sales_orders_workspace
   ON crm.sales_orders (workspace_id);
@@ -70,6 +79,10 @@ CREATE INDEX IF NOT EXISTS idx_crm_sales_orders_business_partner
 
 CREATE INDEX IF NOT EXISTS idx_crm_sales_orders_source_channel
   ON crm.sales_orders (workspace_id, source_channel, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_crm_sales_orders_workspace_approval_status
+  ON crm.sales_orders (workspace_id, approval_status, updated_at DESC)
+  WHERE COALESCE(is_deleted, false) = false;
 
 ALTER TABLE crm.sales_orders ENABLE ROW LEVEL SECURITY;
 
@@ -99,6 +112,13 @@ CREATE POLICY crm_sales_orders_insert
       (SELECT w.plan::text FROM public.workspaces w WHERE w.id = sales_orders.workspace_id),
       'orders'
     )
+    AND crm.order_request_write_allowed(
+      sales_orders.workspace_id,
+      'orders.requireSalesOrderRequest',
+      sales_orders.approval_status,
+      sales_orders.approval_requested_by,
+      sales_orders.approval_requested_at
+    )
   );
 
 DROP POLICY IF EXISTS crm_sales_orders_update ON crm.sales_orders;
@@ -120,6 +140,13 @@ CREATE POLICY crm_sales_orders_update
       workspace_id,
       (SELECT w.plan::text FROM public.workspaces w WHERE w.id = sales_orders.workspace_id),
       'orders'
+    )
+    AND crm.order_request_write_allowed(
+      sales_orders.workspace_id,
+      'orders.requireSalesOrderRequest',
+      sales_orders.approval_status,
+      sales_orders.approval_requested_by,
+      sales_orders.approval_requested_at
     )
   );
 

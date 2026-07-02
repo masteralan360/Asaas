@@ -2,6 +2,7 @@ import { cn } from '@/lib/utils'
 
 const statusStyles: Record<string, string> = {
     draft: 'bg-slate-100 text-slate-700 border-slate-200',
+    approval_requested: 'bg-violet-100 text-violet-800 border-violet-200',
     pending: 'bg-amber-100 text-amber-800 border-amber-200',
     ordered: 'bg-blue-100 text-blue-800 border-blue-200',
     received: 'bg-cyan-100 text-cyan-800 border-cyan-200',

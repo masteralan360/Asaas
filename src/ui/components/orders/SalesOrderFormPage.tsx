@@ -32,6 +32,7 @@ import {
     type SalesOrderStatus
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
+import { useWorkspacePermissions } from '@/permissions'
 import {
     Button,
     Card,
@@ -98,6 +99,7 @@ export function SalesOrderFormPage({
     const { toast } = useToast()
     const { user } = useAuth()
     const { features, hasFeature } = useWorkspace()
+    const { permissionKeys } = useWorkspacePermissions()
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
 
     const products = useProducts(workspaceId)
@@ -143,6 +145,7 @@ export function SalesOrderFormPage({
         }
         return [createEmptyItem(defaultStorageId)]
     })
+    const requiresApprovalRequest = user?.role === 'staff' && permissionKeys.includes('orders.requireSalesOrderRequest')
 
     useEffect(() => {
         if (!editingOrder) return
@@ -308,6 +311,7 @@ export function SalesOrderFormPage({
             const total = roundFormAmount(subtotal - discountNum + taxNum)
             const paidAmount = isFinanced ? initialPayment : isPaid ? total : 0
             const balanceAmount = roundFormAmount(Math.max(total - paidAmount, 0))
+            const savedAt = new Date().toISOString()
 
             const payload = {
                 businessPartnerId: customer.id,
@@ -331,7 +335,7 @@ export function SalesOrderFormPage({
                 paymentStatus: balanceAmount <= 0 ? 'paid' as const : paidAmount > 0 ? 'partial' as const : 'unpaid' as const,
                 paidAmount,
                 balanceAmount,
-                paidAt: !isFinanced && paidAmount > 0 ? new Date().toISOString() : null,
+                paidAt: !isFinanced && paidAmount > 0 ? savedAt : null,
                 paymentMethod: paymentMethod as SalesOrder['paymentMethod'],
                 initialPaymentAmount: isFinanced ? initialPayment : 0,
                 linkedLoanId: editingOrder?.linkedLoanId || null,
@@ -342,14 +346,25 @@ export function SalesOrderFormPage({
                 nextDueDate: isFinanced ? firstDueDate || null : null,
                 reservedAt: null,
                 shippingAddress: shippingAddress || undefined,
-                notes: notes || undefined
+                notes: notes || undefined,
+                ...(requiresApprovalRequest ? {
+                    approvalStatus: 'requested' as const,
+                    approvalRequestedBy: user.id,
+                    approvalRequestedAt: savedAt,
+                    approvalReviewedBy: null,
+                    approvalReviewedAt: null
+                } : {})
             }
 
             const savedOrder = editingOrderId
                 ? await updateSalesOrder(editingOrderId, payload)
                 : await createSalesOrder(workspaceId, payload, user?.id ?? null)
 
-            toast({ title: editingOrderId ? (t('common.save') || 'Saved') : (t('common.create') || 'Created') })
+            toast({
+                title: requiresApprovalRequest
+                    ? t('orders.form.requestSent', { defaultValue: 'Request sent' })
+                    : editingOrderId ? (t('common.save') || 'Saved') : (t('common.create') || 'Created')
+            })
             onCreated?.(savedOrder.id)
         } catch (error: any) {
             toast({
@@ -735,7 +750,11 @@ export function SalesOrderFormPage({
                                         <Button type="submit" className="h-12 w-full rounded-xl font-black" disabled={!canSubmit || isSaving}>
                                             {isSaving
                                                 ? (t('common.loading') || 'Loading...')
-                                                : (editingOrderId ? (t('common.save') || 'Save') : (t('orders.form.saveOrder', { defaultValue: 'Save Order' })))}
+                                                : requiresApprovalRequest
+                                                    ? (editingOrderId
+                                                        ? t('orders.form.sendUpdateRequest', { defaultValue: 'Send Update Request' })
+                                                        : t('orders.form.sendRequest', { defaultValue: 'Send Request' }))
+                                                    : (editingOrderId ? (t('common.save') || 'Save') : (t('orders.form.saveOrder', { defaultValue: 'Save Order' })))}
                                         </Button>
                                         <Button type="button" variant="outline" className="h-12 w-full rounded-xl" onClick={onCancel} disabled={isSaving}>
                                             {t('common.cancel') || 'Cancel'}

@@ -8,6 +8,8 @@ CREATE TABLE notifications.workspace_disabled_types (
   CONSTRAINT notifications_workspace_disabled_types_type_check CHECK (
     notification_type IN (
       'marketplace_order_pending',
+      'order_approval_request',
+      'order_approval_approved',
       'loan_installment_overdue',
       'expense_item_overdue',
       'payroll_overdue',

@@ -18,11 +18,14 @@ import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import {
     createPurchaseOrder,
     createSalesOrder,
+    approvePurchaseOrderRequest,
+    approveSalesOrderRequest,
     deletePurchaseOrder,
     deleteSalesOrder,
     getOrderBalanceAmount,
     getOrderPaymentStatus,
     getPrimaryStorageFromList,
+    isOrderApprovalRequested,
     findLatestUnreversedPaymentTransaction,
     lockPurchaseOrder,
     lockSalesOrder,
@@ -306,6 +309,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
 
     const canManageOrders = user?.role === 'admin' || user?.role === 'staff'
     const canDeleteOrders = user?.role === 'admin'
+    const canApproveOrderRequests = user?.role === 'admin'
     const availableSalesProductIdsByStorage = useMemo(() => {
         const rows = new Map<string, Set<string>>()
         for (const row of inventory) {
@@ -937,11 +941,12 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                         ) : rows.map((row) => {
                             const summary = getOrderSummary(row.items)
                             const isDraft = row.status === 'draft'
-                            const canEdit = canManageOrders && isDraft
+                            const isApprovalRequested = isOrderApprovalRequested(row)
+                            const canEdit = canManageOrders && isDraft && (!isApprovalRequested || canApproveOrderRequests)
                             const canDelete = canDeleteOrders && isDraft
 
                             return (
-                                <TableRow key={row.id}>
+                                <TableRow key={row.id} className={isApprovalRequested ? 'bg-violet-50/70 hover:bg-violet-50 dark:bg-violet-950/20 dark:hover:bg-violet-950/30' : undefined}>
                                     <TableCell className="font-semibold">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <span>{row.orderNumber}</span>
@@ -956,7 +961,12 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                     <TableCell>{activeTab === 'sales' ? (row as SalesOrder).customerName : (row as PurchaseOrder).supplierName}</TableCell>
                                     <TableCell>{row.items.length}</TableCell>
                                     <TableCell>
-                                        <OrderStatusBadge status={row.status} label={formatStatusLabel(t, row.status)} />
+                                        <OrderStatusBadge
+                                            status={isApprovalRequested ? 'approval_requested' : row.status}
+                                            label={isApprovalRequested
+                                                ? t('orders.status.requested', { defaultValue: 'Requested' })
+                                                : formatStatusLabel(t, row.status)}
+                                        />
                                     </TableCell>
                                     <TableCell>{formatCurrency(row.total, row.currency, features.iqd_display_preference)}</TableCell>
                                     <TableCell>{formatDate(row.updatedAt)}</TableCell>
@@ -981,10 +991,11 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                 <>
                                                     <Button variant="outline" size="sm" allowViewer={true} onClick={() => navigate(`/orders/${row.id}`)}><Eye className="mr-1 h-3.5 w-3.5" />{t('common.view') || 'View'}</Button>
                                                     {canEdit && <Button variant="outline" size="sm" onClick={() => openSalesEdit(row as SalesOrder)}><Pencil className="mr-1 h-3.5 w-3.5" />{t('common.edit') || 'Edit'}</Button>}
-                                                    {canManageOrders && row.status === 'draft' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved')}>{t('orders.actions.reserve') || 'Reserve'}</Button>}
-                                                    {canManageOrders && row.status === 'pending' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
-                                                    {canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'cancelled'), 'Sales order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
-                                                    {canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
+                                                    {isApprovalRequested && canApproveOrderRequests && <Button size="sm" onClick={() => runAction(() => approveSalesOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' }))}>{t('orders.actions.approve', { defaultValue: 'Approve' })}</Button>}
+                                                    {!isApprovalRequested && canManageOrders && row.status === 'draft' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved')}>{t('orders.actions.reserve') || 'Reserve'}</Button>}
+                                                    {!isApprovalRequested && canManageOrders && row.status === 'pending' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
+                                                    {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'cancelled'), 'Sales order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
+                                                    {!isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
@@ -996,18 +1007,19 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                             {row.isPaid ? (t('orders.actions.unpay') || 'Unpay') : (t('orders.actions.pay') || 'Pay')}
                                                         </Button>
                                                     )}
-                                                    {canManageOrders && row.isPaid && !row.isLocked && <Button variant="outline" size="sm" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}><Lock className="h-3.5 w-3.5" /></Button>}
+                                                    {!isApprovalRequested && canManageOrders && row.isPaid && !row.isLocked && <Button variant="outline" size="sm" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}><Lock className="h-3.5 w-3.5" /></Button>}
                                                     {canDelete && <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setDeleteTarget({ type: 'sales', order: row as SalesOrder })}><Trash2 className="h-4 w-4" /></Button>}
                                                 </>
                                             ) : (
                                                 <>
                                                     <Button variant="outline" size="sm" allowViewer={true} onClick={() => navigate(`/orders/${row.id}`)}><Eye className="mr-1 h-3.5 w-3.5" />{t('common.view') || 'View'}</Button>
                                                     {canEdit && <Button variant="outline" size="sm" onClick={() => openPurchaseEdit(row as PurchaseOrder)}><Pencil className="mr-1 h-3.5 w-3.5" />{t('common.edit') || 'Edit'}</Button>}
-                                                    {canManageOrders && row.status === 'draft' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'ordered'), 'Purchase order sent')}>{t('orders.actions.order') || 'Order'}</Button>}
-                                                    {canManageOrders && row.status === 'ordered' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received')}>{t('orders.actions.receive') || 'Receive'}</Button>}
-                                                    {canManageOrders && row.status === 'received' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
-                                                    {canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'cancelled'), 'Purchase order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
-                                                    {canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
+                                                    {isApprovalRequested && canApproveOrderRequests && <Button size="sm" onClick={() => runAction(() => approvePurchaseOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' }))}>{t('orders.actions.approve', { defaultValue: 'Approve' })}</Button>}
+                                                    {!isApprovalRequested && canManageOrders && row.status === 'draft' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'ordered'), 'Purchase order sent')}>{t('orders.actions.order') || 'Order'}</Button>}
+                                                    {!isApprovalRequested && canManageOrders && row.status === 'ordered' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received')}>{t('orders.actions.receive') || 'Receive'}</Button>}
+                                                    {!isApprovalRequested && canManageOrders && row.status === 'received' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
+                                                    {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'cancelled'), 'Purchase order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
+                                                    {!isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
@@ -1019,7 +1031,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                             {row.isPaid ? (t('orders.actions.unpay') || 'Unpay') : (t('orders.actions.pay') || 'Pay')}
                                                         </Button>
                                                     )}
-                                                    {canManageOrders && row.isPaid && !row.isLocked && <Button variant="outline" size="sm" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'purchase' })}><Lock className="h-3.5 w-3.5" /></Button>}
+                                                    {!isApprovalRequested && canManageOrders && row.isPaid && !row.isLocked && <Button variant="outline" size="sm" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'purchase' })}><Lock className="h-3.5 w-3.5" /></Button>}
                                                     {canDelete && <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setDeleteTarget({ type: 'purchase', order: row as PurchaseOrder })}><Trash2 className="h-4 w-4" /></Button>}
                                                 </>
                                             )}
@@ -1049,13 +1061,19 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                 ) : rows.map((row) => {
                     const summary = getOrderSummary(row.items)
                     const isDraft = row.status === 'draft'
-                    const canEdit = canManageOrders && isDraft
+                    const isApprovalRequested = isOrderApprovalRequested(row)
+                    const canEdit = canManageOrders && isDraft && (!isApprovalRequested || canApproveOrderRequests)
                     const canDelete = canDeleteOrders && isDraft
 
                     return (
                         <div
                             key={row.id}
-                            className="p-4 border shadow-sm space-y-4 transition-all active:scale-[0.98] bg-background rounded-2xl"
+                            className={cn(
+                                'p-4 border shadow-sm space-y-4 transition-all active:scale-[0.98] rounded-2xl',
+                                isApprovalRequested
+                                    ? 'border-violet-300/70 bg-violet-50/70 dark:border-violet-800/60 dark:bg-violet-950/20'
+                                    : 'bg-background'
+                            )}
                         >
                             <div className="flex justify-between items-start">
                                 <div className="space-y-1">
@@ -1078,7 +1096,12 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <OrderStatusBadge status={row.status} label={formatStatusLabel(t, row.status)} />
+                                    <OrderStatusBadge
+                                        status={isApprovalRequested ? 'approval_requested' : row.status}
+                                        label={isApprovalRequested
+                                            ? t('orders.status.requested', { defaultValue: 'Requested' })
+                                            : formatStatusLabel(t, row.status)}
+                                    />
                                     <div className="text-xs text-muted-foreground mt-2 font-medium">
                                         {formatDate(row.updatedAt)}
                                     </div>
@@ -1117,11 +1140,12 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                 </Button>
                                 {activeTab === 'sales' ? (
                                     <>
-                                        {canManageOrders && row.status === 'draft' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved')}>{t('orders.actions.reserve') || 'Reserve'}</Button>}
-                                        {canManageOrders && row.status === 'pending' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
-                                        {canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'cancelled'), 'Sales order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
+                                        {isApprovalRequested && canApproveOrderRequests && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => approveSalesOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' }))}>{t('orders.actions.approve', { defaultValue: 'Approve' })}</Button>}
+                                        {!isApprovalRequested && canManageOrders && row.status === 'draft' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved')}>{t('orders.actions.reserve') || 'Reserve'}</Button>}
+                                        {!isApprovalRequested && canManageOrders && row.status === 'pending' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
+                                        {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'cancelled'), 'Sales order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
                                         {canEdit && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => openSalesEdit(row as SalesOrder)}><Pencil className="h-3.5 w-3.5" /></Button>}
-                                        {canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
+                                        {!isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
                                             <Button
                                                 variant="outline"
                                                 size="sm"
@@ -1134,17 +1158,18 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                 {row.isPaid ? (t('orders.actions.unpay') || 'Unpay') : (t('orders.actions.pay') || 'Pay')}
                                             </Button>
                                         )}
-                                        {canManageOrders && row.isPaid && !row.isLocked && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}><Lock className="h-3.5 w-3.5" /></Button>}
+                                        {!isApprovalRequested && canManageOrders && row.isPaid && !row.isLocked && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}><Lock className="h-3.5 w-3.5" /></Button>}
                                         {canDelete && <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-destructive" onClick={() => setDeleteTarget({ type: 'sales', order: row as SalesOrder })}><Trash2 className="h-4 w-4" /></Button>}
                                     </>
                                 ) : (
                                     <>
-                                        {canManageOrders && row.status === 'draft' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'ordered'), 'Purchase order placed')}>{t('orders.actions.order') || 'Order'}</Button>}
-                                        {canManageOrders && row.status === 'ordered' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received')}>{t('orders.actions.receive') || 'Receive'}</Button>}
-                                        {canManageOrders && row.status === 'received' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
-                                        {canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'cancelled'), 'Purchase order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
+                                        {isApprovalRequested && canApproveOrderRequests && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => approvePurchaseOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' }))}>{t('orders.actions.approve', { defaultValue: 'Approve' })}</Button>}
+                                        {!isApprovalRequested && canManageOrders && row.status === 'draft' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'ordered'), 'Purchase order placed')}>{t('orders.actions.order') || 'Order'}</Button>}
+                                        {!isApprovalRequested && canManageOrders && row.status === 'ordered' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received')}>{t('orders.actions.receive') || 'Receive'}</Button>}
+                                        {!isApprovalRequested && canManageOrders && row.status === 'received' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
+                                        {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'cancelled'), 'Purchase order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
                                         {canEdit && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => openPurchaseEdit(row as PurchaseOrder)}><Pencil className="h-3.5 w-3.5" /></Button>}
-                                        {canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
+                                        {!isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
                                             <Button
                                                 variant="outline"
                                                 size="sm"
@@ -1157,7 +1182,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                 {row.isPaid ? (t('orders.actions.unpay') || 'Unpay') : (t('orders.actions.pay') || 'Pay')}
                                             </Button>
                                         )}
-                                        {canManageOrders && row.isPaid && !row.isLocked && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'purchase' })}><Lock className="h-3.5 w-3.5" /></Button>}
+                                        {!isApprovalRequested && canManageOrders && row.isPaid && !row.isLocked && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'purchase' })}><Lock className="h-3.5 w-3.5" /></Button>}
                                         {canDelete && <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-destructive" onClick={() => setDeleteTarget({ type: 'purchase', order: row as PurchaseOrder })}><Trash2 className="h-4 w-4" /></Button>}
                                     </>
                                 )}

@@ -11,12 +11,15 @@ import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import { setInvoicePreviewSource, type TemplatePreview, type TemplatePreviewRenderOptions } from '@/lib/pdfPreviewStore'
 import {
     db,
+    approvePurchaseOrderRequest,
+    approveSalesOrderRequest,
     deletePurchaseOrder,
     deleteSalesOrder,
     findLatestUnreversedPaymentTransaction,
     getOrderBalanceAmount,
     getOrderPaidAmount,
     getOrderPaymentStatus,
+    isOrderApprovalRequested,
     lockPurchaseOrder,
     lockSalesOrder,
     recordObligationSettlement,
@@ -252,6 +255,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
 
     const canManage = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
+    const canApproveOrderRequests = user?.role === 'admin'
 
     const storageName = (storageId?: string | null) => {
         if (!storageId) return 'N/A'
@@ -430,6 +434,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
 
     const isSales = resolved.kind === 'sales'
     const order = resolved.order
+    const isApprovalRequested = isOrderApprovalRequested(order)
     const currency = order.currency
     const iqd = features.iqd_display_preference
     const mainStorageId = isSales ? (order as SalesOrder).sourceStorageId : (order as PurchaseOrder).destinationStorageId
@@ -454,6 +459,8 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
 
     const activity = [
         { id: 'created', date: order.createdAt, label: t('orders.details.activity.created') || 'Order created' },
+        isApprovalRequested && order.approvalRequestedAt ? { id: 'approval-requested', date: order.approvalRequestedAt, label: t('orders.details.activity.approvalRequested', { defaultValue: 'Approval requested' }) } : null,
+        order.approvalReviewedAt ? { id: 'approval-reviewed', date: order.approvalReviewedAt, label: t('orders.details.activity.approvalReviewed', { defaultValue: 'Request approved' }) } : null,
         order.expectedDeliveryDate ? { id: 'expected', date: order.expectedDeliveryDate, label: t('orders.details.activity.expected') || 'Expected delivery' } : null,
         isSales && (order as SalesOrder).reservedAt ? { id: 'reserved', date: (order as SalesOrder).reservedAt as string, label: t('orders.details.activity.reserved') || 'Inventory reserved' } : null,
         order.actualDeliveryDate ? { id: 'actual', date: order.actualDeliveryDate, label: isSales ? (t('orders.details.activity.completed') || 'Order completed') : (t('orders.details.activity.received') || 'Stock received') } : null,
@@ -462,15 +469,17 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
 
     const actions = isSales
         ? [
-            canManage && order.status === 'draft' ? { key: 'reserve', label: t('orders.actions.reserve') || 'Reserve', onClick: () => runAction(() => updateSalesOrderStatus(order.id, 'pending'), t('orders.details.messages.reserveSuccess') || 'Sales order reserved'), variant: 'default' as const } : null,
-            canManage && order.status === 'pending' ? { key: 'complete', label: t('orders.actions.complete') || 'Complete', onClick: () => runAction(() => updateSalesOrderStatus(order.id, 'completed'), t('orders.details.messages.completeSuccess') || 'Sales order completed'), variant: 'default' as const } : null,
-            canManage && order.status === 'pending' ? { key: 'cancel', label: t('orders.actions.cancel') || 'Cancel', onClick: () => runAction(() => updateSalesOrderStatus(order.id, 'cancelled'), t('orders.details.messages.cancelSuccess') || 'Sales order cancelled'), variant: 'outline' as const } : null
+            isApprovalRequested && canApproveOrderRequests ? { key: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), onClick: () => runAction(() => approveSalesOrderRequest(order.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'draft' ? { key: 'reserve', label: t('orders.actions.reserve') || 'Reserve', onClick: () => runAction(() => updateSalesOrderStatus(order.id, 'pending'), t('orders.details.messages.reserveSuccess') || 'Sales order reserved'), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'pending' ? { key: 'complete', label: t('orders.actions.complete') || 'Complete', onClick: () => runAction(() => updateSalesOrderStatus(order.id, 'completed'), t('orders.details.messages.completeSuccess') || 'Sales order completed'), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'pending' ? { key: 'cancel', label: t('orders.actions.cancel') || 'Cancel', onClick: () => runAction(() => updateSalesOrderStatus(order.id, 'cancelled'), t('orders.details.messages.cancelSuccess') || 'Sales order cancelled'), variant: 'outline' as const } : null
         ].filter(Boolean)
         : [
-            canManage && order.status === 'draft' ? { key: 'order', label: t('orders.actions.order') || 'Order', onClick: () => runAction(() => updatePurchaseOrderStatus(order.id, 'ordered'), t('orders.details.messages.orderSuccess') || 'Purchase order sent'), variant: 'default' as const } : null,
-            canManage && order.status === 'ordered' ? { key: 'receive', label: t('orders.actions.receive') || 'Receive', onClick: () => runAction(() => updatePurchaseOrderStatus(order.id, 'received'), t('orders.details.messages.receiveSuccess') || 'Purchase order received'), variant: 'default' as const } : null,
-            canManage && order.status === 'received' ? { key: 'complete', label: t('orders.actions.complete') || 'Complete', onClick: () => runAction(() => updatePurchaseOrderStatus(order.id, 'completed'), t('orders.details.messages.completeSuccess') || 'Purchase order completed'), variant: 'default' as const } : null,
-            canManage && (order.status === 'draft' || order.status === 'ordered') ? { key: 'cancel', label: t('orders.actions.cancel') || 'Cancel', onClick: () => runAction(() => updatePurchaseOrderStatus(order.id, 'cancelled'), t('orders.details.messages.cancelSuccess') || 'Purchase order cancelled'), variant: 'outline' as const } : null
+            isApprovalRequested && canApproveOrderRequests ? { key: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), onClick: () => runAction(() => approvePurchaseOrderRequest(order.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'draft' ? { key: 'order', label: t('orders.actions.order') || 'Order', onClick: () => runAction(() => updatePurchaseOrderStatus(order.id, 'ordered'), t('orders.details.messages.orderSuccess') || 'Purchase order sent'), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'ordered' ? { key: 'receive', label: t('orders.actions.receive') || 'Receive', onClick: () => runAction(() => updatePurchaseOrderStatus(order.id, 'received'), t('orders.details.messages.receiveSuccess') || 'Purchase order received'), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'received' ? { key: 'complete', label: t('orders.actions.complete') || 'Complete', onClick: () => runAction(() => updatePurchaseOrderStatus(order.id, 'completed'), t('orders.details.messages.completeSuccess') || 'Purchase order completed'), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && (order.status === 'draft' || order.status === 'ordered') ? { key: 'cancel', label: t('orders.actions.cancel') || 'Cancel', onClick: () => runAction(() => updatePurchaseOrderStatus(order.id, 'cancelled'), t('orders.details.messages.cancelSuccess') || 'Purchase order cancelled'), variant: 'outline' as const } : null
         ].filter(Boolean)
 
     const confirmDelete = async () => {
@@ -585,7 +594,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             {action.label}
                         </Button>
                     ))}
-                    {canManage && isFinanced && linkedLoanRoute ? (
+                    {!isApprovalRequested && canManage && isFinanced && linkedLoanRoute ? (
                         <Button variant="outline" onClick={() => navigate(linkedLoanRoute)}>
                             <CreditCard className="mr-2 h-4 w-4" />
                             {order.paymentMethod === 'installments'
@@ -593,7 +602,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                 : t('orders.actions.openLoan', { defaultValue: 'Open Loan' })}
                         </Button>
                     ) : null}
-                    {canManage && !isFinanced && outstanding > 0 && !order.isLocked && (
+                    {!isApprovalRequested && canManage && !isFinanced && outstanding > 0 && !order.isLocked && (
                         <Button
                             variant="outline"
                             onClick={() => setSettlementTarget(
@@ -606,12 +615,12 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             {t('orders.actions.recordPayment', { defaultValue: 'Record Payment' })}
                         </Button>
                     )}
-                    {canManage && !isFinanced && paidAmount > 0 && !order.isLocked && (
+                    {!isApprovalRequested && canManage && !isFinanced && paidAmount > 0 && !order.isLocked && (
                         <Button variant="outline" onClick={handleOrderUnpay}>
                             {t('orders.actions.reverseLastPayment', { defaultValue: 'Reverse Last Payment' })}
                         </Button>
                     )}
-                    {canManage && order.isPaid && !order.isLocked && (
+                    {!isApprovalRequested && canManage && order.isPaid && !order.isLocked && (
                         <Button
                             variant="outline"
                             className="bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 hover:text-amber-700 border-amber-500/20"
@@ -694,7 +703,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             <CardContent className="px-3 sm:px-6">
                                 <div className="divide-y overflow-hidden rounded-2xl border">
                                     {installments.map((installment) => {
-                                        const canPayInstallment = canManage && installment.balanceAmount > 0 && !order.isLocked
+                                        const canPayInstallment = !isApprovalRequested && canManage && installment.balanceAmount > 0 && !order.isLocked
                                         return (
                                             <div key={installment.id} className="space-y-3 p-3">
                                                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -862,7 +871,9 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 <div className="space-y-4 lg:col-span-2">
                     <Card className={cn(
                         'overflow-hidden border-border/60',
-                        isSales ? 'bg-gradient-to-br from-primary/10 via-background to-emerald-500/10' : 'bg-gradient-to-br from-sky-500/10 via-background to-cyan-500/10'
+                        isApprovalRequested
+                            ? 'bg-gradient-to-br from-violet-500/15 via-background to-amber-500/10'
+                            : isSales ? 'bg-gradient-to-br from-primary/10 via-background to-emerald-500/10' : 'bg-gradient-to-br from-sky-500/10 via-background to-cyan-500/10'
                     )}>
                         <CardContent className="p-6">
                             <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
@@ -871,7 +882,12 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                         <span className={cn('inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em]', isSales ? 'border-primary/20 bg-primary/10 text-primary' : 'border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300')}>
                                             {isSales ? (t('orders.details.salesOrder') || 'Sales Order') : (t('orders.details.purchaseOrder') || 'Purchase Order')}
                                         </span>
-                                        <OrderStatusBadge status={order.status} label={statusLabel(t, order.status)} />
+                                        <OrderStatusBadge
+                                            status={isApprovalRequested ? 'approval_requested' : order.status}
+                                            label={isApprovalRequested
+                                                ? t('orders.status.requested', { defaultValue: 'Requested' })
+                                                : statusLabel(t, order.status)}
+                                        />
                                         <span className={cn(
                                             'inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em]',
                                             paymentStatus === 'paid'
