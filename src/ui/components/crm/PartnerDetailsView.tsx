@@ -34,6 +34,7 @@ import {
     useLoans,
     usePaymentTransactions,
     useSales,
+    useSalesOrders,
     useSupplierPurchaseOrders,
     useSupplierTravelAgencySales,
     useWorkspaceUsers,
@@ -42,6 +43,7 @@ import {
     type Loan,
     type PurchaseOrder,
     type PaymentTransaction,
+    type Sale,
     type SalesOrder,
     type TravelAgencySale,
     type LoanInstallment,
@@ -68,6 +70,28 @@ import { platformService } from '@/services/platformService'
 
 type PartnerKind = 'customer' | 'supplier' | 'agent' | 'business_partner'
 type RelatedProductOrder = SalesOrder | PurchaseOrder
+type ActivitySource = RelatedTransaction['source'] | 'pos_sale'
+type AgentSoldRow = {
+    id: string
+    source: 'sales_order' | 'pos_sale'
+    reference: string
+    displayDate: string
+    sortDate: string
+    customerName: string
+    summary: string
+    total: number
+    paidAmount: number
+    remainingAmount: number
+    totalInDefaultCurrency: number
+    paidInDefaultCurrency: number
+    remainingInDefaultCurrency: number
+    currency: SalesOrder['currency']
+    units: number
+    status: string
+    statusLabel: string
+    viewHref: string
+}
+type AgentTopProduct = { id: string; name: string; quantity: number; amount: number }
 type RelatedTransaction = {
     id: string
     source: 'sales_order' | 'purchase_order' | 'travel_sale' | 'loan' | 'simple_loan' | 'direct_transaction' | 'clinical_appointment'
@@ -123,8 +147,10 @@ function roleBadgeLabel(role: BusinessPartnerRole, t: TranslationFn) {
     }
 }
 
-function sourceLabel(source: RelatedTransaction['source'], t: TranslationFn) {
+function sourceLabel(source: ActivitySource, t: TranslationFn) {
     switch (source) {
+        case 'pos_sale':
+            return t('sales.posSale', { defaultValue: 'POS Sale' })
         case 'sales_order':
             return t('orders.tabs.sales', { defaultValue: 'Sales Order' })
         case 'purchase_order':
@@ -142,8 +168,10 @@ function sourceLabel(source: RelatedTransaction['source'], t: TranslationFn) {
     }
 }
 
-function sourceBadgeClass(source: RelatedTransaction['source']) {
+function sourceBadgeClass(source: ActivitySource) {
     switch (source) {
+        case 'pos_sale':
+            return 'border-indigo-200 bg-indigo-500/10 text-indigo-700'
         case 'sales_order':
             return 'border-emerald-200 bg-emerald-500/10 text-emerald-700'
         case 'purchase_order':
@@ -181,6 +209,34 @@ function getOrderSummary(items: Array<{ productName: string }>) {
     const firstItems = items.slice(0, 2).map((item) => item.productName)
     if (items.length <= 2) return firstItems.join(', ')
     return `${firstItems.join(', ')} +${items.length - 2}`
+}
+
+function readRecordString(row: Record<string, unknown>, key: string): string {
+    const value = row[key]
+    return typeof value === 'string' ? value.trim() : ''
+}
+
+function readRecordNumber(row: Record<string, unknown>, key: string): number {
+    const value = row[key]
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (typeof value === 'string') {
+        const parsed = Number(value)
+        return Number.isFinite(parsed) ? parsed : 0
+    }
+    return 0
+}
+
+function getSaleReference(sale: Sale) {
+    return sale.sequenceId
+        ? `SALE-${sale.sequenceId}`
+        : `SALE-${sale.id.slice(0, 8).toUpperCase()}`
+}
+
+function getEnrichedSaleItems(sale: Sale): Record<string, unknown>[] {
+    const items = (sale as Sale & { _enrichedItems?: unknown })._enrichedItems
+    return Array.isArray(items)
+        ? items.filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null && !Array.isArray(item))
+        : []
 }
 
 function getTravelSaleSummary(sale: TravelAgencySale) {
@@ -451,6 +507,7 @@ export function PartnerDetailsView({
     const agent = useAgent(partner?.agentFacetId)
     const workspaceUsers = useWorkspaceUsers(workspaceId)
     const customerOrders = useCustomerSalesOrders(partnerId, workspaceId)
+    const allSalesOrders = useSalesOrders(workspaceId)
     const supplierOrders = useSupplierPurchaseOrders(partnerId, workspaceId)
     const supplierTravelSales = useSupplierTravelAgencySales(partnerId, workspaceId)
     const sales = useSales(workspaceId)
@@ -629,6 +686,8 @@ export function PartnerDetailsView({
     const linkedAgentUser = agent?.linkedUserId
         ? workspaceUsers.find((workspaceUser) => workspaceUser.id === agent.linkedUserId)
         : undefined
+    const isAgentProfile = partner?.role === 'agent'
+    const agentLinkedUserId = agent?.linkedUserId || null
     const emptyRelatedLabel = t('businessPartners.noActivity', { defaultValue: 'No related activity yet.' })
     const completedLabel = t('businessPartners.completedItems', { defaultValue: 'Completed Items' })
     const paidLabel = t('businessPartners.settledItems', { defaultValue: 'Settled Items' })
@@ -649,6 +708,168 @@ export function PartnerDetailsView({
     const filteredProductOrders = useMemo(
         () => [...dateFilteredCustomerOrders, ...dateFilteredSupplierOrders],
         [dateFilteredCustomerOrders, dateFilteredSupplierOrders]
+    )
+    const agentSalesOrders = useMemo(
+        () => agentLinkedUserId
+            ? allSalesOrders.filter((order) => !order.isDeleted && order.createdBy === agentLinkedUserId)
+            : [],
+        [agentLinkedUserId, allSalesOrders]
+    )
+    const agentPosSales = useMemo(
+        () => agentLinkedUserId
+            ? sales.filter((sale) => !sale.isDeleted && sale.cashierId === agentLinkedUserId)
+            : [],
+        [agentLinkedUserId, sales]
+    )
+    const dateFilteredAgentSalesOrders = useMemo(
+        () => filterByDate(agentSalesOrders),
+        [agentSalesOrders, filterByDate]
+    )
+    const dateFilteredAgentPosSales = useMemo(
+        () => filterByDate(agentPosSales),
+        [agentPosSales, filterByDate]
+    )
+    const agentSoldRows = useMemo<AgentSoldRow[]>(() => {
+        const orderRows = dateFilteredAgentSalesOrders.map((order) => {
+            const transaction = normalizeSalesOrder(order, defaultCurrency, t, linkedLoanByOrderId.get(order.id))
+            const paidInDefaultCurrency = convertCurrencyAmountWithSnapshot(transaction.paidAmount, order.currency, defaultCurrency, order.exchangeRates)
+            const remainingInDefaultCurrency = convertCurrencyAmountWithSnapshot(transaction.remainingAmount, order.currency, defaultCurrency, order.exchangeRates)
+            return {
+                id: order.id,
+                source: 'sales_order' as const,
+                reference: transaction.reference,
+                displayDate: transaction.displayDate,
+                sortDate: transaction.sortDate,
+                customerName: order.customerName || t('customers.title', { defaultValue: 'Customer' }),
+                summary: transaction.summary || t('orders.tabs.sales', { defaultValue: 'Sales Order' }),
+                total: transaction.originalAmount,
+                paidAmount: transaction.paidAmount,
+                remainingAmount: transaction.remainingAmount,
+                totalInDefaultCurrency: transaction.totalInPartnerCurrency,
+                paidInDefaultCurrency,
+                remainingInDefaultCurrency,
+                currency: order.currency,
+                units: transaction.units,
+                status: transaction.status,
+                statusLabel: transaction.statusLabel,
+                viewHref: transaction.viewHref
+            }
+        })
+
+        const saleRows = dateFilteredAgentPosSales.map((sale) => {
+            const saleItems = getEnrichedSaleItems(sale)
+            const units = saleItems.reduce((sum, item) => {
+                const quantity = readRecordNumber(item, 'quantity')
+                const returnedQuantity = readRecordNumber(item, 'returned_quantity')
+                return sum + Math.max(0, quantity - returnedQuantity)
+            }, 0)
+            const productNames = saleItems
+                .slice(0, 2)
+                .map((item) => readRecordString(item, 'product_name') || readRecordString(item, 'product_id'))
+                .filter(Boolean)
+            const summary = productNames.length > 0
+                ? `${productNames.join(', ')}${saleItems.length > 2 ? ` +${saleItems.length - 2}` : ''}`
+                : t('sales.posSale', { defaultValue: 'POS Sale' })
+            const netTotal = Math.max(0, Number(sale.totalAmount || 0) - Number(sale.returnedAmount || 0))
+            const totalInDefaultCurrency = convertToStoreBase(netTotal, sale.settlementCurrency, defaultCurrency, conversionRates)
+            const status = sale.returnStatus === 'full' ? 'cancelled' : 'completed'
+            const statusLabel = sale.returnStatus === 'full'
+                ? t('sales.returnStatus.full', { defaultValue: 'Returned' })
+                : sale.returnStatus === 'partial'
+                    ? t('sales.returnStatus.partial', { defaultValue: 'Partially Returned' })
+                    : t('businessPartners.statuses.completed', { defaultValue: 'Completed' })
+
+            return {
+                id: sale.id,
+                source: 'pos_sale' as const,
+                reference: getSaleReference(sale),
+                displayDate: sale.createdAt,
+                sortDate: sale.updatedAt || sale.createdAt,
+                customerName: t('sales.posCustomer', { defaultValue: 'POS customer' }),
+                summary,
+                total: netTotal,
+                paidAmount: netTotal,
+                remainingAmount: 0,
+                totalInDefaultCurrency,
+                paidInDefaultCurrency: totalInDefaultCurrency,
+                remainingInDefaultCurrency: 0,
+                currency: sale.settlementCurrency,
+                units,
+                status,
+                statusLabel,
+                viewHref: '/sales'
+            }
+        })
+
+        return [...orderRows, ...saleRows].sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
+    }, [conversionRates, dateFilteredAgentPosSales, dateFilteredAgentSalesOrders, defaultCurrency, linkedLoanByOrderId, t])
+    const agentTopProducts = useMemo<AgentTopProduct[]>(() => {
+        const rows = new Map<string, AgentTopProduct>()
+        for (const order of dateFilteredAgentSalesOrders.filter((row) => row.status !== 'cancelled')) {
+            for (const item of order.items) {
+                const current = rows.get(item.productId) ?? {
+                    id: item.productId,
+                    name: item.productName,
+                    quantity: 0,
+                    amount: 0
+                }
+                current.quantity += item.quantity
+                current.amount += convertCurrencyAmountWithSnapshot(item.lineTotal, order.currency, defaultCurrency, order.exchangeRates)
+                rows.set(item.productId, current)
+            }
+        }
+        for (const sale of dateFilteredAgentPosSales) {
+            for (const item of getEnrichedSaleItems(sale)) {
+                const productId = readRecordString(item, 'product_id') || readRecordString(item, 'id')
+                const productName = readRecordString(item, 'product_name') || t('products.unknownProduct', { defaultValue: 'Unknown Product' })
+                const quantity = Math.max(0, readRecordNumber(item, 'quantity') - readRecordNumber(item, 'returned_quantity'))
+                if (quantity <= 0) continue
+                const unitPrice = readRecordNumber(item, 'converted_unit_price') || readRecordNumber(item, 'unit_price')
+                const currency = readRecordString(item, 'settlement_currency') || sale.settlementCurrency
+                const amount = convertToStoreBase(unitPrice * quantity, currency, defaultCurrency, conversionRates)
+                const current = rows.get(productId) ?? {
+                    id: productId || `${sale.id}-${productName}`,
+                    name: productName,
+                    quantity: 0,
+                    amount: 0
+                }
+                current.quantity += quantity
+                current.amount += amount
+                rows.set(current.id, current)
+            }
+        }
+
+        return Array.from(rows.values()).sort((a, b) => {
+            if (b.amount !== a.amount) return b.amount - a.amount
+            return b.quantity - a.quantity
+        }).slice(0, 5)
+    }, [conversionRates, dateFilteredAgentPosSales, dateFilteredAgentSalesOrders, defaultCurrency, t])
+    const agentTotalSold = useMemo(
+        () => agentSoldRows.reduce((sum, row) => sum + row.totalInDefaultCurrency, 0),
+        [agentSoldRows]
+    )
+    const agentTotalCollected = useMemo(
+        () => agentSoldRows.reduce((sum, row) => sum + row.paidInDefaultCurrency, 0),
+        [agentSoldRows]
+    )
+    const agentOutstandingValue = useMemo(
+        () => agentSoldRows.reduce((sum, row) => sum + row.remainingInDefaultCurrency, 0),
+        [agentSoldRows]
+    )
+    const agentUnitsSold = useMemo(
+        () => agentSoldRows.reduce((sum, row) => sum + row.units, 0),
+        [agentSoldRows]
+    )
+    const agentAverageSale = agentSoldRows.length > 0 ? agentTotalSold / agentSoldRows.length : 0
+    const agentOpenOrderCount = dateFilteredAgentSalesOrders.filter((order) => !['completed', 'cancelled'].includes(order.status)).length
+    const agentCollectedPercent = agentTotalSold > 0 ? Math.min(100, (agentTotalCollected / agentTotalSold) * 100) : 0
+    const agentSalesOrderValue = dateFilteredAgentSalesOrders.reduce(
+        (sum, order) => sum + convertCurrencyAmountWithSnapshot(order.total, order.currency, defaultCurrency, order.exchangeRates),
+        0
+    )
+    const agentPosSalesValue = dateFilteredAgentPosSales.reduce(
+        (sum, sale) => sum + convertToStoreBase(Math.max(0, Number(sale.totalAmount || 0) - Number(sale.returnedAmount || 0)), sale.settlementCurrency, defaultCurrency, conversionRates),
+        0
     )
 
     const relatedTransactions = useMemo(
@@ -782,16 +1003,26 @@ export function PartnerDetailsView({
     const earliestTransaction = filteredTransactions[filteredTransactions.length - 1]
     const locationLabel = partner ? [partner.city, partner.country].filter(Boolean).join(', ') || 'N/A' : 'N/A'
     const activityRows = useMemo(
-        () => filteredTransactions.slice(0, 8).map((transaction) => ({
-            id: transaction.id,
-            date: transaction.activityDate,
-            title: transaction.reference,
-            statusLabel: transaction.statusLabel,
-            total: transaction.total,
-            currency: transaction.currency,
-            source: transaction.source
-        })),
-        [filteredTransactions]
+        () => isAgentProfile
+            ? agentSoldRows.slice(0, 8).map((row) => ({
+                id: row.id,
+                date: row.displayDate,
+                title: row.reference,
+                statusLabel: row.statusLabel,
+                total: row.total,
+                currency: row.currency,
+                source: row.source as ActivitySource
+            }))
+            : filteredTransactions.slice(0, 8).map((transaction) => ({
+                id: transaction.id,
+                date: transaction.activityDate,
+                title: transaction.reference,
+                statusLabel: transaction.statusLabel,
+                total: transaction.total,
+                currency: transaction.currency,
+                source: transaction.source as ActivitySource
+            })),
+        [agentSoldRows, filteredTransactions, isAgentProfile]
     )
 
     const partnerFlows = useMemo(() => {
@@ -1485,6 +1716,218 @@ export function PartnerDetailsView({
                 </div>
 
                 <div className="space-y-4 lg:col-span-2">
+                    {isAgentProfile ? (
+                        <>
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>{t('agents.salesPerformance', { defaultValue: 'Sales Performance' })}</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    {!agentLinkedUserId ? (
+                                        <div className="mb-5 rounded-2xl border border-amber-200/60 bg-amber-500/[0.06] p-4 text-sm font-medium text-amber-800 dark:text-amber-300">
+                                            {t('agents.noLinkedSalesUser', { defaultValue: 'No workspace user is linked to this agent, so sales attribution is unavailable.' })}
+                                        </div>
+                                    ) : null}
+
+                                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                                        <div className="rounded-2xl border border-emerald-200/50 bg-emerald-500/[0.05] p-5">
+                                            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
+                                                <TrendingUp className="h-4 w-4" />
+                                                {t('agents.totalSold', { defaultValue: 'Total Sold' })}
+                                            </div>
+                                            <div className="mt-3 text-3xl font-black tracking-tight text-emerald-700 dark:text-emerald-300">
+                                                {formatCurrency(agentTotalSold, defaultCurrency, iqdPreference)}
+                                            </div>
+                                        </div>
+                                        <div className="rounded-2xl border bg-background/70 p-5">
+                                            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                                                <Receipt className="h-4 w-4" />
+                                                {t('agents.salesCount', { defaultValue: 'Sales Count' })}
+                                            </div>
+                                            <div className="mt-3 text-3xl font-black tracking-tight">{agentSoldRows.length}</div>
+                                        </div>
+                                        <div className="rounded-2xl border bg-background/70 p-5">
+                                            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                                                <Package className="h-4 w-4" />
+                                                {t('agents.unitsSold', { defaultValue: 'Units Sold' })}
+                                            </div>
+                                            <div className="mt-3 text-3xl font-black tracking-tight">{agentUnitsSold}</div>
+                                        </div>
+                                        <div className="rounded-2xl border bg-background/70 p-5">
+                                            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                                                <ShoppingCart className="h-4 w-4" />
+                                                {t('businessPartners.averageDocument', { defaultValue: 'Average Document' })}
+                                            </div>
+                                            <div className="mt-3 text-3xl font-black tracking-tight">
+                                                {formatCurrency(agentAverageSale, defaultCurrency, iqdPreference)}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                                        <div className="rounded-2xl border bg-muted/20 p-5">
+                                            <h3 className="mb-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                {t('agents.salesChannels', { defaultValue: 'Sales Channels' })}
+                                            </h3>
+                                            <div className="space-y-3">
+                                                <div className="flex items-center justify-between gap-3 rounded-xl border bg-background/70 p-3">
+                                                    <div>
+                                                        <div className="text-sm font-semibold">{t('orders.tabs.sales', { defaultValue: 'Sales Order' })}</div>
+                                                        <div className="text-xs text-muted-foreground">{dateFilteredAgentSalesOrders.length} {t('businessPartners.count', { defaultValue: 'Count' }).toLowerCase()}</div>
+                                                    </div>
+                                                    <div className="text-right font-black">{formatCurrency(agentSalesOrderValue, defaultCurrency, iqdPreference)}</div>
+                                                </div>
+                                                <div className="flex items-center justify-between gap-3 rounded-xl border bg-background/70 p-3">
+                                                    <div>
+                                                        <div className="text-sm font-semibold">{t('sales.posSale', { defaultValue: 'POS Sale' })}</div>
+                                                        <div className="text-xs text-muted-foreground">{dateFilteredAgentPosSales.length} {t('businessPartners.count', { defaultValue: 'Count' }).toLowerCase()}</div>
+                                                    </div>
+                                                    <div className="text-right font-black">{formatCurrency(agentPosSalesValue, defaultCurrency, iqdPreference)}</div>
+                                                </div>
+                                            </div>
+                                            <div className="mt-5 space-y-1.5">
+                                                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                                    <span>{t('businessPartners.settlementProgress', { defaultValue: 'Settlement Progress' })}</span>
+                                                    <span>{Math.round(agentCollectedPercent)}%</span>
+                                                </div>
+                                                <div className="h-1.5 overflow-hidden rounded-full bg-background/80">
+                                                    <div
+                                                        className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)] transition-all duration-500"
+                                                        style={{ width: `${agentCollectedPercent}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                                <div className="rounded-xl border bg-background/70 p-3">
+                                                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                        {t('common.paid', { defaultValue: 'Paid' })}
+                                                    </div>
+                                                    <div className="mt-1 text-lg font-black text-emerald-600 dark:text-emerald-400">
+                                                        {formatCurrency(agentTotalCollected, defaultCurrency, iqdPreference)}
+                                                    </div>
+                                                </div>
+                                                <div className="rounded-xl border bg-background/70 p-3">
+                                                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                        {t('orders.details.outstanding', { defaultValue: 'Outstanding' })}
+                                                    </div>
+                                                    <div className="mt-1 text-lg font-black text-amber-600 dark:text-amber-400">
+                                                        {formatCurrency(agentOutstandingValue, defaultCurrency, iqdPreference)}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 rounded-xl border bg-background/70 p-3">
+                                                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                    {t('agents.openSalesOrders', { defaultValue: 'Open Sales Orders' })}
+                                                </div>
+                                                <div className="mt-1 text-lg font-black">{agentOpenOrderCount}</div>
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-2xl border bg-muted/20 p-5">
+                                            <h3 className="mb-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                <Package className="h-4 w-4" />
+                                                {t('products.topProducts', { defaultValue: 'Top Products' })}
+                                            </h3>
+                                            {agentTopProducts.length === 0 ? (
+                                                <div className="rounded-xl border bg-background/70 p-4 text-sm text-muted-foreground">
+                                                    {t('businessPartners.topProductsEmpty', { defaultValue: 'Product activity will appear once orders are added.' })}
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-3">
+                                                    {agentTopProducts.map((product, index) => (
+                                                        <div key={product.id} className="flex items-center justify-between gap-3 rounded-xl border bg-background/70 p-3">
+                                                            <div className="min-w-0">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[10px] font-black text-primary">
+                                                                        {index + 1}
+                                                                    </span>
+                                                                    <span className="truncate font-semibold">{product.name}</span>
+                                                                </div>
+                                                                <div className="mt-1 text-xs text-muted-foreground">
+                                                                    {product.quantity} {t('orders.details.units', { defaultValue: 'Units' })}
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right text-sm font-black">
+                                                                {formatCurrency(product.amount, defaultCurrency, iqdPreference)}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>{t('agents.recentSales', { defaultValue: 'Recent Sales' })}</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    {agentSoldRows.length === 0 ? (
+                                        <div className="rounded-2xl border py-12 text-center text-muted-foreground">
+                                            {emptyRelatedLabel}
+                                        </div>
+                                    ) : (
+                                        <div className="overflow-x-auto rounded-2xl border">
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <TableHead>{t('common.date', { defaultValue: 'Date' })}</TableHead>
+                                                        <TableHead>{t('common.type', { defaultValue: 'Type' })}</TableHead>
+                                                        <TableHead>{referenceColumnLabel}</TableHead>
+                                                        <TableHead>{t('customers.title', { defaultValue: 'Customer' })}</TableHead>
+                                                        <TableHead>{detailsColumnLabel}</TableHead>
+                                                        <TableHead className="text-end">{t('orders.details.units', { defaultValue: 'Units' })}</TableHead>
+                                                        <TableHead className="text-end">{amountLabel}</TableHead>
+                                                        <TableHead className="text-end">{remainingLabel}</TableHead>
+                                                        <TableHead>{t('common.status', { defaultValue: 'Status' })}</TableHead>
+                                                        <TableHead className="text-end">{t('common.actions', { defaultValue: 'Actions' })}</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {agentSoldRows.map((row) => (
+                                                        <TableRow key={`${row.source}-${row.id}`}>
+                                                            <TableCell>{formatDate(row.displayDate)}</TableCell>
+                                                            <TableCell>
+                                                                <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', sourceBadgeClass(row.source))}>
+                                                                    {sourceLabel(row.source, t)}
+                                                                </span>
+                                                            </TableCell>
+                                                            <TableCell className="font-semibold">{row.reference}</TableCell>
+                                                            <TableCell>{row.customerName}</TableCell>
+                                                            <TableCell>{row.summary}</TableCell>
+                                                            <TableCell className="text-end font-semibold">{row.units}</TableCell>
+                                                            <TableCell className="text-end font-semibold">
+                                                                {formatCurrency(row.total, row.currency, iqdPreference)}
+                                                            </TableCell>
+                                                            <TableCell className="text-end font-semibold">
+                                                                {row.remainingAmount === 0 || row.remainingAmount < 0.001
+                                                                    ? '\u2014'
+                                                                    : formatCurrency(row.remainingAmount, row.currency, iqdPreference)}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide', statusBadgeClass(row.status))}>
+                                                                    {row.statusLabel}
+                                                                </span>
+                                                            </TableCell>
+                                                            <TableCell className="text-end">
+                                                                <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => navigate(row.viewHref)}>
+                                                                    <Eye className="h-4 w-4" />
+                                                                    {t('common.view', { defaultValue: 'View' })}
+                                                                </Button>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </>
+                    ) : (
+                        <>
                     <Card>
                         <CardHeader>
                             <CardTitle>{overviewTitle}</CardTitle>
@@ -1922,6 +2365,8 @@ export function PartnerDetailsView({
                             </CardContent>
                         </Card>
                     ))}
+                        </>
+                    )}
                 </div>
             </div>
 
