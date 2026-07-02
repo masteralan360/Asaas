@@ -33,6 +33,7 @@ import {
   Package,
   Pencil,
   Plus,
+  Search,
   Trash2,
   Warehouse,
 } from "lucide-react";
@@ -282,6 +283,7 @@ export default function InventoryTransfer() {
   const [transferQuantities, setTransferQuantities] = useState<
     Record<string, string>
   >({});
+  const [productSearch, setProductSearch] = useState("");
   const [isTransferring, setIsTransferring] = useState(false);
 
   const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
@@ -454,6 +456,19 @@ export default function InventoryTransfer() {
     [inventory, products, sourceStorageId, stockBatches],
   );
 
+  const filteredSourceProducts = useMemo(() => {
+    const query = productSearch.trim().toLowerCase();
+    if (!query) {
+      return sourceProducts;
+    }
+
+    return sourceProducts.filter((product) =>
+      [product.name, product.sku].some((value) =>
+        value.toLowerCase().includes(query),
+      ),
+    );
+  }, [productSearch, sourceProducts]);
+
   const availableTargetStorages = useMemo(
     () =>
       targetWorkspaceStorages.filter(
@@ -585,8 +600,8 @@ export default function InventoryTransfer() {
   );
   const selectedProductCount = selectedTransferItems.length;
   const areAllProductRowsSelected =
-    sourceProducts.length > 0 &&
-    sourceProducts.every((product) =>
+    filteredSourceProducts.length > 0 &&
+    filteredSourceProducts.every((product) =>
       selectedStockKeys.has(getProductStockKey(product.productId)),
     );
 
@@ -871,20 +886,48 @@ export default function InventoryTransfer() {
   };
 
   const selectAllProducts = () => {
-    const productLines = sourceProducts.map(
+    const visibleStockLines = filteredSourceProducts.flatMap(
+      getProductStockLines,
+    );
+    const productLines = filteredSourceProducts.map(
       (product) => getProductStockLines(product)[0],
     );
     const areAllSelected =
       productLines.length > 0 &&
       productLines.every((line) => selectedStockKeys.has(line.key));
     if (areAllSelected) {
-      resetTransferSelection();
+      setSelectedStockKeys((previous) => {
+        const next = new Set(previous);
+        for (const line of visibleStockLines) {
+          next.delete(line.key);
+        }
+        return next;
+      });
+      setTransferQuantities((current) => {
+        const next = { ...current };
+        for (const line of visibleStockLines) {
+          delete next[line.key];
+        }
+        return next;
+      });
       return;
     }
 
-    setSelectedStockKeys(new Set(productLines.map((line) => line.key)));
-    setTransferQuantities(() => {
-      const nextQuantities: Record<string, string> = {};
+    setSelectedStockKeys((previous) => {
+      const next = new Set(previous);
+      for (const line of visibleStockLines) {
+        next.delete(line.key);
+      }
+      for (const line of productLines) {
+        next.add(line.key);
+      }
+      return next;
+    });
+    setTransferQuantities((current) => {
+      const nextQuantities = { ...current };
+      for (const line of visibleStockLines) {
+        delete nextQuantities[line.key];
+      }
       for (const line of productLines) {
         nextQuantities[line.key] = String(line.availableQuantity);
       }
@@ -1210,6 +1253,7 @@ export default function InventoryTransfer() {
                     value={sourceStorageId}
                     onValueChange={(id) => {
                       setSourceStorageId(id);
+                      setProductSearch("");
                       resetTransferSelection();
                     }}
                     disabled={!sourceWorkspaceId}
@@ -1311,28 +1355,55 @@ export default function InventoryTransfer() {
                   </div>
                 ) : (
                   <div className="max-h-[28rem] space-y-2 overflow-y-auto">
-                    <div className="flex items-center gap-2 border-b pb-2">
-                      <Checkbox
-                        id="select-all"
-                        checked={areAllProductRowsSelected}
-                        aria-checked={
-                          selectedTransferLines.length > 0 &&
-                          !areAllProductRowsSelected
-                            ? "mixed"
-                            : areAllProductRowsSelected
-                        }
-                        onCheckedChange={selectAllProducts}
-                      />
-                      <Label
-                        htmlFor="select-all"
-                        className="cursor-pointer text-sm font-medium"
-                      >
-                        {t("common.selectAll", "Select All")} (
-                        {sourceProducts.length})
-                      </Label>
+                    <div className="flex flex-col gap-2 border-b pb-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="select-all"
+                          checked={areAllProductRowsSelected}
+                          aria-checked={
+                            selectedTransferLines.length > 0 &&
+                            !areAllProductRowsSelected
+                              ? "mixed"
+                              : areAllProductRowsSelected
+                          }
+                          onCheckedChange={selectAllProducts}
+                        />
+                        <Label
+                          htmlFor="select-all"
+                          className="cursor-pointer text-sm font-medium"
+                        >
+                          {t("common.selectAll", "Select All")} (
+                          {filteredSourceProducts.length})
+                        </Label>
+                      </div>
+                      <div className="relative w-full sm:w-48">
+                        <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={productSearch}
+                          onChange={(event) =>
+                            setProductSearch(event.target.value)
+                          }
+                          placeholder={t(
+                            "inventoryTransfer.productSearchPlaceholder",
+                            "Search products...",
+                          )}
+                          aria-label={t(
+                            "inventoryTransfer.productSearch",
+                            "Product search",
+                          )}
+                          className="h-9 rounded-lg ps-9 text-sm"
+                        />
+                      </div>
                     </div>
 
-                    {sourceProducts.map((product) => {
+                    {filteredSourceProducts.length === 0 ? (
+                      <div className="py-8 text-center text-sm text-muted-foreground">
+                        {t(
+                          "inventoryTransfer.noMatchingProducts",
+                          "No products match your search.",
+                        )}
+                      </div>
+                    ) : filteredSourceProducts.map((product) => {
                       const stockLines = getProductStockLines(product);
                       const productLine = stockLines[0];
                       const batchLines = stockLines.slice(1);
