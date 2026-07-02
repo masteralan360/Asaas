@@ -15,6 +15,8 @@ interface ProductAutocompleteInputProps {
     className?: string
     disabled?: boolean
     hasSelection?: boolean
+    linkedLabel?: string
+    skuLabel?: string
 }
 
 function getDisplayImageUrl(url?: string): string {
@@ -57,7 +59,9 @@ export function ProductAutocompleteInput({
     placeholder,
     className,
     disabled,
-    hasSelection
+    hasSelection,
+    linkedLabel = 'Linked',
+    skuLabel = 'SKU'
 }: ProductAutocompleteInputProps) {
     const [isFocused, setIsFocused] = useState(false)
     const [justSelected, setJustSelected] = useState(false)
@@ -122,7 +126,7 @@ export function ProductAutocompleteInput({
                     <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
                         <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] font-medium text-green-600 dark:text-green-400">
                             <Check className="h-3 w-3" />
-                            Linked
+                            {linkedLabel}
                         </span>
                     </div>
                 )}
@@ -143,7 +147,7 @@ export function ProductAutocompleteInput({
                             <div className="min-w-0 flex-1">
                                 <div className="truncate font-medium">{product.name}</div>
                                 {product.sku ? (
-                                    <div className="truncate text-xs text-muted-foreground">SKU: {product.sku}</div>
+                                    <div className="truncate text-xs text-muted-foreground">{skuLabel}: {product.sku}</div>
                                 ) : null}
                             </div>
                         </button>

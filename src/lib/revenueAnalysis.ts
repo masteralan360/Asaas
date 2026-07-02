@@ -22,9 +22,14 @@ export interface RevenueAnalysisRecord {
     currency: string
     origin: string
     sourceChannel?: string | null
+    cashierId?: string | null
+    createdBy?: string | null
     cashier: string
+    partyId?: string | null
     partyName?: string
     sequenceId?: number
+    paymentMethod?: string | null
+    notes?: string | null
     hasPartialReturn: boolean
     isReturned: boolean
     items: RevenueAnalysisItem[]
@@ -101,6 +106,18 @@ export function toRevenueRecordFromSale(sale: Sale, options: RevenueCategoryLook
     })._realEstateTransactionId
         || (sale as Sale & { _clinicalAppointmentId?: string | null })._clinicalAppointmentId
         || null
+    const cashierId = sale.cashier_id || (sale as Sale & { cashierId?: string | null }).cashierId || null
+    const paymentMethod = sale.payment_method || (sale as Sale & { paymentMethod?: string | null }).paymentMethod || null
+    const partyId = (sale as Sale & {
+        businessPartnerId?: string | null
+        business_partner_id?: string | null
+        customerId?: string | null
+        customer_id?: string | null
+    }).businessPartnerId
+        || (sale as Sale & { business_partner_id?: string | null }).business_partner_id
+        || (sale as Sale & { customerId?: string | null }).customerId
+        || (sale as Sale & { customer_id?: string | null }).customer_id
+        || null
 
     return {
         key: `sale:${sale.id}`,
@@ -111,10 +128,15 @@ export function toRevenueRecordFromSale(sale: Sale, options: RevenueCategoryLook
         date: sale.created_at,
         currency: sale.settlement_currency || 'usd',
         origin: sale.origin,
+        cashierId,
+        createdBy: cashierId,
         cashier: sale.cashier_name || 'Staff',
+        partyId,
         partyName: (sale as Sale & { partyName?: string; _counterpartyName?: string }).partyName
             || (sale as Sale & { partyName?: string; _counterpartyName?: string })._counterpartyName,
         sequenceId: sale.sequenceId,
+        paymentMethod,
+        notes: sale.notes || null,
         hasPartialReturn: !!sale.has_partial_return,
         isReturned: !!sale.is_returned,
         items: (sale.items || []).map((item) => ({
@@ -139,8 +161,13 @@ export function toRevenueRecordFromSalesOrder(order: SalesOrder, options: Revenu
         currency: order.currency || 'usd',
         origin: 'sales_order',
         sourceChannel: order.sourceChannel || null,
+        cashierId: order.createdBy || null,
+        createdBy: order.createdBy || null,
         cashier: '',
+        partyId: order.businessPartnerId || order.customerId || null,
         partyName: order.customerName,
+        paymentMethod: order.paymentMethod || null,
+        notes: order.notes || null,
         hasPartialReturn: false,
         isReturned: false,
         items: (order.items || []).map((item) => {

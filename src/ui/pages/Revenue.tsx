@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { Sale } from '@/types'
-import { useCategories, useProducts, useSales, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, toUISale, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment } from '@/local-db'
+import { useCategories, useProducts, useSales, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useWorkspaceUsers, toUISale, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment } from '@/local-db'
 import { formatCurrency, formatDateTime, formatDate, formatOriginLabel, formatTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
@@ -12,6 +12,8 @@ import { getReportOriginId } from '@/lib/printIdentity'
 import { useWorkspace } from '@/workspace'
 import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
+import { ProductAutocompleteInput } from '@/ui/components/orders/ProductAutocompleteInput'
+import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import {
     Card,
     CardContent,
@@ -27,6 +29,19 @@ import {
     TooltipTrigger,
     TooltipContent,
     TooltipProvider,
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+    Input,
+    Label,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
     SaleDetailsModal,
     MetricDetailModal,
     TopProductsModal,
@@ -57,7 +72,10 @@ import {
     Info,
     Grid3X3,
     LayoutGrid,
-    List
+    List,
+    Users,
+    Search,
+    SlidersHorizontal
 } from 'lucide-react'
 import { useTheme } from '@/ui/components/theme-provider'
 import { Button, ExportPreviewModal, Progress } from '@/ui/components'
@@ -71,6 +89,468 @@ import {
     toRevenueRecordFromSale,
     type RevenueAnalysisRecord
 } from '@/lib/revenueAnalysis'
+
+type RevenueSortOption =
+    | 'date_desc'
+    | 'date_asc'
+    | 'revenue_desc'
+    | 'revenue_asc'
+    | 'cost_desc'
+    | 'cost_asc'
+    | 'profit_desc'
+    | 'profit_asc'
+    | 'margin_desc'
+    | 'margin_asc'
+    | 'cashier_asc'
+    | 'cashier_desc'
+    | 'origin_asc'
+    | 'origin_desc'
+
+type RevenueReturnStatusFilter = 'all' | 'non_returned' | 'partial' | 'returned'
+type RevenueProfitStatusFilter = 'all' | 'profitable' | 'break_even' | 'loss'
+type RevenueDayFilter = 'all' | '0' | '1' | '2' | '3' | '4' | '5' | '6'
+
+interface RevenueFilterState {
+    search: string
+    origin: string
+    sourceChannel: string
+    cashier: string
+    party: string
+    partyPartnerId: string
+    partySearch: string
+    currency: string
+    paymentMethod: string
+    category: string
+    product: string
+    productSearch: string
+    returnStatus: RevenueReturnStatusFilter
+    profitStatus: RevenueProfitStatusFilter
+    dayOfWeek: RevenueDayFilter
+    hour: string
+    minRevenue: string
+    maxRevenue: string
+    minCost: string
+    maxCost: string
+    minProfit: string
+    maxProfit: string
+    minMargin: string
+    maxMargin: string
+    sort: RevenueSortOption
+}
+
+const DEFAULT_REVENUE_FILTERS: RevenueFilterState = {
+    search: '',
+    origin: 'all',
+    sourceChannel: 'all',
+    cashier: 'all',
+    party: 'all',
+    partyPartnerId: '',
+    partySearch: '',
+    currency: 'all',
+    paymentMethod: 'all',
+    category: 'all',
+    product: 'all',
+    productSearch: '',
+    returnStatus: 'all',
+    profitStatus: 'all',
+    dayOfWeek: 'all',
+    hour: 'all',
+    minRevenue: '',
+    maxRevenue: '',
+    minCost: '',
+    maxCost: '',
+    minProfit: '',
+    maxProfit: '',
+    minMargin: '',
+    maxMargin: '',
+    sort: 'date_desc'
+}
+
+function countActiveRevenueFilters(filters: RevenueFilterState) {
+    return [
+        !!filters.search.trim(),
+        filters.origin !== 'all',
+        filters.sourceChannel !== 'all',
+        filters.cashier !== 'all',
+        filters.party !== 'all',
+        filters.currency !== 'all',
+        filters.paymentMethod !== 'all',
+        filters.category !== 'all',
+        filters.product !== 'all',
+        filters.returnStatus !== 'all',
+        filters.profitStatus !== 'all',
+        filters.dayOfWeek !== 'all',
+        filters.hour !== 'all',
+        !!filters.minRevenue,
+        !!filters.maxRevenue,
+        !!filters.minCost,
+        !!filters.maxCost,
+        !!filters.minProfit,
+        !!filters.maxProfit,
+        !!filters.minMargin,
+        !!filters.maxMargin,
+        filters.sort !== 'date_desc'
+    ].filter(Boolean).length
+}
+
+function parseOptionalNumber(value: string) {
+    if (!value.trim()) return null
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+}
+
+function normalizeRevenueFilterValue(value: string | null | undefined) {
+    return value?.trim().toLowerCase() || ''
+}
+
+function getRevenueStaffId(record: RevenueAnalysisRecord) {
+    return record.cashierId?.trim() || record.createdBy?.trim() || ''
+}
+
+function getRevenueStaffKey(record: RevenueAnalysisRecord) {
+    const staffId = getRevenueStaffId(record)
+    if (staffId) return `id:${staffId}`
+
+    const cashier = record.cashier?.trim()
+    if (cashier) return `name:${cashier.toLowerCase()}`
+
+    return 'unknown'
+}
+
+function getRevenueStaffLabel(record: RevenueAnalysisRecord, userNameById?: ReadonlyMap<string, string>) {
+    const staffId = getRevenueStaffId(record)
+    if (staffId) {
+        return userNameById?.get(staffId) || record.cashier?.trim() || staffId
+    }
+
+    return record.cashier?.trim() || 'Unknown'
+}
+
+function getRevenuePaymentMethod(record: RevenueAnalysisRecord) {
+    return normalizeRevenueFilterValue(record.paymentMethod) || 'unknown'
+}
+
+function getRevenueProductKey(item: RevenueAnalysisRecord['items'][number]) {
+    return item.productId?.trim() || `name:${normalizeRevenueFilterValue(item.productName)}`
+}
+
+function getRevenueReturnStatus(record: RevenueAnalysisRecord): Exclude<RevenueReturnStatusFilter, 'all'> {
+    const totalQuantity = record.items.reduce((sum, item) => sum + Math.max(0, Number(item.quantity || 0)), 0)
+    const returnedQuantity = record.items.reduce((sum, item) => sum + Math.max(0, Number(item.returnedQuantity || 0)), 0)
+    const fullyReturned = record.isReturned || (totalQuantity > 0 && returnedQuantity >= totalQuantity)
+
+    if (fullyReturned) return 'returned'
+    if (record.hasPartialReturn || returnedQuantity > 0) return 'partial'
+    return 'non_returned'
+}
+
+function getRevenueProfitStatus(profit: number): Exclude<RevenueProfitStatusFilter, 'all'> {
+    if (Math.abs(profit) < 0.005) return 'break_even'
+    return profit > 0 ? 'profitable' : 'loss'
+}
+
+function revenuePaymentMethodLabel(value: string | null | undefined, t: any) {
+    switch (value) {
+        case 'bank_transfer':
+            return t('ledger.paymentMethod.bankTransfer', { defaultValue: 'Bank Transfer' })
+        case 'credit':
+            return t('ledger.paymentMethod.credit', { defaultValue: 'Credit' })
+        case 'hawala':
+            return t('ledger.paymentMethod.hawala', { defaultValue: 'Hawala' })
+        case 'loan_adjustment':
+            return t('ledger.paymentMethod.loanAdjustment', { defaultValue: 'Loan Adjustment' })
+        case 'qicard':
+            return t('ledger.paymentMethod.qicard', { defaultValue: 'QiCard' })
+        case 'zaincash':
+            return t('ledger.paymentMethod.zaincash', { defaultValue: 'ZainCash' })
+        case 'fastpay':
+            return t('ledger.paymentMethod.fastpay', { defaultValue: 'FastPay' })
+        case 'fib':
+            return t('ledger.paymentMethod.fib', { defaultValue: 'FIB' })
+        case 'cash':
+            return t('ledger.paymentMethod.cash', { defaultValue: 'Cash' })
+        case 'loan':
+            return t('ledger.paymentMethod.loan', { defaultValue: 'Loan' })
+        case 'unknown':
+            return t('ledger.paymentMethod.unknown', { defaultValue: 'Unknown' })
+        default:
+            return value ? value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()) : t('ledger.paymentMethod.unknown', { defaultValue: 'Unknown' })
+    }
+}
+
+function humanizeRevenueFilterValue(value: string | null | undefined) {
+    return value ? value.replace(/[_-]/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()) : ''
+}
+
+function revenueOriginLabel(origin: string | null | undefined, sourceChannel: string | null | undefined, t: any) {
+    if ((sourceChannel || '').trim().toLowerCase() === 'marketplace') {
+        return t('revenue.filters.origins.ecommerce', { defaultValue: 'E-Commerce' })
+    }
+
+    const normalized = (origin || 'pos').trim().toLowerCase().replace(/[-\s]+/g, '_')
+
+    switch (normalized) {
+        case 'pos':
+            return t('revenue.filters.origins.pos', { defaultValue: 'POS' })
+        case 'instant_pos':
+            return t('revenue.filters.origins.instantPos', { defaultValue: 'Instant POS' })
+        case 'sales_order':
+            return t('revenue.filters.origins.salesOrder', { defaultValue: 'Sales Order' })
+        case 'purchase_order':
+            return t('revenue.filters.origins.purchaseOrder', { defaultValue: 'Purchase Order' })
+        case 'order_report':
+            return t('revenue.filters.origins.orderReport', { defaultValue: 'Order Report' })
+        case 'ecommerce':
+        case 'e_commerce':
+            return t('revenue.filters.origins.ecommerce', { defaultValue: 'E-Commerce' })
+        case 'travel_agency':
+            return t('revenue.filters.origins.travelAgency', { defaultValue: 'Travel Agency' })
+        case 'real_estate':
+            return t('revenue.filters.origins.realEstate', { defaultValue: 'Real Estate' })
+        case 'clinical_appointment':
+            return t('revenue.filters.origins.appointments', { defaultValue: 'Appointments' })
+        case 'agents':
+        case 'agent':
+            return t('revenue.filters.origins.agents', { defaultValue: 'Agents' })
+        case 'accounting':
+        case 'budget':
+            return t('revenue.filters.origins.accounting', { defaultValue: 'Accounting' })
+        case 'manual':
+            return t('revenue.filters.origins.manual', { defaultValue: 'Manual' })
+        case 'business_partner':
+            return t('revenue.filters.origins.businessPartner', { defaultValue: 'Business Partner' })
+        case 'loans':
+        case 'loan':
+            return t('revenue.filters.origins.loans', { defaultValue: 'Loans' })
+        case 'loan_report':
+            return t('revenue.filters.origins.loanReport', { defaultValue: 'Loan Report' })
+        case 'upload':
+        case 'uploads':
+            return t('revenue.filters.origins.upload', { defaultValue: 'Upload' })
+        case 'exchange':
+            return t('revenue.filters.origins.exchange', { defaultValue: 'Exchange' })
+        default:
+            return humanizeRevenueFilterValue(origin)
+    }
+}
+
+function revenueSourceChannelLabel(value: string | null | undefined, t: any) {
+    const normalized = (value || 'none').trim().toLowerCase().replace(/[-\s]+/g, '_')
+
+    switch (normalized) {
+        case 'manual':
+            return t('revenue.filters.sourceChannels.manual', { defaultValue: 'Manual' })
+        case 'marketplace':
+            return t('revenue.filters.sourceChannels.marketplace', { defaultValue: 'Marketplace' })
+        case 'none':
+            return t('revenue.filters.sourceChannels.none', { defaultValue: 'None' })
+        default:
+            return humanizeRevenueFilterValue(value)
+    }
+}
+
+function revenueSortOptionLabel(value: RevenueSortOption, t: any) {
+    switch (value) {
+        case 'date_asc':
+            return t('revenue.filters.sortDateAsc', { defaultValue: 'Date: Oldest First' })
+        case 'revenue_desc':
+            return t('revenue.filters.sortRevenueDesc', { defaultValue: 'Revenue: High to Low' })
+        case 'revenue_asc':
+            return t('revenue.filters.sortRevenueAsc', { defaultValue: 'Revenue: Low to High' })
+        case 'cost_desc':
+            return t('revenue.filters.sortCostDesc', { defaultValue: 'Cost: High to Low' })
+        case 'cost_asc':
+            return t('revenue.filters.sortCostAsc', { defaultValue: 'Cost: Low to High' })
+        case 'profit_desc':
+            return t('revenue.filters.sortProfitDesc', { defaultValue: 'Profit: High to Low' })
+        case 'profit_asc':
+            return t('revenue.filters.sortProfitAsc', { defaultValue: 'Profit: Low to High' })
+        case 'margin_desc':
+            return t('revenue.filters.sortMarginDesc', { defaultValue: 'Margin: High to Low' })
+        case 'margin_asc':
+            return t('revenue.filters.sortMarginAsc', { defaultValue: 'Margin: Low to High' })
+        case 'cashier_asc':
+            return t('revenue.filters.sortCashierAsc', { defaultValue: 'Cashier / Created By: A to Z' })
+        case 'cashier_desc':
+            return t('revenue.filters.sortCashierDesc', { defaultValue: 'Cashier / Created By: Z to A' })
+        case 'origin_asc':
+            return t('revenue.filters.sortOriginAsc', { defaultValue: 'Origin: A to Z' })
+        case 'origin_desc':
+            return t('revenue.filters.sortOriginDesc', { defaultValue: 'Origin: Z to A' })
+        default:
+            return t('revenue.filters.sortDateDesc', { defaultValue: 'Date: Newest First' })
+    }
+}
+
+function revenueReturnStatusLabel(value: RevenueReturnStatusFilter, t: any) {
+    switch (value) {
+        case 'non_returned':
+            return t('revenue.filters.nonReturned', { defaultValue: 'Non-Returned' })
+        case 'partial':
+            return t('revenue.filters.partiallyReturned', { defaultValue: 'Partially Returned' })
+        case 'returned':
+            return t('revenue.filters.fullyReturned', { defaultValue: 'Fully Returned' })
+        default:
+            return t('revenue.filters.allReturnStates', { defaultValue: 'All Return States' })
+    }
+}
+
+function revenueProfitStatusLabel(value: RevenueProfitStatusFilter, t: any) {
+    switch (value) {
+        case 'profitable':
+            return t('revenue.filters.profitable', { defaultValue: 'Profitable' })
+        case 'break_even':
+            return t('revenue.filters.breakEven', { defaultValue: 'Break-Even' })
+        case 'loss':
+            return t('revenue.filters.lossMaking', { defaultValue: 'Loss-Making' })
+        default:
+            return t('revenue.filters.allProfitStates', { defaultValue: 'All Profit States' })
+    }
+}
+
+function revenueDayLabel(value: RevenueDayFilter, t: any) {
+    const labels = [
+        t('revenue.filters.days.sunday', { defaultValue: 'Sunday' }),
+        t('revenue.filters.days.monday', { defaultValue: 'Monday' }),
+        t('revenue.filters.days.tuesday', { defaultValue: 'Tuesday' }),
+        t('revenue.filters.days.wednesday', { defaultValue: 'Wednesday' }),
+        t('revenue.filters.days.thursday', { defaultValue: 'Thursday' }),
+        t('revenue.filters.days.friday', { defaultValue: 'Friday' }),
+        t('revenue.filters.days.saturday', { defaultValue: 'Saturday' })
+    ]
+
+    return value === 'all' ? t('revenue.filters.allDays', { defaultValue: 'All Days' }) : labels[Number(value)] || value
+}
+
+function revenueHourLabel(value: string, t: any) {
+    if (value === 'all') return t('revenue.filters.allHours', { defaultValue: 'All Hours' })
+    const hour = Number(value)
+    if (!Number.isFinite(hour)) return value
+    return `${String(hour).padStart(2, '0')}:00`
+}
+
+function applyRevenueFilters(
+    records: RevenueAnalysisRecord[],
+    filters: RevenueFilterState,
+    userNameById?: ReadonlyMap<string, string>
+) {
+    const normalizedSearch = normalizeRevenueFilterValue(filters.search)
+    const minRevenue = parseOptionalNumber(filters.minRevenue)
+    const maxRevenue = parseOptionalNumber(filters.maxRevenue)
+    const minCost = parseOptionalNumber(filters.minCost)
+    const maxCost = parseOptionalNumber(filters.maxCost)
+    const minProfit = parseOptionalNumber(filters.minProfit)
+    const maxProfit = parseOptionalNumber(filters.maxProfit)
+    const minMargin = parseOptionalNumber(filters.minMargin)
+    const maxMargin = parseOptionalNumber(filters.maxMargin)
+
+    const filtered = records.filter((record) => {
+        const totals = getRevenueAnalysisTotals(record)
+        const returnStatus = getRevenueReturnStatus(record)
+
+        if (filters.origin !== 'all' && record.origin !== filters.origin) return false
+        if (filters.sourceChannel !== 'all' && (record.sourceChannel || 'none') !== filters.sourceChannel) return false
+        if (filters.cashier !== 'all' && getRevenueStaffKey(record) !== filters.cashier) return false
+        if (filters.party !== 'all') {
+            const normalizedParty = normalizeRevenueFilterValue(filters.party)
+            const normalizedPartyId = normalizeRevenueFilterValue(filters.partyPartnerId)
+            const recordPartyName = normalizeRevenueFilterValue(record.partyName)
+            const recordPartyId = normalizeRevenueFilterValue(record.partyId)
+
+            if (normalizedPartyId) {
+                if (recordPartyId !== normalizedPartyId && recordPartyName !== normalizedParty) return false
+            } else if (!recordPartyName.includes(normalizedParty)) {
+                return false
+            }
+        }
+        if (filters.currency !== 'all' && record.currency !== filters.currency) return false
+        if (filters.paymentMethod !== 'all' && getRevenuePaymentMethod(record) !== filters.paymentMethod) return false
+        if (filters.returnStatus !== 'all' && returnStatus !== filters.returnStatus) return false
+        if (filters.profitStatus !== 'all' && getRevenueProfitStatus(totals.profit) !== filters.profitStatus) return false
+
+        if (filters.category !== 'all' && !record.items.some((item) => (item.productCategory || 'Uncategorized') === filters.category)) return false
+        if (filters.product !== 'all' && !record.items.some((item) => getRevenueProductKey(item) === filters.product)) return false
+
+        const recordDate = new Date(record.date)
+        if (filters.dayOfWeek !== 'all' && String(recordDate.getDay()) !== filters.dayOfWeek) return false
+        if (filters.hour !== 'all' && String(recordDate.getHours()) !== filters.hour) return false
+
+        if (minRevenue !== null && totals.revenue < minRevenue) return false
+        if (maxRevenue !== null && totals.revenue > maxRevenue) return false
+        if (minCost !== null && totals.cost < minCost) return false
+        if (maxCost !== null && totals.cost > maxCost) return false
+        if (minProfit !== null && totals.profit < minProfit) return false
+        if (maxProfit !== null && totals.profit > maxProfit) return false
+        if (minMargin !== null && totals.margin < minMargin) return false
+        if (maxMargin !== null && totals.margin > maxMargin) return false
+
+        if (!normalizedSearch) return true
+
+        const searchValues = [
+            record.id,
+            record.sourceRecordId,
+            record.referenceCode,
+            record.origin,
+            formatOriginLabel(record.origin, record.sourceChannel),
+            record.sourceChannel,
+            record.currency,
+            record.paymentMethod,
+            record.notes,
+            record.partyId,
+            record.partyName,
+            record.cashier,
+            getRevenueStaffId(record),
+            getRevenueStaffLabel(record, userNameById),
+            ...record.items.flatMap((item) => [
+                item.productId,
+                item.productName,
+                item.productCategory
+            ])
+        ]
+
+        return searchValues.some((value) => normalizeRevenueFilterValue(value).includes(normalizedSearch))
+    })
+
+    return filtered.sort((a, b) => {
+        const totalsA = getRevenueAnalysisTotals(a)
+        const totalsB = getRevenueAnalysisTotals(b)
+        const staffA = getRevenueStaffLabel(a, userNameById)
+        const staffB = getRevenueStaffLabel(b, userNameById)
+        const originA = formatOriginLabel(a.origin, a.sourceChannel)
+        const originB = formatOriginLabel(b.origin, b.sourceChannel)
+
+        switch (filters.sort) {
+            case 'date_asc':
+                return new Date(a.date).getTime() - new Date(b.date).getTime()
+            case 'revenue_desc':
+                return totalsB.revenue - totalsA.revenue
+            case 'revenue_asc':
+                return totalsA.revenue - totalsB.revenue
+            case 'cost_desc':
+                return totalsB.cost - totalsA.cost
+            case 'cost_asc':
+                return totalsA.cost - totalsB.cost
+            case 'profit_desc':
+                return totalsB.profit - totalsA.profit
+            case 'profit_asc':
+                return totalsA.profit - totalsB.profit
+            case 'margin_desc':
+                return totalsB.margin - totalsA.margin
+            case 'margin_asc':
+                return totalsA.margin - totalsB.margin
+            case 'cashier_asc':
+                return staffA.localeCompare(staffB)
+            case 'cashier_desc':
+                return staffB.localeCompare(staffA)
+            case 'origin_asc':
+                return originA.localeCompare(originB)
+            case 'origin_desc':
+                return originB.localeCompare(originA)
+            default:
+                return new Date(b.date).getTime() - new Date(a.date).getTime()
+        }
+    })
+}
 
 export function Revenue() {
     const { user } = useAuth()
@@ -127,6 +607,7 @@ export function Revenue() {
     }, { hydrateSourceTables: false })
     const products = useProducts(user?.workspaceId)
     const categories = useCategories(user?.workspaceId)
+    const workspaceUsers = useWorkspaceUsers(user?.workspaceId)
 
     const allSales = useMemo<Sale[]>(() => {
         const sales = (rawSales || []).map(toUISale)
@@ -157,6 +638,9 @@ export function Revenue() {
     const [showPrintPreview, setShowPrintPreview] = useState(false)
     const [selectedRecordKeys, setSelectedRecordKeys] = useState<Set<string>>(new Set())
     const [showPeakHeatmap, setShowPeakHeatmap] = useState(false)
+    const [filters, setFilters] = useState<RevenueFilterState>(DEFAULT_REVENUE_FILTERS)
+    const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false)
+    const [draftFilters, setDraftFilters] = useState<RevenueFilterState>(DEFAULT_REVENUE_FILTERS)
 
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
         return (localStorage.getItem('revenue_view_mode') as 'table' | 'grid') || 'table'
@@ -176,6 +660,11 @@ export function Revenue() {
         localStorage.setItem('revenue_page_size', String(itemsPerPage))
     }, [itemsPerPage])
     const listRef = useRef<HTMLDivElement>(null)
+
+    const userNameById = useMemo(
+        () => new Map(workspaceUsers.map((member) => [member.id, member.name || member.email || member.id] as const)),
+        [workspaceUsers]
+    )
 
     const categoryNameById = useMemo(
         () => new Map(categories.map((category) => [category.id, category.name] as const)),
@@ -202,14 +691,80 @@ export function Revenue() {
         () => buildRevenueAnalysisRecords(allSales, salesOrders, travelSales, { productCategoryByProductId }),
         [allSales, salesOrders, travelSales, productCategoryByProductId]
     )
-    const filteredSales = useMemo(
+    const revenueFilterOptions = useMemo(() => {
+        const origins = new Map<string, string>()
+        const sourceChannels = new Map<string, string>()
+        const staff = new Map<string, string>()
+        const currencies = new Set<string>()
+        const paymentMethods = new Set<string>()
+        const categories = new Set<string>()
+        const products = new Map<string, string>()
+
+        revenueRecords.forEach((record) => {
+            if (record.origin) {
+                origins.set(record.origin, revenueOriginLabel(record.origin, record.sourceChannel, t))
+            }
+
+            if (record.sourceChannel?.trim()) {
+                sourceChannels.set(record.sourceChannel, revenueSourceChannelLabel(record.sourceChannel, t))
+            }
+
+            staff.set(getRevenueStaffKey(record), getRevenueStaffLabel(record, userNameById))
+
+            if (record.currency?.trim()) {
+                currencies.add(record.currency)
+            }
+
+            paymentMethods.add(getRevenuePaymentMethod(record))
+
+            record.items.forEach((item) => {
+                const category = item.productCategory || 'Uncategorized'
+                categories.add(category)
+                products.set(getRevenueProductKey(item), item.productName || 'Unknown Product')
+            })
+        })
+
+        const byLabel = (left: { label: string }, right: { label: string }) => left.label.localeCompare(right.label)
+
+        return {
+            origins: Array.from(origins, ([value, label]) => ({ value, label })).sort(byLabel),
+            sourceChannels: Array.from(sourceChannels, ([value, label]) => ({ value, label })).sort(byLabel),
+            staff: Array.from(staff, ([value, label]) => ({ value, label })).sort(byLabel),
+            currencies: Array.from(currencies).sort((left, right) => left.localeCompare(right)),
+            paymentMethods: Array.from(paymentMethods).sort((left, right) => revenuePaymentMethodLabel(left, t).localeCompare(revenuePaymentMethodLabel(right, t))),
+            categories: Array.from(categories).sort((left, right) => left.localeCompare(right)),
+            products: Array.from(products, ([value, label]) => ({ value, label })).sort(byLabel)
+        }
+    }, [revenueRecords, t, userNameById])
+    const dateScopedSales = useMemo(
         () => filterSalesByDateRange(allSales, dateRange, customDates),
         [allSales, dateRange, customDates]
     )
-    const filteredRevenueRecords = useMemo(
+    const dateScopedRevenueRecords = useMemo(
         () => filterRevenueAnalysisRecords(revenueRecords, dateRange, customDates),
         [revenueRecords, dateRange, customDates]
     )
+    const filteredRevenueRecords = useMemo(
+        () => applyRevenueFilters(dateScopedRevenueRecords, filters, userNameById),
+        [dateScopedRevenueRecords, filters, userNameById]
+    )
+    const allTimeFilteredRevenueRecords = useMemo(
+        () => applyRevenueFilters(revenueRecords, filters, userNameById),
+        [filters, revenueRecords, userNameById]
+    )
+    const draftPreviewRevenueRecords = useMemo(
+        () => applyRevenueFilters(dateScopedRevenueRecords, draftFilters, userNameById),
+        [dateScopedRevenueRecords, draftFilters, userNameById]
+    )
+    const filteredSales = useMemo(() => {
+        const visibleSaleIds = new Set(
+            filteredRevenueRecords
+                .filter((record) => record.source === 'sale')
+                .map((record) => record.id)
+        )
+
+        return dateScopedSales.filter((sale) => visibleSaleIds.has(sale.id))
+    }, [dateScopedSales, filteredRevenueRecords])
 
     const isLoading = rawSales === undefined || salesOrders === undefined || rawTravelSales === undefined || realEstateCommissionTransactions === undefined || clinicalAppointments === undefined
     const [isDateLoading, setIsDateLoading] = useState(false)
@@ -229,12 +784,16 @@ export function Revenue() {
         }
     }, [isDateLoading, isLoading, revenueRecords])
 
-    // Clear selection when date filters change
+    // Clear selection when the visible result set changes.
     useEffect(() => {
         setSelectedRecordKeys(new Set())
         setCurrentPage(1)
-    }, [dateRange, customDates, itemsPerPage])
+    }, [dateRange, customDates, filters, itemsPerPage])
 
+    useEffect(() => {
+        if (!isFilterDialogOpen) return
+        setDraftFilters(filters)
+    }, [filters, isFilterDialogOpen])
 
     const getDateDisplay = () => {
         if (dateRange === 'today') {
@@ -249,10 +808,10 @@ export function Revenue() {
                 const dates = filteredRevenueRecords.map((record) => new Date(record.date).getTime())
                 const minDate = new Date(Math.min(...dates))
                 const maxDate = new Date(Math.max(...dates))
-                return `${t('performance.filters.from')} ${formatDate(minDate)} ${t('performance.filters.to')} ${formatDate(maxDate)}`
+                return `${t('revenue.filters.from', { defaultValue: 'From' })} ${formatDate(minDate)} ${t('revenue.filters.to', { defaultValue: 'To' })} ${formatDate(maxDate)}`
             }
             if (customDates.start && customDates.end) {
-                return `${t('performance.filters.from')} ${formatDate(customDates.start)} ${t('performance.filters.to')} ${formatDate(customDates.end)}`
+                return `${t('revenue.filters.from', { defaultValue: 'From' })} ${formatDate(customDates.start)} ${t('revenue.filters.to', { defaultValue: 'To' })} ${formatDate(customDates.end)}`
             }
         }
         if (dateRange === 'allTime') {
@@ -260,9 +819,9 @@ export function Revenue() {
                 const dates = filteredRevenueRecords.map((record) => new Date(record.date).getTime())
                 const minDate = new Date(Math.min(...dates))
                 const maxDate = new Date(Math.max(...dates))
-                return `${t('performance.filters.allTime')}, ${t('performance.filters.from')} ${formatDate(minDate)} ${t('performance.filters.to')} ${formatDate(maxDate)}`
+                return `${t('revenue.filters.allTime', { defaultValue: 'All Time' })}, ${t('revenue.filters.from', { defaultValue: 'From' })} ${formatDate(minDate)} ${t('revenue.filters.to', { defaultValue: 'To' })} ${formatDate(maxDate)}`
             }
-            return t('performance.filters.allTime') || 'All Time'
+            return t('revenue.filters.allTime', { defaultValue: 'All Time' })
         }
         return ''
     }
@@ -293,7 +852,7 @@ export function Revenue() {
         let previousRevenue = 0
         let previousCost = 0
 
-        revenueRecords.forEach((record) => {
+        allTimeFilteredRevenueRecords.forEach((record) => {
             if (record.isReturned) return
             const recordDate = new Date(record.date)
             if (recordDate < previousStart || recordDate > now) return
@@ -314,7 +873,7 @@ export function Revenue() {
             profit: calcTrend(currentRevenue - currentCost, previousRevenue - previousCost),
             margin: 0
         }
-    }, [revenueRecords])
+    }, [allTimeFilteredRevenueRecords])
 
     const calculateStats = (records: RevenueAnalysisRecord[], defaultCurrency: string) => {
         const statsByCurrency: Record<string, {
@@ -340,15 +899,18 @@ export function Revenue() {
             currency: string,
             origin: string,
             sourceChannel?: string | null,
+            cashierId?: string | null,
+            createdBy?: string | null,
             cashier: string,
             partyName?: string,
             sequenceId?: number,
-            hasPartialReturn?: boolean
+            paymentMethod?: string | null,
+            hasPartialReturn?: boolean,
+            isReturned?: boolean,
+            returnStatus?: Exclude<RevenueReturnStatusFilter, 'all'>
         }[] = []
 
         records.forEach((record) => {
-            if (record.isReturned) return
-
             const currency = record.currency || defaultCurrency
             if (!statsByCurrency[currency]) {
                 statsByCurrency[currency] = {
@@ -420,10 +982,15 @@ export function Revenue() {
                 currency: currency,
                 origin: record.origin,
                 sourceChannel: record.sourceChannel || null,
-                cashier: record.cashier,
+                cashierId: record.cashierId || null,
+                createdBy: record.createdBy || null,
+                cashier: getRevenueStaffLabel(record, userNameById),
                 partyName: record.partyName,
                 sequenceId: record.sequenceId,
-                hasPartialReturn: record.hasPartialReturn
+                paymentMethod: record.paymentMethod || null,
+                hasPartialReturn: record.hasPartialReturn,
+                isReturned: record.isReturned,
+                returnStatus: getRevenueReturnStatus(record)
             })
         })
 
@@ -436,7 +1003,7 @@ export function Revenue() {
     const stats = useMemo(() => {
         const { statsByCurrency, saleStats } = calculateStats(filteredRevenueRecords, features.default_currency || 'usd')
         return { statsByCurrency, saleStats }
-    }, [filteredRevenueRecords, features.default_currency])
+    }, [filteredRevenueRecords, features.default_currency, userNameById])
 
     const currencySettings = useMemo(() => ({
         currency: Object.keys(stats.statsByCurrency)[0] || features.default_currency || 'usd',
@@ -527,6 +1094,86 @@ export function Revenue() {
     )
     const salesById = useMemo(() => new Map(filteredSales.map((sale) => [sale.id, sale])), [filteredSales])
 
+    const activeFilterCount = useMemo(
+        () => countActiveRevenueFilters(filters),
+        [filters]
+    )
+
+    const activeFilterChips = useMemo(() => {
+        const optionLabel = (options: { value: string; label: string }[], value: string) =>
+            options.find((option) => option.value === value)?.label || value
+
+        const chips: string[] = []
+
+        if (filters.search.trim()) {
+            chips.push(t('revenue.filters.chipSearch', { term: filters.search.trim(), defaultValue: `Search: ${filters.search.trim()}` }))
+        }
+        if (filters.origin !== 'all') {
+            chips.push(t('revenue.filters.chipOrigin', { name: optionLabel(revenueFilterOptions.origins, filters.origin), defaultValue: `Origin: ${optionLabel(revenueFilterOptions.origins, filters.origin)}` }))
+        }
+        if (filters.sourceChannel !== 'all') {
+            chips.push(t('revenue.filters.chipChannel', { name: optionLabel(revenueFilterOptions.sourceChannels, filters.sourceChannel), defaultValue: `Channel: ${optionLabel(revenueFilterOptions.sourceChannels, filters.sourceChannel)}` }))
+        }
+        if (filters.cashier !== 'all') {
+            chips.push(t('revenue.filters.chipCashier', { name: optionLabel(revenueFilterOptions.staff, filters.cashier), defaultValue: `Cashier / Created By: ${optionLabel(revenueFilterOptions.staff, filters.cashier)}` }))
+        }
+        if (filters.party !== 'all') {
+            const partyLabel = filters.partySearch || filters.party
+            chips.push(t('revenue.filters.chipParty', { name: partyLabel, defaultValue: `Party: ${partyLabel}` }))
+        }
+        if (filters.currency !== 'all') {
+            chips.push(t('revenue.filters.chipCurrency', { code: filters.currency.toUpperCase(), defaultValue: `Currency: ${filters.currency.toUpperCase()}` }))
+        }
+        if (filters.paymentMethod !== 'all') {
+            chips.push(t('revenue.filters.chipMethod', { name: revenuePaymentMethodLabel(filters.paymentMethod, t), defaultValue: `Method: ${revenuePaymentMethodLabel(filters.paymentMethod, t)}` }))
+        }
+        if (filters.category !== 'all') {
+            chips.push(t('revenue.filters.chipCategory', { name: filters.category, defaultValue: `Category: ${filters.category}` }))
+        }
+        if (filters.product !== 'all') {
+            const productLabel = filters.productSearch || optionLabel(revenueFilterOptions.products, filters.product)
+            chips.push(t('revenue.filters.chipProduct', { name: productLabel, defaultValue: `Product: ${productLabel}` }))
+        }
+        if (filters.returnStatus !== 'all') {
+            chips.push(revenueReturnStatusLabel(filters.returnStatus, t))
+        }
+        if (filters.profitStatus !== 'all') {
+            chips.push(revenueProfitStatusLabel(filters.profitStatus, t))
+        }
+        if (filters.dayOfWeek !== 'all') {
+            chips.push(revenueDayLabel(filters.dayOfWeek, t))
+        }
+        if (filters.hour !== 'all') {
+            chips.push(revenueHourLabel(filters.hour, t))
+        }
+        if (filters.minRevenue) chips.push(t('revenue.filters.chipMinRevenue', { value: filters.minRevenue, defaultValue: `Min revenue: ${filters.minRevenue}` }))
+        if (filters.maxRevenue) chips.push(t('revenue.filters.chipMaxRevenue', { value: filters.maxRevenue, defaultValue: `Max revenue: ${filters.maxRevenue}` }))
+        if (filters.minCost) chips.push(t('revenue.filters.chipMinCost', { value: filters.minCost, defaultValue: `Min cost: ${filters.minCost}` }))
+        if (filters.maxCost) chips.push(t('revenue.filters.chipMaxCost', { value: filters.maxCost, defaultValue: `Max cost: ${filters.maxCost}` }))
+        if (filters.minProfit) chips.push(t('revenue.filters.chipMinProfit', { value: filters.minProfit, defaultValue: `Min profit: ${filters.minProfit}` }))
+        if (filters.maxProfit) chips.push(t('revenue.filters.chipMaxProfit', { value: filters.maxProfit, defaultValue: `Max profit: ${filters.maxProfit}` }))
+        if (filters.minMargin) chips.push(t('revenue.filters.chipMinMargin', { value: filters.minMargin, defaultValue: `Min margin: ${filters.minMargin}%` }))
+        if (filters.maxMargin) chips.push(t('revenue.filters.chipMaxMargin', { value: filters.maxMargin, defaultValue: `Max margin: ${filters.maxMargin}%` }))
+        if (filters.sort !== 'date_desc') {
+            chips.push(revenueSortOptionLabel(filters.sort, t))
+        }
+
+        return chips
+    }, [filters, revenueFilterOptions, t])
+
+    const handleResetAllFilters = () => {
+        setFilters(DEFAULT_REVENUE_FILTERS)
+    }
+
+    const handleResetDraftFilters = () => {
+        setDraftFilters(DEFAULT_REVENUE_FILTERS)
+    }
+
+    const handleApplyFilters = () => {
+        setFilters(draftFilters)
+        setIsFilterDialogOpen(false)
+    }
+
     // Calculate aggregated stats for selected records (grouped by currency)
     const selectionSummary = useMemo(() => {
         if (selectedRecordKeys.size === 0) return null
@@ -591,7 +1238,7 @@ export function Revenue() {
                     filters={{
                         dateRange,
                         customDates,
-                        selectedCashier: 'all'
+                        selectedCashier: filters.cashier
                     }}
                     records={stats.saleStats}
                 />
@@ -650,6 +1297,26 @@ export function Revenue() {
                             </Button>
                         </div>
                         <DateRangeFilters />
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setIsFilterDialogOpen(true)}
+                            className={cn("h-11 px-4 font-black", style === 'neo-orange' ? "rounded-none border-2 border-black dark:border-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]" : "rounded-2xl")}
+                        >
+                            <SlidersHorizontal className="me-2 h-4 w-4" />
+                            {t('revenue.filters.title', { defaultValue: 'Filters' })}
+                            {activeFilterCount > 0 ? (
+                                <span className="ms-2 rounded-full bg-primary px-2 py-0.5 text-[10px] text-primary-foreground">
+                                    {activeFilterCount}
+                                </span>
+                            ) : null}
+                        </Button>
+                        {activeFilterCount > 0 ? (
+                            <Button type="button" variant="ghost" onClick={handleResetAllFilters} className="h-11 rounded-2xl px-4 text-muted-foreground">
+                                <RotateCcw className="me-2 h-4 w-4" />
+                                {t('revenue.filters.clearFilters', { defaultValue: 'Clear Filters' })}
+                            </Button>
+                        ) : null}
                     </div>
                 </div>
 
@@ -1101,6 +1768,15 @@ export function Revenue() {
                                 <p className="text-xs text-muted-foreground">
                                     {t('revenue.includesCompletedSalesOrders', { defaultValue: 'Includes completed sales orders. Loan repayments remain excluded to avoid double counting.' })}
                                 </p>
+                                {activeFilterChips.length > 0 ? (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {activeFilterChips.map((chip) => (
+                                            <span key={chip} className="rounded-full border border-primary/15 bg-primary/5 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-primary">
+                                                {chip}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : null}
                                 {selectionSummary && (
                                     <div className="flex items-center gap-2 mt-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 transition-all animate-in fade-in slide-in-from-left-2 duration-200 w-fit">
                                         <Check className="w-4 h-4" />
@@ -1569,6 +2245,419 @@ export function Revenue() {
                             </Table>
                         </div>
                     </PrintPreviewModal>
+
+                    <Dialog open={isFilterDialogOpen} onOpenChange={setIsFilterDialogOpen}>
+                        <DialogContent className={cn("top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] w-[calc(100vw-0.75rem)] max-w-7xl overflow-hidden p-0 sm:w-[calc(100vw-2rem)]", style === 'neo-orange' ? "rounded-none border-2 border-black dark:border-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" : "rounded-[2rem] border-border/60")}>
+                            <div className="flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-1rem)] flex-col">
+                                <DialogHeader className={cn("border-b border-border/60 px-6 py-5 text-start", style === 'neo-orange' ? "bg-neo-blue/10" : "bg-gradient-to-r from-primary/8 via-background to-emerald-500/5")}>
+                                    <DialogTitle className="flex items-center gap-3 text-xl font-black tracking-tight">
+                                        <div className={cn("p-2.5", style === 'neo-orange' ? "rounded-none border-2 border-black dark:border-white bg-white text-black" : "rounded-2xl bg-primary/10 text-primary")}>
+                                            <SlidersHorizontal className="h-5 w-5" />
+                                        </div>
+                                        {t('revenue.filters.dialogTitle', { defaultValue: 'Revenue Analytics Filters' })}
+                                    </DialogTitle>
+                                    <DialogDescription className="max-w-3xl">
+                                        {t('revenue.filters.dialogDescription', { defaultValue: 'Refine revenue analytics by source, cashier or creator, party, product, return state, profitability, timing, and metric ranges. The page date range stays outside this modal.' })}
+                                    </DialogDescription>
+                                </DialogHeader>
+
+                                <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
+                                    <div className="grid gap-3 md:grid-cols-3">
+                                        <div className="rounded-2xl border border-emerald-500/15 bg-emerald-500/5 p-4">
+                                            <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-700">{t('revenue.filters.preview', { defaultValue: 'Preview' })}</div>
+                                            <div className="mt-2 text-2xl font-black text-emerald-700">{draftPreviewRevenueRecords.length}</div>
+                                            <div className="mt-1 text-xs text-muted-foreground">{t('revenue.filters.previewDescription', { defaultValue: 'records match the draft filters inside the current date range' })}</div>
+                                        </div>
+                                        <div className="rounded-2xl border border-border/60 bg-secondary/20 p-4">
+                                            <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{t('revenue.filters.pageRange', { defaultValue: 'Page Range' })}</div>
+                                            <div className="mt-2 text-sm font-bold">{getDateDisplay() || t('revenue.filters.allTime', { defaultValue: 'All Time' })}</div>
+                                            <div className="mt-1 text-xs text-muted-foreground">{t('revenue.filters.pageRangeDescription', { defaultValue: 'Controlled directly from the Revenue Analytics page header' })}</div>
+                                        </div>
+                                        <div className="rounded-2xl border border-border/60 bg-secondary/20 p-4">
+                                            <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{t('revenue.filters.draftFilters', { defaultValue: 'Draft Filters' })}</div>
+                                            <div className="mt-2 text-2xl font-black">{countActiveRevenueFilters(draftFilters)}</div>
+                                            <div className="mt-1 text-xs text-muted-foreground">{t('revenue.filters.draftFiltersDescription', { defaultValue: 'advanced revenue conditions configured' })}</div>
+                                        </div>
+                                    </div>
+
+                                    <section className="grid gap-4 lg:grid-cols-2">
+                                        <div className={cn("space-y-4 p-5", style === 'neo-orange' ? "rounded-none border-2 border-black dark:border-white bg-white dark:bg-black" : "rounded-[1.5rem] border border-border/60 bg-background/80")}>
+                                            <div className="space-y-1">
+                                                <h3 className="text-base font-black tracking-tight">{t('revenue.filters.searchSource', { defaultValue: 'Search, Source & Staff' })}</h3>
+                                                <p className="text-sm text-muted-foreground">{t('revenue.filters.searchSourceDescription', { defaultValue: 'Search records and narrow them by origin, channel, cashier, or creator.' })}</p>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <Label htmlFor="revenue-filter-search">{t('revenue.filters.keywordSearch', { defaultValue: 'Keyword Search' })}</Label>
+                                                <div className="relative">
+                                                    <Search className="pointer-events-none absolute start-3 top-3.5 h-4 w-4 text-muted-foreground" />
+                                                    <Input
+                                                        id="revenue-filter-search"
+                                                        value={draftFilters.search}
+                                                        onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
+                                                        placeholder={t('revenue.filters.searchPlaceholder', { defaultValue: 'Search ID, party, staff, product, category...' })}
+                                                        className="ps-9"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="grid gap-4 sm:grid-cols-2">
+                                                <div className="space-y-2">
+                                                    <Label>{t('revenue.filters.sortBy', { defaultValue: 'Sort By' })}</Label>
+                                                    <Select value={draftFilters.sort} onValueChange={(value: RevenueSortOption) => setDraftFilters((current) => ({ ...current, sort: value }))}>
+                                                        <SelectTrigger>
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {([
+                                                                'date_desc',
+                                                                'date_asc',
+                                                                'revenue_desc',
+                                                                'revenue_asc',
+                                                                'cost_desc',
+                                                                'cost_asc',
+                                                                'profit_desc',
+                                                                'profit_asc',
+                                                                'margin_desc',
+                                                                'margin_asc',
+                                                                'cashier_asc',
+                                                                'cashier_desc',
+                                                                'origin_asc',
+                                                                'origin_desc'
+                                                            ] as RevenueSortOption[]).map((option) => (
+                                                                <SelectItem key={option} value={option}>{revenueSortOptionLabel(option, t)}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <Label>{t('revenue.filters.origin', { defaultValue: 'Source / Origin' })}</Label>
+                                                    <Select value={draftFilters.origin} onValueChange={(value) => setDraftFilters((current) => ({ ...current, origin: value }))}>
+                                                        <SelectTrigger>
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="all">{t('revenue.filters.all', { defaultValue: 'All' })}</SelectItem>
+                                                            {revenueFilterOptions.origins.map((origin) => (
+                                                                <SelectItem key={origin.value} value={origin.value}>{origin.label}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid gap-4 sm:grid-cols-2">
+                                                <div className="space-y-2">
+                                                    <Label>{t('revenue.filters.sourceChannel', { defaultValue: 'Source Channel' })}</Label>
+                                                    <Select value={draftFilters.sourceChannel} onValueChange={(value) => setDraftFilters((current) => ({ ...current, sourceChannel: value }))}>
+                                                        <SelectTrigger>
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="all">{t('revenue.filters.all', { defaultValue: 'All' })}</SelectItem>
+                                                            {revenueFilterOptions.sourceChannels.map((channel) => (
+                                                                <SelectItem key={channel.value} value={channel.value}>{channel.label}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <Label>{t('revenue.filters.cashierCreatedBy', { defaultValue: 'Cashier / Created By' })}</Label>
+                                                    <Select value={draftFilters.cashier} onValueChange={(value) => setDraftFilters((current) => ({ ...current, cashier: value }))}>
+                                                        <SelectTrigger>
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="all">{t('revenue.filters.allCashiers', { defaultValue: 'All Cashiers' })}</SelectItem>
+                                                            {revenueFilterOptions.staff.map((staff) => (
+                                                                <SelectItem key={staff.value} value={staff.value}>{staff.label}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <Label>{t('revenue.filters.party', { defaultValue: 'Customer / Party' })}</Label>
+                                                <div className="grid gap-3">
+                                                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                                                        <PartnerAutocompleteInput
+                                                            value={draftFilters.partySearch}
+                                                            onChange={(value) => setDraftFilters((current) => ({
+                                                                ...current,
+                                                                partySearch: value,
+                                                                party: value.trim() ? value.trim() : 'all',
+                                                                partyPartnerId: ''
+                                                            }))}
+                                                            onSelectPartner={(partner) => setDraftFilters((current) => ({
+                                                                ...current,
+                                                                partySearch: partner.name,
+                                                                party: partner.name,
+                                                                partyPartnerId: partner.id
+                                                            }))}
+                                                            workspaceId={user?.workspaceId || ''}
+                                                            roles={['customer']}
+                                                            placeholder={t('revenue.filters.selectParty', { defaultValue: 'Select Customer / Party' })}
+                                                            disabled={!user?.workspaceId}
+                                                        />
+                                                        {draftFilters.party !== 'all' || draftFilters.partySearch ? (
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                onClick={() => setDraftFilters((current) => ({ ...current, party: 'all', partyPartnerId: '', partySearch: '' }))}
+                                                                className={cn("h-10", style === 'neo-orange' ? "rounded-none" : "rounded-2xl")}
+                                                            >
+                                                                <X className="me-2 h-4 w-4" />
+                                                                {t('revenue.filters.clear', { defaultValue: 'Clear' })}
+                                                            </Button>
+                                                        ) : null}
+                                                    </div>
+                                                    {draftFilters.partyPartnerId && draftFilters.partySearch ? (
+                                                        <div className="flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 sm:flex-row sm:items-start sm:justify-between">
+                                                            <div className="min-w-0">
+                                                                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-primary">
+                                                                    <Users className="h-3.5 w-3.5" />
+                                                                    {t('revenue.filters.linkedParty', { defaultValue: 'Linked Customer / Party' })}
+                                                                </div>
+                                                                <div className="truncate text-sm font-semibold">{draftFilters.partySearch}</div>
+                                                            </div>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-8 shrink-0 px-2 text-muted-foreground"
+                                                                onClick={() => setDraftFilters((current) => ({ ...current, party: 'all', partyPartnerId: '', partySearch: '' }))}
+                                                            >
+                                                                <X className="me-1.5 h-4 w-4" />
+                                                                {t('revenue.filters.clearLink', { defaultValue: 'Clear Link' })}
+                                                            </Button>
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className={cn("space-y-4 p-5", style === 'neo-orange' ? "rounded-none border-2 border-black dark:border-white bg-white dark:bg-black" : "rounded-[1.5rem] border border-border/60 bg-background/80")}>
+                                            <div className="space-y-1">
+                                                <h3 className="text-base font-black tracking-tight">{t('revenue.filters.revenueDetails', { defaultValue: 'Revenue Details' })}</h3>
+                                                <p className="text-sm text-muted-foreground">{t('revenue.filters.revenueDetailsDescription', { defaultValue: 'Filter by currency, payment method, product, category, returns, and profitability.' })}</p>
+                                            </div>
+
+                                            <div className="grid gap-4 sm:grid-cols-2">
+                                                <div className="space-y-2">
+                                                    <Label>{t('revenue.filters.currency', { defaultValue: 'Currency' })}</Label>
+                                                    <Select value={draftFilters.currency} onValueChange={(value) => setDraftFilters((current) => ({ ...current, currency: value }))}>
+                                                        <SelectTrigger>
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="all">{t('revenue.filters.all', { defaultValue: 'All' })}</SelectItem>
+                                                            {revenueFilterOptions.currencies.map((currency) => (
+                                                                <SelectItem key={currency} value={currency}>{currency.toUpperCase()}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <Label>{t('revenue.filters.paymentMethod', { defaultValue: 'Payment Method' })}</Label>
+                                                    <Select value={draftFilters.paymentMethod} onValueChange={(value) => setDraftFilters((current) => ({ ...current, paymentMethod: value }))}>
+                                                        <SelectTrigger>
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="all">{t('revenue.filters.all', { defaultValue: 'All' })}</SelectItem>
+                                                            {revenueFilterOptions.paymentMethods.map((method) => (
+                                                                <SelectItem key={method} value={method}>{revenuePaymentMethodLabel(method, t)}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid gap-4 sm:grid-cols-2">
+                                                <div className="space-y-2">
+                                                    <Label>{t('revenue.filters.category', { defaultValue: 'Product Category' })}</Label>
+                                                    <Select value={draftFilters.category} onValueChange={(value) => setDraftFilters((current) => ({ ...current, category: value }))}>
+                                                        <SelectTrigger>
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="all">{t('revenue.filters.allCategories', { defaultValue: 'All Categories' })}</SelectItem>
+                                                            {revenueFilterOptions.categories.map((category) => (
+                                                                <SelectItem key={category} value={category}>{category}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid gap-4 sm:grid-cols-2">
+                                                <div className="space-y-2">
+                                                    <Label>{t('revenue.filters.returnStatus', { defaultValue: 'Return Status' })}</Label>
+                                                    <Select value={draftFilters.returnStatus} onValueChange={(value: RevenueReturnStatusFilter) => setDraftFilters((current) => ({ ...current, returnStatus: value }))}>
+                                                        <SelectTrigger>
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {(['all', 'non_returned', 'partial', 'returned'] as RevenueReturnStatusFilter[]).map((status) => (
+                                                                <SelectItem key={status} value={status}>{revenueReturnStatusLabel(status, t)}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <Label>{t('revenue.filters.profitStatus', { defaultValue: 'Profit Status' })}</Label>
+                                                    <Select value={draftFilters.profitStatus} onValueChange={(value: RevenueProfitStatusFilter) => setDraftFilters((current) => ({ ...current, profitStatus: value }))}>
+                                                        <SelectTrigger>
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {(['all', 'profitable', 'break_even', 'loss'] as RevenueProfitStatusFilter[]).map((status) => (
+                                                                <SelectItem key={status} value={status}>{revenueProfitStatusLabel(status, t)}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className={cn("space-y-4 p-5 lg:col-span-2", style === 'neo-orange' ? "rounded-none border-2 border-black dark:border-white bg-white dark:bg-black" : "rounded-[1.5rem] border border-border/60 bg-background/80")}>
+                                            <div className="space-y-1">
+                                                <h3 className="text-base font-black tracking-tight">{t('revenue.filters.productSearchTitle', { defaultValue: 'Product Search' })}</h3>
+                                                <p className="text-sm text-muted-foreground">{t('revenue.filters.productSearchDescription', { defaultValue: 'Filter revenue by a linked catalog product.' })}</p>
+                                            </div>
+
+                                            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                                                <div className="space-y-2">
+                                                    <Label>{t('revenue.filters.product', { defaultValue: 'Product / Service' })}</Label>
+                                                    <ProductAutocompleteInput
+                                                        value={draftFilters.productSearch}
+                                                        onChange={(value) => setDraftFilters((current) => ({ ...current, productSearch: value, product: 'all' }))}
+                                                        onSelectProduct={(product) => setDraftFilters((current) => ({ ...current, product: product.id, productSearch: product.name }))}
+                                                        products={products}
+                                                        placeholder={t('revenue.filters.selectProduct', { defaultValue: 'Select Product' })}
+                                                        hasSelection={draftFilters.product !== 'all'}
+                                                        linkedLabel={t('revenue.filters.linked', { defaultValue: 'Linked' })}
+                                                        skuLabel={t('revenue.filters.sku', { defaultValue: 'SKU' })}
+                                                    />
+                                                </div>
+                                                {draftFilters.product !== 'all' || draftFilters.productSearch ? (
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        onClick={() => setDraftFilters((current) => ({ ...current, product: 'all', productSearch: '' }))}
+                                                        className={cn("h-10", style === 'neo-orange' ? "rounded-none" : "rounded-2xl")}
+                                                    >
+                                                        <X className="me-2 h-4 w-4" />
+                                                        {t('revenue.filters.clear', { defaultValue: 'Clear' })}
+                                                    </Button>
+                                                ) : null}
+                                            </div>
+                                        </div>
+
+                                        <div className={cn("space-y-4 p-5", style === 'neo-orange' ? "rounded-none border-2 border-black dark:border-white bg-white dark:bg-black" : "rounded-[1.5rem] border border-border/60 bg-background/80")}>
+                                            <div className="space-y-1">
+                                                <h3 className="text-base font-black tracking-tight">{t('revenue.filters.metricRanges', { defaultValue: 'Metric Ranges' })}</h3>
+                                                <p className="text-sm text-muted-foreground">{t('revenue.filters.metricRangesDescription', { defaultValue: 'Set min and max thresholds for revenue, cost, profit, or margin.' })}</p>
+                                            </div>
+
+                                            <div className="grid gap-4 sm:grid-cols-2">
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="revenue-filter-min-revenue">{t('revenue.filters.minRevenue', { defaultValue: 'Min Revenue' })}</Label>
+                                                    <Input id="revenue-filter-min-revenue" type="number" min="0" value={draftFilters.minRevenue} onChange={(event) => setDraftFilters((current) => ({ ...current, minRevenue: event.target.value }))} placeholder="0" />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="revenue-filter-max-revenue">{t('revenue.filters.maxRevenue', { defaultValue: 'Max Revenue' })}</Label>
+                                                    <Input id="revenue-filter-max-revenue" type="number" min="0" value={draftFilters.maxRevenue} onChange={(event) => setDraftFilters((current) => ({ ...current, maxRevenue: event.target.value }))} placeholder={t('revenue.filters.noCap', { defaultValue: 'No cap' })} />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="revenue-filter-min-cost">{t('revenue.filters.minCost', { defaultValue: 'Min Cost' })}</Label>
+                                                    <Input id="revenue-filter-min-cost" type="number" min="0" value={draftFilters.minCost} onChange={(event) => setDraftFilters((current) => ({ ...current, minCost: event.target.value }))} placeholder="0" />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="revenue-filter-max-cost">{t('revenue.filters.maxCost', { defaultValue: 'Max Cost' })}</Label>
+                                                    <Input id="revenue-filter-max-cost" type="number" min="0" value={draftFilters.maxCost} onChange={(event) => setDraftFilters((current) => ({ ...current, maxCost: event.target.value }))} placeholder={t('revenue.filters.noCap', { defaultValue: 'No cap' })} />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="revenue-filter-min-profit">{t('revenue.filters.minProfit', { defaultValue: 'Min Profit' })}</Label>
+                                                    <Input id="revenue-filter-min-profit" type="number" value={draftFilters.minProfit} onChange={(event) => setDraftFilters((current) => ({ ...current, minProfit: event.target.value }))} placeholder="0" />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="revenue-filter-max-profit">{t('revenue.filters.maxProfit', { defaultValue: 'Max Profit' })}</Label>
+                                                    <Input id="revenue-filter-max-profit" type="number" value={draftFilters.maxProfit} onChange={(event) => setDraftFilters((current) => ({ ...current, maxProfit: event.target.value }))} placeholder={t('revenue.filters.noCap', { defaultValue: 'No cap' })} />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="revenue-filter-min-margin">{t('revenue.filters.minMargin', { defaultValue: 'Min Margin (%)' })}</Label>
+                                                    <Input id="revenue-filter-min-margin" type="number" value={draftFilters.minMargin} onChange={(event) => setDraftFilters((current) => ({ ...current, minMargin: event.target.value }))} placeholder="0" />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="revenue-filter-max-margin">{t('revenue.filters.maxMargin', { defaultValue: 'Max Margin (%)' })}</Label>
+                                                    <Input id="revenue-filter-max-margin" type="number" value={draftFilters.maxMargin} onChange={(event) => setDraftFilters((current) => ({ ...current, maxMargin: event.target.value }))} placeholder="100" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className={cn("space-y-4 p-5", style === 'neo-orange' ? "rounded-none border-2 border-black dark:border-white bg-white dark:bg-black" : "rounded-[1.5rem] border border-border/60 bg-background/80")}>
+                                            <div className="space-y-1">
+                                                <h3 className="text-base font-black tracking-tight">{t('revenue.filters.timing', { defaultValue: 'Timing' })}</h3>
+                                                <p className="text-sm text-muted-foreground">{t('revenue.filters.timingDescription', { defaultValue: 'Narrow peak-time analytics by day of week or hour.' })}</p>
+                                            </div>
+
+                                            <div className="grid gap-4 sm:grid-cols-2">
+                                                <div className="space-y-2">
+                                                    <Label>{t('revenue.filters.dayOfWeek', { defaultValue: 'Day of Week' })}</Label>
+                                                    <Select value={draftFilters.dayOfWeek} onValueChange={(value: RevenueDayFilter) => setDraftFilters((current) => ({ ...current, dayOfWeek: value }))}>
+                                                        <SelectTrigger>
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {(['all', '0', '1', '2', '3', '4', '5', '6'] as RevenueDayFilter[]).map((day) => (
+                                                                <SelectItem key={day} value={day}>{revenueDayLabel(day, t)}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <Label>{t('revenue.filters.hour', { defaultValue: 'Hour' })}</Label>
+                                                    <Select value={draftFilters.hour} onValueChange={(value) => setDraftFilters((current) => ({ ...current, hour: value }))}>
+                                                        <SelectTrigger>
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="all">{revenueHourLabel('all', t)}</SelectItem>
+                                                            {Array.from({ length: 24 }, (_, hour) => String(hour)).map((hour) => (
+                                                                <SelectItem key={hour} value={hour}>{revenueHourLabel(hour, t)}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
+                                </div>
+
+                                <DialogFooter className="border-t border-border/60 bg-background/95 px-6 py-4 sm:justify-between">
+                                    <Button type="button" variant="ghost" onClick={handleResetDraftFilters} className={cn(style === 'neo-orange' ? "rounded-none" : "rounded-2xl")}>
+                                        <RotateCcw className="me-2 h-4 w-4" />
+                                        {t('revenue.filters.resetDraft', { defaultValue: 'Reset Draft' })}
+                                    </Button>
+                                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+                                        <Button type="button" variant="outline" onClick={() => setIsFilterDialogOpen(false)} className={cn(style === 'neo-orange' ? "rounded-none" : "rounded-2xl")}>
+                                            {t('revenue.filters.cancel', { defaultValue: 'Cancel' })}
+                                        </Button>
+                                        <Button type="button" onClick={handleApplyFilters} className={cn(style === 'neo-orange' ? "rounded-none border-2 border-black dark:border-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-y-[2px]" : "rounded-2xl")}>
+                                            {t('revenue.filters.applyFilters', { count: draftPreviewRevenueRecords.length, defaultValue: `Apply Filters (${draftPreviewRevenueRecords.length})` })}
+                                        </Button>
+                                    </div>
+                                </DialogFooter>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
                 </div>
             </div>
 
