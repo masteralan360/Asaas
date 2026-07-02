@@ -6,9 +6,6 @@ import {
     BARCODE_SCANNER_ACTIVE_FAST_KEY_COUNT,
     BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS,
     BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS,
-    BARCODE_SCANNER_BLUETOOTH_ACTIVE_KEY_GRACE_MS,
-    BARCODE_SCANNER_BLUETOOTH_AUTO_COMMIT_DELAY_MS,
-    BARCODE_SCANNER_BLUETOOTH_FAST_KEY_THRESHOLD_MS,
     BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS,
     getBarcodeScannerEventKey,
     isBarcodeScannerIgnoredKey,
@@ -41,8 +38,6 @@ interface BarcodeScannerModalProps {
     setIsCameraScannerAutoEnabled: (value: boolean) => void
     isDeviceScannerAutoEnabled: boolean
     setIsDeviceScannerAutoEnabled: (value: boolean) => void
-    isBluetoothScannerModeEnabled: boolean
-    setIsBluetoothScannerModeEnabled: (value: boolean) => void
     handleBarcodeDetected: (barcodes: any[], source: 'camera' | 'device') => void
     selectedCameraId: string
     setSelectedCameraId: (value: string) => void
@@ -58,8 +53,6 @@ export function BarcodeScannerModal({
     setIsCameraScannerAutoEnabled,
     isDeviceScannerAutoEnabled,
     setIsDeviceScannerAutoEnabled,
-    isBluetoothScannerModeEnabled,
-    setIsBluetoothScannerModeEnabled,
     handleBarcodeDetected,
     selectedCameraId,
     setSelectedCameraId,
@@ -86,15 +79,6 @@ export function BarcodeScannerModal({
     })
     const [isHidSupported, setIsHidSupported] = useState(true)
     const [isHidLoading, setIsHidLoading] = useState(false)
-    const deviceFastKeyThreshold = isBluetoothScannerModeEnabled
-        ? BARCODE_SCANNER_BLUETOOTH_FAST_KEY_THRESHOLD_MS
-        : BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS
-    const deviceActiveKeyGrace = isBluetoothScannerModeEnabled
-        ? BARCODE_SCANNER_BLUETOOTH_ACTIVE_KEY_GRACE_MS
-        : BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS
-    const deviceAutoCommitDelay = isBluetoothScannerModeEnabled
-        ? BARCODE_SCANNER_BLUETOOTH_AUTO_COMMIT_DELAY_MS
-        : BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS
 
     useEffect(() => {
         if (typeof localStorage === 'undefined') return
@@ -228,7 +212,7 @@ export function BarcodeScannerModal({
         }
         deviceScanTimeoutRef.current = window.setTimeout(() => {
             commitDeviceScan(value)
-        }, deviceAutoCommitDelay)
+        }, BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS)
     }
 
     const registerScannerKeystroke = () => {
@@ -237,10 +221,10 @@ export function BarcodeScannerModal({
         const wasActive = scannerActiveRef.current
         lastKeyTimeRef.current = now
 
-        if (delta <= 0 || delta > (wasActive ? deviceActiveKeyGrace : deviceFastKeyThreshold)) {
+        if (delta <= 0 || delta > (wasActive ? BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS : BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS)) {
             fastKeyCountRef.current = 0
             scannerActiveRef.current = false
-        } else if (delta <= deviceFastKeyThreshold) {
+        } else if (delta <= BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS) {
             fastKeyCountRef.current += 1
         }
 
@@ -310,108 +294,108 @@ export function BarcodeScannerModal({
 
                     {scannerMode === 'camera' ? (
                         <div className="space-y-6">
-                        {/* Scanner View */}
-                        <div className="relative aspect-video bg-muted rounded-xl overflow-hidden border border-border shadow-inner group">
-                            {isCameraScannerAutoEnabled ? (
-                                <BarcodeScanner
-                                    onCapture={(barcodes) => handleBarcodeDetected(barcodes, 'camera')}
-                                trackConstraints={{
-                                    deviceId: selectedCameraId || undefined,
-                                    facingMode: selectedCameraId ? undefined : 'environment'
-                                    }}
-                                    options={{
-                                        formats: [
-                                            'code_128',
-                                            'code_39',
-                                            'code_93',
-                                            'codabar',
-                                            'ean_13',
-                                            'ean_8',
-                                            'itf',
-                                            'upc_a',
-                                            'upc_e',
-                                            'qr_code'
-                                        ],
-                                        delay: 1000
-                                    }}
-                                />
-                            ) : (
-                                <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground bg-muted/50">
-                                    <Camera className="w-12 h-12 opacity-20 mb-2" />
-                                    <p className="font-medium">{t('pos.scannerDisabled')}</p>
-                                </div>
-                            )}
-
-                            {/* Scanner Overlay */}
-                            {isCameraScannerAutoEnabled && (
-                                <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-0.5 bg-primary/50 shadow-[0_0_15px_rgba(var(--primary),0.5)] animate-pulse" />
-                            )}
-                        </div>
-
-                        {/* Controls */}
-                        <div className="grid gap-6 md:grid-cols-2">
-                            <div className="space-y-4 p-4 rounded-xl bg-muted/30 border border-border">
-                                <div className="flex items-center justify-between">
-                                    <div className="space-y-0.5">
-                                        <Label className="text-base">{t('pos.autoScanner')}</Label>
-                                        <p className="text-xs text-muted-foreground">{t('pos.autoScannerDesc')}</p>
+                            {/* Scanner View */}
+                            <div className="relative aspect-video bg-muted rounded-xl overflow-hidden border border-border shadow-inner group">
+                                {isCameraScannerAutoEnabled ? (
+                                    <BarcodeScanner
+                                        onCapture={(barcodes) => handleBarcodeDetected(barcodes, 'camera')}
+                                        trackConstraints={{
+                                            deviceId: selectedCameraId || undefined,
+                                            facingMode: selectedCameraId ? undefined : 'environment'
+                                        }}
+                                        options={{
+                                            formats: [
+                                                'code_128',
+                                                'code_39',
+                                                'code_93',
+                                                'codabar',
+                                                'ean_13',
+                                                'ean_8',
+                                                'itf',
+                                                'upc_a',
+                                                'upc_e',
+                                                'qr_code'
+                                            ],
+                                            delay: 1000
+                                        }}
+                                    />
+                                ) : (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground bg-muted/50">
+                                        <Camera className="w-12 h-12 opacity-20 mb-2" />
+                                        <p className="font-medium">{t('pos.scannerDisabled')}</p>
                                     </div>
-                                    <Switch
-                                        checked={isCameraScannerAutoEnabled}
-                                        onCheckedChange={(val) => {
-                                            if (val) {
-                                                setScannerMode('camera')
-                                            }
-                                            setIsCameraScannerAutoEnabled(val)
-                                        }}
-                                    />
-                                </div>
+                                )}
+
+                                {/* Scanner Overlay */}
+                                {isCameraScannerAutoEnabled && (
+                                    <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-0.5 bg-primary/50 shadow-[0_0_15px_rgba(var(--primary),0.5)] animate-pulse" />
+                                )}
                             </div>
 
-                            <div className="space-y-4 p-4 rounded-xl bg-muted/30 border border-border">
-                                <div className="space-y-2">
-                                    <Label className="text-sm font-medium">{t('pos.scanDelay')} (ms)</Label>
-                                    <Input
-                                        type="number"
-                                        value={scanDelay}
+                            {/* Controls */}
+                            <div className="grid gap-6 md:grid-cols-2">
+                                <div className="space-y-4 p-4 rounded-xl bg-muted/30 border border-border">
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-0.5">
+                                            <Label className="text-base">{t('pos.autoScanner')}</Label>
+                                            <p className="text-xs text-muted-foreground">{t('pos.autoScannerDesc')}</p>
+                                        </div>
+                                        <Switch
+                                            checked={isCameraScannerAutoEnabled}
+                                            onCheckedChange={(val) => {
+                                                if (val) {
+                                                    setScannerMode('camera')
+                                                }
+                                                setIsCameraScannerAutoEnabled(val)
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4 p-4 rounded-xl bg-muted/30 border border-border">
+                                    <div className="space-y-2">
+                                        <Label className="text-sm font-medium">{t('pos.scanDelay')} (ms)</Label>
+                                        <Input
+                                            type="number"
+                                            value={scanDelay}
+                                            onChange={(e) => {
+                                                const val = Number(e.target.value)
+                                                setScanDelay(val)
+                                                localStorage.setItem('scanner_scan_delay', String(val))
+                                            }}
+                                            min={0}
+                                            max={10000}
+                                            step={100}
+                                            className="h-9"
+                                        />
+                                        <p className="text-[10px] text-muted-foreground">{t('pos.scanDelayDesc')}</p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2 col-span-full">
+                                    <Label className="text-sm font-medium flex items-center gap-2">
+                                        <SettingsIcon className="w-4 h-4" />
+                                        {t('pos.selectCamera')}
+                                    </Label>
+                                    <select
+                                        className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                        value={selectedCameraId}
                                         onChange={(e) => {
-                                            const val = Number(e.target.value)
-                                            setScanDelay(val)
-                                            localStorage.setItem('scanner_scan_delay', String(val))
+                                            setSelectedCameraId(e.target.value)
+                                            localStorage.setItem('scanner_camera_id', e.target.value)
                                         }}
-                                        min={0}
-                                        max={10000}
-                                        step={100}
-                                        className="h-9"
-                                    />
-                                    <p className="text-[10px] text-muted-foreground">{t('pos.scanDelayDesc')}</p>
+                                    >
+                                        {cameras.map((camera) => (
+                                            <option key={camera.deviceId} value={camera.deviceId}>
+                                                {camera.label || `Camera ${camera.deviceId.slice(0, 5)}`}
+                                            </option>
+                                        ))}
+                                        {cameras.length === 0 && (
+                                            <option value="">{t('pos.cameraNotFound')}</option>
+                                        )}
+                                    </select>
                                 </div>
                             </div>
-
-                            <div className="space-y-2 col-span-full">
-                                <Label className="text-sm font-medium flex items-center gap-2">
-                                    <SettingsIcon className="w-4 h-4" />
-                                    {t('pos.selectCamera')}
-                                </Label>
-                                <select
-                                    className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                                    value={selectedCameraId}
-                                    onChange={(e) => {
-                                        setSelectedCameraId(e.target.value)
-                                        localStorage.setItem('scanner_camera_id', e.target.value)
-                                    }}
-                                >
-                                    {cameras.map((camera) => (
-                                        <option key={camera.deviceId} value={camera.deviceId}>
-                                            {camera.label || `Camera ${camera.deviceId.slice(0, 5)}`}
-                                        </option>
-                                    ))}
-                                    {cameras.length === 0 && (
-                                        <option value="">{t('pos.cameraNotFound')}</option>
-                                    )}
-                                </select>
-                            </div>
-                        </div>
                         </div>
                     ) : (
                         <div className="space-y-6">
@@ -456,116 +440,97 @@ export function BarcodeScannerModal({
                             <div className="rounded-xl border border-border bg-muted/30 p-4">
                                 <p className="text-sm font-semibold">{t('pos.barcodeScanner') || 'Barcode Scanner'}</p>
                                 <p className="text-xs text-muted-foreground">
-                                {t('pos.autoScannerGlobalDesc', {
-                                    defaultValue: 'Automatic scanner works globally in POS. Turn it on and scan from anywhere without focusing an input first.'
-                                })}
-                            </p>
-                        </div>
+                                    {t('pos.autoScannerGlobalDesc', {
+                                        defaultValue: 'Automatic scanner works globally in POS. Turn it on and scan from anywhere without focusing an input first.'
+                                    })}
+                                </p>
+                            </div>
 
-                        <div className="space-y-2">
-                            <Label className="text-sm font-medium">{t('pos.scanInput') || 'Scanner Input'}</Label>
-                            <Input
-                                ref={deviceInputRef}
-                                value={deviceInput}
-                                onChange={(e) => {
-                                    const nextValue = normalizeBarcodeDigits(e.target.value)
-                                    deviceInputValueRef.current = nextValue
-                                    setDeviceInput(nextValue)
-                                    if (!nextValue) {
-                                        scannerActiveRef.current = false
-                                        fastKeyCountRef.current = 0
-                                        return
-                                    }
-                                    if (scannerActiveRef.current && isDeviceScannerAutoEnabled) {
-                                        scheduleDeviceScan(nextValue)
-                                    }
-                                }}
-                                onKeyDown={(e) => {
-                                    if (isBarcodeScannerTerminatorKey(e.key)) {
-                                        e.preventDefault()
-                                        commitDeviceScan(deviceInputValueRef.current)
-                                        return
-                                    }
-
-                                    if (isBarcodeScannerIgnoredKey(e.key)) {
-                                        return
-                                    }
-
-                                    if (isDeviceScannerAutoEnabled) {
-                                        const scannerKey = getBarcodeScannerEventKey(e.nativeEvent)
-                                        if (scannerKey.length === 1) {
-                                            registerScannerKeystroke()
-                                            e.preventDefault()
-                                            insertDeviceScannerKey(e.currentTarget, scannerKey)
+                            <div className="space-y-2">
+                                <Label className="text-sm font-medium">{t('pos.scanInput') || 'Scanner Input'}</Label>
+                                <Input
+                                    ref={deviceInputRef}
+                                    value={deviceInput}
+                                    onChange={(e) => {
+                                        const nextValue = normalizeBarcodeDigits(e.target.value)
+                                        deviceInputValueRef.current = nextValue
+                                        setDeviceInput(nextValue)
+                                        if (!nextValue) {
+                                            scannerActiveRef.current = false
+                                            fastKeyCountRef.current = 0
+                                            return
                                         }
-                                    }
-                                }}
-                                placeholder={t('pos.scanInputPlaceholder') || 'Scan a barcode...'}
-                                className="h-10"
-                            />
-                            <p className="text-[10px] text-muted-foreground">
-                                {t('pos.scanInputOptionalDesc', { defaultValue: 'Manual input is optional. Automatic scanner captures completed scans anywhere in POS.' })}
-                            </p>
-                        </div>
+                                        if (scannerActiveRef.current && isDeviceScannerAutoEnabled) {
+                                            scheduleDeviceScan(nextValue)
+                                        }
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (isBarcodeScannerTerminatorKey(e.key)) {
+                                            e.preventDefault()
+                                            commitDeviceScan(deviceInputValueRef.current)
+                                            return
+                                        }
 
-                        <div className="grid gap-6 md:grid-cols-2">
-                            <div className="space-y-4 p-4 rounded-xl bg-muted/30 border border-border">
-                                <div className="flex items-center justify-between">
-                                    <div className="space-y-0.5">
-                                        <Label className="text-base">{t('pos.autoScanner')}</Label>
-                                        <p className="text-xs text-muted-foreground">{t('pos.autoScannerDesc')}</p>
-                                    </div>
-                                    <Switch
-                                        checked={isDeviceScannerAutoEnabled}
-                                        onCheckedChange={(val) => {
-                                            if (val) {
-                                                setScannerMode('device')
+                                        if (isBarcodeScannerIgnoredKey(e.key)) {
+                                            return
+                                        }
+
+                                        if (isDeviceScannerAutoEnabled) {
+                                            const scannerKey = getBarcodeScannerEventKey(e.nativeEvent)
+                                            if (scannerKey.length === 1) {
+                                                registerScannerKeystroke()
+                                                e.preventDefault()
+                                                insertDeviceScannerKey(e.currentTarget, scannerKey)
                                             }
-                                            setIsDeviceScannerAutoEnabled(val)
-                                        }}
-                                    />
-                                </div>
+                                        }
+                                    }}
+                                    placeholder={t('pos.scanInputPlaceholder') || 'Scan a barcode...'}
+                                    className="h-10"
+                                />
+                                <p className="text-[10px] text-muted-foreground">
+                                    {t('pos.scanInputOptionalDesc', { defaultValue: 'Manual input is optional. Automatic scanner captures completed scans anywhere in POS.' })}
+                                </p>
                             </div>
 
-                            <div className="space-y-4 p-4 rounded-xl bg-muted/30 border border-border">
-                                <div className="space-y-2">
-                                    <Label className="text-sm font-medium">{t('pos.scanDelay')} (ms)</Label>
-                                    <Input
-                                        type="number"
-                                        value={scanDelay}
-                                        onChange={(e) => {
-                                            const val = Number(e.target.value)
-                                            setScanDelay(val)
-                                            localStorage.setItem('scanner_scan_delay', String(val))
-                                        }}
-                                        min={0}
-                                        max={10000}
-                                        step={100}
-                                        className="h-9"
-                                    />
-                                    <p className="text-[10px] text-muted-foreground">{t('pos.scanDelayDesc')}</p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4 p-4 rounded-xl bg-muted/30 border border-border md:col-span-2">
-                                <div className="flex items-center justify-between gap-4">
-                                    <div className="space-y-0.5">
-                                        <Label className="text-base">
-                                            {t('pos.bluetoothScannerMode', { defaultValue: 'Bluetooth scanner mode' })}
-                                        </Label>
-                                        <p className="text-xs text-muted-foreground">
-                                            {t('pos.bluetoothScannerModeDesc', {
-                                                defaultValue: 'Use wider timing windows for wireless scanners that pause or wake during a scan.'
-                                            })}
-                                        </p>
+                            <div className="grid gap-6 md:grid-cols-2">
+                                <div className="space-y-4 p-4 rounded-xl bg-muted/30 border border-border">
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-0.5">
+                                            <Label className="text-base">{t('pos.autoScanner')}</Label>
+                                            <p className="text-xs text-muted-foreground">{t('pos.autoScannerDesc')}</p>
+                                        </div>
+                                        <Switch
+                                            checked={isDeviceScannerAutoEnabled}
+                                            onCheckedChange={(val) => {
+                                                if (val) {
+                                                    setScannerMode('device')
+                                                }
+                                                setIsDeviceScannerAutoEnabled(val)
+                                            }}
+                                        />
                                     </div>
-                                    <Switch
-                                        checked={isBluetoothScannerModeEnabled}
-                                        onCheckedChange={setIsBluetoothScannerModeEnabled}
-                                    />
+                                </div>
+
+                                <div className="space-y-4 p-4 rounded-xl bg-muted/30 border border-border">
+                                    <div className="space-y-2">
+                                        <Label className="text-sm font-medium">{t('pos.scanDelay')} (ms)</Label>
+                                        <Input
+                                            type="number"
+                                            value={scanDelay}
+                                            onChange={(e) => {
+                                                const val = Number(e.target.value)
+                                                setScanDelay(val)
+                                                localStorage.setItem('scanner_scan_delay', String(val))
+                                            }}
+                                            min={0}
+                                            max={10000}
+                                            step={100}
+                                            className="h-9"
+                                        />
+                                        <p className="text-[10px] text-muted-foreground">{t('pos.scanDelayDesc')}</p>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
                         </div>
                     )}
                 </div>
