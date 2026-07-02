@@ -405,7 +405,7 @@ export function POS() {
     const deviceScanActive = useRef(false)
     const deviceScanEditableSnapshot = useRef<EditableScanSnapshot | null>(null)
     const [scanDelay, setScanDelay] = useState(() => {
-        return Number(localStorage.getItem('scanner_scan_delay')) || 2500
+        return Number(localStorage.getItem('scanner_scan_delay')) || 500
     })
     const isScannerAutoActive = isCameraScannerAutoEnabled || isDeviceScannerAutoEnabled
 
@@ -1644,11 +1644,11 @@ export function POS() {
         const usedCurrencies = new Set(cart.map(item => findStockProduct(item.product_id, item.storageId)?.currency || 'usd' as CurrencyCode))
 
         const knownRates = {
-          usdIqd: exchangeData ? { rate: exchangeData.rate, source: exchangeData.source, timestamp: exchangeData.timestamp || new Date().toISOString() } : null,
-          eurIqd: eurRates.eur_iqd ? { rate: eurRates.eur_iqd.rate, source: eurRates.eur_iqd.source, timestamp: eurRates.eur_iqd.timestamp } : null,
-          tryIqd: tryRates.try_iqd ? { rate: tryRates.try_iqd.rate, source: tryRates.try_iqd.source, timestamp: tryRates.try_iqd.timestamp } : null,
-          usdEur: eurRates.usd_eur ? { rate: eurRates.usd_eur.rate, source: eurRates.usd_eur.source, timestamp: eurRates.usd_eur.timestamp } : null,
-          usdTry: tryRates.usd_try ? { rate: tryRates.usd_try.rate, source: tryRates.usd_try.source, timestamp: tryRates.usd_try.timestamp } : null,
+            usdIqd: exchangeData ? { rate: exchangeData.rate, source: exchangeData.source, timestamp: exchangeData.timestamp || new Date().toISOString() } : null,
+            eurIqd: eurRates.eur_iqd ? { rate: eurRates.eur_iqd.rate, source: eurRates.eur_iqd.source, timestamp: eurRates.eur_iqd.timestamp } : null,
+            tryIqd: tryRates.try_iqd ? { rate: tryRates.try_iqd.rate, source: tryRates.try_iqd.source, timestamp: tryRates.try_iqd.timestamp } : null,
+            usdEur: eurRates.usd_eur ? { rate: eurRates.usd_eur.rate, source: eurRates.usd_eur.source, timestamp: eurRates.usd_eur.timestamp } : null,
+            usdTry: tryRates.usd_try ? { rate: tryRates.usd_try.rate, source: tryRates.usd_try.source, timestamp: tryRates.usd_try.timestamp } : null,
         }
 
         const exchangeRatesSnapshot = buildCheckoutRatesSnapshot(usedCurrencies, settlementCurrency as CurrencyCode, knownRates)
@@ -2583,25 +2583,25 @@ export function POS() {
                                                     <div className="flex items-center gap-1">
                                                         {isDynamicUnit(item.unit) ? (
                                                             <>
-                                                    <div className="flex items-center gap-1 bg-muted/30 rounded-md border border-border/50 px-1.5">
-                                                                        <Input
-                                                                            type="text"
-                                                                            inputMode="decimal"
-                                                                            value={dynamicInputBuffer[itemKey] ?? String(item.quantity)}
-                                                                            onChange={(e) => {
-                                                                                const raw = e.target.value
-                                                                                setDynamicInputBuffer((prev) => ({ ...prev, [itemKey]: raw }))
-                                                                                const parsed = parseFloat(raw)
-                                                                                if (!isNaN(parsed) && parsed >= 0) {
-                                                                                    setExactQuantity(itemKey, parsed)
-                                                                                }
-                                                                            }}
-                                                                            onBlur={() => setDynamicInputBuffer((prev) => {
-                                                                                const { [itemKey]: _, ...rest } = prev
-                                                                                return rest
-                                                                            })}
-                                                                            className="h-7 w-14 text-xs text-center border-0 bg-transparent p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                                                        />
+                                                                <div className="flex items-center gap-1 bg-muted/30 rounded-md border border-border/50 px-1.5">
+                                                                    <Input
+                                                                        type="text"
+                                                                        inputMode="decimal"
+                                                                        value={dynamicInputBuffer[itemKey] ?? String(item.quantity)}
+                                                                        onChange={(e) => {
+                                                                            const raw = e.target.value
+                                                                            setDynamicInputBuffer((prev) => ({ ...prev, [itemKey]: raw }))
+                                                                            const parsed = parseFloat(raw)
+                                                                            if (!isNaN(parsed) && parsed >= 0) {
+                                                                                setExactQuantity(itemKey, parsed)
+                                                                            }
+                                                                        }}
+                                                                        onBlur={() => setDynamicInputBuffer((prev) => {
+                                                                            const { [itemKey]: _, ...rest } = prev
+                                                                            return rest
+                                                                        })}
+                                                                        className="h-7 w-14 text-xs text-center border-0 bg-transparent p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                    />
                                                                     <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`)}</span>
                                                                 </div>
                                                                 <Button

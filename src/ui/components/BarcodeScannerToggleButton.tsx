@@ -14,7 +14,7 @@ import {
 import { cn } from '@/lib/utils'
 import { Button } from '@/ui/components/button'
 
-const DUPLICATE_SCAN_COOLDOWN_MS = 2500
+const DUPLICATE_SCAN_COOLDOWN_MS = 500
 const LONG_PRESS_DELAY_MS = 650
 
 interface BarcodeScannerToggleButtonProps {
