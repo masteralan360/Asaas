@@ -503,11 +503,27 @@ export function POS() {
     const cartContainerRef = useRef<HTMLDivElement>(null)
     const sidebarRef = useRef<HTMLDivElement>(null)
     const lastEnterTime = useRef<number>(0)
+    const isPosKeyboardSelectionEnabled = isElectron && !isDeviceScannerAutoEnabled
 
     useEffect(() => {
         setIsElectron(isDesktop());
         if (isDesktop()) setFocusedProductIndex(0);
     }, [])
+
+    useEffect(() => {
+        if (!isElectron) {
+            return
+        }
+
+        if (isDeviceScannerAutoEnabled) {
+            setFocusedSection('grid')
+            setFocusedProductIndex(-1)
+            setFocusedCartIndex(-1)
+            lastEnterTime.current = 0
+        } else if (focusedProductIndex < 0 && focusedCartIndex < 0) {
+            setFocusedProductIndex(0)
+        }
+    }, [isDeviceScannerAutoEnabled, isElectron, focusedCartIndex, focusedProductIndex])
 
     const [productsPerRow, setProductsPerRow] = useState<number>(() => {
         const saved = localStorage.getItem('pos_products_per_row')
@@ -899,7 +915,7 @@ export function POS() {
 
     // Keyboard Navigation Effect
     useEffect(() => {
-        if (!isElectron) return
+        if (!isPosKeyboardSelectionEnabled) return
 
         const handleNavigation = (e: KeyboardEvent) => {
             // Disable if modals are open
@@ -1046,7 +1062,7 @@ export function POS() {
 
         window.addEventListener('keydown', handleNavigation)
         return () => window.removeEventListener('keydown', handleNavigation)
-    }, [isElectron, isSkuModalOpen, isBarcodeModalOpen, editingPriceItemKey, focusedProductIndex, focusedSection, focusedCartIndex, filteredProducts, cart, search, getCartItemKey])
+    }, [isPosKeyboardSelectionEnabled, isSkuModalOpen, isBarcodeModalOpen, editingPriceItemKey, focusedProductIndex, focusedSection, focusedCartIndex, filteredProducts, cart, search, getCartItemKey])
 
     // Hotkey listener
     useEffect(() => {
@@ -2250,7 +2266,7 @@ export function POS() {
                                     onChange={(e) => setSearch(e.target.value)}
                                     ref={searchInputRef}
                                     className="pl-10 h-12 text-lg"
-                                    tabIndex={isElectron ? -1 : 0}
+                                    tabIndex={isPosKeyboardSelectionEnabled ? -1 : 0}
                                 />
                             </div>
                             <div className="flex gap-2">
@@ -2259,7 +2275,7 @@ export function POS() {
                                     className="h-12 w-12 rounded-xl relative overflow-hidden"
                                     onClick={() => setIsSkuModalOpen(true)}
                                     title="Scan SKU (Hotkey: P)"
-                                    tabIndex={isElectron ? -1 : 0}
+                                    tabIndex={isPosKeyboardSelectionEnabled ? -1 : 0}
                                 >
                                     <Barcode className="w-5 h-5" />
                                 </Button>
@@ -2268,7 +2284,7 @@ export function POS() {
                                     className="h-12 px-4 rounded-xl relative flex items-center gap-2"
                                     onClick={() => setIsBarcodeModalOpen(true)}
                                     title="Barcode Scanner (Hotkey: K)"
-                                    tabIndex={isElectron ? -1 : 0}
+                                    tabIndex={isPosKeyboardSelectionEnabled ? -1 : 0}
                                 >
                                     {isDeviceScannerAutoEnabled ? (
                                         <ScanBarcode className="w-5 h-5" />
@@ -2310,7 +2326,7 @@ export function POS() {
                                                 product.hasBatches && "border-sky-300/70 bg-gradient-to-br from-sky-50/70 via-card to-card shadow-[0_10px_30px_rgba(14,165,233,0.08)] dark:border-sky-500/25 dark:from-sky-500/10",
                                                 remainingQuantity <= 0 ? 'opacity-60 cursor-not-allowed' : '',
                                                 // Keyboard focus highlight (Electron only)
-                                                (isElectron && focusedSection === 'grid' && focusedProductIndex === index) ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-[1.02] shadow-lg z-10 box-shadow-[0_0_0_2px_hsl(var(--primary))]" : ""
+                                                (isPosKeyboardSelectionEnabled && focusedSection === 'grid' && focusedProductIndex === index) ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-[1.02] shadow-lg z-10 box-shadow-[0_0_0_2px_hsl(var(--primary))]" : ""
                                             )}
                                         >
                                             {/* Product Image Wrapper */}
@@ -2485,7 +2501,7 @@ export function POS() {
                                                     ref={el => cartItemRefs.current[index] = el}
                                                     className={cn(
                                                         "bg-background border border-border p-3 rounded-lg flex gap-3 group transition-all duration-200 scroll-m-2",
-                                                        (isElectron && focusedSection === 'cart' && focusedCartIndex === index) ? "ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 shadow-md transform scale-[1.01]" : ""
+                                                        (isPosKeyboardSelectionEnabled && focusedSection === 'cart' && focusedCartIndex === index) ? "ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 shadow-md transform scale-[1.01]" : ""
                                                     )}
                                                 >
                                                     {/* Product Image - Responsive Visibility */}
@@ -3246,7 +3262,7 @@ export function POS() {
                     setIsSuccessModalOpen(false)
                     setCompletedSaleData(null)
                     // Reset POS focus if needed
-                    if (isElectron) searchInputRef.current?.focus()
+                    if (isPosKeyboardSelectionEnabled) searchInputRef.current?.focus()
                 }}
                 saleData={completedSaleData}
                 features={features}
