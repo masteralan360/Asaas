@@ -32,6 +32,10 @@ import {
     BARCODE_SCANNER_ACTIVE_FAST_KEY_COUNT,
     BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS,
     BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS,
+    BARCODE_SCANNER_BLUETOOTH_ACTIVE_KEY_GRACE_MS,
+    BARCODE_SCANNER_BLUETOOTH_AUTO_COMMIT_DELAY_MS,
+    BARCODE_SCANNER_BLUETOOTH_FAST_KEY_THRESHOLD_MS,
+    BARCODE_SCANNER_BLUETOOTH_STALE_RESET_MS,
     BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS,
     BARCODE_SCANNER_STALE_RESET_MS,
     createBarcodeScannerCodeIndex,
@@ -393,6 +397,9 @@ export function POS() {
     const [isDeviceScannerAutoEnabled, setIsDeviceScannerAutoEnabled] = useState(() => {
         return localStorage.getItem('scanner_device_auto_enabled') === 'true'
     })
+    const [isBluetoothScannerModeEnabled, setIsBluetoothScannerModeEnabled] = useState(() => {
+        return localStorage.getItem('scanner_bluetooth_mode_enabled') === 'true'
+    })
     const [selectedCameraId, setSelectedCameraId] = useState(localStorage.getItem('scanner_camera_id') || '')
     const [cameras, setCameras] = useState<MediaDeviceInfo[]>([])
     const skuInputRef = useRef<HTMLInputElement>(null)
@@ -425,6 +432,11 @@ export function POS() {
             setIsCameraScannerAutoEnabled(false)
             localStorage.setItem('scanner_auto_enabled', 'false')
         }
+    }
+
+    const updateBluetoothScannerModeEnabled = (val: boolean) => {
+        setIsBluetoothScannerModeEnabled(val)
+        localStorage.setItem('scanner_bluetooth_mode_enabled', String(val))
     }
 
     const [isLayoutMobile, setIsLayoutMobile] = useState(window.innerWidth < 1024)
@@ -1376,9 +1388,22 @@ export function POS() {
             return
         }
 
+        const deviceFastKeyThreshold = isBluetoothScannerModeEnabled
+            ? BARCODE_SCANNER_BLUETOOTH_FAST_KEY_THRESHOLD_MS
+            : BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS
+        const deviceActiveKeyGrace = isBluetoothScannerModeEnabled
+            ? BARCODE_SCANNER_BLUETOOTH_ACTIVE_KEY_GRACE_MS
+            : BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS
+        const deviceAutoCommitDelay = isBluetoothScannerModeEnabled
+            ? BARCODE_SCANNER_BLUETOOTH_AUTO_COMMIT_DELAY_MS
+            : BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS
+        const deviceStaleResetDelay = isBluetoothScannerModeEnabled
+            ? BARCODE_SCANNER_BLUETOOTH_STALE_RESET_MS
+            : BARCODE_SCANNER_STALE_RESET_MS
+
         const scheduleDeviceScanReset = () => {
             clearDeviceScanTimeout()
-            deviceScanTimeout.current = window.setTimeout(resetDeviceScanState, BARCODE_SCANNER_STALE_RESET_MS)
+            deviceScanTimeout.current = window.setTimeout(resetDeviceScanState, deviceStaleResetDelay)
         }
 
         const activateDeviceScannerCapture = () => {
@@ -1447,7 +1472,7 @@ export function POS() {
             if (
                 !deviceScanBuffer.current
                 || delta <= 0
-                || delta > (wasActive ? BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS : BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS)
+                || delta > (wasActive ? deviceActiveKeyGrace : deviceFastKeyThreshold)
             ) {
                 clearDeviceScanTimeout()
                 const focusedEditableElement = getFocusedEditableScanElement()
@@ -1461,7 +1486,7 @@ export function POS() {
 
             deviceScanLastTime.current = now
 
-            if (delta > 0 && delta <= BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS) {
+            if (delta > 0 && delta <= deviceFastKeyThreshold) {
                 deviceScanFastCount.current += 1
             } else if (!wasActive) {
                 deviceScanFastCount.current = 0
@@ -1479,7 +1504,7 @@ export function POS() {
                 clearDeviceScanTimeout()
                 deviceScanTimeout.current = window.setTimeout(() => {
                     commitDeviceScan(false)
-                }, BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS)
+                }, deviceAutoCommitDelay)
             }
         }
 
@@ -1491,6 +1516,7 @@ export function POS() {
     }, [
         editingPriceItemKey,
         handleBarcodeDetected,
+        isBluetoothScannerModeEnabled,
         isBarcodeModalOpen,
         isDeviceScannerAutoEnabled,
         isLoanRegistrationModalOpen,
@@ -3010,6 +3036,8 @@ export function POS() {
                 setIsCameraScannerAutoEnabled={updateCameraScannerAutoEnabled}
                 isDeviceScannerAutoEnabled={isDeviceScannerAutoEnabled}
                 setIsDeviceScannerAutoEnabled={updateDeviceScannerAutoEnabled}
+                isBluetoothScannerModeEnabled={isBluetoothScannerModeEnabled}
+                setIsBluetoothScannerModeEnabled={updateBluetoothScannerModeEnabled}
                 handleBarcodeDetected={handleBarcodeDetected}
                 selectedCameraId={selectedCameraId}
                 setSelectedCameraId={setSelectedCameraId}
