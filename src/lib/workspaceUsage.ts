@@ -19,6 +19,14 @@ export interface WorkspaceTransferUsage {
 
 export const WORKSPACE_STORAGE_LIMIT_MESSAGE = 'Workspace storage limit exceeded'
 export const WORKSPACE_TRANSFER_LIMIT_MESSAGE = 'Workspace monthly data transfer limit exceeded'
+const WORKSPACE_USAGE_UPDATED_EVENT = 'workspace-usage-updated'
+
+function notifyWorkspaceUsageUpdated(workspaceId: string) {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new CustomEvent(WORKSPACE_USAGE_UPDATED_EVENT, {
+        detail: { workspaceId }
+    }))
+}
 
 function getErrorMessage(error: unknown): string {
     if (error instanceof Error) return error.message
@@ -95,6 +103,7 @@ export async function recordWorkspaceDataTransfer(
         throw error
     }
 
+    notifyWorkspaceUsageUpdated(workspaceId)
     return data as WorkspaceTransferUsage | null
 }
 

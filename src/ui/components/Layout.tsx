@@ -27,6 +27,8 @@ import { GlobalExchangeRateReminders } from './exchange/GlobalExchangeRateRemind
 import { CurrencyConverterPopup } from './CurrencyConverterPopup'
 import { AtlasAssistantPopup } from './AtlasAssistantPopup'
 import { UnifiedSnoozedRemindersBell } from './reminders/UnifiedSnoozedRemindersBell'
+import { WorkspaceUsageButton, WorkspaceUsageCircleButton, WorkspaceUsageModal } from './WorkspaceUsageModal'
+import { useWorkspaceUsageMeter } from './workspaceUsageMeter'
 import { ThemeAwareLogo } from './ThemeAwareLogo'
 import { LocalAccountSwitcher } from './LocalAccountSwitcher'
 import { buildWorkspaceNavigation } from '@/ui/navigation/workspaceNavigation'
@@ -140,7 +142,7 @@ export function Layout({ children }: LayoutProps) {
     const [location, setLocation] = useLocation()
     const { user, signOut, session } = useAuth()
     const clinicalRegistryType = useClinicalRegistryType(user?.workspaceId)
-    const { hasFeature, hasCapability, workspaceName, isFullscreen, features, activeWorkspace, isLocalMode } = useWorkspace()
+    const { hasFeature, hasCapability, workspaceName, isFullscreen, features, activeWorkspace, isLocalMode, isDemoMode, isLocked } = useWorkspace()
     const { hasPermission } = useWorkspacePermissions()
     const demoExpiryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const {
@@ -156,6 +158,12 @@ export function Layout({ children }: LayoutProps) {
     const reorderRules = useReorderTransferRules(activeWorkspace?.id)
 
     const { t } = useTranslation()
+    // @ts-ignore
+    const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__
+    const webUsageMeter = useWorkspaceUsageMeter({
+        enabled: !isTauri && !isLocalMode && !isDemoMode,
+        workspaceId: activeWorkspace?.id
+    })
     const [demoRemainingSec, setDemoRemainingSec] = useState<number | null>(null)
     const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
     const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(() => {
@@ -208,6 +216,7 @@ export function Layout({ children }: LayoutProps) {
     const [currencyConverterOpen, setCurrencyConverterOpen] = useState(false)
     const [assistantOpen, setAssistantOpen] = useState(false)
     const [assistantInitialQuery, setAssistantInitialQuery] = useState<string | undefined>(undefined)
+    const [usageModalOpen, setUsageModalOpen] = useState(false)
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text)
@@ -344,8 +353,6 @@ export function Layout({ children }: LayoutProps) {
         }
     }, [user?.workspaceId, features.data_mode, hasFeature])
 
-    // @ts-ignore
-    const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__
     const handleAddToDesktop = async (name: string, href: string) => {
         if (!isDesktop()) return
         try {
@@ -387,7 +394,6 @@ export function Layout({ children }: LayoutProps) {
     }, [location, isTauri]);
 
     // Locking Enforcement
-    const { isLocked } = useWorkspace()
     useEffect(() => {
         if (isLocked && location !== '/locked-workspace') {
             console.log('[Layout] Workspace is LOCKED. Redirecting to /locked-workspace')
@@ -1343,13 +1349,29 @@ export function Layout({ children }: LayoutProps) {
                                 )}
                             </button>
 
-                            <div className={cn("flex-1 justify-center px-4", !isMobile() ? "flex" : "hidden md:flex")}>
-                                {(!isTauri || isFullscreen) && !isMobile() && (
+                            <div className={cn(
+                                "flex-1 justify-center px-4",
+                                webUsageMeter ? "hidden lg:flex" : (!isMobile() ? "flex" : "hidden md:flex")
+                            )}>
+                                {!isTauri && webUsageMeter ? (
+                                    <WorkspaceUsageButton
+                                        usageMeter={webUsageMeter}
+                                        onClick={() => setUsageModalOpen(true)}
+                                        className="h-9 w-full max-w-[500px] animate-in fade-in slide-in-from-top-2 duration-300"
+                                    />
+                                ) : ((!isTauri || isFullscreen) && !isMobile() && (
                                     <GlobalSearch className="max-w-[500px] animate-in fade-in slide-in-from-top-2 duration-300" />
-                                )}
+                                ))}
                             </div>
 
                             <div className="flex items-center gap-1 md:gap-3 ml-auto">
+                                {!isTauri && webUsageMeter && (
+                                    <WorkspaceUsageCircleButton
+                                        usageMeter={webUsageMeter}
+                                        onClick={() => setUsageModalOpen(true)}
+                                        className="lg:hidden"
+                                    />
+                                )}
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -1502,6 +1524,11 @@ export function Layout({ children }: LayoutProps) {
                         </Dialog>
                     )}
                     <CurrencyConverterPopup open={currencyConverterOpen} onClose={() => setCurrencyConverterOpen(false)} />
+                    <WorkspaceUsageModal
+                        open={usageModalOpen}
+                        onOpenChange={setUsageModalOpen}
+                        usageMeter={webUsageMeter}
+                    />
                     <AtlasAssistantPopup
                         open={assistantOpen}
                         initialQuery={assistantInitialQuery}

@@ -1,0 +1,165 @@
+import { useEffect, useState } from 'react'
+import type { TFunction } from 'i18next'
+import { useTranslation } from 'react-i18next'
+import { getWorkspaceUsageStatus, type WorkspaceUsageStatus } from '@/lib/workspaceUsage'
+import type {
+    WorkspaceUsageMeter,
+    WorkspaceUsageMeterMetric,
+    WorkspaceUsageMeterSegment
+} from './WorkspaceUsageModal'
+
+const WORKSPACE_USAGE_UPDATED_EVENT = 'workspace-usage-updated'
+const WORKSPACE_USAGE_REFRESH_DELAY_MS = 1500
+const WORKSPACE_USAGE_REFRESH_INTERVAL_MS = 30000
+
+function getMetricPercent(usedValue?: number | null, limitValue?: number | null) {
+    if (limitValue === null || limitValue === undefined) return null
+
+    const used = Number(usedValue ?? 0)
+    const limit = Number(limitValue)
+    if (!Number.isFinite(used) || !Number.isFinite(limit)) return null
+    if (used <= 0) return 0
+    if (limit <= 0) return 100
+
+    return Math.min(100, Math.max(0, (used / limit) * 100))
+}
+
+function buildWorkspaceUsageMeter(status: WorkspaceUsageStatus | null, t: TFunction): WorkspaceUsageMeter | null {
+    if (!status?.has_limits) return null
+
+    const storageLabel = t('workspaceUsage.storage')
+    const transferLabel = t('workspaceUsage.transfer')
+    const rawSegments: Array<Omit<WorkspaceUsageMeterSegment, 'widthPercent'>> = []
+    const metrics: WorkspaceUsageMeterMetric[] = []
+    const titleParts: string[] = []
+
+    const storagePercent = getMetricPercent(status.storage_units, status.storage_unit_limit)
+    if (storagePercent !== null) {
+        titleParts.push(`${storageLabel}: ${Math.round(storagePercent)}%`)
+        const storageMetric: WorkspaceUsageMeterMetric = {
+            key: 'storage',
+            label: storageLabel,
+            percent: storagePercent,
+            barClassName: 'bg-primary',
+            badgeClassName: 'bg-primary/10 text-primary ring-primary/20'
+        }
+        metrics.push(storageMetric)
+        if (storagePercent > 0) {
+            rawSegments.push({
+                key: storageMetric.key,
+                label: storageMetric.label,
+                percent: storageMetric.percent,
+                className: storageMetric.barClassName
+            })
+        }
+    }
+
+    const transferPercent = getMetricPercent(status.data_transfer_bytes, status.monthly_data_transfer_limit_bytes)
+    if (transferPercent !== null) {
+        titleParts.push(`${transferLabel}: ${Math.round(transferPercent)}%`)
+        const transferMetric: WorkspaceUsageMeterMetric = {
+            key: 'transfer',
+            label: transferLabel,
+            percent: transferPercent,
+            barClassName: 'bg-amber-500 dark:bg-amber-400',
+            badgeClassName: 'bg-amber-500/10 text-amber-700 ring-amber-500/20 dark:text-amber-300'
+        }
+        metrics.push(transferMetric)
+        if (transferPercent > 0) {
+            rawSegments.push({
+                key: transferMetric.key,
+                label: transferMetric.label,
+                percent: transferMetric.percent,
+                className: transferMetric.barClassName
+            })
+        }
+    }
+
+    const overallPercent = rawSegments.length
+        ? Math.max(...rawSegments.map((segment) => segment.percent))
+        : 0
+    const totalSegmentPercent = rawSegments.reduce((total, segment) => total + segment.percent, 0)
+    const segments: WorkspaceUsageMeterSegment[] = rawSegments.map((segment) => ({
+        ...segment,
+        widthPercent: totalSegmentPercent > 0
+            ? overallPercent * (segment.percent / totalSegmentPercent)
+            : 0
+    }))
+
+    return {
+        percent: overallPercent,
+        label: `${Math.round(overallPercent)}%`,
+        title: titleParts.length
+            ? t('workspaceUsage.title', { details: titleParts.join(' / ') })
+            : t('workspaceUsage.emptyTitle'),
+        segments,
+        metrics
+    }
+}
+
+type UseWorkspaceUsageMeterOptions = {
+    enabled: boolean
+    workspaceId?: string | null
+}
+
+export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsageMeterOptions) {
+    const { t } = useTranslation()
+    const [usageStatus, setUsageStatus] = useState<WorkspaceUsageStatus | null>(null)
+
+    useEffect(() => {
+        if (!enabled || !workspaceId) {
+            setUsageStatus(null)
+            return
+        }
+
+        let cancelled = false
+        let refreshTimeout: number | undefined
+
+        const fetchUsageStatus = async () => {
+            try {
+                const status = await getWorkspaceUsageStatus(workspaceId)
+                if (!cancelled) {
+                    setUsageStatus(status)
+                }
+            } catch (error) {
+                console.warn('[WorkspaceUsage] Failed to load workspace usage:', error)
+                if (!cancelled) {
+                    setUsageStatus(null)
+                }
+            }
+        }
+
+        const scheduleUsageRefresh = (event?: Event) => {
+            const detail = event instanceof CustomEvent
+                ? event.detail as { workspaceId?: string } | undefined
+                : undefined
+
+            if (detail?.workspaceId && detail.workspaceId !== workspaceId) {
+                return
+            }
+
+            if (refreshTimeout) {
+                window.clearTimeout(refreshTimeout)
+            }
+
+            refreshTimeout = window.setTimeout(fetchUsageStatus, WORKSPACE_USAGE_REFRESH_DELAY_MS)
+        }
+
+        void fetchUsageStatus()
+        const intervalId = window.setInterval(fetchUsageStatus, WORKSPACE_USAGE_REFRESH_INTERVAL_MS)
+        window.addEventListener(WORKSPACE_USAGE_UPDATED_EVENT, scheduleUsageRefresh)
+        window.addEventListener('focus', fetchUsageStatus)
+
+        return () => {
+            cancelled = true
+            window.clearInterval(intervalId)
+            if (refreshTimeout) {
+                window.clearTimeout(refreshTimeout)
+            }
+            window.removeEventListener(WORKSPACE_USAGE_UPDATED_EVENT, scheduleUsageRefresh)
+            window.removeEventListener('focus', fetchUsageStatus)
+        }
+    }, [enabled, workspaceId])
+
+    return buildWorkspaceUsageMeter(usageStatus, t)
+}

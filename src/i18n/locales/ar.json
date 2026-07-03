@@ -4252,6 +4252,15 @@
       "clinic": "عيادة"
     }
   },
+  "workspaceUsage": {
+    "storage": "التخزين",
+    "transfer": "النقل",
+    "overall": "الإجمالي",
+    "modalTitle": "استخدام مساحة العمل",
+    "modalDescription": "يتم عرض الاستخدام الحالي بالنسب المئوية فقط.",
+    "title": "استخدام مساحة العمل: {{details}}",
+    "emptyTitle": "استخدام مساحة العمل: 0%"
+  },
   "shortcut": {
     "addToDesktop": "إضافة اختصار إلى سطح المكتب",
     "createdTitle": "تم إنشاء الاختصار",

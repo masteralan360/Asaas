@@ -4473,6 +4473,15 @@
     "empty": "No templates yet.",
     "emptyDescription": "Create your first manual entry template to get started."
   },
+  "workspaceUsage": {
+    "storage": "Storage",
+    "transfer": "Transfer",
+    "overall": "Overall",
+    "modalTitle": "Workspace Usage",
+    "modalDescription": "Current usage shown as percentages only.",
+    "title": "Workspace usage: {{details}}",
+    "emptyTitle": "Workspace usage: 0%"
+  },
   "shortcut": {
     "addToDesktop": "Add to desktop as shortcut",
     "createdTitle": "Shortcut Created",

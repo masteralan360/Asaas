@@ -9,11 +9,13 @@ import { GlobalSearch } from './GlobalSearch'
 import { NotificationCenter } from './NotificationCenter'
 import { ThemeAwareTitleLogo } from './ThemeAwareTitleLogo'
 import { useSubscriptionExpiryWarning } from '@/hooks/useSubscriptionExpiryWarning'
-
+import { WorkspaceUsageButton, WorkspaceUsageCircleButton, WorkspaceUsageModal } from './WorkspaceUsageModal'
+import { useWorkspaceUsageMeter } from './workspaceUsageMeter'
 
 export function TitleBar() {
     const [isMaximized, setIsMaximized] = useState(false)
-    const { workspaceName, branchInfo, pendingUpdate, isFullscreen, features, isDemoMode } = useWorkspace()
+    const [usageModalOpen, setUsageModalOpen] = useState(false)
+    const { workspaceName, branchInfo, pendingUpdate, isFullscreen, features, isLocalMode, isDemoMode, activeWorkspace } = useWorkspace()
     const { theme, setTheme, style } = useTheme()
     const { t } = useTranslation()
     // @ts-ignore
@@ -21,6 +23,10 @@ export function TitleBar() {
     const subscriptionWarning = useSubscriptionExpiryWarning(
         isTauri && !isDemoMode ? features.subscription_expires_at : null
     )
+    const usageMeter = useWorkspaceUsageMeter({
+        enabled: isTauri && !isLocalMode && !isDemoMode,
+        workspaceId: activeWorkspace?.id
+    })
 
     useEffect(() => {
         if (!isTauri) return
@@ -102,6 +108,7 @@ export function TitleBar() {
     if (!isTauri) return null
 
     return (
+        <>
         <div dir="ltr" data-tauri-drag-region className={cn(
             "fixed top-0 left-0 right-0 h-[48px] z-[100] flex items-center justify-between px-3 select-none bg-background/80 backdrop-blur-md border-b border-white/10 transition-all duration-300",
             isFullscreen && "opacity-0 pointer-events-none -translate-y-full"
@@ -140,6 +147,20 @@ export function TitleBar() {
 
             {/* Right: Window Controls */}
             <div data-tauri-drag-region className="flex items-center justify-end gap-1 w-1/3">
+                {usageMeter && (
+                    <>
+                        <WorkspaceUsageCircleButton
+                            usageMeter={usageMeter}
+                            onClick={() => setUsageModalOpen(true)}
+                            className="mr-1 h-8 w-8 xl:hidden"
+                        />
+                        <WorkspaceUsageButton
+                            usageMeter={usageMeter}
+                            onClick={() => setUsageModalOpen(true)}
+                            className="mr-2 hidden h-7 w-[300px] max-w-[30vw] shrink xl:flex"
+                        />
+                    </>
+                )}
                 {subscriptionWarning && (
                     <button
                         onClick={() => window.dispatchEvent(new CustomEvent('open-subscription-expiry-warning'))}
@@ -247,5 +268,11 @@ export function TitleBar() {
                 </button>
             </div>
         </div>
+        <WorkspaceUsageModal
+            open={usageModalOpen}
+            onOpenChange={setUsageModalOpen}
+            usageMeter={usageMeter}
+        />
+        </>
     )
 }

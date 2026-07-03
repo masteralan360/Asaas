@@ -2,6 +2,7 @@ import { getActiveBusinessWorkspaceId } from '@/lib/network'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 const WORKSPACE_TRANSFER_LIMIT_MESSAGE = 'Workspace monthly data transfer limit exceeded'
+const WORKSPACE_USAGE_UPDATED_EVENT = 'workspace-usage-updated'
 const SKIP_USAGE_HEADER = 'X-Workspace-Usage-Skip'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const WORKSPACE_FILTER_KEYS = [
@@ -27,6 +28,13 @@ type UsageRecordResult = {
 
 function isUuid(value?: string | null): value is string {
     return UUID_PATTERN.test(value ?? '')
+}
+
+function notifyWorkspaceUsageUpdated(workspaceId: string) {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new CustomEvent(WORKSPACE_USAGE_UPDATED_EVENT, {
+        detail: { workspaceId }
+    }))
 }
 
 function getRequestUrl(input: RequestInfo | URL): URL | null {
@@ -223,6 +231,7 @@ async function recordTableDataTransfer(
     })
 
     if (response.ok) {
+        notifyWorkspaceUsageUpdated(workspaceId)
         return { ok: true }
     }
 

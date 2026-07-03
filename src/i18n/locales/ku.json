@@ -4271,6 +4271,15 @@
     "createdMessage": "کورتکەتی \"Atlas - {{name}}\" لەسەر مێز دروست کرا.",
     "errorTitle": "هەڵە"
   },
+  "workspaceUsage": {
+    "storage": "خەزنکردن",
+    "transfer": "ڕێژەی بەکارهێنان",
+    "overall": "گشتی",
+    "modalTitle": "بەکارهێنانی شوێنی کار",
+    "modalDescription": "بەکارهێنانی ئێستا تەنها بە ڕێژەی سەدی پیشان دەدرێت.",
+    "title": "بەکارهێنانی شوێنی کار: {{details}}",
+    "emptyTitle": "بەکارهێنانی شوێنی کار: 0%"
+  },
   "manualEntry": {
     "title": "دروستکردنی وەسڵی دەستی",
     "create": "دروستکردنی وەسڵی دەستی",
