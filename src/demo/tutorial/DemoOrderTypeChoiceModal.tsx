@@ -1,5 +1,6 @@
 import { PackagePlus, ShoppingCart } from 'lucide-react'
 import { useLocation } from 'wouter'
+import { useTranslation } from 'react-i18next'
 
 import {
   Button,
@@ -12,6 +13,7 @@ import { useDemoTutorial } from './DemoTutorialProvider'
 
 export function DemoOrderTypeChoiceModal() {
   const [location] = useLocation()
+  const { t } = useTranslation()
   const { isAdvancedActive, currentTask, selectOrderType } = useDemoTutorial()
   const isOpen = isAdvancedActive && currentTask === 'order-choice' && location.startsWith('/orders')
 
@@ -26,10 +28,12 @@ export function DemoOrderTypeChoiceModal() {
         <DialogHeader className="border-b bg-muted/30 px-6 py-5 text-start">
           <DialogTitle className="flex items-center gap-2 text-xl">
             <ShoppingCart className="h-5 w-5 text-primary" />
-            Choose order type
+            {t('demo.tutorial.orderChoiceModal.title', { defaultValue: 'Choose order type' })}
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Pick the order workflow you want to learn. The tutorial will open the matching form.
+            {t('demo.tutorial.orderChoiceModal.description', {
+              defaultValue: 'Pick the order workflow you want to learn. The tutorial will open the matching form.',
+            })}
           </p>
         </DialogHeader>
 
@@ -43,9 +47,13 @@ export function DemoOrderTypeChoiceModal() {
             <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-teal-500/10 text-teal-600">
               <ShoppingCart className="h-5 w-5" />
             </div>
-            <div className="font-black">New Sales Order</div>
+            <div className="font-black">
+              {t('demo.tutorial.orderChoiceModal.salesTitle', { defaultValue: 'New Sales Order' })}
+            </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              Use this when a customer orders products from the business.
+              {t('demo.tutorial.orderChoiceModal.salesDescription', {
+                defaultValue: 'Use this when a customer orders products from the business.',
+              })}
             </p>
           </button>
 
@@ -58,9 +66,13 @@ export function DemoOrderTypeChoiceModal() {
             <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600">
               <PackagePlus className="h-5 w-5" />
             </div>
-            <div className="font-black">New Purchase Order</div>
+            <div className="font-black">
+              {t('demo.tutorial.orderChoiceModal.purchaseTitle', { defaultValue: 'New Purchase Order' })}
+            </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              Use this when the business purchases stock from a supplier.
+              {t('demo.tutorial.orderChoiceModal.purchaseDescription', {
+                defaultValue: 'Use this when the business purchases stock from a supplier.',
+              })}
             </p>
           </button>
         </div>
@@ -73,7 +85,7 @@ export function DemoOrderTypeChoiceModal() {
             data-tour-id="tutorial-order-choice-redirect"
             disabled
           >
-            Select an order type to continue
+            {t('demo.tutorial.orderChoiceModal.selectToContinue', { defaultValue: 'Select an order type to continue' })}
           </Button>
         </div>
       </DialogContent>

@@ -49,13 +49,20 @@ type DirectionFilter = 'all' | 'incoming' | 'outgoing'
 type SourceFilter = 'all' | 'loans' | 'orders' | 'budget' | 'real_estate' | 'clinical_appointments' | 'payments'
 type OpenStatusFilter = 'all' | 'open' | 'overdue'
 
-function sourceTypeLabel(value: PaymentObligation['sourceType'] | PaymentTransaction['sourceType'], t: any) {
+function sourceTypeLabel(
+    value: PaymentObligation['sourceType'] | PaymentTransaction['sourceType'],
+    t: any,
+    metadata?: Record<string, unknown> | null
+) {
     switch (value) {
         case 'loan_origination':
             return t('payments.sourceType.loanOrigination', { defaultValue: 'Loan Origination' })
         case 'loan_installment':
             return t('payments.sourceType.loanInstallment', { defaultValue: 'Loan Installment' })
         case 'simple_loan':
+            if (metadata?.displaySourceLabel === 'order_loan') {
+                return t('payments.sourceType.orderLoan', { defaultValue: 'Order loan' })
+            }
             return t('payments.sourceType.simpleLoan', { defaultValue: 'Simple Loan' })
         case 'loan_payment':
             return t('payments.sourceType.loanPayment', { defaultValue: 'Loan Payment' })
@@ -404,7 +411,7 @@ export function Payments() {
                                                 const isLockedSource = lockedSourceKeys.has(getPaymentSourceKey(item))
                                                 return (
                                                     <>
-                                            <TableCell>{sourceTypeLabel(item.sourceType, t)}</TableCell>
+                                            <TableCell>{sourceTypeLabel(item.sourceType, t, item.metadata)}</TableCell>
                                             <TableCell className="font-medium">{item.referenceLabel || item.title}</TableCell>
                                             <TableCell>
                                                 <div>{item.counterpartyName || item.title}</div>
@@ -502,7 +509,7 @@ export function Payments() {
                                         return (
                                             <TableRow key={item.id}>
                                                 <TableCell>{formatDateTime(item.paidAt)}</TableCell>
-                                                <TableCell>{sourceTypeLabel(item.sourceType, t)}</TableCell>
+                                                <TableCell>{sourceTypeLabel(item.sourceType, t, item.metadata)}</TableCell>
                                                 <TableCell className="font-medium">{item.referenceLabel || item.sourceRecordId}</TableCell>
                                                 <TableCell>{item.counterpartyName || '—'}</TableCell>
                                                 <TableCell>

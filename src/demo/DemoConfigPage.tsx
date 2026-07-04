@@ -37,7 +37,13 @@ export function DemoConfigPage() {
 
     const effectiveJob = selectedTutorial === 'advanced' ? 'general' : selectedJob
     const effectiveTimeLimit = selectedTutorial === 'advanced' ? DEMO_TUTORIAL_ADVANCED_MINUTES : timeLimit
-    const name = workspaceName.trim() || `${effectiveJob.charAt(0).toUpperCase() + effectiveJob.slice(1)} Demo`
+    const defaultWorkspaceName = t('demo.defaultWorkspaceName', {
+      defaultValue: '{{job}} Demo',
+      job: t(`demo.job.${effectiveJob}`, {
+        defaultValue: effectiveJob.charAt(0).toUpperCase() + effectiveJob.slice(1),
+      }),
+    })
+    const name = workspaceName.trim() || defaultWorkspaceName
 
     try {
       await clearStoredDemoWorkspaces()
@@ -47,17 +53,35 @@ export function DemoConfigPage() {
       await signInWithDemo(result)
       setLocation('/')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create demo workspace')
+      setError(err instanceof Error ? err.message : t('demo.createError', { defaultValue: 'Failed to create demo workspace' }))
     } finally {
       setIsLoading(false)
     }
   }
 
   const timeOptions = selectedTutorial === 'advanced' ? [DEMO_TUTORIAL_ADVANCED_MINUTES] : [5, 10, 15]
-  const tutorialOptions: Array<{ id: DemoTutorialMode; title: string; description: string }> = [
-    { id: 'advanced', title: 'Advanced Tutorial', description: 'Guided tasks across storage, products, POS, returns, partners, and orders.' },
-    { id: 'basic', title: 'Basic Tutorial', description: 'Quick orientation for exploring the demo workspace.' },
-    { id: 'none', title: 'No Tutorial', description: 'Start with the normal demo workspace.' },
+  const tutorialOptions: Array<{ id: DemoTutorialMode; titleKey: string; descriptionKey: string; title: string; description: string }> = [
+    {
+      id: 'advanced',
+      titleKey: 'demo.tutorialSetup.options.advanced.title',
+      descriptionKey: 'demo.tutorialSetup.options.advanced.description',
+      title: 'Advanced Tutorial',
+      description: 'Guided tasks across storage, products, POS, returns, partners, and orders.',
+    },
+    {
+      id: 'basic',
+      titleKey: 'demo.tutorialSetup.options.basic.title',
+      descriptionKey: 'demo.tutorialSetup.options.basic.description',
+      title: 'Basic Tutorial',
+      description: 'Quick orientation for exploring the demo workspace.',
+    },
+    {
+      id: 'none',
+      titleKey: 'demo.tutorialSetup.options.none.title',
+      descriptionKey: 'demo.tutorialSetup.options.none.description',
+      title: 'No Tutorial',
+      description: 'Start with the normal demo workspace.',
+    },
   ]
 
   return (
@@ -188,14 +212,14 @@ export function DemoConfigPage() {
                 </div>
                 {selectedTutorial === 'advanced' && (
                   <p className="text-xs text-teal-700 dark:text-teal-300 pl-1">
-                    Advanced Tutorial uses General Demo only for V1.
+                    {t('demo.tutorialSetup.advancedGeneralOnly', { defaultValue: 'Advanced Tutorial uses General Demo only for V1.' })}
                   </p>
                 )}
               </div>
 
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-gray-700 dark:text-slate-300 uppercase tracking-wider pl-1">
-                  Tutorial
+                  {t('demo.tutorialSetup.label', { defaultValue: 'Tutorial' })}
                 </Label>
                 <div className="grid gap-2">
                   {tutorialOptions.map((option) => (
@@ -219,8 +243,12 @@ export function DemoConfigPage() {
                           : 'border-gray-200 bg-white text-gray-700 hover:border-teal-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-teal-700'
                       )}
                     >
-                      <div className="text-sm font-bold">{option.title}</div>
-                      <div className="mt-1 text-xs text-gray-500 dark:text-slate-400">{option.description}</div>
+                      <div className="text-sm font-bold">
+                        {t(option.titleKey, { defaultValue: option.title })}
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                        {t(option.descriptionKey, { defaultValue: option.description })}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -250,10 +278,12 @@ export function DemoConfigPage() {
                     </span>
                     <span className="min-w-0">
                       <span className="block text-sm font-bold text-teal-900 dark:text-teal-200">
-                        Auto-guide required steps
+                        {t('demo.tutorialSetup.autoGuideTitle', { defaultValue: 'Auto-guide required steps' })}
                       </span>
                       <span className="mt-1 block text-xs leading-relaxed text-teal-700 dark:text-teal-300/80">
-                        Automatically scroll and focus the next required field or action during the advanced tutorial.
+                        {t('demo.tutorialSetup.autoGuideDescription', {
+                          defaultValue: 'Automatically scroll and focus the next required field or action during the advanced tutorial.',
+                        })}
                       </span>
                     </span>
                   </div>
@@ -301,7 +331,10 @@ export function DemoConfigPage() {
                 </div>
                 <p className="text-xs text-gray-400 dark:text-slate-500 mt-1 pl-1">
                   {selectedTutorial === 'advanced'
-                    ? 'Advanced Tutorial demos run for 30 minutes.'
+                    ? t('demo.tutorialSetup.advancedTimeLimit', {
+                      defaultValue: 'Advanced Tutorial demos run for {{minutes}} minutes.',
+                      minutes: DEMO_TUTORIAL_ADVANCED_MINUTES,
+                    })
                     : t('demo.timeRange', 'Between 5 and 15 minutes')}
                 </p>
               </div>

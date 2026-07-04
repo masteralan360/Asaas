@@ -5115,6 +5115,11 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
                 loanPaymentId: payment.id,
                 loanCategory: loan.loanCategory || 'standard',
                 loanDirection: loan.direction || 'lent',
+                ...(loan.source === 'order' && loan.orderId && loan.orderType ? {
+                    ...(loan.loanCategory || 'standard') === 'simple' ? { displaySourceLabel: 'order_loan' } : {},
+                    orderId: loan.orderId,
+                    orderType: loan.orderType
+                } : {}),
                 touchedInstallmentIds: Array.from(touchedInstallmentIds)
             }
         })

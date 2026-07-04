@@ -5,19 +5,49 @@ import type {
   DemoTutorialTaskId,
 } from './demoTutorialTypes'
 
+function markerTranslationId(id: string) {
+  return id.replace(/\./g, '_')
+}
+
 function mandatory(id: string, targetId: string, label: string, description: string): DemoTutorialMarker {
-  return { id, targetId, label, description, kind: 'mandatory' }
+  const key = markerTranslationId(id)
+  return {
+    id,
+    targetId,
+    label,
+    labelKey: `demo.tutorial.markers.${key}.label`,
+    description,
+    descriptionKey: `demo.tutorial.markers.${key}.description`,
+    kind: 'mandatory',
+  }
 }
 
 function overview(id: string, targetId: string, label: string, description: string): DemoTutorialMarker {
-  return { id, targetId, label, description, kind: 'overview' }
+  const key = markerTranslationId(id)
+  return {
+    id,
+    targetId,
+    label,
+    labelKey: `demo.tutorial.markers.${key}.label`,
+    description,
+    descriptionKey: `demo.tutorial.markers.${key}.description`,
+    kind: 'overview',
+  }
+}
+
+function taskText(id: DemoTutorialTaskId, title: string, description: string) {
+  return {
+    title,
+    titleKey: `demo.tutorial.tasks.${id}.title`,
+    description,
+    descriptionKey: `demo.tutorial.tasks.${id}.description`,
+  }
 }
 
 export const DEMO_TUTORIAL_TASKS: DemoTutorialTaskDefinition[] = [
   {
     id: 'basic-overview',
-    title: 'Basic Tutorial',
-    description: 'A short orientation for the demo workspace.',
+    ...taskText('basic-overview', 'Basic Tutorial', 'A short orientation for the demo workspace.'),
     route: '/',
     markers: [
       overview('0.1', 'demo-basic-dashboard', 'Dashboard', 'Start from the dashboard and use the sidebar to explore modules.'),
@@ -25,8 +55,7 @@ export const DEMO_TUTORIAL_TASKS: DemoTutorialTaskDefinition[] = [
   },
   {
     id: 'storage',
-    title: '1. Create Storage',
-    description: 'Create a storage location for the product you will sell later.',
+    ...taskText('storage', '1. Create Storage', 'Create a storage location for the product you will sell later.'),
     route: '/storages',
     markers: [
       mandatory('1.1', 'tutorial-storage-new-button', 'New Storage', 'Open the storage creation dialog.'),
@@ -37,8 +66,7 @@ export const DEMO_TUTORIAL_TASKS: DemoTutorialTaskDefinition[] = [
   },
   {
     id: 'product',
-    title: '2. Create Product',
-    description: 'Create a returnable product with stock so it can be sold in POS.',
+    ...taskText('product', '2. Create Product', 'Create a returnable product with stock so it can be sold in POS.'),
     route: '/products/new',
     markers: [
       mandatory('2.1', 'tutorial-product-name', 'Product name', 'Enter the product name.'),
@@ -55,8 +83,7 @@ export const DEMO_TUTORIAL_TASKS: DemoTutorialTaskDefinition[] = [
   },
   {
     id: 'pos-sale',
-    title: '3. Make POS Sale',
-    description: 'Sell the product through POS. Loan stays visible but disabled in this tutorial.',
+    ...taskText('pos-sale', '3. Make POS Sale', 'Sell the product through POS. Loan stays visible but disabled in this tutorial.'),
     route: '/pos',
     markers: [
       mandatory('3.1', 'tutorial-pos-product-card', 'Product card', 'Select the product you created.'),
@@ -75,8 +102,7 @@ export const DEMO_TUTORIAL_TASKS: DemoTutorialTaskDefinition[] = [
   },
   {
     id: 'sales-history',
-    title: '4. Return Sale In Sales History',
-    description: 'Find the POS sale and return it from Sales History.',
+    ...taskText('sales-history', '4. Return Sale In Sales History', 'Find the POS sale and return it from Sales History.'),
     route: '/sales',
     markers: [
       mandatory('4.1', 'tutorial-sales-created-sale', 'Sale to return', 'This is the POS sale created in the previous task.'),
@@ -89,8 +115,7 @@ export const DEMO_TUTORIAL_TASKS: DemoTutorialTaskDefinition[] = [
   },
   {
     id: 'return-sale',
-    title: '5. Return That Sale',
-    description: 'Return the exact sale created in POS.',
+    ...taskText('return-sale', '5. Return That Sale', 'Return the exact sale created in POS.'),
     route: '/sales',
     markers: [
       mandatory('5.1', 'tutorial-return-sale-action', 'Return Sale', 'Open the return flow for the tutorial sale.'),
@@ -102,8 +127,7 @@ export const DEMO_TUTORIAL_TASKS: DemoTutorialTaskDefinition[] = [
   },
   {
     id: 'business-partner',
-    title: '6. Create Business Partner',
-    description: 'Create a partner locked to both customer and supplier roles.',
+    ...taskText('business-partner', '6. Create Business Partner', 'Create a partner locked to both customer and supplier roles.'),
     route: '/business-partners',
     markers: [
       mandatory('6.1', 'tutorial-business-partner-add', 'Add Business Partner', 'Open the create partner modal.'),
@@ -117,8 +141,7 @@ export const DEMO_TUTORIAL_TASKS: DemoTutorialTaskDefinition[] = [
   },
   {
     id: 'order-choice',
-    title: '7. Choose Order Type',
-    description: 'Choose whether to create a sales order or purchase order.',
+    ...taskText('order-choice', '7. Choose Order Type', 'Choose whether to create a sales order or purchase order.'),
     route: '/orders',
     markers: [
       overview('7.1', 'tutorial-orders-landing', 'Orders module', 'Orders track sales and purchase workflows.'),
@@ -130,8 +153,7 @@ export const DEMO_TUTORIAL_TASKS: DemoTutorialTaskDefinition[] = [
   },
   {
     id: 'order-form',
-    title: '8. Create And Save Order',
-    description: 'Fill the selected order form and save it.',
+    ...taskText('order-form', '8. Create And Save Order', 'Fill the selected order form and save it.'),
     route: (state: DemoTutorialProgress) => (
       state.orderType === 'purchase' ? '/orders/new/purchase' : '/orders/new/sales'
     ),
@@ -154,8 +176,7 @@ export const DEMO_TUTORIAL_TASKS: DemoTutorialTaskDefinition[] = [
   },
   {
     id: 'complete',
-    title: '9. Completion',
-    description: 'All advanced tutorial tasks are complete.',
+    ...taskText('complete', '9. Completion', 'All advanced tutorial tasks are complete.'),
     markers: [
       mandatory('8.15', 'tutorial-order-created', 'Created order', 'The saved order opened for verification.'),
       overview('9.1', 'tutorial-completion-checklist', 'Completed checklist', 'Every advanced tutorial task is checked.'),

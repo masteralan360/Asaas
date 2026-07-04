@@ -46,14 +46,18 @@ export interface DemoTutorialMarker {
   id: string
   targetId: string
   label: string
+  labelKey?: string
   description: string
+  descriptionKey?: string
   kind: DemoTutorialMarkerKind
 }
 
 export interface DemoTutorialTaskDefinition {
   id: DemoTutorialTaskId
   title: string
+  titleKey?: string
   description: string
+  descriptionKey?: string
   route?: string | ((state: DemoTutorialProgress) => string | null)
   markers: DemoTutorialMarker[]
 }

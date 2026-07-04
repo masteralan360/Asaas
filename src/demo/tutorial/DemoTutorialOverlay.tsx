@@ -1,11 +1,12 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'wouter'
 import { CheckCircle2, MapPin, Navigation, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/ui/components'
 import { cn } from '@/lib/utils'
 import { ADVANCED_TASK_ORDER, resolveDemoTutorialRoute } from './demoTutorialDefinitions'
-import type { DemoTutorialMarker } from './demoTutorialTypes'
+import type { DemoTutorialMarker, DemoTutorialTaskDefinition } from './demoTutorialTypes'
 import { useDemoTutorial } from './DemoTutorialProvider'
 
 type MarkerPosition = {
@@ -74,6 +75,8 @@ const PANEL_DEFAULT_WIDTH = 420
 const PANEL_DEFAULT_HEIGHT = 168
 const PANEL_MARGIN = 16
 const SPOTLIGHT_PADDING = 10
+const GUIDED_SAFE_VIEWPORT_MARGIN = 24
+const GUIDED_RESCROLL_DELAY_MS = 90
 const OVERLAY_SELECTOR = '[data-demo-tutorial-overlay]'
 const GUIDED_MASK_SELECTOR = '[data-demo-tutorial-mask]'
 const GUIDED_NEXT_SELECTOR = '[data-demo-tutorial-next]'
@@ -179,6 +182,34 @@ const GUIDED_ACTION_CHILD_SELECTORS = new Map([
   ],
 ])
 
+function translateText(
+  t: ReturnType<typeof useTranslation>['t'],
+  key: string | undefined,
+  defaultValue: string
+) {
+  return key ? t(key, { defaultValue }) : defaultValue
+}
+
+function getTaskTitle(t: ReturnType<typeof useTranslation>['t'], task: DemoTutorialTaskDefinition) {
+  return translateText(t, task.titleKey, task.title)
+}
+
+function getTaskDescription(t: ReturnType<typeof useTranslation>['t'], task: DemoTutorialTaskDefinition) {
+  return translateText(t, task.descriptionKey, task.description)
+}
+
+function getMarkerLabel(t: ReturnType<typeof useTranslation>['t'], marker: DemoTutorialMarker) {
+  return translateText(t, marker.labelKey, marker.label)
+}
+
+function getMarkerDescription(t: ReturnType<typeof useTranslation>['t'], marker: DemoTutorialMarker) {
+  return translateText(t, marker.descriptionKey, marker.description)
+}
+
+function stripTaskNumber(title: string) {
+  return title.replace(/^\d+\.\s*/, '')
+}
+
 function findTarget(targetId: string) {
   return document.querySelector<HTMLElement>(`[data-tour-id="${targetId}"]`)
 }
@@ -241,6 +272,36 @@ function clampBoundsToViewport(bounds: RectBounds): RectBounds {
     bottom,
     width: right - left,
     height: bottom - top,
+  }
+}
+
+function getVisualViewportBounds(): RectBounds {
+  const viewport = window.visualViewport
+  const left = viewport?.offsetLeft ?? 0
+  const top = viewport?.offsetTop ?? 0
+  const width = viewport?.width ?? window.innerWidth
+  const height = viewport?.height ?? window.innerHeight
+  const right = left + width
+  const bottom = top + height
+
+  return { left, top, right, bottom, width, height }
+}
+
+function getSafeViewportBounds(): RectBounds {
+  const viewport = getVisualViewportBounds()
+  const margin = Math.min(GUIDED_SAFE_VIEWPORT_MARGIN, Math.max(8, viewport.height / 10))
+  const left = viewport.left + margin
+  const top = viewport.top + margin
+  const right = viewport.right - margin
+  const bottom = viewport.bottom - margin
+
+  return {
+    left,
+    top,
+    right: Math.max(left, right),
+    bottom: Math.max(top, bottom),
+    width: Math.max(0, right - left),
+    height: Math.max(0, bottom - top),
   }
 }
 
@@ -412,7 +473,7 @@ function getVisibleCheckPoints(rect: DOMRect) {
 }
 
 function isTargetVisible(target: HTMLElement, rect: DOMRect) {
-  if (rect.width <= 0 || rect.height <= 0) return false
+  if (!isTargetMeasurable(target, rect)) return false
   if (rect.bottom < 0 || rect.right < 0 || rect.top > window.innerHeight || rect.left > window.innerWidth) {
     return false
   }
@@ -425,6 +486,16 @@ function isTargetVisible(target: HTMLElement, rect: DOMRect) {
 
     return topElement ? target === topElement || target.contains(topElement) : false
   })
+}
+
+function isTargetMeasurable(target: HTMLElement, rect: DOMRect) {
+  const style = window.getComputedStyle(target)
+  return (
+    rect.width > 0
+    && rect.height > 0
+    && style.display !== 'none'
+    && style.visibility !== 'hidden'
+  )
 }
 
 function isFieldControl(element: Element): element is HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
@@ -556,15 +627,44 @@ function didClickGuidedActionTarget(marker: DemoTutorialMarker, eventTarget: Ele
   return guidedTarget.contains(eventTarget)
 }
 
+function isGuidedTargetInSafeView(target: HTMLElement, panel?: PanelPosition) {
+  const rect = target.getBoundingClientRect()
+  if (!isTargetMeasurable(target, rect)) return false
+
+  const safeBounds = getSafeViewportBounds()
+  const targetCenterX = rect.left + rect.width / 2
+  const targetCenterY = rect.top + rect.height / 2
+  const centerInSafeViewport = targetCenterX >= safeBounds.left
+    && targetCenterX <= safeBounds.right
+    && targetCenterY >= safeBounds.top
+    && targetCenterY <= safeBounds.bottom
+
+  const visibleWidth = Math.max(0, Math.min(rect.right, safeBounds.right) - Math.max(rect.left, safeBounds.left))
+  const visibleHeight = Math.max(0, Math.min(rect.bottom, safeBounds.bottom) - Math.max(rect.top, safeBounds.top))
+  const minimumVisibleWidth = Math.min(rect.width, 32)
+  const minimumVisibleHeight = Math.min(rect.height, 32)
+  const hasEnoughVisibleArea = visibleWidth >= minimumVisibleWidth && visibleHeight >= minimumVisibleHeight
+  const overlapsPanel = panel
+    ? overlapArea(inflateRect(rect, SPOTLIGHT_PADDING), getPanelBounds(panel)) > 0
+    : false
+
+  return centerInSafeViewport && hasEnoughVisibleArea && !overlapsPanel
+}
+
+function scrollGuidedTargetIntoView(target: HTMLElement, behavior: ScrollBehavior = 'smooth') {
+  target.scrollIntoView({ behavior, block: 'center', inline: 'center' })
+}
+
 function focusGuidedTarget(target: HTMLElement) {
-  target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+  scrollGuidedTargetIntoView(target)
   const focusTarget = getFocusableTarget(target) ?? target
   window.setTimeout(() => {
     focusTarget.focus({ preventScroll: true })
   }, 180)
 }
 
-function getMarkerPositions(markers: DemoTutorialMarker[]) {
+function getMarkerPositions(markers: DemoTutorialMarker[], options: { requireVisible?: boolean } = {}) {
+  const requireVisible = options.requireVisible ?? true
   const activeDialog = getActiveDialogScope()
 
   return markers.flatMap((marker) => {
@@ -572,7 +672,8 @@ function getMarkerPositions(markers: DemoTutorialMarker[]) {
     if (!target) return []
     if (activeDialog && !activeDialog.contains(target)) return []
     const rect = target.getBoundingClientRect()
-    if (!isTargetVisible(target, rect)) return []
+    if (!isTargetMeasurable(target, rect)) return []
+    if (requireVisible && !isTargetVisible(target, rect)) return []
     return [{ marker, target, rect, isMissingRequiredValue: isMissingRequiredFieldValue(marker, target) }]
   })
 }
@@ -751,6 +852,7 @@ function getPanelPosition(
 }
 
 export function DemoTutorialOverlay() {
+  const { t } = useTranslation()
   const [location] = useLocation()
   const {
     state,
@@ -794,8 +896,8 @@ export function DemoTutorialOverlay() {
       setPositions([])
       return
     }
-    setPositions(getMarkerPositions(markers))
-  }, [isActive, markers])
+    setPositions(getMarkerPositions(markers, { requireVisible: !shouldAutoGuide }))
+  }, [isActive, markers, shouldAutoGuide])
 
   useEffect(() => {
     lastGuidedFocusRef.current = null
@@ -842,11 +944,13 @@ export function DemoTutorialOverlay() {
 
   useEffect(() => {
     if (!isActive || markers.length === 0) return
-    const nextPositions = getMarkerPositions(markers)
+    const nextPositions = getMarkerPositions(markers, { requireVisible: !shouldAutoGuide })
     const firstPosition = shouldAutoGuide
       ? getManualGuidedPosition(nextPositions, confirmedGuidedMarkerIds)
       : nextPositions[0]
-    firstPosition?.target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+    if (firstPosition) {
+      scrollGuidedTargetIntoView(firstPosition.target)
+    }
   }, [confirmedGuidedMarkerIds, currentTask, isActive, markers, shouldAutoGuide])
 
   useEffect(() => {
@@ -1015,13 +1119,63 @@ export function DemoTutorialOverlay() {
     [activeGuidedPosition, displayPositions, panelPosition]
   )
 
+  useEffect(() => {
+    if (!activeGuidedPosition) return
+
+    let frame = 0
+    let timeout = 0
+    const target = activeGuidedPosition.target
+    const ensureTargetInView = (behavior: ScrollBehavior = 'smooth') => {
+      window.clearTimeout(timeout)
+      window.cancelAnimationFrame(frame)
+      timeout = window.setTimeout(() => {
+        frame = window.requestAnimationFrame(() => {
+          if (!isGuidedTargetInSafeView(target, panelPosition)) {
+            scrollGuidedTargetIntoView(target, behavior)
+          }
+        })
+      }, GUIDED_RESCROLL_DELAY_MS)
+    }
+
+    ensureTargetInView()
+    const handleViewportMovement = () => ensureTargetInView()
+
+    window.addEventListener('resize', handleViewportMovement)
+    window.addEventListener('scroll', handleViewportMovement, true)
+    window.visualViewport?.addEventListener('resize', handleViewportMovement)
+    window.visualViewport?.addEventListener('scroll', handleViewportMovement)
+
+    return () => {
+      window.clearTimeout(timeout)
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('resize', handleViewportMovement)
+      window.removeEventListener('scroll', handleViewportMovement, true)
+      window.visualViewport?.removeEventListener('resize', handleViewportMovement)
+      window.visualViewport?.removeEventListener('scroll', handleViewportMovement)
+    }
+  }, [
+    activeGuidedPosition?.marker.id,
+    activeGuidedPosition?.target,
+    panelPosition.height,
+    panelPosition.left,
+    panelPosition.top,
+    panelPosition.width,
+  ])
+
   if (!isActive || !state || !currentTaskDefinition) {
     return null
   }
 
+  const taskTitle = getTaskTitle(t, currentTaskDefinition)
+  const taskDescription = getTaskDescription(t, currentTaskDefinition)
   const panelTitle = state.mode === 'advanced'
-    ? `${progress.current}/${progress.total} ${currentTaskDefinition.title.replace(/^\d+\.\s*/, '')}`
-    : currentTaskDefinition.title
+    ? t('demo.tutorial.panel.advancedTitle', {
+      defaultValue: '{{current}}/{{total}} {{title}}',
+      current: progress.current,
+      total: progress.total,
+      title: stripTaskNumber(taskTitle),
+    })
+    : taskTitle
 
   return (
     <div data-demo-tutorial-overlay className="pointer-events-none fixed inset-0 z-[2147483000] print:hidden">
@@ -1052,6 +1206,9 @@ export function DemoTutorialOverlay() {
         const shouldShowTargetHighlight = shouldRenderTargetHighlight(marker, target, isMissingRequiredValue)
         const isActiveGuidedMarker = activeGuidedPosition?.marker.id === marker.id
         const showGuidedNext = Boolean(isActiveGuidedMarker && shouldShowGuidedNext(marker))
+        const markerLabel = getMarkerLabel(t, marker)
+        const markerDescription = getMarkerDescription(t, marker)
+        const markerKindLabel = t(`demo.tutorial.kind.${marker.kind}`, { defaultValue: marker.kind })
 
         return (
           <div key={marker.id}>
@@ -1115,7 +1272,7 @@ export function DemoTutorialOverlay() {
                         : 'text-muted-foreground'
                     )} />
                     <span className={cn('min-w-0 truncate font-bold leading-5', tooltip.compact && 'text-xs leading-4')}>
-                      {marker.label}
+                      {markerLabel}
                     </span>
                   </div>
                   {!tooltip.compact && (
@@ -1132,7 +1289,7 @@ export function DemoTutorialOverlay() {
                         WebkitLineClamp: 2,
                       }}
                     >
-                      {marker.description}
+                      {markerDescription}
                     </p>
                   )}
                 </div>
@@ -1145,7 +1302,7 @@ export function DemoTutorialOverlay() {
                       ? 'bg-teal-500/10 text-teal-700 dark:text-teal-300'
                       : 'bg-muted text-muted-foreground'
                   )}>
-                    {marker.kind}
+                    {markerKindLabel}
                   </span>
                 )}
               </div>
@@ -1158,7 +1315,7 @@ export function DemoTutorialOverlay() {
                     className="h-8 px-3 text-xs font-bold"
                     disabled={isMissingRequiredValue}
                   >
-                    Next
+                    {t('demo.tutorial.actions.next', { defaultValue: 'Next' })}
                   </Button>
                 </div>
               )}
@@ -1186,7 +1343,7 @@ export function DemoTutorialOverlay() {
               <div className="min-w-0">
                 <h2 className="truncate text-sm font-black">{panelTitle}</h2>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  {currentTaskDefinition.description}
+                  {taskDescription}
                 </p>
               </div>
               <Button
@@ -1195,7 +1352,7 @@ export function DemoTutorialOverlay() {
                 size="icon"
                 className="h-8 w-8 shrink-0 text-muted-foreground"
                 onClick={finishTutorial}
-                title="Finish tutorial"
+                title={t('demo.tutorial.actions.finish', { defaultValue: 'Finish tutorial' })}
                 data-tour-id={currentTask === 'complete' ? 'tutorial-finish-button' : undefined}
               >
                 <X className="h-4 w-4" />
@@ -1205,8 +1362,14 @@ export function DemoTutorialOverlay() {
             {state.mode === 'advanced' && (
               <div className="mt-3">
                 <div className="mb-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  <span>Advanced Tutorial</span>
-                  <span>{progress.completed}/{progress.total} complete</span>
+                  <span>{t('demo.tutorial.panel.advancedLabel', { defaultValue: 'Advanced Tutorial' })}</span>
+                  <span>
+                    {t('demo.tutorial.panel.progressComplete', {
+                      defaultValue: '{{completed}}/{{total}} complete',
+                      completed: progress.completed,
+                      total: progress.total,
+                    })}
+                  </span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-muted">
                   <div
@@ -1220,7 +1383,7 @@ export function DemoTutorialOverlay() {
             <div className="mt-3 grid gap-2">
               {!isOnExpectedRoute && (
                 <Button type="button" className="h-9 w-full" onClick={goToCurrentTask}>
-                  Go to current task
+                  {t('demo.tutorial.actions.goToCurrentTask', { defaultValue: 'Go to current task' })}
                 </Button>
               )}
               {currentTask === 'complete' && (
@@ -1231,19 +1394,21 @@ export function DemoTutorialOverlay() {
                   data-tour-id="tutorial-finished-state"
                 >
                   <CheckCircle2 className="h-4 w-4" />
-                  Finish tutorial
+                  {t('demo.tutorial.actions.finish', { defaultValue: 'Finish tutorial' })}
                 </Button>
               )}
               {state.mode === 'basic' && (
                 <Button type="button" className="h-9 w-full" onClick={finishTutorial}>
-                  Finish basic tutorial
+                  {t('demo.tutorial.actions.finishBasic', { defaultValue: 'Finish basic tutorial' })}
                 </Button>
               )}
             </div>
 
             {positions.length === 0 && isOnExpectedRoute && currentTask !== 'order-choice' && (
               <p className="mt-3 rounded-xl border border-dashed p-3 text-xs text-muted-foreground">
-                Open the related form or modal to reveal the next numbered indicators.
+                {t('demo.tutorial.panel.waitingForTarget', {
+                  defaultValue: 'Open the related form or modal to reveal the next numbered indicators.',
+                })}
               </p>
             )}
           </div>

@@ -22,11 +22,29 @@ type PurchaseOrderCreateInput = Omit<
     | 'orderNumber'
 >
 
+type SalesOrderCreateInput = Omit<
+    SalesOrder,
+    'id'
+    | 'workspaceId'
+    | 'createdAt'
+    | 'updatedAt'
+    | 'syncStatus'
+    | 'lastSyncedAt'
+    | 'version'
+    | 'isDeleted'
+    | 'orderNumber'
+>
+
 let createBusinessPartner: typeof import('./businessPartners').createBusinessPartner
+let createSalesOrder: typeof import('./orders').createSalesOrder
 let createPurchaseOrder: typeof import('./orders').createPurchaseOrder
+let updateSalesOrderStatus: typeof import('./orders').updateSalesOrderStatus
 let updatePurchaseOrderStatus: typeof import('./orders').updatePurchaseOrderStatus
 let recordOrderPayment: typeof import('./orders').recordOrderPayment
+let createProduct: typeof import('./hooks').createProduct
+let createStorage: typeof import('./hooks').createStorage
 let recordLoanPayment: typeof import('./hooks').recordLoanPayment
+let buildPaymentObligations: typeof import('./payments').buildPaymentObligations
 let reversePaymentTransaction: typeof import('./payments').reversePaymentTransaction
 
 function installBrowserStorage() {
@@ -91,6 +109,33 @@ async function createCustomer() {
     })
 }
 
+async function createStockedSalesProduct(total = 15000) {
+    const storage = await createStorage(WORKSPACE_ID, { name: 'Order Loan Storage' })
+    const product = await createProduct(WORKSPACE_ID, {
+        sku: 'SO-LOAN-001',
+        name: 'Order Loan Product',
+        description: 'Product for order loan tests',
+        categoryId: null,
+        category: null,
+        storageId: storage.id,
+        storageName: storage.name,
+        price: total,
+        costPrice: Math.max(1, total / 2),
+        quantity: 5,
+        minStockLevel: 0,
+        unit: 'pcs',
+        currency: 'iqd',
+        barcode: '',
+        barcodes: [],
+        imageUrl: '',
+        canBeReturned: true,
+        returnRules: '',
+        createdBy: null
+    })
+
+    return { storage, product }
+}
+
 function salesOrderWithStaleRoundedBalance(customerId: string): SalesOrder {
     const now = '2026-06-28T12:00:00.000Z'
     return {
@@ -153,6 +198,84 @@ function salesOrderWithStaleRoundedBalance(customerId: string): SalesOrder {
         lastSyncedAt: now,
         version: 1,
         isDeleted: false
+    }
+}
+
+function salesOrderInput(
+    customerId: string,
+    product: { id: string; name: string; sku: string; costPrice: number },
+    storageId: string,
+    options: {
+        method: SalesOrder['paymentMethod']
+        total?: number
+        initialPayment?: number
+        firstDueDate?: string | null
+    }
+): SalesOrderCreateInput {
+    const total = options.total ?? 15000
+    const initialPayment = options.initialPayment ?? 0
+    const financed = options.method === 'loan' || options.method === 'installments'
+
+    return {
+        businessPartnerId: customerId,
+        customerId,
+        customerName: 'Order Customer',
+        sourceStorageId: storageId,
+        items: [{
+            id: crypto.randomUUID(),
+            productId: product.id,
+            storageId,
+            productName: product.name,
+            productSku: product.sku,
+            quantity: 1,
+            lineTotal: total,
+            originalCurrency: 'iqd',
+            originalUnitPrice: total,
+            convertedUnitPrice: total,
+            settlementCurrency: 'iqd',
+            costPrice: product.costPrice,
+            convertedCostPrice: product.costPrice,
+            reservedQuantity: 0,
+            fulfilledQuantity: 0,
+            batchAllocations: null
+        }],
+        subtotal: total,
+        discount: 0,
+        tax: 0,
+        total,
+        currency: 'iqd',
+        exchangeRate: null,
+        exchangeRateSource: null,
+        exchangeRateTimestamp: null,
+        exchangeRates: null,
+        status: 'draft',
+        approvalStatus: null,
+        approvalRequestedBy: null,
+        approvalRequestedAt: null,
+        approvalReviewedBy: null,
+        approvalReviewedAt: null,
+        expectedDeliveryDate: null,
+        actualDeliveryDate: null,
+        isPaid: false,
+        paymentStatus: initialPayment > 0 ? 'partial' : 'unpaid',
+        paidAmount: initialPayment,
+        balanceAmount: total - initialPayment,
+        paidAt: null,
+        paymentMethod: options.method,
+        initialPaymentAmount: financed ? initialPayment : 0,
+        linkedLoanId: null,
+        isInstallmentBased: options.method === 'installments',
+        installmentCount: options.method === 'installments' ? 2 : 0,
+        installmentFrequency: financed ? 'monthly' : null,
+        firstDueDate: financed ? options.firstDueDate ?? null : null,
+        nextDueDate: financed ? options.firstDueDate ?? null : null,
+        reservedAt: null,
+        shippingAddress: '',
+        notes: 'Order loan payment projection test',
+        isLocked: false,
+        sourceChannel: 'manual',
+        marketplaceOrderId: null,
+        createdBy: null
     }
 }
 
@@ -230,10 +353,15 @@ describe('order-linked financing', () => {
         const loans = await import('./hooks')
         const payments = await import('./payments')
         createBusinessPartner = partners.createBusinessPartner
+        createSalesOrder = orders.createSalesOrder
         createPurchaseOrder = orders.createPurchaseOrder
+        updateSalesOrderStatus = orders.updateSalesOrderStatus
         updatePurchaseOrderStatus = orders.updatePurchaseOrderStatus
         recordOrderPayment = orders.recordOrderPayment
+        createProduct = loans.createProduct
+        createStorage = loans.createStorage
         recordLoanPayment = loans.recordLoanPayment
+        buildPaymentObligations = payments.buildPaymentObligations
         reversePaymentTransaction = payments.reversePaymentTransaction
     })
 
@@ -378,6 +506,43 @@ describe('order-linked financing', () => {
         })
         expect(datedSchedule).toHaveLength(1)
         expect(datedSchedule[0]).toMatchObject({ dueDate: '2026-08-20', plannedAmount: 60 })
+    })
+
+    it('shows a sales order loan as one order loan open item', async () => {
+        const customer = await createCustomer()
+        const { storage, product } = await createStockedSalesProduct()
+        const draft = await createSalesOrder(
+            WORKSPACE_ID,
+            salesOrderInput(customer.id, product, storage.id, { method: 'loan' })
+        )
+
+        const pendingOrder = await updateSalesOrderStatus(draft.id, 'pending')
+        expect(pendingOrder.linkedLoanId).toBeTruthy()
+
+        const obligations = await buildPaymentObligations(WORKSPACE_ID, {})
+        const orderLoanObligation = obligations.find((item) =>
+            item.sourceType === 'simple_loan'
+            && item.metadata?.orderId === pendingOrder.id
+            && item.metadata?.orderType === 'sales'
+        )
+
+        expect(orderLoanObligation).toMatchObject({
+            sourceModule: 'loans',
+            sourceType: 'simple_loan',
+            amount: 15000,
+            subtitle: 'Order loan balance',
+            metadata: expect.objectContaining({
+                displaySourceLabel: 'order_loan',
+                orderId: pendingOrder.id,
+                orderType: 'sales'
+            })
+        })
+        expect(obligations.filter((item) =>
+            item.sourceType === 'sales_order' && item.sourceRecordId === pendingOrder.id
+        )).toHaveLength(0)
+        expect(obligations.filter((item) =>
+            item.sourceRecordId === pendingOrder.id || item.metadata?.orderId === pendingOrder.id
+        )).toHaveLength(1)
     })
 
     it('records fractional IQD order payments against old rounded balances', async () => {

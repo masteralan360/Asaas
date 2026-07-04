@@ -681,6 +681,7 @@ function buildSimpleLoanObligations(
 
         const dueDate = normalizeDateKey(loan.nextDueDate || loan.firstDueDate)
         const direction: PaymentTransactionDirection = (loan.direction || 'lent') === 'borrowed' ? 'outgoing' : 'incoming'
+        const isOrderLoan = loan.source === 'order' && !!loan.orderId && !!loan.orderType
 
         return [{
             id: `simple-loan:${loan.id}`,
@@ -696,17 +697,36 @@ function buildSimpleLoanObligations(
             counterpartyName: loan.borrowerName,
             referenceLabel: loan.loanNo,
             title: loan.borrowerName,
-            subtitle: 'Simple loan balance',
+            subtitle: isOrderLoan ? 'Order loan balance' : 'Simple loan balance',
             status: isDateOverdue(dueDate, todayKey) ? 'overdue' as const : 'open' as const,
             routePath: '/loans',
             metadata: {
                 loanId: loan.id,
                 loanCategory: loan.loanCategory || 'simple',
                 loanDirection: loan.direction || 'lent',
+                ...(isOrderLoan ? {
+                    displaySourceLabel: 'order_loan',
+                    orderId: loan.orderId,
+                    orderType: loan.orderType
+                } : {}),
                 businessPartnerId: loan.linkedPartyType === 'business_partner' ? loan.linkedPartyId || null : null
             }
         }]
     })
+}
+
+function getLoanManagedOrderIds(loans: Loan[], orderType: 'sales' | 'purchase') {
+    return new Set(
+        loans
+            .filter((loan) =>
+                !loan.isDeleted
+                && loan.source === 'order'
+                && loan.orderType === orderType
+                && !!loan.orderId
+                && loan.balanceAmount > 0
+            )
+            .map((loan) => loan.orderId as string)
+    )
 }
 
 function buildRealEstateCommissionObligations(
@@ -847,6 +867,8 @@ export async function buildPaymentObligations(workspaceId: string, filters: Paym
             .filter((item) => !item.isDeleted && item.orderType === 'purchase')
             .map((item) => item.orderId)
     )
+    const loanManagedSalesOrderIds = getLoanManagedOrderIds(loans, 'sales')
+    const loanManagedPurchaseOrderIds = getLoanManagedOrderIds(loans, 'purchase')
 
     const obligations = [
         ...buildStandardLoanInstallmentObligations(loans, installments, todayKey),
@@ -860,10 +882,12 @@ export async function buildPaymentObligations(workspaceId: string, filters: Paym
             ))
             .filter((item): item is PaymentObligation => !!item),
         ...salesOrders
+            .filter((order) => !loanManagedSalesOrderIds.has(order.id))
             .filter((order) => !order.isInstallmentBased || !salesOrdersWithInstallments.has(order.id))
             .map((order) => buildSalesOrderObligation(order, todayKey))
             .filter((item): item is PaymentObligation => !!item),
         ...purchaseOrders
+            .filter((order) => !loanManagedPurchaseOrderIds.has(order.id))
             .filter((order) => !order.isInstallmentBased || !purchaseOrdersWithInstallments.has(order.id))
             .map((order) => buildPurchaseOrderObligation(order, todayKey))
             .filter((item): item is PaymentObligation => !!item),
