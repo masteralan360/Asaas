@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
-import { ArrowLeft, CalendarDays, CreditCard, Eye, LayoutGrid, List, Lock, Package, Printer, Receipt, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse } from 'lucide-react'
+import { ArrowLeft, CalendarDays, CreditCard, Eye, LayoutGrid, List, Lock, Package, Printer, Receipt, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedOrderError } from '@/lib/orderErrors'
 import { Link, useLocation } from 'wouter'
@@ -237,6 +237,8 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const [showPrintPreview, setShowPrintPreview] = useState(false)
     const [lockConfirm, setLockConfirm] = useState<{ isOpen: boolean }>({ isOpen: false })
     const [isLocking, setIsLocking] = useState(false)
+    const [cancelConfirm, setCancelConfirm] = useState<{ isOpen: boolean }>({ isOpen: false })
+    const [isCancelling, setIsCancelling] = useState(false)
     const [settlementTarget, setSettlementTarget] = useState<PaymentObligation | null>(null)
     const [isSubmittingSettlement, setIsSubmittingSettlement] = useState(false)
     const [isLoadingOrderInvoice, setIsLoadingOrderInvoice] = useState(false)
@@ -474,14 +476,14 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
             isApprovalRequested && canApproveOrderRequests ? { key: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), onClick: () => runAction(() => approveSalesOrderRequest(order.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })), variant: 'default' as const } : null,
             !isApprovalRequested && canManage && order.status === 'draft' ? { key: 'reserve', label: t('orders.actions.reserve') || 'Reserve', onClick: () => runAction(() => updateSalesOrderStatus(order.id, 'pending'), t('orders.details.messages.reserveSuccess') || 'Sales order reserved'), variant: 'default' as const } : null,
             !isApprovalRequested && canManage && order.status === 'pending' ? { key: 'complete', label: t('orders.actions.complete') || 'Complete', onClick: () => runAction(() => updateSalesOrderStatus(order.id, 'completed'), t('orders.details.messages.completeSuccess') || 'Sales order completed'), variant: 'default' as const } : null,
-            !isApprovalRequested && canManage && order.status === 'pending' ? { key: 'cancel', label: t('orders.actions.cancel') || 'Cancel', onClick: () => runAction(() => updateSalesOrderStatus(order.id, 'cancelled'), t('orders.details.messages.cancelSuccess') || 'Sales order cancelled'), variant: 'outline' as const } : null
+            !isApprovalRequested && canManage && order.status === 'pending' ? { key: 'cancel', label: t('orders.actions.cancel') || 'Cancel', onClick: () => setCancelConfirm({ isOpen: true }), variant: 'outline' as const } : null
         ].filter(Boolean)
         : [
             isApprovalRequested && canApproveOrderRequests ? { key: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), onClick: () => runAction(() => approvePurchaseOrderRequest(order.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })), variant: 'default' as const } : null,
             !isApprovalRequested && canManage && order.status === 'draft' ? { key: 'order', label: t('orders.actions.order') || 'Order', onClick: () => runAction(() => updatePurchaseOrderStatus(order.id, 'ordered'), t('orders.details.messages.orderSuccess') || 'Purchase order sent'), variant: 'default' as const } : null,
             !isApprovalRequested && canManage && order.status === 'ordered' ? { key: 'receive', label: t('orders.actions.receive') || 'Receive', onClick: () => runAction(() => updatePurchaseOrderStatus(order.id, 'received'), t('orders.details.messages.receiveSuccess') || 'Purchase order received'), variant: 'default' as const } : null,
             !isApprovalRequested && canManage && order.status === 'received' ? { key: 'complete', label: t('orders.actions.complete') || 'Complete', onClick: () => runAction(() => updatePurchaseOrderStatus(order.id, 'completed'), t('orders.details.messages.completeSuccess') || 'Purchase order completed'), variant: 'default' as const } : null,
-            !isApprovalRequested && canManage && (order.status === 'draft' || order.status === 'ordered') ? { key: 'cancel', label: t('orders.actions.cancel') || 'Cancel', onClick: () => runAction(() => updatePurchaseOrderStatus(order.id, 'cancelled'), t('orders.details.messages.cancelSuccess') || 'Purchase order cancelled'), variant: 'outline' as const } : null
+            !isApprovalRequested && canManage && (order.status === 'draft' || order.status === 'ordered') ? { key: 'cancel', label: t('orders.actions.cancel') || 'Cancel', onClick: () => setCancelConfirm({ isOpen: true }), variant: 'outline' as const } : null
         ].filter(Boolean)
 
     const confirmDelete = async () => {
@@ -514,6 +516,24 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
             })
         } finally {
             setIsLocking(false)
+        }
+    }
+
+    const handleCancelConfirm = async () => {
+        setIsCancelling(true)
+        try {
+            if (isSales) await updateSalesOrderStatus(order.id, 'cancelled')
+            else await updatePurchaseOrderStatus(order.id, 'cancelled')
+            toast({ title: t('orders.details.messages.cancelSuccess') || (isSales ? 'Sales order cancelled' : 'Purchase order cancelled') })
+            setCancelConfirm({ isOpen: false })
+        } catch (error: any) {
+            toast({
+                title: t('common.error') || 'Error',
+                description: getLocalizedOrderError(error, t, 'Cancellation failed'),
+                variant: 'destructive'
+            })
+        } finally {
+            setIsCancelling(false)
         }
     }
 
@@ -1162,6 +1182,47 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                 <>
                                     <Lock className="mr-2 h-4 w-4" />
                                     {t('orders.details.lockNow') || 'Lock Now'}
+                                </>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={cancelConfirm.isOpen} onOpenChange={(open) => !isCancelling && setCancelConfirm({ isOpen: open })}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+                            <XCircle className="h-6 w-6 text-red-600 dark:text-red-500" />
+                        </div>
+                        <DialogTitle className="text-xl font-bold">{t('orders.cancelTitle') || 'Cancel Order?'}</DialogTitle>
+                    </DialogHeader>
+                    <div className="py-4 text-sm text-muted-foreground leading-relaxed">
+                        {t('orders.cancelDescription') || 'Are you sure you want to cancel this order? This action cannot be undone.'}
+                    </div>
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button
+                            variant="ghost"
+                            onClick={() => setCancelConfirm({ isOpen: false })}
+                            disabled={isCancelling}
+                            className="font-semibold"
+                        >
+                            {t('common.back') || 'Back'}
+                        </Button>
+                        <Button
+                            className="bg-red-600 font-bold text-white hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all active:scale-95"
+                            onClick={handleCancelConfirm}
+                            disabled={isCancelling}
+                        >
+                            {isCancelling ? (
+                                <div className="flex items-center gap-2">
+                                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                    <span>{t('orders.details.cancelling') || 'Cancelling...'}</span>
+                                </div>
+                            ) : (
+                                <>
+                                    <XCircle className="mr-2 h-4 w-4" />
+                                    {t('orders.actions.cancel') || 'Cancel Order'}
                                 </>
                             )}
                         </Button>

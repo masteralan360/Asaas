@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { CalendarDays, CreditCard, Eye, LayoutGrid, List, Lock, PackagePlus, Pencil, Plus, Printer, Search, ShoppingCart, Trash2, Truck, UsersRound, Wallet, Warehouse } from 'lucide-react'
+import { CalendarDays, CreditCard, Eye, LayoutGrid, List, Lock, PackagePlus, Pencil, Plus, Printer, Search, ShoppingCart, Trash2, Truck, UsersRound, Wallet, Warehouse, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedOrderError } from '@/lib/orderErrors'
 import { useLocation, useRoute } from 'wouter'
@@ -267,6 +267,11 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
     const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
     const [isSaving, setIsSaving] = useState(false)
     const [lockConfirm, setLockConfirm] = useState<{ isOpen: boolean; orderId: string; type: 'sales' | 'purchase' | null }>({
+        isOpen: false,
+        orderId: '',
+        type: null
+    })
+    const [cancelConfirm, setCancelConfirm] = useState<{ isOpen: boolean; orderId: string; type: 'sales' | 'purchase' | null }>({
         isOpen: false,
         orderId: '',
         type: null
@@ -913,6 +918,16 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         setLockConfirm({ isOpen: false, orderId: '', type: null })
     }
 
+    async function handleCancelConfirm() {
+        if (!cancelConfirm.orderId || !cancelConfirm.type) return
+        
+        const action = cancelConfirm.type === 'sales'
+            ? () => updateSalesOrderStatus(cancelConfirm.orderId, 'cancelled')
+            : () => updatePurchaseOrderStatus(cancelConfirm.orderId, 'cancelled')
+        await runAction(action, cancelConfirm.type === 'sales' ? 'Sales order cancelled' : 'Purchase order cancelled')
+        setCancelConfirm({ isOpen: false, orderId: '', type: null })
+    }
+
     function renderOrderTable() {
         const rows = activeTab === 'sales' ? filteredSalesOrders : filteredPurchaseOrders
 
@@ -994,7 +1009,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                     {isApprovalRequested && canApproveOrderRequests && <Button size="sm" onClick={() => runAction(() => approveSalesOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' }))}>{t('orders.actions.approve', { defaultValue: 'Approve' })}</Button>}
                                                     {!isApprovalRequested && canManageOrders && row.status === 'draft' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved')}>{t('orders.actions.reserve') || 'Reserve'}</Button>}
                                                     {!isApprovalRequested && canManageOrders && row.status === 'pending' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
-                                                    {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'cancelled'), 'Sales order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
+                                                    {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" onClick={() => setCancelConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
                                                     {!isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
                                                         <Button
                                                             variant="outline"
@@ -1018,7 +1033,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                     {!isApprovalRequested && canManageOrders && row.status === 'draft' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'ordered'), 'Purchase order sent')}>{t('orders.actions.order') || 'Order'}</Button>}
                                                     {!isApprovalRequested && canManageOrders && row.status === 'ordered' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received')}>{t('orders.actions.receive') || 'Receive'}</Button>}
                                                     {!isApprovalRequested && canManageOrders && row.status === 'received' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
-                                                    {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'cancelled'), 'Purchase order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
+                                                    {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" onClick={() => setCancelConfirm({ isOpen: true, orderId: row.id, type: 'purchase' })}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
                                                     {!isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
                                                         <Button
                                                             variant="outline"
@@ -1143,7 +1158,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         {isApprovalRequested && canApproveOrderRequests && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => approveSalesOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' }))}>{t('orders.actions.approve', { defaultValue: 'Approve' })}</Button>}
                                         {!isApprovalRequested && canManageOrders && row.status === 'draft' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved')}>{t('orders.actions.reserve') || 'Reserve'}</Button>}
                                         {!isApprovalRequested && canManageOrders && row.status === 'pending' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
-                                        {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'cancelled'), 'Sales order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
+                                        {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => setCancelConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
                                         {canEdit && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => openSalesEdit(row as SalesOrder)}><Pencil className="h-3.5 w-3.5" /></Button>}
                                         {!isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
                                             <Button
@@ -1167,7 +1182,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         {!isApprovalRequested && canManageOrders && row.status === 'draft' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'ordered'), 'Purchase order placed')}>{t('orders.actions.order') || 'Order'}</Button>}
                                         {!isApprovalRequested && canManageOrders && row.status === 'ordered' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received')}>{t('orders.actions.receive') || 'Receive'}</Button>}
                                         {!isApprovalRequested && canManageOrders && row.status === 'received' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
-                                        {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'cancelled'), 'Purchase order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
+                                        {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => setCancelConfirm({ isOpen: true, orderId: row.id, type: 'purchase' })}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
                                         {canEdit && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => openPurchaseEdit(row as PurchaseOrder)}><Pencil className="h-3.5 w-3.5" /></Button>}
                                         {!isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
                                             <Button
@@ -1955,6 +1970,37 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                             onClick={handleLockConfirm}
                         >
                             {t('orders.actions.lock') || 'Lock Now'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={cancelConfirm.isOpen} onOpenChange={(open) => !open && setCancelConfirm({ isOpen: false, orderId: '', type: null })}>
+                <DialogContent className="max-w-[400px] rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
+                    <div className="bg-gradient-to-b from-red-500/10 to-transparent p-8 text-center space-y-4">
+                        <div className="mx-auto w-16 h-16 bg-red-500/20 rounded-2xl flex items-center justify-center mb-2">
+                            <XCircle className="w-8 h-8 text-red-600" />
+                        </div>
+                        <DialogHeader>
+                            <DialogTitle className="text-2xl font-black text-center">{t('orders.cancelTitle') || 'Cancel Order?'}</DialogTitle>
+                        </DialogHeader>
+                        <p className="text-muted-foreground text-sm font-medium leading-relaxed">
+                            {t('orders.cancelDescription') || 'Are you sure you want to cancel this order? This action cannot be undone.'}
+                        </p>
+                    </div>
+                    <DialogFooter className="p-6 pt-2 grid grid-cols-2 gap-3 sm:justify-start">
+                        <Button
+                            variant="outline"
+                            className="rounded-xl h-12 font-bold border-2"
+                            onClick={() => setCancelConfirm({ isOpen: false, orderId: '', type: null })}
+                        >
+                            {t('common.back') || 'Back'}
+                        </Button>
+                        <Button
+                            className="rounded-xl h-12 font-bold bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/20"
+                            onClick={handleCancelConfirm}
+                        >
+                            {t('orders.actions.cancel') || 'Cancel Order'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

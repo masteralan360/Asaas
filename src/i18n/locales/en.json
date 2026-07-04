@@ -1541,6 +1541,8 @@
     "lockTitle": "Lock Order?",
     "lockDescription": "Locking this order will prevent any changes to its payment status. This action cannot be undone.",
     "lockedSuccess": "Order locked successfully",
+    "cancelTitle": "Cancel Order?",
+    "cancelDescription": "Are you sure you want to cancel this order? This action cannot be undone.",
     "actions": {
       "order": "Order ",
       "reserve": "Reserve",
@@ -1700,7 +1702,8 @@
       "tax": "Tax",
       "locked": "Locked",
       "locking": "Locking...",
-      "lockNow": "Lock Now"
+      "lockNow": "Lock Now",
+      "cancelling": "Cancelling..."
     }
   },
   "invoices": {
