@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useLocation } from 'wouter'
 import { Button, Input, Label, LanguageSwitcher, ThemeToggle } from '@/ui/components'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/select'
-import { Loader2, Timer, Briefcase, FileText } from 'lucide-react'
+import { Check, Loader2, Timer, Briefcase, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { useFavicon } from '@/hooks/useFavicon'
@@ -11,6 +11,8 @@ import type { CurrencyCode } from '@/local-db/models'
 import { DEMO_JOBS, DEMO_TIME_DEFAULT, type DemoJob } from './demoConfig'
 import { createDemoWorkspace } from './demoService'
 import { captureDemoBrowserState, clearStoredDemoWorkspaces } from './demoCleanup'
+import { initializeDemoTutorialState } from './tutorial/demoTutorialState'
+import { DEMO_TUTORIAL_ADVANCED_MINUTES, type DemoTutorialMode } from './tutorial/demoTutorialTypes'
 
 export function DemoConfigPage() {
   const [, setLocation] = useLocation()
@@ -19,6 +21,8 @@ export function DemoConfigPage() {
 
   const [workspaceName, setWorkspaceName] = useState('')
   const [selectedJob, setSelectedJob] = useState<DemoJob>('general')
+  const [selectedTutorial, setSelectedTutorial] = useState<DemoTutorialMode>('none')
+  const [advancedAutoGuide, setAdvancedAutoGuide] = useState(true)
   const [timeLimit, setTimeLimit] = useState(DEMO_TIME_DEFAULT)
   const [currency, setCurrency] = useState<CurrencyCode>('iqd')
   const [isLoading, setIsLoading] = useState(false)
@@ -31,11 +35,14 @@ export function DemoConfigPage() {
     setError('')
     setIsLoading(true)
 
-    const name = workspaceName.trim() || `${selectedJob.charAt(0).toUpperCase() + selectedJob.slice(1)} Demo`
+    const effectiveJob = selectedTutorial === 'advanced' ? 'general' : selectedJob
+    const effectiveTimeLimit = selectedTutorial === 'advanced' ? DEMO_TUTORIAL_ADVANCED_MINUTES : timeLimit
+    const name = workspaceName.trim() || `${effectiveJob.charAt(0).toUpperCase() + effectiveJob.slice(1)} Demo`
 
     try {
       await clearStoredDemoWorkspaces()
-      const result = await createDemoWorkspace(name, selectedJob, timeLimit, currency)
+      const result = await createDemoWorkspace(name, effectiveJob, effectiveTimeLimit, currency)
+      await initializeDemoTutorialState(result.workspaceId, selectedTutorial, { advancedAutoGuide })
       await captureDemoBrowserState(result.workspaceId)
       await signInWithDemo(result)
       setLocation('/')
@@ -46,7 +53,12 @@ export function DemoConfigPage() {
     }
   }
 
-  const timeOptions = [5, 10, 15]
+  const timeOptions = selectedTutorial === 'advanced' ? [DEMO_TUTORIAL_ADVANCED_MINUTES] : [5, 10, 15]
+  const tutorialOptions: Array<{ id: DemoTutorialMode; title: string; description: string }> = [
+    { id: 'advanced', title: 'Advanced Tutorial', description: 'Guided tasks across storage, products, POS, returns, partners, and orders.' },
+    { id: 'basic', title: 'Basic Tutorial', description: 'Quick orientation for exploring the demo workspace.' },
+    { id: 'none', title: 'No Tutorial', description: 'Start with the normal demo workspace.' },
+  ]
 
   return (
     <div className={cn(
@@ -161,17 +173,91 @@ export function DemoConfigPage() {
                       key={job.id}
                       type="button"
                       onClick={() => setSelectedJob(job.id)}
+                      disabled={selectedTutorial === 'advanced' && job.id !== 'general'}
                       className={cn(
                         'p-3 rounded-xl border text-sm font-medium transition-all text-left',
                         selectedJob === job.id
                           ? 'border-teal-500 bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-300 ring-1 ring-teal-500'
-                          : 'border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:border-teal-300 dark:hover:border-teal-700'
+                          : 'border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:border-teal-300 dark:hover:border-teal-700',
+                        selectedTutorial === 'advanced' && job.id !== 'general' && 'cursor-not-allowed opacity-40'
                       )}
                     >
                       {t('demo.job.' + job.id, job.label)}
                     </button>
                   ))}
                 </div>
+                {selectedTutorial === 'advanced' && (
+                  <p className="text-xs text-teal-700 dark:text-teal-300 pl-1">
+                    Advanced Tutorial uses General Demo only for V1.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold text-gray-700 dark:text-slate-300 uppercase tracking-wider pl-1">
+                  Tutorial
+                </Label>
+                <div className="grid gap-2">
+                  {tutorialOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedTutorial(option.id)
+                        if (option.id === 'advanced') {
+                          setSelectedJob('general')
+                          setTimeLimit(DEMO_TUTORIAL_ADVANCED_MINUTES)
+                          setAdvancedAutoGuide(true)
+                        } else if (timeLimit === DEMO_TUTORIAL_ADVANCED_MINUTES) {
+                          setTimeLimit(DEMO_TIME_DEFAULT)
+                        }
+                      }}
+                      className={cn(
+                        'rounded-xl border p-3 text-left transition-all',
+                        selectedTutorial === option.id
+                          ? 'border-teal-500 bg-teal-50 text-teal-800 ring-1 ring-teal-500 dark:bg-teal-950/30 dark:text-teal-300'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-teal-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-teal-700'
+                      )}
+                    >
+                      <div className="text-sm font-bold">{option.title}</div>
+                      <div className="mt-1 text-xs text-gray-500 dark:text-slate-400">{option.description}</div>
+                    </button>
+                  ))}
+                </div>
+                {selectedTutorial === 'advanced' && (
+                  <div
+                    role="checkbox"
+                    aria-checked={advancedAutoGuide}
+                    tabIndex={0}
+                    onClick={() => setAdvancedAutoGuide((current) => !current)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        setAdvancedAutoGuide((current) => !current)
+                      }
+                    }}
+                    className="flex cursor-pointer items-start gap-3 rounded-xl border border-teal-200 bg-teal-50/70 p-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500/40 dark:border-teal-900/50 dark:bg-teal-950/20"
+                  >
+                    <span
+                      className={cn(
+                        'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition-colors',
+                        advancedAutoGuide
+                          ? 'border-teal-600 bg-teal-600 text-white'
+                          : 'border-teal-600 bg-transparent'
+                      )}
+                    >
+                      {advancedAutoGuide && <Check className="h-3 w-3" strokeWidth={3} />}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-bold text-teal-900 dark:text-teal-200">
+                        Auto-guide required steps
+                      </span>
+                      <span className="mt-1 block text-xs leading-relaxed text-teal-700 dark:text-teal-300/80">
+                        Automatically scroll and focus the next required field or action during the advanced tutorial.
+                      </span>
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -201,6 +287,7 @@ export function DemoConfigPage() {
                       key={minutes}
                       type="button"
                       onClick={() => setTimeLimit(minutes)}
+                      disabled={selectedTutorial === 'advanced'}
                       className={cn(
                         'flex-1 p-3 rounded-xl border text-sm font-medium transition-all',
                         timeLimit === minutes
@@ -213,7 +300,9 @@ export function DemoConfigPage() {
                   ))}
                 </div>
                 <p className="text-xs text-gray-400 dark:text-slate-500 mt-1 pl-1">
-                  {t('demo.timeRange', 'Between 5 and 15 minutes')}
+                  {selectedTutorial === 'advanced'
+                    ? 'Advanced Tutorial demos run for 30 minutes.'
+                    : t('demo.timeRange', 'Between 5 and 15 minutes')}
                 </p>
               </div>
             </div>

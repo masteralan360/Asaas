@@ -278,6 +278,9 @@ export function BusinessPartnerFormDialog({
     }
 
     const isAgentRole = isAgentBusinessPartnerRole(formState.role)
+    const lockedRoleLabel = lockedRole
+        ? roleOptions.find((role) => role.value === lockedRole)?.label || lockedRole
+        : null
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -301,6 +304,7 @@ export function BusinessPartnerFormDialog({
                                     <span className="text-destructive">*</span>
                                 </Label>
                                 <Input
+                                    data-tour-id="tutorial-business-partner-name"
                                     id="business-partner-name"
                                     value={formState.name}
                                     onChange={(event) => setFormState((current) => ({ ...current, name: event.target.value }))}
@@ -327,6 +331,7 @@ export function BusinessPartnerFormDialog({
                             <div className="space-y-2">
                                 <Label htmlFor="business-partner-phone">{t('customers.form.phone') || 'Phone'} <span className="text-destructive">*</span></Label>
                                 <Input
+                                    data-tour-id="tutorial-business-partner-phone"
                                     id="business-partner-phone"
                                     value={formState.phone}
                                     onChange={(event) => setFormState((current) => ({ ...current, phone: event.target.value }))}
@@ -347,7 +352,14 @@ export function BusinessPartnerFormDialog({
                                         </SelectContent>
                                     </Select>
                                 </div>
-                            ) : null}
+                            ) : (
+                                <div className="space-y-2" data-tour-id="tutorial-business-partner-role-locked">
+                                    <Label>{t('businessPartners.form.role') || 'Role'}</Label>
+                                    <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-sm font-bold text-primary">
+                                        {lockedRoleLabel}
+                                    </div>
+                                </div>
+                            )}
                             {isAgentRole ? (
                                 <>
                                     <div className="space-y-2 md:col-span-2">
@@ -490,7 +502,7 @@ export function BusinessPartnerFormDialog({
                                     </div>
                                 </>
                             ) : null}
-                            <div className="space-y-2">
+                            <div className="space-y-2" data-tour-id="tutorial-business-partner-currency">
                                 <Label>{t('customers.form.defaultCurrency') || 'Default Currency'}</Label>
                                 <Select value={formState.defaultCurrency} onValueChange={(value) => setFormState((current) => ({ ...current, defaultCurrency: value as CurrencyCode }))}>
                                     <SelectTrigger>
@@ -524,6 +536,7 @@ export function BusinessPartnerFormDialog({
                             <div className="space-y-2 md:col-span-2">
                                 <Label htmlFor="business-partner-address">{t('customers.form.address') || 'Address'} <span className="text-destructive">*</span></Label>
                                 <Input
+                                    data-tour-id="tutorial-business-partner-address"
                                     id="business-partner-address"
                                     value={formState.address}
                                     onChange={(event) => setFormState((current) => ({ ...current, address: event.target.value }))}
@@ -570,7 +583,7 @@ export function BusinessPartnerFormDialog({
                         <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => onOpenChange(false)}>
                             {t('common.cancel') || 'Cancel'}
                         </Button>
-                        <Button type="submit" className="w-full sm:w-auto" disabled={isSaving}>
+                        <Button type="submit" className="w-full sm:w-auto" disabled={isSaving} data-tour-id="tutorial-business-partner-save">
                             {isSaving
                                 ? (t('common.loading') || 'Loading...')
                                 : (submitLabel || (partner ? (t('common.save') || 'Save') : (t('common.create') || 'Create')))}

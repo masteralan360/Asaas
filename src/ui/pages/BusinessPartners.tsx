@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 
 import { useAuth } from '@/auth'
+import { useDemoTutorial } from '@/demo'
 import {
     createBusinessPartner,
     deleteBusinessPartner,
@@ -87,6 +88,7 @@ export function BusinessPartners() {
     const { features } = useWorkspace()
     const { toast } = useToast()
     const [, navigate] = useLocation()
+    const demoTutorial = useDemoTutorial()
     const partners = useBusinessPartners(user?.workspaceId, {
         includeRealEstateRoles: features.real_estate,
         includeAgentRoles: features.agents
@@ -104,6 +106,7 @@ export function BusinessPartners() {
 
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
+    const isTutorialBusinessPartnerTask = demoTutorial.isCurrentTask('business-partner')
 
     const availableCurrencies = useMemo(() => {
         return Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]
@@ -189,10 +192,11 @@ export function BusinessPartners() {
                 })
                 toast({ title: t('businessPartners.messages.updateSuccess') || 'Business partner updated successfully' })
             } else {
-                await createBusinessPartner(user.workspaceId, payload, {
+                const createdPartner = await createBusinessPartner(user.workspaceId, payload, {
                     allowRealEstateRoles: features.real_estate,
                     allowAgentRole: features.agents
                 })
+                demoTutorial.completeBusinessPartnerCreated(createdPartner)
                 toast({ title: t('businessPartners.messages.addSuccess') || 'Business partner created successfully' })
             }
 
@@ -271,7 +275,11 @@ export function BusinessPartners() {
                     </p>
                 </div>
                 {canEdit ? (
-                    <Button onClick={() => { setEditingPartner(null); setDialogOpen(true) }} className="gap-2 self-start rounded-xl">
+                    <Button
+                        data-tour-id="tutorial-business-partner-add"
+                        onClick={() => { setEditingPartner(null); setDialogOpen(true) }}
+                        className="gap-2 self-start rounded-xl"
+                    >
                         <Plus className="h-4 w-4" />
                         {t('businessPartners.addPartner') || 'Add Business Partner'}
                     </Button>
@@ -385,7 +393,10 @@ export function BusinessPartners() {
                                         ) : filteredPartners.map((partner) => {
                                             const agent = partner.agentFacetId ? agentMap.get(partner.agentFacetId) : undefined
                                             return (
-                                                <TableRow key={partner.id}>
+                                                <TableRow
+                                                    key={partner.id}
+                                                    data-tour-id={demoTutorial.state?.businessPartnerId === partner.id ? 'tutorial-business-partner-created' : undefined}
+                                                >
                                                     <TableCell className="font-semibold">
                                                         <div className="flex flex-wrap items-center gap-2">
                                                             {partner.role === 'agent' ? (
@@ -537,6 +548,7 @@ export function BusinessPartners() {
                 availableCurrencies={availableCurrencies}
                 enableRealEstateRoles={features.real_estate}
                 enableAgentRole={features.agents}
+                lockedRole={isTutorialBusinessPartnerTask && !editingPartner ? 'both' : undefined}
                 workspaceId={user?.workspaceId}
                 isSaving={isSaving}
                 onSubmit={handleSubmit}

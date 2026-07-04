@@ -17,6 +17,7 @@ import { useToast } from '@/ui/components/use-toast'
 import { StorageSelector, Tabs, TabsList, TabsTrigger, TabsContent, Select, SelectContent, SelectTrigger, SelectValue, SelectItem, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/components'
 import { formatCurrency, cn } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
+import { useDemoTutorial } from '@/demo'
 
 export default function Storages() {
     const { t } = useTranslation()
@@ -24,6 +25,7 @@ export default function Storages() {
     const { activeWorkspace } = useWorkspace()
     const storages = useStorages(activeWorkspace?.id)
     const { toast } = useToast()
+    const demoTutorial = useDemoTutorial()
     const [searchQuery, setSearchQuery] = useState('')
     const [isDialogOpen, setIsDialogOpen] = useState(false)
     const [editingStorage, setEditingStorage] = useState<Storage | undefined>(undefined)
@@ -200,9 +202,10 @@ export default function Storages() {
 
     const handleCreate = async () => {
         if (!activeWorkspace || !storageName.trim()) return
-        await createStorage(activeWorkspace.id, { name: storageName.trim() })
+        const createdStorage = await createStorage(activeWorkspace.id, { name: storageName.trim() })
         setStorageName('')
         setIsDialogOpen(false)
+        demoTutorial.completeStorageCreated(createdStorage)
         toast({ title: t('storages.created', 'Storage created successfully') })
     }
 
@@ -295,7 +298,7 @@ export default function Storages() {
                     <p className="text-muted-foreground">{t('storages.subtitle', 'Manage your storage locations.')}</p>
                 </div>
                 {(user?.role === 'admin' || user?.role === 'staff') && (
-                    <Button onClick={openCreateDialog} className="rounded-xl shadow-lg transition-all active:scale-95">
+                    <Button onClick={openCreateDialog} className="rounded-xl shadow-lg transition-all active:scale-95" data-tour-id="tutorial-storage-new-button">
                         <Plus className="mr-2 h-4 w-4" /> {t('storages.addStorage', 'New Storage')}
                     </Button>
                 )}
@@ -344,7 +347,7 @@ export default function Storages() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="p-0">
-                            <Table>
+                            <Table data-tour-id="tutorial-storage-list">
                                 <TableHeader className="bg-muted/20">
                                     <TableRow className="hover:bg-transparent border-b">
                                         <TableHead className="font-bold py-4 pl-6 text-primary/80">{t('storages.table.name', 'Name')}</TableHead>
@@ -699,6 +702,7 @@ export default function Storages() {
                             <Label htmlFor="storage-name">{t('storages.form.name', 'Storage Name')}</Label>
                             <Input
                                 id="storage-name"
+                                data-tour-id="tutorial-storage-name-input"
                                 value={storageName}
                                 onChange={(e) => setStorageName(e.target.value)}
                                 placeholder={t('storages.form.namePlaceholder', 'e.g. Warehouse A')}
@@ -710,7 +714,7 @@ export default function Storages() {
                         <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="rounded-xl">
                             {t('common.cancel', 'Cancel')}
                         </Button>
-                        <Button onClick={editingStorage ? handleUpdate : handleCreate} className="rounded-xl">
+                        <Button onClick={editingStorage ? handleUpdate : handleCreate} className="rounded-xl" data-tour-id="tutorial-storage-save-button">
                             {editingStorage ? t('common.save', 'Save') : t('common.create', 'Create')}
                         </Button>
                     </DialogFooter>

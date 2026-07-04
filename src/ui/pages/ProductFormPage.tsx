@@ -54,6 +54,7 @@ import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { BarcodeScannerToggleButton } from '@/ui/components/BarcodeScannerToggleButton'
+import { useDemoTutorial } from '@/demo'
 import {
     Button,
     Card,
@@ -223,6 +224,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const { features } = useWorkspace()
     const [, navigate] = useLocation()
     const { toast } = useToast()
+    const demoTutorial = useDemoTutorial()
     const categories = useCategories(user?.workspaceId)
     const storages = useStorages(user?.workspaceId)
     const product = useProduct(productId)
@@ -656,7 +658,8 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
 
                 await updateProduct(product.id, dataToSave)
             } else {
-                await createProduct(workspaceId, dataToSave)
+                const createdProduct = await createProduct(workspaceId, dataToSave)
+                demoTutorial.completeProductCreated(createdProduct)
             }
 
             initialFormSnapshotRef.current = JSON.stringify(formData)
@@ -681,6 +684,18 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
             setStorageError(true)
             storageTriggerRef.current?.focus()
             storageTriggerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            return
+        }
+
+        if (demoTutorial.isCurrentTask('product') && (Number(formData.quantity) || 0) <= 0) {
+            const quantityInput = document.getElementById('product-quantity') as HTMLInputElement | null
+            quantityInput?.focus()
+            quantityInput?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            toast({
+                title: t('products.form.stock') || 'Stock',
+                description: 'Enter initial stock greater than 0 to continue the tutorial.',
+                variant: 'destructive'
+            })
             return
         }
 
@@ -877,6 +892,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             <Input
                                                 ref={skuInputRef}
                                                 id="product-sku"
+                                                data-tour-id="tutorial-product-sku"
                                                 value={formData.sku}
                                                 onChange={(event) => setFormData((current) => ({
                                                     ...current,
@@ -909,6 +925,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                         </Label>
                                         <Input
                                             id="product-name"
+                                            data-tour-id="tutorial-product-name"
                                             value={formData.name}
                                             onChange={(event) => setFormData((current) => ({ ...current, name: event.target.value }))}
                                             placeholder={t('products.form.name') || 'Product name'}
@@ -977,7 +994,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             onValueChange={(value) => setFormData((current) => ({ ...current, unit: value }))}
                                             disabled={isReadOnly}
                                         >
-                                            <SelectTrigger id="product-unit" className="h-12 rounded-lg border-border/40 bg-muted/10" allowViewer={true}>
+                                            <SelectTrigger id="product-unit" data-tour-id="tutorial-product-unit" className="h-12 rounded-lg border-border/40 bg-muted/10" allowViewer={true}>
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -1006,6 +1023,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                 <SelectTrigger
                                                     ref={storageTriggerRef}
                                                     id="product-storage"
+                                                    data-tour-id="tutorial-product-storage"
                                                     className={cn('h-12 rounded-lg bg-muted/10', storageError ? 'border-destructive ring-2 ring-destructive/50' : 'border-border/40')}
                                                     allowViewer={true}
                                                 >
@@ -1252,6 +1270,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                 <div className="relative flex-[2] min-w-0">
                                                     <Input
                                                         id="product-price"
+                                                        data-tour-id="tutorial-product-price"
                                                         type="text"
                                                         inputMode="decimal"
                                                         value={formatNumericInput(formData.price)}
@@ -1292,6 +1311,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             <div className="relative">
                                                 <Input
                                                     id="product-price"
+                                                    data-tour-id="tutorial-product-price"
                                                     type="text"
                                                     inputMode="decimal"
                                                     value={formatNumericInput(formData.price)}
@@ -1310,7 +1330,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             </div>
                                         )}
                                     </div>
-                                    <div className="space-y-2">
+                                    <div className="space-y-2" data-tour-id="tutorial-product-currency">
                                         <CurrencySelector
                                             label={t('products.form.currency') || 'Currency'}
                                             value={formData.currency}
@@ -1327,6 +1347,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                         <div className="relative">
                                             <Input
                                                 id="product-cost-price"
+                                                data-tour-id="tutorial-product-cost-price"
                                                 type="text"
                                                 inputMode="decimal"
                                                 value={formatNumericInput(formData.costPrice)}
@@ -1395,6 +1416,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                         <div className="relative">
                                             <Input
                                                 id="product-quantity"
+                                                data-tour-id="tutorial-product-initial-stock"
                                                 type="number"
                                                 inputMode="decimal"
                                                 min="0"
@@ -1458,7 +1480,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                         : (t('products.form.goodStockNotice') || 'Current stock is above the minimum threshold.')}
                                 </div>
 
-                                <div className="rounded-2xl border border-border/60 bg-muted/30 p-5">
+                                <div className="rounded-2xl border border-border/60 bg-muted/30 p-5" data-tour-id="tutorial-product-returnable">
                                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                         <div className="space-y-1 text-start">
                                             <Label htmlFor="product-can-be-returned" className="flex cursor-pointer items-center gap-2 text-base font-black text-foreground/90">
@@ -1713,7 +1735,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {!isReadOnly && (
-                                <Button type="submit" form="product-form-page" disabled={isSaving} className="h-12 w-full rounded-xl font-black">
+                                <Button type="submit" form="product-form-page" disabled={isSaving} className="h-12 w-full rounded-xl font-black" data-tour-id="tutorial-product-save">
                                     {isSaving
                                         ? (t('common.loading') || 'Loading...')
                                         : isClone

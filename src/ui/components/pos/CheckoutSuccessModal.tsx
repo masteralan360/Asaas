@@ -38,13 +38,15 @@ interface CheckoutSuccessModalProps {
     onClose: () => void
     saleData: any // Universal format expected by SaleReceipt
     features: WorkspaceFeatures
+    tutorialDisablePrint?: boolean
 }
 
 export function CheckoutSuccessModal({
     isOpen,
     onClose,
     saleData,
-    features
+    features,
+    tutorialDisablePrint = false
 }: CheckoutSuccessModalProps) {
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
@@ -277,6 +279,7 @@ export function CheckoutSuccessModal({
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <DialogContent
+                data-tour-id="tutorial-pos-success-modal"
                 onOpenAutoFocus={(e) => e.preventDefault()}
                 className="max-w-sm rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl animate-in fade-in zoom-in duration-300"
             >
@@ -352,16 +355,23 @@ export function CheckoutSuccessModal({
                     {/* Action Buttons */}
                     <div className="flex flex-col gap-3">
                         <Button
+                            data-tour-id="tutorial-pos-print-receipt"
                             size="lg"
-                            className="w-full text-lg h-14 bg-[#23c55e] hover:bg-[#1ea34d] text-white rounded-xl shadow-lg shadow-green-500/20 transition-all active:scale-95 group"
+                            className={cn(
+                                "w-full text-lg h-14 rounded-xl transition-all active:scale-95 group",
+                                tutorialDisablePrint
+                                    ? "bg-muted text-muted-foreground border border-border shadow-none cursor-not-allowed hover:bg-muted"
+                                    : "bg-[#23c55e] hover:bg-[#1ea34d] text-white shadow-lg shadow-green-500/20"
+                            )}
                             onClick={handlePrintAndUpload}
-                            disabled={isProcessing || isLoadingPrimaryReceiptTemplate}
+                            disabled={isProcessing || isLoadingPrimaryReceiptTemplate || tutorialDisablePrint}
                         >
-                            <Printer className="w-6 h-6 mr-3 group-hover:rotate-12 transition-transform" />
+                            <Printer className={cn("w-6 h-6 mr-3 transition-transform", !tutorialDisablePrint && "group-hover:rotate-12")} />
                             {isProcessing || isLoadingPrimaryReceiptTemplate ? t('common.loading') : t('pos.printReceipt')}
                         </Button>
 
                         <Button
+                            data-tour-id="tutorial-pos-success-continue"
                             variant="outline"
                             size="lg"
                             className="w-full text-lg h-14 border-2 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-all active:scale-95"

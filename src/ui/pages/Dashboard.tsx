@@ -164,7 +164,7 @@ export function Dashboard() {
     if (!stats) return null
 
     if (visibleCardsCount === 0) return (
-        <div className="space-y-6 pb-12">
+        <div className="space-y-6 pb-12" data-tour-id="demo-basic-dashboard">
             {firstName && (
                 <div className="block md:hidden -mx-4 -mt-6 px-5 pt-8 pb-6 bg-primary rounded-b-[2rem] shadow-lg shadow-primary/20 dark:shadow-primary/10">
                     <h1 className="text-3xl font-black tracking-tight text-primary-foreground">
@@ -203,7 +203,7 @@ export function Dashboard() {
 
 
     return (
-        <div className="space-y-6 md:space-y-12 pb-12">
+        <div className="space-y-6 md:space-y-12 pb-12" data-tour-id="demo-basic-dashboard">
             {/* Mobile Hero Header — visually linked to the sticky bar */}
             {firstName && (
                 <div className="block md:hidden -mx-4 -mt-6 px-5 pt-8 pb-6 bg-primary rounded-b-[2rem] shadow-lg shadow-primary/20 dark:shadow-primary/10">

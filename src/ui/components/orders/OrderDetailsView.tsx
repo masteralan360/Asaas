@@ -5,6 +5,7 @@ import { getLocalizedOrderError } from '@/lib/orderErrors'
 import { Link, useLocation } from 'wouter'
 
 import { useAuth } from '@/auth'
+import { useDemoTutorial } from '@/demo'
 import { useProfileData } from '@/hooks/useProfileData'
 import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
@@ -187,6 +188,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const { features, workspaceName, isLocalMode } = useWorkspace()
     const [, navigate] = useLocation()
     const { toast } = useToast()
+    const demoTutorial = useDemoTutorial()
     const storages = useStorages(workspaceId)
     const salesOrder = useSalesOrder(orderId)
     const purchaseOrder = usePurchaseOrder(orderId)
@@ -573,7 +575,10 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     }
 
     return (
-        <div className="space-y-4">
+        <div
+            className="space-y-4"
+            data-tour-id={demoTutorial.state?.orderId === order.id ? 'tutorial-order-created' : undefined}
+        >
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Link href="/orders" className="inline-flex items-center gap-1 hover:text-foreground">

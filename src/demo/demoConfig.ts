@@ -1,7 +1,7 @@
 import type { PlanModuleKey } from '@/plans/workspacePlans'
 
 export const DEMO_TIME_MIN = 5
-export const DEMO_TIME_MAX = 15
+export const DEMO_TIME_MAX = 30
 export const DEMO_TIME_DEFAULT = 15
 export const DEMO_CODE_PREFIX = 'demo.'
 

@@ -1198,7 +1198,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
     const purchaseDisabled = suppliers.length === 0 || products.length === 0
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6" data-tour-id="tutorial-orders-landing">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold">

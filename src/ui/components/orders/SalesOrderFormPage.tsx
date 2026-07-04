@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, CalendarDays, CreditCard, Plus, ShoppingCart, Star, Trash2, Truck, Users, X } from 'lucide-react'
 
 import { useAuth } from '@/auth'
+import { useDemoTutorial } from '@/demo'
 import { useUiAccess } from '@/context/UiAccessContext'
 import { isMobile } from '@/lib/platform'
 import { getPrioritizedPaymentMethod, setPrioritizedPaymentMethod } from '@/lib/prioritizedPaymentMethod'
@@ -101,6 +102,7 @@ export function SalesOrderFormPage({
     const { features, hasFeature } = useWorkspace()
     const { permissionKeys } = useWorkspacePermissions()
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
+    const demoTutorial = useDemoTutorial()
 
     const products = useProducts(workspaceId)
     const inventory = useInventory(workspaceId)
@@ -365,6 +367,9 @@ export function SalesOrderFormPage({
                     ? t('orders.form.requestSent', { defaultValue: 'Request sent' })
                     : editingOrderId ? (t('common.save') || 'Saved') : (t('common.create') || 'Created')
             })
+            if (!editingOrderId) {
+                demoTutorial.completeOrderCreated(savedOrder.id, 'sales')
+            }
             onCreated?.(savedOrder.id)
         } catch (error: any) {
             toast({
@@ -391,7 +396,7 @@ export function SalesOrderFormPage({
                             <ArrowLeft className="h-4 w-4" />
                             {t('orders.title', { defaultValue: 'Orders' })}
                         </Button>
-                        <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
+                        <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight" data-tour-id="tutorial-order-form-title">
                             <ShoppingCart className="h-7 w-7" />
                             {editingOrderId
                                 ? t('orders.form.editSalesOrder', { defaultValue: 'Edit Sales Order' })
@@ -413,7 +418,7 @@ export function SalesOrderFormPage({
                                         <div className="grid gap-4">
                                             <div className="grid gap-2">
                                                 <Label>{t('orders.form.customer', { defaultValue: 'Customer' })} <span className="text-destructive">*</span></Label>
-                                                <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                                                <div className="flex flex-col gap-2 md:flex-row md:items-center" data-tour-id="tutorial-order-partner-picker">
                                                     <PartnerAutocompleteInput
                                                         value={customerSearch}
                                                         onChange={(value) => {
@@ -513,8 +518,12 @@ export function SalesOrderFormPage({
                                             const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))
 
                                             return (
-                                                <div key={`sales-item-${index}`} className="grid gap-3 rounded-2xl border bg-background p-4 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_40px]">
-                                                    <div className="space-y-2">
+                                                 <div key={`sales-item-${index}`} className="grid gap-3 rounded-2xl border bg-background p-4 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_40px]">
+                                                     <div
+                                                        className="space-y-2"
+                                                        data-tour-id={index === 0 ? 'tutorial-order-product-picker' : undefined}
+                                                        data-demo-product-linked={item.productId ? 'true' : 'false'}
+                                                     >
                                                         <Label>{t('orders.form.selectProduct', { defaultValue: 'Select Product' })}</Label>
                                                         <ProductAutocompleteInput
                                                             value={item.productSearch}
@@ -525,7 +534,7 @@ export function SalesOrderFormPage({
                                                             hasSelection={!!item.productId}
                                                         />
                                                     </div>
-                                                    <div className="space-y-2">
+                                                     <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-storage' : undefined}>
                                                         <Label>{t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}</Label>
                                                         <Select value={item.storageId} onValueChange={(value) => updateItem(index, { storageId: value })}>
                                                             <SelectTrigger><SelectValue placeholder={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })} /></SelectTrigger>
@@ -546,18 +555,18 @@ export function SalesOrderFormPage({
                                                                 : t('orders.form.chooseSourceStorageForLine', { defaultValue: 'Choose a source storage for this line.' })}
                                                         </p>
                                                     </div>
-                                                    <div className="space-y-2">
+                                                     <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-quantity' : undefined}>
                                                         <Label>{t('common.quantity', { defaultValue: 'Quantity' })}</Label>
                                                         <div className="flex items-center gap-1">
                                                             <Input type="number" min={isDynamicUnit(product?.unit) ? "0.01" : "1"} step={isDynamicUnit(product?.unit) ? "0.01" : "1"} value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} placeholder={t('common.quantity', { defaultValue: 'Quantity' })} />
                                                             {product?.unit && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${product.unit}`, product.unit)}</span>}
                                                         </div>
                                                     </div>
-                                                    <div className="space-y-2">
+                                                     <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-unit-price' : undefined}>
                                                         <Label>{t('common.sellingPrice', { defaultValue: 'Selling Price' })}</Label>
                                                         <Input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updateItem(index, { unitPrice: event.target.value })} placeholder={t('common.sellingPrice', { defaultValue: 'Selling Price' })} />
                                                     </div>
-                                                    <div className="flex items-start justify-end">
+                                                     <div className="flex items-start justify-end" data-tour-id={index === 0 ? 'tutorial-order-line-actions' : undefined}>
                                                         <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
                                                             <Trash2 className="h-4 w-4" />
                                                         </Button>
@@ -572,7 +581,7 @@ export function SalesOrderFormPage({
                                     </CardContent>
                                 </Card>
 
-                                <Card>
+                                <Card data-tour-id="tutorial-order-notes">
                                     <CardHeader>
                                         <CardTitle>{t('orders.form.notes', { defaultValue: 'Notes' })}</CardTitle>
                                     </CardHeader>
@@ -594,7 +603,7 @@ export function SalesOrderFormPage({
                                     </CardHeader>
                                     <CardContent className="space-y-4">
                                         <div className="grid gap-4 sm:grid-cols-2">
-                                            <div className="space-y-2">
+                                            <div className="space-y-2" data-tour-id="tutorial-order-date">
                                                 <Label htmlFor="sales-delivery" className="flex items-center gap-2">
                                                     <CalendarDays className="h-4 w-4 text-muted-foreground" />
                                                     {t('orders.form.expectedDelivery', { defaultValue: 'Expected Delivery' })}
@@ -607,7 +616,7 @@ export function SalesOrderFormPage({
                                                     placeholder={t('orders.form.expectedDelivery', { defaultValue: 'Expected Delivery' })}
                                                 />
                                             </div>
-                                            <div className="space-y-2">
+                                            <div className="space-y-2" data-tour-id="tutorial-order-currency">
                                                 <CurrencySelector
                                                     value={currency}
                                                     onChange={(value) => setCurrency(value)}
@@ -617,7 +626,7 @@ export function SalesOrderFormPage({
                                                 />
                                             </div>
                                         </div>
-                                        <div className="space-y-2">
+                                        <div className="space-y-2" data-tour-id="tutorial-order-payment">
                                             <Label htmlFor="sales-payment" className="flex items-center gap-2">
                                                 <CreditCard className="h-4 w-4 text-muted-foreground" />
                                                 {t('pos.paymentMethod', { defaultValue: 'Payment Method' })}
@@ -639,7 +648,7 @@ export function SalesOrderFormPage({
                                                 </SelectContent>
                                             </Select>
                                         </div>
-                                        {!isFinanced ? <div className="flex items-center justify-between rounded-2xl border bg-muted/20 px-4 py-3">
+                                        {!isFinanced ? <div className="flex items-center justify-between rounded-2xl border bg-muted/20 px-4 py-3" data-tour-id="tutorial-order-paid">
                                             <div>
                                                 <div className="text-sm font-medium">{t('orders.form.paidOnSave', { defaultValue: 'Paid on save' })}</div>
                                                 <div className="text-xs text-muted-foreground">{t('orders.form.paidOnSaveDescription', { defaultValue: 'Mark the order as already settled.' })}</div>
@@ -708,7 +717,7 @@ export function SalesOrderFormPage({
                                     </CardContent>
                                 </Card>
 
-                                <Card>
+                                <Card data-tour-id="tutorial-order-commercials">
                                     <CardHeader>
                                         <CardTitle>{t('orders.form.commercials', { defaultValue: 'Commercials' })}</CardTitle>
                                     </CardHeader>
@@ -747,7 +756,7 @@ export function SalesOrderFormPage({
                                         </p>
                                     </CardHeader>
                                     <CardContent className="space-y-3">
-                                        <Button type="submit" className="h-12 w-full rounded-xl font-black" disabled={!canSubmit || isSaving}>
+                                        <Button type="submit" className="h-12 w-full rounded-xl font-black" disabled={!canSubmit || isSaving} data-tour-id="tutorial-order-save">
                                             {isSaving
                                                 ? (t('common.loading') || 'Loading...')
                                                 : requiresApprovalRequest

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 import { isSupabaseConfigured, useAuth } from '@/auth'
+import { useDemoTutorial } from '@/demo'
 import { supabase } from '@/auth/supabase'
 import { Sale } from '@/types'
 import { mapSaleToUniversal } from '@/lib/mappings'
@@ -205,6 +206,8 @@ export function Sales() {
     const { style } = useTheme()
     const { toast } = useToast()
     const { dateRange, customDates } = useDateRange()
+    const demoTutorial = useDemoTutorial()
+    const tutorialSaleId = demoTutorial.state?.saleId
 
     const dateBounds = useMemo<{ startDate?: string; endDate?: string }>(() => {
         const now = new Date()
@@ -1540,6 +1543,9 @@ export function Sales() {
                     await recordReturnLoanPayment(returnValue)
                 }
 
+                if (tutorialSaleId === saleToReturn.id) {
+                    demoTutorial.completeSaleReturned()
+                }
                 setReturnModalOpen(false)
                 setSaleToReturn(null)
                 return
@@ -1788,6 +1794,10 @@ export function Sales() {
         
             if (error) throw normalizeSupabaseActionError(error)
 
+            if (tutorialSaleId === saleToReturn.id) {
+                demoTutorial.completeSaleReturned()
+            }
+
             // Close modal and refresh — local-db handles reactivity via useLiveQuery
             setReturnModalOpen(false)
             setSaleToReturn(null)
@@ -2020,7 +2030,7 @@ export function Sales() {
                         </Button>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3" data-tour-id="tutorial-sales-history-filters">
                         <DateRangeFilters />
 
                         <Button
@@ -2122,6 +2132,7 @@ export function Sales() {
                                     }, 0) || 0
                                     const hasAnyReturn = returnedItemsCount > 0 || partialReturnedItemsCount > 0
                                     const loanIndicator = getLoanIndicator(sale)
+                                    const isTutorialSale = tutorialSaleId === sale.id
 
                                     return (
                                         <ContextMenu
@@ -2129,13 +2140,17 @@ export function Sales() {
                                         >
                                             <ContextMenuTrigger asChild>
                                                 <div
+                                                    data-tour-id={isTutorialSale ? 'tutorial-sales-created-sale' : undefined}
                                                     className={cn(
                                                         "p-4 border shadow-sm space-y-4 transition-all active:scale-[0.98]",
                                                         style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" : "rounded-[2rem] md:rounded-2xl border-border",
                                                         isFullyReturned ? 'bg-destructive/5 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/5' : 'bg-card'
                                                     )}
                                                 >
-                                                    <div className="flex justify-between items-start">
+                                                    <div
+                                                        className="flex justify-between items-start"
+                                                        data-tour-id={isTutorialSale ? 'tutorial-sales-sale-fields' : undefined}
+                                                    >
                                                         <div className="space-y-2">
                                                             <div className="flex flex-col gap-1">
                                                                 <div className="flex items-center gap-2">
@@ -2157,7 +2172,9 @@ export function Sales() {
                                                                         <span className={cn(
                                                                             "px-2 py-0.5 text-[9px] font-bold bg-destructive/10 text-destructive border border-destructive/20 uppercase",
                                                                             style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
-                                                                        )}>
+                                                                        )}
+                                                                            data-tour-id={isTutorialSale ? 'tutorial-returned-status' : undefined}
+                                                                        >
                                                                             {t('sales.return.returnedStatus') || 'RETURNED'}
                                                                         </span>
                                                                     )}
@@ -2246,7 +2263,10 @@ export function Sales() {
                                                         </div>
                                                     </div>
 
-                                                    <div className="flex items-center justify-between pt-3 border-t border-border/50 gap-2">
+                                                    <div
+                                                        className="flex items-center justify-between pt-3 border-t border-border/50 gap-2"
+                                                        data-tour-id={isTutorialSale ? 'tutorial-sales-sale-actions' : undefined}
+                                                    >
                                                         <div className="flex gap-2">
                                                             <Button
                                                                 variant="secondary"
@@ -2302,6 +2322,7 @@ export function Sales() {
                                                         <div className="flex gap-1">
                                                             {!isFullyReturned && !getExternalSaleDetailsPath(sale) && (user?.role === 'admin' || user?.role === 'staff') && (
                                                                 <Button
+                                                                    data-tour-id={isTutorialSale ? 'tutorial-return-sale-action' : undefined}
                                                                     variant="ghost"
                                                                     size="icon"
                                                                     className={cn(
@@ -2490,6 +2511,7 @@ export function Sales() {
                                         }, 0) || 0
                                         const hasAnyReturn = returnedItemsCount > 0 || partialReturnedItemsCount > 0
                                         const loanIndicator = getLoanIndicator(sale)
+                                        const isTutorialSale = tutorialSaleId === sale.id
 
                                         return (
                                             <ContextMenu
@@ -2497,6 +2519,7 @@ export function Sales() {
                                             >
                                                 <ContextMenuTrigger asChild>
                                                     <TableRow
+                                                        data-tour-id={isTutorialSale ? 'tutorial-sales-created-sale' : undefined}
                                                         className={isFullyReturned ? 'bg-destructive/10 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/10 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : ''}
                                                     >
                                                         <TableCell className="font-mono text-sm font-bold text-primary">
@@ -2506,7 +2529,7 @@ export function Sales() {
                                                                 <span className="text-muted-foreground/40 text-xs">#{sale.id.slice(0, 4)}...</span>
                                                             )}
                                                         </TableCell>
-                                                        <TableCell className="text-start font-mono text-sm">
+                                                        <TableCell className="text-start font-mono text-sm" data-tour-id={isTutorialSale ? 'tutorial-sales-sale-fields' : undefined}>
                                                             <div className="flex flex-col gap-1">
                                                                 <span className="text-muted-foreground">
                                                                     {formatDateTime(sale.created_at)}
@@ -2516,7 +2539,9 @@ export function Sales() {
                                                                         <span className={cn(
                                                                             "px-2 py-0.5 text-[10px] font-bold bg-destructive/20 text-destructive dark:bg-destructive/30 dark:text-destructive-foreground border border-destructive/30",
                                                                             style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
-                                                                        )}>
+                                                                        )}
+                                                                            data-tour-id={isTutorialSale ? 'tutorial-returned-status' : undefined}
+                                                                        >
                                                                             {(t('sales.return.returnedStatus') || 'RETURNED').toUpperCase()}
                                                                         </span>
                                                                     )}
@@ -2622,7 +2647,7 @@ export function Sales() {
                                                         <TableCell className="text-end font-bold">
                                                             {formatCurrency(getEffectiveTotal(sale), sale.settlement_currency || 'usd', features.iqd_display_preference)}
                                                         </TableCell>
-                                                        <TableCell className="text-end">
+                                                        <TableCell className="text-end" data-tour-id={isTutorialSale ? 'tutorial-sales-sale-actions' : undefined}>
                                                             <Button
                                                                 variant="ghost"
                                                                 size="icon"
@@ -2651,6 +2676,7 @@ export function Sales() {
                                                                     </Button>
                                                                     {!sale.is_returned && (user?.role === 'admin' || user?.role === 'staff') && (
                                                                         <Button
+                                                                            data-tour-id={isTutorialSale ? 'tutorial-return-sale-action' : undefined}
                                                                             variant="ghost"
                                                                             size="icon"
                                                                             onClick={() => handleReturnSale(sale)}
