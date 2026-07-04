@@ -872,7 +872,7 @@ export function DemoTutorialOverlay() {
     height: PANEL_DEFAULT_HEIGHT,
   })
 
-  const markers = currentTaskDefinition?.markers ?? []
+  const markers = useMemo(() => currentTaskDefinition?.markers ?? [], [currentTaskDefinition])
   const expectedRoute = resolveDemoTutorialRoute(state)
   const isOnExpectedRoute = !expectedRoute
     || location === expectedRoute
