@@ -78,6 +78,7 @@ const SPOTLIGHT_PADDING = 10
 const GUIDED_SAFE_VIEWPORT_MARGIN = 24
 const GUIDED_RESCROLL_DELAY_MS = 90
 const OVERLAY_SELECTOR = '[data-demo-tutorial-overlay]'
+const TOOLTIP_SELECTOR = '[data-demo-tutorial-tooltip]'
 const GUIDED_MASK_SELECTOR = '[data-demo-tutorial-mask]'
 const GUIDED_NEXT_SELECTOR = '[data-demo-tutorial-next]'
 const ACTIVE_DIALOG_SELECTOR = '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]'
@@ -1026,6 +1027,14 @@ export function DemoTutorialOverlay() {
         return
       }
 
+      if (eventTarget.closest(TOOLTIP_SELECTOR)) {
+        event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation()
+        focusTarget.focus({ preventScroll: true })
+        return
+      }
+
       if (!eventTarget.closest(GUIDED_MASK_SELECTOR) && isInGuidedAllowedArea(eventTarget, guidedTarget)) {
         if (
           event.type === 'click'
@@ -1225,6 +1234,7 @@ export function DemoTutorialOverlay() {
               />
             )}
             <div
+              data-demo-tutorial-tooltip
               className={cn(
                 'pointer-events-auto fixed z-20 w-[260px] rounded-xl border p-2.5 text-sm shadow-[0_18px_45px_rgba(15,23,42,0.18)] transition-shadow hover:z-[2147483001] hover:shadow-[0_24px_60px_rgba(15,23,42,0.28)]',
                 isMissingRequiredValue

@@ -61,7 +61,6 @@ export const DEMO_TUTORIAL_TASKS: DemoTutorialTaskDefinition[] = [
       mandatory('1.1', 'tutorial-storage-new-button', 'New Storage', 'Open the storage creation dialog.'),
       mandatory('1.2', 'tutorial-storage-name-input', 'Storage name', 'Enter a clear name for the storage.'),
       mandatory('1.3', 'tutorial-storage-save-button', 'Create storage', 'Save the storage to continue.'),
-      overview('1.4', 'tutorial-storage-list', 'Storage list', 'Saved storages appear here with type, stock, and actions.'),
     ],
   },
   {
