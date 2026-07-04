@@ -6,6 +6,7 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { getTravelSaleCost } from '@/lib/travelAgency'
 import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { isOnline } from '@/lib/network'
+import { getOrderLineInventoryQuantity } from '@/lib/orderLineItems'
 import { isPositiveQuantity, roundQuantity } from '@/lib/quantity'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
@@ -627,13 +628,14 @@ async function getReservedQuantityMaps(workspaceId: string, excludeOrderId?: str
     for (const order of orders) {
         for (const item of order.items) {
             const storageId = resolveSalesOrderItemStorageId(order, item)
+            const reservedQuantity = getOrderLineInventoryQuantity(item)
             if (storageId) {
                 const key = buildInventoryReservationKey(item.productId, storageId)
-                reservedByStorage.set(key, (reservedByStorage.get(key) || 0) + item.quantity)
+                reservedByStorage.set(key, (reservedByStorage.get(key) || 0) + reservedQuantity)
                 continue
             }
 
-            reservedWithoutStorage.set(item.productId, (reservedWithoutStorage.get(item.productId) || 0) + item.quantity)
+            reservedWithoutStorage.set(item.productId, (reservedWithoutStorage.get(item.productId) || 0) + reservedQuantity)
         }
     }
 
@@ -664,7 +666,8 @@ async function assertSalesStockAvailable(order: SalesOrder, excludeOrderId?: str
         const storageReserved = reservedByStorage.get(buildInventoryReservationKey(item.productId, storageId)) || 0
         const globalReserved = reservedWithoutStorage.get(item.productId) || 0
         const available = storageQuantity - storageReserved - globalReserved
-        if (available < item.quantity) {
+        const requiredQuantity = getOrderLineInventoryQuantity(item)
+        if (available < requiredQuantity) {
             throw new Error(`Insufficient stock for ${item.productName}`)
         }
     }
@@ -693,7 +696,7 @@ async function deductInventoryForSalesOrder(order: SalesOrder) {
     const salePlans = await getStockBatchSalePlans(order.items.map((item) => ({
         productId: item.productId,
         storageId: resolveSalesOrderItemStorageId(order, item) as string,
-        quantity: item.quantity
+        quantity: getOrderLineInventoryQuantity(item)
     })))
 
     await db.transaction(
@@ -753,11 +756,12 @@ async function deductInventoryForSalesOrder(order: SalesOrder) {
                     item.productId,
                     storageId
                 )
+                const inventoryQuantity = getOrderLineInventoryQuantity(item)
                 const changedInventoryRow = await putInventoryQuantity(
                     order.workspaceId,
                     item.productId,
                     storageId,
-                    currentInventoryQuantity - item.quantity,
+                    currentInventoryQuantity - inventoryQuantity,
                     now
                 )
                 const updatedProduct = await syncProductStockSnapshot(item.productId, now)
@@ -773,6 +777,8 @@ async function deductInventoryForSalesOrder(order: SalesOrder) {
                 updatedProducts.push(updatedProduct)
                 updatedItems[itemIndex] = {
                     ...item,
+                    reservedQuantity: inventoryQuantity,
+                    fulfilledQuantity: inventoryQuantity,
                     costPrice,
                     convertedCostPrice,
                     batchAllocations: salePlan.allocations.length > 0 ? salePlan.allocations : null
@@ -1108,7 +1114,7 @@ async function receiveInventoryForPurchaseOrder(order: PurchaseOrder) {
             throw new Error(`Product not found: ${item.productName}`)
         }
 
-        const receivedQuantity = item.receivedQuantity ?? item.quantity
+        const receivedQuantity = item.receivedQuantity ?? getOrderLineInventoryQuantity(item)
         const actualUnitCost = roundAmount(item.originalUnitPrice, product.currency)
         const productUnitCost = roundAmount(product.costPrice, product.currency)
         const hasDifferentPurchaseCost = shouldCreatePurchaseCostBatch(

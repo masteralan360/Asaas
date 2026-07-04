@@ -1638,6 +1638,8 @@
       "receiveIntoStorageHint": "Will be received into {{storageName}} when the order is completed.",
       "chooseTargetStorageForLine": "Choose a target storage for this line.",
       "completionHint": "Completing this order will add stock to {{storageName}}.",
+      "freeBonus": "Free Bonus",
+      "inventoryQuantity": "Inventory Qty",
       "errors": {
         "noSuppliers": "Add suppliers before creating purchase orders.",
         "paymentMethodRequired": "Select an actual payment method for paid orders.",
@@ -1647,6 +1649,7 @@
         "atLeastOneItem": "Add at least one item.",
         "saveSalesFailed": "Failed to save sales order.",
         "savePurchaseFailed": "Failed to save purchase order.",
+        "invalidFreeBonus": "Enter a valid free bonus for {{productName}}.",
         "non_financed_order_must_be_paid": "This order must be paid in full before it can be reserved. To reserve it with an outstanding balance, select Loans or Installments as the payment method."
       }
     },
@@ -1667,6 +1670,7 @@
       "created": "Created",
       "expectedDelivery": "Expected Delivery",
       "notes": "Notes",
+      "freeBonus": "Free Bonus",
       "activity": {
         "title": "Activity",
         "created": "Order created",

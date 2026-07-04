@@ -501,6 +501,7 @@ export interface OrderLineItem {
   productName: string;
   productSku: string;
   quantity: number;
+  freeBonusQuantity?: number | null;
   lineTotal: number;
   originalCurrency: CurrencyCode;
   originalUnitPrice: number;

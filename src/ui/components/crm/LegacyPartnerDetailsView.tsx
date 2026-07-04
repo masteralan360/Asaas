@@ -3,6 +3,7 @@ import { ArrowLeft, CalendarDays, CreditCard, Eye, LayoutGrid, List, Mail, MapPi
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'wouter'
 
+import { getOrderLineInventoryQuantity } from '@/lib/orderLineItems'
 import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { getTravelSaleCost, getTravelStatusLabel } from '@/lib/travelAgency'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
@@ -104,7 +105,7 @@ function normalizeSalesOrder(order: SalesOrder, currency: SalesOrder['currency']
         total: order.total,
         currency: order.currency,
         totalInPartnerCurrency: toPartnerCurrency(order, currency),
-        units: order.items.reduce((sum, item) => sum + item.quantity, 0),
+        units: order.items.reduce((sum, item) => sum + getOrderLineInventoryQuantity(item), 0),
         viewHref: `/orders/${order.id}`,
         isActive: order.status !== 'cancelled',
         isCompleted: order.status === 'completed',
@@ -126,7 +127,7 @@ function normalizePurchaseOrder(order: PurchaseOrder, currency: SalesOrder['curr
         total: order.total,
         currency: order.currency,
         totalInPartnerCurrency: toPartnerCurrency(order, currency),
-        units: order.items.reduce((sum, item) => sum + item.quantity, 0),
+        units: order.items.reduce((sum, item) => sum + getOrderLineInventoryQuantity(item), 0),
         viewHref: `/orders/${order.id}`,
         isActive: order.status !== 'cancelled',
         isCompleted: order.status === 'received' || order.status === 'completed',
@@ -279,7 +280,7 @@ export function LegacyPartnerDetailsView({
     const totalUnits = useMemo(
         () => productOrders
             .filter((order) => order.status !== 'cancelled')
-            .reduce((sum, order) => sum + order.items.reduce((lineSum, item) => lineSum + item.quantity, 0), 0),
+            .reduce((sum, order) => sum + order.items.reduce((lineSum, item) => lineSum + getOrderLineInventoryQuantity(item), 0), 0),
         [productOrders]
     )
     const settledPercent = totalValue > 0 ? Math.min(100, (settledValue / totalValue) * 100) : 0
@@ -308,7 +309,7 @@ export function LegacyPartnerDetailsView({
                     quantity: 0,
                     amount: 0
                 }
-                current.quantity += item.quantity
+                current.quantity += getOrderLineInventoryQuantity(item)
                 current.amount += convertCurrencyAmountWithSnapshot(item.lineTotal, order.currency, defaultCurrency, order.exchangeRates)
                 rows.set(item.productId, current)
             }

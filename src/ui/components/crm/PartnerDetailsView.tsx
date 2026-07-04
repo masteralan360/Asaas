@@ -22,6 +22,7 @@ import {
 } from '@/lib/customTemplates'
 import { convertCurrencyAmountWithAvailableSnapshot, convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { getLoanDetailsPath, getLoanDirection, getLoanDirectionLabel, isSimpleLoan } from '@/lib/loanPresentation'
+import { getOrderLineInventoryQuantity } from '@/lib/orderLineItems'
 import type { CustomTemplateLayout } from '@/lib/pdfPreviewStore'
 
 import { getTravelSaleCost, getTravelStatusLabel } from '@/lib/travelAgency'
@@ -295,7 +296,7 @@ function normalizeSalesOrder(order: SalesOrder, currency: SalesOrder['currency']
         remainingAmount,
         currency: order.currency,
         totalInPartnerCurrency: toPartnerCurrency(order, currency),
-        units: order.items.reduce((sum, item) => sum + item.quantity, 0),
+        units: order.items.reduce((sum, item) => sum + getOrderLineInventoryQuantity(item), 0),
         viewHref: `/orders/${order.id}`,
         isActive: order.status !== 'cancelled',
         isCompleted: order.status === 'completed',
@@ -327,7 +328,7 @@ function normalizePurchaseOrder(order: PurchaseOrder, currency: SalesOrder['curr
         remainingAmount,
         currency: order.currency,
         totalInPartnerCurrency: toPartnerCurrency(order, currency),
-        units: order.items.reduce((sum, item) => sum + item.quantity, 0),
+        units: order.items.reduce((sum, item) => sum + getOrderLineInventoryQuantity(item), 0),
         viewHref: `/orders/${order.id}`,
         isActive: order.status !== 'cancelled',
         isCompleted: order.status === 'received' || order.status === 'completed',
@@ -813,7 +814,7 @@ export function PartnerDetailsView({
                     quantity: 0,
                     amount: 0
                 }
-                current.quantity += item.quantity
+                current.quantity += getOrderLineInventoryQuantity(item)
                 current.amount += convertCurrencyAmountWithSnapshot(item.lineTotal, order.currency, defaultCurrency, order.exchangeRates)
                 rows.set(item.productId, current)
             }
@@ -994,7 +995,7 @@ export function PartnerDetailsView({
     const totalUnits = useMemo(
         () => filteredProductOrders
             .filter((order) => order.status !== 'cancelled')
-            .reduce((sum, order) => sum + order.items.reduce((lineSum, item) => lineSum + item.quantity, 0), 0),
+            .reduce((sum, order) => sum + order.items.reduce((lineSum, item) => lineSum + getOrderLineInventoryQuantity(item), 0), 0),
         [filteredProductOrders]
     )
     const settledPercent = filteredRelatedTransactions.length > 0 ? Math.min(100, (filteredSettled.length / filteredRelatedTransactions.length) * 100) : 0
@@ -1180,7 +1181,7 @@ export function PartnerDetailsView({
                     quantity: 0,
                     amount: 0
                 }
-                current.quantity += item.quantity
+                current.quantity += getOrderLineInventoryQuantity(item)
                 current.amount += convertCurrencyAmountWithSnapshot(item.lineTotal, order.currency, defaultCurrency, order.exchangeRates)
                 rows.set(item.productId, current)
             }

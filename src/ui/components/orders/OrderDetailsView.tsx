@@ -7,6 +7,7 @@ import { Link, useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { useDemoTutorial } from '@/demo'
 import { useProfileData } from '@/hooks/useProfileData'
+import { getOrderLineFreeBonusQuantity, getOrderLineInventoryQuantity, getOrderLinePaidQuantity, hasOrderLineFreeBonus } from '@/lib/orderLineItems'
 import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import { setInvoicePreviewSource, type TemplatePreview, type TemplatePreviewRenderOptions } from '@/lib/pdfPreviewStore'
@@ -442,7 +443,9 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const currency = order.currency
     const iqd = features.iqd_display_preference
     const mainStorageId = isSales ? (order as SalesOrder).sourceStorageId : (order as PurchaseOrder).destinationStorageId
-    const totalUnits = order.items.reduce((sum, item) => sum + item.quantity, 0)
+    const showFreeBonus = hasOrderLineFreeBonus(order.items)
+    const totalUnits = order.items.reduce((sum, item) => sum + getOrderLineInventoryQuantity(item), 0)
+    const totalFreeBonus = order.items.reduce((sum, item) => sum + getOrderLineFreeBonusQuantity(item), 0)
     const progress = workflowProgress(resolved.kind, order.status)
     const paidAmount = getOrderPaidAmount(order)
     const outstanding = getOrderBalanceAmount(order)
@@ -453,11 +456,11 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         : null
     const nextInstallment = installments.find((installment) => installment.balanceAmount > 0)
     const profit = isSales
-        ? order.total - (order as SalesOrder).items.reduce((sum, item) => sum + (item.convertedCostPrice * item.quantity), 0)
+        ? order.total - (order as SalesOrder).items.reduce((sum, item) => sum + (item.convertedCostPrice * getOrderLineInventoryQuantity(item)), 0)
         : null
     const margin = profit !== null && order.total > 0 ? (profit / order.total) * 100 : null
     const receivedUnits = !isSales
-        ? (order as PurchaseOrder).items.reduce((sum, item) => sum + (item.receivedQuantity ?? ((order.status === 'received' || order.status === 'completed') ? item.quantity : 0)), 0)
+        ? (order as PurchaseOrder).items.reduce((sum, item) => sum + (item.receivedQuantity ?? ((order.status === 'received' || order.status === 'completed') ? getOrderLineInventoryQuantity(item) : 0)), 0)
         : null
     const averageUnitCost = !isSales && totalUnits > 0 ? order.total / totalUnits : null
 
@@ -970,6 +973,12 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                     <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.units') || 'Units'}</div>
                                     <div className="mt-2 text-2xl font-black">{totalUnits}</div>
                                 </div>
+                                {showFreeBonus ? (
+                                    <div className="rounded-2xl border bg-background/70 p-4">
+                                        <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.freeBonus', { defaultValue: 'Free Bonus' })}</div>
+                                        <div className="mt-2 text-2xl font-black">{totalFreeBonus}</div>
+                                    </div>
+                                ) : null}
                                 {isSales && profit !== null ? (
                                     <>
                                         <div className="rounded-2xl border bg-background/70 p-4">
@@ -1026,8 +1035,11 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                     {order.items.map((item) => {
                                         const salesItem = item as SalesOrderItem
                                         const purchaseItem = item as PurchaseOrderItem
-                                        const itemProfit = isSales ? item.lineTotal - (salesItem.convertedCostPrice * item.quantity) : 0
-                                        const itemReceived = !isSales ? purchaseItem.receivedQuantity ?? ((order.status === 'received' || order.status === 'completed') ? purchaseItem.quantity : 0) : 0
+                                        const paidQuantity = getOrderLinePaidQuantity(item)
+                                        const freeBonusQuantity = getOrderLineFreeBonusQuantity(item)
+                                        const inventoryQuantity = getOrderLineInventoryQuantity(item)
+                                        const itemProfit = isSales ? item.lineTotal - (salesItem.convertedCostPrice * inventoryQuantity) : 0
+                                        const itemReceived = !isSales ? purchaseItem.receivedQuantity ?? ((order.status === 'received' || order.status === 'completed') ? inventoryQuantity : 0) : 0
 
                                         return (
                                             <div key={item.id} className="rounded-3xl border bg-background/80 p-4 shadow-sm">
@@ -1036,13 +1048,23 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                         <div className="text-lg font-semibold">{item.productName}</div>
                                                         <div className="text-xs text-muted-foreground">{item.productSku || 'N/A'}</div>
                                                     </div>
-                                                    <div className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-primary">{item.quantity} {t('orders.details.units') || 'units'}</div>
+                                                    <div className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-primary">{inventoryQuantity} {t('orders.details.units') || 'units'}</div>
                                                 </div>
                                                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                                                     <div className="rounded-2xl border bg-muted/20 p-3">
                                                         <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{isSales ? (t('orders.details.sourceStorage') || 'Source Storage') : (t('orders.details.destinationStorage') || 'Destination Storage')}</div>
                                                         <div className="mt-1 font-medium">{storageName(item.storageId || mainStorageId)}</div>
                                                     </div>
+                                                    <div className="rounded-2xl border bg-muted/20 p-3">
+                                                        <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.form.table.qty') || 'Qty'}</div>
+                                                        <div className="mt-1 font-medium">{paidQuantity}</div>
+                                                    </div>
+                                                    {showFreeBonus ? (
+                                                        <div className="rounded-2xl border bg-muted/20 p-3">
+                                                            <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.freeBonus', { defaultValue: 'Free Bonus' })}</div>
+                                                            <div className="mt-1 font-medium">{freeBonusQuantity}</div>
+                                                        </div>
+                                                    ) : null}
                                                     <div className="rounded-2xl border bg-muted/20 p-3">
                                                         <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.lineTotal') || 'Line Total'}</div>
                                                         <div className="mt-1 font-medium">{formatCurrency(item.lineTotal, currency, iqd)}</div>
@@ -1070,6 +1092,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                 <TableHead>{t('products.title') || 'Product'}</TableHead>
                                                 <TableHead>{isSales ? (t('orders.details.sourceStorage') || 'Source Storage') : (t('orders.details.destinationStorage') || 'Destination Storage')}</TableHead>
                                                 <TableHead className="text-end">{t('orders.form.table.qty') || 'Qty'}</TableHead>
+                                                {showFreeBonus && <TableHead className="text-end">{t('orders.details.freeBonus', { defaultValue: 'Free Bonus' })}</TableHead>}
                                                 {!isSales && <TableHead className="text-end">{t('orders.details.received') || 'Received'}</TableHead>}
                                                 <TableHead className="text-end">{t('orders.form.table.price') || 'Unit Price'}</TableHead>
                                                 {isSales && <TableHead className="text-end">{t('orders.details.costPerUnit') || 'Cost / Unit'}</TableHead>}
@@ -1081,8 +1104,11 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                             {order.items.map((item) => {
                                                 const salesItem = item as SalesOrderItem
                                                 const purchaseItem = item as PurchaseOrderItem
-                                                const itemReceived = purchaseItem.receivedQuantity ?? ((order.status === 'received' || order.status === 'completed') ? purchaseItem.quantity : 0)
-                                                const itemProfit = item.lineTotal - (salesItem.convertedCostPrice * item.quantity)
+                                                const paidQuantity = getOrderLinePaidQuantity(item)
+                                                const freeBonusQuantity = getOrderLineFreeBonusQuantity(item)
+                                                const inventoryQuantity = getOrderLineInventoryQuantity(item)
+                                                const itemReceived = purchaseItem.receivedQuantity ?? ((order.status === 'received' || order.status === 'completed') ? inventoryQuantity : 0)
+                                                const itemProfit = item.lineTotal - (salesItem.convertedCostPrice * inventoryQuantity)
 
                                                 return (
                                                     <TableRow key={item.id}>
@@ -1091,7 +1117,8 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                             <div className="text-xs text-muted-foreground">{item.productSku || 'N/A'}</div>
                                                         </TableCell>
                                                         <TableCell>{storageName(item.storageId || mainStorageId)}</TableCell>
-                                                        <TableCell className="text-end">{item.quantity}</TableCell>
+                                                        <TableCell className="text-end">{paidQuantity}</TableCell>
+                                                        {showFreeBonus && <TableCell className="text-end">{freeBonusQuantity}</TableCell>}
                                                         {!isSales && <TableCell className="text-end">{itemReceived}</TableCell>}
                                                         <TableCell className="text-end">{formatCurrency(item.convertedUnitPrice, currency, iqd)}</TableCell>
                                                         {isSales && <TableCell className="text-end">{formatCurrency(salesItem.convertedCostPrice, currency, iqd)}</TableCell>}

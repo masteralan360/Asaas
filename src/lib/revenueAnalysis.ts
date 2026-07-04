@@ -1,6 +1,7 @@
 import type { SalesOrder } from '@/local-db'
 import type { Sale } from '@/types'
 import { convertToStoreBase } from '@/lib/currency'
+import { getOrderLineInventoryQuantity, getOrderLinePaidQuantity } from '@/lib/orderLineItems'
 
 export interface RevenueAnalysisItem {
     productId: string
@@ -8,6 +9,7 @@ export interface RevenueAnalysisItem {
     productCategory?: string
     quantity: number
     returnedQuantity: number
+    costQuantity?: number
     unitPrice: number
     costPrice: number
 }
@@ -187,8 +189,9 @@ export function toRevenueRecordFromSalesOrder(order: SalesOrder, options: Revenu
                     categorySource.categoryName,
                     categorySource.category
                 ], options),
-                quantity: item.quantity || 0,
+                quantity: getOrderLinePaidQuantity(item),
                 returnedQuantity: 0,
+                costQuantity: getOrderLineInventoryQuantity(item),
                 unitPrice: item.convertedUnitPrice || 0,
                 costPrice: item.convertedCostPrice || item.costPrice || 0
             }
@@ -274,10 +277,11 @@ export function getRevenueAnalysisTotals(record: RevenueAnalysisRecord): Revenue
     let cost = 0
     for (const item of record.items) {
         const netQuantity = Math.max(0, item.quantity - item.returnedQuantity)
-        if (netQuantity <= 0) continue
+        const netCostQuantity = Math.max(0, (item.costQuantity ?? item.quantity) - item.returnedQuantity)
+        if (netQuantity <= 0 && netCostQuantity <= 0) continue
 
         revenue += item.unitPrice * netQuantity
-        cost += item.costPrice * netQuantity
+        cost += item.costPrice * netCostQuantity
     }
 
     const profit = revenue - cost

@@ -7,6 +7,7 @@ import {
     type OrderInstallment,
     type IQDDisplayPreference
 } from '@/local-db'
+import { getOrderLineFreeBonusQuantity, getOrderLinePaidQuantity, hasOrderLineFreeBonus } from '@/lib/orderLineItems'
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useTranslation } from 'react-i18next'
@@ -95,18 +96,20 @@ function resolveLogoSrc(logoUrl?: string | null) {
 
 const DEFAULT_ORDER_TABLE_ROW_COUNT = 10
 
-function buildOrderItemRows(items: Array<{ id: string; productName: string; productSku?: string | null; quantity: number; convertedUnitPrice: number; lineTotal: number; unit?: string | null }>, rowCount: number) {
+function buildOrderItemRows(items: Array<{ id: string; productName: string; productSku?: string | null; quantity: number; freeBonusQuantity?: number | null; convertedUnitPrice: number; lineTotal: number; unit?: string | null }>, rowCount: number) {
     const overflowItems = items.slice(rowCount - 1)
     return Array.from({ length: rowCount }, (_, index) => {
         if (index < rowCount - 1) return items[index] || null
         if (items.length <= rowCount) return items[index] || null
         const overflowTotal = overflowItems.reduce((sum, item) => sum + item.lineTotal, 0)
-        const overflowQty = overflowItems.reduce((sum, item) => sum + item.quantity, 0)
+        const overflowQty = overflowItems.reduce((sum, item) => sum + getOrderLinePaidQuantity(item), 0)
+        const overflowFreeBonus = overflowItems.reduce((sum, item) => sum + getOrderLineFreeBonusQuantity(item), 0)
         return {
             id: 'additional-items',
             productName: `Additional ${overflowItems.length} item${overflowItems.length === 1 ? '' : 's'}`,
             productSku: '',
             quantity: overflowQty,
+            freeBonusQuantity: overflowFreeBonus,
             convertedUnitPrice: 0,
             lineTotal: overflowTotal,
         }
@@ -424,6 +427,7 @@ export function OrderDetailsPrintTemplate({
     const noteValue = order.notes?.trim()
     const rowCount = tableRowCount || DEFAULT_ORDER_TABLE_ROW_COUNT
     const itemRows = buildOrderItemRows(order.items || [], rowCount)
+    const showFreeBonus = hasOrderLineFreeBonus(order.items || [])
 
     const counterpartyLabel = isSales
         ? (t('orders.details.customer') || 'Customer')
@@ -629,6 +633,7 @@ export function OrderDetailsPrintTemplate({
                         <th className="border border-slate-300 p-2 text-start">{t('products.title') || 'Product'}</th>
                         <th className="border border-slate-300 p-2 text-start">SKU</th>
                         <th className="border border-slate-300 p-2 text-end">{t('orders.form.table.qty') || 'Qty'}</th>
+                        {showFreeBonus ? <th className="border border-slate-300 p-2 text-end">{t('orders.details.freeBonus', { defaultValue: 'Free Bonus' })}</th> : null}
                         <th className="border border-slate-300 p-2 text-end">{t('orders.form.table.price') || 'Unit Price'}</th>
                         <th className="border border-slate-300 p-2 text-end">{t('common.total') || 'Total'}</th>
                     </tr>
@@ -636,7 +641,7 @@ export function OrderDetailsPrintTemplate({
                 <tbody>
                     {itemRows.length === 0 ? (
                         <tr>
-                            <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={5}>
+                            <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={showFreeBonus ? 6 : 5}>
                                 {t('common.noData') || 'No data'}
                             </td>
                         </tr>
@@ -645,8 +650,13 @@ export function OrderDetailsPrintTemplate({
                             <td className="border border-slate-300 p-2 font-medium">{item?.productName || '\u00A0'}</td>
                             <td className="border border-slate-300 p-2 text-slate-600">{item?.productSku || '\u00A0'}</td>
                             <td className="border border-slate-300 p-2 text-end">
-                                {item ? `${item.quantity}${(!hideUnit && (item as any).unit) ? ` ${(item as any).unit}` : ''}` : '\u00A0'}
+                                {item ? `${getOrderLinePaidQuantity(item)}${(!hideUnit && (item as any).unit) ? ` ${(item as any).unit}` : ''}` : '\u00A0'}
                             </td>
+                            {showFreeBonus ? (
+                                <td className="border border-slate-300 p-2 text-end">
+                                    {item ? `${getOrderLineFreeBonusQuantity(item)}${(!hideUnit && (item as any).unit) ? ` ${(item as any).unit}` : ''}` : '\u00A0'}
+                                </td>
+                            ) : null}
                             <td className="border border-slate-300 p-2 text-end">{item ? formatCurrency(item.convertedUnitPrice, currency, iqdPreference) : '\u00A0'}</td>
                             <td className="border border-slate-300 p-2 text-end font-semibold">{item ? formatCurrency(item.lineTotal, currency, iqdPreference) : '\u00A0'}</td>
                         </tr>

@@ -10,12 +10,14 @@ import { getPrioritizedPaymentMethod, setPrioritizedPaymentMethod } from '@/lib/
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { buildOrderExchangeRatesSnapshot, convertCurrencyAmountWithLiveRates, getPrimaryExchangeDetails } from '@/lib/orderCurrency'
 import {
+    cn,
     formatCurrency,
     formatLocalDateTimeValue,
     formatLocalDateValue,
     parseLocalDateTimeValue,
     parseLocalDateValue
 } from '@/lib/utils'
+import { getOrderLineFreeBonusQuantity } from '@/lib/orderLineItems'
 import {
     createSalesOrder,
     getPrimaryStorageFromList,
@@ -68,11 +70,12 @@ type FormItem = {
     productSearch: string
     storageId: string
     quantity: string
+    freeBonusQuantity: string
     unitPrice: string
 }
 
 function createEmptyItem(storageId = ''): FormItem {
-    return { productId: '', productSearch: '', storageId, quantity: '1', unitPrice: '' }
+    return { productId: '', productSearch: '', storageId, quantity: '1', freeBonusQuantity: '0', unitPrice: '' }
 }
 
 function roundFormAmount(value: number) {
@@ -99,7 +102,7 @@ export function SalesOrderFormPage({
     const { t } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
-    const { features, hasFeature } = useWorkspace()
+    const { features, hasCapability, hasFeature } = useWorkspace()
     const { permissionKeys } = useWorkspacePermissions()
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
     const demoTutorial = useDemoTutorial()
@@ -141,6 +144,7 @@ export function SalesOrderFormPage({
                     productSearch: product?.name || '',
                     storageId: item.storageId || editingOrder.sourceStorageId || defaultStorageId,
                     quantity: String(item.quantity),
+                    freeBonusQuantity: String(getOrderLineFreeBonusQuantity(item)),
                     unitPrice: String(item.convertedUnitPrice)
                 }
             })
@@ -148,6 +152,7 @@ export function SalesOrderFormPage({
         return [createEmptyItem(defaultStorageId)]
     })
     const requiresApprovalRequest = user?.role === 'staff' && permissionKeys.includes('orders.requireSalesOrderRequest')
+    const canUseFreeBonus = hasCapability('orderFreeBonus')
 
     useEffect(() => {
         if (!editingOrder) return
@@ -173,6 +178,7 @@ export function SalesOrderFormPage({
                 productSearch: product?.name || '',
                 storageId: item.storageId || editingOrder.sourceStorageId || defaultStorageId,
                 quantity: String(item.quantity),
+                freeBonusQuantity: String(getOrderLineFreeBonusQuantity(item)),
                 unitPrice: String(item.convertedUnitPrice)
             }
         }))
@@ -282,14 +288,23 @@ export function SalesOrderFormPage({
                     }
 
                     const quantity = Number(item.quantity)
+                    const freeBonusQuantityValue = Number(item.freeBonusQuantity || 0)
                     const unitPrice = Number(item.unitPrice || 0)
+                    if (!Number.isFinite(freeBonusQuantityValue) || freeBonusQuantityValue < 0) {
+                        throw new Error(t('orders.form.errors.invalidFreeBonus', {
+                            productName: product.name,
+                            defaultValue: `Enter a valid free bonus for ${product.name}.`
+                        }))
+                    }
+                    const freeBonusQuantity = freeBonusQuantityValue
                     return {
-                        id: `${product.id}-${item.storageId}-${quantity}-${unitPrice}`,
+                        id: `${product.id}-${item.storageId}-${quantity}-${freeBonusQuantity}-${unitPrice}`,
                         productId: product.id,
                         storageId: item.storageId,
                         productName: product.name,
                         productSku: product.sku,
                         quantity,
+                        ...(freeBonusQuantity > 0 ? { freeBonusQuantity } : {}),
                         lineTotal: roundFormAmount(quantity * unitPrice),
                         originalCurrency: product.currency,
                         originalUnitPrice: convertCurrencyAmountWithLiveRates(unitPrice, currency, product.currency, liveRates),
@@ -516,14 +531,24 @@ export function SalesOrderFormPage({
                                         {items.map((item, index) => {
                                             const product = products.find((entry) => entry.id === item.productId)
                                             const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))
+                                            const freeBonusQuantity = Math.max(0, Number(item.freeBonusQuantity || 0))
+                                            const inventoryQuantity = (Number(item.quantity) || 0) + (canUseFreeBonus ? freeBonusQuantity : 0)
 
                                             return (
-                                                 <div key={`sales-item-${index}`} className="grid gap-3 rounded-2xl border bg-background p-4 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_40px]">
-                                                     <div
+                                                <div
+                                                    key={`sales-item-${index}`}
+                                                    className={cn(
+                                                        'grid gap-3 rounded-2xl border bg-background p-4',
+                                                        canUseFreeBonus
+                                                            ? 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_110px_140px_40px]'
+                                                            : 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_40px]'
+                                                    )}
+                                                >
+                                                    <div
                                                         className="space-y-2"
                                                         data-tour-id={index === 0 ? 'tutorial-order-product-picker' : undefined}
                                                         data-demo-product-linked={item.productId ? 'true' : 'false'}
-                                                     >
+                                                    >
                                                         <Label>{t('orders.form.selectProduct', { defaultValue: 'Select Product' })}</Label>
                                                         <ProductAutocompleteInput
                                                             value={item.productSearch}
@@ -534,7 +559,7 @@ export function SalesOrderFormPage({
                                                             hasSelection={!!item.productId}
                                                         />
                                                     </div>
-                                                     <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-storage' : undefined}>
+                                                    <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-storage' : undefined}>
                                                         <Label>{t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}</Label>
                                                         <Select value={item.storageId} onValueChange={(value) => updateItem(index, { storageId: value })}>
                                                             <SelectTrigger><SelectValue placeholder={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })} /></SelectTrigger>
@@ -555,25 +580,46 @@ export function SalesOrderFormPage({
                                                                 : t('orders.form.chooseSourceStorageForLine', { defaultValue: 'Choose a source storage for this line.' })}
                                                         </p>
                                                     </div>
-                                                     <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-quantity' : undefined}>
+                                                    <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-quantity' : undefined}>
                                                         <Label>{t('common.quantity', { defaultValue: 'Quantity' })}</Label>
                                                         <div className="flex items-center gap-1">
                                                             <Input type="number" min={isDynamicUnit(product?.unit) ? "0.01" : "1"} step={isDynamicUnit(product?.unit) ? "0.01" : "1"} value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} placeholder={t('common.quantity', { defaultValue: 'Quantity' })} />
                                                             {product?.unit && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${product.unit}`, product.unit)}</span>}
                                                         </div>
                                                     </div>
-                                                     <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-unit-price' : undefined}>
+                                                    {canUseFreeBonus ? (
+                                                        <div className="space-y-2">
+                                                            <Label>{t('orders.form.freeBonus', { defaultValue: 'Free Bonus' })}</Label>
+                                                            <div className="flex items-center gap-1">
+                                                                <Input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    step={isDynamicUnit(product?.unit) ? '0.01' : '1'}
+                                                                    value={item.freeBonusQuantity}
+                                                                    onChange={(event) => updateItem(index, { freeBonusQuantity: event.target.value })}
+                                                                    placeholder={t('orders.form.freeBonus', { defaultValue: 'Free Bonus' })}
+                                                                />
+                                                                {product?.unit && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${product.unit}`, product.unit)}</span>}
+                                                            </div>
+                                                        </div>
+                                                    ) : null}
+                                                    <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-unit-price' : undefined}>
                                                         <Label>{t('common.sellingPrice', { defaultValue: 'Selling Price' })}</Label>
                                                         <Input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updateItem(index, { unitPrice: event.target.value })} placeholder={t('common.sellingPrice', { defaultValue: 'Selling Price' })} />
                                                     </div>
-                                                     <div className="flex items-start justify-end" data-tour-id={index === 0 ? 'tutorial-order-line-actions' : undefined}>
+                                                    <div className="flex items-start justify-end" data-tour-id={index === 0 ? 'tutorial-order-line-actions' : undefined}>
                                                         <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
                                                             <Trash2 className="h-4 w-4" />
                                                         </Button>
                                                     </div>
-                                                    <div className="flex items-center justify-between text-xs text-muted-foreground md:col-span-5">
+                                                    <div className={cn('flex items-center justify-between text-xs text-muted-foreground', canUseFreeBonus ? 'md:col-span-6' : 'md:col-span-5')}>
                                                         <span>{product?.sku ? `SKU: ${product.sku}` : '\u00A0'}</span>
-                                                        <span>{(t('orders.form.table.total', { defaultValue: 'Total' }))}: {formatCurrency(lineTotal, currency, features.iqd_display_preference)}</span>
+                                                        <span>
+                                                            {canUseFreeBonus && freeBonusQuantity > 0
+                                                                ? `${t('orders.form.inventoryQuantity', { defaultValue: 'Inventory Qty' })}: ${inventoryQuantity} - `
+                                                                : ''}
+                                                            {(t('orders.form.table.total', { defaultValue: 'Total' }))}: {formatCurrency(lineTotal, currency, features.iqd_display_preference)}
+                                                        </span>
                                                     </div>
                                                 </div>
                                             )
