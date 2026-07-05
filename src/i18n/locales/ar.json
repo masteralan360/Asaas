@@ -4042,11 +4042,6 @@
   "clinicalAppointmentDateFilters": {
     "issueDate": "تاريخ الإصدار",
     "nextVisitDate": "تاريخ الزيارة القادمة",
-    "all": "الكل",
-    "today": "اليوم",
-    "next7": "الأيام السبعة القادمة",
-    "next30": "الأيام الثلاثون القادمة",
-    "custom": "مخصص",
     "clearNextVisit": "مسح فلتر الزيارة القادمة"
   },
   "clinicalAppointments": {

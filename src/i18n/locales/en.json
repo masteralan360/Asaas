@@ -4209,11 +4209,6 @@
   "clinicalAppointmentDateFilters": {
     "issueDate": "Issue date",
     "nextVisitDate": "Next visit date",
-    "all": "All",
-    "today": "Today",
-    "next7": "Next 7 days",
-    "next30": "Next 30 days",
-    "custom": "Custom",
     "clearNextVisit": "Clear next visit filter"
   },
   "clinicalAppointments": {

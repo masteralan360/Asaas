@@ -66,37 +66,6 @@ const PAYMENT_STATUS_CLASSES = {
 } as const
 
 type ClinicalPaymentStatus = keyof typeof PAYMENT_STATUS_CLASSES
-type NextVisitDateFilterMode = 'all' | 'today' | 'next7' | 'next30' | 'custom'
-type LocalDateRange = { start: string; end: string }
-
-function addCalendarDays(date: Date, days: number) {
-  const next = new Date(date)
-  next.setHours(0, 0, 0, 0)
-  next.setDate(next.getDate() + days)
-  return next
-}
-
-function getNextVisitDateBounds(filter: NextVisitDateFilterMode, customDates: LocalDateRange, today: Date): LocalDateRange {
-  const todayValue = formatLocalDateValue(today)
-
-  if (filter === 'today') {
-    return { start: todayValue, end: todayValue }
-  }
-
-  if (filter === 'next7') {
-    return { start: todayValue, end: formatLocalDateValue(addCalendarDays(today, 7)) }
-  }
-
-  if (filter === 'next30') {
-    return { start: todayValue, end: formatLocalDateValue(addCalendarDays(today, 30)) }
-  }
-
-  if (filter === 'custom') {
-    return customDates
-  }
-
-  return { start: '', end: '' }
-}
 
 function PaymentStatusBadge({ status }: { status: ClinicalPaymentStatus }) {
   const { t } = useTranslation()
@@ -216,94 +185,38 @@ function StatusCell({ status, appointmentId, onStatusChange, disabled }: {
 
 function NextVisitDateFilter({
   value,
-  customDates,
   onValueChange,
-  onCustomDatesChange,
 }: {
-  value: NextVisitDateFilterMode
-  customDates: LocalDateRange
-  onValueChange: (value: NextVisitDateFilterMode) => void
-  onCustomDatesChange: (dates: LocalDateRange | ((prev: LocalDateRange) => LocalDateRange)) => void
+  value: string
+  onValueChange: (value: string) => void
 }) {
   const { t } = useTranslation()
-  const options: Array<{ value: NextVisitDateFilterMode; label: string }> = [
-    { value: 'all', label: t('clinicalAppointmentDateFilters.all', { defaultValue: 'All' }) },
-    { value: 'today', label: t('clinicalAppointmentDateFilters.today', { defaultValue: 'Today' }) },
-    { value: 'next7', label: t('clinicalAppointmentDateFilters.next7', { defaultValue: 'Next 7 days' }) },
-    { value: 'next30', label: t('clinicalAppointmentDateFilters.next30', { defaultValue: 'Next 30 days' }) },
-    { value: 'custom', label: t('clinicalAppointmentDateFilters.custom', { defaultValue: 'Custom' }) },
-  ]
-  const hasCustomDates = Boolean(customDates.start || customDates.end)
+  const label = t('clinicalAppointmentDateFilters.nextVisitDate', { defaultValue: 'Next visit date' })
 
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-emerald-200/70 bg-emerald-50/50 p-2 shadow-sm dark:border-emerald-900/50 dark:bg-emerald-950/20">
       <div className="flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
         <CalendarClock className="h-4 w-4" />
-        <span>{t('clinicalAppointmentDateFilters.nextVisitDate', { defaultValue: 'Next visit date' })}</span>
+        <span>{label}</span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1">
-        {options.map((option) => (
-          <Button
-            key={option.value}
-            type="button"
-            variant={value === option.value ? 'default' : 'ghost'}
-            size="sm"
-            allowViewer={true}
-            onClick={() => onValueChange(option.value)}
-            className="h-8 px-3 text-xs"
-          >
-            {option.label}
-          </Button>
-        ))}
+      <div className="w-44">
+        <DateTimePicker
+          mode="date"
+          date={parseLocalDateValue(value)}
+          setDate={(date) => onValueChange(date ? formatLocalDateValue(date) : '')}
+          buttonClassName="h-8 rounded-lg bg-background/80 text-xs"
+          placeholder={label}
+        />
       </div>
 
-      {value === 'custom' && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-background/70 p-1 px-3">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase text-muted-foreground">
-              {t('performance.filters.start')}
-            </span>
-            <DateTimePicker
-              mode="date"
-              date={parseLocalDateValue(customDates.start)}
-              setDate={(date) => onCustomDatesChange((prev) => ({
-                ...prev,
-                start: date ? formatLocalDateValue(date) : '',
-              }))}
-              buttonClassName="h-8 w-36 rounded-lg bg-background/80 text-xs font-mono"
-              placeholder="dd/mm/yy"
-            />
-          </div>
-          <div className="h-4 w-px bg-border/70" />
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase text-muted-foreground">
-              {t('performance.filters.end')}
-            </span>
-            <DateTimePicker
-              mode="date"
-              date={parseLocalDateValue(customDates.end)}
-              setDate={(date) => onCustomDatesChange((prev) => ({
-                ...prev,
-                end: date ? formatLocalDateValue(date) : '',
-              }))}
-              buttonClassName="h-8 w-36 rounded-lg bg-background/80 text-xs font-mono"
-              placeholder="dd/mm/yy"
-            />
-          </div>
-        </div>
-      )}
-
-      {(value !== 'all' || hasCustomDates) && (
+      {value && (
         <Button
           type="button"
           variant="ghost"
           size="icon"
           allowViewer={true}
-          onClick={() => {
-            onValueChange('all')
-            onCustomDatesChange({ start: '', end: '' })
-          }}
+          onClick={() => onValueChange('')}
           className="h-8 w-8 text-muted-foreground hover:text-foreground"
           aria-label={t('clinicalAppointmentDateFilters.clearNextVisit', { defaultValue: 'Clear next visit filter' })}
           title={t('clinicalAppointmentDateFilters.clearNextVisit', { defaultValue: 'Clear next visit filter' })}
@@ -365,15 +278,13 @@ function Beauty2AppointmentList({ workspaceId, navigate }: { workspaceId: string
   const { dateRange, customDates } = useDateRange()
   const appointments = useClinicalAppointments(workspaceId)
   const [searchQuery, setSearchQuery] = useState('')
-  const [nextVisitDateFilter, setNextVisitDateFilter] = useState<NextVisitDateFilterMode>('all')
-  const [nextVisitCustomDates, setNextVisitCustomDates] = useState<LocalDateRange>({ start: '', end: '' })
+  const [nextVisitDateFilter, setNextVisitDateFilter] = useState('')
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
   const filtered = useMemo(() => {
     const now = new Date()
     const todayValue = formatLocalDateValue(now)
-    const nextVisitBounds = getNextVisitDateBounds(nextVisitDateFilter, nextVisitCustomDates, now)
     const query = searchQuery.trim().toLowerCase()
     return (appointments || []).filter((appointment) => {
       const issueDate = appointment.issueDate || appointment.appointmentDate
@@ -397,11 +308,8 @@ function Beauty2AppointmentList({ workspaceId, navigate }: { workspaceId: string
         if (customDates.start && issueDate < customDates.start) return false
         if (customDates.end && issueDate > customDates.end) return false
       }
-      if (nextVisitDateFilter !== 'all') {
-        const nextVisitDate = appointment.nextVisitDate
-        if (!nextVisitDate) return false
-        if (nextVisitBounds.start && nextVisitDate < nextVisitBounds.start) return false
-        if (nextVisitBounds.end && nextVisitDate > nextVisitBounds.end) return false
+      if (nextVisitDateFilter && appointment.nextVisitDate !== nextVisitDateFilter) {
+        return false
       }
       return true
     })
@@ -410,7 +318,6 @@ function Beauty2AppointmentList({ workspaceId, navigate }: { workspaceId: string
     customDates.end,
     customDates.start,
     dateRange,
-    nextVisitCustomDates,
     nextVisitDateFilter,
     searchQuery,
   ])
@@ -485,9 +392,7 @@ function Beauty2AppointmentList({ workspaceId, navigate }: { workspaceId: string
         </div>
         <NextVisitDateFilter
           value={nextVisitDateFilter}
-          customDates={nextVisitCustomDates}
           onValueChange={setNextVisitDateFilter}
-          onCustomDatesChange={setNextVisitCustomDates}
         />
       </div>
 

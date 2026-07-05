@@ -4046,11 +4046,6 @@
   "clinicalAppointmentDateFilters": {
     "issueDate": "بەرواری دەرچوون",
     "nextVisitDate": "بەرواری گەڕانەوە",
-    "all": "هەموو",
-    "today": "ئەمڕۆ",
-    "next7": "7 ڕۆژی داهاتوو",
-    "next30": "30 ڕۆژی داهاتوو",
-    "custom": "تایبەت",
     "clearNextVisit": "پاککردنەوەی فلتەری گەڕانەوە"
   },
   "clinicalAppointments": {
