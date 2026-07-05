@@ -451,7 +451,42 @@ async function getLimitedWorkspaceIds(adminClient: ReturnType<typeof createAdmin
         throw error
     }
 
-    return (data ?? []).map((row) => String(row.workspace_id))
+    const workspaceIds = (data ?? []).map((row) => String(row.workspace_id))
+    if (workspaceIds.length === 0) {
+        return []
+    }
+
+    const { data: branchRows, error: branchError } = await adminClient
+        .from('workspace_branches')
+        .select('branch_workspace_id, source_workspace_id')
+        .in('branch_workspace_id', workspaceIds)
+
+    if (branchError) {
+        throw branchError
+    }
+
+    const sourceByBranchId = new Map(
+        (branchRows ?? []).map((row) => [String(row.branch_workspace_id), String(row.source_workspace_id)])
+    )
+
+    return Array.from(new Set(workspaceIds.map((workspaceId) => sourceByBranchId.get(workspaceId) ?? workspaceId)))
+}
+
+async function resolveUsageOwnerWorkspaceId(
+    adminClient: ReturnType<typeof createAdminClient>,
+    workspaceId: string
+) {
+    const { data, error } = await adminClient
+        .from('workspace_branches')
+        .select('source_workspace_id')
+        .eq('branch_workspace_id', workspaceId)
+        .maybeSingle()
+
+    if (error) {
+        throw error
+    }
+
+    return data?.source_workspace_id ? String(data.source_workspace_id) : workspaceId
 }
 
 async function syncWorkspaceUsagePeriod(
@@ -601,6 +636,14 @@ async function updateWorkspaceUsage(
         return errorResponse('Workspace not found', 404)
     }
 
+    let usageWorkspaceId = workspaceId
+    try {
+        usageWorkspaceId = await resolveUsageOwnerWorkspaceId(adminClient, workspaceId)
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to resolve usage workspace'
+        return errorResponse(message, 500)
+    }
+
     const storageUnits = normalizeNullableBigint(body.storageUnits, 'Storage usage')
     const dataTransferBytes = normalizeNullableBigint(body.dataTransferBytes, 'Monthly data transfer')
     const storageUnitLimit = normalizeNullableBigint(body.storageUnitLimit, 'Storage limit')
@@ -630,7 +673,7 @@ async function updateWorkspaceUsage(
         const { error: usageDeleteError } = await adminClient
             .from('workspace_usage')
             .delete()
-            .eq('workspace_id', workspaceId)
+            .eq('workspace_id', usageWorkspaceId)
 
         if (usageDeleteError) {
             return errorResponse(usageDeleteError.message, 500)
@@ -639,7 +682,7 @@ async function updateWorkspaceUsage(
         const { error } = await adminClient
             .from('workspace_usage_limits')
             .delete()
-            .eq('workspace_id', workspaceId)
+            .eq('workspace_id', usageWorkspaceId)
 
         if (error) {
             return errorResponse(error.message, 500)
@@ -648,7 +691,7 @@ async function updateWorkspaceUsage(
         const { error: limitsError } = await adminClient
             .from('workspace_usage_limits')
             .upsert({
-                workspace_id: workspaceId,
+                workspace_id: usageWorkspaceId,
                 storage_unit_limit: storageUnitLimit.value,
                 monthly_data_transfer_limit_bytes: monthlyDataTransferLimitBytes.value,
                 notes
@@ -661,7 +704,7 @@ async function updateWorkspaceUsage(
         const { error: usageError } = await adminClient
             .from('workspace_usage')
             .upsert({
-                workspace_id: workspaceId,
+                workspace_id: usageWorkspaceId,
                 storage_units: storageUnits.value,
                 data_transfer_bytes: dataTransferBytes.value,
                 transfer_period_start: periodStart.value,
@@ -682,7 +725,17 @@ async function refreshWorkspaceUsage(
     adminClient: ReturnType<typeof createAdminClient>,
     body: RefreshWorkspaceUsageRequest
 ) {
-    const workspaceId = body.workspaceId?.trim() || null
+    const requestedWorkspaceId = body.workspaceId?.trim() || null
+    let workspaceId = requestedWorkspaceId
+
+    if (requestedWorkspaceId) {
+        try {
+            workspaceId = await resolveUsageOwnerWorkspaceId(adminClient, requestedWorkspaceId)
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to resolve usage workspace'
+            return errorResponse(message, 500)
+        }
+    }
 
     const { error } = await adminClient.rpc('refresh_workspace_storage_usage', {
         p_workspace_id: workspaceId

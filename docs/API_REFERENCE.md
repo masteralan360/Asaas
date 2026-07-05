@@ -54,13 +54,13 @@ Supported actions:
   - body: `{ action: 'updateWorkspaceSubscription', passkey, workspaceId, newExpiry }`
 - `listWorkspaceUsage`
   - body: `{ action: 'listWorkspaceUsage', passkey }`
-  - returns: current workspace usage counters only for workspaces with saved usage limits; a missing limits row means unlimited usage
+  - returns: current usage counters only for source usage owners with saved usage limits; branches share the source workspace usage row
 - `updateWorkspaceUsage`
   - body: `{ action: 'updateWorkspaceUsage', passkey, workspaceId, storageUnits, dataTransferBytes, transferPeriodStart, storageUnitLimit, monthlyDataTransferLimitBytes, notes }`
-  - use: adjust current workspace usage counters and upsert/delete optional limits; reaching the monthly data transfer limit locks the workspace, while reaching the storage unit limit does not
+  - use: adjust current workspace usage counters and upsert/delete optional limits; branch workspace ids resolve to their source workspace; reaching the monthly data transfer limit locks the workspace family, while reaching the storage unit limit does not
 - `refreshWorkspaceUsage`
   - body: `{ action: 'refreshWorkspaceUsage', passkey, workspaceId? }`
-  - use: recalculate counted workspace storage units from configured parent/business tables
+  - use: recalculate counted workspace storage units from configured parent/business tables; branch rows are aggregated into the source workspace usage row
 
 ## Kept SQL RPCs
 
