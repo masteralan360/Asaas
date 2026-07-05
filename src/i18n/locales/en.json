@@ -4206,6 +4206,16 @@
       "warning": "This action cannot be undone. The original transaction will be marked as reversed and a new reversal transaction will be created."
     }
   },
+  "clinicalAppointmentDateFilters": {
+    "issueDate": "Issue date",
+    "nextVisitDate": "Next visit date",
+    "all": "All",
+    "today": "Today",
+    "next7": "Next 7 days",
+    "next30": "Next 30 days",
+    "custom": "Custom",
+    "clearNextVisit": "Clear next visit filter"
+  },
   "clinicalAppointments": {
     "title": "Clinical Appointments Registry",
     "subtitle": "Schedule, manage, and track patient appointments with visit records and status updates.",

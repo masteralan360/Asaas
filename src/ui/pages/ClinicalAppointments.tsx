@@ -20,7 +20,7 @@ import type { ClinicalAppointment, ClinicalAppointmentStatus, ClinicalAppointmen
 import { useClinicalPresetsByCategory, useClinicalRegistryType } from '@/local-db/clinicalPresets'
 import { isBeautyClinicalRegistryType } from '@/local-db/clinicalRegistryPreset'
 import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, Label, Card, CardContent, CardHeader, CardTitle, DateTimePicker, SettlementDialog, useToast, DeleteConfirmationModal, Dialog, DialogContent } from '@/ui/components'
-import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit, Check, ChevronDown, LayoutGrid, List, HandCoins, UserPlus, Phone } from 'lucide-react'
+import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit, Check, ChevronDown, LayoutGrid, List, HandCoins, UserPlus, Phone, X } from 'lucide-react'
 import { generateId, formatCurrency, formatLocalDateValue, formatNumberWithCommas, formatTime, formatNumericInput, parseFormattedNumber, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
@@ -66,6 +66,37 @@ const PAYMENT_STATUS_CLASSES = {
 } as const
 
 type ClinicalPaymentStatus = keyof typeof PAYMENT_STATUS_CLASSES
+type NextVisitDateFilterMode = 'all' | 'today' | 'next7' | 'next30' | 'custom'
+type LocalDateRange = { start: string; end: string }
+
+function addCalendarDays(date: Date, days: number) {
+  const next = new Date(date)
+  next.setHours(0, 0, 0, 0)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
+function getNextVisitDateBounds(filter: NextVisitDateFilterMode, customDates: LocalDateRange, today: Date): LocalDateRange {
+  const todayValue = formatLocalDateValue(today)
+
+  if (filter === 'today') {
+    return { start: todayValue, end: todayValue }
+  }
+
+  if (filter === 'next7') {
+    return { start: todayValue, end: formatLocalDateValue(addCalendarDays(today, 7)) }
+  }
+
+  if (filter === 'next30') {
+    return { start: todayValue, end: formatLocalDateValue(addCalendarDays(today, 30)) }
+  }
+
+  if (filter === 'custom') {
+    return customDates
+  }
+
+  return { start: '', end: '' }
+}
 
 function PaymentStatusBadge({ status }: { status: ClinicalPaymentStatus }) {
   const { t } = useTranslation()
@@ -183,6 +214,107 @@ function StatusCell({ status, appointmentId, onStatusChange, disabled }: {
   )
 }
 
+function NextVisitDateFilter({
+  value,
+  customDates,
+  onValueChange,
+  onCustomDatesChange,
+}: {
+  value: NextVisitDateFilterMode
+  customDates: LocalDateRange
+  onValueChange: (value: NextVisitDateFilterMode) => void
+  onCustomDatesChange: (dates: LocalDateRange | ((prev: LocalDateRange) => LocalDateRange)) => void
+}) {
+  const { t } = useTranslation()
+  const options: Array<{ value: NextVisitDateFilterMode; label: string }> = [
+    { value: 'all', label: t('clinicalAppointmentDateFilters.all', { defaultValue: 'All' }) },
+    { value: 'today', label: t('clinicalAppointmentDateFilters.today', { defaultValue: 'Today' }) },
+    { value: 'next7', label: t('clinicalAppointmentDateFilters.next7', { defaultValue: 'Next 7 days' }) },
+    { value: 'next30', label: t('clinicalAppointmentDateFilters.next30', { defaultValue: 'Next 30 days' }) },
+    { value: 'custom', label: t('clinicalAppointmentDateFilters.custom', { defaultValue: 'Custom' }) },
+  ]
+  const hasCustomDates = Boolean(customDates.start || customDates.end)
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-emerald-200/70 bg-emerald-50/50 p-2 shadow-sm dark:border-emerald-900/50 dark:bg-emerald-950/20">
+      <div className="flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+        <CalendarClock className="h-4 w-4" />
+        <span>{t('clinicalAppointmentDateFilters.nextVisitDate', { defaultValue: 'Next visit date' })}</span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1">
+        {options.map((option) => (
+          <Button
+            key={option.value}
+            type="button"
+            variant={value === option.value ? 'default' : 'ghost'}
+            size="sm"
+            allowViewer={true}
+            onClick={() => onValueChange(option.value)}
+            className="h-8 px-3 text-xs"
+          >
+            {option.label}
+          </Button>
+        ))}
+      </div>
+
+      {value === 'custom' && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-background/70 p-1 px-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase text-muted-foreground">
+              {t('performance.filters.start')}
+            </span>
+            <DateTimePicker
+              mode="date"
+              date={parseLocalDateValue(customDates.start)}
+              setDate={(date) => onCustomDatesChange((prev) => ({
+                ...prev,
+                start: date ? formatLocalDateValue(date) : '',
+              }))}
+              buttonClassName="h-8 w-36 rounded-lg bg-background/80 text-xs font-mono"
+              placeholder="dd/mm/yy"
+            />
+          </div>
+          <div className="h-4 w-px bg-border/70" />
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase text-muted-foreground">
+              {t('performance.filters.end')}
+            </span>
+            <DateTimePicker
+              mode="date"
+              date={parseLocalDateValue(customDates.end)}
+              setDate={(date) => onCustomDatesChange((prev) => ({
+                ...prev,
+                end: date ? formatLocalDateValue(date) : '',
+              }))}
+              buttonClassName="h-8 w-36 rounded-lg bg-background/80 text-xs font-mono"
+              placeholder="dd/mm/yy"
+            />
+          </div>
+        </div>
+      )}
+
+      {(value !== 'all' || hasCustomDates) && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          allowViewer={true}
+          onClick={() => {
+            onValueChange('all')
+            onCustomDatesChange({ start: '', end: '' })
+          }}
+          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          aria-label={t('clinicalAppointmentDateFilters.clearNextVisit', { defaultValue: 'Clear next visit filter' })}
+          title={t('clinicalAppointmentDateFilters.clearNextVisit', { defaultValue: 'Clear next visit filter' })}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
+  )
+}
+
 export function ClinicalAppointments() {
   const { user } = useAuth()
   const [, navigate] = useLocation()
@@ -233,11 +365,15 @@ function Beauty2AppointmentList({ workspaceId, navigate }: { workspaceId: string
   const { dateRange, customDates } = useDateRange()
   const appointments = useClinicalAppointments(workspaceId)
   const [searchQuery, setSearchQuery] = useState('')
+  const [nextVisitDateFilter, setNextVisitDateFilter] = useState<NextVisitDateFilterMode>('all')
+  const [nextVisitCustomDates, setNextVisitCustomDates] = useState<LocalDateRange>({ start: '', end: '' })
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
   const filtered = useMemo(() => {
     const now = new Date()
+    const todayValue = formatLocalDateValue(now)
+    const nextVisitBounds = getNextVisitDateBounds(nextVisitDateFilter, nextVisitCustomDates, now)
     const query = searchQuery.trim().toLowerCase()
     return (appointments || []).filter((appointment) => {
       const issueDate = appointment.issueDate || appointment.appointmentDate
@@ -251,7 +387,7 @@ function Beauty2AppointmentList({ workspaceId, navigate }: { workspaceId: string
         return false
       }
       if (dateRange === 'today') {
-        return issueDate === now.toISOString().slice(0, 10)
+        return issueDate === todayValue
       }
       if (dateRange === 'month') {
         const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
@@ -261,9 +397,23 @@ function Beauty2AppointmentList({ workspaceId, navigate }: { workspaceId: string
         if (customDates.start && issueDate < customDates.start) return false
         if (customDates.end && issueDate > customDates.end) return false
       }
+      if (nextVisitDateFilter !== 'all') {
+        const nextVisitDate = appointment.nextVisitDate
+        if (!nextVisitDate) return false
+        if (nextVisitBounds.start && nextVisitDate < nextVisitBounds.start) return false
+        if (nextVisitBounds.end && nextVisitDate > nextVisitBounds.end) return false
+      }
       return true
     })
-  }, [appointments, customDates.end, customDates.start, dateRange, searchQuery])
+  }, [
+    appointments,
+    customDates.end,
+    customDates.start,
+    dateRange,
+    nextVisitCustomDates,
+    nextVisitDateFilter,
+    searchQuery,
+  ])
 
   const handleDelete = useCallback(async () => {
     if (!deleteConfirmId) return
@@ -315,17 +465,30 @@ function Beauty2AppointmentList({ workspaceId, navigate }: { workspaceId: string
         </Button>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder={t('clinicalAppointments.searchPlaceholder', { defaultValue: 'Search appointments...' })}
-            className="pl-10"
-          />
+      <div className="space-y-3">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+          <div className="relative max-w-sm flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={t('clinicalAppointments.searchPlaceholder', { defaultValue: 'Search appointments...' })}
+              className="pl-10"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {t('clinicalAppointmentDateFilters.issueDate', { defaultValue: 'Issue date' })}
+            </span>
+            <DateRangeFilters />
+          </div>
         </div>
-        <DateRangeFilters />
+        <NextVisitDateFilter
+          value={nextVisitDateFilter}
+          customDates={nextVisitCustomDates}
+          onValueChange={setNextVisitDateFilter}
+          onCustomDatesChange={setNextVisitCustomDates}
+        />
       </div>
 
       <div className="grid gap-4 md:hidden">
