@@ -6,7 +6,9 @@ import { useWorkspace, type ModuleFeatureKey } from '@/workspace/WorkspaceContex
 import { useWorkspacePermissions, type WorkspacePermissionKey } from '@/permissions'
 import type { PlanCapabilityKey } from '@/plans/workspacePlans'
 import { BiometricLock } from '@/ui/components'
+import { OfflineLeaseBlocker } from '@/ui/components/OfflineLeaseBlocker'
 import { isDemoWorkspace, parseDemoCode } from '@/demo'
+import { useOfflineLeaseStatus } from '@/hooks/useOfflineLeaseStatus'
 
 interface ProtectedRouteProps {
     children: ReactNode
@@ -31,12 +33,13 @@ export function ProtectedRoute({
     requiredPermission,
     requiredAnyPermission
 }: ProtectedRouteProps) {
-    const { isAuthenticated, isLoading, hasRole, isKicked, user } = useAuth()
+    const { isAuthenticated, isLoading, hasRole, isKicked, user, signOut } = useAuth()
     const { hasFeature, hasCapability, features, isLoading: featuresLoading, isLocked } = useWorkspace()
     const { hasPermission, isLoading: permissionsLoading } = useWorkspacePermissions()
     const [location] = useLocation()
+    const offlineLeaseStatus = useOfflineLeaseStatus(user)
 
-    if (isLoading || featuresLoading || ((requiredPermission || requiredAnyPermission?.length) && permissionsLoading)) {
+    if (isLoading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-background">
                 <div className="flex flex-col items-center gap-4">
@@ -49,6 +52,21 @@ export function ProtectedRoute({
 
     if (!isAuthenticated) {
         return <Redirect to={`${redirectTo}?redirect=${encodeURIComponent(location)}`} />
+    }
+
+    if (user && offlineLeaseStatus.blocked) {
+        return <OfflineLeaseBlocker user={user} status={offlineLeaseStatus} onSignOut={signOut} />
+    }
+
+    if (featuresLoading || ((requiredPermission || requiredAnyPermission?.length) && permissionsLoading)) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-background">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                    <p className="text-muted-foreground">Loading...</p>
+                </div>
+            </div>
+        )
     }
 
     // Redirect kicked users to workspace registration (unless this route allows kicked users)

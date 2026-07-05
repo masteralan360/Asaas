@@ -6,10 +6,14 @@ const testState = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/network', () => ({
+    getActiveBusinessUserId: () => null,
     getActiveBusinessWorkspaceId: () => testState.activeWorkspaceId
 }))
 
 vi.mock('@/workspace/workspaceMode', () => ({
+    getWorkspaceDataMode: (workspaceId?: string | null) => (
+        workspaceId && testState.localWorkspaceIds.has(workspaceId) ? 'local' : 'cloud'
+    ),
     isLocalWorkspaceMode: (workspaceId?: string | null) => Boolean(workspaceId && testState.localWorkspaceIds.has(workspaceId))
 }))
 

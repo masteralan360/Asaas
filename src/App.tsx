@@ -940,7 +940,9 @@ function App() {
 
                       {/* Locked Workspace Route - no layout, standalone page */}
                       <Route path="/locked-workspace">
-                        <LockedWorkspace />
+                        <ProtectedRoute>
+                          <LockedWorkspace />
+                        </ProtectedRoute>
                       </Route>
 
                       {/* Connection Configuration Route */}

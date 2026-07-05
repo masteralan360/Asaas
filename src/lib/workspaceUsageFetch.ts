@@ -1,5 +1,6 @@
-import { getActiveBusinessWorkspaceId } from '@/lib/network'
-import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
+import { getActiveBusinessUserId, getActiveBusinessWorkspaceId } from '@/lib/network'
+import { isOfflineLeaseRequired, markSupabaseReachableFromResponse } from '@/lib/offlineLease'
+import { getWorkspaceDataMode, isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 const WORKSPACE_TRANSFER_LIMIT_MESSAGE = 'Workspace monthly data transfer limit exceeded'
 const WORKSPACE_USAGE_UPDATED_EVENT = 'workspace-usage-updated'
@@ -153,6 +154,20 @@ function getWorkspaceIdFromJwt(authHeader: string | null) {
     }
 }
 
+function getUserIdFromJwt(authHeader: string | null) {
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : ''
+    const payloadSegment = token.split('.')[1]
+    if (!payloadSegment) return null
+
+    try {
+        const payload = JSON.parse(decodeBase64Url(payloadSegment))
+        const userId = readPath(payload, ['sub'])
+        return typeof userId === 'string' && isUuid(userId) ? userId : null
+    } catch {
+        return null
+    }
+}
+
 function resolveWorkspaceId(url: URL, tableName: string, authHeader: string | null) {
     const activeWorkspaceId = getActiveBusinessWorkspaceId()
     const authenticatedWorkspaceId = isUuid(activeWorkspaceId)
@@ -165,6 +180,47 @@ function resolveWorkspaceId(url: URL, tableName: string, authHeader: string | nu
     }
 
     return urlWorkspaceIds.length === 1 ? urlWorkspaceIds[0] : null
+}
+
+function isSupabaseUrl(url: URL, supabaseUrl: string) {
+    try {
+        const baseUrl = new URL(supabaseUrl)
+        const basePath = baseUrl.pathname.replace(/\/+$/, '')
+        return url.origin === baseUrl.origin && url.pathname.startsWith(basePath || '/')
+    } catch {
+        return false
+    }
+}
+
+function refreshOfflineLeaseFromFetch(
+    input: RequestInfo | URL,
+    init: RequestInit | undefined,
+    response: Response,
+    supabaseUrl: string
+) {
+    if (!response.ok) return
+
+    const url = getRequestUrl(input)
+    if (!url || !isSupabaseUrl(url, supabaseUrl)) return
+
+    const headers = getRequestHeaders(input, init)
+    const authHeader = headers.get('Authorization')
+    const activeUserId = getActiveBusinessUserId()
+    const activeWorkspaceId = getActiveBusinessWorkspaceId()
+    const userId = isUuid(activeUserId) ? activeUserId : getUserIdFromJwt(authHeader)
+    const workspaceId = isUuid(activeWorkspaceId) ? activeWorkspaceId : getWorkspaceIdFromJwt(authHeader)
+    if (!userId || !workspaceId) return
+
+    const dataMode = getWorkspaceDataMode(workspaceId)
+    if (!isOfflineLeaseRequired(dataMode)) return
+
+    markSupabaseReachableFromResponse({
+        response,
+        userId,
+        workspaceId,
+        dataMode,
+        source: `supabase-fetch:${getRequestMethod(input, init)}`
+    })
 }
 
 function shouldCountTableFetch(
@@ -268,6 +324,8 @@ export function createWorkspaceUsageFetch(options: WorkspaceUsageFetchOptions): 
 
     return async (input, init) => {
         const response = await normalizedOptions.fetchImpl(input, init)
+        refreshOfflineLeaseFromFetch(input, init, response, normalizedOptions.supabaseUrl)
+
         const countContext = shouldCountTableFetch(input, init, response, normalizedOptions.supabaseUrl)
         if (!countContext) {
             return response

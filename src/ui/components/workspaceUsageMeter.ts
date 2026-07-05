@@ -82,7 +82,7 @@ function buildWorkspaceUsageMeter(status: WorkspaceUsageStatus | null, t: TFunct
     const segments: WorkspaceUsageMeterSegment[] = rawSegments.map((segment) => ({
         ...segment,
         widthPercent: totalSegmentPercent > 0
-            ? overallPercent * (segment.percent / totalSegmentPercent)
+            ? (segment.percent / totalSegmentPercent) * 100
             : 0
     }))
 

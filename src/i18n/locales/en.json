@@ -15,6 +15,16 @@
     "indicatorShort": "{{count}}d left",
     "indicatorTooltip": "Subscription expires in {{count}} days on {{date}}"
   },
+  "offlineLease": {
+    "title": "Connect to the internet to continue",
+    "reasons": {
+      "expired": "This device has been offline for more than 10 days.",
+      "missing": "This device needs one successful online session before offline use can continue.",
+      "clockRollback": "Check the device date and time, then reconnect to the internet."
+    },
+    "retry": "Try again",
+    "checking": "Checking..."
+  },
   "notifications": {
     "tabs": {
       "all": "All",

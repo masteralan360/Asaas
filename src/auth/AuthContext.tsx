@@ -14,6 +14,7 @@ import {
     writeWorkspaceModeSnapshot
 } from '@/workspace/workspaceMode'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
+import { markSupabaseReachableFromAccessToken } from '@/lib/offlineLease'
 import { db } from '@/local-db/database'
 import { hydrateLocalModeCacheFromSqlite, readLocalProfileWorkspaceState } from '@/local-db/localModeSqlite'
 import { runDailyBackupIfNeeded, runR2BackupIfNeeded } from '@/local-db/sqliteBackup'
@@ -524,6 +525,16 @@ function canUseRecoveryBridge(error?: unknown) {
     return isRecoveryEligibleError(error)
 }
 
+function refreshOfflineLeaseFromSession(user: AuthUser, session: Session | null | undefined, source: string) {
+    markSupabaseReachableFromAccessToken({
+        userId: user.id,
+        workspaceId: user.workspaceId,
+        dataMode: user.workspaceMode,
+        accessToken: session?.access_token,
+        source
+    })
+}
+
 
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -605,6 +616,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (currentSession?.user?.id === parsedUser.id) {
                 setUser({ ...effectiveUser })
                 saveRecovery(effectiveUser)
+                refreshOfflineLeaseFromSession(effectiveUser, currentSession, 'auth-state-change')
             }
 
             if (!isMounted || taskId !== authStateTaskRef.current) return
@@ -637,6 +649,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         const effectiveUser = await restoreActiveLocalAccount(enriched)
                         setUser(effectiveUser)
                         saveRecovery(effectiveUser)
+                        refreshOfflineLeaseFromSession(effectiveUser, session, 'auth-initial-session')
                     }
                 } else {
                     const recovered = getRecoveredUser()
@@ -693,10 +706,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         console.log('[Auth] refreshSession succeeded ✓')
                         setSession(data.session)
                         const parsedUser = parseUserFromSupabase(data.session.user)
+                        const refreshFallbackSession = data.session
                         const enriched = await enrichUser(parsedUser)
                         const effectiveUser = await restoreActiveLocalAccount(enriched)
                         setUser(effectiveUser)
                         saveRecovery(effectiveUser)
+                        refreshOfflineLeaseFromSession(effectiveUser, refreshFallbackSession, 'auth-refresh-fallback')
                         return // Success — skip recovery bridge
                     }
                 } catch (refreshErr) {
@@ -754,6 +769,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     { timeoutMs: 5000, platform: 'all' }
                 ) as any
 
+                let verifiedSession = session
+
+                if (!error && verifiedSession && userRef.current) {
+                    refreshOfflineLeaseFromSession(userRef.current, verifiedSession, 'auth-wake-check')
+                }
+
                 if (error || !session) {
                     console.log('[Auth] Session invalid after wake, attempting refresh...')
                     const { data: refreshData, error: refreshError } = await runSupabaseAction(
@@ -761,6 +782,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         () => supabase.auth.refreshSession(),
                         { timeoutMs: 5000, platform: 'all' }
                     ) as any
+
+                    if (!refreshError && refreshData.session) {
+                        verifiedSession = refreshData.session
+                        if (userRef.current) {
+                            refreshOfflineLeaseFromSession(userRef.current, verifiedSession, 'auth-wake-refresh')
+                        }
+                    }
 
                     if (refreshError || !refreshData.session) {
                         console.error('[Auth] Session refresh failed — signing out gracefully.')
@@ -805,13 +833,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // If token expires in less than 2 minutes, proactively refresh
             if (timeUntilExpiry < 2 * 60 * 1000 && timeUntilExpiry > 0) {
                 console.log(`[Auth] Token expires in ${Math.round(timeUntilExpiry / 1000)}s — proactive refresh`)
-                const { error } = await runSupabaseAction(
+                const { data, error } = await runSupabaseAction(
                     'auth.proactiveRefresh',
                     () => supabase.auth.refreshSession(),
                     { timeoutMs: 5000, platform: 'all' }
                 ) as any
                 if (error) {
                     console.error('[Auth] Proactive refresh failed:', error)
+                } else if (data?.session && userRef.current) {
+                    refreshOfflineLeaseFromSession(userRef.current, data.session, 'auth-proactive-refresh')
                 }
             }
         }, 5 * 60 * 1000) // every 5 minutes
@@ -842,6 +872,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ) as any
             if (!error && data?.user) {
                 const enriched = await enrichUser(parseUserFromSupabase(data.user))
+                refreshOfflineLeaseFromSession(enriched, data.session, 'auth-sign-in')
                 if (enriched.workspaceMode === 'local' && enriched.workspaceId) {
                     await persistAuthUserLocally(enriched)
                     try {
@@ -1086,6 +1117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const effectiveUser = await restoreActiveLocalAccount(enriched)
             setUser(effectiveUser)
             saveRecovery(effectiveUser)
+            refreshOfflineLeaseFromSession(effectiveUser, session, 'auth-refresh-user')
         }
     }
 

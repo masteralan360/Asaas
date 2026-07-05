@@ -47,8 +47,9 @@ function getSegmentProgressColor(segment: WorkspaceUsageMeterSegment) {
 function buildCircleProgressBackground(usageMeter: WorkspaceUsageMeter) {
     let cursor = 0
     const parts = usageMeter.segments.flatMap((segment) => {
+        const absoluteWidth = (Math.min(100, Math.max(0, usageMeter.percent)) * segment.widthPercent) / 100
         const start = cursor
-        const end = Math.min(100, cursor + segment.widthPercent)
+        const end = Math.min(100, cursor + absoluteWidth)
         cursor = end
 
         if (end <= start) return []
