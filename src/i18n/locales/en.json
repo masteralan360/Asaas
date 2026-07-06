@@ -3232,9 +3232,38 @@
     "subtitle": "Select which features to enable for your workspace. You can change these settings later.",
     "workspaceName": "Workspace Name",
     "uploadLogo": "Upload Logo",
+    "logoAlt": "Workspace logo",
     "logoNote": "Images are stored locally on this device",
+    "fallbackWorkspaceName": "My Workspace",
     "continue": "Continue to Dashboard",
     "note": "Products and Sales History are always enabled. You can modify these settings at any time from the Settings page.",
+    "errors": {
+      "unknown": "Unknown error",
+      "saveFailed": "Failed to save configuration: {{message}}"
+    },
+    "mode": {
+      "title": "Workspace Mode",
+      "description": "Choose how this workspace stores business data. This choice is permanent after setup.",
+      "cloud": "Cloud Mode",
+      "local": "Local Mode",
+      "hybrid": "Hybrid Mode",
+      "cloudHint": "Cloud Mode keeps business data in the cloud and uses the existing sync flow.",
+      "localHint": "Local Mode keeps business data on the device and does not use cloud business-data sync.",
+      "hybridHint": "Hybrid Mode keeps business data in the cloud as the source of truth and also saves a local backup to the device for offline access."
+    },
+    "plan": {
+      "title": "Workspace Plan",
+      "description": "Choose a plan that fits your business needs.",
+      "names": {
+        "basic": "Basic",
+        "business": "Business",
+        "enterprise": "Enterprise"
+      },
+      "moduleCount": "{{value}} modules",
+      "memberCount": "{{value}} members",
+      "branchCount": "{{value}} branches",
+      "noBranches": "No branches"
+    },
     "location": {
       "title": "Share your location",
       "desc": "Save your workspace coordinates for maps and future services.",

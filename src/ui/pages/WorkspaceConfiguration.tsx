@@ -42,7 +42,7 @@ export function WorkspaceConfiguration() {
     const { user } = useAuth()
     const { refreshFeatures, features: currentFeatures, isLoading: isWorkspaceLoading, updateSettings } = useWorkspace()
     const [, navigate] = useLocation()
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     const { toast } = useToast()
 
     const [isLoading, setIsLoading] = useState(false)
@@ -53,6 +53,7 @@ export function WorkspaceConfiguration() {
     const [plan, setPlan] = useState<WorkspacePlan>(currentFeatures.plan)
     const isTauri = isTauriCheck()
     const workspaceId = user?.workspaceId || ''
+    const isRtl = i18n.dir(i18n.resolvedLanguage || i18n.language) === 'rtl'
 
     useEffect(() => {
         if (!isWorkspaceLoading && currentFeatures.is_configured) {
@@ -92,15 +93,15 @@ export function WorkspaceConfiguration() {
 
     const getLocationErrorMessage = (error: GeolocationPositionError) => {
         if (error.code === error.PERMISSION_DENIED) {
-            return t('workspaceConfig.location.permissionDenied') || 'Location permission was denied.'
+            return t('workspaceConfig.location.permissionDenied')
         }
         if (error.code === error.POSITION_UNAVAILABLE) {
-            return t('workspaceConfig.location.unavailable') || 'Location information is unavailable.'
+            return t('workspaceConfig.location.unavailable')
         }
         if (error.code === error.TIMEOUT) {
-            return t('workspaceConfig.location.timeout') || 'Location request timed out. Please try again.'
+            return t('workspaceConfig.location.timeout')
         }
-        return t('workspaceConfig.location.failed') || 'Failed to capture location.'
+        return t('workspaceConfig.location.failed')
     }
 
     const handleShareLocation = async () => {
@@ -108,8 +109,8 @@ export function WorkspaceConfiguration() {
 
         if (typeof navigator === 'undefined' || !navigator.geolocation) {
             toast({
-                title: t('common.error') || 'Error',
-                description: t('workspaceConfig.location.unsupported') || 'Geolocation is not supported on this device.',
+                title: t('common.error'),
+                description: t('workspaceConfig.location.unsupported'),
                 variant: 'destructive'
             })
             return
@@ -130,15 +131,15 @@ export function WorkspaceConfiguration() {
             await updateSettings({ coordination: formatted })
 
             toast({
-                title: t('common.success') || 'Success',
-                description: t('workspaceConfig.location.saved') || 'Location saved to workspace.'
+                title: t('common.success'),
+                description: t('workspaceConfig.location.saved')
             })
         } catch (err: any) {
             const message = err?.code
                 ? getLocationErrorMessage(err)
-                : (err?.message || (t('workspaceConfig.location.failed') || 'Failed to capture location.'))
+                : (err?.message || t('workspaceConfig.location.failed'))
             toast({
-                title: t('common.error') || 'Error',
+                title: t('common.error'),
                 description: message,
                 variant: 'destructive'
             })
@@ -196,8 +197,10 @@ export function WorkspaceConfiguration() {
                 })
             } else {
                 toast({
-                    title: t('common.error') || 'Error',
-                    description: `Failed to save configuration: ${normalized.message || 'Unknown error'}`,
+                    title: t('common.error'),
+                    description: t('workspaceConfig.errors.saveFailed', {
+                        message: normalized.message || t('workspaceConfig.errors.unknown')
+                    }),
                     variant: 'destructive'
                 })
             }
@@ -229,7 +232,7 @@ export function WorkspaceConfiguration() {
                                     {logoUrl ? (
                                         <img
                                             src={getDisplayImageUrl(logoUrl)}
-                                            alt="Workspace Logo"
+                                            alt={t('workspaceConfig.logoAlt')}
                                             className="w-full h-full object-cover"
                                         />
                                     ) : (
@@ -239,7 +242,7 @@ export function WorkspaceConfiguration() {
                                 {isTauri && (
                                     <button
                                         onClick={handleImageUpload}
-                                        className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-110 transition-transform"
+                                        className="absolute -bottom-2 -end-2 w-8 h-8 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-110 transition-transform"
                                         title={t('workspaceConfig.uploadLogo')}
                                     >
                                         <ImagePlus className="w-4 h-4" />
@@ -251,7 +254,9 @@ export function WorkspaceConfiguration() {
                                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
                                     {t('workspaceConfig.workspaceName')}
                                 </p>
-                                <p className="font-bold text-xl text-foreground">{user?.workspaceName || 'My Workspace'}</p>
+                                <p className="font-bold text-xl text-foreground">
+                                    {user?.workspaceName || t('workspaceConfig.fallbackWorkspaceName')}
+                                </p>
                                 {isTauri && (
                                     <p className="text-[10px] text-muted-foreground mt-2 italic flex items-center justify-center gap-1">
                                         <Check className="w-3 h-3 text-green-500" />
@@ -269,9 +274,9 @@ export function WorkspaceConfiguration() {
                                     <MapPin className="w-5 h-5 text-primary" />
                                 </div>
                                 <div className="flex-1">
-                                    <p className="font-medium">{t('workspaceConfig.location.title') || 'Share your location'}</p>
+                                    <p className="font-medium">{t('workspaceConfig.location.title')}</p>
                                     <p className="text-sm text-muted-foreground">
-                                        {t('workspaceConfig.location.desc') || 'Save your workspace coordinates for maps and future services.'}
+                                        {t('workspaceConfig.location.desc')}
                                     </p>
                                 </div>
                             </div>
@@ -282,7 +287,7 @@ export function WorkspaceConfiguration() {
                                 </div>
                             ) : (
                                 <p className="text-xs text-muted-foreground">
-                                    {t('workspaceConfig.location.example') || 'Example: 40.74032035559755, -73.97990562328214'}
+                                    {t('workspaceConfig.location.example')}
                                 </p>
                             )}
 
@@ -298,16 +303,16 @@ export function WorkspaceConfiguration() {
                                     <MapPin className="w-4 h-4" />
                                 )}
                                 {coordination
-                                    ? (t('workspaceConfig.location.savedCta') || 'Location saved')
-                                    : (t('workspaceConfig.location.cta') || 'Share Location')}
+                                    ? t('workspaceConfig.location.savedCta')
+                                    : t('workspaceConfig.location.cta')}
                             </Button>
                         </div>
 
                         <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-6">
                             <div className="space-y-1">
-                                <Label>{t('workspaceConfig.mode.title') || 'Workspace Mode'}</Label>
+                                <Label>{t('workspaceConfig.mode.title')}</Label>
                                 <p className="text-sm text-muted-foreground">
-                                    {t('workspaceConfig.mode.description') || 'Choose how this workspace stores business data. This choice is permanent after setup.'}
+                                    {t('workspaceConfig.mode.description')}
                                 </p>
                             </div>
                             <Select value={dataMode} onValueChange={(value) => setDataMode(value as WorkspaceDataMode)}>
@@ -315,26 +320,26 @@ export function WorkspaceConfiguration() {
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="cloud">{t('workspaceConfig.mode.cloud') || 'Cloud Mode'}</SelectItem>
-                                    <SelectItem value="local">{t('workspaceConfig.mode.local') || 'Local Mode'}</SelectItem>
-                                    <SelectItem value="hybrid">{t('workspaceConfig.mode.hybrid') || 'Hybrid Mode'}</SelectItem>
+                                    <SelectItem value="hybrid">{t('workspaceConfig.mode.hybrid')}</SelectItem>
+                                    <SelectItem value="cloud">{t('workspaceConfig.mode.cloud')}</SelectItem>
+                                    <SelectItem value="local">{t('workspaceConfig.mode.local')}</SelectItem>
                                 </SelectContent>
                             </Select>
                             <p className="text-xs text-muted-foreground">
                                 {dataMode === 'local'
-                                    ? (t('workspaceConfig.mode.localHint') || 'Local Mode keeps business data on the device and does not use cloud business-data sync.')
+                                    ? t('workspaceConfig.mode.localHint')
                                     : dataMode === 'hybrid'
-                                        ? (t('workspaceConfig.mode.hybridHint') || 'Hybrid Mode keeps business data in the cloud (source of truth) and also saves a local backup to the device for offline access.')
-                                        : (t('workspaceConfig.mode.cloudHint') || 'Cloud Mode keeps business data in the cloud and uses the existing sync flow.')}
+                                        ? t('workspaceConfig.mode.hybridHint')
+                                        : t('workspaceConfig.mode.cloudHint')}
                             </p>
                         </div>
 
                         {/* Plan Selection */}
                         <div className="space-y-3">
                             <div className="space-y-1">
-                                <Label>{t('workspaceConfig.plan.title') || 'Workspace Plan'}</Label>
+                                <Label>{t('workspaceConfig.plan.title')}</Label>
                                 <p className="text-sm text-muted-foreground">
-                                    {t('workspaceConfig.plan.description') || 'Choose a plan that fits your business needs.'}
+                                    {t('workspaceConfig.plan.description')}
                                 </p>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -350,7 +355,7 @@ export function WorkspaceConfiguration() {
                                             type="button"
                                             onClick={() => setPlan(p)}
                                             className={cn(
-                                                'relative rounded-lg border-2 p-4 text-left transition-all cursor-pointer',
+                                                'relative rounded-lg border-2 p-4 text-start transition-all cursor-pointer',
                                                 isSelected
                                                     ? 'border-primary bg-primary/5 shadow-sm'
                                                     : 'border-border bg-muted/30 hover:border-primary/50'
@@ -361,17 +366,19 @@ export function WorkspaceConfiguration() {
                                                     'w-5 h-5',
                                                     isSelected ? 'text-primary' : 'text-muted-foreground'
                                                 )} />
-                                                <span className="font-semibold text-sm capitalize">{p}</span>
+                                                <span className="font-semibold text-sm">
+                                                    {t(`workspaceConfig.plan.names.${p}`)}
+                                                </span>
                                             </div>
                                             <div className="text-xs text-muted-foreground space-y-0.5">
-                                                <p>{features} {t('workspaceConfig.plan.modules') || 'modules'}</p>
-                                                <p>{caps.limits.maxMembers} {t('workspaceConfig.plan.members') || 'members'}</p>
+                                                <p>{t('workspaceConfig.plan.moduleCount', { value: features })}</p>
+                                                <p>{t('workspaceConfig.plan.memberCount', { value: caps.limits.maxMembers })}</p>
                                                 <p>{caps.limits.maxBranches > 0
-                                                    ? `${caps.limits.maxBranches} ${t('workspaceConfig.plan.branches') || 'branches'}`
-                                                    : (t('workspaceConfig.plan.noBranches') || 'No branches')}</p>
+                                                    ? t('workspaceConfig.plan.branchCount', { value: caps.limits.maxBranches })
+                                                    : t('workspaceConfig.plan.noBranches')}</p>
                                             </div>
                                             {isSelected && (
-                                                <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                                                <div className="absolute top-2 end-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
                                                     <Check className="w-3 h-3 text-primary-foreground" />
                                                 </div>
                                             )}
@@ -399,7 +406,7 @@ export function WorkspaceConfiguration() {
                             ) : (
                                 <>
                                     {t('workspaceConfig.continue')}
-                                    <ArrowRight className="w-5 h-5" />
+                                    <ArrowRight className={cn('w-5 h-5', isRtl && 'rotate-180')} />
                                 </>
                             )}
                         </Button>

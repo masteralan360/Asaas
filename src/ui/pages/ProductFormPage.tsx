@@ -1064,7 +1064,8 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                         </CardContent>
                     </Card>
 
-                    <Card className="overflow-hidden border-border/60 shadow-sm">
+                    {isEditing && (
+                        <Card className="overflow-hidden border-border/60 shadow-sm">
                         <CardHeader className="border-b border-border/50 bg-muted/10">
                             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                                 <div className="space-y-1">
@@ -1246,6 +1247,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                             )}
                         </CardContent>
                     </Card>
+                    )}
 
                     <Card className="overflow-hidden border-border/60 shadow-sm">
                         <CardHeader className="border-b border-border/50 bg-gradient-to-r from-primary/5 via-transparent to-transparent">
