@@ -28,7 +28,8 @@ import {
     Package,
     MapPin,
     Zap,
-    Star
+    Star,
+    LogOut
 } from 'lucide-react'
 import { isTauri as isTauriCheck } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
@@ -39,7 +40,7 @@ import { WORKSPACE_PLANS, getPlanCapabilities } from '@/plans/workspacePlans'
 import type { WorkspacePlan } from '@/plans/workspacePlans'
 
 export function WorkspaceConfiguration() {
-    const { user } = useAuth()
+    const { user, signOut } = useAuth()
     const { refreshFeatures, features: currentFeatures, isLoading: isWorkspaceLoading, updateSettings } = useWorkspace()
     const [, navigate] = useLocation()
     const { t, i18n } = useTranslation()
@@ -49,8 +50,8 @@ export function WorkspaceConfiguration() {
     const [isLocationSaving, setIsLocationSaving] = useState(false)
     const [logoUrl, setLogoUrl] = useState(currentFeatures.logo_url || '')
     const [coordination, setCoordination] = useState(currentFeatures.coordination || '')
-    const [dataMode, setDataMode] = useState<WorkspaceDataMode>(currentFeatures.data_mode)
-    const [plan, setPlan] = useState<WorkspacePlan>(currentFeatures.plan)
+    const [dataMode, setDataMode] = useState<WorkspaceDataMode>('hybrid')
+    const [plan, setPlan] = useState<WorkspacePlan>('enterprise')
     const isTauri = isTauriCheck()
     const workspaceId = user?.workspaceId || ''
     const isRtl = i18n.dir(i18n.resolvedLanguage || i18n.language) === 'rtl'
@@ -409,6 +410,15 @@ export function WorkspaceConfiguration() {
                                     <ArrowRight className={cn('w-5 h-5', isRtl && 'rotate-180')} />
                                 </>
                             )}
+                        </Button>
+
+                        <Button
+                            variant="ghost"
+                            className="w-full h-10 gap-2 text-muted-foreground"
+                            onClick={signOut}
+                        >
+                            <LogOut className="w-4 h-4" />
+                            {t('signOut')}
                         </Button>
                     </CardContent>
                 </Card>
