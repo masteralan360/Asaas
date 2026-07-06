@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 
 import type { BusinessPartnerRole, IQDDisplayPreference } from '@/local-db'
-import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
+import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 
 export type PartnerDetailsPrintTransactionSource =
@@ -157,10 +157,10 @@ function ContactLine({ label, value }: { label: string; value?: string }) {
     )
 }
 
-function MetricBox({ label, value }: { label: string; value: string }) {
+function MetricBox({ label, value, isRtl }: { label: string; value: string; isRtl: boolean }) {
     return (
         <div className="rounded-md border border-slate-300 p-2 text-center">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
+            <div className={cn('text-[10px] text-slate-500', !isRtl && 'uppercase tracking-wide')}>{label}</div>
             <div className="mt-1 text-xs font-bold">{value}</div>
         </div>
     )
@@ -301,10 +301,11 @@ export function PartnerDetailsPrintTemplate({
     const partnerRelationshipName = data.partner.contactName?.trim() || data.partner.name
     const workspaceRelationshipName = workspaceName?.trim()
         || t('businessPartners.ourBusiness', { defaultValue: 'Our business' })
+    const isRtl = isRTL(printLang)
 
     return (
         <div
-            dir={isRTL(printLang) ? 'rtl' : 'ltr'}
+            dir={isRtl ? 'rtl' : 'ltr'}
             className="bg-white text-black"
             style={{ width: '210mm' }}
         >
@@ -354,7 +355,7 @@ export function PartnerDetailsPrintTemplate({
                 <div className="rounded-md border border-slate-300 p-3">
                     <div className="mb-2 border-b border-slate-200 pb-2">
                         <div className="text-base font-bold">{data.partner.name}</div>
-                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        <div className={cn('text-[10px] font-semibold text-slate-500', !isRtl && 'uppercase tracking-wide')}>
                             {resolveRoleLabel(data.partner.role, t)}
                         </div>
                     </div>
@@ -405,10 +406,12 @@ export function PartnerDetailsPrintTemplate({
                 <MetricBox
                     label={t('businessPartners.incomingCash', { defaultValue: 'Incoming Cash' })}
                     value={formatCurrency(data.metrics.moneyIn, data.partner.defaultCurrency, iqdPreference)}
+                    isRtl={isRtl}
                 />
                 <MetricBox
                     label={t('businessPartners.outgoingCash', { defaultValue: 'Outgoing Cash' })}
                     value={formatCurrency(data.metrics.moneyOut, data.partner.defaultCurrency, iqdPreference)}
+                    isRtl={isRtl}
                 />
                 <MetricBox
                     label={t('ledger.netFlow', { defaultValue: 'Net Flow' })}
@@ -417,12 +420,13 @@ export function PartnerDetailsPrintTemplate({
                         data.partner.defaultCurrency,
                         iqdPreference
                     )}
+                    isRtl={isRtl}
                 />
             </div>
 
             {showWhoOwesWhom ? (
                 <div className="mb-4 rounded-md border border-slate-300 bg-slate-50 p-3">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    <div className={cn('mb-2 text-xs font-semibold text-slate-600', !isRtl && 'uppercase tracking-wide')}>
                         {t('businessPartners.whoOwesWhom', { defaultValue: 'Who owes whom?' })}
                     </div>
                     <div className="grid gap-2">
