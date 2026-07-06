@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { Building2, Search } from 'lucide-react'
 
 import { useAuth } from '@/auth'
+import { useDateRange } from '@/context/DateRangeContext'
+import { isDateInDateRange } from '@/lib/dateRangeFilters'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import {
     type RealEstateInstallment,
@@ -25,6 +27,7 @@ import {
     TableHeader,
     TableRow
 } from '@/ui/components'
+import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { useWorkspace } from '@/workspace'
 import { RecordRealEstatePaymentModal } from './RecordRealEstatePaymentModal'
 
@@ -45,6 +48,7 @@ export function RealEstateInstallmentsMirror({ workspaceId }: { workspaceId: str
     const { t } = useTranslation()
     const { features } = useWorkspace()
     const { user } = useAuth()
+    const { dateRange, customDates } = useDateRange()
     const installments = useRealEstateWorkspaceInstallments(workspaceId)
     const transactions = useRealEstateTransactions(workspaceId)
     const [search, setSearch] = useState('')
@@ -61,6 +65,7 @@ export function RealEstateInstallmentsMirror({ workspaceId }: { workspaceId: str
     const rows = useMemo(() => {
         const query = search.trim().toLowerCase()
         return installments
+            .filter((installment) => isDateInDateRange(installment.dueDate, dateRange, customDates))
             .map((installment) => ({
                 installment,
                 transaction: transactionById.get(installment.transactionId)
@@ -79,7 +84,7 @@ export function RealEstateInstallmentsMirror({ workspaceId }: { workspaceId: str
                     installment.status
                 ].some((value) => value.toLowerCase().includes(query))
             })
-    }, [installments, search, transactionById])
+    }, [customDates, dateRange, installments, search, transactionById])
 
     const openRows = rows.filter(({ installment }) => installment.balanceAmount > 0)
     const overdueRows = openRows.filter(({ installment }) => installment.status === 'overdue')
@@ -93,19 +98,24 @@ export function RealEstateInstallmentsMirror({ workspaceId }: { workspaceId: str
             </div>
 
             <Card>
-                <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <CardTitle className="flex items-center gap-2">
-                        <Building2 className="h-5 w-5" />
-                        {t('realEstate.installmentMirrorTitle', { defaultValue: 'Real Estate Installments' })}
-                    </CardTitle>
-                    <div className="relative w-full sm:max-w-sm">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                            value={search}
-                            onChange={(event) => setSearch(event.target.value)}
-                            placeholder={t('realEstate.searchInstallments', { defaultValue: 'Search property installments...' })}
-                            className="pl-9"
-                        />
+                <CardHeader className="gap-3">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <CardTitle className="flex items-center gap-2">
+                            <Building2 className="h-5 w-5" />
+                            {t('realEstate.installmentMirrorTitle', { defaultValue: 'Real Estate Installments' })}
+                        </CardTitle>
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
+                            <DateRangeFilters />
+                            <div className="relative w-full lg:w-80">
+                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input
+                                    value={search}
+                                    onChange={(event) => setSearch(event.target.value)}
+                                    placeholder={t('realEstate.searchInstallments', { defaultValue: 'Search property installments...' })}
+                                    className="pl-9"
+                                />
+                            </div>
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent>

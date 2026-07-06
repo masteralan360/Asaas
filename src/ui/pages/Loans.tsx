@@ -3,6 +3,7 @@ import { Link, useLocation, useRoute } from 'wouter'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
+import { useDateRange } from '@/context/DateRangeContext'
 import { useWorkspacePermissions } from '@/permissions'
 import { db } from '@/local-db/database'
 import {
@@ -17,6 +18,7 @@ import {
     type LoanInstallment
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
+import { isDateInDateRange } from '@/lib/dateRangeFilters'
 import { getLoanLinkedPartySummary } from '@/lib/loanParties'
 import { getReportOriginId } from '@/lib/printIdentity'
 import {
@@ -40,6 +42,7 @@ import { setPendingSaleDetailsId } from '@/lib/saleNavigation'
 import { formatCurrency, formatDate, formatDateTime, cn, formatLoanDetailsForWhatsApp } from '@/lib/utils'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
+import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { isMobile } from '@/lib/platform'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import type { TemplatePreview, TemplatePreviewRenderOptions } from '@/lib/pdfPreviewStore'
@@ -109,6 +112,7 @@ function LoanListView({
     const { features, workspaceName, hasCapability } = useWorkspace()
     const { user } = useAuth()
     const { toast } = useToast()
+    const { dateRange, customDates } = useDateRange()
     const isReadOnly = user?.role === 'viewer'
     const canUseWhatsApp = hasCapability('whatsappSharing')
     const [search, setSearch] = useState('')
@@ -159,10 +163,31 @@ function LoanListView({
         () => new Set(loans.map((loan) => loan.id)),
         [loans]
     )
-    const installments = useLiveQuery(
+    const queriedInstallments = useLiveQuery(
         () => db.loan_installments.where('workspaceId').equals(workspaceId).and(item => !item.isDeleted).toArray(),
         [workspaceId]
-    ) ?? []
+    )
+    const installments = useMemo(
+        () => queriedInstallments ?? [],
+        [queriedInstallments]
+    )
+    const dateScopedInstallments = useMemo(
+        () => installments.filter((item) => (
+            standardLoanIds.has(item.loanId)
+            && isDateInDateRange(item.dueDate, dateRange, customDates)
+        )),
+        [customDates, dateRange, installments, standardLoanIds]
+    )
+    const dateScopedLoanIds = useMemo(
+        () => new Set(dateScopedInstallments.map((item) => item.loanId)),
+        [dateScopedInstallments]
+    )
+    const dateScopedLoans = useMemo(
+        () => dateRange === 'allTime'
+            ? loans
+            : loans.filter((loan) => dateScopedLoanIds.has(loan.id)),
+        [dateRange, dateScopedLoanIds, loans]
+    )
     const workspaceSales = useLiveQuery(
         () => db.sales.where('workspaceId').equals(workspaceId).toArray(),
         [workspaceId]
@@ -185,19 +210,19 @@ function LoanListView({
 
     const metrics = useMemo(() => {
         const today = new Date().toISOString().slice(0, 10)
-        const totalOutstanding = loans.reduce((sum, loan) => sum + loan.balanceAmount, 0)
-        const activeLoans = loans.filter(loan => loan.status === 'active' && loan.balanceAmount > 0).length
-        const overdueLoans = loans.filter(loan => isLoanOverdue(loan)).length
-        const dueToday = installments
-            .filter(item => standardLoanIds.has(item.loanId) && item.dueDate === today && item.balanceAmount > 0 && item.status !== 'paid')
+        const totalOutstanding = dateScopedInstallments.reduce((sum, item) => sum + item.balanceAmount, 0)
+        const activeLoans = dateScopedLoans.filter(loan => loan.status === 'active' && loan.balanceAmount > 0).length
+        const overdueLoans = dateScopedLoans.filter(loan => isLoanOverdue(loan)).length
+        const dueToday = dateScopedInstallments
+            .filter(item => item.dueDate === today && item.balanceAmount > 0 && item.status !== 'paid')
             .reduce((sum, item) => sum + item.balanceAmount, 0)
 
         return { totalOutstanding, activeLoans, overdueLoans, dueToday }
-    }, [installments, loans, standardLoanIds])
+    }, [dateScopedInstallments, dateScopedLoans])
 
     const filtered = useMemo(() => {
         const query = search.trim().toLowerCase()
-        return loans.filter(loan => {
+        return dateScopedLoans.filter(loan => {
             if (filter === 'active' && loan.status !== 'active') return false
             if (filter === 'completed' && loan.status !== 'completed') return false
             if (filter === 'overdue' && !isLoanOverdue(loan)) return false
@@ -209,12 +234,16 @@ function LoanListView({
                 loan.loanNo.toLowerCase().includes(query)
             )
         })
-    }, [loans, search, filter])
+    }, [dateScopedLoans, search, filter])
 
     const paginated = useMemo(() => {
         const from = (currentPage - 1) * pageSize
         return filtered.slice(from, from + pageSize)
     }, [filtered, currentPage, pageSize])
+
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [customDates.end, customDates.start, dateRange])
 
     const currency = features.default_currency || 'usd'
     const iqdPreference = features.iqd_display_preference
@@ -279,7 +308,7 @@ function LoanListView({
             format: 'a4',
             printLang: printLangOverride || printLang,
         }),
-    }), [workspaceName, printLang, filtered, filter, currency, iqdPreference, metrics, features.logo_url, buildQrValue])
+    }), [workspaceName, printLang, filtered, filter, currency, iqdPreference, metrics, features.logo_url, buildQrValue, t])
 
     const loanPrintInstallments = useLoanInstallments(loanToPrint?.id, workspaceId)
     const loanPrintPayments = useLoanPayments(loanToPrint?.id, workspaceId)
@@ -422,6 +451,8 @@ function LoanListView({
 
             <Card>
                 <CardContent className="pt-6 space-y-4">
+                    <DateRangeFilters />
+
                     <div className="flex flex-col lg:flex-row gap-3">
                         <div className="relative flex-1">
                             <Search className="w-4 h-4 absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground" />

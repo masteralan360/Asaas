@@ -5,6 +5,8 @@ import { useLocation } from 'wouter'
 import { Eye, LayoutGrid, List, Plus, Printer, Search, Trash2, MessageCircle } from 'lucide-react'
 
 import { useAuth } from '@/auth'
+import { useDateRange } from '@/context/DateRangeContext'
+import { isDateInDateRange } from '@/lib/dateRangeFilters'
 import { getLoanLinkedPartySummary } from '@/lib/loanParties'
 import { getReportOriginId } from '@/lib/printIdentity'
 import { isMobile } from '@/lib/platform'
@@ -35,6 +37,7 @@ import {
     ContextMenuContent,
     ContextMenuItem,
 } from '@/ui/components'
+import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
 import { useWorkspace } from '@/workspace'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
@@ -73,6 +76,7 @@ export function SimpleLoanListView({
     const { features, workspaceName, hasCapability } = useWorkspace()
     const { user } = useAuth()
     const { toast } = useToast()
+    const { dateRange, customDates } = useDateRange()
     const isReadOnly = user?.role === 'viewer'
     const canUseWhatsApp = hasCapability('whatsappSharing')
     const [search, setSearch] = useState('')
@@ -118,6 +122,10 @@ export function SimpleLoanListView({
         () => loans.filter((loan) => loan.loanCategory === 'simple'),
         [loans]
     )
+    const dateScopedSimpleLoans = useMemo(
+        () => simpleLoans.filter((loan) => isDateInDateRange(loan.createdAt, dateRange, customDates)),
+        [customDates, dateRange, simpleLoans]
+    )
     const loanPaymentHistoryIds = useLiveQuery(
         async () => {
             const rows = await db.loan_payments.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).toArray()
@@ -131,7 +139,7 @@ export function SimpleLoanListView({
     )
 
     const metrics = useMemo(() => {
-        const activeLoans = simpleLoans.filter((loan) => loan.balanceAmount > 0 && loan.status !== 'completed')
+        const activeLoans = dateScopedSimpleLoans.filter((loan) => loan.balanceAmount > 0 && loan.status !== 'completed')
         const totalLentByCurrency: Record<string, number> = {}
         const totalBorrowedByCurrency: Record<string, number> = {}
         for (const loan of activeLoans) {
@@ -147,13 +155,13 @@ export function SimpleLoanListView({
             totalLentByCurrency,
             totalBorrowedByCurrency,
             activeCount: activeLoans.length,
-            settledCount: simpleLoans.filter((loan) => loan.balanceAmount <= 0 || loan.status === 'completed').length
+            settledCount: dateScopedSimpleLoans.filter((loan) => loan.balanceAmount <= 0 || loan.status === 'completed').length
         }
-    }, [simpleLoans, features.default_currency])
+    }, [dateScopedSimpleLoans, features.default_currency])
 
     const filtered = useMemo(() => {
         const query = search.trim().toLowerCase()
-        return simpleLoans.filter((loan) => {
+        return dateScopedSimpleLoans.filter((loan) => {
             const direction = getLoanDirection(loan)
             const overdue = isLoanOverdue(loan)
 
@@ -169,12 +177,17 @@ export function SimpleLoanListView({
                 (overdue && (t('loans.statuses.overdue') || 'overdue').toLowerCase().includes(query))
             )
         })
-    }, [filter, search, simpleLoans, t])
+    }, [dateScopedSimpleLoans, filter, search, t])
 
     const paginated = useMemo(() => {
         const from = (currentPage - 1) * pageSize
         return filtered.slice(from, from + pageSize)
     }, [filtered, currentPage, pageSize])
+
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [customDates.end, customDates.start, dateRange])
+
     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
     const buildQrValue = useCallback((effectiveId: string) => {
         if (!features.print_qr || !workspaceId || isLocalWorkspaceMode(workspaceId)) return undefined
@@ -396,6 +409,8 @@ export function SimpleLoanListView({
 
             <Card>
                 <CardContent className="space-y-4 pt-6">
+                    <DateRangeFilters />
+
                     <div className="flex flex-col gap-3 lg:flex-row">
                         <div className="relative flex-1">
                             <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
