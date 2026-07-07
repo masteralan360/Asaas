@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, CalendarDays, CreditCard, PackagePlus, Plus, ShoppingCart, Star, Trash2, Users, Warehouse, X } from 'lucide-react'
 
@@ -176,6 +176,7 @@ export function PurchaseOrderFormPage({
     })
     const requiresApprovalRequest = user?.role === 'staff' && permissionKeys.includes('orders.requirePurchaseOrderRequest')
     const canUseFreeBonus = hasCapability('orderFreeBonus')
+    const [highlightedStorageIndex, setHighlightedStorageIndex] = useState<number | null>(null)
 
     useEffect(() => {
         if (!editingOrder) return
@@ -225,6 +226,13 @@ export function PurchaseOrderFormPage({
         if (!product) return ''
         return String(convertCurrencyAmountWithLiveRates(product.costPrice, product.currency, partnerCurrency, liveRates))
     }
+
+    const handleStorageMissing = useCallback((index: number) => {
+        setHighlightedStorageIndex(index)
+        setTimeout(() => setHighlightedStorageIndex((prev) => prev === index ? null : prev), 3000)
+        const el = document.getElementById(`purchase-storage-${index}`)
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, [])
 
     const updateItem = (index: number, changes: Partial<FormItem>) => {
         setItems((current) =>
@@ -597,12 +605,15 @@ export function PurchaseOrderFormPage({
                                                             products={products}
                                                             placeholder={t('orders.form.selectProduct', { defaultValue: 'Select Product' })}
                                                             hasSelection={!!item.productId}
+                                                            storageMissing={!item.storageId}
+                                                            storageMissingLabel={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}
+                                                            onStorageMissingClick={() => handleStorageMissing(index)}
                                                         />
                                                     </div>
-                                                    <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-storage' : undefined}>
-                                                        <Label>{t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}</Label>
-                                                        <Select value={item.storageId} onValueChange={(value) => updateItem(index, { storageId: value })}>
-                                                            <SelectTrigger><SelectValue placeholder={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })} /></SelectTrigger>
+                                                    <div id={`purchase-storage-${index}`} className={cn('space-y-2', highlightedStorageIndex === index && 'animate-pulse')} data-tour-id={index === 0 ? 'tutorial-order-storage' : undefined}>
+                                                        <Label className={cn(highlightedStorageIndex === index && 'text-destructive font-bold')}>{t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}</Label>
+                                                        <Select value={item.storageId} onValueChange={(value) => { setHighlightedStorageIndex(null); updateItem(index, { storageId: value }) }}>
+                                                            <SelectTrigger className={cn(highlightedStorageIndex === index && 'ring-2 ring-destructive')}><SelectValue placeholder={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })} /></SelectTrigger>
                                                             <SelectContent>
                                                                 {storages.map((storage) => (
                                                                     <SelectItem key={storage.id} value={storage.id}>

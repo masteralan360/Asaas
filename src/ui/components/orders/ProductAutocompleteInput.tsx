@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Package } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { AlertTriangle, Check, Package } from 'lucide-react'
 
 import type { Product } from '@/local-db'
 import { Input } from '@/ui/components'
@@ -17,6 +18,9 @@ interface ProductAutocompleteInputProps {
     hasSelection?: boolean
     linkedLabel?: string
     skuLabel?: string
+    storageMissing?: boolean
+    onStorageMissingClick?: () => void
+    storageMissingLabel?: string
 }
 
 function getDisplayImageUrl(url?: string): string {
@@ -61,8 +65,12 @@ export function ProductAutocompleteInput({
     disabled,
     hasSelection,
     linkedLabel = 'Linked',
-    skuLabel = 'SKU'
+    skuLabel = 'SKU',
+    storageMissing,
+    onStorageMissingClick,
+    storageMissingLabel = 'Select Storage'
 }: ProductAutocompleteInputProps) {
+    const { i18n } = useTranslation()
     const [isFocused, setIsFocused] = useState(false)
     const [justSelected, setJustSelected] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
@@ -104,29 +112,52 @@ export function ProductAutocompleteInput({
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [])
 
+    const handleFocus = () => {
+        if (storageMissing) {
+            onStorageMissingClick?.()
+            return
+        }
+        setIsFocused(true)
+    }
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (storageMissing) {
+            onStorageMissingClick?.()
+            return
+        }
+        setJustSelected(false)
+        setIsFocused(true)
+        onChange(e.target.value)
+    }
+
     return (
-        <div ref={containerRef} className={cn('relative w-full', className)}>
+        <div ref={containerRef} className={cn('relative w-full group', className)}>
             <div className="relative">
                 <Input
                     value={value}
-                    onChange={(e) => {
-                        setJustSelected(false)
-                        setIsFocused(true)
-                        onChange(e.target.value)
-                    }}
-                    onFocus={() => setIsFocused(true)}
+                    onChange={handleInputChange}
+                    onFocus={handleFocus}
                     placeholder={placeholder}
                     disabled={disabled}
                     className={cn(
                         'flex-1 pr-20',
-                        hasSelection && 'border-green-500/50 bg-green-50/30 dark:bg-green-950/10'
+                        hasSelection && !storageMissing && 'border-green-500/50 bg-green-50/30 dark:bg-green-950/10',
+                        storageMissing && 'border-red-500/50 bg-red-50/30 dark:bg-red-950/10'
                     )}
                 />
-                {hasSelection && (
+                {hasSelection && !storageMissing && (
                     <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
                         <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] font-medium text-green-600 dark:text-green-400">
                             <Check className="h-3 w-3" />
                             {linkedLabel}
+                        </span>
+                    </div>
+                )}
+                {storageMissing && (
+                    <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-600 dark:text-red-400">
+                            <AlertTriangle className="h-3 w-3" />
+                            {i18n.language?.startsWith('ar') || i18n.language?.startsWith('ku') ? null : storageMissingLabel}
                         </span>
                     </div>
                 )}
