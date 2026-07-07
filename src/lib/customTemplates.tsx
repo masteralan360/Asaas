@@ -346,6 +346,7 @@ export type CustomTemplatePreviewOptions = {
     order?: SalesOrder | PurchaseOrder
     orderKind?: 'sales' | 'purchase'
     orderInstallments?: OrderInstallment[]
+    counterpartyPhone?: string
     printLang?: string
 }
 
@@ -987,6 +988,7 @@ function createPartnerDetailsPreview(options: CustomTemplatePreviewOptions): Tem
 function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
     const order = options.order || SAMPLE_ORDER_DATA
     const kind = options.orderKind || 'sales'
+    const counterpartyPhone = options.counterpartyPhone || (order === SAMPLE_ORDER_DATA ? '+964 750 000 0000' : '')
     const configuredPrintLang = options.features?.print_lang
     const printLang = options.printLang
         || (configuredPrintLang && configuredPrintLang !== 'auto' ? configuredPrintLang : 'en')
@@ -1030,6 +1032,7 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
                 qrValue={buildQrValue(options.workspaceId, effectiveId, options.features)}
                 hideUnit={data[ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideUnit] === 'true'}
                 hideDiscount={data[ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount] === 'true'}
+                counterpartyPhone={counterpartyPhone}
                 tableRowCount={Number(data.tableRowCount) || 10}
                 componentPositions={renderOptions?.componentPositions}
                 hiddenFields={renderOptions?.hiddenFields}

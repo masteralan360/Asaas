@@ -59,6 +59,7 @@ interface OrderDetailsPrintTemplateProps {
     qrValue?: string | null
     hideUnit?: boolean
     hideDiscount?: boolean
+    counterpartyPhone?: string
     tableRowCount?: number
     componentPositions?: Record<string, CustomTemplateComponentPosition>
     hiddenFields?: Record<string, boolean>
@@ -410,6 +411,7 @@ export function OrderDetailsPrintTemplate({
     qrValue,
     hideUnit,
     hideDiscount,
+    counterpartyPhone,
     tableRowCount,
     componentPositions,
     hiddenFields,
@@ -496,6 +498,17 @@ export function OrderDetailsPrintTemplate({
                             value: counterpartyName,
                             render: <p className="font-bold text-sm">{counterpartyName}</p>
                         },
+                        ...(counterpartyPhone ? [{
+                            key: 'orders.counterparty.phone',
+                            label: t('orders.details.phone', { defaultValue: 'Phone' }),
+                            value: counterpartyPhone,
+                            render: (
+                                <p className="text-slate-600 mt-1 flex items-center justify-center gap-1">
+                                    <Phone className="h-3 w-3" />
+                                    {counterpartyPhone}
+                                </p>
+                            )
+                        }] : []),
                         ...(isSales && salesOrder?.shippingAddress ? [{
                             key: 'orders.counterparty.shippingAddress',
                             label: t('orders.details.shippingAddress', { defaultValue: 'Shipping Address' }),

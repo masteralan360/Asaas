@@ -28,6 +28,7 @@ import {
     reversePaymentTransaction,
     updatePurchaseOrderStatus,
     updateSalesOrderStatus,
+    useBusinessPartner,
     usePurchaseOrder,
     useLoan,
     useLoanInstallments,
@@ -255,6 +256,11 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
             : null,
         [purchaseOrder, salesOrder])
 
+    const partnerId = resolved?.order.businessPartnerId
+        || (resolved?.kind === 'sales' ? (resolved?.order as SalesOrder)?.customerId : (resolved?.order as PurchaseOrder)?.supplierId)
+    const bizPartner = useBusinessPartner(partnerId)
+    const counterpartyPhone = bizPartner?.phone || ''
+
     const creatorId = (resolved?.order as any)?.createdBy ?? null
     const { profile: creatorProfile } = useProfileData(creatorId)
 
@@ -365,6 +371,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         return {
             fields: [
                 { key: 'counterpartyName', label: counterpartyLabel, value: counterpartyName || '', type: 'text' },
+                { key: 'counterpartyPhone', label: t('common.phone', { defaultValue: 'Phone' }), value: counterpartyPhone || '', type: 'text' },
                 { key: 'notes', label: t('common.notes') || 'Notes', value: (order as any).notes || '', type: 'text' },
                 { key: 'hideUnit', label: t('orders.form.hideUnit', { defaultValue: 'Hide Unit' }), value: localStorage.getItem('atlas_print_hide_unit') || 'false', type: 'boolean' },
                 { key: 'hideDiscount', label: t('orders.form.hideDiscount', { defaultValue: 'Hide Discount' }), value: localStorage.getItem('atlas_print_hide_discount') || 'false', type: 'boolean' },
@@ -389,6 +396,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
                         hideUnit={data.hideUnit === 'true'}
                         hideDiscount={data.hideDiscount === 'true'}
+                        counterpartyPhone={data.counterpartyPhone}
                         hiddenFields={renderOptions?.hiddenFields}
                         onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
                         workspaceFooterContacts={renderOptions?.workspaceFooterContacts || workspaceFooterContacts}
@@ -405,7 +413,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 })
             },
         }
-    }, [resolved, features, installments, workspaceName, t, i18n, workspaceId, workspaceFooterContacts])
+    }, [resolved, features, installments, workspaceName, t, i18n, workspaceId, workspaceFooterContacts, counterpartyPhone])
 
     const customOrderPrint = useOrderCustomPrint({
         workspaceId,
@@ -1302,6 +1310,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                     iqdPreference={features.iqd_display_preference}
                                     logoUrl={features.logo_url}
                                     qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
+                                    counterpartyPhone={counterpartyPhone}
                                     workspaceFooterContacts={workspaceFooterContacts}
                                 />
                             ),
@@ -1321,6 +1330,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             iqdPreference={features.iqd_display_preference}
                             logoUrl={features.logo_url}
                             qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
+                            counterpartyPhone={counterpartyPhone}
                             workspaceFooterContacts={workspaceFooterContacts}
                         />
                     )

@@ -17,6 +17,7 @@ import {
 } from '@/lib/customTemplates'
 import type { CustomTemplateLayout } from '@/lib/pdfPreviewStore'
 import type { OrderInstallment, PurchaseOrder, SalesOrder } from '@/local-db'
+import { useBusinessPartner } from '@/local-db'
 import type { PrintFormat } from '@/services/pdfGenerator'
 import type { WorkspaceFeatures } from '@/workspace'
 
@@ -51,6 +52,10 @@ export function useOrderCustomPrint({
     const [selectedTemplate, setSelectedTemplate] = useState<StoredCustomTemplateRow | null>(null)
     const currentPrintLanguage = resolveCustomTemplatePrintLanguage(features.print_lang, printLanguage)
     const target = useMemo(() => getCustomTemplateTarget(ORDER_DETAILS_TEMPLATE_KEY), [])
+    const partnerId = order?.businessPartnerId
+        || (orderKind === 'sales' ? (order as SalesOrder)?.customerId : (order as PurchaseOrder)?.supplierId)
+    const bizPartner = useBusinessPartner(partnerId)
+    const counterpartyPhone = bizPartner?.phone || ''
 
     useEffect(() => {
         if (!isOpen || (!isLocalMode && !isSupabaseConfigured)) {
@@ -107,9 +112,10 @@ export function useOrderCustomPrint({
             order,
             orderKind,
             orderInstallments: installments,
+            counterpartyPhone,
             printLang: currentPrintLanguage
         })
-    }, [currentPrintLanguage, features, installments, order, orderKind, target, workspaceId, workspaceName])
+    }, [currentPrintLanguage, features, installments, order, orderKind, target, workspaceId, workspaceName, counterpartyPhone])
 
     const buildPdf = useCallback(async ({
         effectiveId,
