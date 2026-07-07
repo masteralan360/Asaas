@@ -14,9 +14,11 @@ import {
     formatCurrency,
     formatLocalDateTimeValue,
     formatLocalDateValue,
+    formatNumericInput,
     generateId,
     parseLocalDateTimeValue,
-    parseLocalDateValue
+    parseLocalDateValue,
+    sanitizeNumericInput
 } from '@/lib/utils'
 import { getOrderLineFreeBonusQuantity } from '@/lib/orderLineItems'
 import {
@@ -643,7 +645,7 @@ export function PurchaseOrderFormPage({
                                                     ) : null}
                                                     <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-unit-price' : undefined}>
                                                         <Label>{t('common.buyingPrice', { defaultValue: 'Buying Price' })}</Label>
-                                                        <Input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updateItem(index, { unitPrice: event.target.value })} placeholder={t('common.buyingPrice', { defaultValue: 'Buying Price' })} />
+                                                        <Input value={formatNumericInput(item.unitPrice)} onChange={(event) => updateItem(index, { unitPrice: sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 4 }) })} placeholder={t('common.buyingPrice', { defaultValue: 'Buying Price' })} />
                                                     </div>
                                                     <div className="flex items-start justify-end" data-tour-id={index === 0 ? 'tutorial-order-line-actions' : undefined}>
                                                         <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
@@ -674,11 +676,8 @@ export function PurchaseOrderFormPage({
                                                                 {product ? ` (${product.currency.toUpperCase()})` : ''}
                                                             </Label>
                                                             <Input
-                                                                type="number"
-                                                                min="0"
-                                                                step="0.01"
-                                                                value={item.batchSalePrice}
-                                                                onChange={(event) => updateItem(index, { batchSalePrice: event.target.value })}
+                                                                value={formatNumericInput(item.batchSalePrice ?? '')}
+                                                                onChange={(event) => updateItem(index, { batchSalePrice: sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 4 }) })}
                                                                 placeholder={product ? String(product.price) : '0'}
                                                             />
                                                         </div>
@@ -847,8 +846,8 @@ export function PurchaseOrderFormPage({
                                     </CardHeader>
                                     <CardContent className="space-y-4">
                                         <div className="space-y-2">
-                                            <Label htmlFor="purchase-discount">{t('orders.form.discount', { defaultValue: 'Discount' })}</Label>
-                                            <Input id="purchase-discount" type="number" min="0" step="0.01" value={discount} onChange={(event) => setDiscount(event.target.value)} />
+                                            <Label htmlFor="purchase-discount">- {t('orders.form.discount', { defaultValue: 'Discount' })}</Label>
+                                            <Input id="purchase-discount" value={formatNumericInput(discount)} onChange={(event) => setDiscount(sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 4 }))} />
                                         </div>
                                         <div className="rounded-2xl border bg-muted/30 p-4">
                                             <div className="flex items-center justify-between text-sm">

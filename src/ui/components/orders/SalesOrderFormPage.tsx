@@ -14,8 +14,10 @@ import {
     formatCurrency,
     formatLocalDateTimeValue,
     formatLocalDateValue,
+    formatNumericInput,
     parseLocalDateTimeValue,
-    parseLocalDateValue
+    parseLocalDateValue,
+    sanitizeNumericInput
 } from '@/lib/utils'
 import { getOrderLineFreeBonusQuantity } from '@/lib/orderLineItems'
 import {
@@ -605,7 +607,7 @@ export function SalesOrderFormPage({
                                                     ) : null}
                                                     <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-unit-price' : undefined}>
                                                         <Label>{t('common.sellingPrice', { defaultValue: 'Selling Price' })}</Label>
-                                                        <Input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updateItem(index, { unitPrice: event.target.value })} placeholder={t('common.sellingPrice', { defaultValue: 'Selling Price' })} />
+                                                        <Input value={formatNumericInput(item.unitPrice)} onChange={(event) => updateItem(index, { unitPrice: sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 4 }) })} placeholder={t('common.sellingPrice', { defaultValue: 'Selling Price' })} />
                                                     </div>
                                                     <div className="flex items-start justify-end" data-tour-id={index === 0 ? 'tutorial-order-line-actions' : undefined}>
                                                         <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
@@ -770,12 +772,12 @@ export function SalesOrderFormPage({
                                     <CardContent className="space-y-4">
                                         <div className="grid gap-4 sm:grid-cols-2">
                                             <div className="space-y-2">
-                                                <Label htmlFor="sales-discount">{t('orders.form.discount', { defaultValue: 'Discount' })}</Label>
-                                                <Input id="sales-discount" type="number" min="0" step="0.01" value={discount} onChange={(event) => setDiscount(event.target.value)} />
+                                                <Label htmlFor="sales-discount">- {t('orders.form.discount', { defaultValue: 'Discount' })}</Label>
+                                                <Input id="sales-discount" value={formatNumericInput(discount)} onChange={(event) => setDiscount(sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 4 }))} />
                                             </div>
                                             <div className="space-y-2">
-                                                <Label htmlFor="sales-tax">{t('orders.form.tax', { defaultValue: 'Tax' })}</Label>
-                                                <Input id="sales-tax" type="number" min="0" step="0.01" value={tax} onChange={(event) => setTax(event.target.value)} />
+                                                <Label htmlFor="sales-tax">+ {t('orders.form.tax', { defaultValue: 'Tax' })}</Label>
+                                                <Input id="sales-tax" value={formatNumericInput(tax)} onChange={(event) => setTax(sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 4 }))} />
                                             </div>
                                         </div>
                                         <div className="rounded-2xl border bg-muted/30 p-4">
