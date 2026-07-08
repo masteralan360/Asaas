@@ -163,12 +163,12 @@ export function ProductAutocompleteInput({
                 )}
             </div>
             {showDropdown ? (
-                <div className="absolute left-0 right-0 top-full z-[100] mt-1 max-h-56 overflow-y-auto rounded-xl border bg-popover shadow-lg">
+                <div className="absolute left-0 top-full z-[100] mt-1 max-h-56 w-max min-w-full overflow-y-auto rounded-xl border bg-popover shadow-lg">
                     {filtered.map((product) => (
                         <button
                             key={product.id}
                             type="button"
-                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-accent focus:bg-accent focus:outline-none"
+                            className="flex w-full min-w-[18rem] items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-accent focus:bg-accent focus:outline-none"
                             onMouseDown={(e) => {
                                 e.preventDefault()
                                 handleSelect(product)
@@ -176,9 +176,9 @@ export function ProductAutocompleteInput({
                         >
                             <ProductThumbnail url={product.imageUrl} name={product.name} />
                             <div className="min-w-0 flex-1">
-                                <div className="truncate font-medium">{product.name}</div>
+                                <div className="break-words font-medium">{product.name}</div>
                                 {product.sku ? (
-                                    <div className="truncate text-xs text-muted-foreground">{skuLabel}: {product.sku}</div>
+                                    <div className="break-words text-xs text-muted-foreground">{skuLabel}: {product.sku}</div>
                                 ) : null}
                             </div>
                         </button>
