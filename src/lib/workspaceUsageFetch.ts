@@ -5,6 +5,12 @@ import { getWorkspaceDataMode, isLocalWorkspaceMode } from '@/workspace/workspac
 const WORKSPACE_TRANSFER_LIMIT_MESSAGE = 'Workspace monthly data transfer limit exceeded'
 const WORKSPACE_USAGE_UPDATED_EVENT = 'workspace-usage-updated'
 const SKIP_USAGE_HEADER = 'X-Workspace-Usage-Skip'
+const TABLE_WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+const RPC_METHODS = new Set(['GET', 'POST'])
+const UNMETERED_RPC_NAMES = new Set([
+    'get_workspace_usage_status',
+    'record_workspace_data_transfer'
+])
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const WORKSPACE_FILTER_KEYS = [
     'workspace_id',
@@ -25,6 +31,14 @@ type UsageRecordResult = {
     ok: boolean
     limitExceeded?: boolean
     message?: string
+}
+
+type WorkspaceTransferContext = {
+    workspaceId: string
+    authHeader: string | null
+    countRequestBody: boolean
+    countResponseBody: boolean
+    source: string
 }
 
 function isUuid(value?: string | null): value is string {
@@ -62,7 +76,7 @@ function getRequestHeaders(input: RequestInfo | URL, init?: RequestInit) {
     return headers
 }
 
-function getRestTableName(url: URL, supabaseUrl: string): string | null {
+function getRestPathSegments(url: URL, supabaseUrl: string): string[] | null {
     let baseUrl: URL
     try {
         baseUrl = new URL(supabaseUrl)
@@ -80,12 +94,28 @@ function getRestTableName(url: URL, supabaseUrl: string): string | null {
         return null
     }
 
-    const tableName = decodeURIComponent(url.pathname.slice(restPrefix.length).split('/')[0] ?? '')
+    return url.pathname
+        .slice(restPrefix.length)
+        .split('/')
+        .filter(Boolean)
+        .map((segment) => decodeURIComponent(segment))
+}
+
+function getRestTableName(url: URL, supabaseUrl: string): string | null {
+    const segments = getRestPathSegments(url, supabaseUrl)
+    const tableName = segments?.[0] ?? ''
     if (!tableName || tableName === 'rpc') {
         return null
     }
 
     return tableName
+}
+
+function getRestRpcName(url: URL, supabaseUrl: string): string | null {
+    const segments = getRestPathSegments(url, supabaseUrl)
+    if (segments?.[0] !== 'rpc') return null
+
+    return segments[1] || null
 }
 
 function extractUuidFromPostgrestFilter(value: string): string[] {
@@ -223,16 +253,11 @@ function refreshOfflineLeaseFromFetch(
     })
 }
 
-function shouldCountTableFetch(
+function getWorkspaceTransferContext(
     input: RequestInfo | URL,
     init: RequestInit | undefined,
-    response: Response,
     supabaseUrl: string
-) {
-    const method = getRequestMethod(input, init)
-    if (method !== 'GET') return null
-    if (!response.ok) return null
-
+): WorkspaceTransferContext | null {
     const url = getRequestUrl(input)
     if (!url) return null
 
@@ -240,13 +265,92 @@ function shouldCountTableFetch(
     if (headers.get(SKIP_USAGE_HEADER) === '1') return null
 
     const tableName = getRestTableName(url, supabaseUrl)
-    if (!tableName) return null
+    const rpcName = getRestRpcName(url, supabaseUrl)
+    if (!tableName && !rpcName) return null
+    if (rpcName && UNMETERED_RPC_NAMES.has(rpcName)) return null
+
+    const method = getRequestMethod(input, init)
+    const isTableFetch = Boolean(tableName && method === 'GET')
+    const isTableWrite = Boolean(tableName && TABLE_WRITE_METHODS.has(method))
+    const isRpcTransfer = Boolean(rpcName && RPC_METHODS.has(method))
+    if (!isTableFetch && !isTableWrite && !isRpcTransfer) return null
 
     const authHeader = headers.get('Authorization')
-    const workspaceId = resolveWorkspaceId(url, tableName, authHeader)
+    const workspaceId = resolveWorkspaceId(url, tableName ?? rpcName ?? '', authHeader)
     if (!workspaceId || isLocalWorkspaceMode(workspaceId)) return null
 
-    return { url, tableName, workspaceId, authHeader }
+    return {
+        workspaceId,
+        authHeader,
+        countRequestBody: isTableWrite || (isRpcTransfer && method !== 'GET'),
+        countResponseBody: true,
+        source: isTableFetch
+            ? `table_fetch:${tableName}`
+            : isTableWrite
+                ? `table_write:${tableName}`
+                : `rpc_transfer:${rpcName}`
+    }
+}
+
+function getKnownRequestBodyBytes(body: BodyInit): number | null {
+    if (typeof body === 'string') {
+        return new TextEncoder().encode(body).byteLength
+    }
+
+    if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
+        return new TextEncoder().encode(body.toString()).byteLength
+    }
+
+    if (typeof Blob !== 'undefined' && body instanceof Blob) {
+        return body.size
+    }
+
+    if (body instanceof ArrayBuffer) {
+        return body.byteLength
+    }
+
+    if (ArrayBuffer.isView(body)) {
+        return body.byteLength
+    }
+
+    return null
+}
+
+async function getRequestTransferBytes(input: RequestInfo | URL, init?: RequestInit): Promise<number> {
+    const contentLength = getRequestHeaders(input, init).get('Content-Length')
+    const parsedLength = contentLength ? Number(contentLength) : NaN
+    if (Number.isFinite(parsedLength) && parsedLength > 0) {
+        return Math.trunc(parsedLength)
+    }
+
+    if (init?.body !== undefined && init.body !== null) {
+        const knownBytes = getKnownRequestBodyBytes(init.body)
+        if (knownBytes !== null) return knownBytes
+
+        if (typeof FormData !== 'undefined' && init.body instanceof FormData) {
+            try {
+                const request = new Request('https://workspace-usage.invalid', {
+                    method: 'POST',
+                    body: init.body
+                })
+                return (await request.arrayBuffer()).byteLength
+            } catch {
+                return 0
+            }
+        }
+
+        return 0
+    }
+
+    if (input instanceof Request && input.body) {
+        try {
+            return (await input.clone().arrayBuffer()).byteLength
+        } catch {
+            return 0
+        }
+    }
+
+    return 0
 }
 
 async function getResponseTransferBytes(response: Response): Promise<number> {
@@ -256,11 +360,15 @@ async function getResponseTransferBytes(response: Response): Promise<number> {
         return Math.trunc(parsedLength)
     }
 
-    const body = await response.clone().arrayBuffer()
-    return body.byteLength
+    try {
+        const body = await response.clone().arrayBuffer()
+        return body.byteLength
+    } catch {
+        return 0
+    }
 }
 
-async function recordTableDataTransfer(
+async function recordSupabaseDataTransfer(
     options: Required<WorkspaceUsageFetchOptions>,
     workspaceId: string,
     bytes: number,
@@ -323,21 +431,29 @@ export function createWorkspaceUsageFetch(options: WorkspaceUsageFetchOptions): 
     }
 
     return async (input, init) => {
+        const countContext = getWorkspaceTransferContext(input, init, normalizedOptions.supabaseUrl)
+        const requestBytesPromise = countContext?.countRequestBody
+            ? getRequestTransferBytes(input, init)
+            : Promise.resolve(0)
+
         const response = await normalizedOptions.fetchImpl(input, init)
         refreshOfflineLeaseFromFetch(input, init, response, normalizedOptions.supabaseUrl)
 
-        const countContext = shouldCountTableFetch(input, init, response, normalizedOptions.supabaseUrl)
-        if (!countContext) {
+        if (!countContext || !response.ok) {
             return response
         }
 
-        const bytes = await getResponseTransferBytes(response)
-        const result = await recordTableDataTransfer(
+        const [requestBytes, responseBytes] = await Promise.all([
+            requestBytesPromise,
+            countContext.countResponseBody ? getResponseTransferBytes(response) : Promise.resolve(0)
+        ])
+        const bytes = requestBytes + responseBytes
+        const result = await recordSupabaseDataTransfer(
             normalizedOptions,
             countContext.workspaceId,
             bytes,
             countContext.authHeader,
-            `table_fetch:${countContext.tableName}`
+            countContext.source
         )
 
         return result.ok || !result.limitExceeded ? response : usageErrorResponse(result)
@@ -347,6 +463,8 @@ export function createWorkspaceUsageFetch(options: WorkspaceUsageFetchOptions): 
 export const workspaceUsageFetchInternals = {
     extractWorkspaceIdsFromUrl,
     getWorkspaceIdFromJwt,
+    getRestRpcName,
     getRestTableName,
+    getRequestTransferBytes,
     resolveWorkspaceId
 }
