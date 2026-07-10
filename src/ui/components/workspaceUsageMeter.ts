@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { getWorkspaceUsageStatus, type WorkspaceUsageStatus } from '@/lib/workspaceUsage'
+import {
+    buildWorkspaceUsageInsights,
+    saveWorkspaceUsageSnapshot,
+    type WorkspaceUsageLocalHistory
+} from '@/lib/workspaceUsageHistory'
 import type {
     WorkspaceUsageMeter,
     WorkspaceUsageMeterMetric,
@@ -24,7 +29,11 @@ function getMetricPercent(usedValue?: number | null, limitValue?: number | null)
     return Math.min(100, Math.max(0, (used / limit) * 100))
 }
 
-function buildWorkspaceUsageMeter(status: WorkspaceUsageStatus | null, t: TFunction): WorkspaceUsageMeter | null {
+function buildWorkspaceUsageMeter(
+    status: WorkspaceUsageStatus | null,
+    history: WorkspaceUsageLocalHistory | null,
+    t: TFunction
+): WorkspaceUsageMeter | null {
     if (!status?.has_limits) return null
 
     const storageLabel = t('workspaceUsage.storage')
@@ -93,7 +102,19 @@ function buildWorkspaceUsageMeter(status: WorkspaceUsageStatus | null, t: TFunct
             ? t('workspaceUsage.title', { details: titleParts.join(' / ') })
             : t('workspaceUsage.emptyTitle'),
         segments,
-        metrics
+        metrics,
+        details: {
+            storageUnits: Number(status.storage_units ?? 0),
+            storageUnitLimit: status.storage_unit_limit === null
+                ? null
+                : Number(status.storage_unit_limit),
+            transferBytes: Number(status.data_transfer_bytes ?? 0),
+            transferLimitBytes: status.monthly_data_transfer_limit_bytes === null
+                ? null
+                : Number(status.monthly_data_transfer_limit_bytes),
+            transferPeriodStart: status.transfer_period_start,
+            insights: buildWorkspaceUsageInsights(status, history)
+        }
     }
 }
 
@@ -105,10 +126,12 @@ type UseWorkspaceUsageMeterOptions = {
 export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsageMeterOptions) {
     const { t } = useTranslation()
     const [usageStatus, setUsageStatus] = useState<WorkspaceUsageStatus | null>(null)
+    const [usageHistory, setUsageHistory] = useState<WorkspaceUsageLocalHistory | null>(null)
 
     useEffect(() => {
         if (!enabled || !workspaceId) {
             setUsageStatus(null)
+            setUsageHistory(null)
             return
         }
 
@@ -120,11 +143,30 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
                 const status = await getWorkspaceUsageStatus(workspaceId)
                 if (!cancelled) {
                     setUsageStatus(status)
+                    setUsageHistory((current) => (
+                        status
+                        && current?.workspaceId === status.workspace_id
+                        && current.transferPeriodStart === status.transfer_period_start
+                            ? current
+                            : null
+                    ))
+                }
+
+                if (status) {
+                    try {
+                        const history = await saveWorkspaceUsageSnapshot(status)
+                        if (!cancelled) {
+                            setUsageHistory(history)
+                        }
+                    } catch (error) {
+                        console.warn('[WorkspaceUsage] Failed to save local usage history:', error)
+                    }
                 }
             } catch (error) {
                 console.warn('[WorkspaceUsage] Failed to load workspace usage:', error)
                 if (!cancelled) {
                     setUsageStatus(null)
+                    setUsageHistory(null)
                 }
             }
         }
@@ -161,5 +203,5 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
         }
     }, [enabled, workspaceId])
 
-    return buildWorkspaceUsageMeter(usageStatus, t)
+    return buildWorkspaceUsageMeter(usageStatus, usageHistory, t)
 }
