@@ -577,6 +577,8 @@ describe('Order Receipt custom print template', () => {
         const html = renderToStaticMarkup(element)
         expect(html).toContain('SO-00042')
         expect(html).toContain('Sample Customer')
+        expect(html).toContain('table-fixed')
+        expect(html).toContain('overflow-wrap:anywhere')
         expect(html).toContain('data-order-print-component="orderReceiptItemsTable"')
         expect(html).toContain('translate(3mm, 0)')
         expect(html).toContain('margin-top:8mm')

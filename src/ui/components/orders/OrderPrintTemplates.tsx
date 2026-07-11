@@ -542,8 +542,8 @@ export function OrderReceiptPrintTemplate({
             : code.toUpperCase()
 
         return (
-            <div className="flex flex-col items-end leading-none">
-                <span className="font-bold">{formatted}</span>
+            <div className="flex max-w-full min-w-0 flex-col items-end leading-none">
+                <span className="break-all text-end font-bold">{formatted}</span>
                 <span className="mt-0.5 text-[9px] font-medium text-black" style={{ opacity: labelOpacity / 100 }}>
                     {currencyLabel}
                 </span>
@@ -675,7 +675,13 @@ export function OrderReceiptPrintTemplate({
 
             {mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.itemsTable, 'Items Table',
                 <div className="mb-4">
-                    <table className="w-full text-sm">
+                    <table className="w-full table-fixed text-sm">
+                        <colgroup>
+                            <col style={{ width: '44%' }} />
+                            <col style={{ width: '11%' }} />
+                            <col style={{ width: '22.5%' }} />
+                            <col style={{ width: '22.5%' }} />
+                        </colgroup>
                         <thead>
                             <tr className={cn('border-b border-black text-[10px] text-black', !isReceiptRtl && 'uppercase')} style={{ opacity: labelOpacity / 100 }}>
                                 <th className={cn('pb-2 text-start font-bold', !isReceiptRtl && 'tracking-wider')}>{t('products.table.name', { defaultValue: 'Product' })}</th>
@@ -692,8 +698,8 @@ export function OrderReceiptPrintTemplate({
                                 return (
                                     <tr key={item.id}>
                                         <td className="py-3 align-top text-start">
-                                            <div className="text-sm font-bold">{item.productName}</div>
-                                            {item.productSku ? <div className="mt-0.5 font-mono text-[10px] text-black" style={{ opacity: labelOpacity / 100 }}>{item.productSku}</div> : null}
+                                            <div className="break-words [overflow-wrap:anywhere] text-sm font-bold">{item.productName}</div>
+                                            {item.productSku ? <div className="mt-0.5 break-all font-mono text-[10px] text-black" style={{ opacity: labelOpacity / 100 }}>{item.productSku}</div> : null}
                                             {showFreeBonus && freeBonus > 0 ? (
                                                 <div className="mt-0.5 text-[10px] text-black" style={{ opacity: labelOpacity / 100 }}>
                                                     {t('orders.details.freeBonus', { defaultValue: 'Free bonus' })}: {freeBonus}{!hideUnit && (item as any).unit ? ` ${(item as any).unit}` : ''}
@@ -703,7 +709,7 @@ export function OrderReceiptPrintTemplate({
                                         <td className="py-3 text-center align-top font-mono">
                                             {quantity}{!hideUnit && (item as any).unit ? ` ${(item as any).unit}` : ''}
                                         </td>
-                                        <td className="py-3 align-top text-end">
+                                        <td className="min-w-0 py-3 align-top text-end">
                                             {formatReceiptPrice(item.convertedUnitPrice, order.currency)}
                                             {showOriginalCurrencyPrice && isConverted ? (
                                                 <div className="mt-1 origin-right scale-90 opacity-60">
@@ -711,7 +717,7 @@ export function OrderReceiptPrintTemplate({
                                                 </div>
                                             ) : null}
                                         </td>
-                                        <td className="py-3 align-top text-end">
+                                        <td className="min-w-0 py-3 align-top text-end">
                                             {formatReceiptPrice(item.lineTotal, order.currency)}
                                             {showOriginalCurrencyPrice && isConverted ? (
                                                 <div className="mt-1 origin-right scale-90 opacity-60 line-through decoration-gray-400">

@@ -113,8 +113,8 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
             }
 
             return (
-                <div className="flex flex-col items-end leading-none">
-                    <span className="font-bold">{formattedNum}</span>
+                <div className="flex max-w-full min-w-0 flex-col items-end leading-none">
+                    <span className="break-all text-end font-bold">{formattedNum}</span>
                     <span className="text-[9px] text-black font-medium mt-0.5" style={{ opacity: labelOpacity / 100 }}>{currencyLabel}</span>
                 </div>
             )
@@ -237,7 +237,13 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
 
                 {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.itemsTable, 'Items Table',
                     <div className="mb-4">
-                        <table className="w-full text-sm">
+                        <table className="w-full table-fixed text-sm">
+                            <colgroup>
+                                <col style={{ width: '44%' }} />
+                                <col style={{ width: '11%' }} />
+                                <col style={{ width: '22.5%' }} />
+                                <col style={{ width: '22.5%' }} />
+                            </colgroup>
                             <thead>
                                 <tr className={cn("text-[10px] text-black border-b border-black", !isRTL && "uppercase")} style={{ opacity: labelOpacity / 100 }}>
                                     <th className={cn("pb-2 text-start font-bold", !isRTL && "tracking-wider")}>{t('products.table.name')}</th>
@@ -252,13 +258,13 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                                     return (
                                         <tr key={idx}>
                                             <td className="py-3 text-start align-top">
-                                                <div className="font-bold text-sm">{item.product_name}</div>
+                                                <div className="break-words [overflow-wrap:anywhere] font-bold text-sm">{item.product_name}</div>
                                                 {item.product_sku && (
-                                                    <div className="text-[10px] text-black font-mono mt-0.5" style={{ opacity: labelOpacity / 100 }}>{item.product_sku}</div>
+                                                    <div className="mt-0.5 break-all font-mono text-[10px] text-black" style={{ opacity: labelOpacity / 100 }}>{item.product_sku}</div>
                                                 )}
                                             </td>
                                             <td className="py-3 text-center align-top font-mono">{item.quantity}</td>
-                                            <td className="py-3 text-end align-top">
+                                            <td className="min-w-0 py-3 text-end align-top">
                                                 <div className="flex flex-col items-end">
                                                     {formatReceiptPrice(item.unit_price, data.settlement_currency || 'usd')}
                                                     {showOriginalCurrencyPrice && isConverted && (
@@ -268,7 +274,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="py-3 text-end align-top">
+                                            <td className="min-w-0 py-3 text-end align-top">
                                                 <div className="flex flex-col items-end">
                                                     {formatReceiptPrice(item.total_price || (item.unit_price * item.quantity), data.settlement_currency || 'usd')}
                                                     {showOriginalCurrencyPrice && isConverted && (
