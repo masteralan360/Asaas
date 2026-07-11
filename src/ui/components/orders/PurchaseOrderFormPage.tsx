@@ -211,6 +211,24 @@ export function PurchaseOrderFormPage({
         }))
     }, [defaultStorageId, editingOrder])
 
+    useEffect(() => {
+        if (!editingOrder || !products.length) return
+        setItems((current) => {
+            let changed = false
+            const next = current.map((item) => {
+                if (item.productId && !item.productSearch) {
+                    const product = products.find((p) => p.id === item.productId)
+                    if (product) {
+                        changed = true
+                        return { ...item, productSearch: product.name }
+                    }
+                }
+                return item
+            })
+            return changed ? next : current
+        })
+    }, [products, editingOrder])
+
     const liveRates = useMemo(() => ({ exchangeData, eurRates, tryRates }), [exchangeData, eurRates, tryRates])
 
     const selectedSupplier = supplierPartners.find((entry) => entry.id === supplierId)
