@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Package } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { createStockAdjustment, type Product, type StockAdjustmentReason } from "@/local-db";
-import { isNonNegativeQuantity, quantitiesEqual, roundQuantity } from "@/lib/quantity";
+import { isNonNegativeQuantity, quantitiesEqual, QUANTITY_EPSILON, roundQuantity } from "@/lib/quantity";
 import { cn, formatNumericInput, parseFormattedNumber, sanitizeNumericInput } from "@/lib/utils";
 import { platformService } from "@/services/platformService";
 import { ProductAutocompleteInput } from "@/ui/components/orders/ProductAutocompleteInput";
@@ -102,6 +102,8 @@ export function StockAdjustmentDialog({
     const [form, setForm] = useState<AdjustmentFormState>(emptyAdjustmentForm);
     const [isSaving, setIsSaving] = useState(false);
     const seededSelectionKeyRef = useRef("");
+    const userPickedStorageRef = useRef(false);
+    const autoStorageIdRef = useRef<string | null>(null);
 
     const productsById = useMemo(
         () => new Map(products.map((p) => [p.id, p] as const)),
@@ -154,14 +156,42 @@ export function StockAdjustmentDialog({
     }, [products, inventory, form.storageId, allowAnyStorage]);
 
     useEffect(() => {
-        if (
-            open &&
-            storageOptions.length &&
-            !storageOptions.some((s) => s.id === form.storageId)
-        ) {
-            setForm((current) => ({ ...current, storageId: storageOptions[0].id }));
+        if (!open) {
+            userPickedStorageRef.current = false;
+            autoStorageIdRef.current = null;
+            return;
         }
-    }, [open, form.storageId, storageOptions]);
+        if (userPickedStorageRef.current || storageOptions.length === 0) {
+            return;
+        }
+
+        let desiredStorageId = storageOptions[0].id;
+        if (form.productId && allowAnyStorage) {
+            const primaryStorage = storageOptions[0];
+            const primaryQuantity = primaryStorage
+                ? (inventoryByKey.get(groupKey(form.productId, primaryStorage.id)) ?? 0)
+                : 0;
+            if (primaryQuantity > QUANTITY_EPSILON) {
+                desiredStorageId = primaryStorage.id;
+            } else {
+                const storageWithStock = storageOptions.find(
+                    (storage) =>
+                        (inventoryByKey.get(groupKey(form.productId, storage.id)) ?? 0) >
+                        QUANTITY_EPSILON,
+                );
+                if (storageWithStock) {
+                    desiredStorageId = storageWithStock.id;
+                }
+            }
+        }
+
+        if (desiredStorageId === autoStorageIdRef.current && form.storageId === desiredStorageId) {
+            return;
+        }
+
+        autoStorageIdRef.current = desiredStorageId;
+        setForm((current) => ({ ...current, storageId: desiredStorageId }));
+    }, [open, form.productId, form.storageId, storageOptions, allowAnyStorage, storages, inventoryByKey]);
 
     const selectionKey =
         form.productId && form.storageId
@@ -325,9 +355,10 @@ export function StockAdjustmentDialog({
                                     <Label>{t("stockAdjustments.dialog.adjustment.storage", "Storage")}</Label>
                                     <Select
                                         value={form.storageId}
-                                        onValueChange={(value) =>
-                                            setForm((current) => ({ ...current, storageId: value }))
-                                        }
+                                        onValueChange={(value) => {
+                                            userPickedStorageRef.current = true;
+                                            setForm((current) => ({ ...current, storageId: value }));
+                                        }}
                                     >
                                         <SelectTrigger className="rounded-xl">
                                             <SelectValue placeholder={t("stockAdjustments.dialog.adjustment.selectStorage", "Select storage")} />
