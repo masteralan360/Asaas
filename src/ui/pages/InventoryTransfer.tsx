@@ -428,7 +428,7 @@ export default function InventoryTransfer() {
       }
 
       return inventory
-        .filter((row) => row.storageId === sourceStorageId)
+        .filter((row) => row.storageId === sourceStorageId && row.quantity > 0)
         .map((row) => {
           const product = products.find((entry) => entry.id === row.productId);
           if (!product || product.isDeleted) {
