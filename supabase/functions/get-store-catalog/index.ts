@@ -154,8 +154,7 @@ Deno.serve(async (req) => {
                 .select('product_id, quantity, created_at')
                 .eq('workspace_id', resolvedWorkspace.id)
                 .eq('storage_id', marketplaceStorageId)
-                .eq('is_deleted', false)
-                .gt('quantity', 0),
+                .eq('is_deleted', false),
             adminClient.rpc('get_active_discounts_for_marketplace_storage', {
                 p_workspace_id: resolvedWorkspace.id,
                 p_storage_id: marketplaceStorageId
@@ -172,7 +171,6 @@ Deno.serve(async (req) => {
 
         const visibleProductIds = Array.from(new Set(
             ((inventoryRows ?? []) as InventoryRow[])
-                .filter((row) => Number(row.quantity ?? 0) > 0)
                 .map((row) => row.product_id)
                 .filter(Boolean)
         ))
