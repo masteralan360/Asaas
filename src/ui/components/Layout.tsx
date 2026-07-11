@@ -210,6 +210,7 @@ export function Layout({ children }: LayoutProps) {
     const [logoError, setLogoError] = useState(false)
     const [copied, setCopied] = useState(false)
     const [version, setVersion] = useState('')
+    const [versionTooltip, setVersionTooltip] = useState('')
     const [whatsappStatus, setWhatsappStatus] = useState<'live' | 'off'>(whatsappManager.isActive() ? 'live' : 'off')
     const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false)
     const [pendingEcommerceCount, setPendingEcommerceCount] = useState(0)
@@ -289,6 +290,16 @@ export function Layout({ children }: LayoutProps) {
                         }
                     })
                     .catch(console.error)
+            })
+        } else {
+            // Web / PWA build: show the latest GitHub commit instead of the
+            // Tauri app version.
+            import('@/lib/gitBuildInfo').then(({ gitCommitMessage, gitCommitHash, gitCommitDate }) => {
+                const message = gitCommitMessage.trim()
+                const hash = gitCommitHash.trim()
+                setVersion(message || hash || '')
+                const parts = [hash && `commit ${hash}`, gitCommitDate && `on ${gitCommitDate}`].filter(Boolean)
+                setVersionTooltip([message, ...parts].filter(Boolean).join(' '))
             })
         }
 
@@ -1299,10 +1310,10 @@ export function Layout({ children }: LayoutProps) {
                                 </Button>
                             </div>
                             {/* Version Display */}
-                            {!(isMini && !mobileSidebarOpen) && (
-                                <div className="mt-2 text-center">
-                                    <p className="text-[10px] text-muted-foreground font-mono opacity-50">
-                                        v{version}
+                            {!(isMini && !mobileSidebarOpen) && version && (
+                                <div className="mt-2 text-center" title={versionTooltip || undefined}>
+                                    <p className="text-[10px] text-muted-foreground font-mono opacity-50 truncate px-2">
+                                        {isTauri ? `v${version}` : version}
                                     </p>
                                 </div>
                             )}

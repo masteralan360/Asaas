@@ -2,9 +2,28 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
+import { execSync } from 'child_process'
+
+function getGitInfo() {
+    try {
+        const message = execSync('git log -1 --pretty=%s', { stdio: ['ignore', 'pipe', 'ignore'] })
+            .toString()
+            .trim()
+        const hash = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+            .toString()
+            .trim()
+        const date = execSync('git log -1 --pretty=%ci', { stdio: ['ignore', 'pipe', 'ignore'] })
+            .toString()
+            .trim()
+        return { message, hash, date }
+    } catch {
+        return { message: '', hash: '', date: '' }
+    }
+}
 
 export default defineConfig(({ mode }) => {
     const isTauriBuild = Boolean(process.env.TAURI_ENV_PLATFORM)
+    const git = getGitInfo()
 
     // Debug: Log env loading during build
     console.log('[Vite Config] Mode:', mode)
@@ -159,6 +178,11 @@ export default defineConfig(({ mode }) => {
                 '@': path.resolve(__dirname, './src'),
                 'react-native': path.resolve(__dirname, './src/lib/reactNativeWebShim.tsx')
             }
+        },
+        define: {
+            __ATLAS_GIT_COMMIT_MESSAGE__: JSON.stringify(git.message),
+            __ATLAS_GIT_COMMIT_HASH__: JSON.stringify(git.hash),
+            __ATLAS_GIT_COMMIT_DATE__: JSON.stringify(git.date),
         },
         build: {
             rollupOptions: {
