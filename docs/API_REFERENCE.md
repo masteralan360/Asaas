@@ -70,6 +70,12 @@ Supported actions:
   - body: `{ action: 'refreshWorkspaceUsage', passkey, workspaceId? }`
   - use: recalculate counted workspace storage units from configured parent/business tables; branch rows are aggregated into the source workspace usage row
 
+### Workspace usage accounting boundary
+
+- clients and storage services report raw actual payload bytes; only the database converts them to charged usage, currently at `actual × 10`
+- `workspace_usage_limits` remains admin-managed: the weighted-usage migration remaps exact recognized standard limits, but does not infer one of the seven pricing tiers from the separate feature-plan field on new workspaces
+- the authenticated client reporters make these counters suitable for product quota enforcement and estimates, not an independent invoice-grade transfer ledger; monetary billing would require measurement at a trusted server/proxy boundary
+
 ## Kept SQL RPCs
 
 These still run through `supabase.rpc()` because they are transactional or intentionally narrow database helpers.

@@ -143,6 +143,16 @@ export function StockAdjustmentDialog({
             : storages;
     }, [form.productId, inventory, storages, allowAnyStorage]);
 
+    const productOptions = useMemo(() => {
+        if (allowAnyStorage || !form.storageId) return products;
+        const productIdsInStorage = new Set(
+            inventory
+                .filter((row) => row.storageId === form.storageId)
+                .map((row) => row.productId),
+        );
+        return products.filter((product) => productIdsInStorage.has(product.id));
+    }, [products, inventory, form.storageId, allowAnyStorage]);
+
     useEffect(() => {
         if (
             open &&
@@ -305,7 +315,7 @@ export function StockAdjustmentDialog({
                                                 setForm((current) => ({ ...current, productId: product.id }));
                                                 setSearch(product.name);
                                             }}
-                                            products={products}
+                                            products={productOptions}
                                             placeholder={t("stockAdjustments.dialog.adjustment.productSearchPlaceholder", "Search products by name or SKU")}
                                             hasSelection={!!form.productId}
                                         />
