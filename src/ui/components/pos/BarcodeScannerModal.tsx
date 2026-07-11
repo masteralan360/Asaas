@@ -31,6 +31,8 @@ import {
 } from '@/ui/components'
 import { Camera, Settings as SettingsIcon } from 'lucide-react'
 
+const BARCODE_SCANNER_VERSION = '1.0'
+
 interface BarcodeScannerModalProps {
     open: boolean
     onOpenChange: (open: boolean) => void
@@ -540,6 +542,10 @@ export function BarcodeScannerModal({
                         {t('common.cancel')}
                     </Button>
                 </DialogFooter>
+
+                <p className="text-center text-[11px] text-muted-foreground">
+                    {t('pos.barcodeScannerVersion', { defaultValue: 'Barcode Scanner' })} v{BARCODE_SCANNER_VERSION}
+                </p>
             </DialogContent>
         </Dialog>
     )

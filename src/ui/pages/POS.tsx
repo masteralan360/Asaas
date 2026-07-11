@@ -33,6 +33,7 @@ import {
     BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS,
     BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS,
     BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS,
+    BARCODE_SCANNER_MIN_SCAN_LENGTH,
     BARCODE_SCANNER_STALE_RESET_MS,
     createBarcodeScannerCodeIndex,
     getBarcodeScannerEventKey,
@@ -1407,19 +1408,19 @@ export function POS() {
                 return
             }
 
-            const shouldCommit = shouldCommitBarcodeScannerValue(payload, knownScannerCodeIndex, {
-                hasTerminator,
-                allowUnknown: hasTerminator
-            })
-
-            if (!shouldCommit) {
-                if (!hasTerminator && hasBarcodeScannerKnownPrefix(payload, knownScannerCodeIndex)) {
+            // Only reject scans that are still a known prefix of a longer code and
+            // have not been terminated yet, so we keep waiting for the rest of it.
+            // Any other complete scan is committed, matching the focused-input
+            // (BarcodeScannerModal) behaviour which never whitelist-validates.
+            if (!hasTerminator && hasBarcodeScannerKnownPrefix(payload, knownScannerCodeIndex)) {
+                const isComplete = shouldCommitBarcodeScannerValue(payload, knownScannerCodeIndex, {
+                    hasTerminator: false,
+                    allowUnknown: false
+                })
+                if (!isComplete) {
                     scheduleDeviceScanReset()
                     return
                 }
-
-                resetDeviceScanState()
-                return
             }
 
             resetDeviceScanState()
@@ -1432,10 +1433,7 @@ export function POS() {
 
             if (isBarcodeScannerTerminatorKey(event.key)) {
                 const isLikelyScan = deviceScanActive.current
-                    || shouldCommitBarcodeScannerValue(deviceScanBuffer.current, knownScannerCodeIndex, {
-                        hasTerminator: true,
-                        allowUnknown: false
-                    })
+                    || normalizeBarcodeScannerText(deviceScanBuffer.current).length >= BARCODE_SCANNER_MIN_SCAN_LENGTH
 
                 if (deviceScanBuffer.current && isLikelyScan) {
                     event.preventDefault()
