@@ -11,6 +11,7 @@ import {
     getStoredCustomTemplateLabel,
     isCustomTemplatePrintLanguageCompatible,
     ORDER_DETAILS_TEMPLATE_KEY,
+    ORDER_RECEIPT_TEMPLATE_KEY,
     readCustomTemplateLayout,
     resolveCustomTemplatePrintLanguage,
     type StoredCustomTemplateRow
@@ -22,6 +23,7 @@ import type { PrintFormat } from '@/services/pdfGenerator'
 import type { WorkspaceFeatures } from '@/workspace'
 
 type OrderKind = 'sales' | 'purchase'
+type OrderNativeTemplateKey = typeof ORDER_DETAILS_TEMPLATE_KEY | typeof ORDER_RECEIPT_TEMPLATE_KEY
 
 interface UseOrderCustomPrintOptions {
     workspaceId: string
@@ -50,8 +52,8 @@ export function useOrderCustomPrint({
 }: UseOrderCustomPrintOptions) {
     const [templates, setTemplates] = useState<StoredCustomTemplateRow[]>([])
     const [selectedTemplate, setSelectedTemplate] = useState<StoredCustomTemplateRow | null>(null)
+    const [selectedNativeTemplateKey, setSelectedNativeTemplateKey] = useState<OrderNativeTemplateKey>(ORDER_DETAILS_TEMPLATE_KEY)
     const currentPrintLanguage = resolveCustomTemplatePrintLanguage(features.print_lang, printLanguage)
-    const target = useMemo(() => getCustomTemplateTarget(ORDER_DETAILS_TEMPLATE_KEY), [])
     const partnerId = order?.businessPartnerId
         || (orderKind === 'sales' ? (order as SalesOrder)?.customerId : (order as PurchaseOrder)?.supplierId)
     const bizPartner = useBusinessPartner(partnerId)
@@ -67,7 +69,6 @@ export function useOrderCustomPrint({
         void (async () => {
             try {
                 const rows = await fetchCachedCustomTemplates(workspaceId, {
-                    moduleTypeKey: ORDER_DETAILS_TEMPLATE_KEY,
                     activeOnly: true
                 })
                 if (!cancelled) setTemplates(rows as StoredCustomTemplateRow[])
@@ -83,16 +84,24 @@ export function useOrderCustomPrint({
     }, [isLocalMode, isOpen, workspaceId])
 
     useEffect(() => {
-        if (!isOpen) setSelectedTemplate(null)
+        if (!isOpen) {
+            setSelectedTemplate(null)
+            setSelectedNativeTemplateKey(ORDER_DETAILS_TEMPLATE_KEY)
+        }
     }, [isOpen])
 
     const availableTemplates = useMemo(
         () => templates.filter((template) =>
-            template.module_type_key === ORDER_DETAILS_TEMPLATE_KEY
+            (template.module_type_key === ORDER_DETAILS_TEMPLATE_KEY
+                || template.module_type_key === ORDER_RECEIPT_TEMPLATE_KEY)
             && template.active
             && Boolean(readCustomTemplateLayout(template))
         ),
         [templates]
+    )
+    const selectedTemplateTarget = useMemo(
+        () => selectedTemplate ? getCustomTemplateTarget(selectedTemplate.module_type_key) : undefined,
+        [selectedTemplate]
     )
     const selectedLayout = useMemo(
         () => selectedTemplate
@@ -102,10 +111,11 @@ export function useOrderCustomPrint({
         [currentPrintLanguage, selectedTemplate]
     )
     const isCustomSelected = Boolean(selectedTemplate && selectedLayout)
+    const isReceiptSelected = !isCustomSelected && selectedNativeTemplateKey === ORDER_RECEIPT_TEMPLATE_KEY
     const preview = useMemo(() => {
-        if (!target || !order || !orderKind) return undefined
+        if (!selectedTemplateTarget || !order || !orderKind || !isCustomSelected) return undefined
 
-        return createCustomTemplatePreview(target, {
+        return createCustomTemplatePreview(selectedTemplateTarget, {
             workspaceId,
             workspaceName,
             features,
@@ -115,7 +125,7 @@ export function useOrderCustomPrint({
             counterpartyPhone,
             printLang: currentPrintLanguage
         })
-    }, [currentPrintLanguage, features, installments, order, orderKind, target, workspaceId, workspaceName, counterpartyPhone])
+    }, [currentPrintLanguage, features, installments, isCustomSelected, order, orderKind, selectedTemplateTarget, workspaceId, workspaceName, counterpartyPhone])
 
     const buildPdf = useCallback(async ({
         effectiveId,
@@ -125,12 +135,12 @@ export function useOrderCustomPrint({
         effectiveId: string
         printLangOverride?: string
     }) => {
-        if (!target || !selectedLayout || !order || !orderKind) {
+        if (!selectedTemplateTarget || !selectedLayout || !order || !orderKind) {
             throw new Error('Custom order template is not available.')
         }
 
         return buildCustomTemplateLayoutPdf({
-            target,
+            target: selectedTemplateTarget,
             layout: selectedLayout,
             values: {},
             options: {
@@ -145,19 +155,19 @@ export function useOrderCustomPrint({
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [currentPrintLanguage, features, installments, order, orderKind, selectedLayout, target, workspaceId, workspaceName])
+    }, [currentPrintLanguage, features, installments, order, orderKind, selectedLayout, selectedTemplateTarget, workspaceId, workspaceName])
 
     const buildEditablePdf = useCallback(async (
         layout: CustomTemplateLayout,
         printLangOverride?: string,
         effectiveId?: string
     ) => {
-        if (!target || !order || !orderKind) {
+        if (!selectedTemplateTarget || !order || !orderKind) {
             throw new Error('Custom order template is not available.')
         }
 
         return buildCustomTemplateLayoutPdf({
-            target,
+            target: selectedTemplateTarget,
             layout,
             values: {},
             options: {
@@ -172,23 +182,36 @@ export function useOrderCustomPrint({
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [currentPrintLanguage, features, installments, order, orderKind, target, workspaceId, workspaceName])
+    }, [currentPrintLanguage, features, installments, order, orderKind, selectedTemplateTarget, workspaceId, workspaceName])
 
-    const nativeOptions = useMemo(() => [{
-        format: 'a4' as const,
-        label: t('orders.print.nativeA4Template', { defaultValue: 'Order A4' }),
-        description: t('orders.print.nativeA4TemplateDescription', {
-            defaultValue: 'Use the built-in order details A4 layout.'
-        })
-    }], [t])
+    const nativeOptions = useMemo(() => [
+        {
+            format: 'a4' as const,
+            label: t('orders.print.nativeA4Template', { defaultValue: 'Orders - A4 Print' }),
+            description: t('orders.print.nativeA4TemplateDescription', {
+                defaultValue: 'Use the built-in order details A4 layout.'
+            })
+        },
+        {
+            format: 'receipt' as const,
+            label: t('orders.print.nativeReceiptTemplate', { defaultValue: 'Orders - Receipt Print' }),
+            description: t('orders.print.nativeReceiptTemplateDescription', {
+                defaultValue: 'Use the built-in compact order receipt layout.'
+            })
+        }
+    ], [t])
     const templateOptions = useMemo(
         () => availableTemplates.map((template) => ({
-            format: 'a4' as const,
+            format: template.module_type_key === ORDER_RECEIPT_TEMPLATE_KEY ? 'receipt' as const : 'a4' as const,
             template,
             label: getStoredCustomTemplateLabel(template),
-            description: t('orders.print.customA4TemplateDescription', {
-                defaultValue: 'Use this saved custom order details layout.'
-            }),
+            description: template.module_type_key === ORDER_RECEIPT_TEMPLATE_KEY
+                ? t('orders.print.customReceiptTemplateDescription', {
+                    defaultValue: 'Use this saved custom order receipt layout.'
+                })
+                : t('orders.print.customA4TemplateDescription', {
+                    defaultValue: 'Use this saved custom order details layout.'
+                }),
             primary: template.primary,
             disabled: !isCustomTemplatePrintLanguageCompatible(template, currentPrintLanguage),
             warning: getCustomTemplatePrintLanguageWarning(template, currentPrintLanguage, t)
@@ -203,19 +226,26 @@ export function useOrderCustomPrint({
             return
         }
         setSelectedTemplate(template || null)
+        if (!template) {
+            setSelectedNativeTemplateKey(_format === 'receipt' ? ORDER_RECEIPT_TEMPLATE_KEY : ORDER_DETAILS_TEMPLATE_KEY)
+        }
     }, [currentPrintLanguage])
-    const resetSelection = useCallback(() => setSelectedTemplate(null), [])
+    const resetSelection = useCallback(() => {
+        setSelectedTemplate(null)
+        setSelectedNativeTemplateKey(ORDER_DETAILS_TEMPLATE_KEY)
+    }, [])
 
     return {
         selectedTemplateLabel: selectedTemplate ? getStoredCustomTemplateLabel(selectedTemplate) : undefined,
         isCustomSelected,
+        isReceiptSelected,
         preview,
         buildPdf,
         buildEditablePdf,
         initialLayout: isCustomSelected ? selectedLayout : undefined,
-        customTemplate: isCustomSelected && selectedTemplate && target ? {
-            moduleTypeKey: target.moduleTypeKey,
-            nativeTemplateKey: target.nativeTemplateKey,
+        customTemplate: isCustomSelected && selectedTemplate && selectedTemplateTarget ? {
+            moduleTypeKey: selectedTemplateTarget.moduleTypeKey,
+            nativeTemplateKey: selectedTemplateTarget.nativeTemplateKey,
             templateId: selectedTemplate.id,
             label: getStoredCustomTemplateLabel(selectedTemplate)
         } : undefined,

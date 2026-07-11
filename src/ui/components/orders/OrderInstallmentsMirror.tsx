@@ -38,7 +38,11 @@ import {
 import { useWorkspace } from '@/workspace'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
-import { OrderDetailsPrintTemplate } from './OrderPrintTemplates'
+import {
+    ORDER_RECEIPT_TEMPLATE_FIELD_KEYS,
+    OrderDetailsPrintTemplate,
+    OrderReceiptPrintTemplate
+} from './OrderPrintTemplates'
 import { useOrderCustomPrint } from './useOrderCustomPrint'
 
 type OrderInstallmentRow =
@@ -212,13 +216,25 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
     const printLang = features.print_lang && features.print_lang !== 'auto'
         ? features.print_lang
         : i18n.language
-    const buildQrValue = useCallback((effectiveId: string) => {
+    const buildQrValue = useCallback((effectiveId: string, format: PrintFormat = 'a4') => {
         if (!features.print_qr || isLocalWorkspaceMode(workspaceId)) return undefined
-        return `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf`
+        const folder = format === 'receipt' ? 'receipts' : 'A4'
+        return `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/${folder}/${effectiveId}.pdf`
     }, [features.print_qr, workspaceId])
-    const renderOrderTemplate = useCallback((effectiveId?: string, printLangOverride?: string) => {
+    const renderOrderTemplate = useCallback((format: PrintFormat = 'a4', effectiveId?: string, printLangOverride?: string) => {
         if (!printTarget) return null
-        return (
+        return format === 'receipt' ? (
+            <OrderReceiptPrintTemplate
+                workspaceName={workspaceName}
+                printLang={printLangOverride || printLang}
+                order={printTarget.order}
+                installments={printInstallments}
+                kind={printTarget.kind}
+                iqdPreference={features.iqd_display_preference}
+                logoUrl={features.logo_url}
+                qrValue={effectiveId ? buildQrValue(effectiveId, 'receipt') : undefined}
+            />
+        ) : (
             <OrderDetailsPrintTemplate
                 workspaceName={workspaceName}
                 printLang={printLangOverride || printLang}
@@ -227,7 +243,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                 kind={printTarget.kind}
                 iqdPreference={features.iqd_display_preference}
                 logoUrl={features.logo_url}
-                qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+                qrValue={effectiveId ? buildQrValue(effectiveId, 'a4') : undefined}
             />
         )
     }, [
@@ -284,6 +300,73 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                     printLang: effectivePrintLang
                 })
             }
+        }
+    }, [
+        buildQrValue,
+        features.iqd_display_preference,
+        features.logo_url,
+        printInstallments,
+        printLang,
+        printTarget,
+        t,
+        workspaceName
+    ])
+    const orderInstallmentReceiptPreview = useMemo<TemplatePreview | undefined>(() => {
+        if (!printTarget) return undefined
+
+        const { order, kind } = printTarget
+        const counterpartyLabel = kind === 'sales'
+            ? (t('orders.details.customer') || 'Customer')
+            : (t('orders.details.supplier') || 'Supplier')
+        const counterpartyName = kind === 'sales' ? order.customerName : order.supplierName
+
+        return {
+            fields: [
+                { key: 'counterpartyName', label: counterpartyLabel, value: counterpartyName || '', type: 'text' },
+                { key: 'notes', label: t('common.notes') || 'Notes', value: order.notes || '', type: 'text' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showExchangeRateSnapshots, label: t('sales.marketRatesSnapshot', { defaultValue: 'Show exchange rate snapshots' }), value: 'true', type: 'boolean' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showOriginalCurrencyPrice, label: t('orders.print.showOriginalCurrencyPrice', { defaultValue: 'Show original currency price' }), value: 'true', type: 'boolean' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.hideUnit, label: t('orders.form.hideUnit', { defaultValue: 'Hide Unit' }), value: 'false', type: 'boolean' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.hideDiscount, label: t('orders.form.hideDiscount', { defaultValue: 'Hide Discount' }), value: 'false', type: 'boolean' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showNotes, label: t('orders.print.showNotes', { defaultValue: 'Show notes' }), value: 'true', type: 'boolean' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.thankYou, label: t('sales.print.thankYou', { defaultValue: 'Thank-you text' }), value: '', type: 'text' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord, label: t('sales.print.keepRecord', { defaultValue: 'Keep-record text' }), value: '', type: 'text' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.labelOpacity, label: t('orders.print.labelOpacity', { defaultValue: 'Labels opacity' }), value: '50', type: 'number' }
+            ],
+            createElement: (data, effectiveId, printLangOverride, renderOptions) => {
+                const updatedOrder = {
+                    ...order,
+                    ...(kind === 'sales'
+                        ? { customerName: data.counterpartyName }
+                        : { supplierName: data.counterpartyName }),
+                    notes: data.notes
+                }
+                const effectivePrintLang = printLangOverride || printLang
+
+                return (
+                    <OrderReceiptPrintTemplate
+                        workspaceName={workspaceName}
+                        printLang={effectivePrintLang}
+                        order={updatedOrder}
+                        installments={printInstallments}
+                        kind={kind}
+                        iqdPreference={features.iqd_display_preference}
+                        logoUrl={features.logo_url}
+                        qrValue={effectiveId ? buildQrValue(effectiveId, 'receipt') : undefined}
+                        templateFields={data}
+                        editableFields={renderOptions?.editableFields}
+                        onTemplateFieldChange={renderOptions?.onFieldChange}
+                        componentPositions={renderOptions?.componentPositions}
+                        editableComponents={renderOptions?.editableComponents}
+                        onComponentPositionChange={renderOptions?.onComponentPositionChange}
+                    />
+                )
+            },
+            buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({
+                element,
+                format: 'receipt',
+                printLang: printLangOverride || printLang
+            })
         }
     }, [
         buildQrValue,
@@ -504,7 +587,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                         effectiveId: string
                         printLangOverride?: string
                     }) => {
-                        const template = renderOrderTemplate(effectiveId, printLangOverride)
+                        const template = renderOrderTemplate(format, effectiveId, printLangOverride)
                         if (!template) throw new Error('Order data not ready')
                         return generateTemplatePdf({
                             element: template,
@@ -512,8 +595,15 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                             printLang: printLangOverride || printLang
                         })
                     }}
-                printTemplate={({ effectiveId }) => renderOrderTemplate(effectiveId)}
-                templatePreview={customOrderPrint.isCustomSelected ? customOrderPrint.preview : orderInstallmentPreview}
+                printTemplate={({ effectiveId }) => renderOrderTemplate(
+                    customOrderPrint.isReceiptSelected ? 'receipt' : 'a4',
+                    effectiveId
+                )}
+                templatePreview={customOrderPrint.isCustomSelected
+                    ? customOrderPrint.preview
+                    : customOrderPrint.isReceiptSelected
+                        ? orderInstallmentReceiptPreview
+                        : orderInstallmentPreview}
                 customTemplate={customOrderPrint.customTemplate}
                 initialTemplateLayout={customOrderPrint.initialLayout}
                 enableTemplatePreviewSave={customOrderPrint.isCustomSelected}

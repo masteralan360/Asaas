@@ -8,11 +8,12 @@ import {
     type IQDDisplayPreference
 } from '@/local-db'
 import { getOrderLineFreeBonusQuantity, getOrderLinePaidQuantity, hasOrderLineFreeBonus } from '@/lib/orderLineItems'
-import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
+import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useTranslation } from 'react-i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { MapPin, Phone } from 'lucide-react'
+import { EditableField } from '@/ui/components/EditableField'
 import type { ReactNode } from 'react'
 import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
 import { MovableOrderPrintBlock } from '../MovableComponentPrint'
@@ -67,6 +68,52 @@ interface OrderDetailsPrintTemplateProps {
     onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
     onHiddenFieldChange?: (key: string, hidden: boolean) => void
     workspaceFooterContacts?: WorkspaceFooterContacts
+}
+
+export const ORDER_RECEIPT_TEMPLATE_FIELD_KEYS = {
+    showExchangeRateSnapshots: 'orderReceipt.showExchangeRateSnapshots',
+    showOriginalCurrencyPrice: 'orderReceipt.showOriginalCurrencyPrice',
+    hideUnit: 'orderReceipt.hideUnit',
+    hideDiscount: 'orderReceipt.hideDiscount',
+    showNotes: 'orderReceipt.showNotes',
+    thankYou: 'orderReceipt.thankYou',
+    keepRecord: 'orderReceipt.keepRecord',
+    labelOpacity: 'orderReceipt.labelOpacity',
+} as const
+
+export const ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS = {
+    logo: 'orderReceiptLogo',
+    workspaceName: 'orderReceiptWorkspaceName',
+    qrCode: 'orderReceiptQrCode',
+    orderMeta: 'orderReceiptOrderMeta',
+    counterparty: 'orderReceiptCounterparty',
+    payment: 'orderReceiptPayment',
+    exchangeRateSnapshots: 'orderReceiptExchangeRateSnapshots',
+    itemsTable: 'orderReceiptItemsTable',
+    totals: 'orderReceiptTotals',
+    notes: 'orderReceiptNotes',
+    contacts: 'orderReceiptContacts',
+    thankYou: 'orderReceiptThankYou',
+    keepRecord: 'orderReceiptKeepRecord',
+} as const
+
+interface OrderReceiptPrintTemplateProps {
+    workspaceName?: string | null
+    printLang: string
+    order: SalesOrder | PurchaseOrder
+    installments?: OrderInstallment[]
+    kind: 'sales' | 'purchase'
+    iqdPreference?: IQDDisplayPreference
+    logoUrl?: string | null
+    qrValue?: string | null
+    counterpartyPhone?: string
+    workspaceFooterContacts?: WorkspaceFooterContacts
+    templateFields?: Record<string, string>
+    editableFields?: boolean
+    onTemplateFieldChange?: (key: string, value: string) => void
+    componentPositions?: Record<string, CustomTemplateComponentPosition>
+    editableComponents?: boolean
+    onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
 }
 
 export const ORDER_DETAILS_MOVABLE_COMPONENT_KEYS = {
@@ -396,6 +443,339 @@ export function OrderListPrintTemplate({
                     </tbody>
                 </table>
             )}
+        </div>
+    )
+}
+
+export function OrderReceiptPrintTemplate({
+    workspaceName,
+    printLang,
+    order,
+    installments = [],
+    kind,
+    iqdPreference = 'IQD',
+    logoUrl,
+    qrValue,
+    counterpartyPhone,
+    workspaceFooterContacts,
+    templateFields,
+    editableFields = false,
+    onTemplateFieldChange,
+    componentPositions,
+    editableComponents,
+    onComponentPositionChange,
+}: OrderReceiptPrintTemplateProps) {
+    const { i18n } = useTranslation()
+    const t = i18n.getFixedT(printLang)
+    const isSales = kind === 'sales'
+    const salesOrder = isSales ? order as SalesOrder : null
+    const purchaseOrder = !isSales ? order as PurchaseOrder : null
+    const isReceiptRtl = isRTL(printLang)
+    const counterpartyLabel = isSales
+        ? (t('orders.details.customer') || 'Customer')
+        : (t('orders.details.supplier') || 'Supplier')
+    const counterpartyName = isSales ? salesOrder?.customerName : purchaseOrder?.supplierName
+    const title = isSales
+        ? (t('orders.details.salesOrder') || 'Sales Order')
+        : (t('orders.details.purchaseOrder') || 'Purchase Order')
+    const fieldValue = (key: string) => templateFields?.[key]
+    const isFieldEnabled = (key: string) => fieldValue(key) !== 'false'
+    const showExchangeRateSnapshots = isFieldEnabled(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showExchangeRateSnapshots)
+    const showOriginalCurrencyPrice = isFieldEnabled(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showOriginalCurrencyPrice)
+    const hideUnit = fieldValue(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.hideUnit) === 'true'
+    const hideDiscount = fieldValue(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.hideDiscount) === 'true'
+    const showNotes = isFieldEnabled(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showNotes)
+    const thankYouText = fieldValue(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.thankYou)?.trim()
+        || t('sales.receipt.thankYou', { defaultValue: 'Thank you for your order!' })
+    const keepRecordText = fieldValue(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord)?.trim()
+        || t('sales.receipt.keepRecord', { defaultValue: 'Please keep this receipt for your records.' })
+    const labelOpacity = Math.min(100, Math.max(0, parseInt(fieldValue(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.labelOpacity) || '50', 10)))
+    const showFreeBonus = hasOrderLineFreeBonus(order.items || [])
+    const hasExchangeRates = Boolean(
+        showExchangeRateSnapshots
+        && order.items.some((item) => item.originalCurrency !== item.settlementCurrency)
+        && order.exchangeRates?.length
+    )
+    const paymentStatus = resolvePaymentStatusLabel(t, order)
+    const paidAmount = getOrderPaidAmount(order)
+    const balanceAmount = getOrderBalanceAmount(order)
+    const noteValue = order.notes?.trim()
+    const nextInstallment = installments
+        .filter((installment) => installment.balanceAmount > 0)
+        .sort((left, right) => left.dueDate.localeCompare(right.dueDate))[0]
+    const logoSrc = resolveLogoSrc(logoUrl)
+    const mp = (
+        key: string,
+        label: string,
+        children: ReactNode,
+        wrapperClassName?: string,
+        handleSide?: 'left' | 'right',
+        minY?: number,
+        pushFlow?: boolean
+    ) => (
+        <MovableOrderPrintBlock
+            componentKey={key}
+            label={label}
+            position={componentPositions?.[key]}
+            editable={editableComponents}
+            onPositionChange={onComponentPositionChange}
+            wrapperClassName={wrapperClassName}
+            handleSide={handleSide}
+            minY={minY}
+            pushFlow={pushFlow}
+        >
+            {children}
+        </MovableOrderPrintBlock>
+    )
+
+    const formatReceiptPrice = (amount: number, currency: string) => {
+        const code = currency.toLowerCase()
+        const formatted = code === 'iqd'
+            ? new Intl.NumberFormat('en-US').format(amount)
+            : code === 'eur'
+                ? new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)
+                : new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)
+        const currencyLabel = code === 'iqd'
+            ? (iqdPreference === 'IQD' ? 'IQD' : 'IQD')
+            : code.toUpperCase()
+
+        return (
+            <div className="flex flex-col items-end leading-none">
+                <span className="font-bold">{formatted}</span>
+                <span className="mt-0.5 text-[9px] font-medium text-black" style={{ opacity: labelOpacity / 100 }}>
+                    {currencyLabel}
+                </span>
+            </div>
+        )
+    }
+
+    return (
+        <div
+            dir={isReceiptRtl ? 'rtl' : 'ltr'}
+            className="a4-container bg-white p-8 text-black print:w-[80mm] print:p-0 print:text-sm"
+            style={{ width: '80mm', minHeight: '200mm' }}
+            data-order-print-page
+            data-page-width-mm="80"
+        >
+            <style dangerouslySetInnerHTML={{
+                __html: `
+.a4-container { color-scheme: light !important; background-color: white !important; color: black !important; }
+@media print {
+    @page { margin: 0; size: 80mm auto; }
+    body { background: white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    .order-template-move-handle { display: none !important; }
+}
+`
+            }} />
+
+            <div className="mb-4 flex items-center justify-between">
+                {mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.logo, 'Logo',
+                    logoSrc ? (
+                        <img src={logoSrc} alt="Workspace Logo" className="h-16 w-auto object-contain" />
+                    ) : null,
+                    'flex flex-1 justify-center'
+                )}
+                {mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.qrCode, 'QR Code',
+                    qrValue ? (
+                        <div className="rounded-sm border border-gray-100 bg-white p-1" data-qr-sharp="true">
+                            <ReactQRCode value={qrValue} size={64} level="M" />
+                        </div>
+                    ) : null,
+                    'flex justify-end'
+                )}
+            </div>
+
+            {mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.workspaceName, 'Workspace Name',
+                <div className="mb-1 text-center">
+                    <h1 className="text-2xl font-bold">{workspaceName || 'Atlas'}</h1>
+                    <p className="mt-1 text-xs font-semibold">{title}</p>
+                </div>
+            )}
+
+            <div className="mb-4 grid grid-cols-2 gap-4 text-xs">
+                {mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.orderMeta, 'Order Details',
+                    <div className="space-y-2">
+                        <div>
+                            <span className={cn('block text-[10px] font-semibold text-black', !isReceiptRtl && 'uppercase tracking-wider')} style={{ opacity: labelOpacity / 100 }}>
+                                {t('orders.table.orderNumber', { defaultValue: 'Order #' })}
+                            </span>
+                            <span className="font-mono font-medium">{order.orderNumber}</span>
+                        </div>
+                        <div>
+                            <span className={cn('block text-[10px] font-semibold text-black', !isReceiptRtl && 'uppercase tracking-wider')} style={{ opacity: labelOpacity / 100 }}>
+                                {t('orders.details.created', { defaultValue: 'Created' })}
+                            </span>
+                            <span className="font-mono">{formatDateTime(order.createdAt)}</span>
+                        </div>
+                        {order.expectedDeliveryDate ? (
+                            <div>
+                                <span className={cn('block text-[10px] font-semibold text-black', !isReceiptRtl && 'uppercase tracking-wider')} style={{ opacity: labelOpacity / 100 }}>
+                                    {t('orders.details.expectedDelivery', { defaultValue: 'Expected Delivery' })}
+                                </span>
+                                <span className="font-mono">{formatDate(order.expectedDeliveryDate)}</span>
+                            </div>
+                        ) : null}
+                    </div>,
+                    'w-full', 'left'
+                )}
+                <div className="space-y-3 text-end">
+                    {mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.counterparty, counterpartyLabel,
+                        <div>
+                            <span className={cn('block text-[10px] font-semibold text-black', !isReceiptRtl && 'uppercase tracking-wider')} style={{ opacity: labelOpacity / 100 }}>
+                                {counterpartyLabel}
+                            </span>
+                            <span className="font-medium">{counterpartyName || '-'}</span>
+                            {counterpartyPhone ? <span className="mt-0.5 block font-mono text-[11px]">{counterpartyPhone}</span> : null}
+                            {isSales && salesOrder?.shippingAddress ? (
+                                <span className="mt-1 block text-[10px] text-black" style={{ opacity: labelOpacity / 100 }}>
+                                    {salesOrder.shippingAddress}
+                                </span>
+                            ) : null}
+                        </div>,
+                        'w-full', 'right'
+                    )}
+                    {mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.payment, 'Payment',
+                        <div>
+                            <span className={cn('block text-[10px] font-semibold text-black', !isReceiptRtl && 'uppercase tracking-wider')} style={{ opacity: labelOpacity / 100 }}>
+                                {t('pos.paymentMethod', { defaultValue: 'Payment' })}
+                            </span>
+                            <span className="font-medium">{resolvePaymentLabel(t, order.paymentMethod)}</span>
+                            <span className="mt-0.5 block text-[11px]">
+                                {paymentStatus}{order.paidAt ? ` - ${formatDate(order.paidAt)}` : ''}
+                            </span>
+                        </div>,
+                        'w-full', 'right'
+                    )}
+                </div>
+            </div>
+
+            {hasExchangeRates ? mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.exchangeRateSnapshots, 'Exchange Rate Snapshots',
+                <div className="mb-5 border-t border-gray-200 pt-4 text-start">
+                    <div className={cn('mb-2 text-[10px] font-bold text-black', !isReceiptRtl && 'uppercase tracking-wider')} style={{ opacity: labelOpacity / 100 }}>
+                        {t('settings.exchangeRate.title', { defaultValue: 'Exchange Rates' })} {t('common.snapshots', { defaultValue: 'Snapshots' })}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        {order.exchangeRates!.map((rate, index) => (
+                            <div key={`${rate.pair}-${index}`} className="rounded border border-gray-200 bg-gray-50/50 p-2">
+                                <div className="mb-1 flex items-center justify-between gap-2">
+                                    <span className="text-[10px] font-bold">{rate.pair}</span>
+                                    <span className="text-[9px] uppercase text-gray-500">{rate.source}</span>
+                                </div>
+                                <div className="font-mono text-[11px] font-bold">
+                                    {rate.priceBasisAmount || 100} {rate.pair.split('/')[0]} = {formatCurrency(rate.rate, rate.pair.split('/')[1]?.toLowerCase() as any, iqdPreference)}
+                                </div>
+                                <div className="mt-1 font-mono text-[9px] text-gray-500">{formatSnapshotTime(rate.timestamp)}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ) : null}
+
+            {mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.itemsTable, 'Items Table',
+                <div className="mb-4">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className={cn('border-b border-black text-[10px] text-black', !isReceiptRtl && 'uppercase')} style={{ opacity: labelOpacity / 100 }}>
+                                <th className={cn('pb-2 text-start font-bold', !isReceiptRtl && 'tracking-wider')}>{t('products.table.name', { defaultValue: 'Product' })}</th>
+                                <th className={cn('pb-2 text-center font-bold', !isReceiptRtl && 'tracking-wider')}>{t('common.quantity', { defaultValue: 'Qty' })}</th>
+                                <th className={cn('pb-2 text-end font-bold', !isReceiptRtl && 'tracking-wider')}>{t('common.price', { defaultValue: 'Price' })}</th>
+                                <th className={cn('pb-2 text-end font-bold', !isReceiptRtl && 'tracking-wider')}>{t('common.total', { defaultValue: 'Total' })}</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-black" style={{ '--tw-divide-opacity': labelOpacity / 100 } as React.CSSProperties}>
+                            {order.items.map((item) => {
+                                const isConverted = item.originalCurrency && item.settlementCurrency && item.originalCurrency !== item.settlementCurrency
+                                const quantity = getOrderLinePaidQuantity(item)
+                                const freeBonus = getOrderLineFreeBonusQuantity(item)
+                                return (
+                                    <tr key={item.id}>
+                                        <td className="py-3 align-top text-start">
+                                            <div className="text-sm font-bold">{item.productName}</div>
+                                            {item.productSku ? <div className="mt-0.5 font-mono text-[10px] text-black" style={{ opacity: labelOpacity / 100 }}>{item.productSku}</div> : null}
+                                            {showFreeBonus && freeBonus > 0 ? (
+                                                <div className="mt-0.5 text-[10px] text-black" style={{ opacity: labelOpacity / 100 }}>
+                                                    {t('orders.details.freeBonus', { defaultValue: 'Free bonus' })}: {freeBonus}{!hideUnit && (item as any).unit ? ` ${(item as any).unit}` : ''}
+                                                </div>
+                                            ) : null}
+                                        </td>
+                                        <td className="py-3 text-center align-top font-mono">
+                                            {quantity}{!hideUnit && (item as any).unit ? ` ${(item as any).unit}` : ''}
+                                        </td>
+                                        <td className="py-3 align-top text-end">
+                                            {formatReceiptPrice(item.convertedUnitPrice, order.currency)}
+                                            {showOriginalCurrencyPrice && isConverted ? (
+                                                <div className="mt-1 origin-right scale-90 opacity-60">
+                                                    {formatReceiptPrice(item.originalUnitPrice, item.originalCurrency)}
+                                                </div>
+                                            ) : null}
+                                        </td>
+                                        <td className="py-3 align-top text-end">
+                                            {formatReceiptPrice(item.lineTotal, order.currency)}
+                                            {showOriginalCurrencyPrice && isConverted ? (
+                                                <div className="mt-1 origin-right scale-90 opacity-60 line-through decoration-gray-400">
+                                                    {formatReceiptPrice(item.originalUnitPrice * quantity, item.originalCurrency)}
+                                                </div>
+                                            ) : null}
+                                        </td>
+                                    </tr>
+                                )
+                            })}
+                        </tbody>
+                    </table>
+                    <div className="mt-4 border-t-2 border-black" style={{ '--tw-border-opacity': labelOpacity / 100 } as React.CSSProperties} />
+                </div>,
+                undefined, undefined, undefined, true
+            )}
+
+            {mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.totals, 'Totals',
+                <div className="mb-7 space-y-2 pt-2 text-sm">
+                    <div className="flex justify-between"><span style={{ opacity: labelOpacity / 100 }}>{t('orders.details.subtotal', { defaultValue: 'Subtotal' })}</span>{formatReceiptPrice(order.subtotal, order.currency)}</div>
+                    {!hideDiscount ? <div className="flex justify-between"><span style={{ opacity: labelOpacity / 100 }}>{t('orders.details.discount', { defaultValue: 'Discount' })}</span>{formatReceiptPrice(order.discount, order.currency)}</div> : null}
+                    {isSales && salesOrder ? <div className="flex justify-between"><span style={{ opacity: labelOpacity / 100 }}>{t('orders.details.tax', { defaultValue: 'Tax' })}</span>{formatReceiptPrice(salesOrder.tax, order.currency)}</div> : null}
+                    <div className="flex items-end justify-between border-t border-black pt-3">
+                        <span className={cn('text-sm font-bold text-black', !isReceiptRtl && 'uppercase tracking-wider')} style={{ opacity: labelOpacity / 100 }}>{t('common.total', { defaultValue: 'Total' })}</span>
+                        <span className="text-3xl font-black tracking-tight">{formatCurrency(order.total, order.currency, iqdPreference)}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 border-t border-gray-200 pt-2 text-xs">
+                        <div><span className="block text-[10px]" style={{ opacity: labelOpacity / 100 }}>{t('orders.details.paidAmount', { defaultValue: 'Paid' })}</span><span className="font-semibold">{formatCurrency(paidAmount, order.currency, iqdPreference)}</span></div>
+                        <div className="text-end"><span className="block text-[10px]" style={{ opacity: labelOpacity / 100 }}>{t('orders.details.outstanding', { defaultValue: 'Outstanding' })}</span><span className="font-semibold">{formatCurrency(balanceAmount, order.currency, iqdPreference)}</span></div>
+                    </div>
+                    {nextInstallment ? <div className="border-t border-gray-200 pt-2 text-xs"><span style={{ opacity: labelOpacity / 100 }}>{t('orders.details.nextDueDate', { defaultValue: 'Next payment due' })}: </span><span className="font-medium">{formatDate(nextInstallment.dueDate)} - {formatCurrency(nextInstallment.balanceAmount, order.currency, iqdPreference)}</span></div> : null}
+                </div>,
+                undefined, 'right', 0, true
+            )}
+
+            {showNotes && noteValue ? mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.notes, 'Notes',
+                <div className="mb-5 border-t border-gray-200 pt-3 text-xs">
+                    <span className={cn('block text-[10px] font-semibold text-black', !isReceiptRtl && 'uppercase tracking-wider')} style={{ opacity: labelOpacity / 100 }}>{t('orders.details.notes', { defaultValue: 'Notes' })}</span>
+                    <p className="mt-1 whitespace-pre-wrap break-words">{noteValue}</p>
+                </div>,
+                undefined, 'right', 0, true
+            ) : null}
+
+            {mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.contacts, 'Contacts',
+                <div className="mb-5 flex flex-wrap justify-center gap-x-3 gap-y-1 border-t border-gray-100 pt-3 text-center text-[10px] text-black" style={{ opacity: labelOpacity / 100 }}>
+                    {[workspaceFooterContacts?.address?.primary, workspaceFooterContacts?.phone?.primary]
+                        .filter((value): value is string => Boolean(value?.trim()))
+                        .map((value) => <span key={value}>{value}</span>)}
+                </div>,
+                undefined, 'right', 0, true
+            )}
+
+            <div className="border-t border-gray-100 pt-5 text-center text-[10px] text-gray-400">
+                {mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.thankYou, 'Thank You',
+                    <p className="mb-1 font-medium text-gray-900">
+                        <EditableField value={thankYouText} onChange={(value) => onTemplateFieldChange?.(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.thankYou, value)} editable={editableFields} />
+                    </p>,
+                    undefined, 'right', 0, true
+                )}
+                {mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.keepRecord, 'Keep Record',
+                    <span className="text-black" style={{ opacity: labelOpacity / 100 }}>
+                        <EditableField value={keepRecordText} onChange={(value) => onTemplateFieldChange?.(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord, value)} editable={editableFields} />
+                    </span>,
+                    undefined, 'right', 0, true
+                )}
+            </div>
         </div>
     )
 }

@@ -75,7 +75,11 @@ import { platformService } from '@/services/platformService'
 import { getStoredLocalInvoicePdfPath } from '@/services/localInvoiceStorage'
 import { r2Service } from '@/services/r2Service'
 import { getWorkspaceUsageLimitMessage, isWorkspaceUsageLimitError } from '@/lib/workspaceUsage'
-import { OrderDetailsPrintTemplate } from './OrderPrintTemplates'
+import {
+    ORDER_RECEIPT_TEMPLATE_FIELD_KEYS,
+    OrderDetailsPrintTemplate,
+    OrderReceiptPrintTemplate
+} from './OrderPrintTemplates'
 import { OrderStatusBadge } from './OrderStatusBadge'
 import { useOrderCustomPrint } from './useOrderCustomPrint'
 
@@ -410,6 +414,69 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                     element,
                     format: 'a4',
                     printLang,
+                })
+            },
+        }
+    }, [resolved, features, installments, workspaceName, t, i18n, workspaceId, workspaceFooterContacts, counterpartyPhone])
+
+    const orderReceiptPreview = useMemo<TemplatePreview | undefined>(() => {
+        if (!resolved) return undefined
+        const { order, kind } = resolved
+        const counterpartyLabel = kind === 'sales'
+            ? (t('orders.details.customer') || 'Customer')
+            : (t('orders.details.supplier') || 'Supplier')
+        const counterpartyName = kind === 'sales' ? (order as SalesOrder).customerName : (order as PurchaseOrder).supplierName
+
+        return {
+            fields: [
+                { key: 'counterpartyName', label: counterpartyLabel, value: counterpartyName || '', type: 'text' },
+                { key: 'counterpartyPhone', label: t('common.phone', { defaultValue: 'Phone' }), value: counterpartyPhone || '', type: 'text' },
+                { key: 'notes', label: t('common.notes') || 'Notes', value: order.notes || '', type: 'text' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showExchangeRateSnapshots, label: t('sales.marketRatesSnapshot', { defaultValue: 'Show exchange rate snapshots' }), value: 'true', type: 'boolean' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showOriginalCurrencyPrice, label: t('orders.print.showOriginalCurrencyPrice', { defaultValue: 'Show original currency price' }), value: 'true', type: 'boolean' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.hideUnit, label: t('orders.form.hideUnit', { defaultValue: 'Hide Unit' }), value: localStorage.getItem('atlas_print_hide_unit') || 'false', type: 'boolean' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.hideDiscount, label: t('orders.form.hideDiscount', { defaultValue: 'Hide Discount' }), value: localStorage.getItem('atlas_print_hide_discount') || 'false', type: 'boolean' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showNotes, label: t('orders.print.showNotes', { defaultValue: 'Show notes' }), value: 'true', type: 'boolean' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.thankYou, label: t('sales.print.thankYou', { defaultValue: 'Thank-you text' }), value: '', type: 'text' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord, label: t('sales.print.keepRecord', { defaultValue: 'Keep-record text' }), value: '', type: 'text' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.labelOpacity, label: t('orders.print.labelOpacity', { defaultValue: 'Labels opacity' }), value: '50', type: 'number' }
+            ],
+            createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string, renderOptions?: TemplatePreviewRenderOptions) => {
+                const updatedOrder = {
+                    ...order,
+                    ...(kind === 'sales' ? { customerName: data.counterpartyName } : { supplierName: data.counterpartyName }),
+                    notes: data.notes,
+                }
+                const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+                const printLang = printLangOverride || baseLang
+
+                return (
+                    <OrderReceiptPrintTemplate
+                        workspaceName={workspaceName}
+                        printLang={printLang}
+                        order={updatedOrder}
+                        installments={installments}
+                        kind={kind}
+                        iqdPreference={features.iqd_display_preference}
+                        logoUrl={features.logo_url}
+                        qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/receipts/${effectiveId}.pdf` : undefined}
+                        counterpartyPhone={data.counterpartyPhone}
+                        workspaceFooterContacts={renderOptions?.workspaceFooterContacts || workspaceFooterContacts}
+                        templateFields={data}
+                        editableFields={renderOptions?.editableFields}
+                        onTemplateFieldChange={renderOptions?.onFieldChange}
+                        componentPositions={renderOptions?.componentPositions}
+                        editableComponents={renderOptions?.editableComponents}
+                        onComponentPositionChange={renderOptions?.onComponentPositionChange}
+                    />
+                )
+            },
+            buildPdf: async (element: ReactElement, printLangOverride?: string) => {
+                const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+                return generateTemplatePdf({
+                    element,
+                    format: 'receipt',
+                    printLang: printLangOverride || baseLang,
                 })
             },
         }
@@ -1301,18 +1368,33 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         const printLang = printLangOverride || baseLang
                         return generateTemplatePdf({
                             element: (
-                                <OrderDetailsPrintTemplate
-                                    workspaceName={workspaceName}
-                                    printLang={printLang}
-                                    order={order}
-                                    installments={installments}
-                                    kind={resolved.kind}
-                                    iqdPreference={features.iqd_display_preference}
-                                    logoUrl={features.logo_url}
-                                    qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
-                                    counterpartyPhone={counterpartyPhone}
-                                    workspaceFooterContacts={workspaceFooterContacts}
-                                />
+                                format === 'receipt' ? (
+                                    <OrderReceiptPrintTemplate
+                                        workspaceName={workspaceName}
+                                        printLang={printLang}
+                                        order={order}
+                                        installments={installments}
+                                        kind={resolved.kind}
+                                        iqdPreference={features.iqd_display_preference}
+                                        logoUrl={features.logo_url}
+                                        qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/receipts/${effectiveId}.pdf` : undefined}
+                                        counterpartyPhone={counterpartyPhone}
+                                        workspaceFooterContacts={workspaceFooterContacts}
+                                    />
+                                ) : (
+                                    <OrderDetailsPrintTemplate
+                                        workspaceName={workspaceName}
+                                        printLang={printLang}
+                                        order={order}
+                                        installments={installments}
+                                        kind={resolved.kind}
+                                        iqdPreference={features.iqd_display_preference}
+                                        logoUrl={features.logo_url}
+                                        qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
+                                        counterpartyPhone={counterpartyPhone}
+                                        workspaceFooterContacts={workspaceFooterContacts}
+                                    />
+                                )
                             ),
                             format,
                             printLang,
@@ -1320,7 +1402,20 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                     }}
                 printTemplate={({ effectiveId }) => {
                     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
-                    return (
+                    return customOrderPrint.isReceiptSelected ? (
+                        <OrderReceiptPrintTemplate
+                            workspaceName={workspaceName}
+                            printLang={printLang}
+                            order={order}
+                            installments={installments}
+                            kind={resolved.kind}
+                            iqdPreference={features.iqd_display_preference}
+                            logoUrl={features.logo_url}
+                            qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/receipts/${effectiveId}.pdf` : undefined}
+                            counterpartyPhone={counterpartyPhone}
+                            workspaceFooterContacts={workspaceFooterContacts}
+                        />
+                    ) : (
                         <OrderDetailsPrintTemplate
                             workspaceName={workspaceName}
                             printLang={printLang}
@@ -1335,7 +1430,11 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         />
                     )
                 }}
-                templatePreview={customOrderPrint.isCustomSelected ? customOrderPrint.preview : orderDetailsPreview}
+                templatePreview={customOrderPrint.isCustomSelected
+                    ? customOrderPrint.preview
+                    : customOrderPrint.isReceiptSelected
+                        ? orderReceiptPreview
+                        : orderDetailsPreview}
                 customTemplate={customOrderPrint.customTemplate}
                 initialTemplateLayout={customOrderPrint.initialLayout}
                 enableTemplatePreviewSave={customOrderPrint.isCustomSelected}

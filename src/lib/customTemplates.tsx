@@ -41,6 +41,9 @@ import {
 } from '@/ui/components/crm/PartnerDetailsPrintTemplate'
 import {
     ORDER_DETAILS_MOVABLE_COMPONENT_KEYS,
+    ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS,
+    ORDER_RECEIPT_TEMPLATE_FIELD_KEYS,
+    OrderReceiptPrintTemplate,
     OrderDetailsPrintTemplate
 } from '@/ui/components/orders/OrderPrintTemplates'
 import { ModernA4InvoiceTemplate, MODERN_A4_MOVABLE_COMPONENT_KEYS } from '@/ui/components/ModernA4InvoiceTemplate'
@@ -59,6 +62,7 @@ export const SALES_HISTORY_A4_TEMPLATE_KEYS = [
 ] as const
 export const PARTNER_DETAILS_TEMPLATE_KEY = 'businessPartners.Details'
 export const ORDER_DETAILS_TEMPLATE_KEY = 'orders.Details'
+export const ORDER_RECEIPT_TEMPLATE_KEY = 'orders.Receipt'
 export const PARTNER_DETAILS_TEMPLATE_FIELD_KEYS = {
     showWhoOwesWhom: 'showWhoOwesWhom',
     showOrders: 'showOrders'
@@ -190,6 +194,17 @@ export const CUSTOM_TEMPLATE_TARGETS: CustomTemplateTarget[] = [
         nativeTemplateAvailable: true,
         printFormat: 'a4',
         page: { widthMm: 210, heightMm: 297 }
+    },
+    {
+        moduleTypeKey: ORDER_RECEIPT_TEMPLATE_KEY,
+        workspaceModuleKey: 'crm',
+        moduleLabel: 'Orders',
+        typeLabel: 'Receipt Print',
+        description: 'Sales and purchase order thermal receipt print layout.',
+        nativeTemplateKey: ORDER_RECEIPT_TEMPLATE_KEY,
+        nativeTemplateAvailable: true,
+        printFormat: 'receipt',
+        page: { widthMm: 80, heightMm: 200 }
     },
     ...REAL_ESTATE_CONTRACT_TARGETS.map((target) => ({
         ...target,
@@ -573,6 +588,59 @@ const ORDER_DETAILS_FIELDS = [
     }
 ]
 
+const ORDER_RECEIPT_FIELDS = [
+    {
+        key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showExchangeRateSnapshots,
+        label: 'Exchange rate source snapshot',
+        value: 'true',
+        type: 'boolean' as const
+    },
+    {
+        key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showOriginalCurrencyPrice,
+        label: 'Original currency price',
+        value: 'true',
+        type: 'boolean' as const
+    },
+    {
+        key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.hideUnit,
+        label: 'Hide item units',
+        value: 'false',
+        type: 'boolean' as const
+    },
+    {
+        key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.hideDiscount,
+        label: 'Hide discounts',
+        value: 'false',
+        type: 'boolean' as const
+    },
+    {
+        key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showNotes,
+        label: 'Show notes',
+        value: 'true',
+        type: 'boolean' as const
+    },
+    {
+        key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.thankYou,
+        label: 'Thank-you text',
+        value: '',
+        type: 'text' as const,
+        placeholder: 'Thank you for your order!'
+    },
+    {
+        key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord,
+        label: 'Keep-record text',
+        value: '',
+        type: 'text' as const,
+        placeholder: 'Please keep this receipt for your records.'
+    },
+    {
+        key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.labelOpacity,
+        label: 'Labels opacity',
+        value: '50',
+        type: 'number' as const
+    }
+]
+
 const SALES_HISTORY_MODERN_A4_FIELDS = [
     {
         key: 'hideUnit',
@@ -749,12 +817,18 @@ function createRealEstateDataKeysForTransactionType(transactionType: RealEstateT
     }))
 }
 
-function buildQrValue(workspaceId?: string, effectiveId?: string, features?: WorkspaceFeatures) {
+function buildQrValue(
+    workspaceId?: string,
+    effectiveId?: string,
+    features?: WorkspaceFeatures,
+    format: 'a4' | 'receipt' = 'a4'
+) {
     if (!features?.print_qr || !workspaceId || !effectiveId || isLocalWorkspaceMode(workspaceId)) {
         return null
     }
 
-    return `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf`
+    const folder = format === 'receipt' ? 'receipts' : 'A4'
+    return `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/${folder}/${effectiveId}.pdf`
 }
 
 function createRealEstateContractPreview(
@@ -1050,6 +1124,66 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
     }
 }
 
+function createOrderReceiptPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
+    const order = options.order || SAMPLE_ORDER_DATA
+    const kind = options.orderKind || 'sales'
+    const counterpartyPhone = options.counterpartyPhone || (order === SAMPLE_ORDER_DATA ? '+964 750 000 0000' : '')
+    const configuredPrintLang = options.features?.print_lang
+    const printLang = options.printLang
+        || (configuredPrintLang && configuredPrintLang !== 'auto' ? configuredPrintLang : 'en')
+    const fixedPrintLang: TemplatePreview['fixedPrintLang'] = printLang.startsWith('ar')
+        ? 'ar'
+        : printLang.startsWith('ku')
+            ? 'ku'
+            : 'en'
+
+    return {
+        fields: ORDER_RECEIPT_FIELDS,
+        movableComponents: [
+            { key: ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.logo, label: 'Logo' },
+            { key: ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.workspaceName, label: 'Workspace Name' },
+            { key: ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.qrCode, label: 'QR Code' },
+            { key: ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.orderMeta, label: 'Order Details' },
+            { key: ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.counterparty, label: kind === 'sales' ? 'Customer' : 'Supplier' },
+            { key: ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.payment, label: 'Payment' },
+            { key: ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.exchangeRateSnapshots, label: 'Exchange Rate Snapshots' },
+            { key: ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.itemsTable, label: 'Items Table' },
+            { key: ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.totals, label: 'Totals and Balance' },
+            { key: ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.notes, label: 'Notes' },
+            { key: ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.contacts, label: 'Contacts' },
+            { key: ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.thankYou, label: 'Thank You' },
+            { key: ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.keepRecord, label: 'Keep Record' }
+        ],
+        page: { widthMm: 80, heightMm: 200 },
+        fixedPrintLang,
+        createElement: (data, effectiveId, printLangOverride, renderOptions) => (
+            <OrderReceiptPrintTemplate
+                workspaceName={options.workspaceName}
+                printLang={printLangOverride || fixedPrintLang}
+                order={order}
+                installments={options.orderInstallments || []}
+                kind={kind}
+                iqdPreference={options.features?.iqd_display_preference}
+                logoUrl={options.features?.logo_url}
+                qrValue={buildQrValue(options.workspaceId, effectiveId, options.features, 'receipt')}
+                counterpartyPhone={counterpartyPhone}
+                workspaceFooterContacts={renderOptions?.workspaceFooterContacts || options.workspaceFooterContacts}
+                templateFields={data}
+                editableFields={renderOptions?.editableFields}
+                onTemplateFieldChange={renderOptions?.onFieldChange}
+                componentPositions={renderOptions?.componentPositions}
+                editableComponents={renderOptions?.editableComponents}
+                onComponentPositionChange={renderOptions?.onComponentPositionChange}
+            />
+        ),
+        buildPdf: (element, printLangOverride) => generateTemplatePdf({
+            element,
+            format: 'receipt',
+            printLang: printLangOverride || fixedPrintLang
+        })
+    }
+}
+
 export function createCustomTemplatePreview(
     target: CustomTemplateTarget,
     options: CustomTemplatePreviewOptions = {}
@@ -1072,6 +1206,10 @@ export function createCustomTemplatePreview(
 
     if (target.moduleTypeKey === ORDER_DETAILS_TEMPLATE_KEY) {
         return createOrderDetailsPreview(options)
+    }
+
+    if (target.moduleTypeKey === ORDER_RECEIPT_TEMPLATE_KEY) {
+        return createOrderReceiptPreview(options)
     }
 
     if (REAL_ESTATE_CONTRACT_MODULE_TYPE_KEYS.has(target.moduleTypeKey)) {

@@ -42,7 +42,8 @@ vi.mock('@/ui/components/ProfessionalA4InvoiceTemplate', () => ({
         terms: 'terms',
         exchangeRates: 'exchangeRates',
         contacts: 'contacts',
-        generatedBy: 'generatedBy'
+        generatedBy: 'generatedBy',
+        notes: 'notes'
     }
 }))
 
@@ -50,6 +51,7 @@ let customTemplates: typeof import('@/lib/customTemplates')
 let ProfessionalA4InvoiceTemplate: typeof import('@/ui/components/ProfessionalA4InvoiceTemplate')['ProfessionalA4InvoiceTemplate']
 let PartnerDetailsPrintTemplate: typeof import('@/ui/components/crm/PartnerDetailsPrintTemplate')['PartnerDetailsPrintTemplate']
 let OrderDetailsPrintTemplate: typeof import('@/ui/components/orders/OrderPrintTemplates')['OrderDetailsPrintTemplate']
+let OrderReceiptPrintTemplate: typeof import('@/ui/components/orders/OrderPrintTemplates')['OrderReceiptPrintTemplate']
 
 beforeAll(async () => {
     vi.stubGlobal('window', {
@@ -73,7 +75,7 @@ beforeAll(async () => {
     customTemplates = await import('@/lib/customTemplates')
     ;({ ProfessionalA4InvoiceTemplate } = await import('@/ui/components/ProfessionalA4InvoiceTemplate'))
     ;({ PartnerDetailsPrintTemplate } = await import('@/ui/components/crm/PartnerDetailsPrintTemplate'))
-    ;({ OrderDetailsPrintTemplate } = await import('@/ui/components/orders/OrderPrintTemplates'))
+    ;({ OrderDetailsPrintTemplate, OrderReceiptPrintTemplate } = await import('@/ui/components/orders/OrderPrintTemplates'))
 }, 30_000)
 
 describe('Sales History custom A4 templates', () => {
@@ -129,6 +131,7 @@ describe('Sales History custom A4 templates', () => {
         expect(preview.fields).toEqual([
             expect.objectContaining({ key: 'hideUnit', value: 'false', type: 'boolean' }),
             expect.objectContaining({ key: 'hideDiscount', value: 'false', type: 'boolean' }),
+            expect.objectContaining({ key: 'showNotes', value: 'false', type: 'boolean' }),
             expect.objectContaining({ key: 'tableRowCount', value: '10', type: 'number' })
         ])
         expect(preview.movableComponents?.map((component) => component.key)).toEqual([
@@ -146,7 +149,8 @@ describe('Sales History custom A4 templates', () => {
             'terms',
             'exchangeRates',
             'contacts',
-            'generatedBy'
+            'generatedBy',
+            'notes'
         ])
         expect(preview.fixedPrintLang).toBe('en')
         expect(element.type).toBe(ProfessionalA4InvoiceTemplate)
@@ -469,5 +473,97 @@ describe('Order Details custom print template', () => {
         expect(html).toContain('dir="ltr" class="absolute whitespace-pre-wrap')
         expect(html).toContain('0770 199 0012')
         expect(html).not.toContain('order-template-move-handle absolute')
+    })
+})
+
+describe('Order Receipt custom print template', () => {
+    it('registers the thermal Orders - Receipt Print target', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_RECEIPT_TEMPLATE_KEY)
+
+        expect(target).toMatchObject({
+            moduleTypeKey: customTemplates.ORDER_RECEIPT_TEMPLATE_KEY,
+            workspaceModuleKey: 'crm',
+            moduleLabel: 'Orders',
+            typeLabel: 'Receipt Print',
+            nativeTemplateAvailable: true,
+            printFormat: 'receipt',
+            page: {
+                widthMm: 80,
+                heightMm: 200
+            }
+        })
+        expect(customTemplates.getCustomTemplateDisplayName(customTemplates.ORDER_RECEIPT_TEMPLATE_KEY))
+            .toBe('Orders - Receipt Print')
+    })
+
+    it('uses the order receipt layout with receipt-specific fields and movable components', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_RECEIPT_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const componentPositions = {
+            orderReceiptItemsTable: { x: 3, y: 8 },
+            orderReceiptTotals: { x: -2, y: 4 }
+        }
+        const onComponentPositionChange = vi.fn()
+        const preview = customTemplates.createCustomTemplatePreview(target!, {
+            workspaceId: 'receipt-workspace',
+            workspaceName: 'Atlas Test',
+            printLang: 'en',
+            features: { print_qr: true }
+        })
+        const element = preview.createElement({
+            'orderReceipt.hideDiscount': 'true'
+        }, 'order-receipt-id', undefined, {
+            editableComponents: true,
+            componentPositions,
+            onComponentPositionChange
+        })
+
+        expect(preview.fields).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                key: 'orderReceipt.showExchangeRateSnapshots',
+                value: 'true',
+                type: 'boolean'
+            }),
+            expect.objectContaining({
+                key: 'orderReceipt.hideUnit', value: 'false', type: 'boolean' }),
+            expect.objectContaining({
+                key: 'orderReceipt.hideDiscount', value: 'false', type: 'boolean' }),
+            expect.objectContaining({
+                key: 'orderReceipt.thankYou', value: '', type: 'text' })
+        ]))
+        expect(preview.movableComponents?.map((component) => component.key)).toEqual([
+            'orderReceiptLogo',
+            'orderReceiptWorkspaceName',
+            'orderReceiptQrCode',
+            'orderReceiptOrderMeta',
+            'orderReceiptCounterparty',
+            'orderReceiptPayment',
+            'orderReceiptExchangeRateSnapshots',
+            'orderReceiptItemsTable',
+            'orderReceiptTotals',
+            'orderReceiptNotes',
+            'orderReceiptContacts',
+            'orderReceiptThankYou',
+            'orderReceiptKeepRecord'
+        ])
+        expect(preview.page).toEqual({ widthMm: 80, heightMm: 200 })
+        expect(preview.fixedPrintLang).toBe('en')
+        expect(element.type).toBe(OrderReceiptPrintTemplate)
+        expect(element.props.workspaceName).toBe('Atlas Test')
+        expect(element.props.qrValue).toContain('/printed-invoices/receipts/order-receipt-id.pdf')
+        expect(element.props.componentPositions).toBe(componentPositions)
+        expect(element.props.editableComponents).toBe(true)
+        expect(element.props.onComponentPositionChange).toBe(onComponentPositionChange)
+
+        const html = renderToStaticMarkup(element)
+        expect(html).toContain('SO-00042')
+        expect(html).toContain('Sample Customer')
+        expect(html).toContain('data-order-print-component="orderReceiptItemsTable"')
+        expect(html).toContain('translate(3mm, 0)')
+        expect(html).toContain('margin-top:8mm')
+        expect(html).toContain('data-order-print-component="orderReceiptTotals"')
+        expect(html).toContain('Paid')
+        expect(html).toContain('Outstanding')
     })
 })
