@@ -71,6 +71,7 @@ interface PurchaseOrderFormPageProps {
 
 type FormItem = {
     id: string
+    seq: number
     productId: string
     productSearch: string
     storageId: string
@@ -83,9 +84,10 @@ type FormItem = {
     batchManufacturingDate: string
 }
 
-function createEmptyItem(storageId = ''): FormItem {
+function createEmptyItem(storageId = '', seq = 1): FormItem {
     return {
         id: generateId(),
+        seq,
         productId: '',
         productSearch: '',
         storageId,
@@ -155,10 +157,11 @@ export function PurchaseOrderFormPage({
     )
     const [items, setItems] = useState<FormItem[]>(() => {
         if (editingOrder) {
-            return editingOrder.items.map((item) => {
+            return editingOrder.items.map((item, idx) => {
                 const product = products.find((p) => p.id === item.productId)
                 return {
                     id: item.id || generateId(),
+                    seq: idx + 1,
                     productId: item.productId,
                     productSearch: product?.name || '',
                     storageId: item.storageId || editingOrder.destinationStorageId || defaultStorageId,
@@ -177,6 +180,14 @@ export function PurchaseOrderFormPage({
     const requiresApprovalRequest = user?.role === 'staff' && permissionKeys.includes('orders.requirePurchaseOrderRequest')
     const canUseFreeBonus = hasCapability('orderFreeBonus')
     const [highlightedStorageIndex, setHighlightedStorageIndex] = useState<number | null>(null)
+    const [highlightedNewSeq, setHighlightedNewSeq] = useState<number | null>(null)
+
+    useEffect(() => {
+        if (highlightedNewSeq == null) return
+        const timeout = setTimeout(() => setHighlightedNewSeq(null), 1600)
+        return () => clearTimeout(timeout)
+    }, [highlightedNewSeq])
+
 
     useEffect(() => {
         if (!editingOrder) return
@@ -193,10 +204,11 @@ export function PurchaseOrderFormPage({
         setInstallmentFrequency(editingOrder.installmentFrequency || 'monthly')
         setFirstDueDate(editingOrder.firstDueDate?.slice(0, 10) || '')
         setInitialPaymentAmount(editingOrder.initialPaymentAmount ? String(editingOrder.initialPaymentAmount) : '')
-        setItems(editingOrder.items.map((item) => {
+        setItems(editingOrder.items.map((item, idx) => {
             const product = products.find((p) => p.id === item.productId)
             return {
                 id: item.id || generateId(),
+                seq: idx + 1,
                 productId: item.productId,
                 productSearch: product?.name || '',
                 storageId: item.storageId || editingOrder.destinationStorageId || defaultStorageId,
@@ -576,7 +588,11 @@ export function PurchaseOrderFormPage({
                                                 {t('orders.form.purchaseLineItemsDescription', { defaultValue: 'Add products with quantities and cost prices.' })}
                                             </p>
                                         </div>
-                                        <Button type="button" variant="outline" size="sm" onClick={() => setItems((current) => [...current, createEmptyItem(destinationStorageId || defaultStorageId)])}>
+                                        <Button type="button" variant="outline" size="sm" onClick={() => setItems((current) => {
+                                            const nextSeq = current.reduce((max, it) => Math.max(max, it.seq), 0) + 1
+                                            setHighlightedNewSeq(nextSeq)
+                                            return [createEmptyItem(destinationStorageId || defaultStorageId, nextSeq), ...current]
+                                        })}>
                                             <Plus className="mr-1 h-3.5 w-3.5" />
                                             {t('orders.form.addItem', { defaultValue: 'Add Item' })}
                                         </Button>
@@ -604,12 +620,16 @@ export function PurchaseOrderFormPage({
                                                 <div
                                                     key={item.id}
                                                     className={cn(
-                                                        'grid gap-3 rounded-2xl border bg-background p-4',
+                                                        'relative grid gap-3 rounded-2xl border bg-background p-4 transition-all duration-700',
                                                         canUseFreeBonus
                                                             ? 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_110px_140px_40px]'
-                                                            : 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_40px]'
+                                                            : 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_40px]',
+                                                        item.seq === highlightedNewSeq && 'border-primary ring-2 ring-primary/60 bg-primary/5'
                                                     )}
                                                 >
+                                                    <span className="absolute -top-2 start-3 z-10 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground">
+                                                        {item.seq}
+                                                    </span>
                                                     <div
                                                         className="space-y-2"
                                                         data-tour-id={index === 0 ? 'tutorial-order-product-picker' : undefined}
