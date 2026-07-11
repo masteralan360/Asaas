@@ -1684,6 +1684,7 @@ export function Products() {
                     if (!open) setSelectedProductForStock(undefined)
                 }}
                 preselectedProductId={selectedProductForStock}
+                allowAnyStorage
                 products={products}
                 storages={storages}
                 inventory={inventoryRows ?? []}

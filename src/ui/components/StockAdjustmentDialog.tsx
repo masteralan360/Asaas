@@ -79,6 +79,7 @@ interface StockAdjustmentDialogProps {
     inventory: InventoryRow[];
     workspaceId: string;
     userId: string | null;
+    allowAnyStorage?: boolean;
 }
 
 export function StockAdjustmentDialog({
@@ -90,6 +91,7 @@ export function StockAdjustmentDialog({
     inventory,
     workspaceId,
     userId,
+    allowAnyStorage = false,
 }: StockAdjustmentDialogProps) {
     const { t } = useTranslation();
     const { toast } = useToast();
@@ -128,6 +130,7 @@ export function StockAdjustmentDialog({
 
     const storageOptions = useMemo(() => {
         if (!form.productId) return storages;
+        if (allowAnyStorage) return storages;
         const storageIds = Array.from(
             new Set(
                 inventory
@@ -138,7 +141,7 @@ export function StockAdjustmentDialog({
         return storageIds.length
             ? storages.filter((s) => storageIds.includes(s.id))
             : storages;
-    }, [form.productId, inventory, storages]);
+    }, [form.productId, inventory, storages, allowAnyStorage]);
 
     useEffect(() => {
         if (
