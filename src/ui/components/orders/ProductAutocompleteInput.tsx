@@ -163,7 +163,7 @@ export function ProductAutocompleteInput({
                 )}
             </div>
             {showDropdown ? (
-                <div className="absolute left-0 top-full z-[100] mt-1 max-h-56 w-max min-w-full overflow-y-auto rounded-xl border bg-popover shadow-lg">
+                <div className="absolute start-0 top-full z-[100] mt-1 max-h-56 w-max min-w-full overflow-y-auto rounded-xl border bg-popover shadow-lg">
                     {filtered.map((product) => (
                         <button
                             key={product.id}
