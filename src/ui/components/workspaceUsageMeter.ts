@@ -37,7 +37,7 @@ function buildWorkspaceUsageMeter(
     if (!status?.has_limits) return null
 
     const storageLabel = t('workspaceUsage.storage')
-    const transferLabel = t('workspaceUsage.transfer')
+    const chargedUsageLabel = t('workspaceUsage.chargedUsage')
     const rawSegments: Array<Omit<WorkspaceUsageMeterSegment, 'widthPercent'>> = []
     const metrics: WorkspaceUsageMeterMetric[] = []
     const titleParts: string[] = []
@@ -63,23 +63,25 @@ function buildWorkspaceUsageMeter(
         }
     }
 
-    const transferPercent = getMetricPercent(status.data_transfer_bytes, status.monthly_data_transfer_limit_bytes)
-    if (transferPercent !== null) {
-        titleParts.push(`${transferLabel}: ${Math.round(transferPercent)}%`)
-        const transferMetric: WorkspaceUsageMeterMetric = {
-            key: 'transfer',
-            label: transferLabel,
-            percent: transferPercent,
+    // data_transfer_bytes is the CHARGED counter. Actual network transfer is
+    // status.actual_data_transfer_bytes and must never be compared to the allowance.
+    const chargedUsagePercent = getMetricPercent(status.data_transfer_bytes, status.monthly_data_transfer_limit_bytes)
+    if (chargedUsagePercent !== null) {
+        titleParts.push(`${chargedUsageLabel}: ${Math.round(chargedUsagePercent)}%`)
+        const chargedUsageMetric: WorkspaceUsageMeterMetric = {
+            key: 'chargedUsage',
+            label: chargedUsageLabel,
+            percent: chargedUsagePercent,
             barClassName: 'bg-amber-500 dark:bg-amber-400',
             badgeClassName: 'bg-amber-500/10 text-amber-700 ring-amber-500/20 dark:text-amber-300'
         }
-        metrics.push(transferMetric)
-        if (transferPercent > 0) {
+        metrics.push(chargedUsageMetric)
+        if (chargedUsagePercent > 0) {
             rawSegments.push({
-                key: transferMetric.key,
-                label: transferMetric.label,
-                percent: transferMetric.percent,
-                className: transferMetric.barClassName
+                key: chargedUsageMetric.key,
+                label: chargedUsageMetric.label,
+                percent: chargedUsageMetric.percent,
+                className: chargedUsageMetric.barClassName
             })
         }
     }
@@ -108,10 +110,12 @@ function buildWorkspaceUsageMeter(
             storageUnitLimit: status.storage_unit_limit === null
                 ? null
                 : Number(status.storage_unit_limit),
-            transferBytes: Number(status.data_transfer_bytes ?? 0),
-            transferLimitBytes: status.monthly_data_transfer_limit_bytes === null
+            actualTransferBytes: Number(status.actual_data_transfer_bytes ?? 0),
+            chargedUsageBytes: Number(status.data_transfer_bytes ?? 0),
+            chargedUsageLimitBytes: status.monthly_data_transfer_limit_bytes === null
                 ? null
                 : Number(status.monthly_data_transfer_limit_bytes),
+            chargeMultiplier: Number(status.transfer_charge_multiplier ?? 10),
             transferPeriodStart: status.transfer_period_start,
             insights: buildWorkspaceUsageInsights(status, history)
         }
@@ -137,11 +141,16 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
 
         let cancelled = false
         let refreshTimeout: number | undefined
+        let latestRequestId = 0
 
         const fetchUsageStatus = async () => {
+            const requestId = ++latestRequestId
             try {
                 const status = await getWorkspaceUsageStatus(workspaceId)
-                if (!cancelled) {
+                // Focus, interval, and usage events can overlap. Ignore a response
+                // from an older request so lower stale counters are never mistaken
+                // for a server-side monthly reset.
+                if (!cancelled && requestId === latestRequestId) {
                     setUsageStatus(status)
                     setUsageHistory((current) => (
                         status
@@ -152,10 +161,10 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
                     ))
                 }
 
-                if (status) {
+                if (status && !cancelled && requestId === latestRequestId) {
                     try {
                         const history = await saveWorkspaceUsageSnapshot(status)
-                        if (!cancelled) {
+                        if (!cancelled && requestId === latestRequestId) {
                             setUsageHistory(history)
                         }
                     } catch (error) {
@@ -164,7 +173,7 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
                 }
             } catch (error) {
                 console.warn('[WorkspaceUsage] Failed to load workspace usage:', error)
-                if (!cancelled) {
+                if (!cancelled && requestId === latestRequestId) {
                     setUsageStatus(null)
                     setUsageHistory(null)
                 }

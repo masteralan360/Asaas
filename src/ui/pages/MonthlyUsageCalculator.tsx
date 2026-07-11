@@ -43,6 +43,7 @@ import {
     type UsageFrequency,
     type WorkspaceHistorySize
 } from '@/lib/monthlyUsageCalculator'
+import { WORKSPACE_USAGE_CHARGE_MULTIPLIER } from '@/lib/workspaceUsageCharging'
 import { Button } from '@/ui/components/button'
 import { Input } from '@/ui/components/input'
 import { Label } from '@/ui/components/label'
@@ -128,11 +129,11 @@ const BREAKDOWN_ICONS: Record<UsageBreakdownKey, ComponentType<{ className?: str
 
 function formatBytes(bytes: number, locale: string): string {
     const safeBytes = Math.max(0, bytes)
-    const mib = safeBytes / (1024 * 1024)
-    const gib = mib / 1024
-    if (gib >= 1) return `${new Intl.NumberFormat(locale, { maximumFractionDigits: gib >= 10 ? 1 : 2 }).format(gib)} GB`
-    if (mib >= 1) return `${new Intl.NumberFormat(locale, { maximumFractionDigits: mib >= 10 ? 1 : 2 }).format(mib)} MB`
-    return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(safeBytes / 1024)} KB`
+    const mb = safeBytes / 1_000_000
+    const gb = mb / 1000
+    if (gb >= 1) return `${new Intl.NumberFormat(locale, { maximumFractionDigits: gb >= 10 ? 1 : 2 }).format(gb)} GB`
+    if (mb >= 1) return `${new Intl.NumberFormat(locale, { maximumFractionDigits: mb >= 10 ? 1 : 2 }).format(mb)} MB`
+    return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(safeBytes / 1000)} KB`
 }
 
 function formatCount(value: number, locale: string): string {
@@ -389,7 +390,7 @@ export function MonthlyUsageCalculator() {
 
     const planLimit = estimate?.recommendedPlan.limitBytes ?? null
     const recommendationPercent = estimate && planLimit
-        ? Math.min(100, estimate.recommendedUsageBytes / planLimit * 100)
+        ? Math.min(100, estimate.chargedRecommendedUsageBytes / planLimit * 100)
         : 0
 
     const historyOptions: Array<{ value: WorkspaceHistorySize; label: string; description: string }> = [
@@ -433,23 +434,30 @@ export function MonthlyUsageCalculator() {
                             <div>
                                 <div className="flex items-center gap-2 text-sm font-bold text-teal-50">
                                     <Calculator className="h-4 w-4" />
-                                    {t('monthlyUsageCalculator.results.typicalLabel', { defaultValue: 'Most likely monthly usage' })}
+                                    {t('monthlyUsageCalculator.results.typicalLabel', { defaultValue: 'Most likely charged monthly usage' })}
                                 </div>
-                                <div className="mt-4 text-5xl font-black tracking-tight sm:text-6xl">{formatBytes(estimate.typicalMonthBytes, locale)}</div>
+                                <div className="mt-4 text-5xl font-black tracking-tight sm:text-6xl">{formatBytes(estimate.chargedTypicalUsageBytes, locale)}</div>
                                 <p className="mt-3 max-w-xl text-sm leading-6 text-teal-50/90">
                                     {t('monthlyUsageCalculator.results.range', {
-                                        defaultValue: 'Expected range: {{low}} to {{high}} depending on activity.',
-                                        low: formatBytes(estimate.lowMonthBytes, locale),
-                                        high: formatBytes(estimate.busyMonthBytes, locale)
+                                        defaultValue: 'Expected charged range: {{low}} to {{high}} depending on activity.',
+                                        low: formatBytes(estimate.chargedLowUsageBytes, locale),
+                                        high: formatBytes(estimate.chargedBusyUsageBytes, locale)
                                     })}
                                 </p>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
-                                <ResultMiniMetric label={t('monthlyUsageCalculator.results.firstMonth', { defaultValue: 'First month' })} value={formatBytes(estimate.firstMonthBytes, locale)} />
-                                <ResultMiniMetric label={t('monthlyUsageCalculator.results.workdayAverage', { defaultValue: 'Workday average' })} value={formatBytes(estimate.averageWorkingDayBytes, locale)} />
-                                <ResultMiniMetric label={t('monthlyUsageCalculator.results.uploaded', { defaultValue: 'Uploaded' })} value={formatBytes(estimate.uploadedBytes, locale)} />
-                                <ResultMiniMetric label={t('monthlyUsageCalculator.results.downloaded', { defaultValue: 'Downloaded' })} value={formatBytes(estimate.downloadedBytes, locale)} />
+                                <ResultMiniMetric label={t('monthlyUsageCalculator.results.actualTransfer', { defaultValue: 'Actual transfer' })} value={formatBytes(estimate.actualTypicalTransferBytes, locale)} />
+                                <ResultMiniMetric label={t('monthlyUsageCalculator.results.firstMonthCharged', { defaultValue: 'First month charged' })} value={formatBytes(estimate.chargedFirstMonthUsageBytes, locale)} />
+                                <ResultMiniMetric label={t('monthlyUsageCalculator.results.actualUploaded', { defaultValue: 'Actual uploaded' })} value={formatBytes(estimate.actualUploadedBytes, locale)} />
+                                <ResultMiniMetric label={t('monthlyUsageCalculator.results.actualDownloaded', { defaultValue: 'Actual downloaded' })} value={formatBytes(estimate.actualDownloadedBytes, locale)} />
                             </div>
+                        </div>
+                        <div className="mt-5 flex items-start gap-2 rounded-2xl bg-white/10 px-4 py-3 text-sm leading-6 text-teal-50 ring-1 ring-white/20">
+                            <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                            {t('monthlyUsageCalculator.results.chargeExplanation', {
+                                defaultValue: 'Plan usage is charged at {{multiplier}}× actual transfer: 1 MB uploaded or downloaded consumes {{multiplier}} MB of the monthly allowance.',
+                                multiplier: WORKSPACE_USAGE_CHARGE_MULTIPLIER
+                            })}
                         </div>
                     </section>
 
@@ -458,15 +466,18 @@ export function MonthlyUsageCalculator() {
                             <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-slate-800 dark:bg-slate-900">
                                 <div className="flex items-center justify-between gap-4">
                                     <div>
-                                        <h2 className="text-lg font-black">{t('monthlyUsageCalculator.results.breakdown', { defaultValue: 'Where the usage comes from' })}</h2>
-                                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('monthlyUsageCalculator.results.breakdownDescription', { defaultValue: 'Every category includes its related requests, responses, and follow-up synchronization.' })}</p>
+                                        <h2 className="text-lg font-black">{t('monthlyUsageCalculator.results.breakdown', { defaultValue: 'Actual transfer breakdown' })}</h2>
+                                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('monthlyUsageCalculator.results.breakdownDescription', {
+                                            defaultValue: 'Raw upload and download estimates before the {{multiplier}}× plan-usage charge.',
+                                            multiplier: WORKSPACE_USAGE_CHARGE_MULTIPLIER
+                                        })}</p>
                                     </div>
                                     <Database className="h-6 w-6 text-teal-600" />
                                 </div>
                                 <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                                    {estimate.breakdown.filter((item) => item.bytes > 0).map((item) => {
+                                    {estimate.breakdown.filter((item) => item.actualTransferBytes > 0).map((item) => {
                                         const Icon = BREAKDOWN_ICONS[item.key]
-                                        const percent = estimate.typicalMonthBytes > 0 ? item.bytes / estimate.typicalMonthBytes * 100 : 0
+                                        const percent = estimate.actualTypicalTransferBytes > 0 ? item.actualTransferBytes / estimate.actualTypicalTransferBytes * 100 : 0
                                         return (
                                             <div key={item.key} className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60">
                                                 <div className="flex items-start justify-between gap-3">
@@ -474,12 +485,13 @@ export function MonthlyUsageCalculator() {
                                                         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-teal-700 shadow-sm dark:bg-slate-900 dark:text-teal-300"><Icon className="h-4 w-4" /></div>
                                                         <span className="text-sm font-bold">{t(`monthlyUsageCalculator.breakdown.${item.key}`, { defaultValue: item.key })}</span>
                                                     </div>
-                                                    <span className="text-sm font-black">{formatBytes(item.bytes, locale)}</span>
+                                                    <span className="text-sm font-black">{formatBytes(item.actualTransferBytes, locale)}</span>
                                                 </div>
                                                 <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"><div className="h-full rounded-full bg-teal-500" style={{ width: `${Math.max(1, percent)}%` }} /></div>
-                                                <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                                                    <span className="inline-flex items-center gap-1"><ArrowUp className="h-3 w-3" />{formatBytes(item.uploadedBytes, locale)}</span>
-                                                    <span className="inline-flex items-center gap-1"><ArrowDown className="h-3 w-3" />{formatBytes(item.downloadedBytes, locale)}</span>
+                                                <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                                                    <span className="inline-flex items-center gap-1"><ArrowUp className="h-3 w-3" />{formatBytes(item.actualUploadedBytes, locale)}</span>
+                                                    <span className="inline-flex items-center gap-1"><ArrowDown className="h-3 w-3" />{formatBytes(item.actualDownloadedBytes, locale)}</span>
+                                                    <span className="ms-auto font-bold text-amber-700 dark:text-amber-300">{t('monthlyUsageCalculator.results.chargedValue', { defaultValue: '{{value}} charged', value: formatBytes(item.chargedUsageBytes, locale) })}</span>
                                                 </div>
                                             </div>
                                         )
@@ -517,6 +529,10 @@ export function MonthlyUsageCalculator() {
                                     <ArrowDown className="h-4 w-4 transition group-open:rotate-180" />
                                 </summary>
                                 <ul className="mt-5 space-y-3 border-t border-slate-100 pt-5 text-sm leading-6 text-slate-600 dark:border-slate-800 dark:text-slate-300">
+                                    <Assumption text={t('monthlyUsageCalculator.assumptions.charging', {
+                                        defaultValue: 'Actual upload and download are modeled first. Plan recommendations then apply the fixed {{multiplier}}× charged-usage multiplier.',
+                                        multiplier: WORKSPACE_USAGE_CHARGE_MULTIPLIER
+                                    })} />
                                     <Assumption text={t('monthlyUsageCalculator.assumptions.loanSchedule', { defaultValue: 'Each new loan includes {{count}} generated schedule rows; every loan payment updates that full schedule.', count: DEFAULT_SCHEDULED_INSTALLMENTS_PER_LOAN })} />
                                     <Assumption text={t('monthlyUsageCalculator.assumptions.partners', { defaultValue: 'Wholesale orders and linked loans reuse existing business partners and include their summary updates; no new partner is assumed per transaction.' })} />
                                     <Assumption text={t('monthlyUsageCalculator.assumptions.pos', { defaultValue: 'POS includes the checkout RPC, sale-item children, later history sync, and full batch refreshes when batch tracking is enabled.' })} />
@@ -538,7 +554,7 @@ export function MonthlyUsageCalculator() {
                                 {planLimit && <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-teal-200 dark:bg-teal-900"><div className="h-full rounded-full bg-teal-600" style={{ width: `${Math.max(2, recommendationPercent)}%` }} /></div>}
                                 <p className="mt-4 text-xs leading-5 text-teal-800 dark:text-teal-200">{t('monthlyUsageCalculator.results.headroom', { defaultValue: 'Based on the larger first or busy month, plus 20% room for growth.' })}</p>
                                 <div className="mt-4 rounded-xl bg-white/70 px-3 py-2.5 text-xs text-teal-900 dark:bg-slate-950/50 dark:text-teal-100">
-                                    {t('monthlyUsageCalculator.results.planningAmount', { defaultValue: 'Planning amount: {{value}}', value: formatBytes(estimate.recommendedUsageBytes, locale) })}
+                                    {t('monthlyUsageCalculator.results.planningAmount', { defaultValue: 'Charged planning amount: {{value}}', value: formatBytes(estimate.chargedRecommendedUsageBytes, locale) })}
                                 </div>
                             </section>
 

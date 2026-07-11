@@ -67,9 +67,17 @@ type UpdateWorkspaceUsageRequest = {
     passkey?: string
     workspaceId?: string
     storageUnits?: string | number | null
+    /** Real measured upload/download payload bytes. Never weighted. */
+    actualTransferBytes?: string | number | null
+    /** Charged plan usage after applying the workspace transfer multiplier. */
+    chargedUsageBytes?: string | number | null
+    /** @deprecated Historical alias for actualTransferBytes. */
     dataTransferBytes?: string | number | null
     transferPeriodStart?: string | null
     storageUnitLimit?: string | number | null
+    /** Monthly allowance compared with chargedUsageBytes. */
+    monthlyChargedUsageLimitBytes?: string | number | null
+    /** @deprecated Wire-name alias for the charged-usage allowance. */
     monthlyDataTransferLimitBytes?: string | number | null
     notes?: string | null
 }
@@ -94,6 +102,9 @@ type AdminConsoleRequest =
     | UpdateWorkspaceUsageRequest
     | RefreshWorkspaceUsageRequest
 
+const WORKSPACE_TRANSFER_CHARGE_MULTIPLIER = 10n
+const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n
+
 function currentUsagePeriodStart() {
     const now = new Date()
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
@@ -107,7 +118,7 @@ function normalizeNullableBigint(value: unknown, field: string): { value: string
     }
 
     if (typeof value === 'number') {
-        if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+        if (!Number.isSafeInteger(value) || value < 0 || BigInt(value) > POSTGRES_BIGINT_MAX) {
             return { value: null, error: `${field} must be a non-negative integer` }
         }
         return { value: String(value) }
@@ -121,10 +132,83 @@ function normalizeNullableBigint(value: unknown, field: string): { value: string
         if (!/^\d+$/.test(normalized)) {
             return { value: null, error: `${field} must be a non-negative integer` }
         }
-        return { value: BigInt(normalized).toString() }
+        const parsed = BigInt(normalized)
+        if (parsed > POSTGRES_BIGINT_MAX) {
+            return { value: null, error: `${field} must fit in a PostgreSQL bigint` }
+        }
+        return { value: parsed.toString() }
     }
 
     return { value: null, error: `${field} must be a non-negative integer` }
+}
+
+function resolveNullableBigintAlias(
+    value: unknown,
+    legacyValue: unknown,
+    field: string,
+    legacyField: string
+): { value: string | null; error?: string } {
+    const normalized = normalizeNullableBigint(value, field)
+    const normalizedLegacy = normalizeNullableBigint(legacyValue, legacyField)
+    const error = normalized.error ?? normalizedLegacy.error
+
+    if (error) {
+        return { value: null, error }
+    }
+
+    const hasValue = value !== undefined
+    const hasLegacyValue = legacyValue !== undefined
+    if (hasValue && hasLegacyValue && normalized.value !== normalizedLegacy.value) {
+        return { value: null, error: `${field} and ${legacyField} must match when both are provided` }
+    }
+
+    return {
+        value: hasValue ? normalized.value : normalizedLegacy.value
+    }
+}
+
+function reconcileTransferCounters(
+    actualValue: string | null,
+    chargedValue: string | null
+): { actualValue: string; chargedValue: string; error?: string } {
+    if (actualValue === null && chargedValue === null) {
+        return { actualValue: '0', chargedValue: '0', error: 'Actual transfer or charged usage is required' }
+    }
+
+    const actual = actualValue === null ? null : BigInt(actualValue)
+    const charged = chargedValue === null ? null : BigInt(chargedValue)
+
+    if (actual !== null) {
+        const derivedCharged = actual * WORKSPACE_TRANSFER_CHARGE_MULTIPLIER
+        if (derivedCharged > POSTGRES_BIGINT_MAX) {
+            return { actualValue: '0', chargedValue: '0', error: 'Actual transfer is too large to charge safely' }
+        }
+        if (charged !== null && charged !== derivedCharged) {
+            return {
+                actualValue: '0',
+                chargedValue: '0',
+                error: 'Charged usage must equal actual transfer multiplied by 10'
+            }
+        }
+        return { actualValue: actual.toString(), chargedValue: derivedCharged.toString() }
+    }
+
+    if (charged! > POSTGRES_BIGINT_MAX) {
+        return { actualValue: '0', chargedValue: '0', error: 'Charged usage is too large to store safely' }
+    }
+
+    if (charged! % WORKSPACE_TRANSFER_CHARGE_MULTIPLIER !== 0n) {
+        return {
+            actualValue: '0',
+            chargedValue: '0',
+            error: 'Charged usage must be divisible by 10 when actual transfer is omitted'
+        }
+    }
+
+    return {
+        actualValue: (charged! / WORKSPACE_TRANSFER_CHARGE_MULTIPLIER).toString(),
+        chargedValue: charged!.toString()
+    }
 }
 
 function normalizeUsagePeriodStart(value: unknown): { value: string; error?: string } {
@@ -476,17 +560,17 @@ async function resolveUsageOwnerWorkspaceId(
     adminClient: ReturnType<typeof createAdminClient>,
     workspaceId: string
 ) {
-    const { data, error } = await adminClient
-        .from('workspace_branches')
-        .select('source_workspace_id')
-        .eq('branch_workspace_id', workspaceId)
-        .maybeSingle()
+    // Use the database's recursive, cycle-safe resolver. A one-hop lookup can
+    // leave root usage rows untouched when an admin targets a nested branch.
+    const { data, error } = await adminClient.rpc('workspace_usage_owner_id', {
+        p_workspace_id: workspaceId
+    })
 
     if (error) {
         throw error
     }
 
-    return data?.source_workspace_id ? String(data.source_workspace_id) : workspaceId
+    return data ? String(data) : workspaceId
 }
 
 async function syncWorkspaceUsagePeriod(
@@ -540,6 +624,7 @@ async function syncWorkspaceUsagePeriod(
     const { error: resetError } = await adminClient
         .from('workspace_usage')
         .update({
+            actual_data_transfer_bytes: '0',
             data_transfer_bytes: '0',
             transfer_period_start: periodStart,
             transfer_updated_at: now,
@@ -563,7 +648,7 @@ async function listWorkspaceUsage(adminClient: ReturnType<typeof createAdminClie
 
         const { data: usageRows, error: usageError } = await adminClient
             .from('workspace_usage')
-            .select('workspace_id, storage_units, data_transfer_bytes, transfer_period_start, storage_updated_at, transfer_updated_at, updated_at')
+            .select('workspace_id, storage_units, actual_data_transfer_bytes, data_transfer_bytes, transfer_period_start, storage_updated_at, transfer_updated_at, updated_at')
             .in('workspace_id', limitedWorkspaceIds)
 
         if (usageError) {
@@ -586,11 +671,25 @@ async function listWorkspaceUsage(adminClient: ReturnType<typeof createAdminClie
         return jsonResponse(limitedWorkspaceIds.map((workspaceId) => {
             const usage = usageByWorkspaceId.get(workspaceId)
             const limits = limitsByWorkspaceId.get(workspaceId)
+            const actualTransferBytes = String(usage?.actual_data_transfer_bytes ?? 0)
+            // The database keeps data_transfer_bytes as the compatibility/enforcement
+            // column. It is CHARGED usage, not real network transfer.
+            const chargedUsageBytes = String(usage?.data_transfer_bytes ?? 0)
+            const monthlyChargedUsageLimitBytes = limits?.monthly_data_transfer_limit_bytes === null
+                || limits?.monthly_data_transfer_limit_bytes === undefined
+                ? null
+                : String(limits.monthly_data_transfer_limit_bytes)
 
             return {
                 workspace_id: workspaceId,
                 storage_units: String(usage?.storage_units ?? 0),
-                data_transfer_bytes: String(usage?.data_transfer_bytes ?? 0),
+                actual_data_transfer_bytes: actualTransferBytes,
+                charged_usage_bytes: chargedUsageBytes,
+                transfer_charge_multiplier: Number(WORKSPACE_TRANSFER_CHARGE_MULTIPLIER),
+                // Deprecated ADMIN API response alias. Before weighted charging,
+                // this API field meant actual transfer, so preserve that meaning
+                // even though the same-named database column is now charged usage.
+                data_transfer_bytes: actualTransferBytes,
                 transfer_period_start: String(usage?.transfer_period_start ?? periodStart),
                 storage_updated_at: usage?.storage_updated_at ?? null,
                 transfer_updated_at: usage?.transfer_updated_at ?? null,
@@ -599,9 +698,9 @@ async function listWorkspaceUsage(adminClient: ReturnType<typeof createAdminClie
                 storage_unit_limit: limits?.storage_unit_limit === null || limits?.storage_unit_limit === undefined
                     ? null
                     : String(limits.storage_unit_limit),
-                monthly_data_transfer_limit_bytes: limits?.monthly_data_transfer_limit_bytes === null || limits?.monthly_data_transfer_limit_bytes === undefined
-                    ? null
-                    : String(limits.monthly_data_transfer_limit_bytes),
+                monthly_charged_usage_limit_bytes: monthlyChargedUsageLimitBytes,
+                // Deprecated response alias for the charged-usage allowance.
+                monthly_data_transfer_limit_bytes: monthlyChargedUsageLimitBytes,
                 notes: limits?.notes ?? null,
                 limits_created_at: limits?.created_at ?? null,
                 limits_updated_at: limits?.updated_at ?? null
@@ -645,23 +744,45 @@ async function updateWorkspaceUsage(
     }
 
     const storageUnits = normalizeNullableBigint(body.storageUnits, 'Storage usage')
-    const dataTransferBytes = normalizeNullableBigint(body.dataTransferBytes, 'Monthly data transfer')
+    const actualTransferBytes = resolveNullableBigintAlias(
+        body.actualTransferBytes,
+        body.dataTransferBytes,
+        'Monthly actual transfer',
+        'Deprecated dataTransferBytes'
+    )
+    const chargedUsageBytes = normalizeNullableBigint(body.chargedUsageBytes, 'Monthly charged usage')
     const storageUnitLimit = normalizeNullableBigint(body.storageUnitLimit, 'Storage limit')
-    const monthlyDataTransferLimitBytes = normalizeNullableBigint(body.monthlyDataTransferLimitBytes, 'Monthly data transfer limit')
+    const monthlyChargedUsageLimitBytes = resolveNullableBigintAlias(
+        body.monthlyChargedUsageLimitBytes,
+        body.monthlyDataTransferLimitBytes,
+        'Monthly charged usage limit',
+        'Deprecated monthlyDataTransferLimitBytes'
+    )
     const periodStart = normalizeUsagePeriodStart(body.transferPeriodStart)
 
     const validationError = storageUnits.error
-        ?? dataTransferBytes.error
+        ?? actualTransferBytes.error
+        ?? chargedUsageBytes.error
         ?? storageUnitLimit.error
-        ?? monthlyDataTransferLimitBytes.error
+        ?? monthlyChargedUsageLimitBytes.error
         ?? periodStart.error
 
     if (validationError) {
         return errorResponse(validationError)
     }
 
-    if (storageUnits.value === null || dataTransferBytes.value === null) {
-        return errorResponse('Usage counters are required')
+    if (storageUnits.value === null) {
+        return errorResponse('Storage usage counter is required')
+    }
+
+    // Admin writes must preserve the same invariant as the metering RPC: actual
+    // transfer is raw payload, while charged usage is exactly actual * 10.
+    const reconciledTransfer = reconcileTransferCounters(
+        actualTransferBytes.value,
+        chargedUsageBytes.value
+    )
+    if (reconciledTransfer.error) {
+        return errorResponse(reconciledTransfer.error)
     }
 
     const now = new Date().toISOString()
@@ -669,7 +790,7 @@ async function updateWorkspaceUsage(
         ? body.notes.trim().slice(0, 500)
         : null
 
-    if (storageUnitLimit.value === null && monthlyDataTransferLimitBytes.value === null) {
+    if (storageUnitLimit.value === null && monthlyChargedUsageLimitBytes.value === null) {
         const { error: usageDeleteError } = await adminClient
             .from('workspace_usage')
             .delete()
@@ -693,7 +814,8 @@ async function updateWorkspaceUsage(
             .upsert({
                 workspace_id: usageWorkspaceId,
                 storage_unit_limit: storageUnitLimit.value,
-                monthly_data_transfer_limit_bytes: monthlyDataTransferLimitBytes.value,
+                // This legacy-named database column stores the CHARGED allowance.
+                monthly_data_transfer_limit_bytes: monthlyChargedUsageLimitBytes.value,
                 notes
             }, { onConflict: 'workspace_id' })
 
@@ -706,7 +828,9 @@ async function updateWorkspaceUsage(
             .upsert({
                 workspace_id: usageWorkspaceId,
                 storage_units: storageUnits.value,
-                data_transfer_bytes: dataTransferBytes.value,
+                // This legacy-named database column stores CHARGED usage.
+                data_transfer_bytes: reconciledTransfer.chargedValue,
+                actual_data_transfer_bytes: reconciledTransfer.actualValue,
                 transfer_period_start: periodStart.value,
                 storage_updated_at: now,
                 transfer_updated_at: now,

@@ -2,6 +2,8 @@ import { getActiveBusinessUserId, getActiveBusinessWorkspaceId } from '@/lib/net
 import { isOfflineLeaseRequired, markSupabaseReachableFromResponse } from '@/lib/offlineLease'
 import { getWorkspaceDataMode, isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
+// Legacy backend message: this limit is enforced against CHARGED usage, even
+// though the stable wire text still says "data transfer".
 const WORKSPACE_TRANSFER_LIMIT_MESSAGE = 'Workspace monthly data transfer limit exceeded'
 const WORKSPACE_USAGE_UPDATED_EVENT = 'workspace-usage-updated'
 const SKIP_USAGE_HEADER = 'X-Workspace-Usage-Skip'
@@ -371,11 +373,11 @@ async function getResponseTransferBytes(response: Response): Promise<number> {
 async function recordSupabaseDataTransfer(
     options: Required<WorkspaceUsageFetchOptions>,
     workspaceId: string,
-    bytes: number,
+    actualBytes: number,
     authHeader: string | null,
     source: string
 ): Promise<UsageRecordResult> {
-    if (!isUuid(workspaceId) || bytes <= 0 || !authHeader) {
+    if (!isUuid(workspaceId) || actualBytes <= 0 || !authHeader) {
         return { ok: true }
     }
 
@@ -389,7 +391,9 @@ async function recordSupabaseDataTransfer(
         },
         body: JSON.stringify({
             p_workspace_id: workspaceId,
-            p_bytes: bytes,
+            // p_bytes is ACTUAL request/response payload. Never apply the plan
+            // multiplier here; the database derives charged usage exactly once.
+            p_bytes: actualBytes,
             p_source: source
         })
     })

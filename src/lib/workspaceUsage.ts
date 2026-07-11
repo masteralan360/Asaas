@@ -5,7 +5,12 @@ export interface WorkspaceUsageStatus {
     has_limits: boolean
     storage_units: number
     storage_unit_limit: number | null
+    /** Real measured upload/download bytes. This value is never weighted. */
+    actual_data_transfer_bytes: number
+    /** Charged usage used for quota enforcement after applying the multiplier. */
     data_transfer_bytes: number
+    transfer_charge_multiplier: number
+    /** Charged-usage allowance, not a raw network-transfer limit. */
     monthly_data_transfer_limit_bytes: number | null
     transfer_period_start: string
 }
@@ -13,11 +18,18 @@ export interface WorkspaceUsageStatus {
 export interface WorkspaceTransferUsage {
     workspace_id: string
     transfer_period_start: string
+    /** Real measured upload/download bytes. This value is never weighted. */
+    actual_data_transfer_bytes: number
+    /** Charged usage used for quota enforcement after applying the multiplier. */
     data_transfer_bytes: number
+    transfer_charge_multiplier: number
+    /** Charged-usage allowance, not a raw network-transfer limit. */
     monthly_data_transfer_limit_bytes: number | null
 }
 
 export const WORKSPACE_STORAGE_LIMIT_MESSAGE = 'Workspace storage limit exceeded'
+// Legacy wire text kept for compatibility. "Data transfer" here means the
+// charged-usage allowance; raw actual transfer is never compared to this limit.
 export const WORKSPACE_TRANSFER_LIMIT_MESSAGE = 'Workspace monthly data transfer limit exceeded'
 const WORKSPACE_USAGE_UPDATED_EVENT = 'workspace-usage-updated'
 
@@ -85,10 +97,12 @@ export function parseContentLength(value: string | null): number | null {
 
 export async function recordWorkspaceDataTransfer(
     workspaceId: string,
-    bytes: number,
+    actualBytes: number,
     source?: string
 ): Promise<WorkspaceTransferUsage | null> {
-    const normalizedBytes = Math.trunc(bytes)
+    // IMPORTANT: p_bytes is ACTUAL measured transfer. The database applies the
+    // commercial multiplier exactly once and stores charged usage separately.
+    const normalizedBytes = Math.trunc(actualBytes)
     if (!workspaceId || normalizedBytes <= 0) return null
 
     const { data, error } = await supabase

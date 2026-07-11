@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts'
-import { Activity, CalendarDays, Database, Gauge, HardDrive, TrendingUp } from 'lucide-react'
+import { Activity, ArrowDownUp, CalendarDays, Database, Gauge, HardDrive, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { WorkspaceUsageInsights } from '@/lib/workspaceUsageHistory'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './dialog'
 
 export type WorkspaceUsageMeterSegment = {
-    key: 'storage' | 'transfer'
+    key: 'storage' | 'chargedUsage'
     label: string
     percent: number
     widthPercent: number
@@ -15,7 +15,7 @@ export type WorkspaceUsageMeterSegment = {
 }
 
 export type WorkspaceUsageMeterMetric = {
-    key: 'storage' | 'transfer'
+    key: 'storage' | 'chargedUsage'
     label: string
     percent: number
     barClassName: string
@@ -31,8 +31,13 @@ export type WorkspaceUsageMeter = {
     details: {
         storageUnits: number
         storageUnitLimit: number | null
-        transferBytes: number
-        transferLimitBytes: number | null
+        /** Real network/file payload before commercial weighting. */
+        actualTransferBytes: number
+        /** Plan consumption after commercial weighting; used for quota progress. */
+        chargedUsageBytes: number
+        /** Allowance compared only with chargedUsageBytes. */
+        chargedUsageLimitBytes: number | null
+        chargeMultiplier: number
         transferPeriodStart: string
         insights: WorkspaceUsageInsights
     }
@@ -63,8 +68,8 @@ function formatBytes(value: number | null | undefined, locale: string): string {
     if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
 
     const units = ['B', 'KB', 'MB', 'GB', 'TB']
-    const unitIndex = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)))
-    const amount = bytes / (1024 ** unitIndex)
+    const unitIndex = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1000)))
+    const amount = bytes / (1000 ** unitIndex)
     return `${new Intl.NumberFormat(locale, {
         maximumFractionDigits: amount >= 100 ? 0 : amount >= 10 ? 1 : 2
     }).format(amount)} ${units[unitIndex]}`
@@ -73,13 +78,13 @@ function formatBytes(value: number | null | undefined, locale: string): string {
 function formatCompactBytes(value: number, locale: string): string {
     const bytes = Number(value)
     if (!Number.isFinite(bytes) || bytes <= 0) return '0'
-    if (bytes < 1024) return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(bytes)
+    if (bytes < 1000) return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(bytes)
 
     const units = ['KB', 'MB', 'GB', 'TB']
-    let amount = bytes / 1024
+    let amount = bytes / 1000
     let unitIndex = 0
-    while (amount >= 1024 && unitIndex < units.length - 1) {
-        amount /= 1024
+    while (amount >= 1000 && unitIndex < units.length - 1) {
+        amount /= 1000
         unitIndex += 1
     }
     return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(amount)} ${units[unitIndex]}`
@@ -132,7 +137,7 @@ function UsageStatCard({ icon, label, value, detail, toneClassName }: UsageStatC
 }
 
 function getSegmentProgressColor(segment: WorkspaceUsageMeterSegment) {
-    return segment.key === 'transfer'
+    return segment.key === 'chargedUsage'
         ? '#f59e0b'
         : 'hsl(var(--primary))'
 }
@@ -226,17 +231,17 @@ export function WorkspaceUsageModal({ open, onOpenChange, usageMeter }: Workspac
     const isRtl = i18n.dir() === 'rtl'
     const { details } = usageMeter
     const { insights } = details
-    const transferLimitLabel = details.transferLimitBytes === null
+    const chargedUsageLimitLabel = details.chargedUsageLimitBytes === null
         ? t('workspaceUsage.unlimited')
-        : formatBytes(details.transferLimitBytes, locale)
-    const transferRemainingLabel = insights.remainingTransferBytes === null
+        : formatBytes(details.chargedUsageLimitBytes, locale)
+    const chargedUsageRemainingLabel = insights.remainingChargedUsageBytes === null
         ? t('workspaceUsage.noLimit')
         : t('workspaceUsage.remainingValue', {
-            value: formatBytes(insights.remainingTransferBytes, locale)
+            value: formatBytes(insights.remainingChargedUsageBytes, locale)
         })
-    const dailyBudgetLabel = insights.dailyBudgetBytes === null
+    const dailyBudgetLabel = insights.dailyChargedUsageBudgetBytes === null
         ? '—'
-        : formatBytes(insights.dailyBudgetBytes, locale)
+        : formatBytes(insights.dailyChargedUsageBudgetBytes, locale)
     const numberFormatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 })
 
     return (
@@ -269,9 +274,12 @@ export function WorkspaceUsageModal({ open, onOpenChange, usageMeter }: Workspac
                                     {usageMeter.label}
                                 </p>
                             </div>
-                            <p className="text-sm font-semibold tabular-nums text-muted-foreground">
-                                {formatBytes(details.transferBytes, locale)} / {transferLimitLabel}
-                            </p>
+                            <div className="text-end">
+                                <p className="text-[11px] font-semibold text-muted-foreground">{t('workspaceUsage.chargedUsage')}</p>
+                                <p className="text-sm font-semibold tabular-nums text-foreground">
+                                    {formatBytes(details.chargedUsageBytes, locale)} / {chargedUsageLimitLabel}
+                                </p>
+                            </div>
                         </div>
                         <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-muted ring-1 ring-border/50">
                             <div
@@ -291,35 +299,50 @@ export function WorkspaceUsageModal({ open, onOpenChange, usageMeter }: Workspac
                 </div>
 
                 <div className="space-y-5 px-4 py-5 sm:px-7 sm:py-6">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
                         <UsageStatCard
                             icon={<Database className="h-4 w-4" />}
-                            label={t('workspaceUsage.currentTransfer')}
-                            value={formatBytes(details.transferBytes, locale)}
-                            detail={transferRemainingLabel}
+                            label={t('workspaceUsage.currentChargedUsage')}
+                            value={formatBytes(details.chargedUsageBytes, locale)}
+                            detail={chargedUsageRemainingLabel}
                             toneClassName="bg-amber-500/10 text-amber-700 dark:text-amber-300"
                         />
                         <UsageStatCard
+                            icon={<ArrowDownUp className="h-4 w-4" />}
+                            label={t('workspaceUsage.actualTransfer')}
+                            value={formatBytes(details.actualTransferBytes, locale)}
+                            detail={t('workspaceUsage.actualTransferDetail')}
+                            toneClassName="bg-teal-500/10 text-teal-700 dark:text-teal-300"
+                        />
+                        <UsageStatCard
                             icon={<Activity className="h-4 w-4" />}
-                            label={t('workspaceUsage.averageDaily')}
-                            value={formatBytes(insights.averageDailyBytes, locale)}
+                            label={t('workspaceUsage.averageDailyCharged')}
+                            value={formatBytes(insights.averageDailyChargedUsageBytes, locale)}
                             detail={t('workspaceUsage.elapsedDaysValue', { count: insights.daysElapsed })}
                             toneClassName="bg-sky-500/10 text-sky-700 dark:text-sky-300"
                         />
                         <UsageStatCard
                             icon={<TrendingUp className="h-4 w-4" />}
-                            label={t('workspaceUsage.projectedMonth')}
-                            value={formatBytes(insights.projectedTransferBytes, locale)}
+                            label={t('workspaceUsage.projectedChargedUsage')}
+                            value={formatBytes(insights.projectedChargedUsageBytes, locale)}
                             detail={t('workspaceUsage.projectionHint')}
                             toneClassName="bg-violet-500/10 text-violet-700 dark:text-violet-300"
                         />
                         <UsageStatCard
                             icon={<Gauge className="h-4 w-4" />}
-                            label={t('workspaceUsage.dailyBudget')}
+                            label={t('workspaceUsage.dailyChargedBudget')}
                             value={dailyBudgetLabel}
                             detail={t('workspaceUsage.remainingDaysValue', { count: insights.daysRemaining })}
                             toneClassName="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
                         />
+                    </div>
+
+                    <div className="flex items-start gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/5 px-4 py-3 text-sm leading-6 text-foreground">
+                        <Gauge className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-300" />
+                        <p>
+                            <span className="font-bold">{t('workspaceUsage.chargingRuleTitle')}</span>{' '}
+                            {t('workspaceUsage.chargingRule', { multiplier: details.chargeMultiplier })}
+                        </p>
                     </div>
 
                     <div className="grid gap-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(260px,0.75fr)]">
@@ -332,10 +355,14 @@ export function WorkspaceUsageModal({ open, onOpenChange, usageMeter }: Workspac
                                     <p className="mt-1 text-xs text-muted-foreground">
                                         {t('workspaceUsage.consumptionDescription')}
                                     </p>
+                                    <div className="mt-2 flex flex-wrap gap-3 text-[11px] font-semibold text-muted-foreground">
+                                        <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-teal-500" />{t('workspaceUsage.actualTransfer')}</span>
+                                        <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" />{t('workspaceUsage.chargedUsage')}</span>
+                                    </div>
                                 </div>
                                 <div className="rounded-full bg-amber-500/10 px-3 py-1.5 text-xs font-bold tabular-nums text-amber-700 ring-1 ring-amber-500/20 dark:text-amber-300">
-                                    {t('workspaceUsage.peakDayValue', {
-                                        value: formatBytes(insights.peakDailyBytes, locale)
+                                    {t('workspaceUsage.peakChargedDayValue', {
+                                        value: formatBytes(insights.peakDailyChargedUsageBytes, locale)
                                     })}
                                 </div>
                             </div>
@@ -379,16 +406,25 @@ export function WorkspaceUsageModal({ open, onOpenChange, usageMeter }: Workspac
                                                 month: 'long',
                                                 day: 'numeric'
                                             })}
-                                            formatter={(value) => [
+                                            formatter={(value, name) => [
                                                 formatBytes(Number(value), locale),
-                                                t('workspaceUsage.transfer')
+                                                name === 'actualTransferBytes'
+                                                    ? t('workspaceUsage.actualTransfer')
+                                                    : t('workspaceUsage.chargedUsage')
                                             ]}
                                         />
                                         <Bar
-                                            dataKey="transferBytes"
+                                            dataKey="actualTransferBytes"
+                                            fill="#14b8a6"
+                                            radius={[5, 5, 1, 1]}
+                                            maxBarSize={18}
+                                            isAnimationActive={false}
+                                        />
+                                        <Bar
+                                            dataKey="chargedUsageBytes"
                                             fill="#f59e0b"
                                             radius={[5, 5, 1, 1]}
-                                            maxBarSize={28}
+                                            maxBarSize={18}
                                             isAnimationActive={false}
                                         />
                                     </BarChart>
@@ -445,12 +481,12 @@ export function WorkspaceUsageModal({ open, onOpenChange, usageMeter }: Workspac
                                 const isStorage = metric.key === 'storage'
                                 const usedLabel = isStorage
                                     ? numberFormatter.format(details.storageUnits)
-                                    : formatBytes(details.transferBytes, locale)
+                                    : formatBytes(details.chargedUsageBytes, locale)
                                 const limitLabel = isStorage
                                     ? details.storageUnitLimit === null
                                         ? t('workspaceUsage.unlimited')
                                         : numberFormatter.format(details.storageUnitLimit)
-                                    : transferLimitLabel
+                                    : chargedUsageLimitLabel
 
                                 return (
                                     <div
@@ -485,7 +521,7 @@ export function WorkspaceUsageModal({ open, onOpenChange, usageMeter }: Workspac
                                         {isStorage && (
                                             <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                                                 <Database className="h-3 w-3" />
-
+                                                {t('workspaceUsage.storageRecords', { count: details.storageUnits })}
                                             </p>
                                         )}
                                     </div>

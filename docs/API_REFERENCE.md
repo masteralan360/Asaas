@@ -55,9 +55,17 @@ Supported actions:
 - `listWorkspaceUsage`
   - body: `{ action: 'listWorkspaceUsage', passkey }`
   - returns: current usage counters only for source usage owners with saved usage limits; branches share the source workspace usage row
+  - transfer fields are bigint-safe numeric strings: `actual_data_transfer_bytes` is measured network/file payload, while `charged_usage_bytes` is plan consumption after the multiplier reported by `transfer_charge_multiplier`
+  - for old admin clients, deprecated response `data_transfer_bytes` preserves its historical actual-transfer meaning and aliases `actual_data_transfer_bytes`; this differs intentionally from the same-named internal database column, which stores charged usage
+  - `monthly_data_transfer_limit_bytes` is a deprecated response alias for `monthly_charged_usage_limit_bytes`
 - `updateWorkspaceUsage`
-  - body: `{ action: 'updateWorkspaceUsage', passkey, workspaceId, storageUnits, dataTransferBytes, transferPeriodStart, storageUnitLimit, monthlyDataTransferLimitBytes, notes }`
-  - use: adjust current workspace usage counters and upsert/delete optional limits; branch workspace ids resolve to their source workspace; reaching the monthly data transfer limit locks the workspace family, while reaching the storage unit limit does not
+  - body: `{ action: 'updateWorkspaceUsage', passkey, workspaceId, storageUnits, actualTransferBytes, chargedUsageBytes, transferPeriodStart, storageUnitLimit, monthlyChargedUsageLimitBytes, notes }`
+  - all counter and limit values accept non-negative integers or bigint-safe decimal strings; response/list values remain strings to avoid JavaScript precision loss
+  - `actualTransferBytes` is real measured transfer; `chargedUsageBytes` and `monthlyChargedUsageLimitBytes` are byte-equivalent plan usage and allowance after weighting
+  - actual and charged counters must preserve the fixed relationship `charged = actual × 10`; either counter may be supplied alone and the other is derived (a charged-only value must be divisible by 10), while mismatched pairs are rejected
+  - deprecated compatibility: `dataTransferBytes` keeps its historical actual-transfer meaning and aliases `actualTransferBytes`; `monthlyDataTransferLimitBytes` aliases the charged allowance; new clients should use the unambiguous preferred fields
+  - if a preferred field and its deprecated alias are both supplied, their normalized values must match
+  - use: adjust current workspace usage counters and upsert/delete optional limits; branch workspace ids resolve to their source workspace; reaching the monthly charged-usage limit locks the workspace family, while reaching the storage unit limit does not
 - `refreshWorkspaceUsage`
   - body: `{ action: 'refreshWorkspaceUsage', passkey, workspaceId? }`
   - use: recalculate counted workspace storage units from configured parent/business tables; branch rows are aggregated into the source workspace usage row

@@ -1,14 +1,19 @@
 import { db } from '@/local-db/database'
 import type { WorkspaceUsageStatus } from '@/lib/workspaceUsage'
 
-const WORKSPACE_USAGE_HISTORY_KEY = 'workspace_usage_history:v1'
-const WORKSPACE_USAGE_HISTORY_VERSION = 1
+const LEGACY_WORKSPACE_USAGE_HISTORY_KEY = 'workspace_usage_history:v1'
+const WORKSPACE_USAGE_HISTORY_KEY = 'workspace_usage_history:v2'
+const WORKSPACE_USAGE_HISTORY_VERSION = 2
 const MAX_CHART_DAYS = 30
+// Keep one extra cumulative snapshot as the baseline for the first chart day.
+// It is not graphed, and all snapshots are still deleted at period rollover.
+const MAX_STORED_SNAPSHOT_DAYS = MAX_CHART_DAYS + 1
 const DAY_MS = 24 * 60 * 60 * 1000
 
 export type WorkspaceUsageDailySnapshot = {
     date: string
-    transferBytes: number
+    actualTransferBytes: number
+    chargedUsageBytes: number
 }
 
 export type WorkspaceUsageLocalHistory = {
@@ -16,29 +21,36 @@ export type WorkspaceUsageLocalHistory = {
     transferPeriodStart: string
     trackedFrom: string
     lastSampleAt: string
-    latestTransferBytes: number
+    latestActualTransferBytes: number
+    latestChargedUsageBytes: number
     dailySnapshots: WorkspaceUsageDailySnapshot[]
 }
 
 type WorkspaceUsageHistoryStore = {
-    version: 1
+    version: 2
     transferPeriodStart: string
     workspaces: Record<string, WorkspaceUsageLocalHistory>
 }
 
 export type WorkspaceUsageChartPoint = {
     date: string
-    transferBytes: number
-    cumulativeBytes: number
+    actualTransferBytes: number
+    chargedUsageBytes: number
+    cumulativeActualTransferBytes: number
+    cumulativeChargedUsageBytes: number
 }
 
 export type WorkspaceUsageInsights = {
-    averageDailyBytes: number
-    projectedTransferBytes: number
-    remainingTransferBytes: number | null
-    dailyBudgetBytes: number | null
-    peakDailyBytes: number
-    observedTransferBytes: number
+    averageDailyChargedUsageBytes: number
+    projectedChargedUsageBytes: number
+    remainingChargedUsageBytes: number | null
+    dailyChargedUsageBudgetBytes: number | null
+    peakDailyChargedUsageBytes: number
+    observedChargedUsageBytes: number
+    averageDailyActualTransferBytes: number
+    projectedActualTransferBytes: number
+    peakDailyActualTransferBytes: number
+    observedActualTransferBytes: number
     daysElapsed: number
     daysRemaining: number
     periodDays: number
@@ -61,6 +73,15 @@ function runHistoryWrite<T>(operation: () => Promise<T>): Promise<T> {
 function normalizeByteCount(value: unknown): number {
     const parsed = Number(value)
     return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0
+}
+
+function parseStoredByteCount(value: unknown): number | null {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : null
+}
+
+function isTimestamp(value: unknown): value is string {
+    return typeof value === 'string' && Number.isFinite(new Date(value).getTime())
 }
 
 function isDayKey(value: unknown): value is string {
@@ -104,26 +125,51 @@ function parseLocalHistory(
     if (!value || typeof value !== 'object') return null
     const candidate = value as Partial<WorkspaceUsageLocalHistory>
     if (candidate.workspaceId !== workspaceId || candidate.transferPeriodStart !== transferPeriodStart) return null
-    if (typeof candidate.trackedFrom !== 'string' || typeof candidate.lastSampleAt !== 'string') return null
+    if (!isTimestamp(candidate.trackedFrom) || !isTimestamp(candidate.lastSampleAt)) return null
 
-    const dailySnapshots = Array.isArray(candidate.dailySnapshots)
-        ? candidate.dailySnapshots.flatMap((snapshot) => {
-            if (!snapshot || typeof snapshot !== 'object') return []
-            const entry = snapshot as Partial<WorkspaceUsageDailySnapshot>
-            if (!isDayKey(entry.date)) return []
-            return [{
-                date: entry.date,
-                transferBytes: normalizeByteCount(entry.transferBytes)
-            }]
+    const latestActualTransferBytes = parseStoredByteCount(candidate.latestActualTransferBytes)
+    const latestChargedUsageBytes = parseStoredByteCount(candidate.latestChargedUsageBytes)
+    if (latestActualTransferBytes === null || latestChargedUsageBytes === null) return null
+    if (!Array.isArray(candidate.dailySnapshots) || candidate.dailySnapshots.length === 0) return null
+
+    const dailySnapshots: WorkspaceUsageDailySnapshot[] = []
+    const seenDays = new Set<string>()
+    for (const snapshot of candidate.dailySnapshots) {
+        if (!snapshot || typeof snapshot !== 'object') return null
+        const entry = snapshot as Partial<WorkspaceUsageDailySnapshot>
+        const actualTransferBytes = parseStoredByteCount(entry.actualTransferBytes)
+        const chargedUsageBytes = parseStoredByteCount(entry.chargedUsageBytes)
+        if (
+            !isDayKey(entry.date)
+            || entry.date < transferPeriodStart
+            || seenDays.has(entry.date)
+            || actualTransferBytes === null
+            || chargedUsageBytes === null
+            || actualTransferBytes > latestActualTransferBytes
+            || chargedUsageBytes > latestChargedUsageBytes
+        ) return null
+        seenDays.add(entry.date)
+        dailySnapshots.push({
+            date: entry.date,
+            actualTransferBytes,
+            chargedUsageBytes
         })
-        : []
+    }
+    dailySnapshots.sort((left, right) => left.date.localeCompare(right.date))
+    const latestSnapshot = dailySnapshots.at(-1)
+    if (
+        !latestSnapshot
+        || latestSnapshot.actualTransferBytes !== latestActualTransferBytes
+        || latestSnapshot.chargedUsageBytes !== latestChargedUsageBytes
+    ) return null
 
     return {
         workspaceId,
         transferPeriodStart,
         trackedFrom: candidate.trackedFrom,
         lastSampleAt: candidate.lastSampleAt,
-        latestTransferBytes: normalizeByteCount(candidate.latestTransferBytes),
+        latestActualTransferBytes,
+        latestChargedUsageBytes,
         dailySnapshots
     }
 }
@@ -141,7 +187,8 @@ function parseHistoryStore(value: string): WorkspaceUsageHistoryStore | null {
         const workspaces: Record<string, WorkspaceUsageLocalHistory> = {}
         for (const [workspaceId, history] of Object.entries(parsed.workspaces)) {
             const normalized = parseLocalHistory(workspaceId, parsed.transferPeriodStart, history)
-            if (normalized) workspaces[workspaceId] = normalized
+            if (!normalized) return null
+            workspaces[workspaceId] = normalized
         }
 
         return {
@@ -173,11 +220,22 @@ async function deleteHistoryStore(): Promise<void> {
     await db.app_settings.delete(WORKSPACE_USAGE_HISTORY_KEY)
 }
 
+async function deleteLegacyHistoryStore(): Promise<void> {
+    const legacyRow = await db.app_settings.get(LEGACY_WORKSPACE_USAGE_HISTORY_KEY)
+    if (legacyRow) {
+        await db.app_settings.delete(LEGACY_WORKSPACE_USAGE_HISTORY_KEY)
+    }
+}
+
 export function saveWorkspaceUsageSnapshot(
     status: WorkspaceUsageStatus,
     now = new Date()
 ): Promise<WorkspaceUsageLocalHistory | null> {
     return runHistoryWrite(async () => {
+        // v1 stored one ambiguous counter that represented raw transfer before charging was introduced.
+        // It cannot be safely reinterpreted as charged usage, so remove it instead of migrating it.
+        await deleteLegacyHistoryStore()
+
         if (!status.workspace_id || !isDayKey(status.transfer_period_start)) return null
 
         const { exists, store: loadedStore } = await loadHistoryStore()
@@ -210,30 +268,39 @@ export function saveWorkspaceUsageSnapshot(
 
         const sampleAt = now.toISOString()
         const sampleDay = toUtcDayKey(now)
-        const transferBytes = normalizeByteCount(status.data_transfer_bytes)
-        const earliestKeptDay = [status.transfer_period_start, addUtcDays(sampleDay, -(MAX_CHART_DAYS - 1))]
+        // These counters intentionally remain separate: actual is the network payload size, while
+        // charged is the quota consumption after applying transfer_charge_multiplier on the server.
+        const actualTransferBytes = normalizeByteCount(status.actual_data_transfer_bytes)
+        const chargedUsageBytes = normalizeByteCount(status.data_transfer_bytes)
+        const earliestKeptDay = [status.transfer_period_start, addUtcDays(sampleDay, -(MAX_STORED_SNAPSHOT_DAYS - 1))]
             .sort()
             .at(-1) as string
         const existing = store.workspaces[status.workspace_id]
-        const counterWasReset = Boolean(existing && existing.latestTransferBytes > transferBytes)
+        const counterWasReset = Boolean(existing && (
+            existing.latestActualTransferBytes > actualTransferBytes
+            || existing.latestChargedUsageBytes > chargedUsageBytes
+        ))
         const snapshots = counterWasReset ? [] : (existing?.dailySnapshots ?? [])
         const snapshotByDay = new Map(
             snapshots
                 .filter((snapshot) => snapshot.date >= earliestKeptDay && snapshot.date <= sampleDay)
-                .map((snapshot) => [snapshot.date, snapshot.transferBytes])
+                .map((snapshot) => [snapshot.date, snapshot])
         )
-        snapshotByDay.set(sampleDay, transferBytes)
+        snapshotByDay.set(sampleDay, {
+            date: sampleDay,
+            actualTransferBytes,
+            chargedUsageBytes
+        })
 
         const history: WorkspaceUsageLocalHistory = {
             workspaceId: status.workspace_id,
             transferPeriodStart: status.transfer_period_start,
             trackedFrom: counterWasReset || !existing ? sampleAt : existing.trackedFrom,
             lastSampleAt: sampleAt,
-            latestTransferBytes: transferBytes,
-            dailySnapshots: Array.from(snapshotByDay, ([date, bytes]) => ({
-                date,
-                transferBytes: bytes
-            })).sort((left, right) => left.date.localeCompare(right.date))
+            latestActualTransferBytes: actualTransferBytes,
+            latestChargedUsageBytes: chargedUsageBytes,
+            dailySnapshots: Array.from(snapshotByDay.values())
+                .sort((left, right) => left.date.localeCompare(right.date))
         }
 
         store.workspaces[status.workspace_id] = history
@@ -256,42 +323,89 @@ export function buildWorkspaceUsageInsights(
     const rawElapsedDays = differenceInUtcDays(today, periodStart) + 1
     const daysElapsed = Math.min(periodDays, Math.max(1, rawElapsedDays))
     const daysRemaining = Math.max(0, periodDays - daysElapsed)
-    const currentTransferBytes = normalizeByteCount(status.data_transfer_bytes)
-    const transferLimit = status.monthly_data_transfer_limit_bytes === null
+    const currentActualTransferBytes = normalizeByteCount(status.actual_data_transfer_bytes)
+    const currentChargedUsageBytes = normalizeByteCount(status.data_transfer_bytes)
+    const chargedUsageLimit = status.monthly_data_transfer_limit_bytes === null
         ? null
         : normalizeByteCount(status.monthly_data_transfer_limit_bytes)
-    const averageDailyBytes = currentTransferBytes / daysElapsed
-    const projectedTransferBytes = Math.round(averageDailyBytes * periodDays)
-    const remainingTransferBytes = transferLimit === null
+    const averageDailyChargedUsageBytes = currentChargedUsageBytes / daysElapsed
+    const projectedChargedUsageBytes = Math.round(averageDailyChargedUsageBytes * periodDays)
+    const remainingChargedUsageBytes = chargedUsageLimit === null
         ? null
-        : Math.max(0, transferLimit - currentTransferBytes)
-    const dailyBudgetBytes = remainingTransferBytes === null || daysRemaining <= 0
+        : Math.max(0, chargedUsageLimit - currentChargedUsageBytes)
+    const dailyChargedUsageBudgetBytes = remainingChargedUsageBytes === null || daysRemaining <= 0
         ? null
-        : remainingTransferBytes / daysRemaining
-    const effectiveHistory = history?.workspaceId === status.workspace_id
+        : remainingChargedUsageBytes / daysRemaining
+    const averageDailyActualTransferBytes = currentActualTransferBytes / daysElapsed
+    const projectedActualTransferBytes = Math.round(averageDailyActualTransferBytes * periodDays)
+    const matchingHistory = history?.workspaceId === status.workspace_id
         && history.transferPeriodStart === periodStart
         ? history
+        : null
+    const effectiveHistory = matchingHistory
+        && matchingHistory.latestActualTransferBytes <= currentActualTransferBytes
+        && matchingHistory.latestChargedUsageBytes <= currentChargedUsageBytes
+        ? matchingHistory
         : null
     const snapshots = (effectiveHistory?.dailySnapshots ?? [])
         .filter((snapshot) => snapshot.date >= periodStart && snapshot.date <= today)
         .sort((left, right) => left.date.localeCompare(right.date))
-    const dailyConsumption = new Map<string, { bytes: number; cumulativeBytes: number }>()
-    let previousCumulativeBytes = 0
+    const dailyConsumption = new Map<string, {
+        actualTransferBytes: number
+        chargedUsageBytes: number
+        cumulativeActualTransferBytes: number
+        cumulativeChargedUsageBytes: number
+    }>()
+    let previousCumulativeActualTransferBytes = 0
+    let previousCumulativeChargedUsageBytes = 0
+    let hasCumulativeBaseline = false
 
     for (const snapshot of snapshots) {
-        const cumulativeBytes = Math.max(previousCumulativeBytes, normalizeByteCount(snapshot.transferBytes))
+        const cumulativeActualTransferBytes = Math.max(
+            previousCumulativeActualTransferBytes,
+            normalizeByteCount(snapshot.actualTransferBytes)
+        )
+        const cumulativeChargedUsageBytes = Math.max(
+            previousCumulativeChargedUsageBytes,
+            normalizeByteCount(snapshot.chargedUsageBytes)
+        )
         dailyConsumption.set(snapshot.date, {
-            bytes: Math.max(0, cumulativeBytes - previousCumulativeBytes),
-            cumulativeBytes
+            // A cumulative sample can be converted to daily usage only when a
+            // previous sample exists. The period's first day has an implicit zero
+            // baseline; a first-ever mid-period sample is baseline-only so it does
+            // not invent a large spike.
+            actualTransferBytes: hasCumulativeBaseline || snapshot.date === periodStart
+                ? Math.max(0, cumulativeActualTransferBytes - previousCumulativeActualTransferBytes)
+                : 0,
+            chargedUsageBytes: hasCumulativeBaseline || snapshot.date === periodStart
+                ? Math.max(0, cumulativeChargedUsageBytes - previousCumulativeChargedUsageBytes)
+                : 0,
+            cumulativeActualTransferBytes,
+            cumulativeChargedUsageBytes
         })
-        previousCumulativeBytes = cumulativeBytes
+        previousCumulativeActualTransferBytes = cumulativeActualTransferBytes
+        previousCumulativeChargedUsageBytes = cumulativeChargedUsageBytes
+        hasCumulativeBaseline = true
     }
 
-    if (currentTransferBytes > previousCumulativeBytes) {
+    if ((effectiveHistory !== null || today === periodStart) && (
+        currentActualTransferBytes > previousCumulativeActualTransferBytes
+        || currentChargedUsageBytes > previousCumulativeChargedUsageBytes
+    )) {
         const currentDay = dailyConsumption.get(today)
         dailyConsumption.set(today, {
-            bytes: (currentDay?.bytes ?? 0) + currentTransferBytes - previousCumulativeBytes,
-            cumulativeBytes: currentTransferBytes
+            actualTransferBytes: (currentDay?.actualTransferBytes ?? 0)
+                + Math.max(0, currentActualTransferBytes - previousCumulativeActualTransferBytes),
+            chargedUsageBytes: (currentDay?.chargedUsageBytes ?? 0)
+                + Math.max(0, currentChargedUsageBytes - previousCumulativeChargedUsageBytes),
+            cumulativeActualTransferBytes: Math.max(
+                currentDay?.cumulativeActualTransferBytes ?? 0,
+                currentActualTransferBytes
+            ),
+            cumulativeChargedUsageBytes: Math.max(
+                currentDay?.cumulativeChargedUsageBytes ?? 0,
+                currentChargedUsageBytes
+            )
         })
     }
 
@@ -300,25 +414,52 @@ export function buildWorkspaceUsageInsights(
         .at(-1) as string
     const chartData: WorkspaceUsageChartPoint[] = []
     let chartDay = chartStart
-    let lastCumulativeBytes = 0
+    let lastCumulativeActualTransferBytes = 0
+    let lastCumulativeChargedUsageBytes = 0
+    for (const [date, consumption] of dailyConsumption) {
+        if (date >= chartStart) break
+        lastCumulativeActualTransferBytes = consumption.cumulativeActualTransferBytes
+        lastCumulativeChargedUsageBytes = consumption.cumulativeChargedUsageBytes
+    }
     while (chartDay <= today) {
         const consumption = dailyConsumption.get(chartDay)
-        if (consumption) lastCumulativeBytes = consumption.cumulativeBytes
+        if (consumption) {
+            lastCumulativeActualTransferBytes = consumption.cumulativeActualTransferBytes
+            lastCumulativeChargedUsageBytes = consumption.cumulativeChargedUsageBytes
+        }
         chartData.push({
             date: chartDay,
-            transferBytes: consumption?.bytes ?? 0,
-            cumulativeBytes: lastCumulativeBytes
+            actualTransferBytes: consumption?.actualTransferBytes ?? 0,
+            chargedUsageBytes: consumption?.chargedUsageBytes ?? 0,
+            cumulativeActualTransferBytes: lastCumulativeActualTransferBytes,
+            cumulativeChargedUsageBytes: lastCumulativeChargedUsageBytes
         })
         chartDay = addUtcDays(chartDay, 1)
     }
 
     return {
-        averageDailyBytes,
-        projectedTransferBytes,
-        remainingTransferBytes,
-        dailyBudgetBytes,
-        peakDailyBytes: chartData.reduce((peak, point) => Math.max(peak, point.transferBytes), 0),
-        observedTransferBytes: chartData.reduce((total, point) => total + point.transferBytes, 0),
+        averageDailyChargedUsageBytes,
+        projectedChargedUsageBytes,
+        remainingChargedUsageBytes,
+        dailyChargedUsageBudgetBytes,
+        peakDailyChargedUsageBytes: chartData.reduce(
+            (peak, point) => Math.max(peak, point.chargedUsageBytes),
+            0
+        ),
+        observedChargedUsageBytes: chartData.reduce(
+            (total, point) => total + point.chargedUsageBytes,
+            0
+        ),
+        averageDailyActualTransferBytes,
+        projectedActualTransferBytes,
+        peakDailyActualTransferBytes: chartData.reduce(
+            (peak, point) => Math.max(peak, point.actualTransferBytes),
+            0
+        ),
+        observedActualTransferBytes: chartData.reduce(
+            (total, point) => total + point.actualTransferBytes,
+            0
+        ),
         daysElapsed,
         daysRemaining,
         periodDays,
@@ -331,5 +472,7 @@ export function buildWorkspaceUsageInsights(
 
 export const workspaceUsageHistoryInternals = {
     storageKey: WORKSPACE_USAGE_HISTORY_KEY,
+    legacyStorageKey: LEGACY_WORKSPACE_USAGE_HISTORY_KEY,
+    version: WORKSPACE_USAGE_HISTORY_VERSION,
     toUtcDayKey
 }

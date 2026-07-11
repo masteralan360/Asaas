@@ -79,7 +79,7 @@ describe('workspace usage fetch metering', () => {
         expect(JSON.parse(String(usageCall.init?.body)).p_bytes).toBeGreaterThan(0)
     })
 
-    it('counts successful table write request bytes as workspace usage', async () => {
+    it('sends successful table-write bytes as actual transfer without client weighting', async () => {
         testState.activeWorkspaceId = workspaceId
         const requestBody = JSON.stringify([
             { workspace_id: workspaceId, name: 'Coffee' },

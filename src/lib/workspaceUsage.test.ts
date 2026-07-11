@@ -48,11 +48,13 @@ describe('workspace usage helpers', () => {
         expect(isWorkspaceUsageLimitError(new Error('Other failure'))).toBe(false)
     })
 
-    it('records positive data transfer through the workspace usage RPC', async () => {
+    it('sends actual bytes unchanged and receives separate actual and charged counters', async () => {
         const row = {
             workspace_id: 'workspace-1',
             transfer_period_start: '2026-06-01',
-            data_transfer_bytes: 128,
+            actual_data_transfer_bytes: 128,
+            data_transfer_bytes: 1280,
+            transfer_charge_multiplier: 10,
             monthly_data_transfer_limit_bytes: 1024
         }
 

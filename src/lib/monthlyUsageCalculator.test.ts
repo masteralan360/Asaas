@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
     calculateMonthlyUsage,
+    DECIMAL_GB,
     DEFAULT_SCHEDULED_INSTALLMENTS_PER_LOAN,
     getRecommendedUsagePlan,
+    MONTHLY_USAGE_PLANS,
     toMonthlyOccurrences,
     type MonthlyUsageCalculatorInput
 } from './monthlyUsageCalculator'
@@ -52,23 +54,24 @@ describe('monthly usage calculator', () => {
 
     it('keeps upload/download and breakdown totals internally consistent', () => {
         const estimate = calculateMonthlyUsage(baseInput)
-        const breakdownUpload = estimate.breakdown.reduce((sum, item) => sum + item.uploadedBytes, 0)
-        const breakdownDownload = estimate.breakdown.reduce((sum, item) => sum + item.downloadedBytes, 0)
+        const breakdownUpload = estimate.breakdown.reduce((sum, item) => sum + item.actualUploadedBytes, 0)
+        const breakdownDownload = estimate.breakdown.reduce((sum, item) => sum + item.actualDownloadedBytes, 0)
 
-        expect(estimate.uploadedBytes).toBeCloseTo(breakdownUpload)
-        expect(estimate.downloadedBytes).toBeCloseTo(breakdownDownload)
-        expect(estimate.typicalMonthBytes).toBeCloseTo(breakdownUpload + breakdownDownload)
-        expect(estimate.firstMonthBytes).toBeGreaterThan(estimate.typicalMonthBytes)
-        expect(estimate.lowMonthBytes).toBeLessThan(estimate.typicalMonthBytes)
-        expect(estimate.busyMonthBytes).toBeGreaterThan(estimate.typicalMonthBytes)
+        expect(estimate.actualUploadedBytes).toBeCloseTo(breakdownUpload)
+        expect(estimate.actualDownloadedBytes).toBeCloseTo(breakdownDownload)
+        expect(estimate.actualTypicalTransferBytes).toBeCloseTo(breakdownUpload + breakdownDownload)
+        expect(estimate.chargedTypicalUsageBytes).toBe(Math.trunc(estimate.actualTypicalTransferBytes) * 10)
+        expect(estimate.actualFirstMonthTransferBytes).toBeGreaterThan(estimate.actualTypicalTransferBytes)
+        expect(estimate.actualLowTransferBytes).toBeLessThan(estimate.actualTypicalTransferBytes)
+        expect(estimate.actualBusyTransferBytes).toBeGreaterThan(estimate.actualTypicalTransferBytes)
     })
 
     it('scales POS transfer and sale-item children with basket size', () => {
         const small = calculateMonthlyUsage({ ...baseInput, averagePosItems: 1 })
         const large = calculateMonthlyUsage({ ...baseInput, averagePosItems: 10 })
 
-        expect(large.breakdown.find((item) => item.key === 'pos')!.bytes)
-            .toBeGreaterThan(small.breakdown.find((item) => item.key === 'pos')!.bytes)
+        expect(large.breakdown.find((item) => item.key === 'pos')!.actualTransferBytes)
+            .toBeGreaterThan(small.breakdown.find((item) => item.key === 'pos')!.actualTransferBytes)
         expect(large.generatedRecords.find((item) => item.key === 'saleItems')!.count)
             .toBeGreaterThan(small.generatedRecords.find((item) => item.key === 'saleItems')!.count)
     })
@@ -77,7 +80,7 @@ describe('monthly usage calculator', () => {
         const withoutBatches = calculateMonthlyUsage({ ...baseInput, batchTracking: false })
         const withBatches = calculateMonthlyUsage({ ...baseInput, batchTracking: true })
 
-        expect(withBatches.downloadedBytes).toBeGreaterThan(withoutBatches.downloadedBytes * 2)
+        expect(withBatches.actualDownloadedBytes).toBeGreaterThan(withoutBatches.actualDownloadedBytes * 2)
     })
 
     it('models embedded wholesale lines and financed-order linked loans', () => {
@@ -94,8 +97,8 @@ describe('monthly usage calculator', () => {
 
         expect(paid.generatedRecords.find((item) => item.key === 'orderLines')?.count).toBe(240)
         expect(financed.monthlyOccurrences.linkedLoans).toBeGreaterThan(0)
-        expect(financed.breakdown.find((item) => item.key === 'credit')!.bytes)
-            .toBeGreaterThan(paid.breakdown.find((item) => item.key === 'credit')!.bytes)
+        expect(financed.breakdown.find((item) => item.key === 'credit')!.actualTransferBytes)
+            .toBeGreaterThan(paid.breakdown.find((item) => item.key === 'credit')!.actualTransferBytes)
     })
 
     it('supports purchasing and scales it with embedded product lines', () => {
@@ -113,8 +116,8 @@ describe('monthly usage calculator', () => {
         })
 
         expect(many.generatedRecords.find((item) => item.key === 'purchaseLines')?.count).toBe(200)
-        expect(many.breakdown.find((item) => item.key === 'orders')!.bytes)
-            .toBeGreaterThan(few.breakdown.find((item) => item.key === 'orders')!.bytes)
+        expect(many.breakdown.find((item) => item.key === 'orders')!.actualTransferBytes)
+            .toBeGreaterThan(few.breakdown.find((item) => item.key === 'orders')!.actualTransferBytes)
     })
 
     it('expands every loan and every payment through the hidden six-row schedule', () => {
@@ -131,8 +134,8 @@ describe('monthly usage calculator', () => {
 
         expect(withoutPayments.generatedRecords.find((item) => item.key === 'scheduledInstallments')?.count)
             .toBe(10 * DEFAULT_SCHEDULED_INSTALLMENTS_PER_LOAN + Math.round(withoutPayments.monthlyOccurrences.linkedLoans * DEFAULT_SCHEDULED_INSTALLMENTS_PER_LOAN))
-        expect(withPayments.breakdown.find((item) => item.key === 'credit')!.uploadedBytes)
-            .toBeGreaterThan(withoutPayments.breakdown.find((item) => item.key === 'credit')!.uploadedBytes)
+        expect(withPayments.breakdown.find((item) => item.key === 'credit')!.actualUploadedBytes)
+            .toBeGreaterThan(withoutPayments.breakdown.find((item) => item.key === 'credit')!.actualUploadedBytes)
     })
 
     it('counts saved invoice PDFs twice on upload and generic files in both directions', () => {
@@ -150,9 +153,9 @@ describe('monthly usage calculator', () => {
             uploadSizeProfile: 'large'
         })
 
-        expect(files.breakdown.find((item) => item.key === 'invoicesAndFiles')!.uploadedBytes)
+        expect(files.breakdown.find((item) => item.key === 'invoicesAndFiles')!.actualUploadedBytes)
             .toBeGreaterThan(50 * 1024 * 1024)
-        expect(files.downloadedBytes).toBeGreaterThan(none.downloadedBytes)
+        expect(files.actualDownloadedBytes).toBeGreaterThan(none.actualDownloadedBytes)
     })
 
     it('makes existing history materially increase first sync and repeated reviews', () => {
@@ -164,16 +167,16 @@ describe('monthly usage calculator', () => {
             historyReviewFrequency: 'daily'
         })
 
-        expect(large.firstMonthBytes).toBeGreaterThan(fresh.firstMonthBytes)
-        expect(large.breakdown.find((item) => item.key === 'reports')!.bytes)
-            .toBeGreaterThan(fresh.breakdown.find((item) => item.key === 'reports')!.bytes)
+        expect(large.actualFirstMonthTransferBytes).toBeGreaterThan(fresh.actualFirstMonthTransferBytes)
+        expect(large.breakdown.find((item) => item.key === 'reports')!.actualTransferBytes)
+            .toBeGreaterThan(fresh.breakdown.find((item) => item.key === 'reports')!.actualTransferBytes)
     })
 
     it('more users increase reads without changing business operation counts', () => {
         const one = calculateMonthlyUsage({ ...baseInput, teamMembers: 1 })
         const five = calculateMonthlyUsage({ ...baseInput, teamMembers: 5 })
 
-        expect(five.downloadedBytes).toBeGreaterThan(one.downloadedBytes)
+        expect(five.actualDownloadedBytes).toBeGreaterThan(one.actualDownloadedBytes)
         expect(five.monthlyOccurrences.posSales).toBe(one.monthlyOccurrences.posSales)
     })
 
@@ -191,15 +194,38 @@ describe('monthly usage calculator', () => {
             returnProfile: 'many'
         })
 
-        expect(right.typicalMonthBytes).toBe(left.typicalMonthBytes)
+        expect(right.actualTypicalTransferBytes).toBe(left.actualTypicalTransferBytes)
     })
 
-    it('selects plans using first/busy usage plus headroom through unlimited', () => {
+    it('selects plans using charged first/busy usage plus headroom', () => {
         const estimate = calculateMonthlyUsage(baseInput)
-        expect(estimate.recommendedUsageBytes).toBeCloseTo(estimate.recommendationBasisBytes * 1.2)
-        expect(getRecommendedUsagePlan(100 * 1024 * 1024).id).toBe('free')
-        expect(getRecommendedUsagePlan(100 * 1024 * 1024 + 1).id).toBe('starter')
-        expect(getRecommendedUsagePlan(50 * 1024 ** 3).id).toBe('unlimited')
+        expect(estimate.chargedRecommendedUsageBytes)
+            .toBeCloseTo(estimate.chargedRecommendationBasisBytes * 1.2)
+        expect(estimate.recommendedPlan)
+            .toEqual(getRecommendedUsagePlan(estimate.chargedRecommendedUsageBytes))
+    })
+
+    it('uses decimal charged allowances of 1, 6, 15, 30, 60, and 120 GB', () => {
+        expect(MONTHLY_USAGE_PLANS.map((plan) => plan.limitBytes)).toEqual([
+            1 * DECIMAL_GB,
+            6 * DECIMAL_GB,
+            15 * DECIMAL_GB,
+            30 * DECIMAL_GB,
+            60 * DECIMAL_GB,
+            120 * DECIMAL_GB,
+            null
+        ])
+
+        for (let index = 0; index < MONTHLY_USAGE_PLANS.length - 1; index += 1) {
+            const plan = MONTHLY_USAGE_PLANS[index]
+            expect(getRecommendedUsagePlan(plan.limitBytes!).id).toBe(plan.id)
+            expect(getRecommendedUsagePlan(plan.limitBytes! + 1).id)
+                .toBe(MONTHLY_USAGE_PLANS[index + 1].id)
+        }
+    })
+
+    it('makes 100 MB actual consume exactly the free 1 GB charged allowance', () => {
+        expect(100_000_000 * 10).toBe(MONTHLY_USAGE_PLANS[0].limitBytes)
     })
 })
 

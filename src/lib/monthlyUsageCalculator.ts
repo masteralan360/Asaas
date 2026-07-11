@@ -1,3 +1,5 @@
+import { actualTransferToChargedUsage } from '@/lib/workspaceUsageCharging'
+
 export type UsageFrequency = 'daily' | 'weekly' | 'monthly'
 export type UploadSizeProfile = 'small' | 'medium' | 'large'
 export type WorkspaceHistorySize = 'fresh' | 'small' | 'medium' | 'large'
@@ -56,9 +58,14 @@ export type UsageBreakdownKey =
 
 export type UsageBreakdownItem = {
     key: UsageBreakdownKey
-    uploadedBytes: number
-    downloadedBytes: number
-    bytes: number
+    /** Real payload uploaded by the workspace before commercial weighting. */
+    actualUploadedBytes: number
+    /** Real payload downloaded by the workspace before commercial weighting. */
+    actualDownloadedBytes: number
+    /** Real uploaded + downloaded payload before commercial weighting. */
+    actualTransferBytes: number
+    /** Plan consumption derived from actualTransferBytes with the configured weight. */
+    chargedUsageBytes: number
 }
 
 export type GeneratedRecordKey =
@@ -97,16 +104,20 @@ export type UsagePlan = {
 }
 
 export type MonthlyUsageEstimate = {
-    typicalMonthBytes: number
-    lowMonthBytes: number
-    busyMonthBytes: number
-    firstMonthBytes: number
-    onboardingBytes: number
-    uploadedBytes: number
-    downloadedBytes: number
-    recommendationBasisBytes: number
-    recommendedUsageBytes: number
-    averageWorkingDayBytes: number
+    actualTypicalTransferBytes: number
+    actualLowTransferBytes: number
+    actualBusyTransferBytes: number
+    actualFirstMonthTransferBytes: number
+    actualOnboardingTransferBytes: number
+    actualUploadedBytes: number
+    actualDownloadedBytes: number
+    averageWorkingDayActualTransferBytes: number
+    chargedTypicalUsageBytes: number
+    chargedLowUsageBytes: number
+    chargedBusyUsageBytes: number
+    chargedFirstMonthUsageBytes: number
+    chargedRecommendationBasisBytes: number
+    chargedRecommendedUsageBytes: number
     monthlyOccurrences: {
         posSales: number
         wholesaleOrders: number
@@ -126,7 +137,9 @@ export type MonthlyUsageEstimate = {
 
 const KIB = 1024
 const MIB = 1024 * KIB
-const GIB = 1024 * MIB
+// Plan allowances are decimal marketing GB. This intentionally makes
+// 100 MB actual * 10 equal exactly 1 GB charged usage.
+export const DECIMAL_GB = 1_000_000_000
 const WEEKS_PER_MONTH = 365.25 / 12 / 7
 const BUSY_ACTIVITY_FACTOR = 1.35
 const LOW_ACTIVITY_FACTOR = 0.75
@@ -138,12 +151,12 @@ const ASSUMED_BATCHES_PER_PRODUCT = 2
 export const DEFAULT_SCHEDULED_INSTALLMENTS_PER_LOAN = 6
 
 export const MONTHLY_USAGE_PLANS: UsagePlan[] = [
-    { id: 'free', limitBytes: 100 * MIB },
-    { id: 'starter', limitBytes: 1 * GIB },
-    { id: 'basic', limitBytes: 2.5 * GIB },
-    { id: 'business', limitBytes: 5 * GIB },
-    { id: 'professional', limitBytes: 10 * GIB },
-    { id: 'advanced', limitBytes: 20 * GIB },
+    { id: 'free', limitBytes: 1 * DECIMAL_GB },
+    { id: 'starter', limitBytes: 6 * DECIMAL_GB },
+    { id: 'basic', limitBytes: 15 * DECIMAL_GB },
+    { id: 'business', limitBytes: 30 * DECIMAL_GB },
+    { id: 'professional', limitBytes: 60 * DECIMAL_GB },
+    { id: 'advanced', limitBytes: 120 * DECIMAL_GB },
     { id: 'unlimited', limitBytes: null }
 ]
 
@@ -187,13 +200,15 @@ function atLeastOne(value: number): number {
     return Math.max(1, finiteNonNegative(value))
 }
 
-function transfer(uploadedBytes: number, downloadedBytes: number) {
+function actualTransfer(uploadedBytes: number, downloadedBytes: number) {
     const uploaded = finiteNonNegative(uploadedBytes)
     const downloaded = finiteNonNegative(downloadedBytes)
+    const total = uploaded + downloaded
     return {
-        uploadedBytes: uploaded,
-        downloadedBytes: downloaded,
-        bytes: uploaded + downloaded
+        actualUploadedBytes: uploaded,
+        actualDownloadedBytes: downloaded,
+        actualTransferBytes: total,
+        chargedUsageBytes: actualTransferToChargedUsage(total)
     }
 }
 
@@ -269,14 +284,14 @@ export function calculateMonthlyUsage(input: MonthlyUsageCalculatorInput): Month
     // Fixed recurring reads: workspace/version checks and periodic catalog refreshes.
     // Hours affect how often modules are revisited, not the number of complete business operations.
     const workspaceSessions = members * monthlyWorkingDays * Math.min(1.8, 0.7 + hours / 16)
-    const workspace = transfer(0, workspaceSessions * 125 * KIB)
+    const workspace = actualTransfer(0, workspaceSessions * 125 * KIB)
     const catalogSnapshotBytes = 42 * KIB
         + storages * 1.4 * KIB
         + products * 1.45 * KIB
         + batchRows * 0.78 * KIB
     const catalogRefreshes = members * WEEKS_PER_MONTH * (1 + hours / 16)
     const productWrites = changedProducts * (4.8 * KIB + 1.4 * KIB)
-    const catalog = transfer(
+    const catalog = actualTransfer(
         productWrites,
         catalogRefreshes * catalogSnapshotBytes + changedProducts * 2.4 * KIB
     )
@@ -288,7 +303,7 @@ export function calculateMonthlyUsage(input: MonthlyUsageCalculatorInput): Month
     const posBatchRefresh = input.batchTracking
         ? posSales * Math.max(8 * KIB, batchRows * 0.78 * KIB)
         : 0
-    const pos = transfer(posRpcUpload, posSyncDownload + posBatchRefresh)
+    const pos = actualTransfer(posRpcUpload, posSyncDownload + posBatchRefresh)
 
     // Order lines are embedded in their parent payload. Completion can also write affected
     // products, partner summaries, and payment transactions. Purchase Orders use the same model.
@@ -303,7 +318,7 @@ export function calculateMonthlyUsage(input: MonthlyUsageCalculatorInput): Month
     const orderDownload = wholesaleOrders * (7 * KIB + wholesaleItems * 2.2 * KIB)
         + purchaseOrders * (7 * KIB + purchaseItems * 2.2 * KIB)
         + (input.batchTracking ? (wholesaleOrders + purchaseOrders) * batchRows * 0.78 * KIB : 0)
-    const orders = transfer(orderUpload + purchaseUpload, orderDownload)
+    const orders = actualTransfer(orderUpload + purchaseUpload, orderDownload)
 
     // Every loan contains a hidden six-row schedule. Each payment uploads the loan, payment,
     // transaction, partner summary, and all schedule rows again.
@@ -323,7 +338,7 @@ export function calculateMonthlyUsage(input: MonthlyUsageCalculatorInput): Month
         (existingLoanRows + totalLoans) * 4.8 * KIB
         + (existingLoanRows * DEFAULT_SCHEDULED_INSTALLMENTS_PER_LOAN + scheduleRows) * 1.4 * KIB
     )
-    const credit = transfer(
+    const credit = actualTransfer(
         loanHeaderUpload + scheduleUpload + manualOriginationUpload + paymentUpload,
         loanSyncDownload + financedOrderFullRefresh
     )
@@ -332,12 +347,12 @@ export function calculateMonthlyUsage(input: MonthlyUsageCalculatorInput): Month
     const invoiceMetadataUpload = savedInvoices * 6.5 * KIB
     const invoicePdfUpload = savedInvoices * ASSUMED_INVOICE_PDF_BYTES * 2
     const genericUploadBytes = uploads * UPLOAD_SIZE_BYTES[input.uploadSizeProfile]
-    const invoicesAndFiles = transfer(
+    const invoicesAndFiles = actualTransfer(
         invoiceMetadataUpload + invoicePdfUpload + genericUploadBytes,
         savedInvoices * ASSUMED_INVOICE_PDF_BYTES * 0.5 + genericUploadBytes * 0.5
     )
 
-    const operations = transfer(
+    const operations = actualTransfer(
         returns * (15 * KIB + posItems * 3.4 * KIB) + stockOperations * 12 * KIB,
         returns * (12 * KIB + posItems * 2.8 * KIB) + stockOperations * 10 * KIB
     )
@@ -351,7 +366,7 @@ export function calculateMonthlyUsage(input: MonthlyUsageCalculatorInput): Month
     const reportPayloadBytes = 190 * KIB
         + Math.min(products, 10_000) * 55
         + Math.min(currentRecords, 20_000) * 35
-    const reports = transfer(0, historyViews * versionCheckBytes + reportViews * reportPayloadBytes)
+    const reports = actualTransfer(0, historyViews * versionCheckBytes + reportViews * reportPayloadBytes)
 
     const breakdown: UsageBreakdownItem[] = [
         { key: 'workspace', ...workspace },
@@ -364,23 +379,32 @@ export function calculateMonthlyUsage(input: MonthlyUsageCalculatorInput): Month
         { key: 'reports', ...reports }
     ]
 
-    const uploadedBytes = breakdown.reduce((sum, item) => sum + item.uploadedBytes, 0)
-    const downloadedBytes = breakdown.reduce((sum, item) => sum + item.downloadedBytes, 0)
-    const typicalMonthBytes = uploadedBytes + downloadedBytes
-    const fixedRecurringBytes = workspace.bytes + catalog.bytes + reports.bytes
-    const variableActivityBytes = typicalMonthBytes - fixedRecurringBytes
-    const lowMonthBytes = fixedRecurringBytes + variableActivityBytes * LOW_ACTIVITY_FACTOR
-    const busyMonthBytes = fixedRecurringBytes + variableActivityBytes * BUSY_ACTIVITY_FACTOR
+    const actualUploadedBytes = breakdown.reduce((sum, item) => sum + item.actualUploadedBytes, 0)
+    const actualDownloadedBytes = breakdown.reduce((sum, item) => sum + item.actualDownloadedBytes, 0)
+    const actualTypicalTransferBytes = actualUploadedBytes + actualDownloadedBytes
+    const fixedRecurringActualBytes = workspace.actualTransferBytes
+        + catalog.actualTransferBytes
+        + reports.actualTransferBytes
+    const variableActivityActualBytes = actualTypicalTransferBytes - fixedRecurringActualBytes
+    const actualLowTransferBytes = fixedRecurringActualBytes + variableActivityActualBytes * LOW_ACTIVITY_FACTOR
+    const actualBusyTransferBytes = fixedRecurringActualBytes + variableActivityActualBytes * BUSY_ACTIVITY_FACTOR
 
     const initialCatalogUpload = input.historySize === 'fresh'
         ? storages * 3 * KIB + products * 6.2 * KIB
         : 0
     const initialHistoryDownload = members * existingHistoryRecords * 5.5 * KIB
     const initialCatalogDownload = members * catalogSnapshotBytes
-    const onboardingBytes = initialCatalogUpload + initialHistoryDownload + initialCatalogDownload
-    const firstMonthBytes = typicalMonthBytes + onboardingBytes
-    const recommendationBasisBytes = Math.max(firstMonthBytes, busyMonthBytes)
-    const recommendedUsageBytes = recommendationBasisBytes * PLAN_HEADROOM_FACTOR
+    const actualOnboardingTransferBytes = initialCatalogUpload + initialHistoryDownload + initialCatalogDownload
+    const actualFirstMonthTransferBytes = actualTypicalTransferBytes + actualOnboardingTransferBytes
+
+    // The calculator models network activity in ACTUAL bytes above. Only after the
+    // model is complete do we derive CHARGED usage for plan selection and limits.
+    const chargedTypicalUsageBytes = actualTransferToChargedUsage(actualTypicalTransferBytes)
+    const chargedLowUsageBytes = actualTransferToChargedUsage(actualLowTransferBytes)
+    const chargedBusyUsageBytes = actualTransferToChargedUsage(actualBusyTransferBytes)
+    const chargedFirstMonthUsageBytes = actualTransferToChargedUsage(actualFirstMonthTransferBytes)
+    const chargedRecommendationBasisBytes = Math.max(chargedFirstMonthUsageBytes, chargedBusyUsageBytes)
+    const chargedRecommendedUsageBytes = chargedRecommendationBasisBytes * PLAN_HEADROOM_FACTOR
 
     const partnerSummaryUpdates = wholesaleOrders + purchaseOrders + totalLoans + loanPayments
     const paymentEntries = paidSalesOrders + purchaseOrders + manualLoans + loanPayments
@@ -405,16 +429,20 @@ export function calculateMonthlyUsage(input: MonthlyUsageCalculatorInput): Month
     ]
 
     return {
-        typicalMonthBytes,
-        lowMonthBytes,
-        busyMonthBytes,
-        firstMonthBytes,
-        onboardingBytes,
-        uploadedBytes,
-        downloadedBytes,
-        recommendationBasisBytes,
-        recommendedUsageBytes,
-        averageWorkingDayBytes: typicalMonthBytes / Math.max(1, monthlyWorkingDays),
+        actualTypicalTransferBytes,
+        actualLowTransferBytes,
+        actualBusyTransferBytes,
+        actualFirstMonthTransferBytes,
+        actualOnboardingTransferBytes,
+        actualUploadedBytes,
+        actualDownloadedBytes,
+        averageWorkingDayActualTransferBytes: actualTypicalTransferBytes / Math.max(1, monthlyWorkingDays),
+        chargedTypicalUsageBytes,
+        chargedLowUsageBytes,
+        chargedBusyUsageBytes,
+        chargedFirstMonthUsageBytes,
+        chargedRecommendationBasisBytes,
+        chargedRecommendedUsageBytes,
         monthlyOccurrences: {
             posSales,
             wholesaleOrders,
@@ -429,7 +457,6 @@ export function calculateMonthlyUsage(input: MonthlyUsageCalculatorInput): Month
         },
         breakdown,
         generatedRecords,
-        recommendedPlan: getRecommendedUsagePlan(recommendedUsageBytes)
+        recommendedPlan: getRecommendedUsagePlan(chargedRecommendedUsageBytes)
     }
 }
-
