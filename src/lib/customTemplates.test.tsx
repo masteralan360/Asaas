@@ -509,7 +509,7 @@ describe('Order Receipt custom print template', () => {
             workspaceId: 'receipt-workspace',
             workspaceName: 'Atlas Test',
             printLang: 'en',
-            features: { print_qr: true }
+            features: { print_qr: true } as unknown as import('@/workspace').WorkspaceFeatures
         })
         const element = preview.createElement({
             'orderReceipt.hideDiscount': 'true'
