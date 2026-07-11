@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts'
-import { Activity, CalendarDays, Database, Gauge, HardDrive, Info, TrendingUp } from 'lucide-react'
+import { Activity, CalendarDays, Database, Gauge, HardDrive, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { WorkspaceUsageInsights } from '@/lib/workspaceUsageHistory'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './dialog'
@@ -485,9 +485,7 @@ export function WorkspaceUsageModal({ open, onOpenChange, usageMeter }: Workspac
                                         {isStorage && (
                                             <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                                                 <Database className="h-3 w-3" />
-                                                {t('workspaceUsage.storageRecords', {
-                                                    count: numberFormatter.format(details.storageUnits)
-                                                })}
+
                                             </p>
                                         )}
                                     </div>
