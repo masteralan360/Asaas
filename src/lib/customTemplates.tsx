@@ -7,6 +7,7 @@ import type {
 } from '@/lib/pdfPreviewStore'
 import {
     getCustomTemplateLayoutHeightMm,
+    getCustomTemplateLayoutOverflowHeightMm,
     getCustomTemplateLayoutPageCount
 } from '@/lib/pdfPreviewStore'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
@@ -620,6 +621,12 @@ const ORDER_RECEIPT_FIELDS = [
         type: 'boolean' as const
     },
     {
+        key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showContacts,
+        label: 'Show contacts',
+        value: 'true',
+        type: 'boolean' as const
+    },
+    {
         key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.thankYou,
         label: 'Thank-you text',
         value: '',
@@ -636,7 +643,7 @@ const ORDER_RECEIPT_FIELDS = [
     {
         key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.labelOpacity,
         label: 'Labels opacity',
-        value: '50',
+        value: '100',
         type: 'number' as const
     }
 ]
@@ -702,7 +709,7 @@ const SALES_HISTORY_RECEIPT_FIELDS = [
     {
         key: SALE_RECEIPT_TEMPLATE_FIELD_KEYS.labelOpacity,
         label: 'Labels opacity',
-        value: '50',
+        value: '100',
         type: 'number' as const
     }
 ]
@@ -1338,7 +1345,12 @@ export function renderCustomTemplateLayoutElement({
         ...(fieldMode === 'layoutOverrides' ? layout.fields || {} : nonBlankFields(layout.fields || {}))
     }
     const pageHeight = layout.page.heightMm || 297
-    const layoutHeight = getCustomTemplateLayoutPageCount(layout) * pageHeight
+    const isReceiptTemplate = target.printFormat === 'receipt'
+    const layoutPageCount = isReceiptTemplate ? 1 : getCustomTemplateLayoutPageCount(layout)
+    const layoutOverflowHeight = getCustomTemplateLayoutOverflowHeightMm(layout)
+    const layoutHeight = isReceiptTemplate
+        ? Math.max(1, layoutOverflowHeight)
+        : layoutPageCount * pageHeight
 
     return (
         <div
@@ -1359,14 +1371,14 @@ export function renderCustomTemplateLayoutElement({
 `
                 }}
             />
-            {Array.from({ length: getCustomTemplateLayoutPageCount(layout) }).map((_, pageIndex) => (
+            {Array.from({ length: layoutPageCount }).map((_, pageIndex) => (
                 <div
                     key={`template-page-bg-${pageIndex}`}
                     className="absolute left-0 top-0 z-0 bg-white"
                     style={{
                         width: '100%',
-                        height: `${pageHeight}mm`,
-                        transform: `translateY(${pageIndex * pageHeight}mm)`
+                        height: `${isReceiptTemplate ? layoutHeight : pageHeight}mm`,
+                        transform: `translateY(${isReceiptTemplate ? 0 : pageIndex * pageHeight}mm)`
                     }}
                 />
             ))}
@@ -1377,7 +1389,12 @@ export function renderCustomTemplateLayoutElement({
                     hiddenFields: layout.hiddenFields
                 })}
             </div>
-            <CustomTemplateLayoutOverlay layout={layout} heightMm={Math.max(layoutHeight, getCustomTemplateLayoutHeightMm(layout))} />
+            <CustomTemplateLayoutOverlay
+                layout={layout}
+                heightMm={isReceiptTemplate
+                    ? layoutHeight
+                    : Math.max(layoutHeight, getCustomTemplateLayoutHeightMm(layout))}
+            />
         </div>
     )
 }

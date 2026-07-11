@@ -359,6 +359,7 @@ export function CustomTemplates() {
                 defaultValue: '{{name}} Custom Template',
                 name: getCustomTemplateDisplayName(moduleTypeKey)
             }),
+            printFormat: target.printFormat,
             workspaceId,
             templatePreview: createCustomTemplatePreview(target, {
                 workspaceId,

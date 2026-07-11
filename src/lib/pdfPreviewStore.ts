@@ -131,9 +131,8 @@ export function getFixedPageCountForHeight(heightMm: number, pageHeightMm = A4_P
     return Math.max(1, Math.ceil(Math.max(0, heightMm) / fixedPageHeight))
 }
 
-export function getCustomTemplateLayoutHeightMm(layout: Pick<CustomTemplateLayout, 'page' | 'annotations' | 'texts' | 'images' | 'componentPositions'>) {
-    const pageHeightMm = getPositiveNumber(layout.page?.heightMm, A4_PAGE_HEIGHT_MM)
-    let maxBottomMm = pageHeightMm
+export function getCustomTemplateLayoutOverflowHeightMm(layout: Pick<CustomTemplateLayout, 'annotations' | 'texts' | 'images' | 'componentPositions'>) {
+    let maxBottomMm = 0
 
     layout.annotations?.forEach((annotation) => {
         annotation.points.forEach((point) => {
@@ -166,6 +165,11 @@ export function getCustomTemplateLayoutHeightMm(layout: Pick<CustomTemplateLayou
     })
 
     return maxBottomMm
+}
+
+export function getCustomTemplateLayoutHeightMm(layout: Pick<CustomTemplateLayout, 'page' | 'annotations' | 'texts' | 'images' | 'componentPositions'>) {
+    const pageHeightMm = getPositiveNumber(layout.page?.heightMm, A4_PAGE_HEIGHT_MM)
+    return Math.max(pageHeightMm, getCustomTemplateLayoutOverflowHeightMm(layout))
 }
 
 export function getCustomTemplateLayoutPageCount(layout: Pick<CustomTemplateLayout, 'page' | 'annotations' | 'texts' | 'images' | 'componentPositions'>) {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
     A4_PAGE_HEIGHT_MM,
     getCustomTemplateLayoutHeightMm,
+    getCustomTemplateLayoutOverflowHeightMm,
     getCustomTemplateLayoutPageCount
 } from './pdfPreviewStore'
 import type { CustomTemplateLayout } from './pdfPreviewStore'
@@ -24,6 +25,7 @@ describe('custom template page extents', () => {
     it('keeps an empty A4 template to one fixed page', () => {
         const layout = createLayout()
 
+        expect(getCustomTemplateLayoutOverflowHeightMm(layout)).toBe(0)
         expect(getCustomTemplateLayoutHeightMm(layout)).toBe(A4_PAGE_HEIGHT_MM)
         expect(getCustomTemplateLayoutPageCount(layout)).toBe(1)
     })

@@ -77,7 +77,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
             || t('sales.receipt.thankYou')
         const keepRecordText = fieldValue(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord)?.trim()
             || t('sales.receipt.keepRecord')
-        const labelOpacity = Math.min(100, Math.max(0, parseInt(fieldValue(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.labelOpacity) || '50')))
+        const labelOpacity = Math.min(100, Math.max(0, parseInt(fieldValue(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.labelOpacity) || '100')))
         const updateTemplateField = (key: string, value: string) => {
             onTemplateFieldChange?.(key, value)
         }

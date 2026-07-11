@@ -390,7 +390,9 @@ export function PdfPreviewPage() {
             [key]: position
         }))
     }, [])
-    const isFixedPageTemplatePreview = source?.printFormat !== 'receipt'
+    // Thermal receipts grow with their content; they do not have fixed page breaks.
+    // The width fallback keeps older saved receipt templates free of A4-style guides.
+    const isFixedPageTemplatePreview = source?.printFormat !== 'receipt' && templatePageWidth > 80
     const templateLayoutForMeasurement = {
         page: {
             widthMm: templatePageWidth,
@@ -402,11 +404,13 @@ export function PdfPreviewPage() {
         componentPositions: templateComponentPositions
     }
     const estimatedTemplateHeightMm = getCustomTemplateLayoutHeightMm(templateLayoutForMeasurement)
-    const templateContentHeightMm = Math.max(
-        templatePageHeight,
-        estimatedTemplateHeightMm,
-        measuredTemplateHeightMm
-    )
+    const templateContentHeightMm = isFixedPageTemplatePreview
+        ? Math.max(
+            templatePageHeight,
+            estimatedTemplateHeightMm,
+            measuredTemplateHeightMm
+        )
+        : Math.max(1, measuredTemplateHeightMm)
     const templatePageCount = isFixedPageTemplatePreview
         ? getFixedPageCountForHeight(templateContentHeightMm, templatePageHeight || A4_PAGE_HEIGHT_MM)
         : 1
@@ -422,7 +426,7 @@ export function PdfPreviewPage() {
         if (stageRect.width <= 0) return
 
         const pxToMm = templatePageWidth / stageRect.width
-        let maxBottomMm = templatePageHeight
+        let maxBottomMm = isFixedPageTemplatePreview ? templatePageHeight : 0
         const contentLayer = templateContentLayerRef.current
         if (contentLayer) {
             maxBottomMm = Math.max(maxBottomMm, contentLayer.scrollHeight * pxToMm)
@@ -439,7 +443,7 @@ export function PdfPreviewPage() {
         setMeasuredTemplateHeightMm((current) => (
             Math.abs(current - maxBottomMm) < 0.5 ? current : maxBottomMm
         ))
-    }, [templatePageHeight, templatePageWidth, templatePreview])
+    }, [isFixedPageTemplatePreview, templatePageHeight, templatePageWidth, templatePreview])
 
     useEffect(() => {
         if (!templatePreview) return
@@ -1095,9 +1099,9 @@ export function PdfPreviewPage() {
                                             key={`template-preview-page-${pageIndex}`}
                                             className="absolute left-0 z-0 bg-white shadow-sm ring-1 ring-slate-200"
                                             style={{
-                                                top: `${pageIndex * templatePageHeight}mm`,
+                                                top: `${isFixedPageTemplatePreview ? pageIndex * templatePageHeight : 0}mm`,
                                                 width: `${templatePageWidth}mm`,
-                                                height: `${templatePageHeight}mm`
+                                                height: `${isFixedPageTemplatePreview ? templatePageHeight : templateStackHeight}mm`
                                             }}
                                         >
                                             {templatePageCount > 1 ? (

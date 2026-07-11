@@ -535,6 +535,7 @@ export function PrintPreviewModal({
                         title: title || t('print.previewTitle') || 'Print Preview',
                         onSave: showSaveButton || enableTemplatePreviewSave ? handleSave : undefined,
                         effectiveId,
+                        printFormat,
                         workspaceId,
                         templatePreview: templatePreviewProp,
                         customTemplate,

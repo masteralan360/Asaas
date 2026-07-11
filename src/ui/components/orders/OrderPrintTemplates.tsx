@@ -76,6 +76,7 @@ export const ORDER_RECEIPT_TEMPLATE_FIELD_KEYS = {
     hideUnit: 'orderReceipt.hideUnit',
     hideDiscount: 'orderReceipt.hideDiscount',
     showNotes: 'orderReceipt.showNotes',
+    showContacts: 'orderReceipt.showContacts',
     thankYou: 'orderReceipt.thankYou',
     keepRecord: 'orderReceipt.keepRecord',
     labelOpacity: 'orderReceipt.labelOpacity',
@@ -485,11 +486,12 @@ export function OrderReceiptPrintTemplate({
     const hideUnit = fieldValue(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.hideUnit) === 'true'
     const hideDiscount = fieldValue(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.hideDiscount) === 'true'
     const showNotes = isFieldEnabled(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showNotes)
+    const showContacts = isFieldEnabled(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showContacts)
     const thankYouText = fieldValue(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.thankYou)?.trim()
         || t('sales.receipt.thankYou', { defaultValue: 'Thank you for your order!' })
     const keepRecordText = fieldValue(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord)?.trim()
         || t('sales.receipt.keepRecord', { defaultValue: 'Please keep this receipt for your records.' })
-    const labelOpacity = Math.min(100, Math.max(0, parseInt(fieldValue(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.labelOpacity) || '50', 10)))
+    const labelOpacity = Math.min(100, Math.max(0, parseInt(fieldValue(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.labelOpacity) || '100', 10)))
     const showFreeBonus = hasOrderLineFreeBonus(order.items || [])
     const hasExchangeRates = Boolean(
         showExchangeRateSnapshots
@@ -753,14 +755,14 @@ export function OrderReceiptPrintTemplate({
                 undefined, 'right', 0, true
             ) : null}
 
-            {mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.contacts, 'Contacts',
+            {showContacts ? mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.contacts, 'Contacts',
                 <div className="mb-5 flex flex-wrap justify-center gap-x-3 gap-y-1 border-t border-gray-100 pt-3 text-center text-[10px] text-black" style={{ opacity: labelOpacity / 100 }}>
                     {[workspaceFooterContacts?.address?.primary, workspaceFooterContacts?.phone?.primary]
                         .filter((value): value is string => Boolean(value?.trim()))
                         .map((value) => <span key={value}>{value}</span>)}
                 </div>,
                 undefined, 'right', 0, true
-            )}
+            ) : null}
 
             <div className="border-t border-gray-100 pt-5 text-center text-[10px] text-gray-400">
                 {mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.thankYou, 'Thank You',

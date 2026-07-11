@@ -437,9 +437,10 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.hideUnit, label: t('orders.form.hideUnit', { defaultValue: 'Hide Unit' }), value: localStorage.getItem('atlas_print_hide_unit') || 'false', type: 'boolean' },
                 { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.hideDiscount, label: t('orders.form.hideDiscount', { defaultValue: 'Hide Discount' }), value: localStorage.getItem('atlas_print_hide_discount') || 'false', type: 'boolean' },
                 { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showNotes, label: t('orders.print.showNotes', { defaultValue: 'Show notes' }), value: 'true', type: 'boolean' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showContacts, label: t('orders.print.showContacts', { defaultValue: 'Show contacts' }), value: 'true', type: 'boolean' },
                 { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.thankYou, label: t('sales.print.thankYou', { defaultValue: 'Thank-you text' }), value: '', type: 'text' },
                 { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord, label: t('sales.print.keepRecord', { defaultValue: 'Keep-record text' }), value: '', type: 'text' },
-                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.labelOpacity, label: t('orders.print.labelOpacity', { defaultValue: 'Labels opacity' }), value: '50', type: 'number' }
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.labelOpacity, label: t('orders.print.labelOpacity', { defaultValue: 'Labels opacity' }), value: '100', type: 'number' }
             ],
             createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string, renderOptions?: TemplatePreviewRenderOptions) => {
                 const updatedOrder = {

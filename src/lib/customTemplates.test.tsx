@@ -17,7 +17,22 @@ vi.mock('@/ui/components/SaleReceipt', () => ({
         showExchangeRateSnapshots: 'showExchangeRateSnapshots',
         showOriginalCurrencyPrice: 'showOriginalCurrencyPrice',
         thankYou: 'thankYou',
-        keepRecord: 'keepRecord'
+        keepRecord: 'keepRecord',
+        labelOpacity: 'labelOpacity'
+    },
+    RECEIPT_MOVABLE_COMPONENT_KEYS: {
+        logo: 'receiptLogo',
+        workspaceName: 'receiptWorkspaceName',
+        qrCode: 'receiptQrCode',
+        date: 'receiptDate',
+        saleId: 'receiptSaleId',
+        cashier: 'receiptCashier',
+        paymentMethod: 'receiptPaymentMethod',
+        exchangeRateSnapshots: 'receiptExchangeRateSnapshots',
+        itemsTable: 'receiptItemsTable',
+        total: 'receiptTotal',
+        thankYou: 'receiptThankYou',
+        keepRecord: 'receiptKeepRecord'
     },
     SaleReceiptBase: () => null
 }))
@@ -512,7 +527,8 @@ describe('Order Receipt custom print template', () => {
             features: { print_qr: true } as unknown as import('@/workspace').WorkspaceFeatures
         })
         const element = preview.createElement({
-            'orderReceipt.hideDiscount': 'true'
+            'orderReceipt.hideDiscount': 'true',
+            'orderReceipt.showContacts': 'false'
         }, 'order-receipt-id', undefined, {
             editableComponents: true,
             componentPositions,
@@ -529,6 +545,8 @@ describe('Order Receipt custom print template', () => {
                 key: 'orderReceipt.hideUnit', value: 'false', type: 'boolean' }),
             expect.objectContaining({
                 key: 'orderReceipt.hideDiscount', value: 'false', type: 'boolean' }),
+            expect.objectContaining({
+                key: 'orderReceipt.showContacts', value: 'true', type: 'boolean' }),
             expect.objectContaining({
                 key: 'orderReceipt.thankYou', value: '', type: 'text' })
         ]))
@@ -563,7 +581,41 @@ describe('Order Receipt custom print template', () => {
         expect(html).toContain('translate(3mm, 0)')
         expect(html).toContain('margin-top:8mm')
         expect(html).toContain('data-order-print-component="orderReceiptTotals"')
+        expect(html).not.toContain('data-order-print-component="orderReceiptContacts"')
         expect(html).toContain('Paid')
         expect(html).toContain('Outstanding')
+    })
+})
+
+describe('Receipt custom template pagination', () => {
+    it('keeps receipt layouts continuous instead of tiling fixed-height pages', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.SALES_HISTORY_RECEIPT_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const html = renderToStaticMarkup(customTemplates.renderCustomTemplateLayoutElement({
+            target: target!,
+            layout: {
+                version: 1,
+                moduleTypeKey: customTemplates.SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
+                page: { widthMm: 80, heightMm: 200 },
+                fields: {},
+                annotations: [],
+                texts: [{
+                    id: 'below-default-receipt-height',
+                    text: 'Receipt footer',
+                    x: 10,
+                    y: 250,
+                    width: 30,
+                    rotation: 0
+                }],
+                images: [],
+                updatedAt: new Date().toISOString()
+            },
+            values: {}
+        }))
+
+        expect(html).toContain('Receipt footer')
+        expect(html).not.toContain('translateY(200mm)')
+        expect(html).not.toContain('min-height:400mm')
     })
 })
