@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { Button, Input, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, LanguageSwitcher, ThemeToggle, RegisterWorkspaceContactsModal, type AdminContact } from '@/ui/components'
-import { Mail, Lock, User, Loader2, Key, Contact, Sparkles, Eye, EyeOff, LayoutDashboard, Users, ShieldCheck } from 'lucide-react'
+import { Mail, Lock, User, Loader2, Key, Contact, Sparkles, Eye, EyeOff, LayoutDashboard, Users, ShieldCheck, Calculator } from 'lucide-react'
 import type { UserRole } from '@/local-db/models'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
@@ -413,6 +413,18 @@ export function Register() {
                                 {t('auth.tryDemo', 'Try Demo')}
                             </Button>
                         </>
+                    )}
+
+                    {!isTauri && (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setLocation('/monthly-usage-calculator')}
+                            className="w-full h-12 border-teal-200 bg-teal-50/70 text-teal-800 hover:bg-teal-100 hover:text-teal-900 dark:border-teal-900 dark:bg-teal-950/30 dark:text-teal-300 dark:hover:bg-teal-950/60 font-semibold rounded-xl transition-all active:scale-[0.98]"
+                        >
+                            <Calculator className="w-5 h-5 mr-2" />
+                            {t('monthlyUsageCalculator.button', 'Monthly Usage Calculator')}
+                        </Button>
                     )}
 
                     <div className="text-center">

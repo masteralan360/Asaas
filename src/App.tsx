@@ -96,6 +96,11 @@ const Login = lazy(() =>
 const Register = lazy(() =>
   import("@/ui/pages/Register").then((m) => ({ default: m.Register })),
 );
+const MonthlyUsageCalculator = lazy(() =>
+  import("@/ui/pages/MonthlyUsageCalculator").then((m) => ({
+    default: m.MonthlyUsageCalculator,
+  })),
+);
 const InvoicesHistory = lazy(() =>
   import("@/ui/pages/InvoicesHistory").then((m) => ({
     default: m.InvoicesHistory,
@@ -932,6 +937,11 @@ function App() {
                           <Register />
                         </GuestRoute>
                       </Route>
+                      {!isTauri && (
+                        <Route path="/monthly-usage-calculator">
+                          <MonthlyUsageCalculator />
+                        </Route>
+                      )}
                       {isDemoEnabled() && (
                         <Route path="/demo-setup">
                           <DemoConfigPage />
