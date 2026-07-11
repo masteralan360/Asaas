@@ -3,7 +3,7 @@ declare const __ATLAS_GIT_COMMIT_HASH__: string | undefined
 declare const __ATLAS_GIT_COMMIT_DATE__: string | undefined
 
 /**
- * Git commit metadata injected at build time via Vite `define`.
+ *Git commit metadata injected at build time via Vite `define`.
  * Used to display the latest GitHub commit on the web/PWA sidebar
  * in place of the Tauri app version.
  */
