@@ -2914,6 +2914,7 @@ export function useWorkspaceUsers(workspaceId: string | undefined) {
                     name: p.name,
                     email: '',
                     role: p.role,
+                    profileUrl: p.profile_url ?? undefined,
                     createdAt: p.created_at || new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
                     syncStatus: 'synced' as const,

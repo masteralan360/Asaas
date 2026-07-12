@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { LocateFixed, Radio, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 import { useFleetAgentDirectory } from "@/fleet/useFleetAgentDirectory";
 import { useFleetLiveLocations } from "@/fleet/useFleetLiveLocations";
@@ -15,6 +15,7 @@ import {
   MarkerPopup,
   type MapRef,
 } from "@/ui/components";
+import { FleetAgentAvatar } from "./FleetAgentAvatar";
 
 interface FleetLiveMapProps {
   workspaceId: string;
@@ -40,7 +41,7 @@ export function FleetLiveMap({ workspaceId }: FleetLiveMapProps) {
     workspaceId,
     true,
   );
-  const { getAgentName, partnerByAgentId } =
+  const { getAgentName, getAgentProfileUrl, partnerByAgentId } =
     useFleetAgentDirectory(workspaceId);
   const [selectedAgentId, setSelectedAgentId] = useState<string>();
   const selectedLocation = locations.find(
@@ -102,6 +103,7 @@ export function FleetLiveMap({ workspaceId }: FleetLiveMapProps) {
                 location.isSharing,
               );
               const partner = partnerByAgentId.get(location.agentId);
+              const agentName = getAgentName(location.agentId);
               return (
                 <button
                   type="button"
@@ -114,9 +116,13 @@ export function FleetLiveMap({ workspaceId }: FleetLiveMapProps) {
                   onClick={() => focusAgent(location.agentId)}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">
-                      {getAgentName(location.agentId)}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <FleetAgentAvatar
+                        profileUrl={getAgentProfileUrl(location.agentId)}
+                        name={agentName}
+                      />
+                      <span className="font-medium">{agentName}</span>
+                    </div>
                     <Badge variant={state.variant}>{state.label}</Badge>
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
@@ -148,6 +154,7 @@ export function FleetLiveMap({ workspaceId }: FleetLiveMapProps) {
                 location.recordedAt,
                 location.isSharing,
               );
+              const agentName = getAgentName(location.agentId);
               return (
                 <MapMarker
                   key={location.agentId}
@@ -157,21 +164,26 @@ export function FleetLiveMap({ workspaceId }: FleetLiveMapProps) {
                 >
                   <MarkerContent>
                     <div
-                      className={`flex h-9 w-9 items-center justify-center rounded-full border-2 border-background shadow-lg ${
+                      className={`flex h-10 w-10 items-center justify-center rounded-full border-2 border-background p-0.5 shadow-lg ${
                         state.active ? "bg-emerald-500" : "bg-slate-500"
                       }`}
                     >
-                      {state.active ? (
-                        <Radio className="h-4 w-4 text-white" />
-                      ) : (
-                        <LocateFixed className="h-4 w-4 text-white" />
-                      )}
+                      <FleetAgentAvatar
+                        profileUrl={getAgentProfileUrl(location.agentId)}
+                        name={agentName}
+                        className="h-full w-full border-0 bg-white"
+                      />
                     </div>
                   </MarkerContent>
                   <MarkerPopup closeButton>
-                    <div className="min-w-48 space-y-1 p-1">
+                    <div className="flex min-w-48 gap-2 p-1">
+                      <FleetAgentAvatar
+                        profileUrl={getAgentProfileUrl(location.agentId)}
+                        name={agentName}
+                      />
+                      <div className="space-y-1">
                       <p className="font-semibold">
-                        {getAgentName(location.agentId)}
+                        {agentName}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         Updated {new Date(location.recordedAt).toLocaleString()}
@@ -182,6 +194,7 @@ export function FleetLiveMap({ workspaceId }: FleetLiveMapProps) {
                           ? `${Math.round(location.accuracy)} m`
                           : "unknown"}
                       </p>
+                      </div>
                     </div>
                   </MarkerPopup>
                 </MapMarker>

@@ -105,7 +105,6 @@ describe('business partner agent facets', () => {
             creditLimit: 0,
             role: 'agent',
             agent: {
-                imageUrl: 'agents-images/workspace/agent.jpg',
                 zone: 'North District',
                 agentType: 'field_agent',
                 linkedUserId: null,
@@ -121,6 +120,7 @@ describe('business partner agent facets', () => {
             agentType: 'field_agent',
             status: 'active'
         })
+        expect(agent).not.toHaveProperty('imageUrl')
     })
 
     it('rejects a driver without vehicle details before persisting the partner', async () => {

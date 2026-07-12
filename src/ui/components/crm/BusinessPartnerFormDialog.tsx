@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { ImagePlus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -17,7 +16,6 @@ import {
     type BusinessPartnerRole,
     type CurrencyCode
 } from '@/local-db'
-import { platformService } from '@/services/platformService'
 import {
     Button,
     CurrencySelector,
@@ -53,7 +51,6 @@ type BusinessPartnerFormState = {
     receivableCreditLimit: string
     payableCreditLimit: string
     role: BusinessPartnerRole
-    agentImageUrl: string
     agentZone: string
     agentType: AgentType
     agentCarModel: string
@@ -80,7 +77,6 @@ function createEmptyState(defaultCurrency: CurrencyCode, role: BusinessPartnerRo
         receivableCreditLimit: '',
         payableCreditLimit: '',
         role,
-        agentImageUrl: '',
         agentZone: '',
         agentType: 'field_agent',
         agentCarModel: '',
@@ -110,7 +106,6 @@ function mapPartnerToState(partner: BusinessPartner, agent?: Agent): BusinessPar
             ? ''
             : String(partner.payableCreditLimit),
         role: partner.role,
-        agentImageUrl: agent?.imageUrl || '',
         agentZone: agent?.zone || '',
         agentType: agent?.agentType || 'field_agent',
         agentCarModel: agent?.carModel || '',
@@ -175,7 +170,6 @@ export function BusinessPartnerFormDialog({
     const { t } = useTranslation()
     const { features } = useWorkspace()
     const [formState, setFormState] = useState<BusinessPartnerFormState>(() => createEmptyState(defaultCurrency, lockedRole ?? initialRole))
-    const [isUploadingAgentImage, setIsUploadingAgentImage] = useState(false)
     const agent = useAgent(partner?.agentFacetId)
     const agents = useAgents(workspaceId)
     const workspaceUsers = useWorkspaceUsers(workspaceId)
@@ -237,22 +231,6 @@ export function BusinessPartnerFormDialog({
         })
     }, [agent, defaultCurrency, enableAgentRole, enableRealEstateRoles, initialRole, isOpen, lockedRole, partner])
 
-    async function handleAgentImageUpload() {
-        if (!workspaceId || isUploadingAgentImage) {
-            return
-        }
-
-        setIsUploadingAgentImage(true)
-        try {
-            const imageUrl = await platformService.pickAndSaveImage(workspaceId, 'agents-images')
-            if (imageUrl) {
-                setFormState((current) => ({ ...current, agentImageUrl: imageUrl }))
-            }
-        } finally {
-            setIsUploadingAgentImage(false)
-        }
-    }
-
     async function handleSubmit(event: FormEvent) {
         event.preventDefault()
         const effectiveRole = lockedRole ?? formState.role
@@ -280,7 +258,6 @@ export function BusinessPartnerFormDialog({
             payableCreditLimit,
             role: effectiveRole,
             agent: isAgent ? {
-                imageUrl: formState.agentImageUrl.trim() || null,
                 zone: formState.agentZone.trim(),
                 agentType: formState.agentType,
                 carModel: formState.agentType === 'driver' ? formState.agentCarModel.trim() : null,
@@ -376,47 +353,6 @@ export function BusinessPartnerFormDialog({
                             )}
                             {isAgentRole ? (
                                 <>
-                                    <div className="space-y-2 md:col-span-2">
-                                        <Label>{t('businessPartners.agent.image', { defaultValue: 'Profile Picture' })}</Label>
-                                        <div className="flex flex-col gap-4 rounded-2xl border bg-muted/20 p-4 sm:flex-row sm:items-center">
-                                            <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-background">
-                                                {formState.agentImageUrl ? (
-                                                    <img
-                                                        src={platformService.convertFileSrc(formState.agentImageUrl)}
-                                                        alt={formState.name || t('businessPartners.agent.image', { defaultValue: 'Agent profile' })}
-                                                        className="h-full w-full object-cover"
-                                                    />
-                                                ) : (
-                                                    <ImagePlus className="h-8 w-8 text-muted-foreground" />
-                                                )}
-                                            </div>
-                                            <div className="flex flex-1 flex-wrap gap-2">
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    onClick={handleAgentImageUpload}
-                                                    disabled={!workspaceId || isUploadingAgentImage}
-                                                    className="gap-2"
-                                                >
-                                                    <ImagePlus className="h-4 w-4" />
-                                                    {isUploadingAgentImage
-                                                        ? t('common.loading', { defaultValue: 'Loading...' })
-                                                        : t('businessPartners.agent.uploadImage', { defaultValue: 'Upload Image' })}
-                                                </Button>
-                                                {formState.agentImageUrl ? (
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        onClick={() => setFormState((current) => ({ ...current, agentImageUrl: '' }))}
-                                                        className="gap-2 text-destructive"
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                        {t('common.delete', { defaultValue: 'Remove' })}
-                                                    </Button>
-                                                ) : null}
-                                            </div>
-                                        </div>
-                                    </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="business-partner-agent-zone">
                                             {t('businessPartners.agent.zone', { defaultValue: 'Operational Territory' })}{' '}

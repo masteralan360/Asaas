@@ -269,15 +269,7 @@ class AssetManager extends SimpleEventEmitter {
                 }
             }
 
-            // 3. Scan agents for profile pictures
-            const agents = await db.agents.where('workspaceId').equals(this.workspaceId).toArray();
-            for (const agent of agents) {
-                if (agent.imageUrl && this.isRemotePath(agent.imageUrl)) {
-                    await this.ensureLocal(agent.imageUrl);
-                }
-            }
-
-            // 4. Scan Workspace Settings for logo
+            // 3. Scan Workspace Settings for logo
             const workspaces = await db.workspaces.where('id').equals(this.workspaceId).toArray();
             for (const ws of workspaces) {
                 if (ws.logo_url && this.isRemotePath(ws.logo_url)) {

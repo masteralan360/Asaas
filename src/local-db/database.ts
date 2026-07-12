@@ -2959,6 +2959,58 @@ export class AtlasDatabase extends Dexie {
         "id, name, workspaceId, role, customerFacetId, supplierFacetId, agentFacetId, defaultCurrency, updatedAt, isDeleted, syncStatus, mergedIntoBusinessPartnerId, latitude, longitude",
     });
 
+    this.version(84)
+      .stores({
+        agents:
+          "id, workspaceId, businessPartnerId, agentType, status, linkedUserId, updatedAt, isDeleted, syncStatus, [workspaceId+status], [workspaceId+agentType]",
+      })
+      .upgrade(async (tx) => {
+        const agents = (await tx.table("agents").toArray()) as Array<
+          Record<string, unknown>
+        >;
+        for (const agent of agents) {
+          delete agent.imageUrl;
+          delete agent.image_url;
+        }
+        if (agents.length > 0) {
+          await tx.table("agents").bulkPut(agents);
+        }
+
+        const stripLegacyAgentImage = (row: Record<string, unknown>, field: "payload" | "data") => {
+          const current = row[field];
+          if (!current || typeof current !== "object" || Array.isArray(current)) {
+            return row;
+          }
+
+          const next = { ...(current as Record<string, unknown>) };
+          delete next.imageUrl;
+          delete next.image_url;
+          return { ...row, [field]: next };
+        };
+
+        const offlineMutations = (await tx
+          .table("offline_mutations")
+          .where("entityType")
+          .equals("agents")
+          .toArray()) as Array<Record<string, unknown>>;
+        if (offlineMutations.length > 0) {
+          await tx
+            .table("offline_mutations")
+            .bulkPut(offlineMutations.map((row) => stripLegacyAgentImage(row, "payload")));
+        }
+
+        const syncQueue = (await tx
+          .table("syncQueue")
+          .where("entityType")
+          .equals("agents")
+          .toArray()) as Array<Record<string, unknown>>;
+        if (syncQueue.length > 0) {
+          await tx
+            .table("syncQueue")
+            .bulkPut(syncQueue.map((row) => stripLegacyAgentImage(row, "data")));
+        }
+      });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }

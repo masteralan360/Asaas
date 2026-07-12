@@ -23,6 +23,7 @@ import {
   Textarea,
   useToast,
 } from "@/ui/components";
+import { FleetAgentAvatar } from "./FleetAgentAvatar";
 
 interface FleetAssignmentDialogProps {
   workspaceId: string;
@@ -38,7 +39,8 @@ export function FleetAssignmentDialog({
   const { toast } = useToast();
   const vehicles = useFleetVehicles(workspaceId);
   const assignments = useFleetAssignments(workspaceId);
-  const { agents, getAgentName } = useFleetAgentDirectory(workspaceId);
+  const { agents, getAgentName, getAgentProfileUrl } =
+    useFleetAgentDirectory(workspaceId);
   const [vehicleId, setVehicleId] = useState("");
   const [agentId, setAgentId] = useState("");
   const [notes, setNotes] = useState("");
@@ -123,7 +125,14 @@ export function FleetAssignmentDialog({
               <SelectContent>
                 {availableAgents.map((agent) => (
                   <SelectItem key={agent.id} value={agent.id}>
-                    {getAgentName(agent.id)} - {agent.zone}
+                    <div className="flex items-center gap-2">
+                      <FleetAgentAvatar
+                        profileUrl={getAgentProfileUrl(agent.id)}
+                        name={getAgentName(agent.id)}
+                        className="h-6 w-6"
+                      />
+                      <span>{getAgentName(agent.id)} - {agent.zone}</span>
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>

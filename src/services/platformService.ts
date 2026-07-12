@@ -405,7 +405,7 @@ class PlatformService implements PlatformAPI {
             const selectedFile = await this.pickImageFileFromInput();
             if (!selectedFile) return null;
 
-            const fileToPersist = subDir === 'profile-images' || subDir === 'agents-images'
+            const fileToPersist = subDir === 'profile-images'
                 ? await this.resizeBrowserImage(selectedFile, 512)
                 : selectedFile;
 

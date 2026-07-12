@@ -235,7 +235,7 @@ export function Agents() {
                                         <TableRow key={partner.id}>
                                             <TableCell>
                                                 <div className="flex items-center gap-3">
-                                                    <AgentAvatar agent={agent} />
+                                                    <AgentAvatar profileUrl={linkedUser?.profileUrl} />
                                                     <div>
                                                         <div className="font-semibold">{partner.name}</div>
                                                         <div className="text-xs text-muted-foreground">{partner.phone || partner.email || 'N/A'}</div>
@@ -352,12 +352,12 @@ function AgentMetric({
     )
 }
 
-function AgentAvatar({ agent }: { agent?: Agent }) {
+function AgentAvatar({ profileUrl }: { profileUrl?: string }) {
     return (
         <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-muted">
-            {agent?.imageUrl ? (
+            {profileUrl ? (
                 <img
-                    src={platformService.convertFileSrc(agent.imageUrl)}
+                    src={platformService.convertFileSrc(profileUrl)}
                     alt=""
                     className="h-full w-full object-cover"
                 />

@@ -447,6 +447,10 @@ export async function processMutationQueue(
         delete dbPayload.barcodes;
       }
 
+      if (entityType === "agents") {
+        delete dbPayload.image_url;
+      }
+
       if (operation === "create" || operation === "update") {
         if (entityType === "sales") {
           const rpcAction =

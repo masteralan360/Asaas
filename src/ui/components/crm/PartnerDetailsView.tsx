@@ -1513,9 +1513,9 @@ export function PartnerDetailsView({
                         <CardContent className="space-y-3 text-sm">
                             <div className="flex items-start gap-3 rounded-2xl border bg-muted/20 p-4">
                                 <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/10 text-primary">
-                                    {agent?.imageUrl ? (
+                                    {linkedAgentUser?.profileUrl ? (
                                         <img
-                                            src={platformService.convertFileSrc(agent.imageUrl)}
+                                            src={platformService.convertFileSrc(linkedAgentUser.profileUrl)}
                                             alt={partner.name}
                                             className="h-full w-full object-cover"
                                         />

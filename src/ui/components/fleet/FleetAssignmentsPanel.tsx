@@ -21,6 +21,7 @@ import {
   useToast,
 } from "@/ui/components";
 import { FleetAssignmentDialog } from "./FleetAssignmentDialog";
+import { FleetAgentAvatar } from "./FleetAgentAvatar";
 
 interface FleetAssignmentsPanelProps {
   workspaceId: string;
@@ -33,7 +34,7 @@ export function FleetAssignmentsPanel({
 }: FleetAssignmentsPanelProps) {
   const assignments = useFleetAssignments(workspaceId);
   const vehicles = useFleetVehicles(workspaceId);
-  const { getAgentName } = useFleetAgentDirectory(workspaceId);
+  const { getAgentName, getAgentProfileUrl } = useFleetAgentDirectory(workspaceId);
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const vehicleById = useMemo(
@@ -86,10 +87,17 @@ export function FleetAssignmentsPanel({
             <TableBody>
               {assignments.map((assignment) => {
                 const vehicle = vehicleById.get(assignment.vehicleId);
+                const agentName = getAgentName(assignment.agentId);
                 return (
                   <TableRow key={assignment.id}>
                     <TableCell className="font-medium">
-                      {getAgentName(assignment.agentId)}
+                      <div className="flex items-center gap-2">
+                        <FleetAgentAvatar
+                          profileUrl={getAgentProfileUrl(assignment.agentId)}
+                          name={agentName}
+                        />
+                        {agentName}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {vehicle

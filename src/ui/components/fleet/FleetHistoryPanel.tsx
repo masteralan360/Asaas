@@ -24,13 +24,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/ui/components";
+import { FleetAgentAvatar } from "./FleetAgentAvatar";
 
 interface FleetHistoryPanelProps {
   workspaceId: string;
 }
 
 export function FleetHistoryPanel({ workspaceId }: FleetHistoryPanelProps) {
-  const { agents, getAgentName } = useFleetAgentDirectory(workspaceId);
+  const { agents, getAgentName, getAgentProfileUrl } =
+    useFleetAgentDirectory(workspaceId);
   const [agentId, setAgentId] = useState<string>("all");
   const { points, isLoading, error, refresh } = useFleetLocationHistory(
     workspaceId,
@@ -65,7 +67,14 @@ export function FleetHistoryPanel({ workspaceId }: FleetHistoryPanelProps) {
                 <SelectItem value="all">All agents</SelectItem>
                 {agents.map((agent) => (
                   <SelectItem key={agent.id} value={agent.id}>
-                    {getAgentName(agent.id)}
+                    <div className="flex items-center gap-2">
+                      <FleetAgentAvatar
+                        profileUrl={getAgentProfileUrl(agent.id)}
+                        name={getAgentName(agent.id)}
+                        className="h-6 w-6"
+                      />
+                      <span>{getAgentName(agent.id)}</span>
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -133,9 +142,19 @@ export function FleetHistoryPanel({ workspaceId }: FleetHistoryPanelProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {points.map((point) => (
+                {points.map((point) => {
+                  const agentName = getAgentName(point.agentId);
+                  return (
                   <TableRow key={point.id ?? `${point.agentId}-${point.recordedAt}`}>
-                    <TableCell>{getAgentName(point.agentId)}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <FleetAgentAvatar
+                          profileUrl={getAgentProfileUrl(point.agentId)}
+                          name={agentName}
+                        />
+                        {agentName}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       {new Date(point.recordedAt).toLocaleString()}
                     </TableCell>
@@ -150,7 +169,8 @@ export function FleetHistoryPanel({ workspaceId }: FleetHistoryPanelProps) {
                         : "-"}
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
                 {points.length === 0 && !isLoading && (
                   <TableRow>
                     <TableCell

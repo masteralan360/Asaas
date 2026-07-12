@@ -2,7 +2,6 @@ CREATE TABLE crm.agents (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
   business_partner_id uuid NOT NULL,
-  image_url text NULL,
   zone text NOT NULL,
   agent_type text NOT NULL,
   car_model text NULL,

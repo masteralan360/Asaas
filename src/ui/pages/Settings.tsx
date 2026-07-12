@@ -968,7 +968,7 @@ export function Settings() {
         }
 
         const workspaceId = user.workspaceId
-        const allowedFolders = ['product-images', 'profile-images', 'agents-images', 'workspace-logos', 'attached-images']
+        const allowedFolders = ['product-images', 'profile-images', 'workspace-logos', 'attached-images']
 
         try {
             const keySet = new Set<string>()

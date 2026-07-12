@@ -14,6 +14,7 @@ import {
     useAgents,
     useBusinessPartnerMergeCandidates,
     useBusinessPartners,
+    useWorkspaceUsers,
     type BusinessPartner,
     type BusinessPartnerRole,
     type CurrencyCode
@@ -99,6 +100,7 @@ export function BusinessPartners() {
         includeAgentRoles: features.agents
     })
     const agents = useAgents(user?.workspaceId)
+    const workspaceUsers = useWorkspaceUsers(user?.workspaceId)
     const mergeCandidates = useBusinessPartnerMergeCandidates(user?.workspaceId)
     const [search, setSearch] = useState('')
     const [activeTab, setActiveTab] = useState<'partners' | 'merge-review'>('partners')
@@ -127,6 +129,10 @@ export function BusinessPartners() {
     const agentMap = useMemo(
         () => new Map(agents.map((agent) => [agent.id, agent])),
         [agents]
+    )
+    const workspaceUserMap = useMemo(
+        () => new Map(workspaceUsers.map((workspaceUser) => [workspaceUser.id, workspaceUser])),
+        [workspaceUsers]
     )
 
     const filteredPartners = useMemo(() => {
@@ -428,6 +434,7 @@ export function BusinessPartners() {
                                             </TableRow>
                                         ) : filteredPartners.map((partner) => {
                                             const agent = partner.agentFacetId ? agentMap.get(partner.agentFacetId) : undefined
+                                            const linkedUser = agent?.linkedUserId ? workspaceUserMap.get(agent.linkedUserId) : undefined
                                             return (
                                                 <TableRow
                                                     key={partner.id}
@@ -437,9 +444,9 @@ export function BusinessPartners() {
                                                         <div className="flex flex-wrap items-center gap-2">
                                                             {partner.role === 'agent' ? (
                                                                 <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-muted">
-                                                                    {agent?.imageUrl ? (
+                                                                    {linkedUser?.profileUrl ? (
                                                                         <img
-                                                                            src={platformService.convertFileSrc(agent.imageUrl)}
+                                                                            src={platformService.convertFileSrc(linkedUser.profileUrl)}
                                                                             alt=""
                                                                             className="h-full w-full object-cover"
                                                                         />

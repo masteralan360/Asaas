@@ -327,7 +327,6 @@ export function isAgentBusinessPartnerRole(
 
 export interface Agent extends BaseEntity {
   businessPartnerId: string;
-  imageUrl?: string | null;
   zone: string;
   agentType: AgentType;
   carModel?: string | null;
@@ -337,7 +336,6 @@ export interface Agent extends BaseEntity {
 }
 
 export interface AgentFacetInput {
-  imageUrl?: string | null;
   zone: string;
   agentType: AgentType;
   carModel?: string | null;

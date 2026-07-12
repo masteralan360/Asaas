@@ -183,10 +183,16 @@ async function removeOfflineMutationsForEntityIds(tableName: PartnerTableName, e
     }
 }
 
-function sanitizeSyncPayload(entity: Record<string, unknown>) {
+function sanitizeSyncPayload(tableName: PartnerTableName, entity: Record<string, unknown>) {
     const payload = { ...entity }
     delete payload.syncStatus
     delete payload.lastSyncedAt
+
+    // Agent images are owned by the linked user profile, not by crm.agents.
+    // Strip this legacy field so an older local cache cannot reintroduce it.
+    if (tableName === 'agents') {
+        delete payload.imageUrl
+    }
 
     return Object.fromEntries(
         Object.entries(payload).map(([key, value]) => [
@@ -226,7 +232,7 @@ async function syncUpsertEntities(tableName: PartnerTableName, entities: SyncEnt
 
     try {
         const client = getSupabaseClientForTable(tableName)
-        const payload = entities.map((entity) => sanitizeSyncPayload(entity))
+        const payload = entities.map((entity) => sanitizeSyncPayload(tableName, entity))
 
         if (tableName === 'business_partner_merge_candidates') {
             const mergeEntities = entities as unknown as BusinessPartnerMergeCandidate[]
@@ -235,7 +241,7 @@ async function syncUpsertEntities(tableName: PartnerTableName, entities: SyncEnt
                     mergeEntities.map((entity) => [getMergeCandidateKeyFromEntity(entity), entity])
                 ).values()
             )
-            const dedupedPayload = dedupedEntities.map((entity) => sanitizeSyncPayload(entity as unknown as SyncEntity))
+            const dedupedPayload = dedupedEntities.map((entity) => sanitizeSyncPayload(tableName, entity as unknown as SyncEntity))
             const { data, error } = await runMutation(`${tableName}.sync`, () =>
                 client
                     .from(tableName)
@@ -608,7 +614,6 @@ function normalizeAgentFacetInput(input: Partial<AgentFacetInput> | undefined, e
     }
 
     return {
-        imageUrl: input?.imageUrl === undefined ? existing?.imageUrl ?? null : input.imageUrl,
         zone,
         agentType,
         carModel: agentType === 'driver' ? carModel : null,
