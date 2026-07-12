@@ -20,6 +20,7 @@ import {
 import { platformService } from '@/services/platformService'
 import {
     Button,
+    CurrencySelector,
     Dialog,
     DialogContent,
     DialogFooter,
@@ -34,6 +35,7 @@ import {
     SelectValue,
     Textarea
 } from '@/ui/components'
+import { useWorkspace } from '@/workspace'
 
 type BusinessPartnerFormState = {
     name: string
@@ -162,6 +164,7 @@ export function BusinessPartnerFormDialog({
     onSubmit
 }: BusinessPartnerFormDialogProps) {
     const { t } = useTranslation()
+    const { features } = useWorkspace()
     const [formState, setFormState] = useState<BusinessPartnerFormState>(() => createEmptyState(defaultCurrency, lockedRole ?? initialRole))
     const [isUploadingAgentImage, setIsUploadingAgentImage] = useState(false)
     const agent = useAgent(partner?.agentFacetId)
@@ -503,19 +506,13 @@ export function BusinessPartnerFormDialog({
                                 </>
                             ) : null}
                             <div className="space-y-2" data-tour-id="tutorial-business-partner-currency">
-                                <Label>{t('customers.form.defaultCurrency') || 'Default Currency'}</Label>
-                                <Select value={formState.defaultCurrency} onValueChange={(value) => setFormState((current) => ({ ...current, defaultCurrency: value as CurrencyCode }))}>
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {availableCurrencies.map((currency) => (
-                                            <SelectItem key={currency} value={currency}>
-                                                {currency.toUpperCase()}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <CurrencySelector
+                                    value={formState.defaultCurrency}
+                                    onChange={(value) => setFormState((current) => ({ ...current, defaultCurrency: value }))}
+                                    label={t('customers.form.defaultCurrency') || 'Default Currency'}
+                                    iqdDisplayPreference={features.iqd_display_preference}
+                                    allowedCurrencies={availableCurrencies}
+                                />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="business-partner-city">{t('customers.form.city') || 'City'}</Label>
