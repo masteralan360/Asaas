@@ -1248,7 +1248,9 @@ export async function createBusinessPartner(
         totalLoanCount: 0,
         loanOutstandingBalance: 0,
         netExposure: 0,
-        mergedIntoBusinessPartnerId: null
+        mergedIntoBusinessPartnerId: null,
+        latitude: partnerData.latitude ?? null,
+        longitude: partnerData.longitude ?? null
     }) as BusinessPartner
 
     await db.business_partners.put(partner)

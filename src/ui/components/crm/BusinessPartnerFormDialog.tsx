@@ -36,6 +36,7 @@ import {
     Textarea
 } from '@/ui/components'
 import { useWorkspace } from '@/workspace'
+import { PartnerLocationField } from '@/ui/components/crm/PartnerLocationField'
 
 type BusinessPartnerFormState = {
     name: string
@@ -47,6 +48,8 @@ type BusinessPartnerFormState = {
     country: string
     defaultCurrency: CurrencyCode
     notes: string
+    latitude: number | null
+    longitude: number | null
     receivableCreditLimit: string
     payableCreditLimit: string
     role: BusinessPartnerRole
@@ -72,6 +75,8 @@ function createEmptyState(defaultCurrency: CurrencyCode, role: BusinessPartnerRo
         country: '',
         defaultCurrency,
         notes: '',
+        latitude: null,
+        longitude: null,
         receivableCreditLimit: '',
         payableCreditLimit: '',
         role,
@@ -96,6 +101,8 @@ function mapPartnerToState(partner: BusinessPartner, agent?: Agent): BusinessPar
         country: partner.country || '',
         defaultCurrency: partner.defaultCurrency,
         notes: partner.notes || '',
+        latitude: partner.latitude ?? null,
+        longitude: partner.longitude ?? null,
         receivableCreditLimit: partner.receivableCreditLimit === null || partner.receivableCreditLimit === undefined
             ? ''
             : String(partner.receivableCreditLimit),
@@ -123,6 +130,8 @@ export interface BusinessPartnerFormPayload {
     country?: string
     defaultCurrency: CurrencyCode
     notes?: string
+    latitude: number | null
+    longitude: number | null
     creditLimit: number
     receivableCreditLimit: number | null
     payableCreditLimit: number | null
@@ -264,6 +273,8 @@ export function BusinessPartnerFormDialog({
             country: formState.country.trim() || undefined,
             defaultCurrency: formState.defaultCurrency,
             notes: formState.notes.trim() || undefined,
+            latitude: formState.latitude,
+            longitude: formState.longitude,
             creditLimit: receivableCreditLimit ?? payableCreditLimit ?? 0,
             receivableCreditLimit,
             payableCreditLimit,
@@ -564,6 +575,11 @@ export function BusinessPartnerFormDialog({
                                     onChange={(event) => setFormState((current) => ({ ...current, payableCreditLimit: event.target.value }))}
                                 />
                             </div> : null}
+                            <PartnerLocationField
+                                latitude={formState.latitude}
+                                longitude={formState.longitude}
+                                onChange={(latitude, longitude) => setFormState((current) => ({ ...current, latitude, longitude }))}
+                            />
                             <div className="space-y-2 md:col-span-2">
                                 <Label htmlFor="business-partner-notes">{t('customers.form.notes') || 'Notes'}</Label>
                                 <Textarea

@@ -429,6 +429,8 @@ export interface BusinessPartner extends BaseEntity {
   netExposure: number;
   mergedIntoBusinessPartnerId?: string | null;
   isEcommerce?: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export type BusinessPartnerMergeType = "customer_supplier";

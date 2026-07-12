@@ -2954,6 +2954,11 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, returnId, orderId, orderItemId, updatedAt, isDeleted, syncStatus, [returnId+orderItemId], [workspaceId+orderId], [workspaceId+orderItemId]",
     });
 
+    this.version(83).stores({
+      business_partners:
+        "id, name, workspaceId, role, customerFacetId, supplierFacetId, agentFacetId, defaultCurrency, updatedAt, isDeleted, syncStatus, mergedIntoBusinessPartnerId, latitude, longitude",
+    });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }

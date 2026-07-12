@@ -29,8 +29,8 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 
 const DialogContent = React.forwardRef<
     React.ElementRef<typeof DialogPrimitive.Content>,
-    React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => {
+    React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { showCloseButton?: boolean }
+>(({ className, children, showCloseButton = true, ...props }, ref) => {
     const internalRef = React.useRef<HTMLDivElement>(null)
     const [scroller, setScroller] = React.useState<HTMLDivElement | null>(null)
 
@@ -72,10 +72,12 @@ const DialogContent = React.forwardRef<
             >
                 {children}
                 {scroller && <ScrollIndicator containerRef={{ current: scroller }} />}
-                <DialogPrimitive.Close className="absolute right-4 top-4 rtl:right-auto rtl:left-4 rounded-lg bg-destructive/10 p-1.5 text-destructive opacity-80 ring-offset-background transition-all hover:bg-destructive hover:text-destructive-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground z-[70]">
-                    <X className="h-4 w-4" />
-                    <span className="sr-only">Close</span>
-                </DialogPrimitive.Close>
+                {showCloseButton ? (
+                    <DialogPrimitive.Close className="absolute right-4 top-4 rtl:right-auto rtl:left-4 rounded-lg bg-destructive/10 p-1.5 text-destructive opacity-80 ring-offset-background transition-all hover:bg-destructive hover:text-destructive-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground z-[70]">
+                        <X className="h-4 w-4" />
+                        <span className="sr-only">Close</span>
+                    </DialogPrimitive.Close>
+                ) : null}
             </DialogPrimitive.Content>
         </DialogPortal>
     )
