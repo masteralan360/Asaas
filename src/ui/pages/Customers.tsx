@@ -12,7 +12,7 @@ import {
     type BusinessPartner,
     type CurrencyCode
 } from '@/local-db'
-import { formatCurrency } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import { useWorkspace } from '@/workspace'
 import {
     Button,
@@ -28,8 +28,13 @@ import {
     TableHead,
     TableHeader,
     TableRow,
+    Tabs,
+    TabsContent,
+    TabsList,
+    TabsTrigger,
     useToast
 } from '@/ui/components'
+import { useWorkspacePermissions } from '@/permissions/WorkspacePermissionsContext'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
 import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
 import { UiAccessGate } from '@/context/UiAccessContext'
@@ -40,6 +45,10 @@ export function Customers() {
     const { features } = useWorkspace()
     const { toast } = useToast()
     const [, navigate] = useLocation()
+    const { hasPermission } = useWorkspacePermissions()
+    const canViewAll = hasPermission('businessPartners.access')
+    const canViewSuppliers = hasPermission('suppliers.access')
+    const [scope, setScope] = useState<'all' | 'customers' | 'suppliers'>('customers')
     const customers = useBusinessPartners(user?.workspaceId, { roles: ['customer'] })
     const [search, setSearch] = useState('')
     const [dialogOpen, setDialogOpen] = useState(false)
@@ -137,6 +146,37 @@ export function Customers() {
                 )}
             </div>
 
+            <Tabs
+                value={scope}
+                onValueChange={(value) => {
+                    const next = value as 'all' | 'customers' | 'suppliers'
+                    setScope(next)
+                    if (next === 'all') {
+                        navigate('/business-partners')
+                    } else if (next === 'suppliers') {
+                        navigate('/suppliers')
+                    }
+                }}
+                className="space-y-4"
+            >
+                <TabsList className={cn(
+                    'grid w-full max-w-[420px] rounded-2xl bg-secondary/50 p-1',
+                    canViewAll && canViewSuppliers
+                        ? 'grid-cols-3'
+                        : canViewAll || canViewSuppliers
+                            ? 'grid-cols-2'
+                            : 'grid-cols-1'
+                )}>
+                    {canViewAll ? (
+                        <TabsTrigger value="all" className="rounded-xl">{t('businessPartners.scope.all', { defaultValue: 'All' })}</TabsTrigger>
+                    ) : null}
+                    <TabsTrigger value="customers" className="rounded-xl">{t('nav.customers', { defaultValue: 'Customers' })}</TabsTrigger>
+                    {canViewSuppliers ? (
+                        <TabsTrigger value="suppliers" className="rounded-xl">{t('nav.suppliers', { defaultValue: 'Suppliers' })}</TabsTrigger>
+                    ) : null}
+                </TabsList>
+
+                <TabsContent value="customers" className="mt-0 space-y-6">
             <div className="grid gap-4 md:grid-cols-3">
                 <Card>
                     <CardHeader className="pb-2">
@@ -281,6 +321,8 @@ export function Customers() {
                     </div>
                 </CardContent>
             </Card>
+                </TabsContent>
+            </Tabs>
 
             <BusinessPartnerFormDialog
                 isOpen={dialogOpen}

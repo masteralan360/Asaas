@@ -18,9 +18,10 @@ import {
     type BusinessPartnerRole,
     type CurrencyCode
 } from '@/local-db'
-import { formatCurrency } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
+import { useWorkspacePermissions } from '@/permissions/WorkspacePermissionsContext'
 import {
     Button,
     Card,
@@ -89,6 +90,10 @@ export function BusinessPartners() {
     const { toast } = useToast()
     const [, navigate] = useLocation()
     const demoTutorial = useDemoTutorial()
+    const { hasPermission } = useWorkspacePermissions()
+    const canViewCustomers = hasPermission('customers.access')
+    const canViewSuppliers = hasPermission('suppliers.access')
+    const [scope, setScope] = useState<'all' | 'customers' | 'suppliers'>('all')
     const partners = useBusinessPartners(user?.workspaceId, {
         includeRealEstateRoles: features.real_estate,
         includeAgentRoles: features.agents
@@ -286,6 +291,37 @@ export function BusinessPartners() {
                 ) : null}
             </div>
 
+            <Tabs
+                value={scope}
+                onValueChange={(value) => {
+                    const next = value as 'all' | 'customers' | 'suppliers'
+                    setScope(next)
+                    if (next === 'customers') {
+                        navigate('/customers')
+                    } else if (next === 'suppliers') {
+                        navigate('/suppliers')
+                    }
+                }}
+                className="space-y-4"
+            >
+                <TabsList className={cn(
+                    'grid w-full max-w-[420px] rounded-2xl bg-secondary/50 p-1',
+                    canViewCustomers && canViewSuppliers
+                        ? 'grid-cols-3'
+                        : canViewCustomers || canViewSuppliers
+                            ? 'grid-cols-2'
+                            : 'grid-cols-1'
+                )}>
+                    <TabsTrigger value="all" className="rounded-xl">{t('businessPartners.scope.all', { defaultValue: 'All' })}</TabsTrigger>
+                    {canViewCustomers ? (
+                        <TabsTrigger value="customers" className="rounded-xl">{t('nav.customers', { defaultValue: 'Customers' })}</TabsTrigger>
+                    ) : null}
+                    {canViewSuppliers ? (
+                        <TabsTrigger value="suppliers" className="rounded-xl">{t('nav.suppliers', { defaultValue: 'Suppliers' })}</TabsTrigger>
+                    ) : null}
+                </TabsList>
+
+                <TabsContent value="all" className="mt-0 space-y-6">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <Card>
                     <CardHeader className="pb-2">
@@ -532,6 +568,8 @@ export function BusinessPartners() {
                             })}
                         </CardContent>
                     </Card>
+                </TabsContent>
+            </Tabs>
                 </TabsContent>
             </Tabs>
 

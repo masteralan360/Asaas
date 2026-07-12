@@ -12,7 +12,7 @@ import {
     type BusinessPartner,
     type CurrencyCode
 } from '@/local-db'
-import { formatCurrency } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import { useWorkspace } from '@/workspace'
 import {
     Button,
@@ -27,8 +27,13 @@ import {
     TableHead,
     TableHeader,
     TableRow,
+    Tabs,
+    TabsContent,
+    TabsList,
+    TabsTrigger,
     useToast
 } from '@/ui/components'
+import { useWorkspacePermissions } from '@/permissions/WorkspacePermissionsContext'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
 import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
 
@@ -38,6 +43,10 @@ export function Suppliers() {
     const { features } = useWorkspace()
     const { toast } = useToast()
     const [, navigate] = useLocation()
+    const { hasPermission } = useWorkspacePermissions()
+    const canViewAll = hasPermission('businessPartners.access')
+    const canViewCustomers = hasPermission('customers.access')
+    const [scope, setScope] = useState<'all' | 'customers' | 'suppliers'>('suppliers')
     const suppliers = useBusinessPartners(user?.workspaceId, { roles: ['supplier'] })
     const [search, setSearch] = useState('')
     const [dialogOpen, setDialogOpen] = useState(false)
@@ -124,6 +133,37 @@ export function Suppliers() {
                 )}
             </div>
 
+            <Tabs
+                value={scope}
+                onValueChange={(value) => {
+                    const next = value as 'all' | 'customers' | 'suppliers'
+                    setScope(next)
+                    if (next === 'all') {
+                        navigate('/business-partners')
+                    } else if (next === 'customers') {
+                        navigate('/customers')
+                    }
+                }}
+                className="space-y-4"
+            >
+                <TabsList className={cn(
+                    'grid w-full max-w-[420px] rounded-2xl bg-secondary/50 p-1',
+                    canViewAll && canViewCustomers
+                        ? 'grid-cols-3'
+                        : canViewAll || canViewCustomers
+                            ? 'grid-cols-2'
+                            : 'grid-cols-1'
+                )}>
+                    {canViewAll ? (
+                        <TabsTrigger value="all" className="rounded-xl">{t('businessPartners.scope.all', { defaultValue: 'All' })}</TabsTrigger>
+                    ) : null}
+                    {canViewCustomers ? (
+                        <TabsTrigger value="customers" className="rounded-xl">{t('nav.customers', { defaultValue: 'Customers' })}</TabsTrigger>
+                    ) : null}
+                    <TabsTrigger value="suppliers" className="rounded-xl">{t('nav.suppliers', { defaultValue: 'Suppliers' })}</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="suppliers" className="mt-0 space-y-6">
             <div className="grid gap-4 md:grid-cols-3">
                 <Card>
                     <CardHeader className="pb-2">
@@ -222,6 +262,8 @@ export function Suppliers() {
                     </div>
                 </CardContent>
             </Card>
+                </TabsContent>
+            </Tabs>
 
             <BusinessPartnerFormDialog
                 isOpen={dialogOpen}

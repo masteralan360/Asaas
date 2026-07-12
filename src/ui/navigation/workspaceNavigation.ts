@@ -155,7 +155,9 @@ export function buildWorkspaceNavigation({
       : []),
     ...(isCoreRole && hasFeature("crm")
       ? [
-        ...(canAccessPermission("businessPartners.access")
+        ...(canAccessPermission("businessPartners.access") ||
+        canAccessPermission("customers.access") ||
+        canAccessPermission("suppliers.access")
           ? [
             {
               name: t("businessPartners.title", {
@@ -163,24 +165,26 @@ export function buildWorkspaceNavigation({
               }),
               href: "/business-partners",
               icon: UsersRound,
-            },
-          ]
-          : []),
-        ...(canAccessPermission("customers.access")
-          ? [
-            {
-              name: t("nav.customers", { defaultValue: "Customers" }),
-              href: "/customers",
-              icon: Users,
-            },
-          ]
-          : []),
-        ...(canAccessPermission("suppliers.access")
-          ? [
-            {
-              name: t("nav.suppliers", { defaultValue: "Suppliers" }),
-              href: "/suppliers",
-              icon: Truck,
+              children: [
+                ...(canAccessPermission("customers.access")
+                  ? [
+                    {
+                      name: t("nav.customers", { defaultValue: "Customers" }),
+                      href: "/customers",
+                      icon: Users,
+                    },
+                  ]
+                  : []),
+                ...(canAccessPermission("suppliers.access")
+                  ? [
+                    {
+                      name: t("nav.suppliers", { defaultValue: "Suppliers" }),
+                      href: "/suppliers",
+                      icon: Truck,
+                    },
+                  ]
+                  : []),
+              ],
             },
           ]
           : []),
