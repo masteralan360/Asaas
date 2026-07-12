@@ -4,6 +4,7 @@ import { v5 as uuidv5 } from 'uuid'
 
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { getTravelSaleCost } from '@/lib/travelAgency'
+import { roundOrderValue } from '@/lib/orderPrecision'
 import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { isOnline } from '@/lib/network'
 import { getOrderLineInventoryQuantity } from '@/lib/orderLineItems'
@@ -128,12 +129,8 @@ function shouldUseCloudBusinessData(workspaceId?: string | null) {
     return !!workspaceId && !isLocalWorkspaceMode(workspaceId)
 }
 
-function roundAmount(amount: number, currency: CurrencyCode) {
-    if (currency === 'iqd') {
-        return Math.round(amount)
-    }
-
-    return Math.round(amount * 100) / 100
+function roundAmount(amount: number, _currency: CurrencyCode) {
+    return roundOrderValue(amount)
 }
 
 async function runMutation<T>(label: string, promiseFactory: () => PromiseLike<T>): Promise<T> {

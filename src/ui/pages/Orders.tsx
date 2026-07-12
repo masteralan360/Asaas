@@ -13,6 +13,7 @@ import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getReportOriginId } from '@/lib/printIdentity'
 import { buildOrderExchangeRatesSnapshot, convertCurrencyAmountWithLiveRates, getPrimaryExchangeDetails } from '@/lib/orderCurrency'
+import { ORDER_DECIMAL_STEP, roundOrderValue } from '@/lib/orderPrecision'
 import { formatCurrency, formatDate, formatLocalDateTimeValue, generateId, parseLocalDateTimeValue } from '@/lib/utils'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import {
@@ -157,7 +158,11 @@ function createEmptyItem(storageId = ''): FormItem {
 }
 
 function roundFormAmount(value: number) {
-    return Math.round(value * 100) / 100
+    return roundOrderValue(value)
+}
+
+function isDynamicUnit(unit: string | undefined) {
+    return unit === 'm²' || unit === 'Kg'
 }
 
 function formatStatusLabel(t: (key: string) => string, status: string) {
@@ -1531,11 +1536,11 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                         </div>
                                                         <div className="space-y-2">
                                                             <Label className="md:hidden">{t('orders.form.table.qty') || 'Qty'}</Label>
-                                                            <Input type="number" min="1" value={item.quantity} onChange={(event) => updateSalesItem(index, { quantity: event.target.value })} placeholder={t('common.quantity') || 'Quantity'} />
+                                                            <Input type="number" min={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : '1'} step={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : '1'} value={item.quantity} onChange={(event) => updateSalesItem(index, { quantity: event.target.value })} placeholder={t('common.quantity') || 'Quantity'} />
                                                         </div>
                                                         <div className="space-y-2">
                                                             <Label className="md:hidden">{t('orders.form.table.price') || 'Unit Price'}</Label>
-                                                            <Input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updateSalesItem(index, { unitPrice: event.target.value })} placeholder={t('common.price') || 'Price'} />
+                                                            <Input type="number" min="0" step={ORDER_DECIMAL_STEP} value={item.unitPrice} onChange={(event) => updateSalesItem(index, { unitPrice: event.target.value })} placeholder={t('common.price') || 'Price'} />
                                                         </div>
                                                         <div className="flex items-start justify-end">
                                                             <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => setSalesForm((current) => ({ ...current, items: current.items.filter((_, itemIndex) => itemIndex !== index) }))}>
@@ -1642,11 +1647,11 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                 <div className="grid gap-4 sm:grid-cols-2">
                                                     <div className="space-y-2">
                                                         <Label htmlFor="sales-discount">{t('orders.form.discount') || 'Discount'}</Label>
-                                                        <Input id="sales-discount" type="number" min="0" step="0.01" value={salesForm.discount} onChange={(event) => setSalesForm((current) => ({ ...current, discount: event.target.value }))} />
+                                                        <Input id="sales-discount" type="number" min="0" step={ORDER_DECIMAL_STEP} value={salesForm.discount} onChange={(event) => setSalesForm((current) => ({ ...current, discount: event.target.value }))} />
                                                     </div>
                                                     <div className="space-y-2">
                                                         <Label htmlFor="sales-tax">{t('orders.form.tax') || 'Tax'}</Label>
-                                                        <Input id="sales-tax" type="number" min="0" step="0.01" value={salesForm.tax} onChange={(event) => setSalesForm((current) => ({ ...current, tax: event.target.value }))} />
+                                                        <Input id="sales-tax" type="number" min="0" step={ORDER_DECIMAL_STEP} value={salesForm.tax} onChange={(event) => setSalesForm((current) => ({ ...current, tax: event.target.value }))} />
                                                     </div>
                                                 </div>
                                                 <div className="rounded-2xl border bg-muted/30 p-4">
@@ -1790,11 +1795,11 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                         </div>
                                                         <div className="space-y-2">
                                                             <Label className="md:hidden">{t('orders.form.table.qty') || 'Qty'}</Label>
-                                                            <Input type="number" min="1" value={item.quantity} onChange={(event) => updatePurchaseItem(index, { quantity: event.target.value })} placeholder={t('common.quantity') || 'Quantity'} />
+                                                            <Input type="number" min={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : '1'} step={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : '1'} value={item.quantity} onChange={(event) => updatePurchaseItem(index, { quantity: event.target.value })} placeholder={t('common.quantity') || 'Quantity'} />
                                                         </div>
                                                         <div className="space-y-2">
                                                             <Label className="md:hidden">{t('orders.form.table.price') || 'Unit Price'}</Label>
-                                                            <Input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updatePurchaseItem(index, { unitPrice: event.target.value })} placeholder={t('common.price') || 'Price'} />
+                                                            <Input type="number" min="0" step={ORDER_DECIMAL_STEP} value={item.unitPrice} onChange={(event) => updatePurchaseItem(index, { unitPrice: event.target.value })} placeholder={t('common.price') || 'Price'} />
                                                         </div>
                                                         <div className="flex items-start justify-end">
                                                             <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => setPurchaseForm((current) => ({ ...current, items: current.items.filter((_, itemIndex) => itemIndex !== index) }))}>
@@ -1812,7 +1817,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                             </div>
                                                             <div className="space-y-2">
                                                                 <Label>Batch Selling Price{product ? ` (${product.currency.toUpperCase()})` : ''}</Label>
-                                                                <Input type="number" min="0" step="0.01" value={item.batchSalePrice} onChange={(event) => updatePurchaseItem(index, { batchSalePrice: event.target.value })} placeholder={product ? String(product.price) : '0'} />
+                                                                <Input type="number" min="0" step={ORDER_DECIMAL_STEP} value={item.batchSalePrice} onChange={(event) => updatePurchaseItem(index, { batchSalePrice: event.target.value })} placeholder={product ? String(product.price) : '0'} />
                                                             </div>
                                                             <div className="space-y-2">
                                                                 <Label>Manufacturing Date</Label>
@@ -1911,7 +1916,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                             <CardContent className="space-y-4">
                                                 <div className="space-y-2">
                                                     <Label htmlFor="purchase-discount">{t('orders.form.discount') || 'Discount'}</Label>
-                                                    <Input id="purchase-discount" type="number" min="0" step="0.01" value={purchaseForm.discount} onChange={(event) => setPurchaseForm((current) => ({ ...current, discount: event.target.value }))} />
+                                                    <Input id="purchase-discount" type="number" min="0" step={ORDER_DECIMAL_STEP} value={purchaseForm.discount} onChange={(event) => setPurchaseForm((current) => ({ ...current, discount: event.target.value }))} />
                                                 </div>
                                                 <div className="rounded-2xl border bg-muted/30 p-4">
                                                     <div className="flex items-center justify-between text-sm">

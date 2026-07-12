@@ -34,10 +34,21 @@ function installment(overrides: Partial<OrderInstallment>): OrderInstallment {
 describe('order installment schedules', () => {
     it('splits the balance without losing rounding remainders', () => {
         expect(createOrderInstallmentPlan(100, 'usd', 3, 'monthly', '2026-07-01')).toEqual([
-            { installmentNo: 1, dueDate: '2026-07-01', plannedAmount: 33.33 },
-            { installmentNo: 2, dueDate: '2026-08-01', plannedAmount: 33.33 },
-            { installmentNo: 3, dueDate: '2026-09-01', plannedAmount: 33.34 }
+            { installmentNo: 1, dueDate: '2026-07-01', plannedAmount: 33.333 },
+            { installmentNo: 2, dueDate: '2026-08-01', plannedAmount: 33.333 },
+            { installmentNo: 3, dueDate: '2026-09-01', plannedAmount: 33.334 }
         ])
+    })
+
+    it('preserves three decimal places in payment allocations', () => {
+        const rebuilt = rebuildOrderInstallmentsFromPayments(
+            [installment({ plannedAmount: 1.234, balanceAmount: 1.234 })],
+            [{ id: 'payment-1', amount: 1.234, paidAt: '2026-07-01T12:00:00.000Z' }],
+            'usd',
+            '2026-07-01T12:00:00.000Z'
+        )
+
+        expect(rebuilt[0]).toMatchObject({ paidAmount: 1.234, balanceAmount: 0, status: 'paid' })
     })
 
     it('keeps monthly dates in UTC and clamps end-of-month dates', () => {

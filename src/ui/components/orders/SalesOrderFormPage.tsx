@@ -20,6 +20,7 @@ import {
     sanitizeNumericInput
 } from '@/lib/utils'
 import { getOrderLineFreeBonusQuantity } from '@/lib/orderLineItems'
+import { ORDER_DECIMAL_STEP, roundOrderValue } from '@/lib/orderPrecision'
 import {
     createSalesOrder,
     getPrimaryStorageFromList,
@@ -82,7 +83,7 @@ function createEmptyItem(storageId = '', seq = 1): FormItem {
 }
 
 function roundFormAmount(value: number) {
-    return Math.round(value * 100) / 100
+    return roundOrderValue(value)
 }
 
 const DYNAMIC_UNITS = ['m²', 'Kg']
@@ -633,7 +634,7 @@ export function SalesOrderFormPage({
                                                     <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-quantity' : undefined}>
                                                         <Label>{t('common.quantity', { defaultValue: 'Quantity' })}</Label>
                                                         <div className="flex items-center gap-1">
-                                                            <Input type="number" min={isDynamicUnit(product?.unit) ? "0.01" : "1"} step={isDynamicUnit(product?.unit) ? "0.01" : "1"} value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} placeholder={t('common.quantity', { defaultValue: 'Quantity' })} />
+                                                            <Input type="number" min={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : "1"} step={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : "1"} value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} placeholder={t('common.quantity', { defaultValue: 'Quantity' })} />
                                                             {product?.unit && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${product.unit}`, product.unit)}</span>}
                                                         </div>
                                                     </div>
@@ -644,7 +645,7 @@ export function SalesOrderFormPage({
                                                                 <Input
                                                                     type="number"
                                                                     min="0"
-                                                                    step={isDynamicUnit(product?.unit) ? '0.01' : '1'}
+                                                                    step={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : '1'}
                                                                     value={item.freeBonusQuantity}
                                                                     onChange={(event) => updateItem(index, { freeBonusQuantity: event.target.value })}
                                                                     placeholder={t('orders.form.freeBonus', { defaultValue: 'Free Bonus' })}
@@ -655,7 +656,7 @@ export function SalesOrderFormPage({
                                                     ) : null}
                                                     <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-unit-price' : undefined}>
                                                         <Label>{t('common.sellingPrice', { defaultValue: 'Selling Price' })}</Label>
-                                                        <Input value={formatNumericInput(item.unitPrice)} onChange={(event) => updateItem(index, { unitPrice: sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 4 }) })} placeholder={t('common.sellingPrice', { defaultValue: 'Selling Price' })} />
+                                                        <Input value={formatNumericInput(item.unitPrice)} onChange={(event) => updateItem(index, { unitPrice: sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 3 }) })} placeholder={t('common.sellingPrice', { defaultValue: 'Selling Price' })} />
                                                     </div>
                                                     <div className="flex items-start justify-end" data-tour-id={index === 0 ? 'tutorial-order-line-actions' : undefined}>
                                                         <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
@@ -797,7 +798,7 @@ export function SalesOrderFormPage({
                                                         type="number"
                                                         min="0"
                                                         max={preview}
-                                                        step={currency === 'iqd' ? '1' : '0.01'}
+                                                        step={ORDER_DECIMAL_STEP}
                                                         value={initialPaymentAmount}
                                                         onChange={(event) => setInitialPaymentAmount(event.target.value)}
                                                     />
@@ -821,11 +822,11 @@ export function SalesOrderFormPage({
                                         <div className="grid gap-4 sm:grid-cols-2">
                                             <div className="space-y-2">
                                                 <Label htmlFor="sales-discount">- {t('orders.form.discount', { defaultValue: 'Discount' })}</Label>
-                                                <Input id="sales-discount" value={formatNumericInput(discount)} onChange={(event) => setDiscount(sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 4 }))} />
+                                                <Input id="sales-discount" value={formatNumericInput(discount)} onChange={(event) => setDiscount(sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 3 }))} />
                                             </div>
                                             <div className="space-y-2">
                                                 <Label htmlFor="sales-tax">+ {t('orders.form.tax', { defaultValue: 'Tax' })}</Label>
-                                                <Input id="sales-tax" value={formatNumericInput(tax)} onChange={(event) => setTax(sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 4 }))} />
+                                                <Input id="sales-tax" value={formatNumericInput(tax)} onChange={(event) => setTax(sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 3 }))} />
                                             </div>
                                         </div>
                                         <div className="rounded-2xl border bg-muted/30 p-4">

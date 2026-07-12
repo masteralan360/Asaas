@@ -7,6 +7,7 @@ import { isOnline } from '@/lib/network'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
 import { getTravelSaleCost } from '@/lib/travelAgency'
+import { roundOrderValue } from '@/lib/orderPrecision'
 import { generateId, toCamelCase } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
@@ -114,12 +115,8 @@ function getSyncMetadata(workspaceId: string, timestamp: string) {
     }
 }
 
-function roundAmount(amount: number, currency: CurrencyCode) {
-    if (currency === 'iqd') {
-        return Math.round(amount)
-    }
-
-    return Math.round(amount * 100) / 100
+function roundAmount(amount: number, _currency: CurrencyCode) {
+    return roundOrderValue(amount)
 }
 
 function getMergeCandidateKey(

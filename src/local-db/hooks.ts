@@ -7,6 +7,7 @@ import { createInventoryTransferTransactions } from './inventoryTransferTransact
 import { createInventoryTransaction } from './inventoryTransactions'
 import { addToOfflineMutations } from './offlineMutations'
 import { refreshStockBatchesFromSupabase } from './stockBatches'
+import { roundOrderValue } from '@/lib/orderPrecision'
 import { getPrimaryStorageId as getPrimaryStorageIdForWorkspace, normalizeStorageRecord, sortStoragesByPriority } from './storageUtils'
 import {
     deleteInventoryForProduct,
@@ -3693,11 +3694,8 @@ function normalizeDueDate(value?: string | null): string | null {
     return d.toISOString().slice(0, 10)
 }
 
-function roundLoanAmount(amount: number, currency: CurrencyCode): number {
-    if (currency === 'iqd') {
-        return Math.round(amount)
-    }
-    return Number(amount.toFixed(2))
+function roundLoanAmount(amount: number, _currency: CurrencyCode): number {
+    return roundOrderValue(amount)
 }
 
 async function resolveLinkedBusinessPartner(linkedPartyType?: LoanLinkedPartyType | null, linkedPartyId?: string | null) {

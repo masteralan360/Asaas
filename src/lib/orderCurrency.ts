@@ -1,4 +1,5 @@
 import type { CurrencyCode, ExchangeRateSnapshot } from '@/local-db/models'
+import { roundOrderValue } from '@/lib/orderPrecision'
 
 export const CACHED_EXCHANGE_RATES_SNAPSHOT_KEY = 'atlas:cached-exchange-rates-snapshot'
 
@@ -20,12 +21,8 @@ export interface LiveOrderRates {
     }
 }
 
-function normalizeAmount(amount: number, currency: CurrencyCode) {
-    if (currency === 'iqd') {
-        return Math.round(amount)
-    }
-
-    return Math.round(amount * 100) / 100
+function normalizeAmount(amount: number, _currency: CurrencyCode) {
+    return roundOrderValue(amount)
 }
 
 function normalizeSnapshot(snapshot?: ExchangeRateSnapshot[] | null) {

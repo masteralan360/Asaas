@@ -87,4 +87,8 @@ describe("sales exchange normalization", () => {
       ]),
     ).toBe(2900);
   });
+
+  it("retains three decimal places for order currency conversion", () => {
+    expect(convertCurrencyAmountWithSnapshot(1.2346, "usd", "usd")).toBe(1.235);
+  });
 });

@@ -533,10 +533,10 @@ export function OrderReceiptPrintTemplate({
     const formatReceiptPrice = (amount: number, currency: string) => {
         const code = currency.toLowerCase()
         const formatted = code === 'iqd'
-            ? new Intl.NumberFormat('en-US').format(amount)
+            ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 }).format(amount)
             : code === 'eur'
-                ? new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)
-                : new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)
+                ? new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 3 }).format(amount)
+                : new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 }).format(amount)
         const currencyLabel = code === 'iqd'
             ? (iqdPreference === 'IQD' ? 'IQD' : 'IQD')
             : code.toUpperCase()

@@ -7,6 +7,9 @@ import type {
     PurchaseOrder,
     SalesOrder
 } from './models'
+import { ORDER_AMOUNT_EPSILON, roundOrderValue } from '@/lib/orderPrecision'
+
+export { ORDER_AMOUNT_EPSILON } from '@/lib/orderPrecision'
 
 type OrderLike = Pick<SalesOrder | PurchaseOrder, 'total' | 'currency' | 'isPaid'> & {
     paidAmount?: number
@@ -21,10 +24,8 @@ export type OrderPaymentAllocationInput = {
     targetInstallmentId?: string | null
 }
 
-export const ORDER_AMOUNT_EPSILON = 0.005
-
 export function roundOrderAmount(value: number, _currency: CurrencyCode) {
-    return Math.round(value * 100) / 100
+    return roundOrderValue(value)
 }
 
 export function getOrderPaidAmount(order: OrderLike) {

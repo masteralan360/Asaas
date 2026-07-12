@@ -203,7 +203,10 @@ export function SettlementDialog({
                                             type="text"
                                             inputMode="decimal"
                                             value={formatNumericInput(amount)}
-                                            onChange={(event) => setAmount(sanitizeNumericInput(event.target.value, { allowDecimal: true }))}
+                                            onChange={(event) => setAmount(sanitizeNumericInput(event.target.value, {
+                                                allowDecimal: true,
+                                                maxFractionDigits: obligation?.sourceType === 'sales_order' || obligation?.sourceType === 'purchase_order' ? 3 : 2
+                                            }))}
                                             disabled={isSubmitting}
                                         />
                                         {parsedAmount > obligation.amount && !allowsOverpayment ? (
