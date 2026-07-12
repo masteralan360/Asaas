@@ -22,6 +22,9 @@
       "missing": "This device needs one successful online session before offline use can continue.",
       "clockRollback": "Check the device date and time, then reconnect to the internet."
     },
+    "errors": {
+      "offline": "No internet connection detected. Connect and try again."
+    },
     "retry": "Try again",
     "checking": "Checking..."
   },

@@ -40,6 +40,13 @@ interface MarkSupabaseReachableOptions {
     source: string
 }
 
+interface MarkInternetReachableOptions {
+    userId?: string | null
+    workspaceId?: string | null
+    dataMode?: WorkspaceDataMode | null
+    source: string
+}
+
 interface MarkSupabaseReachableFromAccessTokenOptions extends MarkSupabaseReachableOptions {
     accessToken?: string | null
 }
@@ -200,6 +207,34 @@ export function markSupabaseReachable(options: MarkSupabaseReachableOptions): Of
         confirmedAtMs,
         expiresAtMs: confirmedAtMs + TEN_DAYS_MS,
         lastSeenLocalAtMs: Math.max(existing?.lastSeenLocalAtMs ?? 0, nowMs),
+        source
+    }
+
+    writeStorage(getOfflineLeaseKey(userId, workspaceId, lease.deviceId), JSON.stringify(lease))
+    emitOfflineLeaseChanged(lease)
+    return lease
+}
+
+/**
+ * Renews the local grace period from the browser's basic online signal.
+ * This is intentionally lightweight and is only used by the reconnect blocker.
+ */
+export function markInternetReachable(options: MarkInternetReachableOptions): OfflineLease | null {
+    const { userId, workspaceId, dataMode, source } = options
+    if (!userId || !workspaceId || !isOfflineLeaseRequired(dataMode)) {
+        return null
+    }
+
+    const nowMs = Date.now()
+    const lease: OfflineLease = {
+        version: OFFLINE_LEASE_VERSION,
+        userId,
+        workspaceId,
+        deviceId: getOfflineLeaseDeviceId(),
+        dataMode,
+        confirmedAtMs: nowMs,
+        expiresAtMs: nowMs + TEN_DAYS_MS,
+        lastSeenLocalAtMs: nowMs,
         source
     }
 

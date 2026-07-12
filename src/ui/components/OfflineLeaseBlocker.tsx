@@ -3,10 +3,7 @@ import { AlertCircle, LogOut, RefreshCw, Wifi } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import type { AuthUser } from '@/auth/AuthContext'
-import { supabase } from '@/auth/supabase'
-import { connectionManager } from '@/lib/connectionManager'
-import { markSupabaseReachableFromAccessToken, type OfflineLeaseStatus } from '@/lib/offlineLease'
-import { runSupabaseAction } from '@/lib/supabaseRequest'
+import { markInternetReachable, type OfflineLeaseStatus } from '@/lib/offlineLease'
 import { Button } from '@/ui/components/button'
 
 interface OfflineLeaseBlockerProps {
@@ -54,35 +51,24 @@ export function OfflineLeaseBlocker({ user, status, onSignOut }: OfflineLeaseBlo
         setRetryError(null)
 
         try {
-            const { data, error } = await runSupabaseAction(
-                'offlineLease.refreshSession',
-                () => supabase.auth.refreshSession(),
-                { timeoutMs: 8000, platform: 'all' }
-            ) as any
-
-            if (error || !data?.session) {
-                throw error ?? new Error('Unable to refresh the session.')
+            if (navigator.onLine === false) {
+                setRetryError(t('offlineLease.errors.offline', {
+                    defaultValue: 'No internet connection detected. Connect and try again.'
+                }))
+                return
             }
 
-            if (data.session.user?.id !== user.id) {
-                throw new Error('The active session no longer matches this device user.')
-            }
-
-            markSupabaseReachableFromAccessToken({
+            markInternetReachable({
                 userId: user.id,
                 workspaceId: user.workspaceId,
                 dataMode: user.workspaceMode,
-                accessToken: data.session.access_token,
-                source: 'offline-lease-blocker'
+                source: 'offline-lease-browser-online'
             })
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error)
-            setRetryError(message)
         } finally {
             retryInFlightRef.current = false
             setIsRetrying(false)
         }
-    }, [user.id, user.workspaceId, user.workspaceMode])
+    }, [t, user.id, user.workspaceId, user.workspaceMode])
 
     useEffect(() => {
         const attemptAutoRetry = () => {
@@ -91,23 +77,20 @@ export function OfflineLeaseBlocker({ user, status, onSignOut }: OfflineLeaseBlo
             void retryConnection()
         }
 
-        const retryTimer = connectionManager.getState().isOnline
+        const retryTimer = navigator.onLine
             ? window.setTimeout(attemptAutoRetry, 500)
             : null
 
-        const unsubscribe = connectionManager.subscribe((event) => {
-            if (event === 'offline') {
-                autoRetryAttemptedRef.current = false
-            }
+        const handleOnline = () => {
+            autoRetryAttemptedRef.current = false
+            attemptAutoRetry()
+        }
 
-            if (event === 'online' || event === 'wake') {
-                attemptAutoRetry()
-            }
-        })
+        window.addEventListener('online', handleOnline)
 
         return () => {
             if (retryTimer) window.clearTimeout(retryTimer)
-            unsubscribe()
+            window.removeEventListener('online', handleOnline)
         }
     }, [retryConnection])
 

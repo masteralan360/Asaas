@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
     getOfflineLeaseStatus,
+    markInternetReachable,
     markSupabaseReachable,
     offlineLeaseInternals
 } from './offlineLease'
@@ -85,6 +86,31 @@ describe('offline lease', () => {
             required: true,
             blocked: true,
             reason: 'clock-rollback'
+        })
+    })
+
+    it('renews a blocked lease from the browser online signal', () => {
+        markSupabaseReachable({
+            userId,
+            workspaceId,
+            dataMode: 'hybrid',
+            serverNowMs: baseTime,
+            source: 'test'
+        })
+
+        vi.setSystemTime(baseTime + offlineLeaseInternals.TEN_DAYS_MS + 1)
+        expect(getOfflineLeaseStatus(userId, workspaceId, 'hybrid').blocked).toBe(true)
+
+        markInternetReachable({
+            userId,
+            workspaceId,
+            dataMode: 'hybrid',
+            source: 'browser-online'
+        })
+
+        expect(getOfflineLeaseStatus(userId, workspaceId, 'hybrid')).toMatchObject({
+            required: true,
+            blocked: false
         })
     })
 })
