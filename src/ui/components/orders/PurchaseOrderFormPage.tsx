@@ -24,10 +24,12 @@ import { getOrderLineFreeBonusQuantity } from '@/lib/orderLineItems'
 import { ORDER_DECIMAL_STEP, roundOrderValue } from '@/lib/orderPrecision'
 import {
     createPurchaseOrder,
+    findPartnerProductPriceBookItem,
     getPrimaryStorageFromList,
     shouldCreatePurchaseCostBatch,
     updatePurchaseOrder,
     useBusinessPartners,
+    usePriceBookCatalogState,
     useProducts,
     usePurchaseOrder,
     useStorages,
@@ -83,6 +85,9 @@ type FormItem = {
     batchSalePrice: string
     batchExpiryDate: string
     batchManufacturingDate: string
+    priceBookId: string
+    priceBookItemId: string
+    priceSourceCurrency: CurrencyCode | ''
 }
 
 function createEmptyItem(storageId = '', seq = 1): FormItem {
@@ -98,7 +103,10 @@ function createEmptyItem(storageId = '', seq = 1): FormItem {
         batchNumber: '',
         batchSalePrice: '',
         batchExpiryDate: '',
-        batchManufacturingDate: ''
+        batchManufacturingDate: '',
+        priceBookId: '',
+        priceBookItemId: '',
+        priceSourceCurrency: ''
     }
 }
 
@@ -136,6 +144,13 @@ export function PurchaseOrderFormPage({
     const supplierPartners = useBusinessPartners(workspaceId, { roles: ['supplier'] })
     const editingOrder = usePurchaseOrder(editingOrderId)
     const defaultStorageId = getPrimaryStorageFromList(storages)?.id || ''
+    const priceBooksEnabled = hasCapability('priceBooks')
+    const {
+        priceBooks,
+        priceBookItems,
+        isReady: isPriceBookCatalogReady,
+        error: priceBookCatalogError
+    } = usePriceBookCatalogState(priceBooksEnabled ? workspaceId : undefined, { enabled: priceBooksEnabled })
     const { isAccessKeyHeld } = useUiAccess()
     const [prioritizedMethod, setPrioritizedMethod] = useState<string | null>(getPrioritizedPaymentMethod)
 
@@ -172,7 +187,10 @@ export function PurchaseOrderFormPage({
                     batchNumber: item.batchNumber || '',
                     batchSalePrice: item.batchSalePrice == null ? '' : String(item.batchSalePrice),
                     batchExpiryDate: item.batchExpiryDate || '',
-                    batchManufacturingDate: item.batchManufacturingDate || ''
+                    batchManufacturingDate: item.batchManufacturingDate || '',
+                    priceBookId: item.priceBookId || '',
+                    priceBookItemId: item.priceBookItemId || '',
+                    priceSourceCurrency: item.priceBookId && item.priceBookItemId ? item.originalCurrency : ''
                 }
             })
         }
@@ -219,7 +237,10 @@ export function PurchaseOrderFormPage({
                 batchNumber: item.batchNumber || '',
                 batchSalePrice: item.batchSalePrice == null ? '' : String(item.batchSalePrice),
                 batchExpiryDate: item.batchExpiryDate || '',
-                batchManufacturingDate: item.batchManufacturingDate || ''
+                batchManufacturingDate: item.batchManufacturingDate || '',
+                priceBookId: item.priceBookId || '',
+                priceBookItemId: item.priceBookItemId || '',
+                priceSourceCurrency: item.priceBookId && item.priceBookItemId ? item.originalCurrency : ''
             }
         }))
     }, [defaultStorageId, editingOrder])
@@ -246,17 +267,80 @@ export function PurchaseOrderFormPage({
 
     const selectedSupplier = supplierPartners.find((entry) => entry.id === supplierId)
 
+    const getPriceBookItemForPartner = useCallback((partner: Pick<BusinessPartner, 'priceBookId'> | null | undefined, productId: string) =>
+        findPartnerProductPriceBookItem(
+            priceBooksEnabled,
+            partner,
+            productId,
+            priceBooks,
+            priceBookItems
+        ),
+    [priceBookItems, priceBooks, priceBooksEnabled])
+
     const getStorageDisplayName = (storageId: string) => {
         const storage = storages.find((entry) => entry.id === storageId)
         if (!storage) return t('orders.form.selectStorage', { defaultValue: 'Select Storage' })
         return storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name
     }
 
-    const applyDefaultItemPrice = (productId: string, partnerCurrency: CurrencyCode) => {
+    const resolveItemPricing = useCallback((
+        productId: string,
+        partnerCurrency: CurrencyCode,
+        partner: Pick<BusinessPartner, 'priceBookId'> | null | undefined
+    ): Pick<FormItem, 'unitPrice' | 'batchSalePrice' | 'priceBookId' | 'priceBookItemId' | 'priceSourceCurrency'> => {
         const product = products.find((entry) => entry.id === productId)
-        if (!product) return ''
-        return String(convertCurrencyAmountWithLiveRates(product.costPrice, product.currency, partnerCurrency, liveRates))
-    }
+        if (!product) {
+            return {
+                unitPrice: '',
+                batchSalePrice: '',
+                priceBookId: '',
+                priceBookItemId: '',
+                priceSourceCurrency: ''
+            }
+        }
+
+        const priceBookItem = getPriceBookItemForPartner(partner, productId)
+        if (priceBookItem) {
+            return {
+                unitPrice: String(convertCurrencyAmountWithLiveRates(
+                    priceBookItem.costPrice,
+                    priceBookItem.currency,
+                    partnerCurrency,
+                    liveRates
+                )),
+                batchSalePrice: String(convertCurrencyAmountWithLiveRates(
+                    priceBookItem.price,
+                    priceBookItem.currency,
+                    product.currency,
+                    liveRates
+                )),
+                priceBookId: priceBookItem.priceBookId,
+                priceBookItemId: priceBookItem.id,
+                priceSourceCurrency: priceBookItem.currency
+            }
+        }
+
+        return {
+            unitPrice: String(convertCurrencyAmountWithLiveRates(product.costPrice, product.currency, partnerCurrency, liveRates)),
+            batchSalePrice: String(product.price),
+            priceBookId: '',
+            priceBookItemId: '',
+            priceSourceCurrency: ''
+        }
+    }, [getPriceBookItemForPartner, liveRates, products])
+
+    const selectSupplierPartner = useCallback((partner: Pick<BusinessPartner, 'id' | 'name' | 'defaultCurrency' | 'priceBookId'>) => {
+        const nextCurrency = partner.defaultCurrency || currency
+        setSupplierSearch(partner.name)
+        setSupplierId(partner.id)
+        setCurrency(nextCurrency)
+        if (priceBooksEnabled) {
+            setItems((current) => current.map((item) => item.productId
+                ? { ...item, ...resolveItemPricing(item.productId, nextCurrency, partner) }
+                : item
+            ))
+        }
+    }, [currency, priceBooksEnabled, resolveItemPricing])
 
     const handleStorageMissing = useCallback((index: number) => {
         setHighlightedStorageIndex(index)
@@ -269,11 +353,14 @@ export function PurchaseOrderFormPage({
         setItems((current) =>
             current.map((item, itemIndex) => {
                 if (itemIndex !== index) return item
+                if (priceBooksEnabled && changes.productId && !selectedSupplier) return item
                 const next = { ...item, ...changes }
                 if (changes.productId && (!item.unitPrice || changes.productId !== item.productId)) {
-                    next.unitPrice = applyDefaultItemPrice(changes.productId, currency)
-                    const product = products.find((entry) => entry.id === changes.productId)
-                    next.batchSalePrice = product ? String(product.price) : ''
+                    Object.assign(next, resolveItemPricing(changes.productId, currency, selectedSupplier))
+                } else if (changes.productId !== undefined && !changes.productId) {
+                    next.priceBookId = ''
+                    next.priceBookItemId = ''
+                    next.priceSourceCurrency = ''
                 }
                 return next
             })
@@ -298,6 +385,7 @@ export function PurchaseOrderFormPage({
     const isInstallmentBased = paymentMethod === 'installments'
     const canSubmit = Boolean(selectedSupplier) &&
         items.some((item) => item.productId && Number(item.quantity) > 0) &&
+        (!priceBooksEnabled || isPriceBookCatalogReady) &&
         (!isFinanced || initialPayment < preview) &&
         (!isInstallmentBased || (
             Number(installmentCount) >= 1
@@ -306,6 +394,7 @@ export function PurchaseOrderFormPage({
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
+        if (priceBooksEnabled && !isPriceBookCatalogReady) return
         if (!user?.workspaceId || isSaving) return
 
         const supplier = supplierPartners.find((entry) => entry.id === supplierId)
@@ -328,6 +417,7 @@ export function PurchaseOrderFormPage({
 
         setIsSaving(true)
         try {
+            let usesPriceBookPricing = false
             const orderItems: PurchaseOrderItem[] = items
                 .filter((item) => item.productId && Number(item.quantity) > 0)
                 .map((item) => {
@@ -344,6 +434,11 @@ export function PurchaseOrderFormPage({
 
                     const quantity = Number(item.quantity)
                     const freeBonusQuantityValue = Number(item.freeBonusQuantity || 0)
+                    const hasPriceBookProvenance = Boolean(item.priceBookId && item.priceBookItemId)
+                    if (hasPriceBookProvenance) usesPriceBookPricing = true
+                    const sourceCurrency = hasPriceBookProvenance && item.priceSourceCurrency
+                        ? item.priceSourceCurrency
+                        : product.currency
                     const unitPrice = Number(item.unitPrice || 0)
                     if (!Number.isFinite(freeBonusQuantityValue) || freeBonusQuantityValue < 0) {
                         throw new Error(t('orders.form.errors.invalidFreeBonus', {
@@ -362,14 +457,21 @@ export function PurchaseOrderFormPage({
                     return {
                         id: item.id,
                         productId: product.id,
+                        priceBookId: hasPriceBookProvenance ? item.priceBookId : null,
+                        priceBookItemId: hasPriceBookProvenance ? item.priceBookItemId : null,
                         storageId: item.storageId,
                         productName: product.name,
                         productSku: product.sku,
                         quantity,
                         ...(freeBonusQuantity > 0 ? { freeBonusQuantity } : {}),
                         lineTotal: roundFormAmount(quantity * unitPrice),
-                        originalCurrency: product.currency,
-                        originalUnitPrice: convertCurrencyAmountWithLiveRates(unitPrice, currency, product.currency, liveRates),
+                        originalCurrency: sourceCurrency,
+                        originalUnitPrice: convertCurrencyAmountWithLiveRates(
+                            unitPrice,
+                            currency,
+                            sourceCurrency,
+                            liveRates
+                        ),
                         convertedUnitPrice: roundFormAmount(unitPrice),
                         settlementCurrency: currency,
                         batchNumber: item.batchNumber.trim() || null,
@@ -383,7 +485,7 @@ export function PurchaseOrderFormPage({
                 throw new Error(t('orders.form.errors.atLeastOneItem', { defaultValue: 'Add at least one item.' }))
             }
             const hasMultiCurrency = orderItems.some(item => item.originalCurrency !== item.settlementCurrency)
-            const snapshot = hasMultiCurrency ? buildOrderExchangeRatesSnapshot(liveRates) : []
+            const snapshot = hasMultiCurrency || usesPriceBookPricing ? buildOrderExchangeRatesSnapshot(liveRates) : []
             const primaryRate = hasMultiCurrency ? getPrimaryExchangeDetails(currency, features.default_currency, snapshot) : null
             const commonStorageId = getCommonStorageId(orderItems)
             const subtotal = roundFormAmount(orderItems.reduce((sum, item) => sum + item.lineTotal, 0))
@@ -501,9 +603,7 @@ export function PurchaseOrderFormPage({
                                                             setSupplierId('')
                                                         }}
                                                         onSelectPartner={(partner: BusinessPartner) => {
-                                                            setSupplierSearch(partner.name)
-                                                            setSupplierId(partner.id)
-                                                            if (partner.defaultCurrency) setCurrency(partner.defaultCurrency)
+                                                            selectSupplierPartner(partner)
                                                         }}
                                                         workspaceId={workspaceId}
                                                         roles={['supplier']}
@@ -573,9 +673,17 @@ export function PurchaseOrderFormPage({
                                     selectedPartyId={supplierId}
                                     onSelect={(selection) => {
                                         if (selection.linkedPartyId) {
-                                            setSupplierId(selection.linkedPartyId)
-                                            setSupplierSearch(selection.linkedPartyName || '')
-                                            if (selection.defaultCurrency) setCurrency(selection.defaultCurrency)
+                                            const partner = supplierPartners.find((entry) => entry.id === selection.linkedPartyId)
+                                            if (partner) {
+                                                selectSupplierPartner(partner)
+                                            } else {
+                                                selectSupplierPartner({
+                                                    id: selection.linkedPartyId,
+                                                    name: selection.linkedPartyName || '',
+                                                    defaultCurrency: selection.defaultCurrency,
+                                                    priceBookId: null
+                                                })
+                                            }
                                         }
                                         setIsSupplierPickerOpen(false)
                                     }}
@@ -614,7 +722,14 @@ export function PurchaseOrderFormPage({
                                                     ),
                                                     product.costPrice,
                                                     product.currency
-                                                )
+                                                ) || (Boolean(item.priceBookId && item.priceBookItemId) && (
+                                                    item.batchSalePrice !== ''
+                                                    && shouldCreatePurchaseCostBatch(
+                                                        Number(item.batchSalePrice),
+                                                        product.price,
+                                                        product.currency
+                                                    )
+                                                ))
                                                 : false
 
                                             return (
@@ -642,7 +757,12 @@ export function PurchaseOrderFormPage({
                                                             onChange={(value) => updateItem(index, { productSearch: value, productId: '' })}
                                                             onSelectProduct={(product) => updateItem(index, { productId: product.id, productSearch: product.name })}
                                                             products={products}
-                                                            placeholder={t('orders.form.selectProduct', { defaultValue: 'Select Product' })}
+                                                            disabled={priceBooksEnabled && (!isPriceBookCatalogReady || !selectedSupplier)}
+                                                            placeholder={priceBooksEnabled && !selectedSupplier
+                                                                ? t('priceBooks.selectPartnerFirst', { defaultValue: 'Select a business partner first' })
+                                                                : priceBooksEnabled && priceBookCatalogError
+                                                                    ? t('priceBooks.loadingErrorShort', { defaultValue: 'Price Books unavailable - retrying...' })
+                                                                    : t('orders.form.selectProduct', { defaultValue: 'Select Product' })}
                                                             hasSelection={!!item.productId}
                                                             storageMissing={!item.storageId}
                                                             storageMissingLabel={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}

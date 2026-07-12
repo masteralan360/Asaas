@@ -17,6 +17,7 @@ CREATE TABLE crm.business_partners (
   customer_facet_id uuid NULL,
   supplier_facet_id uuid NULL,
   agent_facet_id uuid NULL,
+  price_book_id uuid NULL,
   total_sales_orders numeric NULL DEFAULT 0,
   total_sales_value numeric NULL DEFAULT 0,
   receivable_balance numeric NULL DEFAULT 0,
@@ -36,6 +37,8 @@ CREATE TABLE crm.business_partners (
   CONSTRAINT business_partners_role_check CHECK (
     role IN ('customer', 'supplier', 'both', 'agent', 'buyer', 'seller')
   ),
+  CONSTRAINT business_partners_price_book_id_fkey
+    FOREIGN KEY (price_book_id) REFERENCES public.price_books(id) ON DELETE SET NULL,
   PRIMARY KEY (id)
 );
 
@@ -50,6 +53,62 @@ CREATE INDEX IF NOT EXISTS idx_crm_business_partners_workspace_deleted
 
 CREATE INDEX IF NOT EXISTS idx_crm_business_partners_role
   ON crm.business_partners (workspace_id, role);
+
+CREATE INDEX IF NOT EXISTS idx_crm_business_partners_price_book
+  ON crm.business_partners (price_book_id);
+
+CREATE OR REPLACE FUNCTION public.enforce_crm_business_partner_price_book()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, crm
+AS $function$
+DECLARE
+  v_plan text;
+BEGIN
+  IF TG_OP = 'UPDATE'
+    AND NEW.price_book_id IS NOT DISTINCT FROM OLD.price_book_id
+    AND NEW.workspace_id IS NOT DISTINCT FROM OLD.workspace_id
+  THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.price_book_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT workspace.plan::text
+  INTO v_plan
+  FROM public.workspaces AS workspace
+  WHERE workspace.id = NEW.workspace_id
+    AND workspace.deleted_at IS NULL;
+
+  IF v_plan IS NULL
+    OR NOT public.workspace_capability_allowed(NEW.workspace_id, v_plan, 'priceBooks')
+  THEN
+    RAISE EXCEPTION 'Price Books capability is not enabled for this workspace'
+      USING ERRCODE = '42501';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.price_books AS price_book
+    WHERE price_book.id = NEW.price_book_id
+      AND price_book.workspace_id = NEW.workspace_id
+      AND price_book.is_deleted = false
+  ) THEN
+    RAISE EXCEPTION 'Business partner price book must belong to the same workspace'
+      USING ERRCODE = '23514';
+  END IF;
+
+  RETURN NEW;
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS enforce_crm_business_partner_price_book ON crm.business_partners;
+CREATE TRIGGER enforce_crm_business_partner_price_book
+  BEFORE INSERT OR UPDATE ON crm.business_partners
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_crm_business_partner_price_book();
 
 ALTER TABLE crm.business_partners ENABLE ROW LEVEL SECURITY;
 

@@ -3,6 +3,7 @@ import { db } from "@/local-db";
 import { syncProductStockSnapshot } from "@/local-db/inventory";
 import type { Inventory } from "@/local-db/models";
 import { syncProductBarcodeCachesForWorkspace } from "@/local-db/productBarcodes";
+import { rekeyPriceBookItemReferences } from "@/local-db/priceBookReferences";
 import { runSupabaseAction } from "@/lib/supabaseRequest";
 import { getSupabaseClientForTable } from "@/lib/supabaseSchema";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
@@ -23,6 +24,8 @@ const SALE_ITEM_PARENT_BATCH_SIZE = 250;
 const SYNC_PULL_TABLES = [
   "products",
   "product_barcodes",
+  "price_books",
+  "price_book_items",
   "inventory",
   "inventory_transactions",
   "stock_batches",
@@ -108,6 +111,20 @@ function isRetriableSaleReturnMutation(mutation: {
       mutation.error ?? "",
     )
   );
+}
+
+function isPriceBookMutation(mutation: { entityType: string }) {
+  return mutation.entityType === "price_books" || mutation.entityType === "price_book_items";
+}
+
+export function isRecoverablePriceBookMutation(mutation: {
+  entityType: string;
+  error?: string;
+}) {
+  return isPriceBookMutation(mutation) &&
+    /network|fetch|timeout|timed out|connection|abort|permission|row-level|capability|42501|duplicate|unique|23505|23503|23514|foreign key|same workspace|must reference/i.test(
+      mutation.error ?? "",
+    );
 }
 
 // Convert camelCase to snake_case
@@ -357,7 +374,7 @@ async function fetchSaleItemsForWorkspace(
   return rows;
 }
 
-function shouldApplyRemoteItem(
+export function shouldApplyRemoteItem(
   table: (typeof SYNC_PULL_TABLES)[number],
   localItem: unknown,
   remoteData: Record<string, unknown>,
@@ -366,11 +383,27 @@ function shouldApplyRemoteItem(
     return true;
   }
 
+  if (
+    (table === "price_books" || table === "price_book_items") &&
+    (localItem as { syncStatus?: unknown }).syncStatus === "pending"
+  ) {
+    return false;
+  }
+
   if (TABLES_WITHOUT_VERSION.has(table)) {
     return true;
   }
 
-  return (localItem as any).version < (remoteData as any).version;
+  const localVersion = Number((localItem as any).version ?? 0);
+  const remoteVersion = Number((remoteData as any).version ?? 0);
+  if (localVersion !== remoteVersion) {
+    return localVersion < remoteVersion;
+  }
+
+  const localUpdatedAt = Date.parse(String((localItem as any).updatedAt ?? ""));
+  const remoteUpdatedAt = Date.parse(String((remoteData as any).updatedAt ?? ""));
+  return Number.isFinite(remoteUpdatedAt) &&
+    (!Number.isFinite(localUpdatedAt) || remoteUpdatedAt > localUpdatedAt);
 }
 
 // Process offline mutation queue
@@ -386,18 +419,19 @@ export async function processMutationQueue(
       db.offline_mutations.where("status").equals(status).sortBy("createdAt"),
     ),
   );
-  const failedRetriableSalesMutations = await db.offline_mutations
+  const failedRetriableMutations = await db.offline_mutations
     .where("status")
     .equals("failed")
     .filter(
       (mutation) =>
         isSaleCreateMutation(mutation) ||
-        isRetriableSaleReturnMutation(mutation),
+        isRetriableSaleReturnMutation(mutation) ||
+        isRecoverablePriceBookMutation(mutation),
     )
     .sortBy("createdAt");
   const mutations = mutationGroups
     .flat()
-    .concat(failedRetriableSalesMutations)
+    .concat(failedRetriableMutations)
     .sort((left, right) =>
       String(left.createdAt).localeCompare(String(right.createdAt)),
     );
@@ -407,8 +441,18 @@ export async function processMutationQueue(
   );
 
   let successCount = 0;
+  let failedCount = 0;
+  let lastError: string | undefined;
+  const failedPriceBookIds = new Set<string>();
 
   for (const mutation of mutations) {
+    if (mutation.entityType === "price_book_items") {
+      const referencedPriceBookId = mutation.payload.priceBookId ?? mutation.payload.price_book_id;
+      if (typeof referencedPriceBookId === "string" && failedPriceBookIds.has(referencedPriceBookId)) {
+        continue;
+      }
+    }
+
     // Mark active attempts, and retry rows that were interrupted while syncing.
     await db.offline_mutations.update(mutation.id, {
       status: "syncing",
@@ -622,6 +666,56 @@ export async function processMutationQueue(
             localMergeCandidateRow as never,
           );
           entityHandledInline = true;
+        } else if (entityType === "price_book_items") {
+          const priceBookId = dbPayload.price_book_id;
+          const productId = dbPayload.product_id;
+          if (typeof priceBookId !== "string" || typeof productId !== "string") {
+            throw new Error("Price Book item is missing its Price Book or product reference");
+          }
+
+          const { data: remoteExistingPriceBookItem, error: lookupError } = await client
+            .from(tableName)
+            .select("*")
+            .eq("price_book_id", priceBookId)
+            .eq("product_id", productId)
+            .maybeSingle();
+          if (lookupError) throw lookupError;
+
+          if (remoteExistingPriceBookItem) {
+            const remoteExisting = remoteExistingPriceBookItem as Record<string, unknown>;
+            dbPayload.id = remoteExisting.id;
+            dbPayload.created_at = remoteExisting.created_at;
+            dbPayload.created_by = remoteExisting.created_by;
+            const remoteVersion = Number(remoteExisting.version ?? 0);
+            const localVersion = Number(dbPayload.version ?? 0);
+            dbPayload.version = Math.max(localVersion, remoteVersion + 1);
+          }
+
+          const { data: remotePriceBookItem, error } = await client
+            .from(tableName)
+            .upsert(dbPayload, {
+              onConflict: "price_book_id,product_id",
+            })
+            .select("*")
+            .single();
+
+          if (error) throw error;
+
+          const syncedAt = new Date().toISOString();
+          const localPriceBookItem = toCamelCase(
+            remotePriceBookItem as Record<string, unknown>,
+          ) as Record<string, unknown>;
+          localPriceBookItem.syncStatus = "synced";
+          localPriceBookItem.lastSyncedAt = syncedAt;
+          syncedEntityId = String(localPriceBookItem.id);
+
+          if (syncedEntityId !== entityId) {
+            await rekeyPriceBookItemReferences(entityId, syncedEntityId);
+            await db.price_book_items.delete(entityId);
+          }
+
+          await db.price_book_items.put(localPriceBookItem as never);
+          entityHandledInline = true;
         } else {
           // Special handling for invoices to remove legacy fields
           if (tableName === "invoices") {
@@ -660,6 +754,30 @@ export async function processMutationQueue(
 
       // Success: Mark as synced
       await db.offline_mutations.update(id, { status: "synced" }); // Or delete if preferred, but synced is good for history
+      if (isPriceBookMutation(mutation)) {
+        failedPriceBookIds.delete(entityId);
+        const supersededFailures = await db.offline_mutations
+          .where("status")
+          .equals("failed")
+          .filter((candidate) =>
+            candidate.id !== id &&
+            candidate.entityType === entityType &&
+            candidate.entityId === entityId &&
+            (
+              candidate.createdAt < mutation.createdAt ||
+              (candidate.createdAt === mutation.createdAt && candidate.id < id)
+            ),
+          )
+          .primaryKeys();
+        if (supersededFailures.length > 0) {
+          await db.offline_mutations.bulkUpdate(
+            supersededFailures.map((failureId) => ({
+              key: failureId,
+              changes: { status: "synced" as const, error: undefined },
+            })),
+          );
+        }
+      }
 
       // Also update the actual entity sync status to 'synced'
       const table = (db as any)[entityType];
@@ -694,16 +812,29 @@ export async function processMutationQueue(
       successCount++;
     } catch (err: any) {
       console.error(`[Sync] Failed mutation ${mutation.id}:`, err);
+      const errorMessage = err.message || "Unknown error";
       await db.offline_mutations.update(mutation.id, {
         status: "failed",
-        error: err.message || "Unknown error",
+        error: errorMessage,
       });
+      if (isPriceBookMutation(mutation)) {
+        if (mutation.entityType === "price_books") {
+          failedPriceBookIds.add(mutation.entityId);
+        }
+        failedCount++;
+        lastError = errorMessage;
+        continue;
+      }
       // Stop processing on first error to maintain order integrity
-      return { success: successCount, failed: 1, error: err.message };
+      return { success: successCount, failed: failedCount + 1, error: errorMessage };
     }
   }
 
-  return { success: successCount, failed: 0 };
+  return {
+    success: successCount,
+    failed: failedCount,
+    ...(lastError ? { error: lastError } : {}),
+  };
 }
 
 // Deprecated: Old pushChanges (kept for reference or fallback if needed during transition)
@@ -753,6 +884,23 @@ export async function pullChanges(
         for (const remoteItem of data) {
           const localItem = await dbTable.get(remoteItem.id);
           const remoteData = toCamelCase(remoteItem);
+
+          if (table === "price_book_items") {
+            const priceBookId = (remoteData as { priceBookId?: unknown }).priceBookId;
+            const productId = (remoteData as { productId?: unknown }).productId;
+            if (typeof priceBookId === "string" && typeof productId === "string") {
+              const naturalKeyConflict = await db.price_book_items
+                .where("[priceBookId+productId]")
+                .equals([priceBookId, productId])
+                .first();
+              if (naturalKeyConflict && naturalKeyConflict.id !== remoteItem.id) {
+                if (naturalKeyConflict.syncStatus === "pending") {
+                  continue;
+                }
+                await db.price_book_items.delete(naturalKeyConflict.id);
+              }
+            }
+          }
 
           // Version control: Last Write Wins based on updated_at
           // If local has newer version/updatedAt pending sync, don't overwrite?

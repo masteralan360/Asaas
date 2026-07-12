@@ -1,0 +1,229 @@
+import { BookOpen, DollarSign, Plus, Trash2, Wallet } from 'lucide-react'
+import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import type { CurrencyCode, IQDDisplayPreference, PriceBook } from '@/local-db'
+import { formatNumericInput, sanitizeNumericInput } from '@/lib/utils'
+import {
+    Button,
+    CurrencySelector,
+    Input,
+    Label,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue
+} from '@/ui/components'
+
+export interface ProductPriceBookDraft {
+    priceBookId: string
+    costPrice: string
+    price: string
+    currency: CurrencyCode
+}
+
+interface ProductPriceBookItemsEditorProps {
+    priceBooks: PriceBook[]
+    rows: ProductPriceBookDraft[]
+    onChange: (rows: ProductPriceBookDraft[]) => void
+    defaultCostPrice: string
+    defaultPrice: string
+    defaultCurrency: CurrencyCode
+    allowedCurrencies: CurrencyCode[]
+    iqdDisplayPreference: IQDDisplayPreference
+    disabled?: boolean
+}
+
+export function ProductPriceBookItemsEditor({
+    priceBooks,
+    rows,
+    onChange,
+    defaultCostPrice,
+    defaultPrice,
+    defaultCurrency,
+    allowedCurrencies,
+    iqdDisplayPreference,
+    disabled = false
+}: ProductPriceBookItemsEditorProps) {
+    const { t } = useTranslation()
+    const sortedPriceBooks = useMemo(
+        () => [...priceBooks].sort((left, right) => left.name.localeCompare(right.name)),
+        [priceBooks]
+    )
+    const selectedIds = useMemo(() => new Set(rows.map((row) => row.priceBookId)), [rows])
+    const nextAvailableBook = sortedPriceBooks.find((priceBook) => !selectedIds.has(priceBook.id))
+
+    const updateRow = (index: number, changes: Partial<ProductPriceBookDraft>) => {
+        const nextRows = rows.map((row, rowIndex) => rowIndex === index ? { ...row, ...changes } : row)
+        onChange(nextRows)
+    }
+
+    const addRow = () => {
+        if (!nextAvailableBook) {
+            return
+        }
+
+        onChange([
+            ...rows,
+            {
+                priceBookId: nextAvailableBook.id,
+                costPrice: defaultCostPrice.trim() || '0',
+                price: defaultPrice.trim() || '0',
+                currency: defaultCurrency
+            }
+        ])
+    }
+
+    const removeRow = (index: number) => {
+        onChange(rows.filter((_row, rowIndex) => rowIndex !== index))
+    }
+
+    return (
+        <section className="space-y-4 border-t border-border/60 pt-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-primary/80">
+                        <BookOpen className="h-4 w-4" />
+                        {t('priceBooks.productOverridesTitle', { defaultValue: 'Price Book overrides' })}
+                    </div>
+                    <p className="max-w-2xl text-sm text-muted-foreground">
+                        {t('priceBooks.productOverridesDescription', {
+                            defaultValue: 'Set a custom unit cost and selling price for each pricing tier that uses this product.'
+                        })}
+                    </p>
+                </div>
+                {!disabled && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="shrink-0 gap-2"
+                        onClick={addRow}
+                        disabled={!nextAvailableBook}
+                    >
+                        <Plus className="h-4 w-4" />
+                        {t('priceBooks.addOverride', { defaultValue: 'Add override' })}
+                    </Button>
+                )}
+            </div>
+
+            {sortedPriceBooks.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
+                    {t('priceBooks.noBooksForProduct', {
+                        defaultValue: 'Create a Price Book from the Products page before adding custom prices.'
+                    })}
+                </div>
+            ) : rows.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
+                    {t('priceBooks.noOverrides', { defaultValue: 'This product does not have any Price Book overrides.' })}
+                </div>
+            ) : (
+                <div className="space-y-3">
+                    {rows.map((row, index) => {
+                        const currentBook = sortedPriceBooks.find((priceBook) => priceBook.id === row.priceBookId)
+                        const selectableBooks = sortedPriceBooks.filter((priceBook) => (
+                            priceBook.id === row.priceBookId || !selectedIds.has(priceBook.id)
+                        ))
+
+                        return (
+                            <div key={`${row.priceBookId}-${index}`} className="rounded-2xl border border-border/60 bg-muted/10 p-4">
+                                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(180px,1.2fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(140px,0.8fr)_40px] xl:items-end">
+                                    <div className="space-y-2">
+                                        <Label>{t('priceBooks.titleSingular', { defaultValue: 'Price Book' })}</Label>
+                                        <Select
+                                            value={row.priceBookId}
+                                            onValueChange={(value) => updateRow(index, { priceBookId: value })}
+                                            disabled={disabled}
+                                        >
+                                            <SelectTrigger allowViewer={true}>
+                                                <SelectValue placeholder={t('priceBooks.select', { defaultValue: 'Select a Price Book' })} />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {!currentBook && row.priceBookId ? (
+                                                    <SelectItem value={row.priceBookId} disabled>
+                                                        {t('priceBooks.unavailable', { defaultValue: 'Unavailable Price Book' })}
+                                                    </SelectItem>
+                                                ) : null}
+                                                {selectableBooks.map((priceBook) => (
+                                                    <SelectItem key={priceBook.id} value={priceBook.id}>
+                                                        {priceBook.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label className="flex items-center gap-2">
+                                            <Wallet className="h-4 w-4 text-primary/60" />
+                                            {t('priceBooks.costPrice', { defaultValue: 'Unit cost' })}
+                                        </Label>
+                                        <Input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={formatNumericInput(row.costPrice)}
+                                            onChange={(event) => updateRow(index, {
+                                                costPrice: sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 })
+                                            })}
+                                            readOnly={disabled}
+                                            placeholder="0.000"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label className="flex items-center gap-2">
+                                            <DollarSign className="h-4 w-4 text-primary/60" />
+                                            {t('priceBooks.sellingPrice', { defaultValue: 'Selling price' })}
+                                        </Label>
+                                        <Input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={formatNumericInput(row.price)}
+                                            onChange={(event) => updateRow(index, {
+                                                price: sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 })
+                                            })}
+                                            readOnly={disabled}
+                                            placeholder="0.000"
+                                            required
+                                        />
+                                    </div>
+
+                                    <CurrencySelector
+                                        label={t('priceBooks.currency', { defaultValue: 'Currency' })}
+                                        value={row.currency}
+                                        onChange={(currency) => updateRow(index, { currency })}
+                                        iqdDisplayPreference={iqdDisplayPreference}
+                                        allowedCurrencies={allowedCurrencies}
+                                        disabled={disabled}
+                                    />
+
+                                    <div className="flex justify-end xl:justify-center">
+                                        {!disabled && (
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-10 w-10 text-destructive hover:text-destructive"
+                                                aria-label={t('priceBooks.removeOverride', { defaultValue: 'Remove Price Book override' })}
+                                                onClick={() => removeRow(index)}
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
+
+            {!disabled && sortedPriceBooks.length > 0 && !nextAvailableBook && rows.length > 0 ? (
+                <p className="text-xs font-medium text-muted-foreground">
+                    {t('priceBooks.allAssigned', { defaultValue: 'Every available Price Book is already assigned to this product.' })}
+                </p>
+            ) : null}
+        </section>
+    )
+}

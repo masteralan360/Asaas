@@ -9,6 +9,8 @@ import Dexie, {
 import type {
   Product,
   ProductBarcode,
+  PriceBook,
+  PriceBookItem,
   Category,
   Invoice,
   InvoiceVersion,
@@ -405,6 +407,8 @@ function normalizeStockAdjustmentInventoryTransactionRecord(
 export class AtlasDatabase extends Dexie {
   products!: EntityTable<Product, "id">;
   product_barcodes!: EntityTable<ProductBarcode, "id">;
+  price_books!: EntityTable<PriceBook, "id">;
+  price_book_items!: EntityTable<PriceBookItem, "id">;
   categories!: EntityTable<Category, "id">;
   invoices!: EntityTable<Invoice, "id">;
   invoice_versions!: EntityTable<InvoiceVersion, "id">;
@@ -3011,6 +3015,15 @@ export class AtlasDatabase extends Dexie {
         }
       });
 
+    this.version(85).stores({
+      price_books:
+        "id, name, workspaceId, syncStatus, updatedAt, isDeleted, [workspaceId+name], [workspaceId+updatedAt]",
+      price_book_items:
+        "id, workspaceId, priceBookId, productId, currency, syncStatus, updatedAt, isDeleted, [workspaceId+priceBookId], [workspaceId+productId], &[priceBookId+productId], [workspaceId+updatedAt]",
+      business_partners:
+        "id, name, workspaceId, role, customerFacetId, supplierFacetId, agentFacetId, priceBookId, defaultCurrency, updatedAt, isDeleted, syncStatus, mergedIntoBusinessPartnerId, latitude, longitude",
+    });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }
@@ -3134,6 +3147,8 @@ export class AtlasDatabase extends Dexie {
     const syncAwareTables = [
       "products",
       "product_barcodes",
+      "price_books",
+      "price_book_items",
       "categories",
       "invoices",
       "invoice_versions",
@@ -3327,6 +3342,8 @@ export async function clearDatabase(): Promise<void> {
     [
       db.products,
       db.product_barcodes,
+      db.price_books,
+      db.price_book_items,
       db.inventory,
       db.inventory_transactions,
       db.stock_batches,
@@ -3364,6 +3381,8 @@ export async function clearDatabase(): Promise<void> {
     async () => {
       await db.products.clear();
       await db.product_barcodes.clear();
+      await db.price_books.clear();
+      await db.price_book_items.clear();
       await db.inventory.clear();
       await db.inventory_transactions.clear();
       await db.stock_batches.clear();

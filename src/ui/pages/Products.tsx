@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowDown, ArrowUp, ArrowUpDown, Boxes, Copy, FileSpreadsheet, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, BookOpen, Boxes, Copy, FileSpreadsheet, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import {
@@ -11,6 +11,7 @@ import {
     deleteProduct,
     updateCategory,
     useCategories,
+    usePriceBookCatalogState,
     useProducts,
     useStorages,
     type Category,
@@ -28,6 +29,7 @@ import { cn, formatCurrency } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
 import { UiAccessGate } from '@/context/UiAccessContext'
+import { PriceBookManagementDialog } from '@/ui/components/PriceBookManagementDialog'
 import {
     Button,
     Card,
@@ -125,7 +127,7 @@ function countActiveProductFilters(filters: ProductFilterState) {
 
 export function Products() {
     const { user, session } = useAuth()
-    const { features, branchInfo } = useWorkspace()
+    const { features, branchInfo, hasCapability } = useWorkspace()
     const { t } = useTranslation()
     const { toast } = useToast()
     const [, navigate] = useLocation()
@@ -133,6 +135,11 @@ export function Products() {
     const categories = useCategories(user?.workspaceId)
     const storages = useStorages(user?.workspaceId)
     const workspaceId = user?.workspaceId || ''
+    const priceBooksEnabled = hasCapability('priceBooks')
+    const { priceBooks, priceBookItems } = usePriceBookCatalogState(
+        priceBooksEnabled ? workspaceId || undefined : undefined,
+        { enabled: priceBooksEnabled }
+    )
     const categoryById = useMemo(
         () => new Map(categories.map((category) => [category.id, category] as const)),
         [categories]
@@ -180,6 +187,25 @@ export function Products() {
         return map
     }, [inventoryRows, products, storageById])
 
+    const productPriceBookMap = useMemo(() => {
+        const priceBookNameById = new Map(priceBooks.map((priceBook) => [priceBook.id, priceBook.name] as const))
+        const productPriceBooks = new Map<string, string[]>()
+
+        for (const item of priceBookItems) {
+            const priceBookName = priceBookNameById.get(item.priceBookId)
+            if (!priceBookName) continue
+            const names = productPriceBooks.get(item.productId) ?? []
+            names.push(priceBookName)
+            productPriceBooks.set(item.productId, names)
+        }
+
+        for (const names of productPriceBooks.values()) {
+            names.sort((left, right) => left.localeCompare(right))
+        }
+
+        return productPriceBooks
+    }, [priceBookItems, priceBooks])
+
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
     const canCloneProducts = user?.role === 'admin'
@@ -198,6 +224,7 @@ export function Products() {
         localStorage.setItem('products_page_size', String(pageSize))
     }, [pageSize])
     const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false)
+    const [isPriceBookDialogOpen, setIsPriceBookDialogOpen] = useState(false)
     const [editingCategory, setEditingCategory] = useState<Category | null>(null)
     const [categoryFormData, setCategoryFormData] = useState(emptyCategoryFormData)
     const [adjustmentDialogOpen, setAdjustmentDialogOpen] = useState(false)
@@ -220,6 +247,12 @@ export function Products() {
     const [selectedCloneTargetStorageId, setSelectedCloneTargetStorageId] = useState('')
     const [isBranchCloning, setIsBranchCloning] = useState(false)
     const canCloneToBranch = canCloneProducts && cloneTargets.length > 0
+
+    useEffect(() => {
+        if (!priceBooksEnabled) {
+            setIsPriceBookDialogOpen(false)
+        }
+    }, [priceBooksEnabled])
 
     const productsAttachedToDeleteCategory = useMemo(() => {
         if (itemToDelete?.type !== 'category') {
@@ -433,6 +466,31 @@ export function Products() {
                                 <span>{entry.name}</span>
                                 <span className="font-mono tabular-nums text-muted-foreground">{entry.quantity}</span>
                             </div>
+                        ))}
+                    </TooltipContent>
+                </Tooltip>
+            </TooltipProvider>
+        )
+    }
+
+    const renderPriceBooks = (productId: string) => {
+        const names = productPriceBookMap.get(productId) ?? []
+        if (names.length === 0) {
+            return <span className="text-muted-foreground">{t('priceBooks.none', { defaultValue: 'No Price Book' })}</span>
+        }
+        if (names.length === 1) return <>{names[0]}</>
+
+        return (
+            <TooltipProvider>
+                <Tooltip delayDuration={200}>
+                    <TooltipTrigger asChild>
+                        <span className="cursor-help border-b-2 border-dotted border-foreground/30 text-foreground/80">
+                            {t('priceBooks.mixed', { defaultValue: 'Mixed Price Books' })}
+                        </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" align="start" className="max-w-[240px] space-y-1.5 p-3">
+                        {names.map((name) => (
+                            <div key={name} className="text-sm">{name}</div>
                         ))}
                     </TooltipContent>
                 </Tooltip>
@@ -812,7 +870,7 @@ export function Products() {
                         </div>
                     )}
                     {canEdit && (
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap justify-end gap-2">
                             <UiAccessGate>
                                 {canCloneToBranch && !isBranchCloneSelectionMode && (
                                     <Button
@@ -829,6 +887,12 @@ export function Products() {
                                 <Plus className="h-4 w-4" />
                                 {t('products.addCategory')}
                             </Button>
+                            {priceBooksEnabled && (
+                                <Button variant="outline" onClick={() => setIsPriceBookDialogOpen(true)}>
+                                    <BookOpen className="h-4 w-4" />
+                                    {t('priceBooks.title', { defaultValue: 'Price Books' })}
+                                </Button>
+                            )}
                             <Button onClick={() => openProductForm()}>
                                 <Plus className="h-4 w-4" />
                                 {t('products.addProduct')}
@@ -1200,6 +1264,7 @@ export function Products() {
                                                     <TableHead>{t('products.table.name')}</TableHead>
                                                     <TableHead>{t('products.table.category')}</TableHead>
                                                     <TableHead>{t('storages.title') || 'Storage'}</TableHead>
+                                                    {priceBooksEnabled && <TableHead>{t('priceBooks.title', { defaultValue: 'Price Books' })}</TableHead>}
                                                     <TableHead
                                                         className="text-right cursor-pointer select-none group/sort"
                                                         onClick={() => {
@@ -1270,6 +1335,7 @@ export function Products() {
                                                         <TableCell className="font-medium">{product.name}</TableCell>
                                                         <TableCell>{getCategoryName(product.categoryId)}</TableCell>
                                                         <TableCell>{renderStorage(product.id) ?? getStorageName(product.storageId)}</TableCell>
+                                                        {priceBooksEnabled && <TableCell>{renderPriceBooks(product.id)}</TableCell>}
                                                         <TableCell className="text-right">
                                                             {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
                                                         </TableCell>
@@ -1386,6 +1452,14 @@ export function Products() {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            <PriceBookManagementDialog
+                open={isPriceBookDialogOpen}
+                onOpenChange={setIsPriceBookDialogOpen}
+                workspaceId={user?.workspaceId}
+                createdBy={user?.id}
+                enabled={priceBooksEnabled}
+            />
 
             <Dialog open={showUnsavedChangesModal} onOpenChange={setShowUnsavedChangesModal}>
                 <DialogContent className="max-w-lg overflow-hidden border-primary/20 p-0 shadow-2xl">

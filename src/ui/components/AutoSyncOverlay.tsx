@@ -1,30 +1,36 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, UploadCloud } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useAuth } from '@/auth'
 import { isSupabaseConfigured } from '@/auth/supabase'
-import { usePendingSyncCount } from '@/local-db/hooks'
 import { db } from '@/local-db/database'
 import { connectionManager } from '@/lib/connectionManager'
 import { useWorkspace } from '@/workspace'
 import { useToast } from '@/ui/components/use-toast'
 import { LAST_SYNC_KEY } from '@/sync/constants'
+import { isRecoverablePriceBookMutation } from '@/sync/syncEngine'
 import { runManagedFullSync } from '@/sync/syncCoordinator'
 
 const MIN_OVERLAY_MS = 800
 
 async function countRecoverableMutations() {
-    const [pending, syncing, failedSaleCreates] = await Promise.all([
+    const [pending, syncing, failedSaleCreates, failedPriceBooks] = await Promise.all([
         db.offline_mutations.where('status').equals('pending').count(),
         db.offline_mutations.where('status').equals('syncing').count(),
         db.offline_mutations
             .where('status')
             .equals('failed')
             .filter((mutation) => mutation.entityType === 'sales' && mutation.operation === 'create')
+            .count(),
+        db.offline_mutations
+            .where('status')
+            .equals('failed')
+            .filter(isRecoverablePriceBookMutation)
             .count()
     ])
-    return pending + syncing + failedSaleCreates
+    return pending + syncing + failedSaleCreates + failedPriceBooks
 }
 
 export function AutoSyncOverlay() {
@@ -32,7 +38,8 @@ export function AutoSyncOverlay() {
     const { toast } = useToast()
     const { user, isAuthenticated } = useAuth()
     const { isLocalMode } = useWorkspace()
-    const pendingCount = usePendingSyncCount()
+    const recoverablePendingCount = useLiveQuery(countRecoverableMutations, []) ?? 0
+    const pendingCount = isLocalMode ? 0 : recoverablePendingCount
 
     const [overlayPendingCount, setOverlayPendingCount] = useState(0)
     const [isOverlayVisible, setIsOverlayVisible] = useState(false)

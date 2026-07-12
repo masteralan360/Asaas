@@ -73,3 +73,25 @@ describe('Order free bonus capability access', () => {
         expect(resolved.capabilities).toContain('orderFreeBonus')
     })
 })
+
+describe('Price Books capability access', () => {
+    it('is not included in any workspace subscription plan', () => {
+        for (const plan of WORKSPACE_PLANS) {
+            expect(planHasCapability(plan, 'priceBooks')).toBe(false)
+        }
+    })
+
+    it('is enabled only by a workspace capability grant override', () => {
+        const resolved = applyWorkspaceOverrides(getPlanCapabilities('enterprise'), [{
+            id: 'override-price-books',
+            workspace_id: 'workspace-1',
+            type: 'capability',
+            key: 'priceBooks',
+            value: 'grant',
+            created_by: null,
+            created_at: new Date(0).toISOString()
+        }])
+
+        expect(resolved.capabilities).toContain('priceBooks')
+    })
+})

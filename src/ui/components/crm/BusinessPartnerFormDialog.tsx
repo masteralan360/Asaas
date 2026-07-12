@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { useAuth } from '@/auth'
 import {
     REAL_ESTATE_BUSINESS_PARTNER_ROLES,
     isAgentBusinessPartnerRole,
     isRealEstateBusinessPartnerRole,
     useAgent,
     useAgents,
+    usePriceBooks,
     useWorkspaceUsers,
     type Agent,
     type AgentFacetInput,
@@ -50,6 +52,7 @@ type BusinessPartnerFormState = {
     longitude: number | null
     receivableCreditLimit: string
     payableCreditLimit: string
+    priceBookId: string
     role: BusinessPartnerRole
     agentZone: string
     agentType: AgentType
@@ -76,6 +79,7 @@ function createEmptyState(defaultCurrency: CurrencyCode, role: BusinessPartnerRo
         longitude: null,
         receivableCreditLimit: '',
         payableCreditLimit: '',
+        priceBookId: '',
         role,
         agentZone: '',
         agentType: 'field_agent',
@@ -105,6 +109,7 @@ function mapPartnerToState(partner: BusinessPartner, agent?: Agent): BusinessPar
         payableCreditLimit: partner.payableCreditLimit === null || partner.payableCreditLimit === undefined
             ? ''
             : String(partner.payableCreditLimit),
+        priceBookId: partner.priceBookId || '',
         role: partner.role,
         agentZone: agent?.zone || '',
         agentType: agent?.agentType || 'field_agent',
@@ -130,6 +135,7 @@ export interface BusinessPartnerFormPayload {
     creditLimit: number
     receivableCreditLimit: number | null
     payableCreditLimit: number | null
+    priceBookId?: string | null
     role: BusinessPartnerRole
     agent?: AgentFacetInput
 }
@@ -168,7 +174,11 @@ export function BusinessPartnerFormDialog({
     onSubmit
 }: BusinessPartnerFormDialogProps) {
     const { t } = useTranslation()
-    const { features } = useWorkspace()
+    const { user } = useAuth()
+    const { features, hasCapability } = useWorkspace()
+    const priceBooksEnabled = hasCapability('priceBooks')
+    const effectiveWorkspaceId = workspaceId || user?.workspaceId
+    const priceBooks = usePriceBooks(effectiveWorkspaceId, { enabled: priceBooksEnabled && isOpen })
     const [formState, setFormState] = useState<BusinessPartnerFormState>(() => createEmptyState(defaultCurrency, lockedRole ?? initialRole))
     const agent = useAgent(partner?.agentFacetId)
     const agents = useAgents(workspaceId)
@@ -184,6 +194,10 @@ export function BusinessPartnerFormDialog({
                 .map((candidate) => candidate.linkedUserId as string)
         ),
         [agent?.id, agents, partner?.id]
+    )
+    const sortedPriceBooks = useMemo(
+        () => [...priceBooks].sort((left, right) => left.name.localeCompare(right.name)),
+        [priceBooks]
     )
     const roleOptions = useMemo<Array<{ value: BusinessPartnerRole; label: string }>>(() => {
         const options: Array<{ value: BusinessPartnerRole; label: string }> = [
@@ -256,6 +270,7 @@ export function BusinessPartnerFormDialog({
             creditLimit: receivableCreditLimit ?? payableCreditLimit ?? 0,
             receivableCreditLimit,
             payableCreditLimit,
+            ...(priceBooksEnabled ? { priceBookId: formState.priceBookId || null } : {}),
             role: effectiveRole,
             agent: isAgent ? {
                 zone: formState.agentZone.trim(),
@@ -351,6 +366,46 @@ export function BusinessPartnerFormDialog({
                                     </div>
                                 </div>
                             )}
+                            {priceBooksEnabled ? (
+                                <div className="space-y-2">
+                                    <Label>{t('priceBooks.partnerField', { defaultValue: 'Price Book' })}</Label>
+                                    <Select
+                                        value={formState.priceBookId || 'none'}
+                                        onValueChange={(value) => setFormState((current) => ({
+                                            ...current,
+                                            priceBookId: value === 'none' ? '' : value
+                                        }))}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder={t('priceBooks.partnerPlaceholder', { defaultValue: 'No Price Book' })} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">
+                                                {t('priceBooks.none', { defaultValue: 'No Price Book' })}
+                                            </SelectItem>
+                                            {formState.priceBookId && !sortedPriceBooks.some((priceBook) => priceBook.id === formState.priceBookId) ? (
+                                                <SelectItem value={formState.priceBookId} disabled>
+                                                    {t('priceBooks.unavailable', { defaultValue: 'Unavailable Price Book' })}
+                                                </SelectItem>
+                                            ) : null}
+                                            {sortedPriceBooks.map((priceBook) => (
+                                                <SelectItem key={priceBook.id} value={priceBook.id}>
+                                                    {priceBook.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        {sortedPriceBooks.length > 0
+                                            ? t('priceBooks.partnerHint', {
+                                                defaultValue: 'New order lines for this partner will use matching custom product prices.'
+                                            })
+                                            : t('priceBooks.partnerEmptyHint', {
+                                                defaultValue: 'No Price Books are available yet. Create one from Products.'
+                                            })}
+                                    </p>
+                                </div>
+                            ) : null}
                             {isAgentRole ? (
                                 <>
                                     <div className="space-y-2">

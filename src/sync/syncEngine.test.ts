@@ -164,7 +164,37 @@ vi.mock('@/workspace/workspaceMode', () => ({
     isLocalWorkspaceMode: workspaceModeMock.isLocalWorkspaceMode
 }))
 
-import { fullSync } from './syncEngine'
+import { fullSync, isRecoverablePriceBookMutation, shouldApplyRemoteItem } from './syncEngine'
+
+describe('Price Book sync recovery', () => {
+    it('recognizes entitlement, dependency, network, and unique-name failures as recoverable', () => {
+        for (const error of [
+            'permission denied by row-level security (42501)',
+            'fetch failed: network timeout',
+            'duplicate key violates unique constraint (23505)',
+            'Price book item must reference a price book in the same workspace (23514)'
+        ]) {
+            expect(isRecoverablePriceBookMutation({ entityType: 'price_book_items', error })).toBe(true)
+        }
+        expect(isRecoverablePriceBookMutation({ entityType: 'products', error: 'permission denied' })).toBe(false)
+    })
+
+    it('applies the newer timestamp when concurrent rows have the same version', () => {
+        const local = {
+            version: 2,
+            updatedAt: '2026-07-12T08:00:00.000Z',
+            syncStatus: 'synced'
+        }
+        expect(shouldApplyRemoteItem('price_book_items', local, {
+            version: 2,
+            updatedAt: '2026-07-12T09:00:00.000Z'
+        })).toBe(true)
+        expect(shouldApplyRemoteItem('price_book_items', local, {
+            version: 2,
+            updatedAt: '2026-07-12T07:00:00.000Z'
+        })).toBe(false)
+    })
+})
 
 describe('fullSync error reporting', () => {
     beforeEach(() => {
@@ -221,6 +251,42 @@ describe('fullSync error reporting', () => {
         })
         expect(payload).not.toHaveProperty('sync_status')
         expect(payload).not.toHaveProperty('last_synced_at')
+    })
+
+    it('leaves dependent Price Book items pending when their parent book fails', async () => {
+        dbMock.rows.push({
+            id: 'price-book-mutation',
+            workspaceId: 'workspace-1',
+            entityType: 'price_books',
+            entityId: 'price-book-1',
+            operation: 'create',
+            payload: { id: 'price-book-1', name: 'Wholesale' },
+            createdAt: '2026-06-03T00:00:00.000Z',
+            status: 'pending'
+        }, {
+            id: 'price-book-item-mutation',
+            workspaceId: 'workspace-1',
+            entityType: 'price_book_items',
+            entityId: 'price-book-item-1',
+            operation: 'create',
+            payload: {
+                id: 'price-book-item-1',
+                priceBookId: 'price-book-1',
+                productId: 'product-1',
+                costPrice: 10,
+                price: 12,
+                currency: 'usd'
+            },
+            createdAt: '2026-06-03T00:00:01.000Z',
+            status: 'pending'
+        })
+
+        const result = await fullSync('user-1', 'workspace-1', null)
+
+        expect(result.success).toBe(false)
+        expect(supabaseMock.upsert).toHaveBeenCalledTimes(1)
+        expect(dbMock.rows[0]).toMatchObject({ status: 'failed', error: 'permission denied' })
+        expect(dbMock.rows[1]).toMatchObject({ status: 'pending' })
     })
 
     it('replaces the temporary offline sale id display with the server sequence id', async () => {

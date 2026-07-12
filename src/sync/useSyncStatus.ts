@@ -4,7 +4,7 @@ import { db } from '@/local-db/database'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { useAuth } from '@/auth/AuthContext'
 import { useWorkspace } from '@/workspace'
-import { type SyncState } from './syncEngine'
+import { isRecoverablePriceBookMutation, type SyncState } from './syncEngine'
 import { isSupabaseConfigured } from '@/auth/supabase'
 import { connectionManager } from '@/lib/connectionManager'
 import { toast } from '@/ui/components/use-toast'
@@ -33,7 +33,8 @@ export function useSyncStatus(): UseSyncStatusResult {
 
     const isOnline = useNetworkStatus()
     const { user, isAuthenticated } = useAuth()
-    const { isLocalMode } = useWorkspace()
+    const { isLocalMode, hasCapability } = useWorkspace()
+    const priceBooksEnabled = hasCapability('priceBooks')
     const syncInProgress = useRef(false)
     const lastSyncTimeRef = useRef(lastSyncTime)
 
@@ -44,16 +45,21 @@ export function useSyncStatus(): UseSyncStatusResult {
 
     // Get pending/interrupted sync count from offline_mutations
     const livePendingCount = useLiveQuery(async () => {
-        const [pending, syncing, failedSaleCreates] = await Promise.all([
+        const [pending, syncing, failedSaleCreates, failedPriceBooks] = await Promise.all([
             db.offline_mutations.where('status').equals('pending').count(),
             db.offline_mutations.where('status').equals('syncing').count(),
             db.offline_mutations
                 .where('status')
                 .equals('failed')
                 .filter((mutation) => mutation.entityType === 'sales' && mutation.operation === 'create')
+                .count(),
+            db.offline_mutations
+                .where('status')
+                .equals('failed')
+                .filter(isRecoverablePriceBookMutation)
                 .count()
         ])
-        return pending + syncing + failedSaleCreates
+        return pending + syncing + failedSaleCreates + failedPriceBooks
     }, []) ?? 0
     const pendingCount = isLocalMode ? 0 : livePendingCount
 
@@ -114,16 +120,21 @@ export function useSyncStatus(): UseSyncStatusResult {
             if (syncInProgress.current || !isOnline) return
 
             // Check if there are pending mutations
-            const [pendingRows, syncingRows, failedSaleCreates] = await Promise.all([
+            const [pendingRows, syncingRows, failedSaleCreates, failedPriceBooks] = await Promise.all([
                 db.offline_mutations.where('status').equals('pending').count(),
                 db.offline_mutations.where('status').equals('syncing').count(),
                 db.offline_mutations
                     .where('status')
                     .equals('failed')
                     .filter((mutation) => mutation.entityType === 'sales' && mutation.operation === 'create')
+                    .count(),
+                db.offline_mutations
+                    .where('status')
+                    .equals('failed')
+                    .filter(isRecoverablePriceBookMutation)
                     .count()
             ])
-            const pending = pendingRows + syncingRows + failedSaleCreates
+            const pending = pendingRows + syncingRows + failedSaleCreates + failedPriceBooks
 
             if (pending === 0) {
                 // Still do a pull-only sync if last sync was > 10 min ago
@@ -164,11 +175,15 @@ export function useSyncStatus(): UseSyncStatusResult {
             }
         })
 
+        if (priceBooksEnabled) {
+            retryTimer = setTimeout(() => attemptAutoSync('price-books-enabled'), 1000)
+        }
+
         return () => {
             unsubscribe()
             if (retryTimer) clearTimeout(retryTimer)
         }
-    }, [isAuthenticated, isLocalMode, user, isOnline, sync])
+    }, [isAuthenticated, isLocalMode, user, isOnline, priceBooksEnabled, sync])
 
     return {
         syncState: isLocalMode ? 'idle' : syncState,

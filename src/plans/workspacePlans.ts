@@ -95,6 +95,7 @@ export type PlanCapabilityKey =
     | 'whatsappSharing'
     | 'stockBatches'
     | 'orderFreeBonus'
+    | 'priceBooks'
     | 'kds'
 
 export interface WorkspacePlanLimits {

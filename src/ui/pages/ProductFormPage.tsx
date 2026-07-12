@@ -33,14 +33,17 @@ import {
     deleteProductBarcode,
     DuplicateProductBarcodeError,
     getPrimaryStorageFromList,
+    replaceProductPriceBookItems,
     updateProductBarcode,
     updateProduct,
     useCategories,
+    usePriceBookCatalogState,
     useProduct,
     useProductBarcodes,
     useStorages,
     type Product,
-    type ProductBarcode
+    type ProductBarcode,
+    type PriceBookItem
 } from '@/local-db'
 import type { CurrencyCode } from '@/local-db/models'
 import { assetManager } from '@/lib/assetManager'
@@ -55,6 +58,10 @@ import { useWorkspace } from '@/workspace'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { BarcodeScannerToggleButton } from '@/ui/components/BarcodeScannerToggleButton'
 import { useDemoTutorial } from '@/demo'
+import {
+    ProductPriceBookItemsEditor,
+    type ProductPriceBookDraft
+} from '@/ui/components/ProductPriceBookItemsEditor'
 import {
     Button,
     Card,
@@ -116,6 +123,30 @@ type ProductFormData = {
     canBeReturned: boolean
     returnRules: string
     storageId: string
+}
+
+function mapPriceBookItemsToDrafts(items: PriceBookItem[]): ProductPriceBookDraft[] {
+    return [...items]
+        .sort((left, right) => left.priceBookId.localeCompare(right.priceBookId))
+        .map((item) => ({
+            priceBookId: item.priceBookId,
+            costPrice: String(item.costPrice),
+            price: String(item.price),
+            currency: item.currency
+        }))
+}
+
+function serializePriceBookDrafts(rows: ProductPriceBookDraft[]) {
+    return JSON.stringify(
+        rows
+            .map((row) => ({
+                priceBookId: row.priceBookId,
+                costPrice: row.costPrice.trim() === '' ? null : Number(row.costPrice),
+                price: row.price.trim() === '' ? null : Number(row.price),
+                currency: row.currency
+            }))
+            .sort((left, right) => left.priceBookId.localeCompare(right.priceBookId))
+    )
 }
 
 const emptyProductFormData: ProductFormData = {
@@ -221,7 +252,7 @@ function mapProductToFormData(product: Product): ProductFormData {
 function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?: string }) {
     const { t } = useTranslation()
     const { user } = useAuth()
-    const { features } = useWorkspace()
+    const { features, hasCapability } = useWorkspace()
     const [, navigate] = useLocation()
     const { toast } = useToast()
     const demoTutorial = useDemoTutorial()
@@ -229,6 +260,23 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const storages = useStorages(user?.workspaceId)
     const product = useProduct(productId)
     const workspaceId = user?.workspaceId || ''
+    const priceBooksEnabled = hasCapability('priceBooks')
+    const sourcePriceBookProductId = mode === 'create' ? undefined : product?.id
+    const {
+        priceBooks,
+        priceBookItems,
+        isReady: isPriceBookCatalogReady,
+        error: priceBookCatalogError
+    } = usePriceBookCatalogState(
+        priceBooksEnabled ? workspaceId || undefined : undefined,
+        { enabled: priceBooksEnabled }
+    )
+    const sourcePriceBookItems = useMemo(
+        () => sourcePriceBookProductId
+            ? priceBookItems.filter((item) => item.productId === sourcePriceBookProductId)
+            : [],
+        [priceBookItems, sourcePriceBookProductId]
+    )
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const isClone = mode === 'clone'
     const isEditing = mode === 'edit'
@@ -264,6 +312,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
             mode === 'create' ? '' : (getPrimaryStorageFromList(storages)?.id || '')
         )
     )
+    const [priceBookRows, setPriceBookRows] = useState<ProductPriceBookDraft[]>([])
     const [isSaving, setIsSaving] = useState(false)
     const [imageError, setImageError] = useState(false)
     const [storageError, setStorageError] = useState(false)
@@ -282,8 +331,11 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const imageUploadInputRef = useRef<HTMLInputElement>(null)
     const initializedKeyRef = useRef<string | null>(null)
     const initialFormSnapshotRef = useRef<string | null>(null)
+    const initializedPriceBookRowsKeyRef = useRef<string | null>(null)
+    const initialPriceBookRowsSnapshotRef = useRef<string | null>(null)
+    const createdProductIdRef = useRef<string | null>(null)
 
-    const isDirty = useMemo(() => {
+    const isProductDirty = useMemo(() => {
         if (!initialFormSnapshotRef.current || isReadOnly) {
             return false
         }
@@ -320,7 +372,21 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
         }
     }, [formData, isReadOnly])
 
+    const arePriceBookRowsDirty = useMemo(() => {
+        if (!priceBooksEnabled || isReadOnly || initialPriceBookRowsSnapshotRef.current === null) {
+            return false
+        }
+
+        return serializePriceBookDrafts(priceBookRows) !== initialPriceBookRowsSnapshotRef.current
+    }, [isReadOnly, priceBookRows, priceBooksEnabled])
+
+    const isDirty = isProductDirty || arePriceBookRowsDirty
+
     const { showGuard, confirmNavigation, cancelNavigation, requestNavigation } = useUnsavedChangesGuard(isDirty)
+
+    useEffect(() => {
+        createdProductIdRef.current = null
+    }, [mode, productId])
 
     useEffect(() => {
         if (!canEdit && mode !== 'edit') {
@@ -371,6 +437,49 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
         initialFormSnapshotRef.current = JSON.stringify(nextFormData)
         initializedKeyRef.current = nextKey
     }, [features.default_currency, mode, product, storages])
+
+    useEffect(() => {
+        if (!priceBooksEnabled || !isPriceBookCatalogReady) {
+            return
+        }
+
+        const sourceKey = mode === 'create'
+            ? 'create'
+            : product
+                ? `${mode}:${product.id}`
+                : null
+
+        if (!sourceKey) {
+            return
+        }
+
+        const nextRows = mode === 'create'
+            ? []
+            : mapPriceBookItemsToDrafts(sourcePriceBookItems)
+        const nextSnapshot = serializePriceBookDrafts(nextRows)
+
+        if (initializedPriceBookRowsKeyRef.current !== sourceKey) {
+            setPriceBookRows(nextRows)
+            initialPriceBookRowsSnapshotRef.current = nextSnapshot
+            initializedPriceBookRowsKeyRef.current = sourceKey
+            return
+        }
+
+        const currentSnapshot = serializePriceBookDrafts(priceBookRows)
+        const rowsWereEdited = initialPriceBookRowsSnapshotRef.current !== null
+            && currentSnapshot !== initialPriceBookRowsSnapshotRef.current
+        if (!rowsWereEdited && nextSnapshot !== initialPriceBookRowsSnapshotRef.current) {
+            setPriceBookRows(nextRows)
+            initialPriceBookRowsSnapshotRef.current = nextSnapshot
+        }
+    }, [
+        isPriceBookCatalogReady,
+        mode,
+        priceBookRows,
+        priceBooksEnabled,
+        product,
+        sourcePriceBookItems
+    ])
 
     if (!canEdit && mode !== 'edit') {
         return null
@@ -621,6 +730,23 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
             return false
         }
 
+        if (priceBooksEnabled && !isPriceBookCatalogReady) {
+            toast({
+                title: priceBookCatalogError
+                    ? t('common.error', { defaultValue: 'Error' })
+                    : t('priceBooks.loading', { defaultValue: 'Loading Price Book prices' }),
+                description: priceBookCatalogError
+                    ? t('priceBooks.loadingError', {
+                        defaultValue: 'Price Book prices could not be loaded. Retrying automatically...'
+                    })
+                    : t('priceBooks.loadingDescription', {
+                        defaultValue: 'Wait for the existing custom prices to finish loading, then save again.'
+                    }),
+                ...(priceBookCatalogError ? { variant: 'destructive' as const } : {})
+            })
+            return false
+        }
+
         setIsSaving(true)
 
         try {
@@ -649,6 +775,8 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                 createdBy: user?.id || null
             }
 
+            let savedProductId: string
+
             if (isEditing && product && !isClone) {
                 if (product.imageUrl && product.imageUrl !== formData.imageUrl) {
                     assetManager.deleteAsset(product.imageUrl).catch((error) =>
@@ -657,9 +785,32 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                 }
 
                 await updateProduct(product.id, dataToSave)
+                savedProductId = product.id
+            } else if (createdProductIdRef.current) {
+                await updateProduct(createdProductIdRef.current, dataToSave)
+                savedProductId = createdProductIdRef.current
             } else {
                 const createdProduct = await createProduct(workspaceId, dataToSave)
+                createdProductIdRef.current = createdProduct.id
+                savedProductId = createdProduct.id
                 demoTutorial.completeProductCreated(createdProduct)
+            }
+
+            if (priceBooksEnabled) {
+                const savedItems = await replaceProductPriceBookItems(
+                    workspaceId,
+                    savedProductId,
+                    priceBookRows.map((row) => ({
+                        priceBookId: row.priceBookId,
+                        costPrice: Number(row.costPrice),
+                        price: Number(row.price),
+                        currency: row.currency
+                    })),
+                    user?.id || null
+                )
+                const savedRows = mapPriceBookItemsToDrafts(savedItems)
+                setPriceBookRows(savedRows)
+                initialPriceBookRowsSnapshotRef.current = serializePriceBookDrafts(savedRows)
             }
 
             initialFormSnapshotRef.current = JSON.stringify(formData)
@@ -669,8 +820,15 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
             }
 
             return true
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error saving product:', error)
+            toast({
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: error?.message || t('products.messages.saveError', {
+                    defaultValue: 'Failed to save the product'
+                }),
+                variant: 'destructive'
+            })
             return false
         } finally {
             setIsSaving(false)
@@ -1395,6 +1553,36 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                     </div>
                                 </div>
                             </div>
+                            {priceBooksEnabled ? (
+                                isPriceBookCatalogReady ? (
+                                    <ProductPriceBookItemsEditor
+                                        priceBooks={priceBooks}
+                                        rows={priceBookRows}
+                                        onChange={setPriceBookRows}
+                                        defaultCostPrice={String(effectiveCost)}
+                                        defaultPrice={String(effectivePrice)}
+                                        defaultCurrency={formData.currency}
+                                        allowedCurrencies={features.allowed_currencies}
+                                        iqdDisplayPreference={features.iqd_display_preference}
+                                        disabled={isReadOnly}
+                                    />
+                                ) : (
+                                    <div className="border-t border-border/60 pt-6">
+                                        <div className={cn(
+                                            'rounded-2xl border px-4 py-6 text-center text-sm',
+                                            priceBookCatalogError
+                                                ? 'border-destructive/40 bg-destructive/5 text-destructive'
+                                                : 'border-dashed border-border/70 bg-muted/20 text-muted-foreground'
+                                        )}>
+                                            {priceBookCatalogError
+                                                ? t('priceBooks.loadingError', {
+                                                    defaultValue: 'Price Book prices could not be loaded. Retrying automatically...'
+                                                })
+                                                : t('priceBooks.loading', { defaultValue: 'Loading Price Book prices...' })}
+                                        </div>
+                                    </div>
+                                )
+                            ) : null}
                         </CardContent>
                     </Card>
 
@@ -1737,7 +1925,13 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {!isReadOnly && (
-                                <Button type="submit" form="product-form-page" disabled={isSaving} className="h-12 w-full rounded-xl font-black" data-tour-id="tutorial-product-save">
+                                <Button
+                                    type="submit"
+                                    form="product-form-page"
+                                    disabled={isSaving || (priceBooksEnabled && !isPriceBookCatalogReady)}
+                                    className="h-12 w-full rounded-xl font-black"
+                                    data-tour-id="tutorial-product-save"
+                                >
                                     {isSaving
                                         ? (t('common.loading') || 'Loading...')
                                         : isClone
@@ -1846,7 +2040,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                     {t('common.unsavedChanges.continue') || 'Continue Editing'}
                                 </Button>
                                 <Button
-                                    disabled={isSaving}
+                                    disabled={isSaving || (priceBooksEnabled && !isPriceBookCatalogReady)}
                                     onClick={async () => {
                                         const didSave = await persistProduct({ navigateAfterSave: false })
                                         if (didSave) {

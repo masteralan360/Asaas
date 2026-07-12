@@ -1145,13 +1145,32 @@ async function receiveInventoryForPurchaseOrder(order: PurchaseOrder) {
         }
 
         const receivedQuantity = item.receivedQuantity ?? getOrderLineInventoryQuantity(item)
-        const actualUnitCost = roundAmount(item.originalUnitPrice, product.currency)
+        const hasPriceBookProvenance = Boolean(item.priceBookId && item.priceBookItemId)
+        const actualUnitCost = roundAmount(
+            hasPriceBookProvenance
+                ? convertCurrencyAmountWithSnapshot(
+                    item.originalUnitPrice,
+                    item.originalCurrency,
+                    product.currency,
+                    order.exchangeRates
+                )
+                : item.originalUnitPrice,
+            product.currency
+        )
         const productUnitCost = roundAmount(product.costPrice, product.currency)
         const hasDifferentPurchaseCost = shouldCreatePurchaseCostBatch(
             actualUnitCost,
             productUnitCost,
             product.currency
         )
+        const batchSalePrice = item.batchSalePrice ?? product.price
+        const hasDifferentBatchSalePrice = shouldCreatePurchaseCostBatch(
+            batchSalePrice,
+            product.price,
+            product.currency
+        )
+        const shouldCreatePurchaseBatch = hasDifferentPurchaseCost
+            || (hasPriceBookProvenance && hasDifferentBatchSalePrice)
         const storageId = resolvePurchaseOrderItemStorageId(order, item)
         if (!storageId) {
             throw new Error(`Select a target storage for ${item.productName}`)
@@ -1165,7 +1184,7 @@ async function receiveInventoryForPurchaseOrder(order: PurchaseOrder) {
         }
 
         const { sourceItemId, sourceLineKey } = receiptSources[itemIndex]
-        if (hasDifferentPurchaseCost) {
+        if (shouldCreatePurchaseBatch) {
             const existingReceiptBatch = await db.stock_batches
                 .where('[sourcePurchaseOrderId+sourcePurchaseOrderItemId]')
                 .equals([order.id, sourceItemId])
@@ -1188,7 +1207,7 @@ async function receiveInventoryForPurchaseOrder(order: PurchaseOrder) {
             changedInventoryRows.push(changedInventoryRow)
         }
 
-        if (hasDifferentPurchaseCost) {
+        if (shouldCreatePurchaseBatch) {
             const receiptBatchId = uuidv5(
                 sourceLineKey,
                 PURCHASE_BATCH_UUID_NAMESPACE
@@ -1198,7 +1217,7 @@ async function receiveInventoryForPurchaseOrder(order: PurchaseOrder) {
                 storageId,
                 batchNumber: item.batchNumber?.trim() || `${order.orderNumber}-${String(itemIndex + 1).padStart(2, '0')}`,
                 quantity: receivedQuantity,
-                price: item.batchSalePrice ?? product.price,
+                price: batchSalePrice,
                 costPrice: actualUnitCost,
                 currency: product.currency,
                 expiryDate: item.batchExpiryDate ?? null,

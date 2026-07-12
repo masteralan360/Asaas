@@ -81,6 +81,20 @@ export interface Product extends BaseEntity {
   createdBy?: string | null;
 }
 
+export interface PriceBook extends BaseEntity {
+  name: string;
+  createdBy?: string | null;
+}
+
+export interface PriceBookItem extends BaseEntity {
+  priceBookId: string;
+  productId: string;
+  costPrice: number;
+  price: number;
+  currency: CurrencyCode;
+  createdBy?: string | null;
+}
+
 export interface Profile {
   id: string;
   workspaceId: string;
@@ -429,6 +443,7 @@ export interface BusinessPartner extends BaseEntity {
   isEcommerce?: boolean;
   latitude?: number | null;
   longitude?: number | null;
+  priceBookId?: string | null;
 }
 
 export type BusinessPartnerMergeType = "customer_supplier";
@@ -497,6 +512,8 @@ export interface SalesExchange {
 export interface OrderLineItem {
   id: string;
   productId: string;
+  priceBookId?: string | null;
+  priceBookItemId?: string | null;
   storageId?: string | null;
   productName: string;
   productSku: string;
@@ -1441,6 +1458,8 @@ export interface SyncQueueItem {
   entityType:
     | "products"
     | "product_barcodes"
+    | "price_books"
+    | "price_book_items"
     | "inventory"
     | "inventory_transactions"
     | "stock_batches"
@@ -1568,6 +1587,8 @@ export interface OfflineMutation {
   entityType:
     | "products"
     | "product_barcodes"
+    | "price_books"
+    | "price_book_items"
     | "inventory"
     | "inventory_transactions"
     | "stock_batches"
