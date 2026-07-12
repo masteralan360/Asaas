@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Check, Package } from 'lucide-react'
 
 import type { Product } from '@/local-db'
-import { Input } from '@/ui/components'
+import { Input, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/components'
 import { cn } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 
@@ -17,6 +17,8 @@ interface ProductAutocompleteInputProps {
     disabled?: boolean
     hasSelection?: boolean
     linkedLabel?: string
+    linkedTooltip?: string
+    showLinkedIndicator?: boolean
     skuLabel?: string
     storageMissing?: boolean
     onStorageMissingClick?: () => void
@@ -65,6 +67,8 @@ export function ProductAutocompleteInput({
     disabled,
     hasSelection,
     linkedLabel = 'Linked',
+    linkedTooltip,
+    showLinkedIndicator = true,
     skuLabel = 'SKU',
     storageMissing,
     onStorageMissingClick,
@@ -88,6 +92,7 @@ export function ProductAutocompleteInput({
     }, [products, query])
 
     const showDropdown = isFocused && !justSelected && filtered.length > 0
+    const shouldShowLinkedIndicator = Boolean(hasSelection && !storageMissing && showLinkedIndicator)
 
     const handleSelect = useCallback((product: Product) => {
         setJustSelected(true)
@@ -130,6 +135,22 @@ export function ProductAutocompleteInput({
         onChange(e.target.value)
     }
 
+    const linkedIndicator = (
+        <div
+            tabIndex={linkedTooltip ? 0 : undefined}
+            aria-label={linkedLabel}
+            className={cn(
+                'absolute right-2 top-1/2 max-w-24 -translate-y-1/2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                linkedTooltip && 'cursor-help'
+            )}
+        >
+            <span className="flex min-w-0 items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] font-medium text-green-600 dark:text-green-400">
+                <Check className="h-3 w-3 shrink-0" />
+                <span className="truncate">{linkedLabel}</span>
+            </span>
+        </div>
+    )
+
     return (
         <div ref={containerRef} className={cn('relative w-full group', className)}>
             <div className="relative">
@@ -140,18 +161,23 @@ export function ProductAutocompleteInput({
                     placeholder={placeholder}
                     disabled={disabled}
                     className={cn(
-                        'flex-1 pr-20',
+                        'flex-1',
+                        shouldShowLinkedIndicator && 'pr-28',
                         hasSelection && !storageMissing && 'border-green-500/50 bg-green-50/30 dark:bg-green-950/10',
                         storageMissing && 'border-red-500/50 bg-red-50/30 dark:bg-red-950/10'
                     )}
                 />
-                {hasSelection && !storageMissing && (
-                    <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] font-medium text-green-600 dark:text-green-400">
-                            <Check className="h-3 w-3" />
-                            {linkedLabel}
-                        </span>
-                    </div>
+                {shouldShowLinkedIndicator && (
+                    linkedTooltip ? (
+                        <TooltipProvider delayDuration={150}>
+                            <Tooltip>
+                                <TooltipTrigger asChild>{linkedIndicator}</TooltipTrigger>
+                                <TooltipContent side="top" align="end" className="max-w-xs break-words text-xs">
+                                    {linkedTooltip}
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                    ) : linkedIndicator
                 )}
                 {storageMissing && (
                     <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">

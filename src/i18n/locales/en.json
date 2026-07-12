@@ -961,6 +961,8 @@
     "name": "Price Book name",
     "namePlaceholder": "e.g. Wholesale",
     "existing": "Existing Price Books",
+    "products": "{{count}} products",
+    "noProducts": "No products have custom prices in this Price Book.",
     "empty": "No Price Books have been created yet.",
     "edit": "Edit Price Book",
     "cancelEdit": "Cancel edit",

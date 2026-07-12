@@ -1,6 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, CalendarDays, CreditCard, Plus, ShoppingCart, Star, Trash2, Truck, Users, X } from 'lucide-react'
+import { ArrowLeft, CalendarDays, Check, CreditCard, Plus, ShoppingCart, Star, Trash2, Truck, Users, X } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useDemoTutorial } from '@/demo'
@@ -60,6 +60,10 @@ import {
     SelectValue,
     Switch,
     Textarea,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
     useToast
 } from '@/ui/components'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
@@ -855,7 +859,31 @@ export function SalesOrderFormPage({
                                                         data-tour-id={index === 0 ? 'tutorial-order-product-picker' : undefined}
                                                         data-demo-product-linked={item.productId ? 'true' : 'false'}
                                                     >
-                                                        <Label>{t('orders.form.selectProduct', { defaultValue: 'Select Product' })}</Label>
+                                                        <Label className="flex min-w-0 items-center gap-2">
+                                                            <span className="truncate">{t('orders.form.selectProduct', { defaultValue: 'Select Product' })}</span>
+                                                            {item.productId ? (
+                                                                selectedBatch ? (
+                                                                    <TooltipProvider delayDuration={150}>
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger asChild>
+                                                                                <span tabIndex={0} className="inline-flex max-w-40 cursor-help items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] font-medium text-green-600 outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-green-400">
+                                                                                    <Check className="h-3 w-3 shrink-0" />
+                                                                                    <span className="truncate">{selectedBatch.batchNumber}</span>
+                                                                                </span>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent side="top" align="start" className="max-w-xs break-words text-xs">
+                                                                                {t('orders.form.batch', { defaultValue: 'Batch' })}: {selectedBatch.batchNumber}
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                    </TooltipProvider>
+                                                                ) : (
+                                                                    <span className="inline-flex max-w-28 items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] font-medium text-green-600 dark:text-green-400">
+                                                                        <Check className="h-3 w-3 shrink-0" />
+                                                                        <span className="truncate">{t('orders.form.productStock', { defaultValue: 'Product stock' })}</span>
+                                                                    </span>
+                                                                )
+                                                            ) : null}
+                                                        </Label>
                                                         <ProductAutocompleteInput
                                                             value={item.productSearch}
                                                             onChange={(value) => updateItem(index, { productSearch: value, productId: '' })}
@@ -868,9 +896,7 @@ export function SalesOrderFormPage({
                                                                     ? t('priceBooks.loadingErrorShort', { defaultValue: 'Price Books unavailable - retrying...' })
                                                                     : t('orders.form.selectProduct', { defaultValue: 'Select Product' })}
                                                             hasSelection={!!item.productId}
-                                                            linkedLabel={selectedBatch
-                                                                ? `${t('orders.form.batch', { defaultValue: 'Batch' })}: ${selectedBatch.batchNumber}`
-                                                                : t('orders.form.productStock', { defaultValue: 'Product stock' })}
+                                                            showLinkedIndicator={false}
                                                             storageMissing={!item.storageId}
                                                             storageMissingLabel={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}
                                                             onStorageMissingClick={() => handleStorageMissing(index)}
