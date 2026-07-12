@@ -1,7 +1,8 @@
-import { isDesktop } from '@/lib/platform'
+import { isDesktop, isPwaDesktop } from '@/lib/platform'
 import type { Webview } from '@tauri-apps/api/webview'
 
-const STORAGE_KEY = 'atlas_tauri_webview_zoom'
+const TAURI_STORAGE_KEY = 'atlas_tauri_webview_zoom'
+const PWA_STORAGE_KEY = 'atlas_pwa_desktop_zoom'
 const DEFAULT_ZOOM = 1
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 5
@@ -32,20 +33,30 @@ let currentZoom = DEFAULT_ZOOM
 let webviewPromise: Promise<Webview> | null = null
 let accumulatedWheelDelta = 0
 let lastWheelAt = 0
+let zoomRuntime: 'tauri' | 'pwa' | null = null
 
 const clampZoom = (zoom: number): number => {
     if (!Number.isFinite(zoom)) return DEFAULT_ZOOM
     return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(zoom * 100) / 100))
 }
 
-const readStoredZoom = (): number => {
+const getZoomRuntime = (): 'tauri' | 'pwa' | null => {
+    if (isDesktop()) return 'tauri'
+    if (isPwaDesktop()) return 'pwa'
+    return null
+}
+
+const getStorageKey = (runtime: 'tauri' | 'pwa') =>
+    runtime === 'tauri' ? TAURI_STORAGE_KEY : PWA_STORAGE_KEY
+
+const readStoredZoom = (storageKey: string): number => {
     try {
-        const raw = window.localStorage.getItem(STORAGE_KEY)
+        const raw = window.localStorage.getItem(storageKey)
         if (!raw) return DEFAULT_ZOOM
 
         const zoom = Number(raw)
         if (!Number.isFinite(zoom)) {
-            window.localStorage.removeItem(STORAGE_KEY)
+            window.localStorage.removeItem(storageKey)
             return DEFAULT_ZOOM
         }
 
@@ -55,9 +66,9 @@ const readStoredZoom = (): number => {
     }
 }
 
-const writeStoredZoom = (zoom: number) => {
+const writeStoredZoom = (storageKey: string, zoom: number) => {
     try {
-        window.localStorage.setItem(STORAGE_KEY, zoom.toFixed(2))
+        window.localStorage.setItem(storageKey, zoom.toFixed(2))
     } catch {
         // Ignore storage failures; zoom still applies for the current session.
     }
@@ -72,8 +83,17 @@ const applyZoom = (zoom: number, persist: boolean) => {
     const nextZoom = clampZoom(zoom)
     currentZoom = nextZoom
 
+    if (!zoomRuntime) return
+
     if (persist) {
-        writeStoredZoom(nextZoom)
+        writeStoredZoom(getStorageKey(zoomRuntime), nextZoom)
+    }
+
+    if (zoomRuntime === 'pwa') {
+        // Installed desktop PWAs do not have a native webview zoom API. CSS zoom
+        // scales the complete app window, including portals rendered outside #root.
+        document.documentElement.style.setProperty('zoom', nextZoom.toFixed(2))
+        return
     }
 
     void getWebview()
@@ -160,13 +180,19 @@ const handleWheel = (event: WheelEvent) => {
     accumulatedWheelDelta = 0
 }
 
-export const initTauriZoomPersistence = () => {
-    if (initialized || !isDesktop()) return
+export const initDesktopZoomPersistence = () => {
+    if (initialized) return
+
+    zoomRuntime = getZoomRuntime()
+    if (!zoomRuntime) return
 
     initialized = true
-    currentZoom = readStoredZoom()
+    currentZoom = readStoredZoom(getStorageKey(zoomRuntime))
     applyZoom(currentZoom, false)
 
     window.addEventListener('keydown', handleKeyDown, { capture: true })
     window.addEventListener('wheel', handleWheel, { capture: true, passive: false })
 }
+
+// Kept for existing callers while desktop PWA support uses the same controller.
+export const initTauriZoomPersistence = initDesktopZoomPersistence

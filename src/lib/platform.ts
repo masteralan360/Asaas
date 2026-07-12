@@ -8,6 +8,19 @@ export const isTauri = () =>
     !!(window as any).__TAURI_INTERNALS__;
 export const isMobile = () => /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 export const isDesktop = () => isTauri() && !isMobile();
+export const isPwaDesktop = () => {
+    if (isTauri() || isMobile()) return false;
+
+    const pwaNavigator = navigator as Navigator & { standalone?: boolean };
+    if (pwaNavigator.standalone === true) return true;
+
+    try {
+        return window.matchMedia('(display-mode: standalone)').matches
+            || window.matchMedia('(display-mode: window-controls-overlay)').matches;
+    } catch {
+        return false;
+    }
+};
 export const isWeb = () => !isTauri();
 
 export type Platform = 'desktop' | 'mobile' | 'web';
