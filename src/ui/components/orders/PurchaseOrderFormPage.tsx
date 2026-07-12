@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, CalendarDays, CreditCard, PackagePlus, Plus, ShoppingCart, Star, Trash2, Users, Warehouse, X } from 'lucide-react'
 
@@ -125,6 +125,50 @@ function isDynamicUnit(unit: string | undefined) {
     return DYNAMIC_UNITS.includes(unit ?? '')
 }
 
+type PartnerRequiredSectionProps = {
+    locked: boolean
+    unlockLabel: string
+    onLockedInteraction: () => void
+    children: ReactNode
+}
+
+function PartnerRequiredSection({ locked, unlockLabel, onLockedInteraction, children }: PartnerRequiredSectionProps) {
+    const contentRef = useRef<HTMLDivElement>(null)
+
+    useEffect(() => {
+        const content = contentRef.current
+        if (!content) return
+
+        if (locked) {
+            content.setAttribute('inert', '')
+        } else {
+            content.removeAttribute('inert')
+        }
+
+        return () => content.removeAttribute('inert')
+    }, [locked])
+
+    return (
+        <div className={cn('relative rounded-2xl', locked && 'cursor-not-allowed')} aria-disabled={locked || undefined}>
+            <div ref={contentRef} className={cn(locked && 'select-none opacity-70')}>
+                {children}
+            </div>
+            {locked ? (
+                <button
+                    type="button"
+                    className="absolute inset-0 z-10 flex cursor-pointer items-center justify-center rounded-2xl p-4 text-center outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                    onClick={onLockedInteraction}
+                >
+                    <span className="inline-flex items-center gap-2 rounded-full border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive shadow-sm">
+                        <Users className="h-3.5 w-3.5" />
+                        {unlockLabel}
+                    </span>
+                </button>
+            ) : null}
+        </div>
+    )
+}
+
 export function PurchaseOrderFormPage({
     workspaceId,
     onCancel,
@@ -200,12 +244,19 @@ export function PurchaseOrderFormPage({
     const canUseFreeBonus = hasCapability('orderFreeBonus')
     const [highlightedStorageIndex, setHighlightedStorageIndex] = useState<number | null>(null)
     const [highlightedNewSeq, setHighlightedNewSeq] = useState<number | null>(null)
+    const [isSupplierInformationHighlighted, setIsSupplierInformationHighlighted] = useState(false)
+    const supplierInformationRef = useRef<HTMLDivElement>(null)
+    const supplierHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     useEffect(() => {
         if (highlightedNewSeq == null) return
         const timeout = setTimeout(() => setHighlightedNewSeq(null), 1600)
         return () => clearTimeout(timeout)
     }, [highlightedNewSeq])
+
+    useEffect(() => () => {
+        if (supplierHighlightTimeoutRef.current) clearTimeout(supplierHighlightTimeoutRef.current)
+    }, [])
 
 
     useEffect(() => {
@@ -266,6 +317,7 @@ export function PurchaseOrderFormPage({
     const liveRates = useMemo(() => ({ exchangeData, eurRates, tryRates }), [exchangeData, eurRates, tryRates])
 
     const selectedSupplier = supplierPartners.find((entry) => entry.id === supplierId)
+    const isSupplierSelectionRequired = !editingOrderId && !selectedSupplier
 
     const getPriceBookItemForPartner = useCallback((partner: Pick<BusinessPartner, 'priceBookId'> | null | undefined, productId: string) =>
         findPartnerProductPriceBookItem(
@@ -348,6 +400,23 @@ export function PurchaseOrderFormPage({
         const el = document.getElementById(`purchase-storage-${index}`)
         el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, [])
+
+    const highlightSupplierInformation = useCallback(() => {
+        if (!isSupplierSelectionRequired) return
+
+        setIsSupplierInformationHighlighted(true)
+        if (supplierHighlightTimeoutRef.current) clearTimeout(supplierHighlightTimeoutRef.current)
+        supplierHighlightTimeoutRef.current = setTimeout(() => {
+            setIsSupplierInformationHighlighted(false)
+            supplierHighlightTimeoutRef.current = null
+        }, 1800)
+
+        const supplierInformation = supplierInformationRef.current
+        supplierInformation?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+        setTimeout(() => {
+            supplierInformation?.querySelector<HTMLElement>('input, button')?.focus({ preventScroll: true })
+        }, 250)
+    }, [isSupplierSelectionRequired])
 
     const updateItem = (index: number, changes: Partial<FormItem>) => {
         setItems((current) =>
@@ -587,7 +656,14 @@ export function PurchaseOrderFormPage({
 
                 <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.95fr)]">
                             <div className="space-y-5">
-                                <Card>
+                                <Card
+                                    ref={supplierInformationRef}
+                                    tabIndex={-1}
+                                    className={cn(
+                                        'transition-[border-color,box-shadow] duration-200',
+                                        isSupplierInformationHighlighted && 'border-destructive ring-2 ring-destructive/70 ring-offset-2 ring-offset-background motion-safe:animate-pulse'
+                                    )}
+                                >
                                     <CardHeader>
                                         <CardTitle>{t('orders.form.supplierInformation', { defaultValue: 'Supplier Information' })}</CardTitle>
                                     </CardHeader>
@@ -689,7 +765,15 @@ export function PurchaseOrderFormPage({
                                     }}
                                 />
 
-                                <Card>
+                                <PartnerRequiredSection
+                                    locked={isSupplierSelectionRequired}
+                                    unlockLabel={t('orders.form.selectBusinessPartnerToUnlock', { defaultValue: 'Select a business partner to unlock this section.' })}
+                                    onLockedInteraction={highlightSupplierInformation}
+                                >
+                                <Card className={cn(
+                                    'transition-[border-color,background-color] duration-200',
+                                    isSupplierSelectionRequired && 'border-destructive/70 bg-destructive/5'
+                                )}>
                                     <CardHeader className="flex flex-col items-start justify-between gap-4 space-y-0 sm:flex-row">
                                         <div className="space-y-1">
                                             <CardTitle>{t('orders.form.lineItems', { defaultValue: 'Line Items' })}</CardTitle>
@@ -873,8 +957,20 @@ export function PurchaseOrderFormPage({
                                         })}
                                     </CardContent>
                                 </Card>
+                                </PartnerRequiredSection>
 
-                                <Card data-tour-id="tutorial-order-notes">
+                                <PartnerRequiredSection
+                                    locked={isSupplierSelectionRequired}
+                                    unlockLabel={t('orders.form.selectBusinessPartnerToUnlock', { defaultValue: 'Select a business partner to unlock this section.' })}
+                                    onLockedInteraction={highlightSupplierInformation}
+                                >
+                                <Card
+                                    data-tour-id="tutorial-order-notes"
+                                    className={cn(
+                                        'transition-[border-color,background-color] duration-200',
+                                        isSupplierSelectionRequired && 'border-destructive/70 bg-destructive/5'
+                                    )}
+                                >
                                     <CardHeader>
                                         <CardTitle>{t('orders.form.notes', { defaultValue: 'Notes' })}</CardTitle>
                                     </CardHeader>
@@ -887,10 +983,19 @@ export function PurchaseOrderFormPage({
                                         />
                                     </CardContent>
                                 </Card>
+                                </PartnerRequiredSection>
                             </div>
 
                             <div className="space-y-5">
-                                <Card>
+                                <PartnerRequiredSection
+                                    locked={isSupplierSelectionRequired}
+                                    unlockLabel={t('orders.form.selectBusinessPartnerToUnlock', { defaultValue: 'Select a business partner to unlock this section.' })}
+                                    onLockedInteraction={highlightSupplierInformation}
+                                >
+                                <Card className={cn(
+                                    'transition-[border-color,background-color] duration-200',
+                                    isSupplierSelectionRequired && 'border-destructive/70 bg-destructive/5'
+                                )}>
                                     <CardHeader>
                                         <CardTitle>{t('orders.form.orderDetails', { defaultValue: 'Order Details' })}</CardTitle>
                                     </CardHeader>
@@ -1009,8 +1114,20 @@ export function PurchaseOrderFormPage({
                                         ) : null}
                                     </CardContent>
                                 </Card>
+                                </PartnerRequiredSection>
 
-                                <Card data-tour-id="tutorial-order-commercials">
+                                <PartnerRequiredSection
+                                    locked={isSupplierSelectionRequired}
+                                    unlockLabel={t('orders.form.selectBusinessPartnerToUnlock', { defaultValue: 'Select a business partner to unlock this section.' })}
+                                    onLockedInteraction={highlightSupplierInformation}
+                                >
+                                <Card
+                                    data-tour-id="tutorial-order-commercials"
+                                    className={cn(
+                                        'transition-[border-color,background-color] duration-200',
+                                        isSupplierSelectionRequired && 'border-destructive/70 bg-destructive/5'
+                                    )}
+                                >
                                     <CardHeader>
                                         <CardTitle>{t('orders.form.commercials', { defaultValue: 'Commercials' })}</CardTitle>
                                     </CardHeader>
@@ -1042,6 +1159,7 @@ export function PurchaseOrderFormPage({
                                         </div>
                                     </CardContent>
                                 </Card>
+                                </PartnerRequiredSection>
                                 <Card className="border-border/60 shadow-sm">
                                     <CardHeader className="space-y-1">
                                         <CardTitle className="text-xl">{t('common.actions') || 'Actions'}</CardTitle>

@@ -1667,6 +1667,7 @@
       "customer": "Customer",
       "supplier": "Supplier",
       "selectCustomer": "Select Customer",
+      "selectBusinessPartnerToUnlock": "Select a business partner to unlock this section.",
       "selectSupplier": "Select Supplier",
       "selectProduct": "Select Product",
       "selectStorage": "Select Storage",
