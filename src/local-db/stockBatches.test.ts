@@ -232,6 +232,36 @@ describe('multi-line stock batch allocation', () => {
             expect.objectContaining({ batchId: 'batch-early', quantity: 2.5 })
         ])
     })
+
+    it('uses the batch explicitly selected on a sales-order line', async () => {
+        const [plan] = await getStockBatchSalePlans([
+            {
+                productId: 'product-1',
+                storageId: 'storage-1',
+                quantity: 2,
+                selectedBatchAllocations: [{ batchId: 'batch-late', quantity: 2 }]
+            }
+        ])
+
+        expect(plan.allocations).toEqual([
+            expect.objectContaining({ batchId: 'batch-late', quantity: 2 })
+        ])
+    })
+
+    it('keeps an explicitly selected regular-stock line out of batches', async () => {
+        testState.inventoryByPosition.set('product-1:storage-1', 10)
+
+        const [plan] = await getStockBatchSalePlans([
+            {
+                productId: 'product-1',
+                storageId: 'storage-1',
+                quantity: 3,
+                selectedBatchAllocations: []
+            }
+        ])
+
+        expect(plan.allocations).toEqual([])
+    })
 })
 
 describe('stock batch transfer planning', () => {

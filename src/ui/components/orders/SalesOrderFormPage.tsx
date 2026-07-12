@@ -29,13 +29,15 @@ import {
     useInventory,
     useProducts,
     useSalesOrder,
+    useStockBatches,
     useStorages,
     type BusinessPartner,
     type CurrencyCode,
     type InstallmentFrequency,
     type SalesOrder,
     type SalesOrderItem,
-    type SalesOrderStatus
+    type SalesOrderStatus,
+    type StockBatch
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { useWorkspacePermissions } from '@/permissions'
@@ -76,10 +78,11 @@ type FormItem = {
     quantity: string
     freeBonusQuantity: string
     unitPrice: string
+    batchId: string
 }
 
 function createEmptyItem(storageId = '', seq = 1): FormItem {
-    return { seq, productId: '', productSearch: '', storageId, quantity: '1', freeBonusQuantity: '0', unitPrice: '' }
+    return { seq, productId: '', productSearch: '', storageId, quantity: '1', freeBonusQuantity: '0', unitPrice: '', batchId: '' }
 }
 
 function roundFormAmount(value: number) {
@@ -90,6 +93,17 @@ const DYNAMIC_UNITS = ['m²', 'Kg']
 
 function isDynamicUnit(unit: string | undefined) {
     return DYNAMIC_UNITS.includes(unit ?? '')
+}
+
+const PRODUCT_STOCK_SELECTION = '__product_stock__'
+
+function sortBatchesForSalesOrder(batches: StockBatch[]) {
+    return [...batches].sort((left, right) =>
+        (left.expiryDate ?? '9999-12-31').localeCompare(right.expiryDate ?? '9999-12-31')
+        || (left.manufacturingDate ?? '9999-12-31').localeCompare(right.manufacturingDate ?? '9999-12-31')
+        || left.createdAt.localeCompare(right.createdAt)
+        || left.batchNumber.localeCompare(right.batchNumber)
+    )
 }
 
 function getCommonStorageId(items: Array<{ storageId?: string | null }>, fallbackStorageId = '') {
@@ -113,6 +127,7 @@ export function SalesOrderFormPage({
 
     const products = useProducts(workspaceId)
     const inventory = useInventory(workspaceId)
+    const stockBatches = useStockBatches(workspaceId)
     const storages = useStorages(workspaceId)
     const customerPartners = useBusinessPartners(workspaceId, { roles: ['customer'] })
     const editingOrder = useSalesOrder(editingOrderId)
@@ -150,7 +165,8 @@ export function SalesOrderFormPage({
                     storageId: item.storageId || editingOrder.sourceStorageId || defaultStorageId,
                     quantity: String(item.quantity),
                     freeBonusQuantity: String(getOrderLineFreeBonusQuantity(item)),
-                    unitPrice: String(item.convertedUnitPrice)
+                    unitPrice: String(item.convertedUnitPrice),
+                    batchId: item.batchAllocations?.[0]?.batchId || ''
                 }
             })
         }
@@ -194,7 +210,8 @@ export function SalesOrderFormPage({
                 storageId: item.storageId || editingOrder.sourceStorageId || defaultStorageId,
                 quantity: String(item.quantity),
                 freeBonusQuantity: String(getOrderLineFreeBonusQuantity(item)),
-                unitPrice: String(item.convertedUnitPrice)
+                unitPrice: String(item.convertedUnitPrice),
+                batchId: item.batchAllocations?.[0]?.batchId || ''
             }
         }))
     }, [defaultStorageId, editingOrder])
@@ -234,22 +251,60 @@ export function SalesOrderFormPage({
     const inventoryByStorageProduct = useMemo(() => new Map(
         inventory.map((row) => [`${row.storageId}:${row.productId}`, row.quantity])
     ), [inventory])
+    const stockBatchesById = useMemo(
+        () => new Map(stockBatches.map((batch) => [batch.id, batch])),
+        [stockBatches]
+    )
+    const stockBatchesByPosition = useMemo(() => {
+        const rows = new Map<string, StockBatch[]>()
+        for (const batch of stockBatches) {
+            if (batch.quantity <= 0) continue
+            const key = `${batch.storageId}:${batch.productId}`
+            const current = rows.get(key) ?? []
+            current.push(batch)
+            rows.set(key, current)
+        }
+        for (const [key, batches] of rows) {
+            rows.set(key, sortBatchesForSalesOrder(batches))
+        }
+        return rows
+    }, [stockBatches])
 
-    const getAvailableQuantity = (productId: string, storageId: string) => {
+    const getAvailableQuantity = useCallback((productId: string, storageId: string) => {
         if (!productId || !storageId) return 0
         return inventoryByStorageProduct.get(`${storageId}:${productId}`) ?? 0
-    }
+    }, [inventoryByStorageProduct])
+
+    const getBatchesForPosition = useCallback((productId: string, storageId: string) =>
+        stockBatchesByPosition.get(`${storageId}:${productId}`) ?? [],
+    [stockBatchesByPosition])
+
+    const getRegularStockQuantity = useCallback((productId: string, storageId: string) =>
+        Math.max(
+            getAvailableQuantity(productId, storageId)
+            - getBatchesForPosition(productId, storageId).reduce((sum, batch) => sum + batch.quantity, 0),
+            0
+        ),
+    [getAvailableQuantity, getBatchesForPosition])
 
     const getSalesProductOptions = (storageId: string, selectedProductId: string) => {
         const availableIds = availableSalesProductIdsByStorage.get(storageId) ?? new Set<string>()
         return products.filter((product) => product.id === selectedProductId || availableIds.has(product.id))
     }
 
-    const applyDefaultItemPrice = (productId: string, partnerCurrency: CurrencyCode) => {
+    const applyDefaultItemPrice = useCallback((productId: string, partnerCurrency: CurrencyCode) => {
         const product = products.find((entry) => entry.id === productId)
         if (!product) return ''
         return String(convertCurrencyAmountWithLiveRates(product.price, product.currency, partnerCurrency, liveRates))
-    }
+    }, [liveRates, products])
+
+    const getBatchSelectionPrice = useCallback((productId: string, batchId: string, partnerCurrency: CurrencyCode) => {
+        const batch = stockBatchesById.get(batchId)
+        if (!batch || batch.productId !== productId) {
+            return applyDefaultItemPrice(productId, partnerCurrency)
+        }
+        return String(convertCurrencyAmountWithLiveRates(batch.price, batch.currency, partnerCurrency, liveRates))
+    }, [applyDefaultItemPrice, liveRates, stockBatchesById])
 
     const handleStorageMissing = useCallback((index: number) => {
         setHighlightedStorageIndex(index)
@@ -263,13 +318,50 @@ export function SalesOrderFormPage({
             current.map((item, itemIndex) => {
                 if (itemIndex !== index) return item
                 const next = { ...item, ...changes }
-                if (changes.productId && (!item.unitPrice || changes.productId !== item.productId)) {
-                    next.unitPrice = applyDefaultItemPrice(changes.productId, currency)
+                if (changes.productId !== undefined) {
+                    if (!changes.productId) {
+                        next.batchId = ''
+                    } else {
+                        const preferredBatch = getBatchesForPosition(changes.productId, next.storageId)[0]
+                        next.batchId = preferredBatch?.id || ''
+                        next.unitPrice = preferredBatch
+                            ? getBatchSelectionPrice(changes.productId, preferredBatch.id, currency)
+                            : applyDefaultItemPrice(changes.productId, currency)
+                    }
+                } else if (changes.storageId !== undefined && next.productId) {
+                    const preferredBatch = getBatchesForPosition(next.productId, changes.storageId)[0]
+                    next.batchId = preferredBatch?.id || ''
+                    next.unitPrice = preferredBatch
+                        ? getBatchSelectionPrice(next.productId, preferredBatch.id, currency)
+                        : applyDefaultItemPrice(next.productId, currency)
+                } else if (changes.batchId !== undefined) {
+                    next.unitPrice = changes.batchId === PRODUCT_STOCK_SELECTION
+                        ? applyDefaultItemPrice(next.productId, currency)
+                        : getBatchSelectionPrice(next.productId, changes.batchId, currency)
                 }
                 return next
             })
         )
     }
+
+    useEffect(() => {
+        if (stockBatches.length === 0) return
+        setItems((current) => {
+            let changed = false
+            const next = current.map((item) => {
+                if (!item.productId || !item.storageId || item.batchId) return item
+                const preferredBatch = getBatchesForPosition(item.productId, item.storageId)[0]
+                if (!preferredBatch) return item
+                changed = true
+                return {
+                    ...item,
+                    batchId: preferredBatch.id,
+                    unitPrice: getBatchSelectionPrice(item.productId, preferredBatch.id, currency)
+                }
+            })
+            return changed ? next : current
+        })
+    }, [currency, getBatchSelectionPrice, getBatchesForPosition, stockBatches.length])
 
     const preview = useMemo(() => {
         const subtotal = items.reduce((sum, item) => sum + ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)), 0)
@@ -337,8 +429,28 @@ export function SalesOrderFormPage({
                         }))
                     }
                     const freeBonusQuantity = freeBonusQuantityValue
+                    const inventoryQuantity = quantity + freeBonusQuantity
+                    const selectedBatch = item.batchId && item.batchId !== PRODUCT_STOCK_SELECTION
+                        ? stockBatchesById.get(item.batchId)
+                        : null
+                    if (item.batchId && item.batchId !== PRODUCT_STOCK_SELECTION) {
+                        if (!selectedBatch
+                            || selectedBatch.productId !== product.id
+                            || selectedBatch.storageId !== item.storageId) {
+                            throw new Error(t('orders.form.errors.batchNotAvailable', {
+                                productName: product.name,
+                                defaultValue: `The selected batch for ${product.name} is no longer available.`
+                            }))
+                        }
+                        if (inventoryQuantity > selectedBatch.quantity) {
+                            throw new Error(t('orders.form.errors.batchQuantityExceeded', {
+                                productName: product.name,
+                                defaultValue: `The selected batch for ${product.name} does not have enough stock.`
+                            }))
+                        }
+                    }
                     return {
-                        id: `${product.id}-${item.storageId}-${quantity}-${freeBonusQuantity}-${unitPrice}`,
+                        id: `${product.id}-${item.storageId}-${item.batchId}-${quantity}-${freeBonusQuantity}-${unitPrice}`,
                         productId: product.id,
                         storageId: item.storageId,
                         productName: product.name,
@@ -351,7 +463,23 @@ export function SalesOrderFormPage({
                         convertedUnitPrice: roundFormAmount(unitPrice),
                         settlementCurrency: currency,
                         costPrice: product.costPrice,
-                        convertedCostPrice: convertCurrencyAmountWithLiveRates(product.costPrice, product.currency, currency, liveRates)
+                        convertedCostPrice: convertCurrencyAmountWithLiveRates(product.costPrice, product.currency, currency, liveRates),
+                        ...(item.batchId === ''
+                            ? { batchAllocations: null }
+                            : item.batchId === PRODUCT_STOCK_SELECTION
+                                ? { batchAllocations: [] }
+                                : {
+                                    batchAllocations: [{
+                                        batchId: selectedBatch!.id,
+                                        batchNumber: selectedBatch!.batchNumber,
+                                        quantity: inventoryQuantity,
+                                        price: selectedBatch!.price,
+                                        costPrice: selectedBatch!.costPrice,
+                                        currency: selectedBatch!.currency,
+                                        expiryDate: selectedBatch!.expiryDate ?? null,
+                                        manufacturingDate: selectedBatch!.manufacturingDate ?? null
+                                    }]
+                                })
                     }
                 })
 
@@ -577,6 +705,14 @@ export function SalesOrderFormPage({
                                             const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))
                                             const freeBonusQuantity = Math.max(0, Number(item.freeBonusQuantity || 0))
                                             const inventoryQuantity = (Number(item.quantity) || 0) + (canUseFreeBonus ? freeBonusQuantity : 0)
+                                            const lineBatches = getBatchesForPosition(item.productId, item.storageId)
+                                            const selectedBatch = item.batchId && item.batchId !== PRODUCT_STOCK_SELECTION
+                                                ? stockBatchesById.get(item.batchId)
+                                                : null
+                                            const batchSelectionValue = item.batchId || PRODUCT_STOCK_SELECTION
+                                            const regularStockQuantity = getRegularStockQuantity(item.productId, item.storageId)
+                                            const selectedSourceQuantity = selectedBatch?.quantity ?? regularStockQuantity
+                                            const selectedSourceExceeded = Boolean(item.productId && item.storageId && inventoryQuantity > selectedSourceQuantity)
 
                                             return (
                                                 <div
@@ -605,10 +741,44 @@ export function SalesOrderFormPage({
                                                             products={getSalesProductOptions(item.storageId, item.productId)}
                                                             placeholder={t('orders.form.selectProduct', { defaultValue: 'Select Product' })}
                                                             hasSelection={!!item.productId}
+                                                            linkedLabel={selectedBatch
+                                                                ? `${t('orders.form.batch', { defaultValue: 'Batch' })}: ${selectedBatch.batchNumber}`
+                                                                : t('orders.form.productStock', { defaultValue: 'Product stock' })}
                                                             storageMissing={!item.storageId}
                                                             storageMissingLabel={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}
                                                             onStorageMissingClick={() => handleStorageMissing(index)}
                                                         />
+                                                        {item.productId && item.storageId ? (
+                                                            <div className="space-y-1.5 pt-1">
+                                                                <Label className="text-xs">{t('orders.form.stockSource', { defaultValue: 'Stock source' })}</Label>
+                                                                <Select value={batchSelectionValue} onValueChange={(value) => updateItem(index, { batchId: value })}>
+                                                                    <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value={PRODUCT_STOCK_SELECTION} disabled={regularStockQuantity <= 0 && lineBatches.length > 0}>
+                                                                            {t('orders.form.productStock', { defaultValue: 'Product stock' })} · {regularStockQuantity} {t('orders.form.available', { defaultValue: 'available' })}
+                                                                        </SelectItem>
+                                                                        {lineBatches.map((batch) => (
+                                                                            <SelectItem key={batch.id} value={batch.id}>
+                                                                                {t('orders.form.batch', { defaultValue: 'Batch' })} {batch.batchNumber} · {batch.quantity} · {formatCurrency(
+                                                                                    convertCurrencyAmountWithLiveRates(batch.price, batch.currency, currency, liveRates),
+                                                                                    currency,
+                                                                                    features.iqd_display_preference
+                                                                                )}
+                                                                            </SelectItem>
+                                                                        ))}
+                                                                    </SelectContent>
+                                                                </Select>
+                                                                <p className={cn('text-xs', selectedSourceExceeded ? 'text-destructive' : 'text-muted-foreground')}>
+                                                                    {selectedBatch
+                                                                        ? `${t('orders.form.batch', { defaultValue: 'Batch' })} ${selectedBatch.batchNumber}: ${selectedBatch.quantity} ${t('orders.form.available', { defaultValue: 'available' })}`
+                                                                        : `${t('orders.form.productStock', { defaultValue: 'Product stock' })}: ${regularStockQuantity} ${t('orders.form.available', { defaultValue: 'available' })}`}
+                                                                    {selectedSourceExceeded ? ` — ${t('orders.form.errors.batchQuantityExceeded', {
+                                                                        productName: product?.name || '',
+                                                                        defaultValue: 'Selected source does not have enough stock.'
+                                                                    })}` : ''}
+                                                                </p>
+                                                            </div>
+                                                        ) : null}
                                                     </div>
                                                     <div id={`sales-storage-${index}`} className={cn('space-y-2', highlightedStorageIndex === index && 'animate-pulse')} data-tour-id={index === 0 ? 'tutorial-order-storage' : undefined}>
                                                         <Label className={cn(highlightedStorageIndex === index && 'text-destructive font-bold')}>{t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}</Label>

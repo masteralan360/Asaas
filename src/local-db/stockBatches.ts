@@ -73,6 +73,12 @@ export interface StockBatchSaleRequest {
     productId: string
     storageId: string
     quantity: number
+    /**
+     * `undefined` keeps the legacy automatic FEFO allocation. An empty array
+     * explicitly uses regular (non-batch) stock; otherwise only these batches
+     * are used for the line.
+     */
+    selectedBatchAllocations?: StockBatchTransferSelection[]
 }
 
 export interface StockBatchTransferSelection {
@@ -672,7 +678,13 @@ export async function getStockBatchSalePlans(
         return {
             productId: request.productId,
             storageId: request.storageId,
-            quantity: roundQuantity(quantity)
+            quantity: roundQuantity(quantity),
+            selectedBatchAllocations: request.selectedBatchAllocations === undefined
+                ? undefined
+                : request.selectedBatchAllocations.map((selection) => ({
+                    batchId: selection.batchId,
+                    quantity: roundQuantity(Number(selection.quantity))
+                }))
         }
     })
     const positionKeys = Array.from(new Set(normalizedRequests.map((request) =>
@@ -721,30 +733,62 @@ export async function getStockBatchSalePlans(
         }
 
         const allocations: StockBatchAllocation[] = []
-        let remaining = request.quantity
+        if (request.selectedBatchAllocations === undefined) {
+            let remaining = request.quantity
+            for (const batch of state.batches) {
+                if (remaining <= QUANTITY_EPSILON) {
+                    break
+                }
 
-        for (const batch of state.batches) {
-            if (remaining <= QUANTITY_EPSILON) {
-                break
+                const allocatedQuantity = Math.min(remaining, batch.remainingQuantity)
+                if (allocatedQuantity <= QUANTITY_EPSILON) {
+                    continue
+                }
+
+                allocations.push(toBatchAllocation(batch, allocatedQuantity))
+                batch.remainingQuantity = roundQuantity(batch.remainingQuantity - allocatedQuantity)
+                remaining = roundQuantity(remaining - allocatedQuantity)
+            }
+        } else {
+            const requestedByBatchId = new Map<string, number>()
+            for (const selection of request.selectedBatchAllocations) {
+                const batchId = selection.batchId?.trim()
+                if (!batchId || !isPositiveQuantity(selection.quantity)) {
+                    throw new Error('Invalid batch selection')
+                }
+                requestedByBatchId.set(
+                    batchId,
+                    roundQuantity((requestedByBatchId.get(batchId) || 0) + selection.quantity)
+                )
             }
 
-            const allocatedQuantity = Math.min(remaining, batch.remainingQuantity)
-            if (allocatedQuantity <= QUANTITY_EPSILON) {
-                continue
+            const selectedQuantity = Array.from(requestedByBatchId.values())
+                .reduce((sum, quantity) => roundQuantity(sum + quantity), 0)
+            if (selectedQuantity - request.quantity > QUANTITY_EPSILON) {
+                throw new Error('Selected batch quantity exceeds the sale quantity')
             }
 
-            allocations.push({
-                batchId: batch.id,
-                batchNumber: batch.batchNumber,
-                quantity: allocatedQuantity,
-                price: batch.price,
-                costPrice: batch.costPrice,
-                currency: batch.currency,
-                expiryDate: batch.expiryDate ?? null,
-                manufacturingDate: batch.manufacturingDate ?? null
-            })
-            batch.remainingQuantity = roundQuantity(batch.remainingQuantity - allocatedQuantity)
-            remaining = roundQuantity(remaining - allocatedQuantity)
+            for (const [batchId, quantity] of requestedByBatchId) {
+                const batch = state.batches.find((entry) => entry.id === batchId)
+                if (!batch) {
+                    throw new Error('One or more selected batches are no longer available')
+                }
+                if (quantity - batch.remainingQuantity > QUANTITY_EPSILON) {
+                    throw new Error(`Batch ${batch.batchNumber} does not have enough stock`)
+                }
+
+                allocations.push(toBatchAllocation(batch, quantity))
+                batch.remainingQuantity = roundQuantity(batch.remainingQuantity - quantity)
+            }
+
+            const regularQuantity = roundQuantity(request.quantity - selectedQuantity)
+            const regularAvailable = roundQuantity(Math.max(
+                state.remainingInventory - state.batches.reduce((sum, batch) => sum + batch.remainingQuantity, 0),
+                0
+            ))
+            if (regularQuantity - regularAvailable > QUANTITY_EPSILON) {
+                throw new Error('Insufficient regular stock in source storage')
+            }
         }
 
         state.remainingInventory = roundQuantity(state.remainingInventory - request.quantity)

@@ -1240,6 +1240,11 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                     <div>
                                                         <div className="text-lg font-semibold">{item.productName}</div>
                                                         <div className="text-xs text-muted-foreground">{item.productSku || 'N/A'}</div>
+                                                        {isSales && salesItem.batchAllocations?.length ? (
+                                                            <div className="mt-1 text-xs font-medium text-primary">
+                                                                {t('orders.form.batch', { defaultValue: 'Batch' })}: {salesItem.batchAllocations.map((allocation) => `${allocation.batchNumber} (${allocation.quantity})`).join(', ')}
+                                                            </div>
+                                                        ) : null}
                                                     </div>
                                                     <div className={cn(
                                                         'rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em]',
@@ -1338,9 +1343,14 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                      <TableRow key={item.id} className={cn(
                                                          isItemFullyReturned ? 'bg-rose-500/5' : hasItemPartialReturn ? 'bg-orange-500/5' : ''
                                                      )}>
-                                                         <TableCell>
+                                                        <TableCell>
                                                              <div className={cn('font-semibold', isItemFullyReturned && 'line-through opacity-50')}>{item.productName}</div>
                                                             <div className="text-xs text-muted-foreground">{item.productSku || 'N/A'}</div>
+                                                            {isSales && salesItem.batchAllocations?.length ? (
+                                                                <div className="mt-1 text-xs font-medium text-primary">
+                                                                    {t('orders.form.batch', { defaultValue: 'Batch' })}: {salesItem.batchAllocations.map((allocation) => `${allocation.batchNumber} (${allocation.quantity})`).join(', ')}
+                                                                </div>
+                                                            ) : null}
                                                         </TableCell>
                                                         <TableCell>{storageName(item.storageId || mainStorageId)}</TableCell>
                                                          <TableCell className="text-end">

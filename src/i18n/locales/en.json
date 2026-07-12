@@ -1666,6 +1666,10 @@
       "completionHint": "Completing this order will add stock to {{storageName}}.",
       "freeBonus": "Free Bonus",
       "inventoryQuantity": "Inventory Qty",
+      "stockSource": "Stock source",
+      "productStock": "Product stock",
+      "batch": "Batch",
+      "available": "available",
       "errors": {
         "noSuppliers": "Add suppliers before creating purchase orders.",
         "paymentMethodRequired": "Select an actual payment method for paid orders.",
@@ -1676,6 +1680,8 @@
         "saveSalesFailed": "Failed to save sales order.",
         "savePurchaseFailed": "Failed to save purchase order.",
         "invalidFreeBonus": "Enter a valid free bonus for {{productName}}.",
+        "batchNotAvailable": "The selected batch for {{productName}} is no longer available.",
+        "batchQuantityExceeded": "The selected source does not have enough stock for {{productName}}.",
         "non_financed_order_must_be_paid": "This order must be paid in full before it can be reserved. To reserve it with an outstanding balance, select Loans or Installments as the payment method."
       }
     },

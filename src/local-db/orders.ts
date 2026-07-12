@@ -711,7 +711,13 @@ async function deductInventoryForSalesOrder(order: SalesOrder) {
     const salePlans = await getStockBatchSalePlans(order.items.map((item) => ({
         productId: item.productId,
         storageId: resolveSalesOrderItemStorageId(order, item) as string,
-        quantity: getOrderLineInventoryQuantity(item)
+        quantity: getOrderLineInventoryQuantity(item),
+        selectedBatchAllocations: item.batchAllocations == null
+            ? undefined
+            : item.batchAllocations.map((allocation) => ({
+                batchId: allocation.batchId,
+                quantity: allocation.quantity
+            }))
     })))
 
     await db.transaction(
