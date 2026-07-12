@@ -5231,8 +5231,12 @@ export function toUISaleFromOrder(order: any): any {
         original_unit_price: item.originalUnitPrice || item.original_unit_price || item.unitPrice || item.unit_price || 0,
         converted_unit_price: item.convertedUnitPrice || item.converted_unit_price || item.unitPrice || item.unit_price || 0,
         settlement_currency: order.currency || order.settlement_currency,
-        returned_quantity: 0,
-        is_returned: false,
+        returned_quantity: Math.min(
+            Math.max(0, Number(item.quantity || 0)),
+            Math.max(0, Number(item.returnedQuantity || item.returned_quantity || 0))
+        ),
+        is_returned: Math.max(0, Number(item.returnedQuantity || item.returned_quantity || 0)) >= Math.max(0, Number(item.quantity || 0))
+            && Math.max(0, Number(item.quantity || 0)) > 0,
         product: {
             name: item.productName || 'Unknown Product',
             sku: item.productSku || '',
@@ -5245,6 +5249,9 @@ export function toUISaleFromOrder(order: any): any {
         workspace_id: order.workspaceId,
         cashier_id: order.createdBy || '',
         total_amount: Number(order.total || (order as any).total_amount || 0),
+        original_total_amount: order.originalTotalAmount ?? order.original_total_amount,
+        returned_amount: order.returnedAmount ?? order.returned_amount,
+        return_status: order.returnStatus ?? order.return_status ?? 'none',
         settlement_currency: order.currency || 'usd',
         exchange_source: order.exchangeRateSource,
         exchange_rate: order.exchangeRate,
@@ -5256,7 +5263,8 @@ export function toUISaleFromOrder(order: any): any {
         payment_method: order.paymentMethod || 'cash',
         cashier_name: order.customerName || 'Order',
         items,
-        is_returned: false,
+        is_returned: (order.returnStatus ?? order.return_status) === 'full',
+        has_partial_return: (order.returnStatus ?? order.return_status) === 'partial',
         sequenceId: order.orderNumber || order.order_number,
         notes: order.notes,
         _isOrder: true,

@@ -345,19 +345,17 @@ function filterObligations(
 }
 
 function getActivePaymentTransactionAmount(rows: PaymentTransaction[]) {
-    const reversedIds = new Set(
-        rows
-            .filter((row) => !row.isDeleted && !!row.reversalOfTransactionId)
-            .map((row) => row.reversalOfTransactionId as string)
-    )
-
-    return rows
-        .filter((row) =>
-            !row.isDeleted
-            && !row.reversalOfTransactionId
-            && !reversedIds.has(row.id)
+    const reversalAmounts = new Map<string, number>()
+    for (const row of rows) {
+        if (row.isDeleted || !row.reversalOfTransactionId) continue
+        reversalAmounts.set(
+            row.reversalOfTransactionId,
+            (reversalAmounts.get(row.reversalOfTransactionId) || 0) + Math.abs(Number(row.amount || 0))
         )
-        .reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0)
+    }
+    return rows
+        .filter((row) => !row.isDeleted && !row.reversalOfTransactionId)
+        .reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0) - (reversalAmounts.get(row.id) || 0)), 0)
 }
 
 async function hydratePaymentSourceTables(workspaceId: string) {

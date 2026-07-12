@@ -512,6 +512,8 @@ export interface OrderLineItem {
 export interface SalesOrderItem extends OrderLineItem {
   costPrice: number;
   convertedCostPrice: number;
+  /** Cumulative quantity returned from this line. The immutable return rows remain the source of truth. */
+  returnedQuantity?: number;
   reservedQuantity?: number;
   fulfilledQuantity?: number;
   batchAllocations?: StockBatchAllocation[] | null;
@@ -568,6 +570,13 @@ export interface SalesOrder extends BaseEntity {
   isLocked?: boolean;
   sourceChannel?: "manual" | "marketplace" | null;
   marketplaceOrderId?: string | null;
+  /** Original monetary total retained after the first posted return. */
+  originalTotalAmount?: number | null;
+  /** Cumulative monetary value of all posted returns. */
+  returnedAmount?: number;
+  returnStatus?: "none" | "partial" | "full";
+  returnedAt?: string | null;
+  returnedBy?: string | null;
   createdBy?: string | null;
 }
 
@@ -1280,6 +1289,28 @@ export interface SaleReturnItem extends BaseEntity {
   restoredBatchAllocations?: StockBatchAllocation[] | null;
 }
 
+/** Immutable header for a return posted against a completed sales order. */
+export interface OrderReturn extends BaseEntity {
+  orderId: string;
+  reason: string;
+  status: "posted" | "voided";
+  refundAmount: number;
+  returnedBy?: string | null;
+  returnedAt: string;
+}
+
+/** One returned quantity from a sales-order JSON line item. */
+export interface OrderReturnItem extends BaseEntity {
+  returnId: string;
+  orderId: string;
+  orderItemId: string;
+  quantity: number;
+  unitRefundAmount: number;
+  refundAmount: number;
+  restoredStorageId?: string | null;
+  restoredBatchAllocations?: StockBatchAllocation[] | null;
+}
+
 export type LoanSource = "pos" | "manual" | "order";
 export type LoanCategory = "standard" | "simple";
 export type LoanDirection = "lent" | "borrowed";
@@ -1358,7 +1389,8 @@ export type PaymentTransactionSourceType =
   | "real_estate_commission"
   | "clinical_appointment"
   | "sales_order"
-  | "purchase_order"
+    | "purchase_order"
+  | "order_return"
   | "expense_item"
   | "payroll_status"
   | "direct_transaction"
@@ -1417,6 +1449,8 @@ export interface SyncQueueItem {
     | "invoices"
     | "users"
     | "sales"
+    | "order_returns"
+    | "order_return_items"
     | "categories"
     | "product_discounts"
     | "category_discounts"
@@ -1542,6 +1576,8 @@ export interface OfflineMutation {
     | "invoices"
     | "users"
     | "sales"
+    | "order_returns"
+    | "order_return_items"
     | "categories"
     | "product_discounts"
     | "category_discounts"

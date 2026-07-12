@@ -43,6 +43,11 @@ CREATE TABLE crm.sales_orders (
   is_locked boolean NOT NULL DEFAULT false,
   source_channel text NOT NULL DEFAULT 'manual'::text,
   marketplace_order_id uuid NULL,
+  original_total_amount numeric NULL,
+  returned_amount numeric NOT NULL DEFAULT 0,
+  return_status text NOT NULL DEFAULT 'none'::text,
+  returned_at timestamp with time zone NULL,
+  returned_by uuid NULL,
   created_at timestamp with time zone NULL DEFAULT now(),
   updated_at timestamp with time zone NULL DEFAULT now(),
   sync_status text NULL DEFAULT 'synced'::text,
@@ -58,6 +63,10 @@ ALTER TABLE crm.sales_orders
 ALTER TABLE crm.sales_orders
   ADD CONSTRAINT crm_sales_orders_approval_status_check
   CHECK (approval_status IS NULL OR approval_status IN ('requested', 'approved', 'rejected'));
+
+ALTER TABLE crm.sales_orders
+  ADD CONSTRAINT sales_orders_return_status_check
+  CHECK (return_status IN ('none', 'partial', 'full'));
 
 CREATE INDEX IF NOT EXISTS idx_crm_sales_orders_workspace
   ON crm.sales_orders (workspace_id);

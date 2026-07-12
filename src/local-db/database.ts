@@ -19,6 +19,8 @@ import type {
   SaleItem,
   SaleReturn,
   SaleReturnItem,
+  OrderReturn,
+  OrderReturnItem,
   OfflineMutation,
   Workspace,
   AppSetting,
@@ -412,6 +414,8 @@ export class AtlasDatabase extends Dexie {
   sale_items!: EntityTable<SaleItem, "id">;
   sale_returns!: EntityTable<SaleReturn, "id">;
   sale_return_items!: EntityTable<SaleReturnItem, "id">;
+  order_returns!: EntityTable<OrderReturn, "id">;
+  order_return_items!: EntityTable<OrderReturnItem, "id">;
   workspaces!: EntityTable<Workspace, "id">;
   storages!: EntityTable<Storage, "id">;
   inventory!: EntityTable<Inventory, "id">;
@@ -2943,6 +2947,13 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, productId, storageId, batchNumber, expiryDate, sourcePurchaseOrderId, sourcePurchaseOrderItemId, updatedAt, isDeleted, [workspaceId+productId], [productId+storageId], [workspaceId+storageId], [workspaceId+storageId+productId], [workspaceId+updatedAt], [sourcePurchaseOrderId+sourcePurchaseOrderItemId]",
     });
 
+    this.version(82).stores({
+      order_returns:
+        "id, workspaceId, orderId, status, returnedAt, updatedAt, isDeleted, syncStatus, [workspaceId+orderId], [workspaceId+returnedAt]",
+      order_return_items:
+        "id, workspaceId, returnId, orderId, orderItemId, updatedAt, isDeleted, syncStatus, [returnId+orderItemId], [workspaceId+orderId], [workspaceId+orderItemId]",
+    });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }
@@ -3074,6 +3085,8 @@ export class AtlasDatabase extends Dexie {
       "sales_exchange",
       "sale_returns",
       "sale_return_items",
+      "order_returns",
+      "order_return_items",
       "workspaces",
       "storages",
       "inventory",
@@ -3287,6 +3300,8 @@ export async function clearDatabase(): Promise<void> {
       db.fleet_vehicle_assignments,
       db.payment_transactions,
       db.order_installments,
+      db.order_returns,
+      db.order_return_items,
       db.syncQueue,
     ],
     async () => {
@@ -3322,6 +3337,8 @@ export async function clearDatabase(): Promise<void> {
       await db.fleet_vehicle_assignments.clear();
       await db.payment_transactions.clear();
       await db.order_installments.clear();
+      await db.order_returns.clear();
+      await db.order_return_items.clear();
       await db.syncQueue.clear();
     },
   );

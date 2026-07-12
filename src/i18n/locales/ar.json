@@ -1042,6 +1042,18 @@
       "unpay": "تراجع عن الدفع",
       "showPrintedInvoice": "عرض الفاتورة المطبوعة"
     },
+    "return": {
+      "title": "إرجاع الطلب",
+      "action": "إرجاع الطلب",
+      "itemAction": "إرجاع",
+      "allItemsReturned": "تم إرجاع جميع عناصر الطلب بالفعل.",
+      "successFull": "تم إرجاع الطلب وعكس الدفعة.",
+      "successPartial": "تم إرجاع عناصر الطلب وتعديل الدفعة.",
+      "itemConfirmation": "هل تريد إرجاع {{itemName}} من هذا الطلب المكتمل؟",
+      "wholeConfirmation": "هل تريد إرجاع جميع العناصر المتبقية من هذا الطلب المكتمل؟",
+      "returnedQuantity": "تم إرجاع: {{returned}} / {{total}}",
+      "history": "المرتجعات ({{count}})"
+    },
     "table": {
       "orderNumber": "رقم الطلب",
       "customer": "العميل",

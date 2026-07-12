@@ -170,8 +170,8 @@ export function toRevenueRecordFromSalesOrder(order: SalesOrder, options: Revenu
         partyName: order.customerName,
         paymentMethod: order.paymentMethod || null,
         notes: order.notes || null,
-        hasPartialReturn: false,
-        isReturned: false,
+        hasPartialReturn: order.returnStatus === 'partial',
+        isReturned: order.returnStatus === 'full',
         items: (order.items || []).map((item) => {
             const categorySource = item as typeof item & {
                 productCategory?: string | null
@@ -190,7 +190,10 @@ export function toRevenueRecordFromSalesOrder(order: SalesOrder, options: Revenu
                     categorySource.category
                 ], options),
                 quantity: getOrderLinePaidQuantity(item),
-                returnedQuantity: 0,
+                returnedQuantity: Math.min(
+                    getOrderLineInventoryQuantity(item),
+                    Math.max(0, Number(item.returnedQuantity || 0))
+                ),
                 costQuantity: getOrderLineInventoryQuantity(item),
                 unitPrice: item.convertedUnitPrice || 0,
                 costPrice: item.convertedCostPrice || item.costPrice || 0
@@ -309,16 +312,10 @@ export function calculateRevenueAnalysisNetProfitBase(
 }
 
 export function getRevenueRecordReturnSummary(record: RevenueAnalysisRecord) {
-    if (record.source !== 'sale') {
-        return {
-            isFullyReturned: false,
-            hasAnyReturn: false,
-            totalReturnedQuantity: 0
-        }
-    }
-
     const isFullyReturned = record.isReturned
-        || (record.items.length > 0 && record.items.every((item) => item.returnedQuantity >= item.quantity))
+        || ((record.source !== 'sales_order' || !record.hasPartialReturn)
+            && record.items.length > 0
+            && record.items.every((item) => item.returnedQuantity >= item.quantity))
     const totalReturnedQuantity = record.items.reduce((sum, item) => sum + item.returnedQuantity, 0)
 
     return {

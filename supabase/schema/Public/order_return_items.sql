@@ -1,0 +1,21 @@
+CREATE TABLE public.order_return_items (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id),
+  return_id uuid NOT NULL REFERENCES public.order_returns(id),
+  order_id uuid NOT NULL REFERENCES crm.sales_orders(id),
+  order_item_id text NOT NULL,
+  quantity numeric NOT NULL,
+  unit_refund_amount numeric NOT NULL DEFAULT 0,
+  refund_amount numeric NOT NULL DEFAULT 0,
+  restored_storage_id uuid NULL REFERENCES public.storages(id),
+  restored_batch_allocations jsonb NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  version integer NOT NULL DEFAULT 1,
+  is_deleted boolean NOT NULL DEFAULT false,
+  CONSTRAINT order_return_items_quantity_check CHECK (quantity > 0),
+  CONSTRAINT order_return_items_unit_refund_amount_check CHECK (unit_refund_amount >= 0),
+  CONSTRAINT order_return_items_refund_amount_check CHECK (refund_amount >= 0),
+  CONSTRAINT order_return_items_return_line_key UNIQUE (return_id, order_item_id),
+  PRIMARY KEY (id)
+);

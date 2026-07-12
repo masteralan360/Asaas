@@ -48,6 +48,8 @@ const SYNC_PULL_TABLES = [
   "sale_items",
   "sale_returns",
   "sale_return_items",
+  "order_returns",
+  "order_return_items",
   "sales_orders",
   "purchase_orders",
   "order_installments",

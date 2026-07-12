@@ -12,7 +12,7 @@ import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, commitStockBatchAllocations, db, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
+import { adjustInventoryQuantity, applySalesOrderReturnQuantities, commitStockBatchAllocations, db, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
@@ -193,9 +193,28 @@ function getLoanStatusFallbackLabel(status: EffectiveLoanStatus): string {
     return 'Loan Pending'
 }
 
+function getSaleReturnState(sale: Sale) {
+    const items = sale.items || []
+    const returnedItemsCount = items.filter((item) => item.is_returned).length
+    const partialReturnedItemsCount = items.filter((item) => (item.returned_quantity || 0) > 0 && !item.is_returned).length
+    const totalReturnedQuantity = items.reduce((sum, item) => {
+        if (item.is_returned) return sum + (item.quantity || 0)
+        return sum + Math.max(0, Number(item.returned_quantity || 0))
+    }, 0)
+    const isFullyReturned = !!sale.is_returned
+        || sale.return_status === 'full'
+        || (items.length > 0 && items.every((item) => item.is_returned || (item.returned_quantity || 0) >= item.quantity))
+    const hasAnyReturn = isFullyReturned
+        || !!sale.has_partial_return
+        || sale.return_status === 'partial'
+        || returnedItemsCount > 0
+        || partialReturnedItemsCount > 0
+
+    return { isFullyReturned, hasAnyReturn, totalReturnedQuantity }
+}
+
 function saleHasAnyReturnActivity(sale: Sale): boolean {
-    if (sale.is_returned) return true
-    return (sale.items || []).some(item => item.is_returned || (item.returned_quantity || 0) > 0)
+    return getSaleReturnState(sale).hasAnyReturn
 }
 
 export function Sales() {
@@ -238,6 +257,7 @@ export function Sales() {
 
     const rawSales = useSales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const rawOrders = useSalesOrders(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
+    const salesOrderReturnItems = useSalesOrderReturnItemsForWorkspace(user?.workspaceId)
     const rawTravelSales = useTravelAgencySales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const rawExchangeTransactions = useExchangeTransactions(user?.workspaceId)
     const realEstateCommissionTransactions = usePaymentTransactions(user?.workspaceId, {
@@ -257,7 +277,7 @@ export function Sales() {
     const loans = useLoans(user?.workspaceId)
     const allSales = useMemo(() => {
         const sales = (rawSales || []).map(toUISale)
-        const orders = (rawOrders || [])
+        const orders = applySalesOrderReturnQuantities(rawOrders || [], salesOrderReturnItems)
             .filter(order => !order.isDeleted && order.status === 'completed')
             .map(toUISaleFromOrder)
         const travelSales = (rawTravelSales || [])
@@ -273,7 +293,7 @@ export function Sales() {
             .map(appointment => toUISaleFromPaidClinicalAppointment(appointment, clinicalAppointmentTransactions))
             .filter((sale): sale is NonNullable<typeof sale> => !!sale)
         return [...sales, ...orders, ...travelSales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales]
-    }, [rawSales, rawOrders, rawTravelSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions])
+    }, [rawSales, rawOrders, salesOrderReturnItems, rawTravelSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions])
 
     const isLoading = rawSales === undefined || rawOrders === undefined || rawTravelSales === undefined || rawExchangeTransactions === undefined || realEstateCommissionTransactions === undefined || clinicalAppointments === undefined
     const [isDateLoading, setIsDateLoading] = useState(false)
@@ -2120,17 +2140,7 @@ export function Sales() {
                                 viewMode === 'grid' && !isMobile() ? "grid-cols-1 lg:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"
                             )}>
                                 {sales.map((sale) => {
-                                    const isFullyReturned = sale.is_returned || (sale.items && sale.items.length > 0 && sale.items.every((item: SaleItem) =>
-                                        item.is_returned || (item.returned_quantity || 0) >= item.quantity
-                                    ))
-                                    const returnedItemsCount = sale.items?.filter((item: SaleItem) => item.is_returned).length || 0
-                                    const partialReturnedItemsCount = sale.items?.filter((item: SaleItem) => (item.returned_quantity || 0) > 0 && !item.is_returned).length || 0
-                                    const totalReturnedQuantity = sale.items?.reduce((sum: number, item: SaleItem) => {
-                                        if (item.is_returned) return sum + (item.quantity || 0)
-                                        if ((item.returned_quantity || 0) > 0) return sum + (item.returned_quantity || 0)
-                                        return sum
-                                    }, 0) || 0
-                                    const hasAnyReturn = returnedItemsCount > 0 || partialReturnedItemsCount > 0
+                                    const { isFullyReturned, hasAnyReturn, totalReturnedQuantity } = getSaleReturnState(sale)
                                     const loanIndicator = getLoanIndicator(sale)
                                     const isTutorialSale = tutorialSaleId === sale.id
 
@@ -2191,7 +2201,9 @@ export function Sales() {
                                                                             "px-2 py-0.5 text-[9px] font-bold bg-orange-500/10 text-orange-600 border border-orange-500/20 uppercase",
                                                                             style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
                                                                         )}>
-                                                                            -{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}
+                                                                            {totalReturnedQuantity > 0
+                                                                                ? <>-{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}</>
+                                                                                : (t('sales.return.partialReturn') || 'PARTIALLY RETURNED')}
                                                                         </span>
                                                                     )}
                                                                     <span className={cn(
@@ -2499,17 +2511,7 @@ export function Sales() {
                                 </TableHeader>
                                 <TableBody>
                                     {sales.map((sale) => {
-                                        const isFullyReturned = sale.is_returned || (sale.items && sale.items.length > 0 && sale.items.every((item: SaleItem) =>
-                                            item.is_returned || (item.returned_quantity || 0) >= item.quantity
-                                        ))
-                                        const returnedItemsCount = sale.items?.filter((item: SaleItem) => item.is_returned).length || 0
-                                        const partialReturnedItemsCount = sale.items?.filter((item: SaleItem) => (item.returned_quantity || 0) > 0 && !item.is_returned).length || 0
-                                        const totalReturnedQuantity = sale.items?.reduce((sum: number, item: SaleItem) => {
-                                            if (item.is_returned) return sum + (item.quantity || 0)
-                                            if ((item.returned_quantity || 0) > 0) return sum + (item.returned_quantity || 0)
-                                            return sum
-                                        }, 0) || 0
-                                        const hasAnyReturn = returnedItemsCount > 0 || partialReturnedItemsCount > 0
+                                        const { isFullyReturned, hasAnyReturn, totalReturnedQuantity } = getSaleReturnState(sale)
                                         const loanIndicator = getLoanIndicator(sale)
                                         const isTutorialSale = tutorialSaleId === sale.id
 
@@ -2558,7 +2560,9 @@ export function Sales() {
                                                                             "inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30",
                                                                             style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
                                                                         )}>
-                                                                            -{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}
+                                                                            {totalReturnedQuantity > 0
+                                                                                ? <>-{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}</>
+                                                                                : (t('sales.return.partialReturn') || 'PARTIALLY RETURNED')}
                                                                         </div>
                                                                     )}
                                                                     {loanIndicator && (

@@ -23,6 +23,7 @@ import {
     deletePurchaseOrder,
     deleteSalesOrder,
     getOrderBalanceAmount,
+    getOrderPaidAmount,
     getOrderPaymentStatus,
     getPrimaryStorageFromList,
     isOrderApprovalRequested,
@@ -165,6 +166,10 @@ function formatStatusLabel(t: (key: string) => string, status: string) {
 }
 
 function formatPaymentStatus(t: (key: string, options?: Record<string, unknown>) => string, order: SalesOrder | PurchaseOrder) {
+    if ((order as SalesOrder).returnStatus === 'full') {
+        return t('sales.return.returnedStatus') || 'Returned'
+    }
+
     const status = getOrderPaymentStatus(order)
     if (status === 'paid') return t('orders.status.paid', { defaultValue: 'Paid' })
     if (status === 'partial') return t('orders.status.partial', { defaultValue: 'Partially Paid' })
@@ -959,6 +964,8 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                             const isApprovalRequested = isOrderApprovalRequested(row)
                             const canEdit = canManageOrders && isDraft && (!isApprovalRequested || canApproveOrderRequests)
                             const canDelete = canDeleteOrders && isDraft
+                            const returnStatus = activeTab === 'sales' ? (row as SalesOrder).returnStatus : 'none'
+                            const isFullyReturnedSalesOrder = activeTab === 'sales' && returnStatus === 'full'
 
                             return (
                                 <TableRow key={row.id} className={isApprovalRequested ? 'bg-violet-50/70 hover:bg-violet-50 dark:bg-violet-950/20 dark:hover:bg-violet-950/30' : undefined}>
@@ -976,12 +983,19 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                     <TableCell>{activeTab === 'sales' ? (row as SalesOrder).customerName : (row as PurchaseOrder).supplierName}</TableCell>
                                     <TableCell>{row.items.length}</TableCell>
                                     <TableCell>
-                                        <OrderStatusBadge
-                                            status={isApprovalRequested ? 'approval_requested' : row.status}
-                                            label={isApprovalRequested
-                                                ? t('orders.status.requested', { defaultValue: 'Requested' })
-                                                : formatStatusLabel(t, row.status)}
-                                        />
+                                        <div className="flex flex-wrap gap-1.5">
+                                            <OrderStatusBadge
+                                                status={isApprovalRequested ? 'approval_requested' : row.status}
+                                                label={isApprovalRequested
+                                                    ? t('orders.status.requested', { defaultValue: 'Requested' })
+                                                    : formatStatusLabel(t, row.status)}
+                                            />
+                                            {returnStatus === 'full' ? (
+                                                <OrderStatusBadge status="returned" label={t('sales.return.returnedStatus') || 'Returned'} />
+                                            ) : returnStatus === 'partial' ? (
+                                                <OrderStatusBadge status="partially_returned" label={t('sales.return.partialReturn') || 'Partially Returned'} />
+                                            ) : null}
+                                        </div>
                                     </TableCell>
                                     <TableCell>{formatCurrency(row.total, row.currency, features.iqd_display_preference)}</TableCell>
                                     <TableCell>{formatDate(row.updatedAt)}</TableCell>
@@ -989,7 +1003,9 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         <div className="flex items-center gap-1.5">
                                             <span className={cn(
                                                 'font-semibold',
-                                                getOrderPaymentStatus(row) === 'paid'
+                                                isFullyReturnedSalesOrder
+                                                    ? 'text-rose-600'
+                                                    : getOrderPaymentStatus(row) === 'paid'
                                                     ? 'text-emerald-600'
                                                     : getOrderPaymentStatus(row) === 'partial'
                                                         ? 'text-sky-600'
@@ -1010,7 +1026,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                     {!isApprovalRequested && canManageOrders && row.status === 'draft' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved')}>{t('orders.actions.reserve') || 'Reserve'}</Button>}
                                                     {!isApprovalRequested && canManageOrders && row.status === 'pending' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
                                                     {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" onClick={() => setCancelConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
-                                                    {!isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
+                                                    {!isFullyReturnedSalesOrder && !isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
@@ -1022,7 +1038,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                             {row.isPaid ? (t('orders.actions.unpay') || 'Unpay') : (t('orders.actions.pay') || 'Pay')}
                                                         </Button>
                                                     )}
-                                                    {!isApprovalRequested && canManageOrders && row.isPaid && !row.isLocked && <Button variant="outline" size="sm" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}><Lock className="h-3.5 w-3.5" /></Button>}
+                                                    {!isFullyReturnedSalesOrder && !isApprovalRequested && canManageOrders && getOrderPaidAmount(row) > 0 && !row.isLocked && <Button variant="outline" size="sm" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}><Lock className="h-3.5 w-3.5" /></Button>}
                                                     {canDelete && <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setDeleteTarget({ type: 'sales', order: row as SalesOrder })}><Trash2 className="h-4 w-4" /></Button>}
                                                 </>
                                             ) : (
@@ -1079,6 +1095,8 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                     const isApprovalRequested = isOrderApprovalRequested(row)
                     const canEdit = canManageOrders && isDraft && (!isApprovalRequested || canApproveOrderRequests)
                     const canDelete = canDeleteOrders && isDraft
+                    const returnStatus = activeTab === 'sales' ? (row as SalesOrder).returnStatus : 'none'
+                    const isFullyReturnedSalesOrder = activeTab === 'sales' && returnStatus === 'full'
 
                     return (
                         <div
@@ -1110,13 +1128,18 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         {summary}
                                     </div>
                                 </div>
-                                <div className="text-right">
+                                <div className="flex flex-col items-end gap-1.5 text-right">
                                     <OrderStatusBadge
                                         status={isApprovalRequested ? 'approval_requested' : row.status}
                                         label={isApprovalRequested
                                             ? t('orders.status.requested', { defaultValue: 'Requested' })
                                             : formatStatusLabel(t, row.status)}
                                     />
+                                    {returnStatus === 'full' ? (
+                                        <OrderStatusBadge status="returned" label={t('sales.return.returnedStatus') || 'Returned'} />
+                                    ) : returnStatus === 'partial' ? (
+                                        <OrderStatusBadge status="partially_returned" label={t('sales.return.partialReturn') || 'Partially Returned'} />
+                                    ) : null}
                                     <div className="text-xs text-muted-foreground mt-2 font-medium">
                                         {formatDate(row.updatedAt)}
                                     </div>
@@ -1136,7 +1159,9 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                     <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('pos.paymentMethod') || 'Payment'}</div>
                                     <div className={cn(
                                         "text-[11px] font-bold flex items-center justify-center gap-1",
-                                        getOrderPaymentStatus(row) === 'paid'
+                                        isFullyReturnedSalesOrder
+                                            ? 'text-rose-600'
+                                            : getOrderPaymentStatus(row) === 'paid'
                                             ? "text-emerald-600"
                                             : getOrderPaymentStatus(row) === 'partial'
                                                 ? "text-sky-600"
@@ -1160,7 +1185,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         {!isApprovalRequested && canManageOrders && row.status === 'pending' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
                                         {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => setCancelConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
                                         {canEdit && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => openSalesEdit(row as SalesOrder)}><Pencil className="h-3.5 w-3.5" /></Button>}
-                                        {!isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
+                                        {!isFullyReturnedSalesOrder && !isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
                                             <Button
                                                 variant="outline"
                                                 size="sm"
@@ -1173,7 +1198,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                 {row.isPaid ? (t('orders.actions.unpay') || 'Unpay') : (t('orders.actions.pay') || 'Pay')}
                                             </Button>
                                         )}
-                                        {!isApprovalRequested && canManageOrders && row.isPaid && !row.isLocked && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}><Lock className="h-3.5 w-3.5" /></Button>}
+                                        {!isFullyReturnedSalesOrder && !isApprovalRequested && canManageOrders && getOrderPaidAmount(row) > 0 && !row.isLocked && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}><Lock className="h-3.5 w-3.5" /></Button>}
                                         {canDelete && <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-destructive" onClick={() => setDeleteTarget({ type: 'sales', order: row as SalesOrder })}><Trash2 className="h-4 w-4" /></Button>}
                                     </>
                                 ) : (

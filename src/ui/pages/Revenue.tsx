@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { Sale } from '@/types'
-import { useCategories, useProducts, useSales, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useWorkspaceUsers, toUISale, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment } from '@/local-db'
+import { applySalesOrderReturnQuantities, useCategories, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useWorkspaceUsers, toUISale, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment } from '@/local-db'
 import { formatCurrency, formatDateTime, formatDate, formatOriginLabel, formatTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
@@ -86,7 +86,6 @@ import {
     filterSalesByDateRange,
     getRevenueAnalysisTotals,
     getRevenueRecordReturnSummary,
-    toRevenueRecordFromSale,
     type RevenueAnalysisRecord
 } from '@/lib/revenueAnalysis'
 
@@ -589,7 +588,8 @@ export function Revenue() {
     ), [customDates.end, customDates.start, dateBounds.endDate, dateBounds.startDate, dateRange, user?.workspaceId])
 
     const rawSales = useSales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
-    const salesOrders = useSalesOrders(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
+    const rawSalesOrders = useSalesOrders(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
+    const salesOrderReturnItems = useSalesOrderReturnItemsForWorkspace(user?.workspaceId)
     const rawTravelSales = useTravelAgencySales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const rawExchangeTransactions = useExchangeTransactions(user?.workspaceId)
     const realEstateCommissionTransactions = usePaymentTransactions(user?.workspaceId, {
@@ -608,6 +608,10 @@ export function Revenue() {
     const products = useProducts(user?.workspaceId)
     const categories = useCategories(user?.workspaceId)
     const workspaceUsers = useWorkspaceUsers(user?.workspaceId)
+    const salesOrders = useMemo(
+        () => applySalesOrderReturnQuantities(rawSalesOrders || [], salesOrderReturnItems),
+        [rawSalesOrders, salesOrderReturnItems]
+    )
 
     const allSales = useMemo<Sale[]>(() => {
         const sales = (rawSales || []).map(toUISale)
@@ -766,7 +770,7 @@ export function Revenue() {
         return dateScopedSales.filter((sale) => visibleSaleIds.has(sale.id))
     }, [dateScopedSales, filteredRevenueRecords])
 
-    const isLoading = rawSales === undefined || salesOrders === undefined || rawTravelSales === undefined || realEstateCommissionTransactions === undefined || clinicalAppointments === undefined
+    const isLoading = rawSales === undefined || rawSalesOrders === undefined || rawTravelSales === undefined || realEstateCommissionTransactions === undefined || clinicalAppointments === undefined
     const [isDateLoading, setIsDateLoading] = useState(false)
     const prevDateBoundsRef = useRef(dateBounds)
 
@@ -907,7 +911,8 @@ export function Revenue() {
             paymentMethod?: string | null,
             hasPartialReturn?: boolean,
             isReturned?: boolean,
-            returnStatus?: Exclude<RevenueReturnStatusFilter, 'all'>
+            returnStatus?: Exclude<RevenueReturnStatusFilter, 'all'>,
+            totalReturnedQuantity?: number
         }[] = []
 
         records.forEach((record) => {
@@ -926,6 +931,7 @@ export function Revenue() {
             statsByCurrency[currency].salesCount++
 
             const totals = getRevenueAnalysisTotals(record)
+            const returnSummary = getRevenueRecordReturnSummary(record)
             const date = new Date(record.date).toISOString().split('T')[0]
 
             if (!statsByCurrency[currency].dailyTrend[date]) {
@@ -933,11 +939,12 @@ export function Revenue() {
             }
 
             record.items.forEach((item) => {
-                const netQuantity = item.quantity - item.returnedQuantity
-                if (netQuantity <= 0) return
+                const netQuantity = Math.max(0, item.quantity - item.returnedQuantity)
+                const netCostQuantity = Math.max(0, (item.costQuantity ?? item.quantity) - item.returnedQuantity)
+                if (netQuantity <= 0 && netCostQuantity <= 0) return
 
                 const itemRevenue = item.unitPrice * netQuantity
-                const itemCost = item.costPrice * netQuantity
+                const itemCost = item.costPrice * netCostQuantity
 
                 // Category tracking
                 const cat = item.productCategory || 'Uncategorized'
@@ -988,9 +995,10 @@ export function Revenue() {
                 partyName: record.partyName,
                 sequenceId: record.sequenceId,
                 paymentMethod: record.paymentMethod || null,
-                hasPartialReturn: record.hasPartialReturn,
-                isReturned: record.isReturned,
-                returnStatus: getRevenueReturnStatus(record)
+                hasPartialReturn: record.hasPartialReturn || (returnSummary.hasAnyReturn && !returnSummary.isFullyReturned),
+                isReturned: returnSummary.isFullyReturned,
+                returnStatus: getRevenueReturnStatus(record),
+                totalReturnedQuantity: returnSummary.totalReturnedQuantity
             })
         })
 
@@ -1854,9 +1862,9 @@ export function Revenue() {
                                 )}>
                                     {paginatedSales.map((sale) => {
                                         const originalSale = sale.source === 'sale' ? salesById.get(sale.id) : undefined
-                                        const { isFullyReturned, hasAnyReturn, totalReturnedQuantity } = originalSale
-                                            ? getRevenueRecordReturnSummary(toRevenueRecordFromSale(originalSale))
-                                            : { isFullyReturned: false, hasAnyReturn: false, totalReturnedQuantity: 0 }
+                                        const isFullyReturned = !!sale.isReturned || sale.returnStatus === 'returned'
+                                        const hasAnyReturn = isFullyReturned || !!sale.hasPartialReturn || sale.returnStatus === 'partial'
+                                        const totalReturnedQuantity = sale.totalReturnedQuantity || 0
                                         const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'clinical_appointment'
 
                                         const handleRecordClick = () => {
@@ -1920,7 +1928,9 @@ export function Revenue() {
 
                                                             {!isFullyReturned && hasAnyReturn && (
                                                                 <span className="px-1.5 py-0.5 rounded-full text-[8px] font-bold bg-orange-500/10 text-orange-600 border border-orange-500/20 uppercase whitespace-nowrap">
-                                                                    -{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}
+                                                                    {totalReturnedQuantity > 0
+                                                                        ? <>-{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}</>
+                                                                        : (t('sales.return.partialReturn') || 'PARTIALLY RETURNED')}
                                                                 </span>
                                                             )}
 
@@ -2004,9 +2014,9 @@ export function Revenue() {
                                     <TableBody>
                                         {paginatedSales.map((sale) => {
                                             const originalSale = sale.source === 'sale' ? salesById.get(sale.id) : undefined
-                                            const { isFullyReturned, hasAnyReturn, totalReturnedQuantity } = originalSale
-                                                ? getRevenueRecordReturnSummary(toRevenueRecordFromSale(originalSale))
-                                                : { isFullyReturned: false, hasAnyReturn: false, totalReturnedQuantity: 0 }
+                                            const isFullyReturned = !!sale.isReturned || sale.returnStatus === 'returned'
+                                            const hasAnyReturn = isFullyReturned || !!sale.hasPartialReturn || sale.returnStatus === 'partial'
+                                            const totalReturnedQuantity = sale.totalReturnedQuantity || 0
                                             const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'clinical_appointment'
 
                                             const handleRecordClick = () => {
@@ -2097,7 +2107,9 @@ export function Revenue() {
 
                                                             {!isFullyReturned && hasAnyReturn && (
                                                                 <span className="px-1.5 py-0.5 rounded-full text-[8px] font-bold bg-orange-500/10 text-orange-600 border border-orange-500/20 uppercase whitespace-nowrap">
-                                                                    -{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}
+                                                                    {totalReturnedQuantity > 0
+                                                                        ? <>-{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}</>
+                                                                        : (t('sales.return.partialReturn') || 'PARTIALLY RETURNED')}
                                                                 </span>
                                                             )}
                                                         </div>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
-import { ArrowLeft, CalendarDays, CreditCard, Eye, LayoutGrid, List, Lock, Package, Printer, Receipt, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse, XCircle } from 'lucide-react'
+import { ArrowLeft, CalendarDays, CreditCard, Eye, LayoutGrid, List, Lock, Package, Printer, Receipt, RotateCcw, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedOrderError } from '@/lib/orderErrors'
 import { Link, useLocation } from 'wouter'
@@ -25,6 +25,7 @@ import {
     lockPurchaseOrder,
     lockSalesOrder,
     recordObligationSettlement,
+    returnSalesOrder,
     reversePaymentTransaction,
     updatePurchaseOrderStatus,
     updateSalesOrderStatus,
@@ -34,6 +35,8 @@ import {
     useLoanInstallments,
     useOrderInstallments,
     useSalesOrder,
+    useSalesOrderReturnItems,
+    useSalesOrderReturns,
     useStorages,
     useWorkspaceContacts,
     type PaymentObligation,
@@ -60,6 +63,7 @@ import {
     DialogHeader,
     DialogTitle,
     PrintPreviewModal,
+    ReturnConfirmationModal,
     SettlementDialog,
     Table,
     TableBody,
@@ -198,6 +202,8 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const storages = useStorages(workspaceId)
     const salesOrder = useSalesOrder(orderId)
     const purchaseOrder = usePurchaseOrder(orderId)
+    const salesOrderReturns = useSalesOrderReturns(orderId, workspaceId)
+    const salesOrderReturnItems = useSalesOrderReturnItems(orderId, workspaceId)
     const linkedLoanId = salesOrder?.linkedLoanId || purchaseOrder?.linkedLoanId || undefined
     const linkedLoan = useLoan(linkedLoanId)
     const loanInstallments = useLoanInstallments(linkedLoanId, workspaceId)
@@ -248,6 +254,8 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const [settlementTarget, setSettlementTarget] = useState<PaymentObligation | null>(null)
     const [isSubmittingSettlement, setIsSubmittingSettlement] = useState(false)
     const [isLoadingOrderInvoice, setIsLoadingOrderInvoice] = useState(false)
+    const [returnTarget, setReturnTarget] = useState<{ orderItemId: string | null; maxQuantity: number; itemName: string } | null>(null)
+    const [isReturning, setIsReturning] = useState(false)
 
     useEffect(() => {
         localStorage.setItem('order_details_view_mode', viewMode)
@@ -271,6 +279,23 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const canManage = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
     const canApproveOrderRequests = user?.role === 'admin'
+    const canReturnSalesOrder = resolved?.kind === 'sales'
+        && resolved.order.status === 'completed'
+        && resolved.order.returnStatus !== 'full'
+        && user?.role === 'admin'
+
+    const returnedQuantityByItemId = useMemo(() => {
+        const quantities = new Map<string, number>()
+        for (const item of salesOrderReturnItems) {
+            quantities.set(item.orderItemId, (quantities.get(item.orderItemId) || 0) + item.quantity)
+        }
+        return quantities
+    }, [salesOrderReturnItems])
+
+    const getReturnableQuantity = useCallback((item: SalesOrderItem) => Math.max(
+        0,
+        getOrderLineInventoryQuantity(item) - (returnedQuantityByItemId.get(item.id) || 0)
+    ), [returnedQuantityByItemId])
 
     const storageName = (storageId?: string | null) => {
         if (!storageId) return 'N/A'
@@ -520,19 +545,24 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const iqd = features.iqd_display_preference
     const mainStorageId = isSales ? (order as SalesOrder).sourceStorageId : (order as PurchaseOrder).destinationStorageId
     const showFreeBonus = hasOrderLineFreeBonus(order.items)
-    const totalUnits = order.items.reduce((sum, item) => sum + getOrderLineInventoryQuantity(item), 0)
+    const totalUnits = order.items.reduce((sum, item) => sum + (isSales
+        ? Math.max(0, getOrderLineInventoryQuantity(item) - (returnedQuantityByItemId.get(item.id) || 0))
+        : getOrderLineInventoryQuantity(item)), 0)
     const totalFreeBonus = order.items.reduce((sum, item) => sum + getOrderLineFreeBonusQuantity(item), 0)
     const progress = workflowProgress(resolved.kind, order.status)
     const paidAmount = getOrderPaidAmount(order)
     const outstanding = getOrderBalanceAmount(order)
     const paymentStatus = getOrderPaymentStatus(order)
+    const isFullyReturnedSalesOrder = isSales && (order as SalesOrder).returnStatus === 'full'
     const isFinanced = order.paymentMethod === 'loan' || order.paymentMethod === 'installments' || !!order.linkedLoanId
     const linkedLoanRoute = linkedLoan
         ? linkedLoan.loanCategory === 'simple' ? `/loans/${linkedLoan.id}` : `/installments/${linkedLoan.id}`
         : null
     const nextInstallment = installments.find((installment) => installment.balanceAmount > 0)
     const profit = isSales
-        ? order.total - (order as SalesOrder).items.reduce((sum, item) => sum + (item.convertedCostPrice * getOrderLineInventoryQuantity(item)), 0)
+        ? order.total - (order as SalesOrder).items.reduce((sum, item) => sum + (
+            item.convertedCostPrice * Math.max(0, getOrderLineInventoryQuantity(item) - (returnedQuantityByItemId.get(item.id) || 0))
+        ), 0)
         : null
     const margin = profit !== null && order.total > 0 ? (profit / order.total) * 100 : null
     const receivedUnits = !isSales
@@ -547,7 +577,8 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         order.expectedDeliveryDate ? { id: 'expected', date: order.expectedDeliveryDate, label: t('orders.details.activity.expected') || 'Expected delivery' } : null,
         isSales && (order as SalesOrder).reservedAt ? { id: 'reserved', date: (order as SalesOrder).reservedAt as string, label: t('orders.details.activity.reserved') || 'Inventory reserved' } : null,
         order.actualDeliveryDate ? { id: 'actual', date: order.actualDeliveryDate, label: isSales ? (t('orders.details.activity.completed') || 'Order completed') : (t('orders.details.activity.received') || 'Stock received') } : null,
-        order.paidAt ? { id: 'paid', date: order.paidAt, label: t('orders.details.activity.paid') || 'Payment recorded' } : null
+        order.paidAt ? { id: 'paid', date: order.paidAt, label: t('orders.details.activity.paid') || 'Payment recorded' } : null,
+        isSales && salesOrderReturns[0] ? { id: 'returned', date: salesOrderReturns[0].returnedAt, label: t('sales.return.returnedStatus') || 'Returned' } : null
     ].filter(Boolean).sort((a, b) => new Date((b as any).date).getTime() - new Date((a as any).date).getTime()) as Array<{ id: string; date: string; label: string }>
 
     const actions = isSales
@@ -673,6 +704,63 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         }
     }
 
+    const openWholeOrderReturn = () => {
+        if (!resolved || resolved.kind !== 'sales') return
+        const remainingItems = resolved.order.items.filter((item) => getReturnableQuantity(item) > 0)
+        if (remainingItems.length === 0) {
+            toast({
+                title: t('common.error') || 'Error',
+                description: t('orders.return.allItemsReturned', { defaultValue: 'All order items have already been returned.' }),
+                variant: 'destructive'
+            })
+            return
+        }
+        setReturnTarget({ orderItemId: null, maxQuantity: 0, itemName: '' })
+    }
+
+    const openItemReturn = (item: SalesOrderItem) => {
+        const maxQuantity = getReturnableQuantity(item)
+        if (maxQuantity <= 0) return
+        setReturnTarget({ orderItemId: item.id, maxQuantity, itemName: item.productName })
+    }
+
+    const handleOrderReturnConfirm = async (reason: string, quantity?: number) => {
+        if (!resolved || resolved.kind !== 'sales' || !returnTarget) return
+
+        const items = returnTarget.orderItemId
+            ? [{ orderItemId: returnTarget.orderItemId, quantity: quantity || returnTarget.maxQuantity }]
+            : resolved.order.items
+                .map((item) => ({ orderItemId: item.id, quantity: getReturnableQuantity(item) }))
+                .filter((item) => item.quantity > 0)
+        if (items.length === 0) return
+
+        setIsReturning(true)
+        try {
+            const result = await returnSalesOrder({
+                orderId: resolved.order.id,
+                items,
+                reason,
+                returnedBy: user?.id || null,
+                actorRole: user?.role || null
+            })
+            toast({
+                title: t('orders.return.title', { defaultValue: 'Return Order' }),
+                description: result.order.returnStatus === 'full'
+                    ? t('orders.return.successFull', { defaultValue: 'Order returned and payment reversed.' })
+                    : t('orders.return.successPartial', { defaultValue: 'Order items returned and payment adjusted.' })
+            })
+            setReturnTarget(null)
+        } catch (error: any) {
+            toast({
+                title: t('common.error') || 'Error',
+                description: getLocalizedOrderError(error, t, 'Failed to return order'),
+                variant: 'destructive'
+            })
+        } finally {
+            setIsReturning(false)
+        }
+    }
+
     return (
         <div
             className="space-y-4"
@@ -706,7 +794,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                 : t('orders.actions.openLoan', { defaultValue: 'Open Loan' })}
                         </Button>
                     ) : null}
-                    {!isApprovalRequested && canManage && !isFinanced && outstanding > 0 && !order.isLocked && (
+                    {!isFullyReturnedSalesOrder && !isApprovalRequested && canManage && !isFinanced && outstanding > 0 && !order.isLocked && (
                         <Button
                             variant="outline"
                             onClick={() => setSettlementTarget(
@@ -719,12 +807,12 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             {t('orders.actions.recordPayment', { defaultValue: 'Record Payment' })}
                         </Button>
                     )}
-                    {!isApprovalRequested && canManage && !isFinanced && paidAmount > 0 && !order.isLocked && (
+                    {!isFullyReturnedSalesOrder && !isApprovalRequested && canManage && !isFinanced && paidAmount > 0 && !order.isLocked && (
                         <Button variant="outline" onClick={handleOrderUnpay}>
                             {t('orders.actions.reverseLastPayment', { defaultValue: 'Reverse Last Payment' })}
                         </Button>
                     )}
-                    {!isApprovalRequested && canManage && order.isPaid && !order.isLocked && (
+                    {!isFullyReturnedSalesOrder && !isApprovalRequested && canManage && paidAmount > 0 && !order.isLocked && (
                         <Button
                             variant="outline"
                             className="bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 hover:text-amber-700 border-amber-500/20"
@@ -732,6 +820,17 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         >
                             <Lock className="mr-2 h-4 w-4" />
                             {t('orders.actions.lock') || 'Lock'}
+                        </Button>
+                    )}
+                    {canReturnSalesOrder && (
+                        <Button
+                            variant="outline"
+                            className="border-rose-500/30 bg-rose-500/10 text-rose-700 hover:bg-rose-500/20 hover:text-rose-800"
+                            onClick={openWholeOrderReturn}
+                            disabled={isReturning}
+                        >
+                            <RotateCcw className="mr-2 h-4 w-4" />
+                            {t('orders.return.action', { defaultValue: 'Return Order' })}
                         </Button>
                     )}
                     {canDelete && order.status === 'draft' && (
@@ -992,15 +1091,24 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                 ? t('orders.status.requested', { defaultValue: 'Requested' })
                                                 : statusLabel(t, order.status)}
                                         />
+                                        {isSales && (order as SalesOrder).returnStatus === 'full' ? (
+                                            <OrderStatusBadge status="returned" label={t('sales.return.returnedStatus') || 'Returned'} />
+                                        ) : isSales && (order as SalesOrder).returnStatus === 'partial' ? (
+                                            <OrderStatusBadge status="partially_returned" label={t('sales.return.partialReturn') || 'Partially Returned'} />
+                                        ) : null}
                                         <span className={cn(
                                             'inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em]',
-                                            paymentStatus === 'paid'
+                                            isFullyReturnedSalesOrder
+                                                ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300'
+                                                : paymentStatus === 'paid'
                                                 ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
                                                 : paymentStatus === 'partial'
                                                     ? 'bg-sky-500/10 text-sky-700 dark:text-sky-300'
                                                     : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
                                         )}>
-                                            {paymentStatus === 'paid'
+                                            {isFullyReturnedSalesOrder
+                                                ? (t('sales.return.returnedStatus') || 'Returned')
+                                                : paymentStatus === 'paid'
                                                 ? (t('orders.status.paid') || 'Paid')
                                                 : paymentStatus === 'partial'
                                                     ? t('orders.status.partial', { defaultValue: 'Partially Paid' })
@@ -1111,20 +1219,34 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                     {order.items.map((item) => {
                                         const salesItem = item as SalesOrderItem
                                         const purchaseItem = item as PurchaseOrderItem
-                                        const paidQuantity = getOrderLinePaidQuantity(item)
-                                        const freeBonusQuantity = getOrderLineFreeBonusQuantity(item)
-                                        const inventoryQuantity = getOrderLineInventoryQuantity(item)
-                                        const itemProfit = isSales ? item.lineTotal - (salesItem.convertedCostPrice * inventoryQuantity) : 0
-                                        const itemReceived = !isSales ? purchaseItem.receivedQuantity ?? ((order.status === 'received' || order.status === 'completed') ? inventoryQuantity : 0) : 0
+                                         const paidQuantity = getOrderLinePaidQuantity(item)
+                                         const freeBonusQuantity = getOrderLineFreeBonusQuantity(item)
+                                         const inventoryQuantity = getOrderLineInventoryQuantity(item)
+                                         const returnedQuantity = isSales ? (returnedQuantityByItemId.get(item.id) || 0) : 0
+                                         const remainingQuantity = Math.max(0, paidQuantity - returnedQuantity)
+                                         const remainingInventoryQuantity = Math.max(0, inventoryQuantity - returnedQuantity)
+                                         const isItemFullyReturned = isSales && returnedQuantity >= inventoryQuantity
+                                         const hasItemPartialReturn = isSales && returnedQuantity > 0 && !isItemFullyReturned
+                                         const itemProfit = isSales ? item.lineTotal - (salesItem.convertedCostPrice * remainingInventoryQuantity) : 0
+                                         const itemReceived = !isSales ? purchaseItem.receivedQuantity ?? ((order.status === 'received' || order.status === 'completed') ? inventoryQuantity : 0) : 0
+                                         const returnableQuantity = isSales ? getReturnableQuantity(salesItem) : 0
 
-                                        return (
-                                            <div key={item.id} className="rounded-3xl border bg-background/80 p-4 shadow-sm">
+                                         return (
+                                             <div key={item.id} className={cn(
+                                                 'rounded-3xl border bg-background/80 p-4 shadow-sm',
+                                                 isItemFullyReturned ? 'border-rose-500/30 bg-rose-500/5' : hasItemPartialReturn ? 'border-orange-500/30 bg-orange-500/5' : ''
+                                             )}>
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div>
                                                         <div className="text-lg font-semibold">{item.productName}</div>
                                                         <div className="text-xs text-muted-foreground">{item.productSku || 'N/A'}</div>
                                                     </div>
-                                                    <div className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-primary">{inventoryQuantity} {t('orders.details.units') || 'units'}</div>
+                                                    <div className={cn(
+                                                        'rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em]',
+                                                        isItemFullyReturned ? 'bg-rose-500/10 text-rose-700' : hasItemPartialReturn ? 'bg-orange-500/10 text-orange-700' : 'bg-primary/10 text-primary'
+                                                    )}>
+                                                        {isSales ? remainingInventoryQuantity : inventoryQuantity} {t('orders.details.units') || 'units'}
+                                                    </div>
                                                 </div>
                                                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                                                     <div className="rounded-2xl border bg-muted/20 p-3">
@@ -1133,7 +1255,11 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                     </div>
                                                     <div className="rounded-2xl border bg-muted/20 p-3">
                                                         <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.form.table.qty') || 'Qty'}</div>
-                                                        <div className="mt-1 font-medium">{paidQuantity}</div>
+                                                        <div className="mt-1 flex items-baseline gap-1.5 font-medium">
+                                                            <span className={cn(isItemFullyReturned && 'line-through opacity-50')}>{isSales ? remainingQuantity : paidQuantity}</span>
+                                                            {isSales && returnedQuantity > 0 ? <span className="text-xs text-muted-foreground line-through">{paidQuantity}</span> : null}
+                                                        </div>
+                                                        {hasItemPartialReturn ? <div className="mt-1 text-[10px] font-bold text-orange-600">-{returnedQuantity} {t('sales.return.returnedLabel') || 'returned'}</div> : null}
                                                     </div>
                                                     {showFreeBonus ? (
                                                         <div className="rounded-2xl border bg-muted/20 p-3">
@@ -1156,6 +1282,21 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                         </div>
                                                     </div>
                                                 </div>
+                                                 {isSales && returnedQuantity > 0 ? (
+                                                     <div className={cn('mt-3 text-xs font-semibold', isItemFullyReturned ? 'text-rose-700' : 'text-orange-700')}>
+                                                         {t('orders.return.returnedQuantity', {
+                                                             returned: returnedQuantity,
+                                                             total: inventoryQuantity,
+                                                             defaultValue: `Returned: ${returnedQuantity} / ${inventoryQuantity}`
+                                                         })}
+                                                     </div>
+                                                ) : null}
+                                                {canReturnSalesOrder && returnableQuantity > 0 ? (
+                                                    <Button variant="outline" size="sm" className="mt-4 w-full border-rose-500/30 text-rose-700 hover:bg-rose-500/10" onClick={() => openItemReturn(salesItem)} disabled={isReturning}>
+                                                        <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                                                        {t('orders.return.itemAction', { defaultValue: 'Return' })} ({returnableQuantity})
+                                                    </Button>
+                                                ) : null}
                                             </div>
                                         )
                                     })}
@@ -1174,32 +1315,56 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                 {isSales && <TableHead className="text-end">{t('orders.details.costPerUnit') || 'Cost / Unit'}</TableHead>}
                                                 <TableHead className="text-end">{t('common.total') || 'Total'}</TableHead>
                                                 {isSales && <TableHead className="text-end">{t('orders.details.itemProfit') || 'Item Profit'}</TableHead>}
+                                                {canReturnSalesOrder && <TableHead className="text-end">{t('common.actions') || 'Actions'}</TableHead>}
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
                                             {order.items.map((item) => {
                                                 const salesItem = item as SalesOrderItem
                                                 const purchaseItem = item as PurchaseOrderItem
-                                                const paidQuantity = getOrderLinePaidQuantity(item)
-                                                const freeBonusQuantity = getOrderLineFreeBonusQuantity(item)
-                                                const inventoryQuantity = getOrderLineInventoryQuantity(item)
-                                                const itemReceived = purchaseItem.receivedQuantity ?? ((order.status === 'received' || order.status === 'completed') ? inventoryQuantity : 0)
-                                                const itemProfit = item.lineTotal - (salesItem.convertedCostPrice * inventoryQuantity)
+                                                 const paidQuantity = getOrderLinePaidQuantity(item)
+                                                 const freeBonusQuantity = getOrderLineFreeBonusQuantity(item)
+                                                 const inventoryQuantity = getOrderLineInventoryQuantity(item)
+                                                 const returnedQuantity = isSales ? (returnedQuantityByItemId.get(item.id) || 0) : 0
+                                                 const remainingQuantity = Math.max(0, paidQuantity - returnedQuantity)
+                                                 const remainingInventoryQuantity = Math.max(0, inventoryQuantity - returnedQuantity)
+                                                 const isItemFullyReturned = isSales && returnedQuantity >= inventoryQuantity
+                                                 const hasItemPartialReturn = isSales && returnedQuantity > 0 && !isItemFullyReturned
+                                                 const itemReceived = purchaseItem.receivedQuantity ?? ((order.status === 'received' || order.status === 'completed') ? inventoryQuantity : 0)
+                                                 const itemProfit = item.lineTotal - (salesItem.convertedCostPrice * remainingInventoryQuantity)
+                                                 const returnableQuantity = isSales ? getReturnableQuantity(salesItem) : 0
 
-                                                return (
-                                                    <TableRow key={item.id}>
-                                                        <TableCell>
-                                                            <div className="font-semibold">{item.productName}</div>
+                                                 return (
+                                                     <TableRow key={item.id} className={cn(
+                                                         isItemFullyReturned ? 'bg-rose-500/5' : hasItemPartialReturn ? 'bg-orange-500/5' : ''
+                                                     )}>
+                                                         <TableCell>
+                                                             <div className={cn('font-semibold', isItemFullyReturned && 'line-through opacity-50')}>{item.productName}</div>
                                                             <div className="text-xs text-muted-foreground">{item.productSku || 'N/A'}</div>
                                                         </TableCell>
                                                         <TableCell>{storageName(item.storageId || mainStorageId)}</TableCell>
-                                                        <TableCell className="text-end">{paidQuantity}</TableCell>
+                                                         <TableCell className="text-end">
+                                                             <div className="flex flex-col items-end">
+                                                                 <span className={cn(isItemFullyReturned && 'line-through opacity-50')}>{isSales ? remainingQuantity : paidQuantity}</span>
+                                                                 {hasItemPartialReturn ? <span className="text-[10px] font-medium text-orange-600">-{returnedQuantity} {t('sales.return.returnedLabel') || 'returned'}</span> : null}
+                                                             </div>
+                                                         </TableCell>
                                                         {showFreeBonus && <TableCell className="text-end">{freeBonusQuantity}</TableCell>}
                                                         {!isSales && <TableCell className="text-end">{itemReceived}</TableCell>}
                                                         <TableCell className="text-end">{formatCurrency(item.convertedUnitPrice, currency, iqd)}</TableCell>
                                                         {isSales && <TableCell className="text-end">{formatCurrency(salesItem.convertedCostPrice, currency, iqd)}</TableCell>}
                                                         <TableCell className="text-end font-semibold">{formatCurrency(item.lineTotal, currency, iqd)}</TableCell>
                                                         {isSales && <TableCell className={cn('text-end font-semibold', itemProfit >= 0 ? 'text-emerald-600' : 'text-rose-600')}>{formatCurrency(itemProfit, currency, iqd)}</TableCell>}
+                                                        {canReturnSalesOrder && (
+                                                            <TableCell className="text-end">
+                                                                {returnableQuantity > 0 ? (
+                                                                    <Button variant="ghost" size="sm" className="h-8 text-rose-700 hover:bg-rose-500/10 hover:text-rose-800" onClick={() => openItemReturn(salesItem)} disabled={isReturning}>
+                                                                        <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                                                                        {t('orders.return.itemAction', { defaultValue: 'Return' })}
+                                                                    </Button>
+                                                                ) : <span className="text-xs font-semibold text-rose-700">Returned</span>}
+                                                            </TableCell>
+                                                        )}
                                                     </TableRow>
                                                 )
                                             })}
@@ -1222,6 +1387,27 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                     <div className="mt-2 text-xl font-black">{formatCurrency(isSales ? (order as SalesOrder).tax : order.total, currency, iqd)}</div>
                                 </div>
                             </div>
+                            {isSales && salesOrderReturns.length > 0 ? (
+                                <div className="mt-4 rounded-2xl border border-rose-500/20 bg-rose-500/5 p-4">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-2 text-sm font-black text-rose-800">
+                                            <RotateCcw className="h-4 w-4" />
+                                            {t('orders.return.history', { count: salesOrderReturns.length, defaultValue: `Returns (${salesOrderReturns.length})` })}
+                                        </div>
+                                        <div className="text-sm font-bold text-rose-800">
+                                            {formatCurrency((order as SalesOrder).returnedAmount || 0, currency, iqd)}
+                                        </div>
+                                    </div>
+                                    <div className="mt-3 space-y-2">
+                                        {salesOrderReturns.slice(0, 3).map((orderReturn) => (
+                                            <div key={orderReturn.id} className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                                                <span className="truncate">{orderReturn.reason}</span>
+                                                <span className="shrink-0 font-semibold">{formatDateTime(orderReturn.returnedAt)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : null}
                         </CardContent>
                     </Card>
                 </div>
@@ -1237,6 +1423,21 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 isLoading={isDeleting}
                 title={t('orders.confirmDelete') || 'Delete Order'}
                 description={t('orders.deleteWarning') || 'This will permanently remove the order record. Associated invoices should be checked.'}
+            />
+
+            <ReturnConfirmationModal
+                isOpen={!!returnTarget}
+                onClose={() => {
+                    if (!isReturning) setReturnTarget(null)
+                }}
+                onConfirm={(reason, quantity) => { void handleOrderReturnConfirm(reason, quantity) }}
+                title={t('orders.return.title', { defaultValue: 'Return Order' })}
+                message={returnTarget?.orderItemId
+                    ? t('orders.return.itemConfirmation', { itemName: returnTarget.itemName, defaultValue: `Return ${returnTarget.itemName} from this completed order?` })
+                    : t('orders.return.wholeConfirmation', { defaultValue: 'Return all remaining items from this completed order?' })}
+                isItemReturn={!!returnTarget?.orderItemId}
+                maxQuantity={returnTarget?.maxQuantity || 1}
+                itemName={returnTarget?.itemName || ''}
             />
 
             <SettlementDialog

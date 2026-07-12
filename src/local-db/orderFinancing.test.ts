@@ -41,6 +41,7 @@ let createPurchaseOrder: typeof import('./orders').createPurchaseOrder
 let updateSalesOrderStatus: typeof import('./orders').updateSalesOrderStatus
 let updatePurchaseOrderStatus: typeof import('./orders').updatePurchaseOrderStatus
 let recordOrderPayment: typeof import('./orders').recordOrderPayment
+let returnSalesOrder: typeof import('./orders').returnSalesOrder
 let createProduct: typeof import('./hooks').createProduct
 let createStorage: typeof import('./hooks').createStorage
 let recordLoanPayment: typeof import('./hooks').recordLoanPayment
@@ -358,6 +359,7 @@ describe('order-linked financing', () => {
         updateSalesOrderStatus = orders.updateSalesOrderStatus
         updatePurchaseOrderStatus = orders.updatePurchaseOrderStatus
         recordOrderPayment = orders.recordOrderPayment
+        returnSalesOrder = orders.returnSalesOrder
         createProduct = loans.createProduct
         createStorage = loans.createStorage
         recordLoanPayment = loans.recordLoanPayment
@@ -391,7 +393,7 @@ describe('order-linked financing', () => {
             })
         )
 
-        expect(await db.payment_transactions.count()).toBe(0)
+        expect(await db.payment_transactions.count()).toBe(1)
 
         const activated = await updatePurchaseOrderStatus(draft.id, 'ordered')
         expect(activated.linkedLoanId).toBeTruthy()
@@ -416,7 +418,7 @@ describe('order-linked financing', () => {
         const installments = await db.loan_installments.where('loanId').equals(loan!.id).sortBy('installmentNo')
         expect(installments.map((item) => item.plannedAmount)).toEqual([40, 40])
         expect(await db.order_installments.where('orderId').equals(draft.id).count()).toBe(0)
-        expect(await db.payment_transactions.count()).toBe(0)
+        expect(await db.payment_transactions.count()).toBe(1)
 
         await recordLoanPayment(WORKSPACE_ID, {
             loanId: loan!.id,
@@ -666,6 +668,111 @@ describe('order-linked financing', () => {
         expect(transactions.filter((transaction) => !transaction.isDeleted)).toHaveLength(1)
         expect(transactions.find((transaction) => !transaction.isDeleted)?.amount).toBe(688.5)
         expect(transactions.filter((transaction) => transaction.isDeleted)).toHaveLength(1)
+    })
+
+    it('posts a partial return for a completed paid sales order and reverses only the returned payment value', async () => {
+        const customer = await createCustomer()
+        const { storage, product } = await createStockedSalesProduct(100)
+        const draft = await createSalesOrder(
+            WORKSPACE_ID,
+            salesOrderInput(customer.id, product, storage.id, { method: 'cash', total: 100 })
+        )
+        await recordOrderPayment(WORKSPACE_ID, {
+            orderType: 'sales',
+            orderId: draft.id,
+            amount: 100,
+            paymentMethod: 'cash',
+            paidAt: '2026-07-12T10:00:00.000Z'
+        })
+        await updateSalesOrderStatus(draft.id, 'pending')
+        const completed = await updateSalesOrderStatus(draft.id, 'completed')
+
+        const result = await returnSalesOrder({
+            orderId: completed.id,
+            items: [{ orderItemId: completed.items[0].id, quantity: 0.5 }],
+            reason: 'customer_returned',
+            actorRole: 'admin'
+        })
+
+        expect(result.order).toMatchObject({
+            status: 'completed',
+            total: 50,
+            returnedAmount: 50,
+            returnStatus: 'partial',
+            paidAmount: 50,
+            balanceAmount: 0,
+            isPaid: true
+        })
+        expect(await db.order_returns.where('orderId').equals(completed.id).count()).toBe(1)
+        expect(await db.order_return_items.where('orderId').equals(completed.id).first()).toMatchObject({
+            quantity: 0.5,
+            refundAmount: 50,
+            restoredStorageId: storage.id
+        })
+        const payments = await db.payment_transactions.where('sourceRecordId').equals(completed.id).toArray()
+        expect(payments.map((payment) => payment.amount).sort((left, right) => left - right)).toEqual([-50, 100])
+        expect((await db.inventory.where('[productId+storageId]').equals([product.id, storage.id]).first())?.quantity).toBe(4.5)
+    })
+
+    it('rejects a return before changing any data when the caller is not an admin', async () => {
+        const customer = await createCustomer()
+        const { storage, product } = await createStockedSalesProduct(100)
+        const draft = await createSalesOrder(
+            WORKSPACE_ID,
+            salesOrderInput(customer.id, product, storage.id, { method: 'cash', total: 100 })
+        )
+        await recordOrderPayment(WORKSPACE_ID, {
+            orderType: 'sales',
+            orderId: draft.id,
+            amount: 100,
+            paymentMethod: 'cash',
+            paidAt: '2026-07-12T10:00:00.000Z'
+        })
+        await updateSalesOrderStatus(draft.id, 'pending')
+        const completed = await updateSalesOrderStatus(draft.id, 'completed')
+
+        await expect(returnSalesOrder({
+            orderId: completed.id,
+            items: [{ orderItemId: completed.items[0].id, quantity: 1 }],
+            reason: 'customer_returned',
+            actorRole: 'staff'
+        })).rejects.toThrow('Only admins')
+
+        expect(await db.order_returns.where('orderId').equals(completed.id).count()).toBe(0)
+        expect((await db.sales_orders.get(completed.id))?.total).toBe(100)
+    })
+
+    it('reduces an outstanding order loan before refunding paid money', async () => {
+        const customer = await createCustomer()
+        const { storage, product } = await createStockedSalesProduct(100)
+        const draft = await createSalesOrder(
+            WORKSPACE_ID,
+            salesOrderInput(customer.id, product, storage.id, {
+                method: 'installments',
+                total: 100,
+                initialPayment: 20,
+                firstDueDate: '2026-08-01'
+            })
+        )
+        const pending = await updateSalesOrderStatus(draft.id, 'pending')
+        const completed = await updateSalesOrderStatus(pending.id, 'completed')
+
+        await returnSalesOrder({
+            orderId: completed.id,
+            items: [{ orderItemId: completed.items[0].id, quantity: 0.25 }],
+            reason: 'customer_returned',
+            actorRole: 'admin'
+        })
+
+        const loan = await db.loans.get(completed.linkedLoanId!)
+        expect(loan).toMatchObject({ principalAmount: 55, totalPaidAmount: 0, balanceAmount: 55 })
+        expect(await db.sales_orders.get(completed.id)).toMatchObject({
+            total: 75,
+            initialPaymentAmount: 20,
+            paidAmount: 20,
+            balanceAmount: 55,
+            paymentStatus: 'partial'
+        })
     })
 
     it('enforces the payable credit limit and requires regular tenders to be fully paid', async () => {

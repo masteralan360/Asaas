@@ -28,6 +28,7 @@ import {
     recalculateBusinessPartnerSummary
 } from './businessPartners'
 import {
+    adjustInventoryQuantity,
     getInventoryQuantityForProductStorage,
     hydrateInventoryProductStoragesFromSupabase,
     putInventoryQuantity,
@@ -35,6 +36,7 @@ import {
     syncProductStockSnapshot
 } from './inventory'
 import { addToOfflineMutations, fetchTableFromSupabase } from './hooks'
+import { resolveReturnStorageId } from './storageUtils'
 import {
     calculateStockBatchUnitCost,
     commitStockBatchAllocations,
@@ -42,8 +44,10 @@ import {
     getStockBatchSalePlans,
     hydrateStockBatchesForPurchaseOrder,
     refreshStockBatchesFromSupabase,
+    restoreStockBatchAllocations,
     shouldCreatePurchaseCostBatch,
-    syncStockBatchesBestEffort
+    syncStockBatchesBestEffort,
+    splitStockBatchAllocationsForReturn
 } from './stockBatches'
 import type {
     Customer,
@@ -52,6 +56,8 @@ import type {
     Inventory,
     Loan,
     OrderInstallment,
+    OrderReturn,
+    OrderReturnItem,
     OrderPaymentMethod,
     OrderPaymentStatus,
     OrderType,
@@ -59,11 +65,14 @@ import type {
     PurchaseOrder,
     PurchaseOrderStatus,
     SalesOrder,
+    SalesOrderItem,
     SalesOrderStatus,
     StockBatch,
+    StockBatchAllocation,
     Supplier,
     TravelAgencySale
 } from './models'
+import { appendPaymentTransaction } from './payments'
 
 export function isOrderFinancingMethod(method?: OrderPaymentMethod | null): method is 'loan' | 'installments' {
     return method === 'loan' || method === 'installments'
@@ -72,7 +81,16 @@ export function isOrderFinancingMethod(method?: OrderPaymentMethod | null): meth
 type SimpleEntityTableName = 'customers' | 'suppliers'
 type OrderTableName = 'sales_orders' | 'purchase_orders'
 type OrderInstallmentTableName = 'order_installments'
-type SyncableTableName = SimpleEntityTableName | OrderTableName | OrderInstallmentTableName | 'products' | 'payment_transactions'
+type SyncableTableName = SimpleEntityTableName
+    | OrderTableName
+    | OrderInstallmentTableName
+    | 'products'
+    | 'payment_transactions'
+    | 'loans'
+    | 'loan_installments'
+    | 'loan_payments'
+    | 'order_returns'
+    | 'order_return_items'
 
 const PURCHASE_BATCH_UUID_NAMESPACE = '82244d4d-29dd-55b5-a907-50f74e8b49bb'
 
@@ -871,19 +889,23 @@ function normalizeOrderPaymentState(input: OrderPaymentInput, now: string) {
 }
 
 function getActiveOrderPayments(rows: PaymentTransaction[]) {
-    const reversedIds = new Set(
-        rows
-            .filter((row) => !row.isDeleted && !!row.reversalOfTransactionId)
-            .map((row) => row.reversalOfTransactionId as string)
-    )
+    const reversalAmounts = new Map<string, number>()
+    for (const row of rows) {
+        if (row.isDeleted || !row.reversalOfTransactionId) continue
+        const current = reversalAmounts.get(row.reversalOfTransactionId) || 0
+        reversalAmounts.set(row.reversalOfTransactionId, current + Math.abs(Number(row.amount || 0)))
+    }
 
     return rows
-        .filter((row) =>
-            !row.isDeleted
-            && !row.reversalOfTransactionId
-            && !reversedIds.has(row.id)
-            && row.amount > 0
-        )
+        .filter((row) => !row.isDeleted && !row.reversalOfTransactionId && row.amount > 0)
+        .map((row) => ({
+            ...row,
+            amount: roundOrderAmount(
+                Math.max(0, Number(row.amount || 0) - (reversalAmounts.get(row.id) || 0)),
+                row.currency
+            )
+        }))
+        .filter((row) => row.amount > ORDER_AMOUNT_EPSILON)
         .sort((left, right) =>
             left.paidAt.localeCompare(right.paidAt)
             || left.createdAt.localeCompare(right.createdAt)
@@ -901,7 +923,11 @@ async function listActiveOrderPayments(workspaceId: string, sourceType: 'sales_o
 
 async function appendInitialOrderPaymentTransaction(orderType: OrderType, order: SalesOrder | PurchaseOrder) {
     const sourceType = orderType === 'sales' ? 'sales_order' : 'purchase_order'
-    if (order.paidAmount <= 0 || isOrderFinancingMethod(order.paymentMethod)) {
+    const isFinanced = isOrderFinancingMethod(order.paymentMethod)
+    const paymentAmount = isFinanced
+        ? roundOrderAmount(Math.max(0, Number(order.initialPaymentAmount || 0)), order.currency)
+        : order.paidAmount
+    if (paymentAmount <= 0) {
         return
     }
 
@@ -917,9 +943,9 @@ async function appendInitialOrderPaymentTransaction(orderType: OrderType, order:
         sourceRecordId: order.id,
         sourceSubrecordId: null,
         direction: orderType === 'sales' ? 'incoming' : 'outgoing',
-        amount: order.paidAmount,
+        amount: paymentAmount,
         currency: order.currency,
-        paymentMethod: order.paymentMethod || 'unknown',
+        paymentMethod: (isFinanced ? 'cash' : (order.paymentMethod || 'unknown')) as PaymentTransaction['paymentMethod'],
         paidAt: order.paidAt || order.updatedAt,
         counterpartyName: orderType === 'sales'
             ? (order as SalesOrder).customerName
@@ -929,7 +955,8 @@ async function appendInitialOrderPaymentTransaction(orderType: OrderType, order:
         metadata: {
             orderStatus: order.status,
             ...(orderType === 'sales' ? { sourceChannel: (order as SalesOrder).sourceChannel || 'manual' } : {}),
-            isDownPayment: false
+            isDownPayment: isFinanced,
+            isFinancingInitialPayment: isFinanced
         }
     })
 }
@@ -1294,6 +1321,108 @@ export function usePurchaseOrders(workspaceId: string | undefined) {
 
 export function useSalesOrder(orderId: string | undefined) {
     return useLiveQuery(() => orderId ? db.sales_orders.get(orderId) : undefined, [orderId])
+}
+
+export function useSalesOrderReturns(orderId: string | undefined, workspaceId?: string) {
+    const online = useNetworkStatus()
+    const returns = useLiveQuery<OrderReturn[]>(
+        () => orderId
+            ? db.order_returns
+                .where('orderId')
+                .equals(orderId)
+                .and((item) => !item.isDeleted && item.status === 'posted')
+                .toArray()
+                .then((rows) => rows.sort((left, right) => right.returnedAt.localeCompare(left.returnedAt)))
+            : Promise.resolve([] as OrderReturn[]),
+        [orderId]
+    )
+
+    useEffect(() => {
+        if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+            void fetchTableFromSupabase('order_returns', db.order_returns, workspaceId, { includeDeleted: true })
+            void fetchTableFromSupabase('order_return_items', db.order_return_items, workspaceId, { includeDeleted: true })
+        }
+    }, [online, workspaceId])
+
+    return returns ?? []
+}
+
+export function useSalesOrderReturnItems(orderId: string | undefined, workspaceId?: string) {
+    const online = useNetworkStatus()
+    const items = useLiveQuery<OrderReturnItem[]>(
+        () => orderId
+            ? db.order_return_items
+                .where('orderId')
+                .equals(orderId)
+                .and((item) => !item.isDeleted)
+                .toArray()
+            : Promise.resolve([] as OrderReturnItem[]),
+        [orderId]
+    )
+
+    useEffect(() => {
+        if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+            void fetchTableFromSupabase('order_return_items', db.order_return_items, workspaceId, { includeDeleted: true })
+        }
+    }, [online, workspaceId])
+
+    return items ?? []
+}
+
+/**
+ * Return rows are stored independently from the order so they can be audited.
+ * Pages that mirror sales orders need this workspace-level view to project the
+ * returned quantity onto each order line.
+ */
+export function useSalesOrderReturnItemsForWorkspace(workspaceId?: string) {
+    const online = useNetworkStatus()
+    const items = useLiveQuery<OrderReturnItem[]>(
+        () => workspaceId
+            ? db.order_return_items
+                .where('workspaceId')
+                .equals(workspaceId)
+                .and((item) => !item.isDeleted)
+                .toArray()
+            : Promise.resolve([] as OrderReturnItem[]),
+        [workspaceId]
+    )
+
+    useEffect(() => {
+        if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+            void fetchTableFromSupabase('order_return_items', db.order_return_items, workspaceId, { includeDeleted: true })
+        }
+    }, [online, workspaceId])
+
+    return items ?? []
+}
+
+/** Project immutable return rows onto order line items for sales-history and analytics views. */
+export function applySalesOrderReturnQuantities(
+    orders: readonly SalesOrder[],
+    returnItems: readonly OrderReturnItem[]
+): SalesOrder[] {
+    const returnedByOrderAndItem = new Map<string, number>()
+
+    for (const returnItem of returnItems) {
+        if (returnItem.isDeleted) continue
+        const key = `${returnItem.orderId}:${returnItem.orderItemId}`
+        const quantity = roundQuantity(Math.max(0, Number(returnItem.quantity || 0)))
+        returnedByOrderAndItem.set(key, roundQuantity((returnedByOrderAndItem.get(key) || 0) + quantity))
+    }
+
+    return orders.map((order) => {
+        const items = order.items.map((item) => {
+            const returnedQuantity = returnedByOrderAndItem.get(`${order.id}:${item.id}`)
+            if (returnedQuantity === undefined) return item
+
+            return {
+                ...item,
+                returnedQuantity: Math.min(getOrderLineInventoryQuantity(item), returnedQuantity)
+            }
+        })
+
+        return { ...order, items }
+    })
 }
 
 export function usePurchaseOrder(orderId: string | undefined) {
@@ -1949,6 +2078,657 @@ export async function lockSalesOrder(id: string) {
     await db.sales_orders.put(updated)
     await syncUpsertEntities('sales_orders', [updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
     return updated
+}
+
+export type SalesOrderReturnLineInput = {
+    orderItemId: string
+    quantity: number
+}
+
+export type ReturnSalesOrderInput = {
+    orderId: string
+    items: SalesOrderReturnLineInput[]
+    reason: string
+    returnedBy?: string | null
+    actorRole?: string | null
+}
+
+type PreparedSalesOrderReturnLine = {
+    item: SalesOrderItem
+    quantity: number
+    previouslyReturnedQuantity: number
+    refundAmount: number
+    unitRefundAmount: number
+}
+
+type RestoredOrderReturnLine = PreparedSalesOrderReturnLine & {
+    restoredStorageId: string | null
+    restoredBatchAllocations: StockBatchAllocation[]
+}
+
+function getSalesOrderOriginalTotal(order: SalesOrder) {
+    const returnedAmount = roundAmount(Math.max(0, Number(order.returnedAmount || 0)), order.currency)
+    return roundAmount(
+        Math.max(0, Number(order.originalTotalAmount ?? Number(order.total || 0) + returnedAmount)),
+        order.currency
+    )
+}
+
+function getLoanReturnInstallmentStatus(dueDate: string | null, paidAmount: number, balanceAmount: number, today: string) {
+    if (balanceAmount <= ORDER_AMOUNT_EPSILON) return 'paid' as const
+    if (paidAmount > ORDER_AMOUNT_EPSILON) return 'partial' as const
+    return dueDate && dueDate.slice(0, 10) < today ? 'overdue' as const : 'unpaid' as const
+}
+
+function getLoanReturnStatus(nextDueDate: string | null, balanceAmount: number, today: string) {
+    if (balanceAmount <= ORDER_AMOUNT_EPSILON) return 'completed' as const
+    return nextDueDate && nextDueDate.slice(0, 10) < today ? 'overdue' as const : 'active' as const
+}
+
+function getPaymentTransactionRemainingAmount(transaction: PaymentTransaction, rows: PaymentTransaction[]) {
+    const reversalTotal = rows
+        .filter((row) => !row.isDeleted && row.reversalOfTransactionId === transaction.id)
+        .reduce((sum, row) => sum + Math.abs(Number(row.amount || 0)), 0)
+    return roundOrderAmount(Math.max(0, Number(transaction.amount || 0) - reversalTotal), transaction.currency)
+}
+
+async function appendOrderReturnPaymentReversal(input: {
+    transaction: PaymentTransaction
+    amount: number
+    returnId: string
+    reason: string
+    returnedBy?: string | null
+}) {
+    if (input.amount <= ORDER_AMOUNT_EPSILON) return null
+
+    return appendPaymentTransaction(input.transaction.workspaceId, {
+        sourceModule: input.transaction.sourceModule,
+        sourceType: input.transaction.sourceType,
+        sourceRecordId: input.transaction.sourceRecordId,
+        sourceSubrecordId: input.transaction.sourceSubrecordId ?? null,
+        direction: input.transaction.direction,
+        amount: -Math.abs(input.amount),
+        currency: input.transaction.currency,
+        paymentMethod: input.transaction.paymentMethod,
+        paidAt: new Date().toISOString(),
+        counterpartyName: input.transaction.counterpartyName || null,
+        referenceLabel: input.transaction.referenceLabel || null,
+        note: `Order return ${input.returnId}: ${input.reason}`,
+        createdBy: input.returnedBy || null,
+        reversalOfTransactionId: input.transaction.id,
+        metadata: {
+            ...(input.transaction.metadata || {}),
+            orderReturnId: input.returnId,
+            returnReason: input.reason,
+            partialReversal: true
+        }
+    })
+}
+
+async function restoreInventoryForSalesOrderReturn(
+    order: SalesOrder,
+    lines: PreparedSalesOrderReturnLine[],
+    timestamp: string
+): Promise<RestoredOrderReturnLine[]> {
+    const plans = await Promise.all(lines.map(async (line) => {
+        const restoredStorageId = await resolveReturnStorageId({
+            workspaceId: order.workspaceId,
+            productId: line.item.productId,
+            saleStorageId: line.item.storageId || order.sourceStorageId || null
+        })
+        if (!restoredStorageId) {
+            throw new Error(`No active storage available for returned item ${line.item.productName}`)
+        }
+
+        const afterPreviousReturn = splitStockBatchAllocationsForReturn(
+            line.item.batchAllocations || [],
+            line.previouslyReturnedQuantity
+        ).remainingAllocations
+        const allocationSplit = splitStockBatchAllocationsForReturn(afterPreviousReturn, line.quantity)
+
+        return {
+            ...line,
+            restoredStorageId,
+            restoredAllocations: allocationSplit.restoredAllocations,
+            restoredBatchAllocations: [] as StockBatchAllocation[]
+        }
+    }))
+
+    const applied: typeof plans = []
+    try {
+        for (const plan of plans) {
+            await adjustInventoryQuantity({
+                workspaceId: order.workspaceId,
+                productId: plan.item.productId,
+                storageId: plan.restoredStorageId,
+                quantityDelta: plan.quantity,
+                timestamp
+            })
+            if (plan.restoredAllocations.length > 0) {
+                plan.restoredBatchAllocations = await restoreStockBatchAllocations(
+                    order.workspaceId,
+                    plan.item.productId,
+                    plan.restoredStorageId,
+                    plan.restoredAllocations,
+                    { timestamp }
+                )
+            }
+            applied.push(plan)
+        }
+    } catch (error) {
+        for (const plan of [...applied].reverse()) {
+            try {
+                if (plan.restoredBatchAllocations.length > 0) {
+                    await commitStockBatchAllocations(
+                        order.workspaceId,
+                        plan.item.productId,
+                        plan.restoredStorageId,
+                        plan.restoredBatchAllocations,
+                        { timestamp }
+                    )
+                }
+                await adjustInventoryQuantity({
+                    workspaceId: order.workspaceId,
+                    productId: plan.item.productId,
+                    storageId: plan.restoredStorageId,
+                    quantityDelta: -plan.quantity,
+                    timestamp
+                })
+            } catch (rollbackError) {
+                console.error('[Orders] Failed to roll back order-return inventory:', rollbackError)
+            }
+        }
+        throw error
+    }
+
+    return plans.map((plan) => ({
+        item: plan.item,
+        quantity: plan.quantity,
+        previouslyReturnedQuantity: plan.previouslyReturnedQuantity,
+        refundAmount: plan.refundAmount,
+        unitRefundAmount: plan.unitRefundAmount,
+        restoredStorageId: plan.restoredStorageId,
+        restoredBatchAllocations: plan.restoredBatchAllocations
+    }))
+}
+
+async function applySalesOrderReturnToFinancing(input: {
+    order: SalesOrder
+    returnId: string
+    returnAmount: number
+    reason: string
+    returnedBy?: string | null
+    timestamp: string
+}) {
+    const loan = input.order.linkedLoanId ? await db.loans.get(input.order.linkedLoanId) : null
+    if (!loan || loan.isDeleted || loan.source !== 'order' || loan.orderId !== input.order.id || loan.orderType !== 'sales') {
+        throw new Error('The linked order loan was not found')
+    }
+
+    const [installments, loanPayments, paymentTransactions] = await Promise.all([
+        db.loan_installments.where('loanId').equals(loan.id).and((item) => !item.isDeleted).sortBy('installmentNo'),
+        db.loan_payments.where('loanId').equals(loan.id).and((item) => !item.isDeleted).toArray(),
+        db.payment_transactions.where('workspaceId').equals(input.order.workspaceId).toArray()
+    ])
+
+    const originalLoanBalance = roundAmount(Math.max(0, Number(loan.balanceAmount || 0)), loan.settlementCurrency)
+    let remainingRefund = roundAmount(Math.max(0, input.returnAmount - originalLoanBalance), loan.settlementCurrency)
+    const updatedLoanPayments: Array<typeof loanPayments[number]> = []
+    const loanPaymentRefunds: Array<{ transaction: PaymentTransaction; amount: number }> = []
+    let unmappedLoanPaymentRefund = 0
+    const paymentsByNewestFirst = loanPayments
+        .slice()
+        .sort((left, right) => right.paidAt.localeCompare(left.paidAt) || right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id))
+
+    for (const payment of paymentsByNewestFirst) {
+        if (remainingRefund <= ORDER_AMOUNT_EPSILON) break
+        const applied = roundAmount(Math.min(Math.max(0, payment.amount), remainingRefund), loan.settlementCurrency)
+        if (applied <= ORDER_AMOUNT_EPSILON) continue
+
+        const nextAmount = roundAmount(Math.max(0, payment.amount - applied), loan.settlementCurrency)
+        const updatedPayment = {
+            ...payment,
+            amount: nextAmount,
+            isDeleted: nextAmount <= ORDER_AMOUNT_EPSILON,
+            updatedAt: input.timestamp,
+            version: payment.version + 1,
+            ...getSyncMetadata(input.order.workspaceId, input.timestamp)
+        }
+        updatedLoanPayments.push(updatedPayment)
+        remainingRefund = roundAmount(Math.max(0, remainingRefund - applied), loan.settlementCurrency)
+
+        const sourceTransaction = paymentTransactions
+            .filter((transaction) => !transaction.isDeleted && !transaction.reversalOfTransactionId)
+            .find((transaction) => transaction.metadata?.loanPaymentId === payment.id
+                || (transaction.sourceSubrecordId === payment.id && transaction.sourceType !== 'loan_installment'))
+        if (sourceTransaction) {
+            loanPaymentRefunds.push({ transaction: sourceTransaction, amount: applied })
+        } else {
+            unmappedLoanPaymentRefund = roundAmount(unmappedLoanPaymentRefund + applied, input.order.currency)
+        }
+    }
+
+    const activeUpdatedPayments = loanPayments.map((payment) =>
+        updatedLoanPayments.find((candidate) => candidate.id === payment.id) || payment
+    )
+    const newLoanPaidAmount = roundAmount(
+        activeUpdatedPayments
+            .filter((payment) => !payment.isDeleted)
+            .reduce((sum, payment) => sum + Math.max(0, Number(payment.amount || 0)), 0),
+        loan.settlementCurrency
+    )
+    const initialPaymentRefund = roundAmount(Math.max(0, remainingRefund), input.order.currency)
+    const nextInitialPayment = roundAmount(
+        Math.max(0, Number(input.order.initialPaymentAmount || 0) - initialPaymentRefund),
+        input.order.currency
+    )
+    const nextPrincipal = roundAmount(
+        Math.max(0, Number(loan.principalAmount || 0) - input.returnAmount),
+        loan.settlementCurrency
+    )
+    const nextBalance = roundAmount(Math.max(0, nextPrincipal - newLoanPaidAmount), loan.settlementCurrency)
+
+    const paidByInstallment = new Map<string, number>()
+    let paymentToAllocate = newLoanPaidAmount
+    for (const installment of installments) {
+        const paid = roundAmount(Math.min(Math.max(0, Number(installment.plannedAmount || 0)), paymentToAllocate), loan.settlementCurrency)
+        paidByInstallment.set(installment.id, paid)
+        paymentToAllocate = roundAmount(Math.max(0, paymentToAllocate - paid), loan.settlementCurrency)
+    }
+
+    const originalRemaining = installments.reduce((sum, installment) => {
+        const paid = paidByInstallment.get(installment.id) || 0
+        return sum + Math.max(0, Number(installment.plannedAmount || 0) - paid)
+    }, 0)
+    let remainingBalanceToAllocate = nextBalance
+    const today = input.timestamp.slice(0, 10)
+    const updatedInstallments = installments.map((installment, index) => {
+        const paidAmount = paidByInstallment.get(installment.id) || 0
+        const existingRemaining = Math.max(0, Number(installment.plannedAmount || 0) - paidAmount)
+        const isLast = index === installments.length - 1
+        const balanceAmount = roundAmount(
+            isLast
+                ? remainingBalanceToAllocate
+                : originalRemaining <= ORDER_AMOUNT_EPSILON
+                    ? 0
+                    : Math.min(remainingBalanceToAllocate, nextBalance * (existingRemaining / originalRemaining)),
+            loan.settlementCurrency
+        )
+        remainingBalanceToAllocate = roundAmount(Math.max(0, remainingBalanceToAllocate - balanceAmount), loan.settlementCurrency)
+        const plannedAmount = roundAmount(paidAmount + balanceAmount, loan.settlementCurrency)
+        return {
+            ...installment,
+            plannedAmount,
+            paidAmount,
+            balanceAmount,
+            status: getLoanReturnInstallmentStatus(installment.dueDate, paidAmount, balanceAmount, today),
+            paidAt: balanceAmount <= ORDER_AMOUNT_EPSILON && paidAmount > ORDER_AMOUNT_EPSILON ? installment.paidAt || input.timestamp : null,
+            updatedAt: input.timestamp,
+            version: installment.version + 1,
+            ...getSyncMetadata(input.order.workspaceId, input.timestamp)
+        }
+    })
+    const nextDueDate = updatedInstallments.find((installment) => installment.balanceAmount > ORDER_AMOUNT_EPSILON)?.dueDate || null
+    const updatedLoan = {
+        ...loan,
+        principalAmount: nextPrincipal,
+        totalPaidAmount: newLoanPaidAmount,
+        balanceAmount: nextBalance,
+        nextDueDate,
+        status: getLoanReturnStatus(nextDueDate, nextBalance, today),
+        updatedAt: input.timestamp,
+        version: loan.version + 1,
+        ...getSyncMetadata(input.order.workspaceId, input.timestamp)
+    }
+
+    await db.transaction('rw', [db.loans, db.loan_installments, db.loan_payments], async () => {
+        await db.loans.put(updatedLoan)
+        if (updatedInstallments.length > 0) await db.loan_installments.bulkPut(updatedInstallments)
+        if (updatedLoanPayments.length > 0) await db.loan_payments.bulkPut(updatedLoanPayments)
+    })
+
+    await Promise.all(loanPaymentRefunds.map(({ transaction, amount }) =>
+        appendOrderReturnPaymentReversal({
+            transaction,
+            amount,
+            returnId: input.returnId,
+            reason: input.reason,
+            returnedBy: input.returnedBy
+        })
+    ))
+    if (unmappedLoanPaymentRefund > ORDER_AMOUNT_EPSILON) {
+        await appendPaymentTransaction(input.order.workspaceId, {
+            sourceModule: 'orders',
+            sourceType: 'order_return',
+            sourceRecordId: input.returnId,
+            direction: 'outgoing',
+            amount: -unmappedLoanPaymentRefund,
+            currency: input.order.currency,
+            paymentMethod: 'cash',
+            paidAt: input.timestamp,
+            counterpartyName: input.order.customerName,
+            referenceLabel: input.order.orderNumber,
+            note: `Order return ${input.returnId}: loan repayment refund`,
+            createdBy: input.returnedBy || null,
+            metadata: {
+                orderId: input.order.id,
+                orderReturnId: input.returnId,
+                loanRepaymentRefund: true
+            }
+        })
+    }
+    if (initialPaymentRefund > ORDER_AMOUNT_EPSILON) {
+        const initialPayments = paymentTransactions
+            .filter((transaction) => !transaction.isDeleted
+                && transaction.sourceType === 'sales_order'
+                && transaction.sourceRecordId === input.order.id
+                && transaction.metadata?.isFinancingInitialPayment === true
+            )
+            .sort((left, right) => right.paidAt.localeCompare(left.paidAt) || right.createdAt.localeCompare(left.createdAt))
+        let remainingInitialRefund = initialPaymentRefund
+        for (const transaction of initialPayments) {
+            if (remainingInitialRefund <= ORDER_AMOUNT_EPSILON) break
+            const available = getPaymentTransactionRemainingAmount(transaction, paymentTransactions)
+            const applied = roundAmount(Math.min(available, remainingInitialRefund), input.order.currency)
+            if (applied <= ORDER_AMOUNT_EPSILON) continue
+            await appendOrderReturnPaymentReversal({
+                transaction,
+                amount: applied,
+                returnId: input.returnId,
+                reason: input.reason,
+                returnedBy: input.returnedBy
+            })
+            remainingInitialRefund = roundAmount(Math.max(0, remainingInitialRefund - applied), input.order.currency)
+        }
+        if (remainingInitialRefund > ORDER_AMOUNT_EPSILON) {
+            await appendPaymentTransaction(input.order.workspaceId, {
+                sourceModule: 'orders',
+                sourceType: 'order_return',
+                sourceRecordId: input.returnId,
+                direction: 'outgoing',
+                amount: -remainingInitialRefund,
+                currency: input.order.currency,
+                paymentMethod: 'cash',
+                paidAt: input.timestamp,
+                counterpartyName: input.order.customerName,
+                referenceLabel: input.order.orderNumber,
+                note: `Order return ${input.returnId}: financing down payment refund`,
+                createdBy: input.returnedBy || null,
+                metadata: {
+                    orderId: input.order.id,
+                    orderReturnId: input.returnId,
+                    financingInitialPaymentRefund: true
+                }
+            })
+        }
+    }
+
+    await Promise.all([
+        syncUpsertEntities('loans', [updatedLoan], input.order.workspaceId),
+        syncUpsertEntities('loan_installments', updatedInstallments, input.order.workspaceId),
+        syncUpsertEntities(
+            'loan_payments',
+            updatedLoanPayments as unknown as Array<Record<string, unknown> & { id: string; version: number }>,
+            input.order.workspaceId
+        )
+    ])
+
+    return { loan: updatedLoan, initialPaymentAmount: nextInitialPayment }
+}
+
+export async function returnSalesOrder(input: ReturnSalesOrderInput) {
+    if (input.actorRole !== 'admin') {
+        throw new Error('Only admins can return completed sales orders')
+    }
+
+    const order = await db.sales_orders.get(input.orderId)
+    if (!order || order.isDeleted) {
+        throw new Error('Sales order not found')
+    }
+    if (order.status !== 'completed') {
+        throw new Error('Only completed sales orders can be returned')
+    }
+
+    const reason = input.reason.trim()
+    if (!reason) {
+        throw new Error('Select a return reason')
+    }
+    if (input.items.length === 0) {
+        throw new Error('Select at least one item to return')
+    }
+
+    const quantitiesByItemId = new Map<string, number>()
+    for (const line of input.items) {
+        const quantity = roundQuantity(Number(line.quantity || 0))
+        if (!isPositiveQuantity(quantity)) {
+            throw new Error('Return quantity must be greater than zero')
+        }
+        if (quantitiesByItemId.has(line.orderItemId)) {
+            throw new Error('Return items must be unique')
+        }
+        quantitiesByItemId.set(line.orderItemId, quantity)
+    }
+
+    const [existingReturnItems, existingReturns] = await Promise.all([
+        db.order_return_items.where('orderId').equals(order.id).and((item) => !item.isDeleted).toArray(),
+        db.order_returns.where('orderId').equals(order.id).and((item) => !item.isDeleted && item.status === 'posted').toArray()
+    ])
+    const returnedQuantityByItemId = new Map<string, number>()
+    for (const returnItem of existingReturnItems) {
+        returnedQuantityByItemId.set(
+            returnItem.orderItemId,
+            roundQuantity((returnedQuantityByItemId.get(returnItem.orderItemId) || 0) + returnItem.quantity)
+        )
+    }
+    const returnedAmount = roundAmount(
+        existingReturns.reduce((sum, row) => sum + Math.max(0, Number(row.refundAmount || 0)), 0),
+        order.currency
+    )
+    const originalTotal = getSalesOrderOriginalTotal(order)
+    const itemValueBase = order.items.reduce((sum, item) => sum + Math.max(0, Number(item.lineTotal || 0)), 0)
+    const fallbackItemValueBase = itemValueBase > ORDER_AMOUNT_EPSILON ? itemValueBase : order.items.length
+
+    const preparedLines: PreparedSalesOrderReturnLine[] = []
+    for (const [orderItemId, quantity] of quantitiesByItemId) {
+        const item = order.items.find((candidate) => candidate.id === orderItemId)
+        if (!item) {
+            throw new Error('Order item not found')
+        }
+        const totalQuantity = getOrderLineInventoryQuantity(item)
+        const previouslyReturnedQuantity = returnedQuantityByItemId.get(orderItemId) || 0
+        if (quantity - (totalQuantity - previouslyReturnedQuantity) > ORDER_AMOUNT_EPSILON) {
+            throw new Error(`Return quantity exceeds the remaining quantity for ${item.productName}`)
+        }
+
+        const itemShare = itemValueBase > ORDER_AMOUNT_EPSILON
+            ? Math.max(0, Number(item.lineTotal || 0)) / itemValueBase
+            : 1 / fallbackItemValueBase
+        const cumulativePrevious = originalTotal * itemShare * (previouslyReturnedQuantity / totalQuantity)
+        const cumulativeCurrent = originalTotal * itemShare * ((previouslyReturnedQuantity + quantity) / totalQuantity)
+        const refundAmount = roundAmount(Math.max(0, cumulativeCurrent - cumulativePrevious), order.currency)
+        preparedLines.push({
+            item,
+            quantity,
+            previouslyReturnedQuantity,
+            refundAmount,
+            unitRefundAmount: roundAmount(refundAmount / quantity, order.currency)
+        })
+    }
+
+    let returnAmount = roundAmount(preparedLines.reduce((sum, line) => sum + line.refundAmount, 0), order.currency)
+    const willBeFullyReturned = order.items.every((item) => {
+        const newlyReturned = quantitiesByItemId.get(item.id) || 0
+        return (returnedQuantityByItemId.get(item.id) || 0) + newlyReturned >= getOrderLineInventoryQuantity(item) - ORDER_AMOUNT_EPSILON
+    })
+    if (willBeFullyReturned && preparedLines.length > 0) {
+        // The persisted order value is authoritative if legacy data and ledger rows disagree.
+        const expectedReturnAmount = roundAmount(Math.max(0, Number(order.total || 0)), order.currency)
+        const fullReturnDifference = roundAmount(expectedReturnAmount - returnAmount, order.currency)
+        if (Math.abs(fullReturnDifference) > ORDER_AMOUNT_EPSILON) {
+            const last = preparedLines[preparedLines.length - 1]
+            last.refundAmount = roundAmount(Math.max(0, last.refundAmount + fullReturnDifference), order.currency)
+            last.unitRefundAmount = roundAmount(last.refundAmount / last.quantity, order.currency)
+            returnAmount = roundAmount(returnAmount + fullReturnDifference, order.currency)
+        }
+    }
+    if (returnAmount <= ORDER_AMOUNT_EPSILON) {
+        throw new Error('The selected items do not have a return value')
+    }
+    if (returnAmount - Number(order.total || 0) > ORDER_AMOUNT_EPSILON) {
+        throw new Error('Return amount exceeds the remaining order total')
+    }
+
+    const returnId = generateId()
+    const timestamp = new Date().toISOString()
+    const isFinanced = isOrderFinancingMethod(order.paymentMethod) || !!order.linkedLoanId
+    const standardPaymentRows = !isFinanced
+        ? await db.payment_transactions
+            .where('[workspaceId+sourceType+sourceRecordId]')
+            .equals([order.workspaceId, 'sales_order', order.id])
+            .toArray()
+        : []
+    if (!isFinanced) {
+        const activePaymentAmount = roundAmount(
+            getActiveOrderPayments(standardPaymentRows).reduce((sum, payment) => sum + payment.amount, 0),
+            order.currency
+        )
+        if (activePaymentAmount + ORDER_AMOUNT_EPSILON < returnAmount) {
+            throw new Error('The order does not have enough posted payments to reverse this return')
+        }
+    }
+
+    const restoredLines = await restoreInventoryForSalesOrderReturn(order, preparedLines, timestamp)
+    const financingResult = isFinanced
+        ? await applySalesOrderReturnToFinancing({
+            order,
+            returnId,
+            returnAmount,
+            reason,
+            returnedBy: input.returnedBy,
+            timestamp
+        })
+        : null
+
+    const newReturnedAmount = roundAmount(returnedAmount + returnAmount, order.currency)
+    const nextTotal = roundAmount(Math.max(0, Number(order.total || 0) - returnAmount), order.currency)
+    const nextReturnStatus = willBeFullyReturned ? 'full' as const : 'partial' as const
+    const updatedOrder: SalesOrder = {
+        ...order,
+        items: order.items.map((item) => ({
+            ...item,
+            returnedQuantity: Math.min(
+                getOrderLineInventoryQuantity(item),
+                roundQuantity((returnedQuantityByItemId.get(item.id) || 0) + (quantitiesByItemId.get(item.id) || 0))
+            )
+        })),
+        originalTotalAmount: order.originalTotalAmount ?? originalTotal,
+        returnedAmount: newReturnedAmount,
+        returnStatus: nextReturnStatus,
+        returnedAt: timestamp,
+        returnedBy: input.returnedBy || null,
+        total: nextTotal,
+        subtotal: roundAmount(Math.max(0, Number(order.subtotal || 0) * (nextTotal / Math.max(Number(order.total || 0), 1))), order.currency),
+        discount: roundAmount(Math.max(0, Number(order.discount || 0) * (nextTotal / Math.max(Number(order.total || 0), 1))), order.currency),
+        tax: roundAmount(Math.max(0, Number(order.tax || 0) * (nextTotal / Math.max(Number(order.total || 0), 1))), order.currency),
+        initialPaymentAmount: financingResult?.initialPaymentAmount ?? order.initialPaymentAmount,
+        isPaid: financingResult ? financingResult.loan.balanceAmount <= ORDER_AMOUNT_EPSILON : order.isPaid,
+        paymentStatus: financingResult
+            ? financingResult.loan.balanceAmount <= ORDER_AMOUNT_EPSILON ? 'paid' : (financingResult.loan.totalPaidAmount + (financingResult.initialPaymentAmount || 0) > 0 ? 'partial' : 'unpaid')
+            : order.paymentStatus,
+        paidAmount: financingResult
+            ? roundAmount((financingResult.initialPaymentAmount || 0) + financingResult.loan.totalPaidAmount, order.currency)
+            : order.paidAmount,
+        balanceAmount: financingResult ? financingResult.loan.balanceAmount : order.balanceAmount,
+        paidAt: financingResult?.loan.balanceAmount && financingResult.loan.balanceAmount > ORDER_AMOUNT_EPSILON ? null : order.paidAt,
+        nextDueDate: financingResult?.loan.nextDueDate ?? order.nextDueDate,
+        updatedAt: timestamp,
+        version: order.version + 1,
+        ...getSyncMetadata(order.workspaceId, timestamp)
+    }
+    let finalOrder = updatedOrder
+    const orderReturn: OrderReturn = {
+        id: returnId,
+        workspaceId: order.workspaceId,
+        orderId: order.id,
+        reason,
+        status: 'posted',
+        refundAmount: returnAmount,
+        returnedBy: input.returnedBy || null,
+        returnedAt: timestamp,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        version: 1,
+        isDeleted: false,
+        ...getSyncMetadata(order.workspaceId, timestamp)
+    }
+    const orderReturnItems: OrderReturnItem[] = restoredLines.map((line) => ({
+        id: generateId(),
+        workspaceId: order.workspaceId,
+        returnId,
+        orderId: order.id,
+        orderItemId: line.item.id,
+        quantity: line.quantity,
+        unitRefundAmount: line.unitRefundAmount,
+        refundAmount: line.refundAmount,
+        restoredStorageId: line.restoredStorageId,
+        restoredBatchAllocations: line.restoredBatchAllocations,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        version: 1,
+        isDeleted: false,
+        ...getSyncMetadata(order.workspaceId, timestamp)
+    }))
+
+    await db.transaction('rw', [db.sales_orders, db.order_returns, db.order_return_items], async () => {
+        await db.sales_orders.put(updatedOrder)
+        await db.order_returns.put(orderReturn)
+        await db.order_return_items.bulkPut(orderReturnItems)
+    })
+
+    if (!isFinanced) {
+        const activePayments = getActiveOrderPayments(standardPaymentRows).reverse()
+        let remainingPaymentReversal = returnAmount
+        for (const payment of activePayments) {
+            if (remainingPaymentReversal <= ORDER_AMOUNT_EPSILON) break
+            const original = standardPaymentRows.find((row) => row.id === payment.id)
+            if (!original) continue
+            const applied = roundAmount(Math.min(payment.amount, remainingPaymentReversal), order.currency)
+            await appendOrderReturnPaymentReversal({
+                transaction: original,
+                amount: applied,
+                returnId,
+                reason,
+                returnedBy: input.returnedBy
+            })
+            remainingPaymentReversal = roundAmount(Math.max(0, remainingPaymentReversal - applied), order.currency)
+        }
+        if (remainingPaymentReversal > ORDER_AMOUNT_EPSILON) {
+            throw new Error('The order does not have enough posted payments to reverse this return')
+        }
+        finalOrder = await rebuildOrderPaymentState('sales', order.id) as SalesOrder
+    } else {
+        await recalculateCustomerAndPartnerSummaries(order.workspaceId, order.customerId, order.businessPartnerId)
+    }
+
+    await Promise.all([
+        syncUpsertEntities(
+            'sales_orders',
+            [finalOrder] as unknown as Array<Record<string, unknown> & { id: string; version: number }>,
+            order.workspaceId
+        ),
+        syncUpsertEntities(
+            'order_returns',
+            [orderReturn] as unknown as Array<Record<string, unknown> & { id: string; version: number }>,
+            order.workspaceId
+        ),
+        syncUpsertEntities(
+            'order_return_items',
+            orderReturnItems as unknown as Array<Record<string, unknown> & { id: string; version: number }>,
+            order.workspaceId
+        )
+    ])
+
+    return { order: finalOrder, return: orderReturn, items: orderReturnItems }
 }
 
 export async function deleteSalesOrder(id: string) {
