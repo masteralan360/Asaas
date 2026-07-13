@@ -430,7 +430,7 @@ export function Sales() {
 
             const normalizedSku = effectiveFilters.productSku.trim().toLowerCase()
             if (normalizedSku) {
-                const hasMatchingSku = (s.items || []).some((item) => {
+                const hasMatchingSku = (s.items || []).some((item: SaleItem) => {
                     const itemSku = item.product_sku || item.product?.sku || ''
                     return itemSku.toLowerCase().includes(normalizedSku)
                 })
