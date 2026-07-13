@@ -3378,8 +3378,10 @@
     },
     "roles": {
       "both": "مشتري و بائع",
-      "buyer": "المشتري",
-      "seller": "البائع"
+      "customer": "المشتري",
+      "supplier": "البائع",
+      "RealEstateBuyer": "المشتري",
+      "RealEstateSeller": "البائع"
     },
     "messages": {
       "addSuccess": "تم إنشاء شريك الأعمال بنجاح",

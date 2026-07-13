@@ -202,14 +202,14 @@ export function BusinessPartnerFormDialog({
     const roleOptions = useMemo<Array<{ value: BusinessPartnerRole; label: string }>>(() => {
         const options: Array<{ value: BusinessPartnerRole; label: string }> = [
             { value: 'both', label: t('businessPartners.roles.both') || 'Both' },
-            { value: 'customer', label: t('customers.title') || 'Customer' },
-            { value: 'supplier', label: t('suppliers.title') || 'Supplier' }
+            { value: 'customer', label: t('businessPartners.roles.customer') || 'Customer' },
+            { value: 'supplier', label: t('businessPartners.roles.supplier') || 'Supplier' }
         ]
 
         if (enableRealEstateRoles) {
             const labels = {
-                buyer: t('businessPartners.roles.buyer', { defaultValue: 'Buyer' }),
-                seller: t('businessPartners.roles.seller', { defaultValue: 'Seller' })
+                buyer: t('businessPartners.roles.RealEstateBuyer', { defaultValue: 'Buyer' }),
+                seller: t('businessPartners.roles.RealEstateSeller', { defaultValue: 'Seller' })
             } satisfies Record<(typeof REAL_ESTATE_BUSINESS_PARTNER_ROLES)[number], string>
             options.push(...REAL_ESTATE_BUSINESS_PARTNER_ROLES.map((role) => ({
                 value: role,

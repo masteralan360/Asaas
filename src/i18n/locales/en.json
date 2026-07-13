@@ -1153,8 +1153,10 @@
     },
     "roles": {
       "both": "Both",
-      "buyer": "Buyer",
-      "seller": "Seller"
+      "customer": "Customer",
+      "supplier": "Supplier",
+      "RealEstateBuyer": "Buyer",
+      "RealEstateSeller": "Seller"
     },
     "messages": {
       "addSuccess": "Business partner created successfully",
