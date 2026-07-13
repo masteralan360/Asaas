@@ -3239,7 +3239,19 @@
     "updateNow": "تحديث الآن",
     "later": "لاحقاً",
     "downloading": "جاري تنزيل التحديث...",
-    "ready": "التحديث جاهز للتثبيت"
+    "ready": "التحديث جاهز للتثبيت",
+    "requiredTitle": "التحديث مطلوب",
+    "requiredMessage": "الإصدار {{version}} مطلوب لمتابعة استخدام Atlas. حدّث الآن للمتابعة.",
+    "downloadDescription": "أبقِ Atlas مفتوحاً أثناء تنزيل التحديث.",
+    "installing": "جارٍ تثبيت التحديث...",
+    "installingDescription": "اكتمل تنزيل التحديث وبدأ التثبيت.",
+    "downloadSpeed": "سرعة التنزيل",
+    "uploadSpeed": "سرعة الرفع",
+    "estimatedTime": "الوقت المتبقي",
+    "calculating": "جارٍ الحساب...",
+    "downloadFailed": "فشل تنزيل التحديث",
+    "downloadUrlMissing": "رابط تنزيل التحديث غير متاح. يرجى المحاولة لاحقاً.",
+    "checkFailed": "تعذر التحقق من التحديثات. يرجى المحاولة مرة أخرى."
   },
   "admin": {
     "title": "لوحة تحكم المسؤول",

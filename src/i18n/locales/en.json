@@ -4038,7 +4038,19 @@
     "updateNow": "Update Now",
     "later": "Later",
     "downloading": "Downloading update...",
-    "ready": "Update ready to install"
+    "ready": "Update ready to install",
+    "requiredTitle": "Update Required",
+    "requiredMessage": "Version {{version}} is required to continue using Atlas. Update now to continue.",
+    "downloadDescription": "Keep Atlas open while the update is downloaded.",
+    "installing": "Installing update...",
+    "installingDescription": "The update download is complete and installation is starting.",
+    "downloadSpeed": "Download speed",
+    "uploadSpeed": "Upload speed",
+    "estimatedTime": "Time remaining",
+    "calculating": "Calculating...",
+    "downloadFailed": "Update download failed",
+    "downloadUrlMissing": "The update download URL is unavailable. Please try again later.",
+    "checkFailed": "Unable to check for updates. Please try again."
   },
   "finance": {
     "title": "Finance Analytics Hub",

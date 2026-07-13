@@ -3,12 +3,13 @@ import { useHashLocation } from "@/hooks/useHashLocation";
 import { AuthProvider, ProtectedRoute, GuestRoute, useAuth } from "@/auth";
 import { WorkspaceProvider } from "@/workspace";
 import { WorkspaceWarmup } from "@/workspace/WorkspaceWarmup";
-import { Layout, Toaster, TitleBar, PatchNoteModal, PostSaveInvoiceDialog } from "@/ui/components";
+import { Layout, Toaster, TitleBar, PatchNoteModal, PostSaveInvoiceDialog, Progress } from "@/ui/components";
 import { DeviceTokenBootstrap } from "@/ui/components/DeviceTokenBootstrap";
 import { SubscriptionExpiryWarningModal } from "@/ui/components/SubscriptionExpiryWarningModal";
 import { lazy, Suspense, useEffect, useCallback, useState } from "react";
 import { usePatchNotes } from "@/hooks/usePatchNotes";
-import { RotateCw } from "lucide-react";
+import { Clock3, Download, LoaderCircle, RotateCw, Upload } from "lucide-react";
+import type { Update } from "@tauri-apps/plugin-updater";
 import { useTranslation } from "react-i18next";
 import { useWorkspace } from "@/workspace";
 import { ExchangeRateProvider } from "@/context/ExchangeRateContext";
@@ -398,11 +399,164 @@ function compareVersions(v1: string, v2: string): number {
   return 0;
 }
 
+const DEFERRED_UPDATE_SESSION_KEY = "atlas_deferred_update_version";
+const PENDING_UPDATE_VERSION_KEY = "atlas_pending_update_version";
+
+type UpdateDialogState =
+  | {
+      kind: "update";
+      update: Update;
+      mandatory: boolean;
+    }
+  | {
+      kind: "notice";
+      title: string;
+      message: string;
+    };
+
+type DownloadState = {
+  status: "downloading" | "installing" | "error";
+  downloadedBytes: number;
+  totalBytes?: number;
+  bytesPerSecond: number;
+  errorMessage?: string;
+};
+
+function formatDataSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const unitIndex = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1,
+  );
+  const value = bytes / 1024 ** unitIndex;
+  const fractionDigits = value >= 10 || unitIndex === 0 ? 0 : 1;
+
+  return `${value.toFixed(fractionDigits)} ${units[unitIndex]}`;
+}
+
+function formatEstimatedTime(seconds: number | null): string | null {
+  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) {
+    return null;
+  }
+
+  if (seconds < 60) return "< 1 min";
+
+  const totalMinutes = Math.ceil(seconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes} min`;
+}
+
 function UpdateHandler() {
   const { setPendingUpdate } = useWorkspace();
   const { t } = useTranslation();
   const [isBlocked, setIsBlocked] = useState(
     () => sessionStorage.getItem("version_blocked") === "true",
+  );
+  const [updateDialog, setUpdateDialog] = useState<UpdateDialogState | null>(
+    null,
+  );
+  const [downloadState, setDownloadState] = useState<DownloadState | null>(
+    null,
+  );
+  const [downloadUpdate, setDownloadUpdate] = useState<Update | null>(null);
+
+  const deferUpdate = useCallback(
+    (update: Update) => {
+      sessionStorage.setItem(DEFERRED_UPDATE_SESSION_KEY, update.version);
+      localStorage.setItem(PENDING_UPDATE_VERSION_KEY, update.version);
+      setPendingUpdate(null);
+      setUpdateDialog(null);
+    },
+    [setPendingUpdate],
+  );
+
+  const startUpdateDownload = useCallback(
+    async (update: Update) => {
+      setUpdateDialog(null);
+      setDownloadUpdate(update);
+      setDownloadState({
+        status: "downloading",
+        downloadedBytes: 0,
+        totalBytes: undefined,
+        bytesPerSecond: 0,
+      });
+
+      let downloadedBytes = 0;
+      let totalBytes: number | undefined;
+      let lastSampleBytes = 0;
+      let lastSampleAt = performance.now();
+      let bytesPerSecond = 0;
+
+      try {
+        await update.downloadAndInstall((event) => {
+          switch (event.event) {
+            case "Started":
+              totalBytes = event.data.contentLength;
+              lastSampleAt = performance.now();
+              setDownloadState({
+                status: "downloading",
+                downloadedBytes: 0,
+                totalBytes,
+                bytesPerSecond: 0,
+              });
+              break;
+            case "Progress": {
+              downloadedBytes += event.data.chunkLength;
+              const now = performance.now();
+              const elapsed = now - lastSampleAt;
+
+              // Use a short rolling sample instead of the lifetime average so the
+              // displayed transfer speed and ETA respond to network changes.
+              if (elapsed >= 250) {
+                bytesPerSecond =
+                  ((downloadedBytes - lastSampleBytes) / elapsed) * 1000;
+                lastSampleBytes = downloadedBytes;
+                lastSampleAt = now;
+              }
+
+              setDownloadState({
+                status: "downloading",
+                downloadedBytes,
+                totalBytes,
+                bytesPerSecond,
+              });
+              break;
+            }
+            case "Finished":
+              setDownloadState({
+                status: "installing",
+                downloadedBytes,
+                totalBytes,
+                bytesPerSecond: 0,
+              });
+              break;
+          }
+        });
+
+        localStorage.removeItem(PENDING_UPDATE_VERSION_KEY);
+        sessionStorage.removeItem(DEFERRED_UPDATE_SESSION_KEY);
+        setPendingUpdate(null);
+        setDownloadState((current) =>
+          current
+            ? { ...current, status: "installing", bytesPerSecond: 0 }
+            : current,
+        );
+      } catch (error) {
+        console.error("[Tauri] Failed to download or install update:", error);
+        setDownloadState((current) => ({
+          status: "error",
+          downloadedBytes: current?.downloadedBytes ?? 0,
+          totalBytes: current?.totalBytes,
+          bytesPerSecond: 0,
+          errorMessage: t("updater.downloadFailed"),
+        }));
+      }
+    },
+    [setPendingUpdate, t],
   );
 
   const checkForUpdates = useCallback(
@@ -420,53 +574,75 @@ function UpdateHandler() {
       const now = Date.now();
       const twelveHours = 12 * 60 * 60 * 1000;
 
-      // 1. Mandatory Minimum Version Check via latest.json
-      // Always runs on startup (no session caching - security critical)
-      if (!isManual) {
-        try {
-          const { getVersion } = await import("@tauri-apps/api/app");
-          const currentVersion = await getVersion();
+      // The minimum-version check is intentionally performed for every check.
+      // A manual check from the mandatory screen must remain mandatory too.
+      let mandatoryUpdate =
+        sessionStorage.getItem("version_blocked") === "true";
+      try {
+        const { getVersion } = await import("@tauri-apps/api/app");
+        const currentVersion = await getVersion();
 
-          const res = await fetch(
-            "https://asaas-r2-proxy.alanepic360.workers.dev/atlas-updates/latest.json",
-            { cache: "no-store" },
+        const res = await fetch(
+          "https://asaas-r2-proxy.alanepic360.workers.dev/atlas-updates/latest.json",
+          { cache: "no-store" },
+        );
+        if (res.ok) {
+          const remoteConfig = await res.json();
+
+          mandatoryUpdate = Boolean(
+            remoteConfig.min_version &&
+              compareVersions(currentVersion, remoteConfig.min_version) < 0,
           );
-          if (res.ok) {
-            const remoteConfig = await res.json();
 
-            if (
-              remoteConfig.min_version &&
-              compareVersions(currentVersion, remoteConfig.min_version) < 0
-            ) {
-              console.error(
-                `[Security] Version blocked. App: ${currentVersion}, Required: ${remoteConfig.min_version}`,
-              );
-              sessionStorage.setItem("version_blocked", "true");
-              setIsBlocked(true);
-            } else {
-              sessionStorage.removeItem("version_blocked");
-              setIsBlocked(false);
-            }
+          if (mandatoryUpdate) {
+            console.error(
+              `[Security] Version blocked. App: ${currentVersion}, Required: ${remoteConfig.min_version}`,
+            );
+            sessionStorage.setItem("version_blocked", "true");
+            setIsBlocked(true);
+          } else {
+            sessionStorage.removeItem("version_blocked");
+            setIsBlocked(false);
           }
-        } catch (err) {
-          console.warn(
-            "[Updater] Failed to check mandatory version from latest.json:",
-            err,
-          );
         }
+      } catch (err) {
+        console.warn(
+          "[Updater] Failed to check mandatory version from latest.json:",
+          err,
+        );
       }
+
+      // "Later" is a session-level deferral. It survives a page refresh, but
+      // disappears when the app is revisited. The persistent version marker lets
+      // that next launch bypass the 12-hour polling interval and check again.
+      const deferredVersion = sessionStorage.getItem(
+        DEFERRED_UPDATE_SESSION_KEY,
+      );
+      if (!mandatoryUpdate && deferredVersion) {
+        console.log(
+          "[Tauri] Update was deferred for this app session; skipping prompt.",
+        );
+        return;
+      }
+
+      const pendingVersion = localStorage.getItem(PENDING_UPDATE_VERSION_KEY);
+      const shouldRecheckDeferredUpdate = Boolean(pendingVersion);
 
       // Skip automatic checks if already checked this session (refresh protection)
       // OR if checked within the last 12 hours (interval protection)
-      if (!isManual && !isBlocked) {
-        if (checkedThisSession) {
+      if (!isManual && !mandatoryUpdate) {
+        if (checkedThisSession && !shouldRecheckDeferredUpdate) {
           console.log(
             "[Tauri] Skipping automatic update check (already checked this session/refresh)",
           );
           return;
         }
 
-        if (lastCheck && now - parseInt(lastCheck) < twelveHours) {
+        if (
+          lastCheck &&
+          now - parseInt(lastCheck) < twelveHours &&
+          !shouldRecheckDeferredUpdate
+        ) {
           console.log(
             "[Tauri] Skipping automatic update check (checked within last 12h)",
           );
@@ -477,8 +653,6 @@ function UpdateHandler() {
       }
 
       try {
-        const { ask, message } = await import("@tauri-apps/plugin-dialog");
-
         if (isMobile()) {
           console.log("[Tauri] Android custom update check...");
           const { getVersion } = await import("@tauri-apps/api/app");
@@ -523,13 +697,19 @@ function UpdateHandler() {
                 setPendingUpdate(null);
               } else {
                 console.error("[Tauri] Android APK URL not found in JSON");
+                setUpdateDialog({
+                  kind: "notice",
+                  title: t("settings.updater.title"),
+                  message: t("updater.downloadUrlMissing"),
+                });
               }
             } else {
               console.log("[Tauri] No Android updates available");
               if (isManual) {
-                await message(t("settings.messages.noUpdate"), {
-                  title: t("updater.title"),
-                  kind: "info",
+                setUpdateDialog({
+                  kind: "notice",
+                  title: t("settings.updater.title"),
+                  message: t("settings.updater.notAvailable"),
                 });
               }
             }
@@ -547,63 +727,33 @@ function UpdateHandler() {
 
         if (update) {
           console.log(`[Tauri] Update available: ${update.version}`);
-
-          const shouldUpdate = await ask(
-            t("updater.message", { version: update.version }),
-            {
-              title: t("updater.title"),
-              kind: "info",
-              okLabel: t("updater.updateNow"),
-              cancelLabel: t("updater.later"),
-            },
-          );
-
-          if (shouldUpdate) {
-            let downloaded = 0;
-            let contentLength: number | undefined = 0;
-
-            await update.downloadAndInstall((event) => {
-              switch (event.event) {
-                case "Started":
-                  contentLength = event.data.contentLength;
-                  console.log(
-                    `[Tauri] Started downloading ${event.data.contentLength} bytes`,
-                  );
-                  break;
-                case "Progress":
-                  downloaded += event.data.chunkLength;
-                  console.log(
-                    `[Tauri] Downloaded ${downloaded} from ${contentLength}`,
-                  );
-                  break;
-                case "Finished":
-                  console.log("[Tauri] Download finished");
-                  break;
-              }
-            });
-
-            console.log(
-              "[Tauri] Update installed. The installer will now replace the application.",
-            );
-          } else {
-            console.log("[Tauri] User deferred update.");
-            setPendingUpdate({
-              version: update.version,
-              date: update.date,
-              body: update.body,
-            });
-          }
+          setPendingUpdate(null);
+          setUpdateDialog({
+            kind: "update",
+            update,
+            mandatory: mandatoryUpdate,
+          });
         } else {
           console.log("[Tauri] No updates available");
+          localStorage.removeItem(PENDING_UPDATE_VERSION_KEY);
+          setPendingUpdate(null);
           if (isManual) {
-            await message(t("settings.messages.noUpdate"), {
-              title: t("updater.title"),
-              kind: "info",
+            setUpdateDialog({
+              kind: "notice",
+              title: t("settings.updater.title"),
+              message: t("settings.updater.notAvailable"),
             });
           }
         }
       } catch (error) {
         console.error("[Tauri] Failed to check for updates:", error);
+        if (isManual || mandatoryUpdate) {
+          setUpdateDialog({
+            kind: "notice",
+            title: t("settings.updater.title"),
+            message: t("updater.checkFailed"),
+          });
+        }
       }
     },
     [t, setPendingUpdate],
@@ -673,9 +823,28 @@ function UpdateHandler() {
     }
   }, [checkForUpdates]);
 
-  if (isBlocked) {
-    return (
-      <div className="fixed inset-0 z-[9999] bg-background/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
+  const isDownloading = Boolean(downloadState);
+  const isInstalling = downloadState?.status === "installing";
+  const progressPercent =
+    downloadState?.totalBytes && downloadState.totalBytes > 0
+      ? Math.min(
+          100,
+          (downloadState.downloadedBytes / downloadState.totalBytes) * 100,
+        )
+      : 0;
+  const estimatedTime = formatEstimatedTime(
+    downloadState?.totalBytes && downloadState.bytesPerSecond > 0
+      ? (downloadState.totalBytes - downloadState.downloadedBytes) /
+          downloadState.bytesPerSecond
+      : null,
+  );
+  const updateIsMandatory =
+    updateDialog?.kind === "update" && updateDialog.mandatory;
+
+  return (
+    <>
+      {isBlocked && (
+        <div className="fixed inset-0 z-[9999] bg-background/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
         <div className="max-w-md w-full p-8 border border-border/50 bg-card rounded-2xl shadow-2xl flex flex-col items-center gap-6">
           <div className="w-16 h-16 rounded-full bg-destructive/10 text-destructive flex items-center justify-center mb-2">
             <RotateCw className="w-8 h-8 animate-spin-slow" />
@@ -697,11 +866,182 @@ function UpdateHandler() {
             Check for Updates
           </button>
         </div>
-      </div>
-    );
-  }
+        </div>
+      )}
 
-  return null;
+      {updateDialog && !isDownloading && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-background/95 p-6 text-center backdrop-blur-md animate-in fade-in duration-200">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="update-dialog-title"
+            className="w-full max-w-md rounded-2xl border border-border/50 bg-card p-8 shadow-2xl"
+          >
+            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Download className="h-7 w-7" />
+            </div>
+            <h2 id="update-dialog-title" className="text-xl font-bold text-foreground">
+              {updateDialog.kind === "update"
+                ? updateDialog.mandatory
+                  ? t("updater.requiredTitle")
+                  : t("updater.title")
+                : updateDialog.title}
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+              {updateDialog.kind === "update"
+                ? updateDialog.mandatory
+                  ? t("updater.requiredMessage", {
+                      version: updateDialog.update.version,
+                    })
+                  : t("updater.message", {
+                      version: updateDialog.update.version,
+                    })
+                : updateDialog.message}
+            </p>
+            {updateDialog.kind === "update" && updateDialog.update.body && (
+              <p className="mt-3 rounded-xl bg-muted/50 p-3 text-start text-xs leading-relaxed text-muted-foreground whitespace-pre-line">
+                {updateDialog.update.body}
+              </p>
+            )}
+            <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              {updateDialog.kind === "notice" ? (
+                <button
+                  onClick={() => setUpdateDialog(null)}
+                  className="w-full rounded-xl border border-border bg-background px-5 py-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:w-auto"
+                >
+                  {t("common.close")}
+                </button>
+              ) : (
+                <>
+                  {!updateIsMandatory && (
+                    <button
+                      onClick={() => deferUpdate(updateDialog.update)}
+                      className="w-full rounded-xl border border-border bg-background px-5 py-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:w-auto"
+                    >
+                      {t("updater.later")}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => startUpdateDownload(updateDialog.update)}
+                    className="w-full rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:shadow-lg active:scale-[0.98] sm:w-auto"
+                  >
+                    {t("updater.updateNow")}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {downloadState && (
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-background/95 p-6 backdrop-blur-md animate-in fade-in duration-200">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="update-download-title"
+            className="w-full max-w-lg rounded-2xl border border-border/50 bg-card p-6 shadow-2xl sm:p-8"
+          >
+            {downloadState.status === "error" ? (
+              <>
+                <h2 id="update-download-title" className="text-xl font-bold text-foreground">
+                  {t("updater.downloadFailed")}
+                </h2>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                  {downloadState.errorMessage}
+                </p>
+                <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  {!isBlocked && downloadUpdate && (
+                    <button
+                      onClick={() => deferUpdate(downloadUpdate)}
+                      className="w-full rounded-xl border border-border bg-background px-5 py-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:w-auto"
+                    >
+                      {t("updater.later")}
+                    </button>
+                  )}
+                  {downloadUpdate && (
+                    <button
+                      onClick={() => startUpdateDownload(downloadUpdate)}
+                      className="w-full rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:shadow-lg active:scale-[0.98] sm:w-auto"
+                    >
+                      {t("common.retry")}
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <LoaderCircle className="h-6 w-6 animate-spin" />
+                  </div>
+                  <div>
+                    <h2 id="update-download-title" className="text-xl font-bold text-foreground">
+                      {isInstalling ? t("updater.installing") : t("updater.downloading")}
+                    </h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {isInstalling
+                        ? t("updater.installingDescription")
+                        : t("updater.downloadDescription")}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-7 space-y-3">
+                  <Progress value={isInstalling ? 100 : progressPercent} className="h-3" />
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {formatDataSize(downloadState.downloadedBytes)}
+                      {downloadState.totalBytes
+                        ? ` / ${formatDataSize(downloadState.totalBytes)}`
+                        : ""}
+                    </span>
+                    <span>
+                      {downloadState.totalBytes
+                        ? `${Math.round(isInstalling ? 100 : progressPercent)}%`
+                        : t("updater.calculating")}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Download className="h-3.5 w-3.5" />
+                      {t("updater.downloadSpeed")}
+                    </div>
+                    <p className="mt-1 text-sm font-semibold text-foreground">
+                      {formatDataSize(
+                        isInstalling ? 0 : downloadState.bytesPerSecond,
+                      )}/s
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Upload className="h-3.5 w-3.5" />
+                      {t("updater.uploadSpeed")}
+                    </div>
+                    <p className="mt-1 text-sm font-semibold text-foreground">0 B/s</p>
+                  </div>
+                  <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Clock3 className="h-3.5 w-3.5" />
+                      {t("updater.estimatedTime")}
+                    </div>
+                    <p className="mt-1 text-sm font-semibold text-foreground">
+                      {isInstalling
+                        ? t("updater.calculating")
+                        : estimatedTime || t("updater.calculating")}
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 
 function FaviconHandler() {
