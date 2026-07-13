@@ -77,6 +77,7 @@ import type {
   ManualEntry,
 } from "./models";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
+import { normalizeProductSku } from "./productSku";
 import { getActiveBusinessWorkspaceId } from "@/lib/network";
 import {
   LOCAL_MODE_SQLITE_TABLES,
@@ -3023,6 +3024,30 @@ export class AtlasDatabase extends Dexie {
       business_partners:
         "id, name, workspaceId, role, customerFacetId, supplierFacetId, agentFacetId, priceBookId, defaultCurrency, updatedAt, isDeleted, syncStatus, mergedIntoBusinessPartnerId, latitude, longitude",
     });
+
+    this.version(86)
+      .stores({
+        products:
+          "id, sku, skuKey, name, categoryId, storageId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned, [workspaceId+name], [workspaceId+sku], [workspaceId+skuKey], [workspaceId+categoryId], [workspaceId+currency], [workspaceId+updatedAt], [workspaceId+storageId]",
+      })
+      .upgrade(async (tx) => {
+        const products = (await tx.table("products").toArray()) as Array<
+          Record<string, unknown>
+        >;
+        const productsToUpdate = products.filter((product) => {
+          const sku = typeof product.sku === "string" ? product.sku : "";
+          return product.skuKey !== normalizeProductSku(sku);
+        }).map((product) => ({
+          ...product,
+          skuKey: normalizeProductSku(
+            typeof product.sku === "string" ? product.sku : "",
+          ),
+        }));
+
+        if (productsToUpdate.length > 0) {
+          await tx.table("products").bulkPut(productsToUpdate);
+        }
+      });
 
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();

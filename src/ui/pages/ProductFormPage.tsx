@@ -32,6 +32,7 @@ import {
     db,
     deleteProductBarcode,
     DuplicateProductBarcodeError,
+    DuplicateProductSkuError,
     getPrimaryStorageFromList,
     replaceProductPriceBookItems,
     updateProductBarcode,
@@ -607,6 +608,27 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
         })
     }
 
+    const showProductSaveErrorToast = (error: unknown) => {
+        if (error instanceof DuplicateProductSkuError) {
+            toast({
+                variant: 'destructive',
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: t('products.messages.skuDuplicate', {
+                    defaultValue: 'A product with this SKU already exists in this workspace.'
+                })
+            })
+            return
+        }
+
+        toast({
+            title: t('common.error', { defaultValue: 'Error' }),
+            description: error instanceof Error ? error.message : t('products.messages.saveError', {
+                defaultValue: 'Failed to save the product'
+            }),
+            variant: 'destructive'
+        })
+    }
+
     const handleAddBarcode = async () => {
         if (!workspaceId || !persistedProductId || isReadOnly) {
             return
@@ -760,6 +782,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
             const { perQuantity: _perQuantity, ...formDataToSave } = formData
             const dataToSave = {
                 ...formDataToSave,
+                sku: formData.sku.trim(),
                 category: categoryName || null,
                 storageName: storageName || undefined,
                 categoryId: formData.categoryId || null,
@@ -822,13 +845,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
             return true
         } catch (error: any) {
             console.error('Error saving product:', error)
-            toast({
-                title: t('common.error', { defaultValue: 'Error' }),
-                description: error?.message || t('products.messages.saveError', {
-                    defaultValue: 'Failed to save the product'
-                }),
-                variant: 'destructive'
-            })
+            showProductSaveErrorToast(error)
             return false
         } finally {
             setIsSaving(false)

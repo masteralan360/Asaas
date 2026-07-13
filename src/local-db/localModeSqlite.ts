@@ -3,6 +3,7 @@ import type Dexie from "dexie";
 import { isTauri } from "@/lib/platform";
 import { shouldMirrorToSqlite, isStrictLocalWorkspaceMode } from "@/workspace/workspaceMode";
 import { runUsbBackupIfNeeded } from "./usbBackup";
+import { normalizeProductSku } from "./productSku";
 import { createPwaSqliteConnection, isOpfsSupported, getPwaDbInstance, ensurePwaDatabase, DB_FILENAME as PWA_DB_FILENAME } from "./pwaSqlite";
 
 const LOCAL_MODE_SQLITE_PATH = "sqlite:atlas-local-mode.db";
@@ -828,6 +829,9 @@ export async function hydrateLocalModeCacheFromSqlite(
 
         const payload = JSON.parse(row.payload) as unknown;
         const revived = deserializeValue(payload) as Record<string, unknown>;
+        if (row.entity_type === "products" && typeof revived.sku === "string") {
+          revived.skuKey = normalizeProductSku(revived.sku);
+        }
         if (row.entity_type === "profiles") {
           if (row.workspace_id) {
             revived.workspaceId = row.workspace_id;

@@ -60,6 +60,8 @@ export interface ProductBarcode extends BaseEntity {
 
 export interface Product extends BaseEntity {
   sku: string;
+  /** Local-only normalized SKU key used by the indexed duplicate check. */
+  skuKey?: string;
   name: string;
   description: string;
   categoryId?: string | null;

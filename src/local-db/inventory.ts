@@ -18,6 +18,7 @@ import type {
 } from './models'
 import { createInventoryTransaction } from './inventoryTransactions'
 import { syncProductBarcodeCachesForWorkspace } from './productBarcodes'
+import { normalizeProductSku } from './productSku'
 import type { StockBatchTransferSelection } from './stockBatches'
 
 type InventorySyncSource = 'local' | 'remote'
@@ -372,6 +373,7 @@ async function fetchInventoryWorkspaceFromSupabaseInternal(
 
     const normalizedRemoteProducts = remoteProducts.map((remoteProduct) => {
         const localProduct = toCamelCase(remoteProduct) as unknown as Product
+        localProduct.skuKey = normalizeProductSku(localProduct.sku)
         localProduct.syncStatus = 'synced'
         localProduct.lastSyncedAt = fetchedAt
         return localProduct

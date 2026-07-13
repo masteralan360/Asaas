@@ -60,6 +60,7 @@ import {
     syncProductBarcodeCache,
     syncProductBarcodeCachesForWorkspace
 } from './productBarcodes'
+import { DuplicateProductSkuError, normalizeProductSku, trimProductSku } from './productSku'
 import { generateId, toSnakeCase, toCamelCase } from '@/lib/utils'
 import { supabase } from '@/auth/supabase'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
@@ -132,6 +133,7 @@ function toSupabaseProductPayload(product: Partial<Product>) {
         ...product,
         syncStatus: undefined,
         lastSyncedAt: undefined,
+        skuKey: undefined,
         storageName: undefined,
         barcode: undefined,
         barcodes: undefined
@@ -173,6 +175,54 @@ function isDuplicateProductBarcodeMutationError(error: unknown) {
     return code === '23505'
         || (message.includes('duplicate') && message.includes('barcode'))
         || message.includes('already assigned to another product')
+}
+
+function isDuplicateProductSkuMutationError(error: unknown) {
+    if (!error || typeof error !== 'object') {
+        return false
+    }
+
+    const code = (error as { code?: unknown }).code
+    const constraint = typeof (error as { constraint?: unknown }).constraint === 'string'
+        ? (error as { constraint: string }).constraint.toLowerCase()
+        : ''
+    const message = typeof (error as { message?: unknown }).message === 'string'
+        ? (error as { message: string }).message.toLowerCase()
+        : ''
+
+    return code === '23505' && (
+        constraint.includes('products_workspace_sku')
+        || message.includes('product with this sku')
+        || (message.includes('duplicate') && message.includes('sku'))
+    )
+}
+
+export async function findActiveProductBySku(
+    workspaceId: string,
+    sku: string,
+    options?: { excludeId?: string }
+) {
+    const skuKey = normalizeProductSku(sku)
+    if (!workspaceId || !skuKey) {
+        return undefined
+    }
+
+    return db.products
+        .where('[workspaceId+skuKey]')
+        .equals([workspaceId, skuKey])
+        .and((product) => !product.isDeleted && product.id !== options?.excludeId)
+        .first()
+}
+
+async function ensureProductSkuIsAvailable(
+    workspaceId: string,
+    sku: string,
+    options?: { excludeId?: string }
+) {
+    const duplicate = await findActiveProductBySku(workspaceId, sku, options)
+    if (duplicate) {
+        throw new DuplicateProductSkuError()
+    }
 }
 
 const LOAN_PAYMENT_TRANSACTION_SOURCE_TYPES: PaymentTransactionSourceType[] = ['loan_origination', 'loan_payment', 'simple_loan', 'loan_installment']
@@ -465,25 +515,36 @@ export function useProduct(id: string | undefined) {
 export async function createProduct(workspaceId: string, data: Omit<Product, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted'>): Promise<Product> {
     const now = new Date().toISOString()
     const id = generateId()
+    const sku = trimProductSku(data.sku)
+    const isSavingOnline = isOnline()
+
+    if (isSavingOnline) {
+        await ensureProductSkuIsAvailable(workspaceId, sku)
+    }
 
     const product: Product = {
         ...data,
+        sku,
+        skuKey: normalizeProductSku(sku),
         id,
         workspaceId,
         createdAt: now,
         updatedAt: now,
-        syncStatus: (isOnline() ? 'synced' : 'pending') as any, // Cast to any or SyncStatus to fix TS error
-        lastSyncedAt: isOnline() ? now : null,
+        syncStatus: (isSavingOnline ? 'synced' : 'pending') as any, // Cast to any or SyncStatus to fix TS error
+        lastSyncedAt: isSavingOnline ? now : null,
         version: 1,
         isDeleted: false
     }
 
-    if (isOnline()) {
+    if (isSavingOnline) {
         // ONLINE
         const payload = toSupabaseProductPayload(product)
         const { error } = await runMutation('products.create', () => supabase.from('products').insert(payload))
 
         if (error) {
+            if (isDuplicateProductSkuMutationError(error)) {
+                throw new DuplicateProductSkuError()
+            }
             console.error('Supabase write failed:', error)
             throw normalizeSupabaseActionError(error)
         }
@@ -491,7 +552,10 @@ export async function createProduct(workspaceId: string, data: Omit<Product, 'id
         await db.products.add(product)
     } else {
         // OFFLINE
-        await db.products.add(product)
+        await db.transaction('rw', db.products, async () => {
+            await ensureProductSkuIsAvailable(workspaceId, sku)
+            await db.products.add(product)
+        })
         await addToOfflineMutations('products', id, 'create', product as unknown as Record<string, unknown>, workspaceId)
     }
 
@@ -524,33 +588,55 @@ export async function updateProduct(id: string, data: Partial<Product>): Promise
     const now = new Date().toISOString()
     const existing = await db.products.get(id)
     if (!existing) throw new Error('Product not found')
+    const isSavingOnline = isOnline()
     const {
         quantity: _ignoredQuantity,
         storageId: _ignoredStorageId,
         storageName: _ignoredStorageName,
         ...productData
     } = data
+    const hasSkuUpdate = Object.prototype.hasOwnProperty.call(productData, 'sku')
+    const sku = hasSkuUpdate ? trimProductSku(productData.sku ?? '') : existing.sku
+
+    if (hasSkuUpdate && isSavingOnline) {
+        await ensureProductSkuIsAvailable(existing.workspaceId, sku, { excludeId: id })
+    }
 
     const updated = {
         ...existing,
         ...productData,
+        ...(hasSkuUpdate ? { sku, skuKey: normalizeProductSku(sku) } : {}),
         updatedAt: now,
-        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
-        lastSyncedAt: isOnline() ? now : existing.lastSyncedAt,
+        syncStatus: (isSavingOnline ? 'synced' : 'pending') as any,
+        lastSyncedAt: isSavingOnline ? now : existing.lastSyncedAt,
         version: existing.version + 1
     }
 
-    if (isOnline()) {
+    if (isSavingOnline) {
         // ONLINE
-        const payload = toSupabaseProductPayload({ ...productData, updatedAt: now })
+        const payload = toSupabaseProductPayload({
+            ...productData,
+            ...(hasSkuUpdate ? { sku } : {}),
+            updatedAt: now
+        })
         const { error } = await runMutation('products.update', () => supabase.from('products').update(payload).eq('id', id))
 
-        if (error) throw normalizeSupabaseActionError(error)
+        if (error) {
+            if (isDuplicateProductSkuMutationError(error)) {
+                throw new DuplicateProductSkuError()
+            }
+            throw normalizeSupabaseActionError(error)
+        }
 
         await db.products.put(updated)
     } else {
         // OFFLINE
-        await db.products.put(updated)
+        await db.transaction('rw', db.products, async () => {
+            if (hasSkuUpdate) {
+                await ensureProductSkuIsAvailable(existing.workspaceId, sku, { excludeId: id })
+            }
+            await db.products.put(updated)
+        })
         await addToOfflineMutations('products', id, 'update', updated as unknown as Record<string, unknown>, existing.workspaceId)
     }
 }
@@ -1254,6 +1340,10 @@ async function fetchTableFromSupabaseInternal<T extends { id: string, syncStatus
     const remoteIds = new Set(remoteRows.map((row) => row.id))
     const remoteItems = remoteRows.map((remoteItem) => {
         const localItem = toCamelCase(remoteItem as any) as unknown as T
+        if (tableName === 'products') {
+            const product = localItem as unknown as Product
+            product.skuKey = normalizeProductSku(product.sku)
+        }
         localItem.syncStatus = 'synced'
         localItem.lastSyncedAt = syncedAt
         return localItem

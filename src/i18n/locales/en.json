@@ -942,7 +942,8 @@
       "addSuccess": "Product added successfully",
       "updateSuccess": "Product updated successfully",
       "deleteSuccess": "Product deleted successfully",
-      "deleteConfirm": "Are you sure you want to delete this product?"
+      "deleteConfirm": "Are you sure you want to delete this product?",
+      "skuDuplicate": "A product with this SKU already exists in this workspace."
     },
     "confirmDelete": "Delete Product",
     "deleteWarning": "Deleting this product will remove it from inventory. This cannot be undone.",
