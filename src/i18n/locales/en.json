@@ -2873,6 +2873,8 @@
       "minAmount": "Min Amount",
       "maxAmount": "Max Amount",
       "noCap": "No cap",
+      "productSku": "Product SKU",
+      "productSkuPlaceholder": "Search by product SKU...",
       "reset": "Reset Draft",
       "apply": "Apply Filters"
     },

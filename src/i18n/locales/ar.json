@@ -2086,6 +2086,8 @@
       "minAmount": "الحد الأدنى للمبلغ",
       "maxAmount": "الحد الأقصى للمبلغ",
       "noCap": "بدون حد أعلى",
+      "productSku": "كود المنتج (SKU)",
+      "productSkuPlaceholder": "البحث حسب كود المنتج...",
       "reset": "إعادة تعيين",
       "apply": "تطبيق"
     },

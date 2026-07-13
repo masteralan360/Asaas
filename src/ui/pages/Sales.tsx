@@ -113,6 +113,7 @@ export interface SalesFilterState {
     minAmount: string
     maxAmount: string
     returnStatus: string
+    productSku: string
     sort: SalesSortOption
 }
 
@@ -125,6 +126,7 @@ export const DEFAULT_SALES_FILTERS: SalesFilterState = {
     minAmount: '',
     maxAmount: '',
     returnStatus: 'all',
+    productSku: '',
     sort: 'date_desc'
 }
 
@@ -138,6 +140,7 @@ function countActiveSalesFilters(filters: SalesFilterState) {
         !!filters.minAmount,
         !!filters.maxAmount,
         filters.returnStatus !== 'all',
+        !!filters.productSku.trim(),
         filters.sort !== 'date_desc'
     ].filter(Boolean).length
 }
@@ -423,6 +426,15 @@ export function Sales() {
             }
             if (maxAmount !== null && Number.isFinite(maxAmount) && total > maxAmount) {
                 return false
+            }
+
+            const normalizedSku = effectiveFilters.productSku.trim().toLowerCase()
+            if (normalizedSku) {
+                const hasMatchingSku = (s.items || []).some((item) => {
+                    const itemSku = item.product_sku || item.product?.sku || ''
+                    return itemSku.toLowerCase().includes(normalizedSku)
+                })
+                if (!hasMatchingSku) return false
             }
 
             if (!normalizedSearch) {
@@ -2930,6 +2942,15 @@ export function Sales() {
                                                     className="ps-9"
                                                 />
                                             </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <Label>{t('sales.filters.productSku', { defaultValue: 'Product SKU' })}</Label>
+                                            <Input
+                                                value={draftFilters.productSku}
+                                                onChange={(event) => setDraftFilters((current) => ({ ...current, productSku: event.target.value }))}
+                                                placeholder={t('sales.filters.productSkuPlaceholder', { defaultValue: 'Search by product SKU...' })}
+                                            />
                                         </div>
 
                                         <div className="space-y-2">

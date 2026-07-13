@@ -2083,7 +2083,9 @@
     "paymentMethod": "شێوازی پارەدان",
     "filters": {
       "cashier": "کاشێر",
-      "allCashiers": "هەموو کاشێرەکان"
+      "allCashiers": "هەموو کاشێرەکان",
+      "productSku": "SKU-ی بەرهەم",
+      "productSkuPlaceholder": "بەپێی SKU-ی بەرهەم بگەڕێ..."
     },
     "view": {
       "table": "وردەکاری فرۆشتن",
