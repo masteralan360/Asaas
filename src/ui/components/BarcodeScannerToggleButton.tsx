@@ -3,9 +3,8 @@ import { ScanBarcode } from 'lucide-react'
 
 import {
     BARCODE_SCANNER_ACTIVE_FAST_KEY_COUNT,
-    BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS,
     BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS,
-    BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS,
+    classifyBarcodeScannerKeyTiming,
     getBarcodeScannerEventKey,
     isBarcodeScannerIgnoredKey,
     isBarcodeScannerTerminatorKey,
@@ -235,16 +234,15 @@ export function BarcodeScannerToggleButton({
                 return
             }
 
-            const now = Date.now()
-            const delta = now - lastKeyTimeRef.current
+            const timestamp = event.timeStamp
             const wasActive = scannerActiveRef.current
-            lastKeyTimeRef.current = now
+            const timing = classifyBarcodeScannerKeyTiming(timestamp, lastKeyTimeRef.current, {
+                hasBufferedValue: Boolean(scanBufferRef.current),
+                isActive: wasActive
+            })
+            lastKeyTimeRef.current = timestamp
 
-            if (
-                !scanBufferRef.current
-                || delta <= 0
-                || delta > (wasActive ? BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS : BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS)
-            ) {
+            if (timing.shouldReset) {
                 clearScanTimeout()
                 const focusedEditableElement = getFocusedEditableElement()
                 fastKeyCountRef.current = 0
@@ -255,7 +253,7 @@ export function BarcodeScannerToggleButton({
                     : null
             }
 
-            if (delta > 0 && delta <= BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS) {
+            if (timing.isFast) {
                 fastKeyCountRef.current += 1
             } else if (!wasActive) {
                 fastKeyCountRef.current = 0

@@ -67,6 +67,41 @@ export type BarcodeScannerCodeIndex = {
     prefixes: Set<string>
 }
 
+export type BarcodeScannerKeyTiming = {
+    deltaMs: number | null
+    shouldReset: boolean
+    isFast: boolean
+}
+
+export function classifyBarcodeScannerKeyTiming(
+    timestamp: number,
+    previousTimestamp: number,
+    options: { hasBufferedValue: boolean; isActive: boolean }
+): BarcodeScannerKeyTiming {
+    if (!options.hasBufferedValue) {
+        return {
+            deltaMs: null,
+            shouldReset: true,
+            isFast: false
+        }
+    }
+
+    const deltaMs = timestamp - previousTimestamp
+    const isValidDelta = Number.isFinite(deltaMs) && deltaMs >= 0
+
+    return {
+        deltaMs,
+        shouldReset: !isValidDelta || deltaMs > (
+            options.isActive
+                ? BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS
+                : BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS
+        ),
+        // Hardware scanners can dispatch several keydowns inside the same
+        // millisecond, so a zero-length interval is still a fast interval.
+        isFast: isValidDelta && deltaMs <= BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS
+    }
+}
+
 export function normalizeBarcodeDigits(value: string): string {
     return value
         .replace(BIDI_CONTROL_CHARACTERS_PATTERN, '')

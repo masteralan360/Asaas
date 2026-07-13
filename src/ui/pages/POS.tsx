@@ -30,11 +30,10 @@ import { useWorkspacePermissions } from '@/permissions'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import {
     BARCODE_SCANNER_ACTIVE_FAST_KEY_COUNT,
-    BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS,
     BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS,
-    BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS,
     BARCODE_SCANNER_MIN_SCAN_LENGTH,
     BARCODE_SCANNER_STALE_RESET_MS,
+    classifyBarcodeScannerKeyTiming,
     createBarcodeScannerCodeIndex,
     getBarcodeScannerEventKey,
     hasBarcodeScannerKnownPrefix,
@@ -1077,6 +1076,10 @@ export function POS() {
     // Hotkey listener
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            // Automatic keyboard-wedge scanning must classify the opening
+            // characters before they are allowed to trigger POS shortcuts.
+            if (isDeviceScannerAutoEnabled) return
+
             const skuHotkey = localStorage.getItem('pos_hotkey') || ''
             const barcodeHotkey = localStorage.getItem('barcode_hotkey') || ''
 
@@ -1091,7 +1094,7 @@ export function POS() {
         }
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [isSkuModalOpen, isBarcodeModalOpen])
+    }, [isSkuModalOpen, isBarcodeModalOpen, isDeviceScannerAutoEnabled])
 
     // Fetch cameras
     useEffect(() => {
@@ -1378,7 +1381,6 @@ export function POS() {
         if (
             !isDeviceScannerAutoEnabled
             || isSkuModalOpen
-            || isBarcodeModalOpen
             || isLoanRegistrationModalOpen
             || editingPriceItemKey
         ) {
@@ -1431,6 +1433,14 @@ export function POS() {
             if (event.ctrlKey || event.metaKey || event.altKey) return
             if (isBarcodeScannerIgnoredKey(event.key)) return
 
+            // The modal's dedicated Scanner Input owns its complete sequence.
+            // Global capture stays active for every other place in the modal.
+            const eventTarget = event.target
+            if (
+                eventTarget instanceof Element
+                && eventTarget.closest('[data-pos-barcode-scanner-input]')
+            ) return
+
             if (isBarcodeScannerTerminatorKey(event.key)) {
                 const isLikelyScan = deviceScanActive.current
                     || normalizeBarcodeScannerText(deviceScanBuffer.current).length >= BARCODE_SCANNER_MIN_SCAN_LENGTH
@@ -1447,15 +1457,14 @@ export function POS() {
             const normalizedKey = getBarcodeScannerEventKey(event)
             if (normalizedKey.length !== 1) return
 
-            const now = Date.now()
-            const delta = now - deviceScanLastTime.current
+            const timestamp = event.timeStamp
             const wasActive = deviceScanActive.current
+            const timing = classifyBarcodeScannerKeyTiming(timestamp, deviceScanLastTime.current, {
+                hasBufferedValue: Boolean(deviceScanBuffer.current),
+                isActive: wasActive
+            })
 
-            if (
-                !deviceScanBuffer.current
-                || delta <= 0
-                || delta > (wasActive ? BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS : BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS)
-            ) {
+            if (timing.shouldReset) {
                 clearDeviceScanTimeout()
                 const focusedEditableElement = getFocusedEditableScanElement()
                 deviceScanBuffer.current = ''
@@ -1466,9 +1475,9 @@ export function POS() {
                     : null
             }
 
-            deviceScanLastTime.current = now
+            deviceScanLastTime.current = timestamp
 
-            if (delta > 0 && delta <= BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS) {
+            if (timing.isFast) {
                 deviceScanFastCount.current += 1
             } else if (!wasActive) {
                 deviceScanFastCount.current = 0
@@ -1498,7 +1507,6 @@ export function POS() {
     }, [
         editingPriceItemKey,
         handleBarcodeDetected,
-        isBarcodeModalOpen,
         isDeviceScannerAutoEnabled,
         isLoanRegistrationModalOpen,
         isSkuModalOpen,
