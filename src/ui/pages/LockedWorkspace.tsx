@@ -13,7 +13,9 @@ export function LockedWorkspace() {
     const { features, isLocked, isLoading } = useWorkspace()
     const [, setLocation] = useLocation()
 
-    const isExpired = features.subscription_expires_at && new Date(features.subscription_expires_at) < new Date()
+    const isExpired = !features.has_usage_limits
+        && features.subscription_expires_at
+        && new Date(features.subscription_expires_at) < new Date()
 
     useEffect(() => {
         if (!isLoading && !isLocked) {

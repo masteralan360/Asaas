@@ -88,6 +88,7 @@ export interface WorkspaceFeatures {
     print_quality: 'high'
     thermal_printing: boolean
     subscription_expires_at: string | null
+    has_usage_limits: boolean
     upload_limit_mb: number | null
     visibility: 'private' | 'public'
     store_slug: string | null
@@ -225,6 +226,7 @@ const defaultFeatures: WorkspaceFeatures = {
     print_quality: 'high' as const,
     thermal_printing: false,
     subscription_expires_at: null,
+    has_usage_limits: false,
     upload_limit_mb: null,
     visibility: 'private',
     store_slug: null,
@@ -313,10 +315,13 @@ function mergeWorkspaceFeatures(
 }
 
 function isWorkspaceCurrentlyLocked(
-    features: Pick<WorkspaceFeatures, 'locked_workspace' | 'subscription_expires_at'>
+    features: Pick<WorkspaceFeatures, 'locked_workspace' | 'subscription_expires_at' | 'has_usage_limits'>
 ) {
     return features.locked_workspace
-        || (features.subscription_expires_at ? new Date(features.subscription_expires_at) < new Date() : false)
+        || (!features.has_usage_limits
+            && features.subscription_expires_at
+            ? new Date(features.subscription_expires_at) < new Date()
+            : false)
 }
 
 function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeatures | null {
@@ -349,6 +354,7 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
         print_quality: 'high' as const,
         thermal_printing: localWorkspace.thermal_printing ?? false,
         subscription_expires_at: localWorkspace.subscription_expires_at ?? null,
+        has_usage_limits: localWorkspace.has_usage_limits ?? false,
         upload_limit_mb: localWorkspace.upload_limit_mb ?? null,
         visibility: localWorkspace.visibility ?? 'private',
         store_slug: localWorkspace.store_slug ?? null,
@@ -489,6 +495,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             a4_template: nextFeatures.a4_template,
             thermal_printing: nextFeatures.thermal_printing,
             subscription_expires_at: nextFeatures.subscription_expires_at,
+            has_usage_limits: nextFeatures.has_usage_limits,
             upload_limit_mb: nextFeatures.upload_limit_mb,
             visibility: nextFeatures.visibility,
             store_slug: nextFeatures.store_slug,
@@ -591,7 +598,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
 
         try {
-            const [workspaceResult, overridesResult] = await Promise.all([
+            const [workspaceResult, overridesResult, usageStatusResult] = await Promise.all([
                 runSupabaseAction(
                     'workspace.getFeatures',
                     () => supabase.from('workspaces').select(WORKSPACE_FEATURE_COLUMNS).eq('id', workspaceId).maybeSingle(),
@@ -600,7 +607,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 supabase
                     .from('workspace_access_overrides')
                     .select('id, workspace_id, type, key, value, created_by, created_at')
-                    .eq('workspace_id', workspaceId)
+                    .eq('workspace_id', workspaceId),
+                runSupabaseAction(
+                    'workspace.getUsageStatus',
+                    () => supabase.rpc('get_workspace_usage_status', { p_workspace_id: workspaceId }),
+                    { timeoutMs: 12000, platform: 'all' }
+                )
             ]) as any
 
             const { data, error } = workspaceResult
@@ -627,6 +639,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
             const workspaceRow = data as any
             const fetchedOverrides = (overridesResult?.data ?? []) as WorkspaceAccessOverride[]
+            const usageStatus = Array.isArray(usageStatusResult?.data)
+                ? usageStatusResult.data[0]
+                : null
             const currentFeatures = featuresRef.current
             const localThermalPrinting = cachedSnapshot?.features?.thermal_printing
                 ?? (await db.workspaces.get(workspaceId))?.thermal_printing
@@ -659,6 +674,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 print_quality: 'high' as const,
                 thermal_printing: localThermalPrinting,
                 subscription_expires_at: workspaceRow.subscription_expires_at ?? currentFeatures.subscription_expires_at,
+                has_usage_limits: Boolean(usageStatus?.has_limits),
                 upload_limit_mb: workspaceRow.upload_limit_mb ?? null,
                 visibility: workspaceRow.visibility ?? currentFeatures.visibility,
                 store_slug: workspaceRow.store_slug ?? currentFeatures.store_slug,
@@ -844,6 +860,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             print_quality: 'high' as const,
                             thermal_printing: currentFeatures.thermal_printing,
                             subscription_expires_at: data.subscription_expires_at ?? currentFeatures.subscription_expires_at,
+                            has_usage_limits: currentFeatures.has_usage_limits,
                             visibility: data.visibility ?? currentFeatures.visibility,
                             store_slug: data.store_slug ?? currentFeatures.store_slug,
                             store_description: data.store_description ?? currentFeatures.store_description
@@ -862,6 +879,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     } catch (error) {
                         console.error('[Workspace] Failed to apply realtime update:', error)
                     }
+                }
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'workspace_usage_limits',
+                    filter: `workspace_id=eq.${user.sourceWorkspaceId || user.workspaceId}`
+                },
+                () => {
+                    void fetchFeatures(true, { workspaceId: user.workspaceId })
                 }
             )
             .on(
@@ -907,7 +936,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             supabase.removeChannel(channel)
             realtimeChannelRef.current = null
         }
-    }, [isAuthenticated, user?.workspaceId, user?.workspaceName])
+    }, [isAuthenticated, user?.workspaceId, user?.workspaceName, user?.sourceWorkspaceId])
 
     useEffect(() => {
         if (!isSupabaseConfigured || !isAuthenticated || !user?.workspaceId) return

@@ -52,6 +52,7 @@ Supported actions:
   - body: `{ action: 'updateWorkspaceFeatures', passkey, workspaceId, pos, crm, invoices_history, locked_workspace }`
 - `updateWorkspaceSubscription`
   - body: `{ action: 'updateWorkspaceSubscription', passkey, workspaceId, newExpiry }`
+  - for a workspace with saved usage limits, `newExpiry` sets the recurring usage-cycle reset day instead of expiring access; source workspaces and branches share that cycle
 - `listWorkspaceUsage`
   - body: `{ action: 'listWorkspaceUsage', passkey }`
   - returns: current usage counters only for source usage owners with saved usage limits; branches share the source workspace usage row
@@ -65,6 +66,7 @@ Supported actions:
   - actual and charged counters must preserve the fixed relationship `charged = actual × 10`; either counter may be supplied alone and the other is derived (a charged-only value must be divisible by 10), while mismatched pairs are rejected
   - deprecated compatibility: `dataTransferBytes` keeps its historical actual-transfer meaning and aliases `actualTransferBytes`; `monthlyDataTransferLimitBytes` aliases the charged allowance; new clients should use the unambiguous preferred fields
   - if a preferred field and its deprecated alias are both supplied, their normalized values must match
+  - `transferPeriodStart` is displayed for compatibility, but the server owns the effective period: usage-limited workspaces reset on the UTC day-of-month of `subscription_expires_at` (falling back to calendar-month cycles when no reset date is set)
   - use: adjust current workspace usage counters and upsert/delete optional limits; branch workspace ids resolve to their source workspace; reaching the monthly charged-usage limit locks the workspace family, while reaching the storage unit limit does not
 - `refreshWorkspaceUsage`
   - body: `{ action: 'refreshWorkspaceUsage', passkey, workspaceId? }`

@@ -225,10 +225,6 @@ function normalizeUsagePeriodStart(value: unknown): { value: string; error?: str
         return { value: currentUsagePeriodStart(), error: 'Transfer period is invalid' }
     }
 
-    if (!value.endsWith('-01')) {
-        return { value: currentUsagePeriodStart(), error: 'Transfer period must be the first day of a month' }
-    }
-
     return { value }
 }
 
@@ -447,19 +443,47 @@ async function updateWorkspaceSubscription(
         return errorResponse('Invalid expiry date')
     }
 
-    const { error } = await adminClient
-        .from('workspaces')
-        .update({
+    const { data: usageStatus, error: usageStatusError } = await adminClient
+        .rpc('get_workspace_usage_status', { p_workspace_id: workspaceId })
+        .maybeSingle()
+
+    if (usageStatusError) {
+        return errorResponse(usageStatusError.message, 500)
+    }
+
+    const usageEnabled = Boolean(usageStatus?.has_limits)
+    const targetWorkspaceId = usageEnabled && usageStatus?.workspace_id
+        ? String(usageStatus.workspace_id)
+        : workspaceId
+    const update = usageEnabled
+        ? { subscription_expires_at: parsedExpiry.toISOString() }
+        : {
             subscription_expires_at: parsedExpiry.toISOString(),
             locked_workspace: parsedExpiry.getTime() < Date.now()
-        })
-        .eq('id', workspaceId)
+        }
+
+    const { error } = await adminClient
+        .from('workspaces')
+        .update(update)
+        .eq('id', targetWorkspaceId)
 
     if (error) {
         return errorResponse(error.message, 500)
     }
 
-    return jsonResponse({ success: true })
+    // A new reset day can move the current cycle boundary. Apply it immediately
+    // so the admin and workspace clients see the correct counters right away.
+    if (usageEnabled) {
+        const { error: syncError } = await adminClient.rpc('sync_workspace_usage_periods', {
+            p_workspace_id: targetWorkspaceId
+        })
+
+        if (syncError) {
+            return errorResponse(syncError.message, 500)
+        }
+    }
+
+    return jsonResponse({ success: true, usageEnabled })
 }
 
 async function listOverrides(
@@ -577,9 +601,6 @@ async function syncWorkspaceUsagePeriod(
     adminClient: ReturnType<typeof createAdminClient>,
     limitedWorkspaceIds: string[]
 ) {
-    const periodStart = currentUsagePeriodStart()
-    const now = new Date().toISOString()
-
     if (limitedWorkspaceIds.length === 0) {
         const { error: deleteAllError } = await adminClient
             .from('workspace_usage')
@@ -602,38 +623,9 @@ async function syncWorkspaceUsagePeriod(
         throw cleanupError
     }
 
-    if (limitedWorkspaceIds.length > 0) {
-        const { error: insertError } = await adminClient
-            .from('workspace_usage')
-            .upsert(
-                limitedWorkspaceIds.map((workspaceId) => ({
-                    workspace_id: workspaceId,
-                    transfer_period_start: periodStart,
-                    storage_updated_at: now,
-                    transfer_updated_at: now,
-                    updated_at: now
-                })),
-                { onConflict: 'workspace_id', ignoreDuplicates: true }
-            )
-
-        if (insertError) {
-            throw insertError
-        }
-    }
-
-    const { error: resetError } = await adminClient
-        .from('workspace_usage')
-        .update({
-            actual_data_transfer_bytes: '0',
-            data_transfer_bytes: '0',
-            transfer_period_start: periodStart,
-            transfer_updated_at: now,
-            updated_at: now
-        })
-        .neq('transfer_period_start', periodStart)
-
-    if (resetError) {
-        throw resetError
+    const { error: syncError } = await adminClient.rpc('sync_workspace_usage_periods')
+    if (syncError) {
+        throw syncError
     }
 }
 
@@ -666,8 +658,6 @@ async function listWorkspaceUsage(adminClient: ReturnType<typeof createAdminClie
 
         const usageByWorkspaceId = new Map((usageRows ?? []).map((row) => [String(row.workspace_id), row]))
         const limitsByWorkspaceId = new Map((limitRows ?? []).map((row) => [String(row.workspace_id), row]))
-        const periodStart = currentUsagePeriodStart()
-
         return jsonResponse(limitedWorkspaceIds.map((workspaceId) => {
             const usage = usageByWorkspaceId.get(workspaceId)
             const limits = limitsByWorkspaceId.get(workspaceId)
@@ -690,7 +680,7 @@ async function listWorkspaceUsage(adminClient: ReturnType<typeof createAdminClie
                 // this API field meant actual transfer, so preserve that meaning
                 // even though the same-named database column is now charged usage.
                 data_transfer_bytes: actualTransferBytes,
-                transfer_period_start: String(usage?.transfer_period_start ?? periodStart),
+                transfer_period_start: String(usage?.transfer_period_start ?? currentUsagePeriodStart()),
                 storage_updated_at: usage?.storage_updated_at ?? null,
                 transfer_updated_at: usage?.transfer_updated_at ?? null,
                 updated_at: usage?.updated_at ?? null,
@@ -823,6 +813,21 @@ async function updateWorkspaceUsage(
             return errorResponse(limitsError.message, 500)
         }
 
+        // The database owns the cycle boundary. This intentionally ignores a
+        // stale Admin UI period (for example, a workspace that resets on the
+        // 14th rather than the first day of a month).
+        const { data: usageStatus, error: usageStatusError } = await adminClient
+            .rpc('get_workspace_usage_status', { p_workspace_id: usageWorkspaceId })
+            .maybeSingle()
+
+        if (usageStatusError) {
+            return errorResponse(usageStatusError.message, 500)
+        }
+
+        const effectivePeriodStart = typeof usageStatus?.transfer_period_start === 'string'
+            ? usageStatus.transfer_period_start
+            : periodStart.value
+
         const { error: usageError } = await adminClient
             .from('workspace_usage')
             .upsert({
@@ -831,7 +836,7 @@ async function updateWorkspaceUsage(
                 // This legacy-named database column stores CHARGED usage.
                 data_transfer_bytes: reconciledTransfer.chargedValue,
                 actual_data_transfer_bytes: reconciledTransfer.actualValue,
-                transfer_period_start: periodStart.value,
+                transfer_period_start: effectivePeriodStart,
                 storage_updated_at: now,
                 transfer_updated_at: now,
                 updated_at: now

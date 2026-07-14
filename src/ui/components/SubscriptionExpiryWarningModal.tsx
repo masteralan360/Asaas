@@ -19,7 +19,7 @@ export function SubscriptionExpiryWarningModal() {
     const { t } = useTranslation()
     const { activeWorkspace, features, isDemoMode, isLoading } = useWorkspace()
     const warning = useSubscriptionExpiryWarning(
-        isDemoMode ? null : features.subscription_expires_at
+        isDemoMode || features.has_usage_limits ? null : features.subscription_expires_at
     )
     const [open, setOpen] = useState(false)
 
