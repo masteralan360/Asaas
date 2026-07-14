@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -7,6 +7,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, BookOpen, Boxes, Copy, FileSpreadsheet
 import { useAuth } from '@/auth'
 import {
     createCategory,
+    createProduct,
     deleteCategory,
     deleteProduct,
     updateCategory,
@@ -15,9 +16,10 @@ import {
     useProducts,
     useStorages,
     type Category,
+    type CurrencyCode,
     type Product
 } from '@/local-db'
-import { isMobile } from '@/lib/platform'
+import { isMobile, isTauri } from '@/lib/platform'
 import { db } from '@/local-db/database'
 import {
     getRetriableActionToast,
@@ -26,10 +28,20 @@ import {
 } from '@/lib/supabaseRequest'
 import { invokeWorkspaceAccess } from '@/lib/workspaceAccess'
 import { cn, formatCurrency } from '@/lib/utils'
+import {
+    assignGeneratedProductImportSkus,
+    createProductImportPreviewRows,
+    parseProductImportWorkbook,
+    type ProductImportProgress,
+    type ProductImportPreviewRow,
+    type ProductImportSubmissionResult,
+    type ProductImportValidationContext
+} from '@/lib/productImport'
 import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
 import { UiAccessGate } from '@/context/UiAccessContext'
 import { PriceBookManagementDialog } from '@/ui/components/PriceBookManagementDialog'
+import { ProductImportPreviewModal } from '@/ui/components/ProductImportPreviewModal'
 import {
     Button,
     Card,
@@ -86,6 +98,12 @@ type ProductCloneTarget = {
     workspaceCode?: string
     relationType: 'source' | 'branch'
     storages: ProductCloneTargetStorage[]
+}
+
+type PreparedProductImport = {
+    fileName: string
+    rows: ProductImportPreviewRow[]
+    fileErrors: { message: string }[]
 }
 
 export type ProductSortOption = 'name_asc' | 'name_desc' | 'sku_asc' | 'sku_desc' | 'price_asc' | 'price_desc' | 'stock_asc' | 'stock_desc' | 'date_asc' | 'date_desc'
@@ -148,6 +166,11 @@ export function Products() {
         () => new Map(storages.map((storage) => [storage.id, storage] as const)),
         [storages]
     )
+    const productImportValidationContext = useMemo<ProductImportValidationContext>(() => ({
+        categories: categories.map((category) => ({ id: category.id, name: category.name })),
+        storages: storages.map((storage) => ({ id: storage.id, name: storage.name })),
+        allowedCurrencies: features.allowed_currencies
+    }), [categories, features.allowed_currencies, storages])
 
     const inventoryRows = useLiveQuery(
         () => workspaceId
@@ -231,6 +254,10 @@ export function Products() {
     const [selectedProductForStock, setSelectedProductForStock] = useState<string | undefined>()
     const [isLoading, setIsLoading] = useState(false)
     const [isProductsExportOpen, setIsProductsExportOpen] = useState(false)
+    const [isProductImportOpen, setIsProductImportOpen] = useState(false)
+    const [isPreparingProductImport, setIsPreparingProductImport] = useState(false)
+    const [productImport, setProductImport] = useState<PreparedProductImport | null>(null)
+    const productImportInputRef = useRef<HTMLInputElement>(null)
     const [pulseCategorySubmit, setPulseCategorySubmit] = useState(false)
     const [outsideClickCount, setOutsideClickCount] = useState(0)
     const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false)
@@ -783,6 +810,180 @@ export function Products() {
         setIsProductsExportOpen(true)
     }
 
+    const closeProductImportPreview = () => {
+        if (isPreparingProductImport) {
+            return
+        }
+        setIsProductImportOpen(false)
+        setProductImport(null)
+    }
+
+    const prepareProductImport = async (fileName: string, fileData: ArrayBuffer) => {
+        setIsPreparingProductImport(true)
+        try {
+            const parsed = await parseProductImportWorkbook(fileData)
+            const rows = createProductImportPreviewRows(
+                assignGeneratedProductImportSkus(parsed.rows, products.map((product) => product.sku)),
+                productImportValidationContext
+            )
+            setProductImport({
+                fileName,
+                rows,
+                fileErrors: parsed.fileErrors
+            })
+            setIsProductImportOpen(true)
+        } catch (error) {
+            console.error('[Products] Could not read product import file:', error)
+            toast({
+                title: 'Could not read the Excel file',
+                description: 'Make sure the selected file is a readable, unprotected .xlsx workbook and try again.',
+                variant: 'destructive'
+            })
+        } finally {
+            setIsPreparingProductImport(false)
+        }
+    }
+
+    const handleProductImportFileInput = async (event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0]
+        event.target.value = ''
+        if (!file) {
+            return
+        }
+
+        if (!file.name.toLowerCase().endsWith('.xlsx')) {
+            toast({
+                title: 'Unsupported file type',
+                description: 'Select an .xlsx Excel file to import products.',
+                variant: 'destructive'
+            })
+            return
+        }
+
+        await prepareProductImport(file.name, await file.arrayBuffer())
+    }
+
+    const openProductImportFilePicker = async () => {
+        if (isPreparingProductImport) {
+            return
+        }
+
+        if (!isTauri()) {
+            productImportInputRef.current?.click()
+            return
+        }
+
+        try {
+            const { open } = await import('@tauri-apps/plugin-dialog')
+            const selected = await open({
+                multiple: false,
+                filters: [{ name: 'Excel workbook', extensions: ['xlsx'] }]
+            })
+
+            if (!selected || typeof selected !== 'string') {
+                return
+            }
+
+            const { readFile } = await import('@tauri-apps/plugin-fs')
+            const bytes = await readFile(selected)
+            const fileData = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+            const fileName = selected.replace(/\\/g, '/').split('/').pop() || 'products.xlsx'
+            await prepareProductImport(fileName, fileData)
+        } catch (error) {
+            console.error('[Products] Could not select product import file:', error)
+            toast({
+                title: 'Could not open the file picker',
+                description: 'Please try selecting the .xlsx file again.',
+                variant: 'destructive'
+            })
+        }
+    }
+
+    const submitProductImport = async (
+        rows: ProductImportPreviewRow[],
+        onProgress: (progress: ProductImportProgress) => void
+    ): Promise<ProductImportSubmissionResult> => {
+        if (!workspaceId) {
+            throw new Error('No workspace is selected for this import.')
+        }
+
+        const importedRowNumbers: number[] = []
+        const failures: ProductImportSubmissionResult['failures'] = []
+        const reportProgress = (currentExcelRowNumber: number | null) => {
+            onProgress({
+                totalRows: rows.length,
+                completedRows: importedRowNumbers.length + failures.length,
+                importedRows: importedRowNumbers.length,
+                failedRows: failures.length,
+                currentExcelRowNumber
+            })
+        }
+
+        for (const row of rows) {
+            reportProgress(row.excelRowNumber)
+            if (!row.isValid) {
+                failures.push({
+                    excelRowNumber: row.excelRowNumber,
+                    message: 'This row still has validation errors.'
+                })
+            } else {
+                const storage = storageById.get(row.values.storage_id)
+                const category = row.values.category_id ? categoryById.get(row.values.category_id) : undefined
+                if (!storage) {
+                    failures.push({
+                        excelRowNumber: row.excelRowNumber,
+                        message: 'The selected storage no longer exists. Revalidate the row and try again.'
+                    })
+                } else if (row.values.category_id && !category) {
+                    failures.push({
+                        excelRowNumber: row.excelRowNumber,
+                        message: 'The selected category no longer exists. Revalidate the row and try again.'
+                    })
+                } else {
+                    try {
+                        await createProduct(workspaceId, {
+                            sku: row.values.sku,
+                            name: row.values.name,
+                            description: '',
+                            categoryId: category?.id ?? null,
+                            category: category?.name ?? null,
+                            storageId: storage.id,
+                            storageName: storage.name,
+                            price: Number(row.values.price),
+                            costPrice: Number(row.values.cost_price),
+                            quantity: Number(row.values.quantity),
+                            minStockLevel: row.values.min_stock_level === '' ? 0 : Number(row.values.min_stock_level),
+                            unit: row.values.unit,
+                            currency: row.values.Currency.toLowerCase() as CurrencyCode,
+                            canBeReturned: true,
+                            returnRules: '',
+                            createdBy: user?.id ?? null
+                        })
+                        importedRowNumbers.push(row.excelRowNumber)
+                    } catch (error) {
+                        console.error(`[Products] Failed to import Excel row ${row.excelRowNumber}:`, error)
+                        failures.push({
+                            excelRowNumber: row.excelRowNumber,
+                            message: error instanceof Error ? error.message : 'The product could not be saved.'
+                        })
+                    }
+                }
+            }
+            reportProgress(null)
+        }
+
+        if (importedRowNumbers.length > 0) {
+            toast({
+                title: `${importedRowNumbers.length} product${importedRowNumbers.length === 1 ? '' : 's'} imported`,
+                description: failures.length > 0
+                    ? `${failures.length} row${failures.length === 1 ? '' : 's'} still need attention.`
+                    : 'Products and their initial inventory have been added successfully.'
+            })
+        }
+
+        return { importedRowNumbers, failures }
+    }
+
     const confirmDelete = async () => {
         if (!itemToDelete) return
 
@@ -821,6 +1022,20 @@ export function Products() {
             [t('common.createdAt', { defaultValue: 'Created At' })]: product.createdAt ? new Date(product.createdAt).toLocaleString() : ''
         }))
 
+    if (isProductImportOpen && productImport) {
+        return (
+            <ProductImportPreviewModal
+                isOpen={isProductImportOpen}
+                fileName={productImport.fileName}
+                initialRows={productImport.rows}
+                fileErrors={productImport.fileErrors}
+                validationContext={productImportValidationContext}
+                onClose={closeProductImportPreview}
+                onImport={submitProductImport}
+            />
+        )
+    }
+
     if (isProductsExportOpen) {
         return (
             <TooltipProvider>
@@ -836,6 +1051,13 @@ export function Products() {
 
     return (
         <div className="space-y-6">
+            <input
+                ref={productImportInputRef}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="hidden"
+                onChange={handleProductImportFileInput}
+            />
             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                 <div>
                     <h1 className="flex items-center gap-2 text-2xl font-bold">
@@ -1020,6 +1242,23 @@ export function Products() {
                             <FileSpreadsheet className="h-4 w-4" />
                             {t('sales.export.button', { defaultValue: 'Excel Export' })}
                         </Button>
+                        {canEdit && (
+                            <UiAccessGate>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => void openProductImportFilePicker()}
+                                    disabled={isPreparingProductImport}
+                                    className={cn(
+                                        'h-10 gap-2 rounded-full border border-primary/20 bg-primary/5 px-5 text-[10px] font-black uppercase tracking-widest text-primary transition-all',
+                                        'hover:bg-primary/10 hover:shadow-[0_0_20px_-5px_rgba(59,130,246,0.3)] active:scale-95'
+                                    )}
+                                >
+                                    {isPreparingProductImport ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+                                    {isPreparingProductImport ? 'Reading Excel…' : 'Import Products'}
+                                </Button>
+                            </UiAccessGate>
+                        )}
                     </div>
                 </CardHeader>
                 <CardContent>
