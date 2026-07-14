@@ -1242,7 +1242,7 @@ export function Products() {
                             <FileSpreadsheet className="h-4 w-4" />
                             {t('sales.export.button', { defaultValue: 'Excel Export' })}
                         </Button>
-                        {canEdit && (
+                        {canEdit && !isMobile() && (
                             <UiAccessGate>
                                 <Button
                                     type="button"
