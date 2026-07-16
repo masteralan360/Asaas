@@ -82,34 +82,34 @@ export function LockedWorkspace() {
 
     if (isLoading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-background">
+            <div className="min-h-screen flex items-center justify-center bg-background dark:bg-slate-950">
                 <div className="flex flex-col items-center gap-4">
                     <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-                    <p className="text-muted-foreground">Loading...</p>
+                    <p className="text-muted-foreground dark:text-slate-300">Loading...</p>
                 </div>
             </div>
         )
     }
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/30 p-4">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/30 p-4 dark:from-slate-950 dark:via-[#0b1422] dark:to-[#172235]">
             <div className="max-w-md w-full text-center space-y-8">
                 {/* Lock Icon */}
-                <div className="mx-auto w-24 h-24 rounded-full bg-destructive/10 flex items-center justify-center relative">
-                    <LockIcon className={`w-12 h-12 text-destructive ${showPaymentAction ? 'animate-pulse' : ''}`} />
+                <div className="mx-auto w-24 h-24 rounded-full bg-destructive/10 flex items-center justify-center relative dark:bg-rose-500/15">
+                    <LockIcon className={`w-12 h-12 text-destructive dark:text-rose-400 ${showPaymentAction ? 'animate-pulse' : ''}`} />
                     {showPaymentAction && (
                         <div className="absolute -top-1 -right-1">
-                            <AlertCircle className="w-6 h-6 text-destructive fill-background" />
+                            <AlertCircle className="w-6 h-6 text-destructive fill-background dark:text-rose-400 dark:fill-slate-950" />
                         </div>
                     )}
                 </div>
 
                 {/* Title */}
                 <div className="space-y-2">
-                    <h1 className="text-3xl font-bold text-foreground">
+                    <h1 className="text-3xl font-bold text-foreground dark:text-slate-50">
                         {paymentCopy.title}
                     </h1>
-                    <p className="text-muted-foreground text-lg">
+                    <p className="text-muted-foreground text-lg dark:text-slate-200">
                         {paymentCopy.description}
                     </p>
                     {pendingTransaction && (
@@ -142,7 +142,9 @@ export function LockedWorkspace() {
                         size="lg"
                         onClick={handleContactAdmin}
                         variant={showPaymentAction ? 'outline' : 'default'}
-                        className="gap-2 w-full max-w-[240px]"
+                        className={`gap-2 w-full max-w-[240px] ${showPaymentAction
+                            ? 'dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:hover:bg-slate-900'
+                            : ''}`}
                     >
                         <Mail className="w-5 h-5" />
                         {t('lockedWorkspace.contactAdmin') || 'Contact an Admin'}
@@ -153,7 +155,7 @@ export function LockedWorkspace() {
                         variant="outline"
                         size="lg"
                         onClick={handleSignOut}
-                        className="gap-2 w-full max-w-[240px]"
+                        className="gap-2 w-full max-w-[240px] dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:hover:bg-slate-900"
                     >
                         <LogOut className="w-5 h-5" />
                         {t('common.signOut') || 'Sign Out'}
@@ -161,7 +163,7 @@ export function LockedWorkspace() {
                 </div>
 
                 {/* Additional Info */}
-                <p className="text-xs text-muted-foreground opacity-70">
+                <p className="text-xs text-muted-foreground opacity-70 dark:text-slate-400 dark:opacity-100">
                     {t('lockedWorkspace.additionalInfo') || 'If you believe this is an error, please reach out to your workspace administrator.'}
                 </p>
             </div>

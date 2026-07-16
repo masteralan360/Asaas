@@ -28,6 +28,7 @@ export interface WorkspacePaymentConfiguration {
 export interface WorkspacePaymentTransaction {
     id: string
     provider: WorkspacePaymentProvider
+    accountHolderName: string | null
     amount: string
     currency: string
     gbAdded: string
@@ -115,6 +116,14 @@ function getDecimalText(value: unknown): string {
     return /^\d+(?:\.\d+)?$/.test(raw) ? raw : '0'
 }
 
+export function normalizeWorkspacePaymentAccountHolderName(value: string): string {
+    return value.replace(/\s+/g, ' ').trim().toUpperCase()
+}
+
+export function isValidWorkspacePaymentAccountHolderName(value: string): boolean {
+    return normalizeWorkspacePaymentAccountHolderName(value).split(' ').filter(Boolean).length >= 3
+}
+
 export function formatWorkspacePaymentDecimal(
     value: string,
     locale: string,
@@ -196,6 +205,7 @@ export function normalizeWorkspacePaymentTransaction(value: unknown): WorkspaceP
     return {
         id,
         provider: normalizeProvider(value.provider),
+        accountHolderName: getNullableText(value.account_holder_name),
         amount: getDecimalText(value.amount),
         currency: getText(value.currency, WORKSPACE_PAYMENT_CURRENCY).toUpperCase(),
         gbAdded: getDecimalText(value.gb_added),
@@ -255,7 +265,7 @@ export function isWorkspacePaymentProvider(value: unknown): value is WorkspacePa
 
 export function getWorkspacePaymentQrPath(provider: WorkspacePaymentProvider): string | null {
     if (provider === 'free') return null
-    return provider === 'fib' ? '/atlas_fib_qr.svg' : '/atlas_qi_card_qr.svg'
+    return provider === 'fib' ? '/qr_code_fib.png' : '/qr_code_qicard.png'
 }
 
 export function openWorkspacePaymentDialog() {
@@ -348,12 +358,14 @@ export function hasWorkspacePaymentAccessBeenRestored(
 
 export function canSubmitWorkspacePayment(options: {
     provider: WorkspacePaymentProvider | null
+    accountHolderName?: string
     isSubmitting: boolean
     hasWorkspacePendingTransaction?: boolean
     pendingTransaction?: WorkspacePaymentTransaction | null
 }) {
     return Boolean(
         options.provider
+        && (options.provider === 'free' || isValidWorkspacePaymentAccountHolderName(options.accountHolderName ?? ''))
         && !options.isSubmitting
         && !options.hasWorkspacePendingTransaction
         && !options.pendingTransaction
@@ -374,12 +386,41 @@ export async function getWorkspacePaymentSummary(): Promise<WorkspacePaymentSumm
     return normalizeWorkspacePaymentSummary(result.data)
 }
 
+export async function getSavedWorkspacePaymentAccountHolderNames(): Promise<string[]> {
+    const result = await runSupabaseAction(
+        'workspacePayments.getSavedAccountHolderNames',
+        () => supabase.rpc('list_workspace_payment_account_holder_names'),
+        { timeoutMs: 12_000, platform: 'all' }
+    ) as { data: unknown; error?: unknown }
+
+    if (result.error) {
+        throw normalizeSupabaseActionError(result.error)
+    }
+
+    // This RPC returns a JSONB array directly. Unlike the summary response,
+    // an array here represents the saved names themselves rather than rows to unwrap.
+    const names = typeof result.data === 'string'
+        ? unwrapRpcJson(result.data)
+        : result.data
+    if (!Array.isArray(names)) return []
+
+    return [...new Set(names.flatMap((name) => {
+        if (typeof name !== 'string') return []
+        const normalized = normalizeWorkspacePaymentAccountHolderName(name)
+        return isValidWorkspacePaymentAccountHolderName(normalized) ? [normalized] : []
+    }))]
+}
+
 async function performWorkspacePaymentSubmission(
-    provider: WorkspacePaymentProvider
+    provider: WorkspacePaymentProvider,
+    accountHolderName: string
 ): Promise<WorkspacePaymentTransaction> {
     const result = await runSupabaseAction(
         'workspacePayments.submit',
-        () => supabase.rpc('submit_workspace_payment', { p_provider: provider }),
+        () => supabase.rpc('submit_workspace_payment', {
+            p_provider: provider,
+            p_account_holder_name: accountHolderName || null
+        }),
         { timeoutMs: 12_000, platform: 'all' }
     ) as { data: unknown; error?: unknown }
 
@@ -396,17 +437,23 @@ async function performWorkspacePaymentSubmission(
 }
 
 export function submitWorkspacePayment(
-    provider: WorkspacePaymentProvider
+    provider: WorkspacePaymentProvider,
+    accountHolderName = ''
 ): Promise<WorkspacePaymentTransaction> {
     if (!isWorkspacePaymentProvider(provider)) {
         return Promise.reject(new Error('Unsupported payment provider'))
+    }
+
+    const normalizedAccountHolderName = normalizeWorkspacePaymentAccountHolderName(accountHolderName)
+    if (provider !== 'free' && !isValidWorkspacePaymentAccountHolderName(normalizedAccountHolderName)) {
+        return Promise.reject(new Error('Account holder name must contain at least three words'))
     }
 
     if (submitPaymentInFlight) {
         return submitPaymentInFlight
     }
 
-    const request = performWorkspacePaymentSubmission(provider)
+    const request = performWorkspacePaymentSubmission(provider, normalizedAccountHolderName)
     const guardedRequest = request.finally(() => {
         submitPaymentInFlight = null
     })

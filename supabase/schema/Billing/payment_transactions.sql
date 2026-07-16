@@ -5,6 +5,7 @@ CREATE TABLE billing.payment_transactions (
   user_id uuid NULL,
   submitted_by_name text NULL,
   submitted_by_email text NULL,
+  account_holder_name text NULL,
   provider text NOT NULL,
   provider_payment_id text NULL,
   payment_type text NOT NULL,
@@ -27,6 +28,13 @@ CREATE TABLE billing.payment_transactions (
   CONSTRAINT workspace_payment_transactions_type_check CHECK (payment_type = ANY (ARRAY['subscription'::text, 'usage'::text])),
   CONSTRAINT workspace_payment_transactions_amount_check CHECK (amount > 0),
   CONSTRAINT workspace_payment_transactions_currency_check CHECK (currency = 'IQD'::text),
+  CONSTRAINT workspace_payment_transactions_account_holder_name_length_check CHECK (
+    account_holder_name IS NULL
+    OR (
+      char_length(account_holder_name) BETWEEN 1 AND 160
+      AND cardinality(string_to_array(account_holder_name, ' ')) >= 3
+    )
+  ),
   CONSTRAINT workspace_payment_transactions_gb_check CHECK (
     gb_added >= 0
     AND gb_added_bytes >= 0
@@ -61,6 +69,10 @@ CREATE INDEX workspace_payment_transactions_workspace_created_idx
 
 CREATE INDEX workspace_payment_transactions_user_created_idx
   ON billing.payment_transactions (user_id, created_at DESC);
+
+CREATE INDEX workspace_payment_transactions_user_account_holder_name_idx
+  ON billing.payment_transactions (user_id, created_at DESC)
+  WHERE account_holder_name IS NOT NULL;
 
 CREATE INDEX workspace_payment_transactions_status_created_idx
   ON billing.payment_transactions (status, created_at DESC);

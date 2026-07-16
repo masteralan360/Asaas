@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
     AlertCircle,
@@ -9,12 +9,13 @@ import {
     Gift,
     QrCode,
     RefreshCw,
-    WalletCards,
     XCircle
 } from 'lucide-react'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
 import { Button } from '@/ui/components/button'
+import { Label } from '@/ui/components/label'
+import { PaymentAccountHolderNameAutocomplete } from '@/ui/components/PaymentAccountHolderNameAutocomplete'
 import {
     Dialog,
     DialogContent,
@@ -32,8 +33,11 @@ import {
     formatWorkspacePaymentDecimal,
     getWorkspacePaymentAlertKind,
     getWorkspacePaymentQrPath,
+    getSavedWorkspacePaymentAccountHolderNames,
     hasNewlyApprovedWorkspacePayment,
     hasWorkspacePaymentAccessBeenRestored,
+    isValidWorkspacePaymentAccountHolderName,
+    normalizeWorkspacePaymentAccountHolderName,
     submitWorkspacePayment,
     type WorkspacePaymentAlertKind,
     type WorkspacePaymentProvider,
@@ -44,6 +48,18 @@ import {
 
 const PENDING_PAYMENT_POLL_INTERVAL_MS = 10_000
 const PAYMENT_SUMMARY_REFRESH_INTERVAL_MS = 60_000
+const PAYMENT_CONFIRMATION_DELAY_MS = 15_000
+
+let hasUsedPaymentConfirmationDelay = false
+let paymentConfirmationDelayEndsAtForSession: number | null = null
+
+function getPaymentConfirmationDelayRemaining(endsAt: number | null) {
+    return endsAt ? Math.max(0, endsAt - Date.now()) : 0
+}
+
+function getWorkspacePaymentCurrencyLabel(iqdDisplayPreference: string) {
+    return iqdDisplayPreference === 'د.ع' ? 'د.ع' : WORKSPACE_PAYMENT_CURRENCY
+}
 
 function getErrorMessage(error: unknown) {
     if (error instanceof Error) return error.message
@@ -104,10 +120,12 @@ function getStatusPresentation(status: WorkspacePaymentStatus, t: ReturnType<typ
 function TransactionHistory({
     transactions,
     locale,
+    iqdDisplayPreference,
     t
 }: {
     transactions: WorkspacePaymentTransaction[]
     locale: string
+    iqdDisplayPreference: string
     t: ReturnType<typeof useTranslation>['t']
 }) {
     const dateFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
@@ -142,7 +160,9 @@ function TransactionHistory({
                                                 : t('workspacePayments.qicard')}
                                         </p>
                                         <p className="mt-1 text-xs text-muted-foreground">
-                                            {formatWorkspacePaymentDecimal(transaction.amount, locale, 3)} {WORKSPACE_PAYMENT_CURRENCY}
+                                            {formatWorkspacePaymentDecimal(transaction.amount, locale, 3)} {transaction.currency === WORKSPACE_PAYMENT_CURRENCY
+                                                ? getWorkspacePaymentCurrencyLabel(iqdDisplayPreference)
+                                                : transaction.currency}
                                             {' \u00b7 '}{formatWorkspacePaymentDecimal(transaction.gbAdded, locale, 6)} GB
                                         </p>
                                     </div>
@@ -185,36 +205,48 @@ function ProviderButton({
     provider,
     selected,
     onSelect,
-    label
+    label,
+    currencyLabel
 }: {
     provider: WorkspacePaymentProvider
     selected: boolean
     onSelect: (provider: WorkspacePaymentProvider) => void
     label: string
+    currencyLabel: string
 }) {
     const isFree = provider === 'free'
+    const providerIcon = provider === 'fib' ? '/icons/fib.svg' : '/icons/qi.svg'
     return (
         <button
             type="button"
             onClick={() => onSelect(provider)}
             aria-pressed={selected}
             className={cn(
-                'flex min-h-20 items-center gap-3 rounded-2xl border p-4 text-start transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'flex min-h-[5.5rem] items-center gap-3 rounded-2xl border p-4 text-start transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-5',
                 selected
-                    ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary/20'
+                    ? 'border-primary bg-primary/[0.08] shadow-sm ring-1 ring-primary/20'
                     : 'border-border/70 bg-background hover:border-primary/40 hover:bg-accent/40'
             )}
         >
             <span className={cn(
-                'flex h-11 w-11 items-center justify-center rounded-xl',
-                selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
+                'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl',
+                selected ? 'bg-background shadow-sm ring-1 ring-primary/15' : 'bg-muted'
             )}>
-                {isFree ? <Gift className="h-5 w-5" /> : <WalletCards className="h-5 w-5" />}
+                {isFree ? (
+                    <Gift className="h-5 w-5 text-foreground" />
+                ) : (
+                    <img
+                        src={providerIcon}
+                        alt=""
+                        aria-hidden="true"
+                        className="h-8 w-8 rounded-lg object-contain"
+                    />
+                )}
             </span>
             <span>
                 <span className="block text-sm font-bold text-foreground">{label}</span>
                 <span className="mt-0.5 block text-xs text-muted-foreground">
-                    {isFree ? 'No payment required' : WORKSPACE_PAYMENT_CURRENCY}
+                    {isFree ? 'No payment required' : currencyLabel}
                 </span>
             </span>
         </button>
@@ -226,6 +258,7 @@ export function WorkspacePaymentController() {
     const { isAuthenticated } = useAuth()
     const {
         activeWorkspace,
+        features,
         isDemoMode,
         paymentSummary,
         isPaymentSummaryLoading,
@@ -239,6 +272,15 @@ export function WorkspacePaymentController() {
     const [submittedTransactionId, setSubmittedTransactionId] = useState<string | null>(null)
     const [loadError, setLoadError] = useState<string | null>(null)
     const [submitError, setSubmitError] = useState<string | null>(null)
+    const [accountHolderName, setAccountHolderName] = useState('')
+    const [savedAccountHolderNames, setSavedAccountHolderNames] = useState<string[]>([])
+    const [isConfirmationHighlighted, setIsConfirmationHighlighted] = useState(false)
+    const [confirmationDelayEndsAt, setConfirmationDelayEndsAt] = useState<number | null>(
+        () => paymentConfirmationDelayEndsAtForSession
+    )
+    const [confirmationDelayRemainingMs, setConfirmationDelayRemainingMs] = useState(
+        () => getPaymentConfirmationDelayRemaining(paymentConfirmationDelayEndsAtForSession)
+    )
     const submissionGuardRef = useRef(false)
     const previousSummaryRef = useRef<WorkspacePaymentSummary | null>(null)
     const refreshPaymentSummaryRef = useRef(refreshPaymentSummary)
@@ -262,6 +304,9 @@ export function WorkspacePaymentController() {
         setSubmittedTransactionId(null)
         setLoadError(null)
         setSubmitError(null)
+        setAccountHolderName('')
+        setSavedAccountHolderNames([])
+        setIsConfirmationHighlighted(false)
         submissionGuardRef.current = false
         previousSummaryRef.current = null
     }, [activeWorkspace?.id])
@@ -335,9 +380,39 @@ export function WorkspacePaymentController() {
         }
     }, [paymentSummary, submittedTransactionId])
 
+    useEffect(() => {
+        if (!confirmationDelayEndsAt) {
+            setConfirmationDelayRemainingMs(0)
+            return
+        }
+
+        const updateRemainingTime = () => {
+            const remainingMs = getPaymentConfirmationDelayRemaining(confirmationDelayEndsAt)
+            setConfirmationDelayRemainingMs(remainingMs)
+
+            if (remainingMs === 0) {
+                paymentConfirmationDelayEndsAtForSession = null
+                setConfirmationDelayEndsAt(null)
+            }
+        }
+
+        updateRemainingTime()
+        const intervalId = window.setInterval(updateRemainingTime, 250)
+        return () => window.clearInterval(intervalId)
+    }, [confirmationDelayEndsAt])
+
+    const loadSavedAccountHolderNames = useCallback(() => {
+        void getSavedWorkspacePaymentAccountHolderNames()
+            .then(setSavedAccountHolderNames)
+            .catch((error) => {
+                console.warn('[WorkspacePayment] Failed to load saved account holder names:', error)
+            })
+    }, [])
+
     if (!isAuthenticated || isDemoMode) return null
 
     const locale = i18n.language || 'en'
+    const workspacePaymentCurrencyLabel = getWorkspacePaymentCurrencyLabel(features.iqd_display_preference)
     const configuration = paymentSummary?.configuration ?? null
     const isFreeRenewal = Boolean(configuration && Number(configuration.subscriptionAmount) === 0)
     const alertKind = getWorkspacePaymentAlertKind(paymentSummary)
@@ -351,23 +426,45 @@ export function WorkspacePaymentController() {
     const gbForPayment = configuration?.usageEnabled
         ? configuration.gbPerPayment
         : '0'
+    const isConfirmationDelayActive = confirmationDelayRemainingMs > 0
+    const confirmationDelaySeconds = Math.ceil(confirmationDelayRemainingMs / 1000)
+    const normalizedAccountHolderName = normalizeWorkspacePaymentAccountHolderName(accountHolderName)
+    const isAccountHolderNameIncomplete = Boolean(normalizedAccountHolderName)
+        && !isValidWorkspacePaymentAccountHolderName(normalizedAccountHolderName)
+    const paymentSummaryCardClass = cn(
+        'rounded-2xl p-3 transition-all duration-200',
+        isConfirmationHighlighted
+            ? 'bg-primary/[0.09] ring-2 ring-primary/55 shadow-lg shadow-primary/20'
+            : 'bg-muted/[0.28] ring-1 ring-border/60'
+    )
 
     const handleSubmit = async () => {
-        if (submissionGuardRef.current || !canSubmitWorkspacePayment({
+        if (!selectedProvider || !paymentEnabled) {
+            return
+        }
+
+        if (selectedProvider !== 'free' && !isValidWorkspacePaymentAccountHolderName(normalizedAccountHolderName)) {
+            setSubmitError(t('workspacePayments.accountHolderNameThreeWordsRequired'))
+            return
+        }
+
+        if (isConfirmationDelayActive || submissionGuardRef.current || !canSubmitWorkspacePayment({
             provider: selectedProvider,
+            accountHolderName: normalizedAccountHolderName,
             isSubmitting,
             hasWorkspacePendingTransaction,
             pendingTransaction
-        }) || !selectedProvider || !paymentEnabled) {
+        })) {
             return
         }
 
         submissionGuardRef.current = true
         setIsSubmitting(true)
         setSubmitError(null)
+        setAccountHolderName(normalizedAccountHolderName)
 
         try {
-            const transaction = await submitWorkspacePayment(selectedProvider)
+            const transaction = await submitWorkspacePayment(selectedProvider, normalizedAccountHolderName)
             setSubmitted(true)
             setSubmittedTransactionId(transaction.id)
             setSelectedProvider(null)
@@ -394,6 +491,18 @@ export function WorkspacePaymentController() {
         }
     }
 
+    const handleProviderSelect = (provider: WorkspacePaymentProvider) => {
+        setSelectedProvider(provider)
+
+        if (provider === 'free' || hasUsedPaymentConfirmationDelay) return
+
+        const endsAt = Date.now() + PAYMENT_CONFIRMATION_DELAY_MS
+        hasUsedPaymentConfirmationDelay = true
+        paymentConfirmationDelayEndsAtForSession = endsAt
+        setConfirmationDelayEndsAt(endsAt)
+        setConfirmationDelayRemainingMs(PAYMENT_CONFIRMATION_DELAY_MS)
+    }
+
     const retryLoad = () => {
         setLoadError(null)
         void refreshPaymentSummaryRef.current().catch((error) => {
@@ -407,18 +516,20 @@ export function WorkspacePaymentController() {
             if (!nextOpen) {
                 setSelectedProvider(null)
                 setSubmitError(null)
+                setAccountHolderName('')
+                setIsConfirmationHighlighted(false)
             }
         }}>
-            <DialogContent className="max-h-[calc(100vh-1.5rem)] w-[calc(100vw-1rem)] max-w-3xl overflow-y-auto rounded-2xl p-0">
-                <div className="border-b border-border/60 bg-gradient-to-br from-primary/10 via-background to-amber-500/5 px-5 py-5 sm:px-7">
+            <DialogContent className="max-h-[calc(100vh-1.5rem)] w-[calc(100vw-1rem)] max-w-6xl overflow-y-auto rounded-[28px] p-0 shadow-2xl">
+                <div className="border-b border-border/60 bg-gradient-to-br from-primary/[0.12] via-background to-amber-500/[0.07] px-5 py-5 sm:px-8 sm:py-6">
                     <DialogHeader className="pe-10 text-start">
-                        <div className="flex items-start gap-3">
-                            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
+                        <div className="flex items-start gap-4">
+                            <span className="flex h-[3.25rem] w-[3.25rem] shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
                                 <CreditCard className="h-6 w-6" />
                             </span>
                             <div className="space-y-1.5">
-                                <DialogTitle className="text-xl">{alertCopy.title}</DialogTitle>
-                                <DialogDescription className="leading-relaxed">
+                                <DialogTitle className="text-xl sm:text-2xl">{alertCopy.title}</DialogTitle>
+                                <DialogDescription className="max-w-2xl leading-relaxed">
                                     {alertCopy.description}
                                 </DialogDescription>
                             </div>
@@ -426,7 +537,7 @@ export function WorkspacePaymentController() {
                     </DialogHeader>
                 </div>
 
-                <div className="space-y-5 px-5 py-5 sm:px-7 sm:py-6">
+                <div className="space-y-6 px-5 py-5 sm:px-8 sm:py-7">
                     {isPaymentSummaryLoading && !paymentSummary ? (
                         <div className="flex min-h-44 flex-col items-center justify-center gap-3 text-muted-foreground">
                             <RefreshCw className="h-6 w-6 animate-spin" />
@@ -487,98 +598,56 @@ export function WorkspacePaymentController() {
                             )}
 
                             {!hasWorkspacePendingTransaction && paymentEnabled && (
-                                <>
-                                    <section className="space-y-3">
-                                        <h3 className="text-sm font-bold text-foreground">
-                                            {t('workspacePayments.selectProvider')}
-                                        </h3>
+                                <div className="grid overflow-hidden rounded-[28px] border border-border/70 bg-background shadow-sm md:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
+                                    <section className="flex min-h-[34rem] flex-col border-b border-border/60 bg-primary/[0.045] p-5 sm:p-7 md:border-b-0 md:border-e">
+                                        <div className="mb-5">
+                                            <h3 className="text-sm font-bold text-foreground">
+                                                {t('workspacePayments.selectProvider')}
+                                            </h3>
+                                        </div>
                                         <div className="grid gap-3 sm:grid-cols-2">
                                             {isFreeRenewal ? (
                                                 <ProviderButton
                                                     provider="free"
                                                     selected={selectedProvider === 'free'}
-                                                    onSelect={setSelectedProvider}
+                                                    onSelect={handleProviderSelect}
                                                     label={t('workspacePayments.freeRenewal', 'Free Renewal')}
+                                                    currencyLabel={workspacePaymentCurrencyLabel}
                                                 />
                                             ) : (
                                                 <>
                                                     <ProviderButton
                                                         provider="fib"
                                                         selected={selectedProvider === 'fib'}
-                                                        onSelect={setSelectedProvider}
+                                                        onSelect={handleProviderSelect}
                                                         label={t('workspacePayments.fib')}
+                                                        currencyLabel={workspacePaymentCurrencyLabel}
                                                     />
                                                     <ProviderButton
                                                         provider="qicard"
                                                         selected={selectedProvider === 'qicard'}
-                                                        onSelect={setSelectedProvider}
+                                                        onSelect={handleProviderSelect}
                                                         label={t('workspacePayments.qicard')}
+                                                        currencyLabel={workspacePaymentCurrencyLabel}
                                                     />
                                                 </>
                                             )}
                                         </div>
-                                    </section>
 
-                                    {selectedProvider && (
-                                        <section className="grid gap-5 rounded-2xl border border-border/70 bg-muted/20 p-4 sm:grid-cols-[minmax(0,1fr)_220px] sm:p-5">
-                                            <div className="space-y-4">
-                                                <div>
-                                                    <h3 className="font-bold text-foreground">
-                                                        {t('workspacePayments.paymentInstructions')}
-                                                    </h3>
-                                                    <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                                                        {t('workspacePayments.dialogDescription')}
+                                        <div className="mt-6 flex flex-1 flex-col items-center justify-center">
+                                            {selectedProvider === 'free' ? (
+                                                <div className="flex aspect-square w-full max-w-[20rem] flex-col items-center justify-center rounded-3xl border border-dashed border-primary/30 bg-background/70 p-6 text-center">
+                                                    <Gift className="h-10 w-10 text-primary" />
+                                                    <p className="mt-3 text-sm font-bold text-foreground">
+                                                        {t('workspacePayments.freeRenewal', 'Free Renewal')}
                                                     </p>
                                                 </div>
-                                                <dl className="grid grid-cols-3 gap-2">
-                                                    <div className="rounded-xl bg-background p-3 ring-1 ring-border/60">
-                                                        <dt className="text-[11px] font-semibold text-muted-foreground">{t('workspacePayments.amount')}</dt>
-                                                        <dd className="mt-1 text-sm font-black tabular-nums text-foreground">
-                                                            {formatWorkspacePaymentDecimal(configuration.subscriptionAmount, locale, 3)}
-                                                        </dd>
+                                            ) : selectedProvider ? (
+                                                <div className="w-full max-w-[20rem] rounded-[28px] bg-white p-4 shadow-xl ring-1 ring-black/[0.05]">
+                                                    <div className="mb-3 flex items-center justify-center gap-2 text-sm font-bold text-primary">
+                                                        <QrCode className="h-5 w-5" />
+                                                        <span>{selectedProvider === 'fib' ? t('workspacePayments.fib') : t('workspacePayments.qicard')}</span>
                                                     </div>
-                                                    <div className="rounded-xl bg-background p-3 ring-1 ring-border/60">
-                                                        <dt className="text-[11px] font-semibold text-muted-foreground">{t('workspacePayments.currency')}</dt>
-                                                        <dd className="mt-1 text-sm font-black text-foreground">{WORKSPACE_PAYMENT_CURRENCY}</dd>
-                                                    </div>
-                                                    <div className="rounded-xl bg-background p-3 ring-1 ring-border/60">
-                                                        <dt className="text-[11px] font-semibold text-muted-foreground">{t('workspacePayments.gigabytes')}</dt>
-                                                        <dd className="mt-1 text-sm font-black tabular-nums text-foreground">
-                                                            {formatWorkspacePaymentDecimal(gbForPayment, locale, 6)} GB
-                                                        </dd>
-                                                    </div>
-                                                </dl>
-
-                                                {submitError && (
-                                                    <p role="alert" className="rounded-xl border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                                                        {submitError}
-                                                    </p>
-                                                )}
-
-                                                <div className="space-y-2">
-                                                    <PressAndHoldButton
-                                                        onComplete={() => void handleSubmit()}
-                                                        idleLabel={t('workspacePayments.holdToConfirm')}
-                                                        holdingLabel={t('workspacePayments.keepHolding')}
-                                                        loadingLabel={t('workspacePayments.submitting')}
-                                                        isLoading={isSubmitting}
-                                                        disabled={!canSubmitWorkspacePayment({
-                                                            provider: selectedProvider,
-                                                            isSubmitting,
-                                                            hasWorkspacePendingTransaction,
-                                                            pendingTransaction
-                                                        })}
-                                                        className="h-12 w-full rounded-xl font-bold"
-                                                    />
-                                                    <p className="text-center text-xs text-muted-foreground">
-                                                        {t('workspacePayments.pendingMessage')}
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            {selectedProvider !== 'free' && (
-                                                <div className="flex flex-col items-center justify-center rounded-2xl border border-border/60 bg-background p-4 shadow-sm">
-                                                    <QrCode className="mb-3 h-5 w-5 text-primary" />
                                                     <img
                                                         src={getWorkspacePaymentQrPath(selectedProvider)!}
                                                         alt={t('workspacePayments.qrAlt', {
@@ -586,25 +655,158 @@ export function WorkspacePaymentController() {
                                                                 ? t('workspacePayments.fib')
                                                                 : t('workspacePayments.qicard')
                                                         })}
-                                                        className="aspect-square w-full max-w-44 rounded-xl bg-white object-contain p-2"
+                                                        className="aspect-square w-full rounded-2xl object-contain"
                                                     />
                                                 </div>
+                                            ) : (
+                                                <div className="flex aspect-square w-full max-w-[20rem] flex-col items-center justify-center rounded-3xl border border-dashed border-border bg-background/70 p-6 text-center text-muted-foreground">
+                                                    <QrCode className="h-11 w-11" />
+                                                    <p className="mt-3 text-sm font-medium">
+                                                        {t('workspacePayments.selectProvider')}
+                                                    </p>
+                                                </div>
                                             )}
-                                        </section>
-                                    )}
-                                </>
+                                        </div>
+                                    </section>
+
+                                    <section className="flex min-h-[34rem] flex-col p-5 sm:p-7">
+                                        <div className="space-y-1.5">
+                                            <h3 className="text-xl font-bold text-foreground">
+                                                {t('workspacePayments.paymentInstructions')}
+                                            </h3>
+                                            <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                                                {t('workspacePayments.dialogDescription')}
+                                            </p>
+                                        </div>
+
+                                        {selectedProvider ? (
+                                            <>
+                                                <dl className="mt-6 grid grid-cols-2 gap-2.5 sm:gap-3">
+                                                    <div className={paymentSummaryCardClass}>
+                                                        <dt className="text-[11px] font-semibold text-muted-foreground">{t('workspacePayments.amount')}</dt>
+                                                        <dd className="mt-1 text-sm font-black tabular-nums text-foreground sm:text-base">
+                                                            {formatWorkspacePaymentDecimal(configuration.subscriptionAmount, locale, 3)} {workspacePaymentCurrencyLabel}
+                                                        </dd>
+                                                    </div>
+                                                    <div className={paymentSummaryCardClass}>
+                                                        <dt className="text-[11px] font-semibold text-muted-foreground">{t('workspacePayments.gigabytes')}</dt>
+                                                        <dd className="mt-1 text-sm font-black tabular-nums text-foreground sm:text-base">
+                                                            {formatWorkspacePaymentDecimal(gbForPayment, locale, 6)} GB
+                                                        </dd>
+                                                    </div>
+                                                </dl>
+
+                                                {selectedProvider !== 'free' && (
+                                                    <div className="mt-5 space-y-2">
+                                                        <div className="flex items-center justify-between gap-3">
+                                                            <Label htmlFor="workspace-payment-account-holder-name">
+                                                                {t('workspacePayments.accountHolderName')}
+                                                            </Label>
+                                                            <span className="text-xs font-semibold text-destructive">*</span>
+                                                        </div>
+                                                        <PaymentAccountHolderNameAutocomplete
+                                                            id="workspace-payment-account-holder-name"
+                                                            value={accountHolderName}
+                                                            suggestions={savedAccountHolderNames}
+                                                            onChange={(value) => setAccountHolderName(value.toUpperCase())}
+                                                            onSelect={(name) => setAccountHolderName(
+                                                                normalizeWorkspacePaymentAccountHolderName(name)
+                                                            )}
+                                                            onFocus={loadSavedAccountHolderNames}
+                                                            onBlur={() => setAccountHolderName(normalizedAccountHolderName)}
+                                                            placeholder={selectedProvider === 'fib'
+                                                                ? t('workspacePayments.fibAccountHolderNameHint')
+                                                                : t('workspacePayments.qiCardAccountHolderNameHint')}
+                                                            isInvalid={isAccountHolderNameIncomplete}
+                                                            inputClassName={cn(
+                                                                isAccountHolderNameIncomplete
+                                                                && 'border-destructive text-destructive focus-visible:border-destructive focus-visible:ring-destructive/30'
+                                                            )}
+                                                            required={true}
+                                                            disabled={isSubmitting}
+                                                        />
+                                                        {isAccountHolderNameIncomplete && (
+                                                            <p role="alert" aria-live="polite" className="text-xs font-medium text-destructive">
+                                                                {t('workspacePayments.accountHolderNameThreeWordsRequired')}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {submitError && (
+                                                    <p role="alert" className="mt-5 rounded-xl border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                                                        {submitError}
+                                                    </p>
+                                                )}
+
+                                                <div className="mt-6 space-y-2">
+                                                    <PressAndHoldButton
+                                                        onComplete={() => void handleSubmit()}
+                                                        idleLabel={isConfirmationDelayActive
+                                                            ? t('workspacePayments.completePaymentBeforeConfirm', {
+                                                                seconds: confirmationDelaySeconds
+                                                            })
+                                                            : t('workspacePayments.holdToConfirm')}
+                                                        holdingLabel={t('workspacePayments.keepHolding')}
+                                                        loadingLabel={t('workspacePayments.submitting')}
+                                                        isLoading={isSubmitting}
+                                                        disabled={isConfirmationDelayActive || !canSubmitWorkspacePayment({
+                                                            provider: selectedProvider,
+                                                            accountHolderName: normalizedAccountHolderName,
+                                                            isSubmitting,
+                                                            hasWorkspacePendingTransaction,
+                                                            pendingTransaction
+                                                        })}
+                                                        className={cn(
+                                                            'h-[3.25rem] w-full rounded-2xl font-bold shadow-sm',
+                                                            isConfirmationDelayActive && 'bg-muted text-muted-foreground shadow-none hover:bg-muted'
+                                                        )}
+                                                        onMouseEnter={() => setIsConfirmationHighlighted(true)}
+                                                        onMouseLeave={() => setIsConfirmationHighlighted(false)}
+                                                        onFocus={() => setIsConfirmationHighlighted(true)}
+                                                        onBlur={() => setIsConfirmationHighlighted(false)}
+                                                    />
+                                                    <p className="text-center text-xs text-muted-foreground">
+                                                        {t('workspacePayments.pendingMessage')}
+                                                    </p>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="flex flex-1 items-center justify-center py-10 text-center">
+                                                <div className="max-w-xs text-muted-foreground">
+                                                    <CreditCard className="mx-auto h-9 w-9 text-primary/70" />
+                                                    <p className="mt-3 text-sm leading-relaxed">
+                                                        {t('workspacePayments.selectProvider')}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="mt-6">
+                                            <TransactionHistory
+                                                transactions={paymentSummary?.transactions ?? []}
+                                                locale={locale}
+                                                iqdDisplayPreference={features.iqd_display_preference}
+                                                t={t}
+                                            />
+                                        </div>
+                                    </section>
+                                </div>
                             )}
 
-                            <TransactionHistory
-                                transactions={paymentSummary?.transactions ?? []}
-                                locale={locale}
-                                t={t}
-                            />
+                            {(hasWorkspacePendingTransaction || !paymentEnabled) && (
+                                <TransactionHistory
+                                    transactions={paymentSummary?.transactions ?? []}
+                                    locale={locale}
+                                    iqdDisplayPreference={features.iqd_display_preference}
+                                    t={t}
+                                />
+                            )}
                         </>
                     )}
                 </div>
 
-                <DialogFooter className="border-t border-border/60 px-5 py-4 sm:px-7">
+                <DialogFooter className="border-t border-border/60 bg-muted/[0.12] px-5 py-4 sm:px-8">
                     <Button allowViewer={true} variant="outline" onClick={() => setOpen(false)}>
                         {t('workspacePayments.close')}
                     </Button>

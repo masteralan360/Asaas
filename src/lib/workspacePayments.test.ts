@@ -21,10 +21,13 @@ import {
     formatWorkspacePaymentDecimal,
     getWorkspacePaymentAlertKind,
     getWorkspacePaymentQrPath,
+    getSavedWorkspacePaymentAccountHolderNames,
     hasWorkspacePaymentAccessStateUpdate,
     hasNewlyApprovedWorkspacePayment,
     hasWorkspacePaymentAccessBeenRestored,
     isWorkspacePaymentProvider,
+    isValidWorkspacePaymentAccountHolderName,
+    normalizeWorkspacePaymentAccountHolderName,
     normalizeWorkspacePaymentSummary,
     shouldApplyWorkspaceSubscriptionExpiry,
     shouldWorkspacePaymentLockAccess,
@@ -138,8 +141,8 @@ describe('workspace payments', () => {
         expect(isWorkspacePaymentProvider('fib')).toBe(true)
         expect(isWorkspacePaymentProvider('qicard')).toBe(true)
         expect(isWorkspacePaymentProvider('other')).toBe(false)
-        expect(getWorkspacePaymentQrPath('fib')).toBe('/atlas_fib_qr.svg')
-        expect(getWorkspacePaymentQrPath('qicard')).toBe('/atlas_qi_card_qr.svg')
+        expect(getWorkspacePaymentQrPath('fib')).toBe('/qr_code_fib.png')
+        expect(getWorkspacePaymentQrPath('qicard')).toBe('/qr_code_qicard.png')
     })
 
     it('derives the usage and subscription alerts that lock access', () => {
@@ -234,16 +237,41 @@ describe('workspace payments', () => {
     it('blocks client submission while another payment is pending', () => {
         expect(canSubmitWorkspacePayment({
             provider: 'fib',
+            accountHolderName: 'John Middle Doe',
             isSubmitting: false,
             hasWorkspacePendingTransaction: true,
             pendingTransaction: summary().pendingTransaction
         })).toBe(false)
         expect(canSubmitWorkspacePayment({
             provider: 'qicard',
+            accountHolderName: 'Jane Middle Doe',
             isSubmitting: false,
             hasWorkspacePendingTransaction: false,
             pendingTransaction: null
         })).toBe(true)
+        expect(canSubmitWorkspacePayment({
+            provider: 'fib',
+            accountHolderName: 'John Doe',
+            isSubmitting: false,
+            hasWorkspacePendingTransaction: false,
+            pendingTransaction: null
+        })).toBe(false)
+    })
+
+    it('normalizes account holder names before submitting them', () => {
+        expect(normalizeWorkspacePaymentAccountHolderName('  John   doe  ')).toBe('JOHN DOE')
+        expect(isValidWorkspacePaymentAccountHolderName('  John   Middle  Doe  ')).toBe(true)
+        expect(isValidWorkspacePaymentAccountHolderName('John Doe')).toBe(false)
+    })
+
+    it('normalizes saved account holder name suggestions from the current user RPC', async () => {
+        testState.rpc.mockResolvedValue({
+            data: ['  John   Middle   Doe  ', 'JANE MIDDLE DOE', 'JOHN MIDDLE DOE', 'John Doe', null],
+            error: null
+        })
+
+        await expect(getSavedWorkspacePaymentAccountHolderNames()).resolves.toEqual(['JOHN MIDDLE DOE', 'JANE MIDDLE DOE'])
+        expect(testState.rpc).toHaveBeenCalledWith('list_workspace_payment_account_holder_names')
     })
 
     it('detects a pending transaction becoming approved', () => {
@@ -286,12 +314,15 @@ describe('workspace payments', () => {
             resolveRpc = resolve
         }))
 
-        const first = submitWorkspacePayment('fib')
-        const second = submitWorkspacePayment('qicard')
+        const first = submitWorkspacePayment('fib', '  John   Middle  Doe ')
+        const second = submitWorkspacePayment('qicard', 'Jane Middle Doe')
 
         expect(first).toBe(second)
         expect(testState.rpc).toHaveBeenCalledTimes(1)
-        expect(testState.rpc).toHaveBeenCalledWith('submit_workspace_payment', { p_provider: 'fib' })
+        expect(testState.rpc).toHaveBeenCalledWith('submit_workspace_payment', {
+            p_provider: 'fib',
+            p_account_holder_name: 'JOHN MIDDLE DOE'
+        })
 
         resolveRpc({ data: transaction(), error: null })
         await expect(first).resolves.toMatchObject({ id: 'transaction-1', status: 'pending' })
@@ -300,6 +331,11 @@ describe('workspace payments', () => {
 
     it('rejects unsupported providers before calling the server', async () => {
         await expect(submitWorkspacePayment('cash' as never)).rejects.toThrow('Unsupported payment provider')
+        expect(testState.rpc).not.toHaveBeenCalled()
+    })
+
+    it('requires at least three account holder name words for paid providers before calling the server', async () => {
+        await expect(submitWorkspacePayment('fib', 'John Doe')).rejects.toThrow('Account holder name must contain at least three words')
         expect(testState.rpc).not.toHaveBeenCalled()
     })
 
