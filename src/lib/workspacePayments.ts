@@ -306,6 +306,46 @@ export function shouldApplyWorkspaceSubscriptionExpiry(_options: {
     return true
 }
 
+export function getWorkspacePaymentExpiryDate(options: {
+    subscriptionExpiresAt: string | null
+    renewalDueAt?: string | null
+    hasUsageLimits: boolean
+    summary?: WorkspacePaymentSummary | null
+}): string | null {
+    const isUsageMode = Boolean(
+        options.summary?.configuration?.usageEnabled || options.hasUsageLimits
+    )
+
+    return isUsageMode
+        ? options.summary?.configuration?.renewalDueAt
+            ?? options.renewalDueAt
+            ?? options.subscriptionExpiresAt
+        : options.subscriptionExpiresAt
+}
+
+export function isWorkspacePaymentAccessExpired(options: {
+    subscriptionExpiresAt: string | null
+    renewalDueAt?: string | null
+    hasUsageLimits: boolean
+    summary?: WorkspacePaymentSummary | null
+    now?: Date
+}): boolean {
+    if (!shouldApplyWorkspaceSubscriptionExpiry({
+        hasUsageLimits: options.hasUsageLimits,
+        summary: options.summary
+    })) {
+        return false
+    }
+
+    const expiryDate = getWorkspacePaymentExpiryDate(options)
+    if (!expiryDate) return false
+
+    const expiryMs = Date.parse(expiryDate)
+    if (Number.isNaN(expiryMs)) return false
+
+    return expiryMs <= (options.now ?? new Date()).getTime()
+}
+
 export function hasWorkspacePaymentAccessStateUpdate(
     current: {
         lockedWorkspace: boolean

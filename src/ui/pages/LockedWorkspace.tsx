@@ -7,8 +7,8 @@ import { useLocation } from 'wouter'
 import { useWorkspace } from '@/workspace'
 import {
     getWorkspacePaymentAlertKind,
+    isWorkspacePaymentAccessExpired,
     openWorkspacePaymentDialog,
-    shouldApplyWorkspaceSubscriptionExpiry
 } from '@/lib/workspacePayments'
 
 export function LockedWorkspace() {
@@ -17,18 +17,12 @@ export function LockedWorkspace() {
     const { features, isLocked, isLoading, paymentSummary, isPaymentSummaryLoading } = useWorkspace()
     const [, setLocation] = useLocation()
 
-    const isUsageMode = Boolean(
-        paymentSummary?.configuration?.usageEnabled || features.has_usage_limits
-    )
-    const expiryDate = isUsageMode
-        ? paymentSummary?.configuration?.renewalDueAt ?? features.subscription_expires_at
-        : features.subscription_expires_at
-    const isExpired = shouldApplyWorkspaceSubscriptionExpiry({
+    const isExpired = isWorkspacePaymentAccessExpired({
+        subscriptionExpiresAt: features.subscription_expires_at,
+        renewalDueAt: features.renewal_due_at,
         hasUsageLimits: features.has_usage_limits,
         summary: paymentSummary
     })
-        && expiryDate
-        && new Date(expiryDate) < new Date()
     const paymentAlertKind = getWorkspacePaymentAlertKind(paymentSummary)
     const pendingTransaction = paymentSummary?.pendingTransaction ?? null
     const showPaymentAction = Boolean(paymentAlertKind || isExpired || pendingTransaction)

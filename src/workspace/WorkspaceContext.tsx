@@ -28,7 +28,7 @@ import { runSupabaseAction, normalizeSupabaseActionError } from '@/lib/supabaseR
 import {
     getWorkspacePaymentSummary,
     hasWorkspacePaymentAccessStateUpdate,
-    shouldApplyWorkspaceSubscriptionExpiry,
+    isWorkspacePaymentAccessExpired,
     shouldWorkspacePaymentLockAccess,
     type WorkspacePaymentSummary
 } from '@/lib/workspacePayments'
@@ -95,6 +95,7 @@ export interface WorkspaceFeatures {
     print_quality: 'high'
     thermal_printing: boolean
     subscription_expires_at: string | null
+    renewal_due_at: string | null
     has_usage_limits: boolean
     upload_limit_mb: number | null
     visibility: 'private' | 'public'
@@ -236,6 +237,7 @@ const defaultFeatures: WorkspaceFeatures = {
     print_quality: 'high' as const,
     thermal_printing: false,
     subscription_expires_at: null,
+    renewal_due_at: null,
     has_usage_limits: false,
     upload_limit_mb: null,
     visibility: 'private',
@@ -325,26 +327,19 @@ function mergeWorkspaceFeatures(
 }
 
 function isWorkspaceCurrentlyLocked(
-    features: Pick<WorkspaceFeatures, 'locked_workspace' | 'subscription_expires_at' | 'has_usage_limits'>,
-    summary?: WorkspacePaymentSummary | null
+    features: Pick<WorkspaceFeatures, 'locked_workspace' | 'subscription_expires_at' | 'renewal_due_at' | 'has_usage_limits'>,
+    summary?: WorkspacePaymentSummary | null,
+    now?: Date
 ) {
     if (features.locked_workspace) return true
 
-    // For usage workspaces, check renewal_due_at; for normal workspaces, check subscription_expires_at
-    const isUsageMode = Boolean(
-        summary?.configuration?.usageEnabled || features.has_usage_limits
-    )
-    const expiryDate = isUsageMode
-        ? summary?.configuration?.renewalDueAt ?? features.subscription_expires_at
-        : features.subscription_expires_at
-
-    return shouldApplyWorkspaceSubscriptionExpiry({
+    return isWorkspacePaymentAccessExpired({
+        subscriptionExpiresAt: features.subscription_expires_at,
+        renewalDueAt: features.renewal_due_at,
         hasUsageLimits: features.has_usage_limits,
-        summary
+        summary,
+        now
     })
-        && expiryDate
-        ? new Date(expiryDate) < new Date()
-        : false
 }
 
 function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeatures | null {
@@ -377,6 +372,7 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
         print_quality: 'high' as const,
         thermal_printing: localWorkspace.thermal_printing ?? false,
         subscription_expires_at: localWorkspace.subscription_expires_at ?? null,
+        renewal_due_at: localWorkspace.renewal_due_at ?? null,
         has_usage_limits: localWorkspace.has_usage_limits ?? false,
         upload_limit_mb: localWorkspace.upload_limit_mb ?? null,
         visibility: localWorkspace.visibility ?? 'private',
@@ -400,6 +396,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const [isLoading, setIsLoading] = useState(true)
     const [paymentSummary, setPaymentSummary] = useState<WorkspacePaymentSummary | null>(null)
     const [isPaymentSummaryLoading, setIsPaymentSummaryLoading] = useState(false)
+    const [billingNowMs, setBillingNowMs] = useState(() => Date.now())
     const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null)
     const [isFullscreen, setIsFullscreen] = useState(false)
     const [overrides, setOverrides] = useState<WorkspaceAccessOverride[]>([])
@@ -427,6 +424,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         workspaceNameRef.current = workspaceName
     }, [workspaceName])
+
+    useEffect(() => {
+        const updateBillingClock = () => setBillingNowMs(Date.now())
+        const intervalId = window.setInterval(updateBillingClock, 15_000)
+
+        window.addEventListener('focus', updateBillingClock)
+        document.addEventListener('visibilitychange', updateBillingClock)
+
+        return () => {
+            window.clearInterval(intervalId)
+            window.removeEventListener('focus', updateBillingClock)
+            document.removeEventListener('visibilitychange', updateBillingClock)
+        }
+    }, [])
 
     useEffect(() => {
         // @ts-ignore
@@ -525,6 +536,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             a4_template: nextFeatures.a4_template,
             thermal_printing: nextFeatures.thermal_printing,
             subscription_expires_at: nextFeatures.subscription_expires_at,
+            renewal_due_at: nextFeatures.renewal_due_at,
             has_usage_limits: nextFeatures.has_usage_limits,
             upload_limit_mb: nextFeatures.upload_limit_mb,
             visibility: nextFeatures.visibility,
@@ -683,6 +695,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 ? usageStatusResult.data[0]
                 : null
             const currentFeatures = featuresRef.current
+            const renewalDueAt = paymentSummaryResult.error
+                ? cachedSnapshot?.features?.renewal_due_at ?? currentFeatures.renewal_due_at
+                : paymentSummaryResult.summary?.configuration?.renewalDueAt ?? null
             const localThermalPrinting = cachedSnapshot?.features?.thermal_printing
                 ?? (await db.workspaces.get(workspaceId))?.thermal_printing
                 ?? currentFeatures.thermal_printing
@@ -714,6 +729,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 print_quality: 'high' as const,
                 thermal_printing: localThermalPrinting,
                 subscription_expires_at: workspaceRow.subscription_expires_at ?? currentFeatures.subscription_expires_at,
+                renewal_due_at: renewalDueAt,
                 has_usage_limits: Boolean(usageStatus?.has_limits),
                 upload_limit_mb: workspaceRow.upload_limit_mb ?? null,
                 visibility: workspaceRow.visibility ?? currentFeatures.visibility,
@@ -916,6 +932,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             print_quality: 'high' as const,
                             thermal_printing: currentFeatures.thermal_printing,
                             subscription_expires_at: data.subscription_expires_at ?? currentFeatures.subscription_expires_at,
+                            renewal_due_at: currentFeatures.renewal_due_at,
                             has_usage_limits: currentFeatures.has_usage_limits,
                             visibility: data.visibility ?? currentFeatures.visibility,
                             store_slug: data.store_slug ?? currentFeatures.store_slug,
@@ -939,6 +956,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                                     if (currentWorkspaceIdRef.current !== user.workspaceId) return
                                     paymentSummaryRef.current = summary
                                     setPaymentSummary(summary)
+
+                                    const currentFeatures = featuresRef.current
+                                    const renewalDueAt = summary.configuration?.renewalDueAt ?? null
+                                    if (currentFeatures.renewal_due_at !== renewalDueAt) {
+                                        const updatedFeatures = mergeWorkspaceFeatures({
+                                            ...currentFeatures,
+                                            renewal_due_at: renewalDueAt
+                                        }, overridesRef.current)
+                                        setFeatures(updatedFeatures)
+                                        const nextWorkspaceName = workspaceNameRef.current ?? user.workspaceName ?? 'My Workspace'
+                                        writeWorkspaceCache({
+                                            workspaceId: user.workspaceId,
+                                            features: updatedFeatures,
+                                            workspaceName: nextWorkspaceName,
+                                            overrides: overridesRef.current
+                                        })
+                                        void persistWorkspaceState(user.workspaceId, updatedFeatures, nextWorkspaceName)
+                                    }
                                 })
                                 .catch((error) => {
                                     console.warn('[WorkspacePayments] Failed to refresh after an access-state update:', error)
@@ -1074,6 +1109,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
             paymentSummaryRef.current = summary
             setPaymentSummary(summary)
+
+            const currentFeatures = featuresRef.current
+            const renewalDueAt = summary.configuration?.renewalDueAt ?? null
+            if (currentFeatures.renewal_due_at !== renewalDueAt) {
+                const updatedFeatures = mergeWorkspaceFeatures({
+                    ...currentFeatures,
+                    renewal_due_at: renewalDueAt
+                }, overridesRef.current)
+                setFeatures(updatedFeatures)
+                const nextWorkspaceName = workspaceNameRef.current ?? user.workspaceName ?? 'My Workspace'
+                writeWorkspaceCache({
+                    workspaceId,
+                    features: updatedFeatures,
+                    workspaceName: nextWorkspaceName,
+                    overrides: overridesRef.current
+                })
+                await persistWorkspaceState(workspaceId, updatedFeatures, nextWorkspaceName)
+            }
             return summary
         } catch (error) {
             console.warn('[WorkspacePayments] Failed to refresh payment summary:', error)
@@ -1198,6 +1251,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 a4_template: newFeatures.a4_template,
                 thermal_printing: newFeatures.thermal_printing,
                 subscription_expires_at: newFeatures.subscription_expires_at,
+                renewal_due_at: newFeatures.renewal_due_at,
                 upload_limit_mb: newFeatures.upload_limit_mb,
                 visibility: newFeatures.visibility,
                 store_slug: newFeatures.store_slug,
@@ -1400,7 +1454,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const isDemoMode = features.data_mode === 'demo'
     const isCloudMode = features.data_mode === 'cloud'
     const isHybridMode = features.data_mode === 'hybrid'
-    const isLocked = isWorkspaceCurrentlyLocked(features, paymentSummary)
+    const isLocked = isWorkspaceCurrentlyLocked(features, paymentSummary, new Date(billingNowMs))
         || shouldWorkspacePaymentLockAccess(paymentSummary)
     const planCapabilities = overrides.length
         ? applyWorkspaceOverrides(getPlanCapabilities(features.plan), overrides)

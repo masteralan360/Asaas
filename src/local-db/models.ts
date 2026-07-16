@@ -1570,6 +1570,7 @@ export interface Workspace extends BaseEntity {
   a4_template?: "primary" | "modern" | "professional";
   thermal_printing?: boolean;
   subscription_expires_at?: string | null;
+  renewal_due_at?: string | null;
   has_usage_limits?: boolean;
   upload_limit_mb?: number | null;
   visibility?: WorkspaceVisibility;

@@ -15,6 +15,7 @@ import { useSubscriptionExpiryWarning } from '@/hooks/useSubscriptionExpiryWarni
 import { getSubscriptionExpiryWarningSeenKey } from '@/lib/subscriptionExpiryWarning'
 import { formatDate } from '@/lib/utils'
 import {
+    getWorkspacePaymentExpiryDate,
     openWorkspacePaymentDialog,
     shouldApplyWorkspaceSubscriptionExpiry
 } from '@/lib/workspacePayments'
@@ -22,17 +23,16 @@ import {
 export function SubscriptionExpiryWarningModal() {
     const { t } = useTranslation()
     const { activeWorkspace, features, isDemoMode, isLoading, paymentSummary } = useWorkspace()
-    const isUsageMode = Boolean(
-        paymentSummary?.configuration?.usageEnabled || features.has_usage_limits
-    )
     const shouldWarnForSubscription = shouldApplyWorkspaceSubscriptionExpiry({
         hasUsageLimits: features.has_usage_limits,
         summary: paymentSummary
     })
-    // For usage workspaces, warn based on renewal_due_at; for normal workspaces, warn based on subscription_expires_at
-    const expiryDateToCheck = isUsageMode
-        ? paymentSummary?.configuration?.renewalDueAt ?? null
-        : features.subscription_expires_at
+    const expiryDateToCheck = getWorkspacePaymentExpiryDate({
+        subscriptionExpiresAt: features.subscription_expires_at,
+        renewalDueAt: features.renewal_due_at,
+        hasUsageLimits: features.has_usage_limits,
+        summary: paymentSummary
+    })
     const warning = useSubscriptionExpiryWarning(
         isDemoMode || !shouldWarnForSubscription ? null : expiryDateToCheck
     )

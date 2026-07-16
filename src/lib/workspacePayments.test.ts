@@ -20,7 +20,9 @@ import {
     canSubmitWorkspacePayment,
     formatWorkspacePaymentDecimal,
     getWorkspacePaymentAlertKind,
+    getWorkspacePaymentExpiryDate,
     getWorkspacePaymentQrPath,
+    isWorkspacePaymentAccessExpired,
     getSavedWorkspacePaymentAccountHolderNames,
     hasWorkspacePaymentAccessStateUpdate,
     hasNewlyApprovedWorkspacePayment,
@@ -171,6 +173,26 @@ describe('workspace payments', () => {
         expect(getWorkspacePaymentAlertKind(expired)).toBe('subscription_expired')
         expect(shouldWorkspacePaymentLockAccess(expired)).toBe(true)
         expect(shouldWorkspacePaymentLockAccess(null)).toBe(false)
+    })
+
+    it('enforces a cached renewal due date while offline', () => {
+        const renewalDueAt = '2026-07-15T00:00:00.000Z'
+        const now = new Date('2026-07-15T00:00:00.000Z')
+
+        expect(getWorkspacePaymentExpiryDate({
+            subscriptionExpiresAt: '2026-08-01T00:00:00.000Z',
+            renewalDueAt,
+            hasUsageLimits: true,
+            summary: null
+        })).toBe(renewalDueAt)
+
+        expect(isWorkspacePaymentAccessExpired({
+            subscriptionExpiresAt: '2026-08-01T00:00:00.000Z',
+            renewalDueAt,
+            hasUsageLimits: true,
+            summary: null,
+            now
+        })).toBe(true)
     })
 
     it('does not apply subscription expiry after the server enables usage billing', () => {
