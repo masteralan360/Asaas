@@ -852,14 +852,14 @@ export async function pushChanges(
 export async function pullChanges(
   workspaceId: string,
   lastSyncTime: string | null,
-): Promise<{ pulled: number }> {
+): Promise<{ pulled: number; errors: string[] }> {
   if (isLocalWorkspaceMode(workspaceId)) {
-    return { pulled: 0 };
+    return { pulled: 0, errors: [] };
   }
 
   if (!isSupabaseConfigured) {
     console.log("[Sync] pullChanges: Supabase not configured");
-    return { pulled: 0 };
+    return { pulled: 0, errors: ["Supabase is not configured."] };
   }
 
   const since = lastSyncTime || "1970-01-01T00:00:00Z";
@@ -868,6 +868,7 @@ export async function pullChanges(
   );
 
   let totalPulled = 0;
+  const errors: string[] = [];
 
   for (const table of SYNC_PULL_TABLES) {
     try {
@@ -964,9 +965,11 @@ export async function pullChanges(
         }
       }
     } catch (err: any) {
+      const message = err?.message || String(err) || "Unknown error";
+      errors.push(`${table}: ${message}`);
       console.error(
         `[Sync] pullChanges: Critical error fetching ${table}:`,
-        err.message || err,
+        message,
       );
     }
   }
@@ -974,7 +977,7 @@ export async function pullChanges(
   console.log(
     `[Sync] pullChanges COMPLETE: Total items pulled: ${totalPulled}`,
   );
-  return { pulled: totalPulled };
+  return { pulled: totalPulled, errors };
 }
 
 // Full sync - Process queue then pull
@@ -1000,12 +1003,16 @@ export async function fullSync(
   const { success, failed, error } = await processMutationQueue(userId);
 
   // 2. Pull Changes (Force pull to ensure consistency)
-  const { pulled } = await pullChanges(workspaceId, lastSyncTime);
+  const { pulled, errors: pullErrors } = await pullChanges(workspaceId, lastSyncTime);
+  const errors = [
+    ...(error ? [error] : []),
+    ...pullErrors,
+  ];
 
   return {
-    success: failed === 0,
+    success: failed === 0 && pullErrors.length === 0,
     pushed: success,
     pulled,
-    errors: error ? [error] : [],
+    errors,
   };
 }

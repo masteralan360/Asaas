@@ -97,6 +97,13 @@ export function useSyncStatus(): UseSyncStatusResult {
             })
 
             setSyncState(result.success ? 'idle' : 'error')
+            if (!result.success) {
+                toast({
+                    title: 'Sync failed',
+                    description: result.errors[0] ?? 'Could not retrieve workspace data from Supabase.',
+                    variant: 'destructive'
+                })
+            }
         } catch (error) {
             console.error('[SyncHook] UNEXPECTED SYNC ERROR:', error)
             setSyncState('error')

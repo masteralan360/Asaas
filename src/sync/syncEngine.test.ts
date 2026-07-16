@@ -73,6 +73,7 @@ const supabaseMock = vi.hoisted(() => {
     const upsert = vi.fn(async (): Promise<{ data: null; error: Error | null }> => ({ data: null, error: mutationError }))
     const rpc = vi.fn(async () => ({ data: null as any, error: null as any }))
     let saleLookup: Record<string, any> | null = null
+    let pullError: Error | null = null
 
     const makeBuilder = (tableName: string) => {
         const builder: Record<string, any> = {}
@@ -80,14 +81,14 @@ const supabaseMock = vi.hoisted(() => {
             select: vi.fn(() => builder),
             eq: vi.fn((column: string) => {
                 if (tableName === 'workspaces' && column === 'id') {
-                    return Promise.resolve({ data: [], error: null })
+                    return Promise.resolve({ data: [], error: pullError })
                 }
 
                 return builder
             }),
             gt: vi.fn(() => builder),
             order: vi.fn(() => builder),
-            range: vi.fn(async () => ({ data: [], error: null })),
+            range: vi.fn(async () => ({ data: [], error: pullError })),
             in: vi.fn(() => builder),
             maybeSingle: vi.fn(async () => ({ data: tableName === 'sales' ? saleLookup : null, error: null })),
             upsert,
@@ -113,11 +114,15 @@ const supabaseMock = vi.hoisted(() => {
         setSaleLookup(row: Record<string, any> | null) {
             saleLookup = row
         },
+        setPullError(error: Error | null) {
+            pullError = error
+        },
         reset() {
             from.mockClear()
             rpc.mockClear()
             upsert.mockClear()
             saleLookup = null
+            pullError = null
         }
     }
 })
@@ -251,6 +256,17 @@ describe('fullSync error reporting', () => {
         })
         expect(payload).not.toHaveProperty('sync_status')
         expect(payload).not.toHaveProperty('last_synced_at')
+    })
+
+    it('reports pull failures instead of treating an empty pull as successful', async () => {
+        supabaseMock.setPullError(new Error('permission denied by row-level security'))
+
+        const result = await fullSync('user-1', 'workspace-1', null)
+
+        expect(result.success).toBe(false)
+        expect(result.pulled).toBe(0)
+        expect(result.errors).toContain('products: permission denied by row-level security')
+        expect(result.errors).toContain('workspaces: permission denied by row-level security')
     })
 
     it('leaves dependent Price Book items pending when their parent book fails', async () => {
