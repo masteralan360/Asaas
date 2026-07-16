@@ -46,7 +46,7 @@ describe('offline lease', () => {
         })
     })
 
-    it('allows cloud mode until 10 days after the last confirmed Supabase contact', () => {
+    it('allows cloud mode until 7 days after the last confirmed Supabase contact', () => {
         markSupabaseReachable({
             userId,
             workspaceId,
@@ -55,13 +55,37 @@ describe('offline lease', () => {
             source: 'test'
         })
 
-        vi.setSystemTime(baseTime + offlineLeaseInternals.TEN_DAYS_MS - 1)
+        vi.setSystemTime(baseTime + offlineLeaseInternals.OFFLINE_LEASE_DURATION_MS - 1)
         expect(getOfflineLeaseStatus(userId, workspaceId, 'cloud')).toMatchObject({
             required: true,
             blocked: false
         })
 
-        vi.setSystemTime(baseTime + offlineLeaseInternals.TEN_DAYS_MS + 1)
+        vi.setSystemTime(baseTime + offlineLeaseInternals.OFFLINE_LEASE_DURATION_MS + 1)
+        expect(getOfflineLeaseStatus(userId, workspaceId, 'cloud')).toMatchObject({
+            required: true,
+            blocked: true,
+            reason: 'expired'
+        })
+    })
+
+    it('caps a legacy longer lease at the current 7-day policy', () => {
+        const lease = markSupabaseReachable({
+            userId,
+            workspaceId,
+            dataMode: 'cloud',
+            serverNowMs: baseTime,
+            source: 'test'
+        })
+        expect(lease).not.toBeNull()
+
+        const key = offlineLeaseInternals.getOfflineLeaseKey(userId, workspaceId)
+        offlineLeaseInternals.memoryStorage.set(key, JSON.stringify({
+            ...lease,
+            expiresAtMs: baseTime + 10 * 24 * 60 * 60 * 1000
+        }))
+
+        vi.setSystemTime(baseTime + offlineLeaseInternals.OFFLINE_LEASE_DURATION_MS + 1)
         expect(getOfflineLeaseStatus(userId, workspaceId, 'cloud')).toMatchObject({
             required: true,
             blocked: true,
@@ -98,7 +122,7 @@ describe('offline lease', () => {
             source: 'test'
         })
 
-        vi.setSystemTime(baseTime + offlineLeaseInternals.TEN_DAYS_MS + 1)
+        vi.setSystemTime(baseTime + offlineLeaseInternals.OFFLINE_LEASE_DURATION_MS + 1)
         expect(getOfflineLeaseStatus(userId, workspaceId, 'hybrid').blocked).toBe(true)
 
         markInternetReachable({

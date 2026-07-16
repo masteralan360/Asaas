@@ -74,7 +74,7 @@
   "offlineLease": {
     "title": "Connect to the internet to continue",
     "reasons": {
-      "expired": "This device has been offline for more than 10 days.",
+      "expired": "This device has been offline for more than 7 days.",
       "missing": "This device needs one successful online session before offline use can continue.",
       "clockRollback": "Check the device date and time, then reconnect to the internet."
     },

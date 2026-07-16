@@ -33,7 +33,7 @@ function getReasonFallback(status: OfflineLeaseStatus) {
         return 'This device needs one successful online session before offline use can continue.'
     }
 
-    return 'This device has been offline for more than 10 days.'
+    return 'This device has been offline for more than 7 days.'
 }
 
 export function OfflineLeaseBlocker({ user, status, onSignOut }: OfflineLeaseBlockerProps) {

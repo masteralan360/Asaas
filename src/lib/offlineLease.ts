@@ -5,7 +5,8 @@ export const OFFLINE_LEASE_CHANGED_EVENT = 'atlas-offline-lease-changed'
 const OFFLINE_LEASE_VERSION = 1
 const OFFLINE_LEASE_PREFIX = 'atlas_offline_lease:v1:'
 const DEVICE_ID_KEY = 'atlas_device_id'
-const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000
+const OFFLINE_LEASE_DURATION_DAYS = 7
+const OFFLINE_LEASE_DURATION_MS = OFFLINE_LEASE_DURATION_DAYS * 24 * 60 * 60 * 1000
 const CLOCK_ROLLBACK_GRACE_MS = 5 * 60 * 1000
 
 type OfflineLeaseMode = Extract<WorkspaceDataMode, 'cloud' | 'hybrid'>
@@ -205,7 +206,7 @@ export function markSupabaseReachable(options: MarkSupabaseReachableOptions): Of
         deviceId: getOfflineLeaseDeviceId(),
         dataMode,
         confirmedAtMs,
-        expiresAtMs: confirmedAtMs + TEN_DAYS_MS,
+        expiresAtMs: confirmedAtMs + OFFLINE_LEASE_DURATION_MS,
         lastSeenLocalAtMs: Math.max(existing?.lastSeenLocalAtMs ?? 0, nowMs),
         source
     }
@@ -233,7 +234,7 @@ export function markInternetReachable(options: MarkInternetReachableOptions): Of
         deviceId: getOfflineLeaseDeviceId(),
         dataMode,
         confirmedAtMs: nowMs,
-        expiresAtMs: nowMs + TEN_DAYS_MS,
+        expiresAtMs: nowMs + OFFLINE_LEASE_DURATION_MS,
         lastSeenLocalAtMs: nowMs,
         source
     }
@@ -307,7 +308,14 @@ export function getOfflineLeaseStatus(
         return { required: true, blocked: true, reason: 'clock-rollback', lease }
     }
 
-    if (nowMs > lease.expiresAtMs) {
+    // Existing clients may have a lease issued under an older, longer policy.
+    // Never let the persisted expiry extend the current policy's hard limit.
+    const effectiveExpiresAtMs = Math.min(
+        lease.expiresAtMs,
+        lease.confirmedAtMs + OFFLINE_LEASE_DURATION_MS
+    )
+
+    if (nowMs > effectiveExpiresAtMs) {
         observeOfflineLeaseCheck(lease)
         return { required: true, blocked: true, reason: 'expired', lease, remainingMs: 0 }
     }
@@ -317,7 +325,7 @@ export function getOfflineLeaseStatus(
         required: true,
         blocked: false,
         lease,
-        remainingMs: Math.max(0, lease.expiresAtMs - nowMs)
+        remainingMs: Math.max(0, effectiveExpiresAtMs - nowMs)
     }
 }
 
@@ -339,7 +347,8 @@ export function clearOfflineLease(userId?: string | null, workspaceId?: string |
 }
 
 export const offlineLeaseInternals = {
-    TEN_DAYS_MS,
+    OFFLINE_LEASE_DURATION_DAYS,
+    OFFLINE_LEASE_DURATION_MS,
     memoryStorage,
     getOfflineLeaseKey
 }
