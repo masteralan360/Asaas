@@ -11,7 +11,11 @@ const TABLE_WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 const RPC_METHODS = new Set(['GET', 'POST'])
 const UNMETERED_RPC_NAMES = new Set([
     'get_workspace_usage_status',
-    'record_workspace_data_transfer'
+    'record_workspace_data_transfer',
+    // Renewal must remain reachable after charged usage is exhausted. Metering
+    // either call could replace a successful payment response with a quota error.
+    'get_workspace_payment_summary',
+    'submit_workspace_payment'
 ])
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const WORKSPACE_FILTER_KEYS = [

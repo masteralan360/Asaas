@@ -14,12 +14,27 @@ import { useWorkspace } from '@/workspace'
 import { useSubscriptionExpiryWarning } from '@/hooks/useSubscriptionExpiryWarning'
 import { getSubscriptionExpiryWarningSeenKey } from '@/lib/subscriptionExpiryWarning'
 import { formatDate } from '@/lib/utils'
+import {
+    openWorkspacePaymentDialog,
+    shouldApplyWorkspaceSubscriptionExpiry
+} from '@/lib/workspacePayments'
 
 export function SubscriptionExpiryWarningModal() {
     const { t } = useTranslation()
-    const { activeWorkspace, features, isDemoMode, isLoading } = useWorkspace()
+    const { activeWorkspace, features, isDemoMode, isLoading, paymentSummary } = useWorkspace()
+    const isUsageMode = Boolean(
+        paymentSummary?.configuration?.usageEnabled || features.has_usage_limits
+    )
+    const shouldWarnForSubscription = shouldApplyWorkspaceSubscriptionExpiry({
+        hasUsageLimits: features.has_usage_limits,
+        summary: paymentSummary
+    })
+    // For usage workspaces, warn based on renewal_due_at; for normal workspaces, warn based on subscription_expires_at
+    const expiryDateToCheck = isUsageMode
+        ? paymentSummary?.configuration?.renewalDueAt ?? null
+        : features.subscription_expires_at
     const warning = useSubscriptionExpiryWarning(
-        isDemoMode || features.has_usage_limits ? null : features.subscription_expires_at
+        isDemoMode || !shouldWarnForSubscription ? null : expiryDateToCheck
     )
     const [open, setOpen] = useState(false)
 
@@ -71,6 +86,10 @@ export function SubscriptionExpiryWarningModal() {
 
     const daysRemaining = warning.daysRemaining
     const expiryDate = formatDate(warning.expiresAt)
+    const renew = () => {
+        dismiss()
+        openWorkspacePaymentDialog()
+    }
 
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => {
@@ -115,10 +134,13 @@ export function SubscriptionExpiryWarningModal() {
                 </div>
 
                 <DialogFooter>
-                    <Button allowViewer={true} onClick={dismiss}>
+                    <Button allowViewer={true} variant="outline" onClick={dismiss}>
                         {t('subscriptionExpiryWarning.acknowledge', {
                             defaultValue: 'Got it'
                         })}
+                    </Button>
+                    <Button allowViewer={true} onClick={renew}>
+                        {t('workspacePayments.renewSubscription')}
                     </Button>
                 </DialogFooter>
             </DialogContent>

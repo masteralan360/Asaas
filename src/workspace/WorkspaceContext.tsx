@@ -26,6 +26,13 @@ import {
 } from './workspaceMode'
 import { runSupabaseAction, normalizeSupabaseActionError } from '@/lib/supabaseRequest'
 import {
+    getWorkspacePaymentSummary,
+    hasWorkspacePaymentAccessStateUpdate,
+    shouldApplyWorkspaceSubscriptionExpiry,
+    shouldWorkspacePaymentLockAccess,
+    type WorkspacePaymentSummary
+} from '@/lib/workspacePayments'
+import {
     applyWorkspaceOverrides,
     getPlanCapabilities,
     getPrimaryCurrencyForPlan,
@@ -116,6 +123,8 @@ interface WorkspaceContextType {
     workspaceName: string | null
     branchInfo: BranchInfo | null
     isLoading: boolean
+    paymentSummary: WorkspacePaymentSummary | null
+    isPaymentSummaryLoading: boolean
     pendingUpdate: UpdateInfo | null
     setPendingUpdate: (update: UpdateInfo | null) => void
     isFullscreen: boolean
@@ -127,6 +136,7 @@ interface WorkspaceContextType {
     hasFeature: (feature: ModuleFeatureKey) => boolean
     hasCapability: (capability: PlanCapabilityKey) => boolean
     refreshFeatures: () => Promise<void>
+    refreshPaymentSummary: () => Promise<WorkspacePaymentSummary | null>
     updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string }) => Promise<void>
     switchDataMode: (newMode: 'cloud' | 'hybrid') => Promise<{ error: string | null }>
     activeWorkspace: { id: string } | undefined
@@ -315,13 +325,26 @@ function mergeWorkspaceFeatures(
 }
 
 function isWorkspaceCurrentlyLocked(
-    features: Pick<WorkspaceFeatures, 'locked_workspace' | 'subscription_expires_at' | 'has_usage_limits'>
+    features: Pick<WorkspaceFeatures, 'locked_workspace' | 'subscription_expires_at' | 'has_usage_limits'>,
+    summary?: WorkspacePaymentSummary | null
 ) {
-    return features.locked_workspace
-        || (!features.has_usage_limits
-            && features.subscription_expires_at
-            ? new Date(features.subscription_expires_at) < new Date()
-            : false)
+    if (features.locked_workspace) return true
+
+    // For usage workspaces, check renewal_due_at; for normal workspaces, check subscription_expires_at
+    const isUsageMode = Boolean(
+        summary?.configuration?.usageEnabled || features.has_usage_limits
+    )
+    const expiryDate = isUsageMode
+        ? summary?.configuration?.renewalDueAt ?? features.subscription_expires_at
+        : features.subscription_expires_at
+
+    return shouldApplyWorkspaceSubscriptionExpiry({
+        hasUsageLimits: features.has_usage_limits,
+        summary
+    })
+        && expiryDate
+        ? new Date(expiryDate) < new Date()
+        : false
 }
 
 function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeatures | null {
@@ -375,6 +398,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const [workspaceName, setWorkspaceName] = useState<string | null>(null)
     const [branchInfo, setBranchInfo] = useState<BranchInfo | null>(null)
     const [isLoading, setIsLoading] = useState(true)
+    const [paymentSummary, setPaymentSummary] = useState<WorkspacePaymentSummary | null>(null)
+    const [isPaymentSummaryLoading, setIsPaymentSummaryLoading] = useState(false)
     const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null)
     const [isFullscreen, setIsFullscreen] = useState(false)
     const [overrides, setOverrides] = useState<WorkspaceAccessOverride[]>([])
@@ -383,12 +408,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const fetchRequestRef = useRef(0)
     const branchFetchRequestRef = useRef(0)
     const featuresRef = useRef(defaultFeatures)
+    const paymentSummaryRef = useRef<WorkspacePaymentSummary | null>(null)
     const overridesRef = useRef<WorkspaceAccessOverride[]>([])
     const workspaceNameRef = useRef<string | null>(null)
 
     useEffect(() => {
         featuresRef.current = features
     }, [features])
+
+    useEffect(() => {
+        paymentSummaryRef.current = paymentSummary
+    }, [paymentSummary])
 
     useEffect(() => {
         overridesRef.current = overrides
@@ -554,12 +584,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (!isSupabaseConfigured || !isAuthenticated || !workspaceId) {
             setFeatures(defaultFeatures)
             setWorkspaceName(null)
+            setPaymentSummary(null)
+            setIsPaymentSummaryLoading(false)
             if (!silent) setIsLoading(false)
             return
         }
 
         const requestId = ++fetchRequestRef.current
         const cachedSnapshot = options?.cachedSnapshot ?? readWorkspaceCache<WorkspaceFeatures>(workspaceId)
+        setIsPaymentSummaryLoading(true)
 
         const applyFallback = async () => {
             const fallback = await resolveTrustedFallback(workspaceId, cachedSnapshot)
@@ -583,22 +616,25 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         // Demo workspaces use local DB exclusively — skip Supabase queries
         if (user?.workspaceMode === 'demo') {
             await applyFallback()
-            if (!silent && isCurrentWorkspaceRequest(workspaceId, requestId)) {
-                setIsLoading(false)
+            if (isCurrentWorkspaceRequest(workspaceId, requestId)) {
+                setPaymentSummary(null)
+                setIsPaymentSummaryLoading(false)
+                if (!silent) setIsLoading(false)
             }
             return
         }
 
         if (isOffline()) {
             await applyFallback()
-            if (!silent && isCurrentWorkspaceRequest(workspaceId, requestId)) {
-                setIsLoading(false)
+            if (isCurrentWorkspaceRequest(workspaceId, requestId)) {
+                setIsPaymentSummaryLoading(false)
+                if (!silent) setIsLoading(false)
             }
             return
         }
 
         try {
-            const [workspaceResult, overridesResult, usageStatusResult] = await Promise.all([
+            const [workspaceResult, overridesResult, usageStatusResult, paymentSummaryResult] = await Promise.all([
                 runSupabaseAction(
                     'workspace.getFeatures',
                     () => supabase.from('workspaces').select(WORKSPACE_FEATURE_COLUMNS).eq('id', workspaceId).maybeSingle(),
@@ -612,7 +648,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     'workspace.getUsageStatus',
                     () => supabase.rpc('get_workspace_usage_status', { p_workspace_id: workspaceId }),
                     { timeoutMs: 12000, platform: 'all' }
-                )
+                ),
+                getWorkspacePaymentSummary()
+                    .then((summary) => ({ summary, error: null as unknown }))
+                    .catch((error: unknown) => ({ summary: null, error }))
             ]) as any
 
             const { data, error } = workspaceResult
@@ -626,6 +665,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     clearWorkspaceCache(workspaceId)
                     setFeatures(defaultFeatures)
                     setWorkspaceName(null)
+                    setPaymentSummary(null)
                     updateUser({
                         workspaceId: '',
                         workspaceCode: '',
@@ -689,6 +729,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             setOverrides(fetchedOverrides)
             setFeatures(fetchedFeatures)
             setWorkspaceName(nextWorkspaceName)
+            if (paymentSummaryResult.error) {
+                console.warn('[WorkspacePayments] Failed to load payment summary:', paymentSummaryResult.error)
+            } else {
+                paymentSummaryRef.current = paymentSummaryResult.summary
+                setPaymentSummary(paymentSummaryResult.summary)
+            }
             writeWorkspaceCache({
                 workspaceId,
                 features: fetchedFeatures,
@@ -700,8 +746,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             console.error('Error fetching workspace features:', err)
             await applyFallback()
         } finally {
-            if (!silent && isCurrentWorkspaceRequest(workspaceId, requestId)) {
-                setIsLoading(false)
+            if (isCurrentWorkspaceRequest(workspaceId, requestId)) {
+                setIsPaymentSummaryLoading(false)
+                if (!silent) setIsLoading(false)
             }
         }
     }
@@ -795,6 +842,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             setFeatures(defaultFeatures)
             setWorkspaceName(null)
             setBranchInfo(null)
+            paymentSummaryRef.current = null
+            setPaymentSummary(null)
+            setIsPaymentSummaryLoading(false)
             setIsLoading(false)
             return
         }
@@ -803,6 +853,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setFeatures(defaultFeatures)
         setWorkspaceName(null)
         setBranchInfo(null)
+        paymentSummaryRef.current = null
+        setPaymentSummary(null)
 
         const cachedSnapshot = readWorkspaceCache<WorkspaceFeatures>(workspaceId)
         if (cachedSnapshot) {
@@ -834,6 +886,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     try {
                         const data = payload.new as any
                         const currentFeatures = featuresRef.current
+                        const accessStateChanged = hasWorkspacePaymentAccessStateUpdate({
+                            lockedWorkspace: currentFeatures.locked_workspace,
+                            subscriptionExpiresAt: currentFeatures.subscription_expires_at
+                        }, data)
                         const updatedFeatures = mergeWorkspaceFeatures({
                             ...currentFeatures,
                             plan: normalizeWorkspacePlan(data.plan ?? currentFeatures.plan),
@@ -876,6 +932,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             overrides: overridesRef.current
                         })
                         await persistWorkspaceState(user.workspaceId, updatedFeatures, nextWorkspaceName)
+
+                        if (accessStateChanged) {
+                            void getWorkspacePaymentSummary()
+                                .then((summary) => {
+                                    if (currentWorkspaceIdRef.current !== user.workspaceId) return
+                                    paymentSummaryRef.current = summary
+                                    setPaymentSummary(summary)
+                                })
+                                .catch((error) => {
+                                    console.warn('[WorkspacePayments] Failed to refresh after an access-state update:', error)
+                                })
+                        }
                     } catch (error) {
                         console.error('[Workspace] Failed to apply realtime update:', error)
                     }
@@ -945,7 +1013,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             const shouldRefresh =
                 event === 'wake'
                 || event === 'online'
-                || (event === 'heartbeat' && isWorkspaceCurrentlyLocked(featuresRef.current))
+                || (event === 'heartbeat' && (
+                    isWorkspaceCurrentlyLocked(featuresRef.current, paymentSummaryRef.current)
+                    || shouldWorkspacePaymentLockAccess(paymentSummaryRef.current)
+                ))
 
             if (shouldRefresh) {
                 console.log(`[Workspace] ${event} event - re-fetching features silently`)
@@ -983,6 +1054,35 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
     const hasCapability = (capability: PlanCapabilityKey): boolean => {
         return planCapabilities.capabilities.includes(capability)
+    }
+
+    const refreshPaymentSummary = async (): Promise<WorkspacePaymentSummary | null> => {
+        const workspaceId = user?.workspaceId
+        if (!isSupabaseConfigured || !isAuthenticated || !workspaceId || user?.workspaceMode === 'demo') {
+            return null
+        }
+        if (isOffline()) {
+            throw new Error('An internet connection is required to load workspace payments')
+        }
+
+        setIsPaymentSummaryLoading(true)
+        try {
+            const summary = await getWorkspacePaymentSummary()
+            if (currentWorkspaceIdRef.current !== workspaceId) {
+                return paymentSummaryRef.current
+            }
+
+            paymentSummaryRef.current = summary
+            setPaymentSummary(summary)
+            return summary
+        } catch (error) {
+            console.warn('[WorkspacePayments] Failed to refresh payment summary:', error)
+            throw error
+        } finally {
+            if (currentWorkspaceIdRef.current === workspaceId) {
+                setIsPaymentSummaryLoading(false)
+            }
+        }
     }
 
     const refreshFeatures = async () => {
@@ -1300,7 +1400,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const isDemoMode = features.data_mode === 'demo'
     const isCloudMode = features.data_mode === 'cloud'
     const isHybridMode = features.data_mode === 'hybrid'
-    const isLocked = isWorkspaceCurrentlyLocked(features)
+    const isLocked = isWorkspaceCurrentlyLocked(features, paymentSummary)
+        || shouldWorkspacePaymentLockAccess(paymentSummary)
     const planCapabilities = overrides.length
         ? applyWorkspaceOverrides(getPlanCapabilities(features.plan), overrides)
         : getPlanCapabilities(features.plan)
@@ -1313,6 +1414,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             workspaceName,
             branchInfo,
             isLoading,
+            paymentSummary,
+            isPaymentSummaryLoading,
             pendingUpdate,
             setPendingUpdate,
             isLocked,
@@ -1324,6 +1427,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             hasCapability,
             isFullscreen,
             refreshFeatures,
+            refreshPaymentSummary,
             updateSettings,
             switchDataMode,
             activeWorkspace: user?.workspaceId ? { id: user.workspaceId } : undefined

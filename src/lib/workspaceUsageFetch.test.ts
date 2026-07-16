@@ -328,6 +328,15 @@ describe('workspace usage fetch metering', () => {
                 p_source: 'test'
             })
         })
+        await meteredFetch(`https://example.supabase.co/rest/v1/rpc/get_workspace_payment_summary`, {
+            method: 'POST',
+            headers: { Authorization: 'Bearer token' }
+        })
+        await meteredFetch(`https://example.supabase.co/rest/v1/rpc/submit_workspace_payment`, {
+            method: 'POST',
+            headers: { Authorization: 'Bearer token' },
+            body: JSON.stringify({ p_provider: 'fib' })
+        })
         await meteredFetch(`https://example.supabase.co/rest/v1/rpc/complete_sale`, {
             method: 'POST',
             headers: {
@@ -337,7 +346,7 @@ describe('workspace usage fetch metering', () => {
             body: JSON.stringify({ payload: { workspace_id: workspaceId } })
         })
 
-        expect(fetchImpl).toHaveBeenCalledTimes(3)
+        expect(fetchImpl).toHaveBeenCalledTimes(5)
     })
 
     it('does not count table or RPC transfers for local workspaces', async () => {

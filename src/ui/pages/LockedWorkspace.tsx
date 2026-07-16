@@ -1,21 +1,68 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Lock, Mail, LogOut, Clock, AlertCircle } from 'lucide-react'
+import { AlertCircle, Clock, CreditCard, HardDrive, Lock, LogOut, Mail } from 'lucide-react'
 import { Button } from '@/ui/components/button'
 import { useAuth } from '@/auth'
 import { useLocation } from 'wouter'
 import { useWorkspace } from '@/workspace'
-import { formatDate } from '@/lib/utils'
+import {
+    getWorkspacePaymentAlertKind,
+    openWorkspacePaymentDialog,
+    shouldApplyWorkspaceSubscriptionExpiry
+} from '@/lib/workspacePayments'
 
 export function LockedWorkspace() {
     const { t } = useTranslation()
     const { signOut } = useAuth()
-    const { features, isLocked, isLoading } = useWorkspace()
+    const { features, isLocked, isLoading, paymentSummary, isPaymentSummaryLoading } = useWorkspace()
     const [, setLocation] = useLocation()
 
-    const isExpired = !features.has_usage_limits
-        && features.subscription_expires_at
-        && new Date(features.subscription_expires_at) < new Date()
+    const isUsageMode = Boolean(
+        paymentSummary?.configuration?.usageEnabled || features.has_usage_limits
+    )
+    const expiryDate = isUsageMode
+        ? paymentSummary?.configuration?.renewalDueAt ?? features.subscription_expires_at
+        : features.subscription_expires_at
+    const isExpired = shouldApplyWorkspaceSubscriptionExpiry({
+        hasUsageLimits: features.has_usage_limits,
+        summary: paymentSummary
+    })
+        && expiryDate
+        && new Date(expiryDate) < new Date()
+    const paymentAlertKind = getWorkspacePaymentAlertKind(paymentSummary)
+    const pendingTransaction = paymentSummary?.pendingTransaction ?? null
+    const showPaymentAction = Boolean(paymentAlertKind || isExpired || pendingTransaction)
+
+    const paymentCopy = (() => {
+        switch (paymentAlertKind) {
+            case 'usage_exhausted':
+                return {
+                    title: t('workspacePayments.usageExhaustedTitle'),
+                    description: t('workspacePayments.usageExhaustedDescription'),
+                    icon: HardDrive
+                }
+            case 'subscription_expired':
+                return {
+                    title: t('workspacePayments.subscriptionExpiredTitle'),
+                    description: t('workspacePayments.subscriptionExpiredDescription'),
+                    icon: Clock
+                }
+            default:
+                if (isExpired) {
+                    return {
+                        title: t('workspacePayments.subscriptionExpiredTitle'),
+                        description: t('workspacePayments.subscriptionExpiredDescription'),
+                        icon: Clock
+                    }
+                }
+                return {
+                    title: t('lockedWorkspace.title'),
+                    description: t('lockedWorkspace.message'),
+                    icon: Lock
+                }
+        }
+    })()
+    const LockIcon = paymentCopy.icon
 
     useEffect(() => {
         if (!isLoading && !isLocked) {
@@ -49,12 +96,8 @@ export function LockedWorkspace() {
             <div className="max-w-md w-full text-center space-y-8">
                 {/* Lock Icon */}
                 <div className="mx-auto w-24 h-24 rounded-full bg-destructive/10 flex items-center justify-center relative">
-                    {isExpired ? (
-                        <Clock className="w-12 h-12 text-destructive animate-pulse" />
-                    ) : (
-                        <Lock className="w-12 h-12 text-destructive" />
-                    )}
-                    {isExpired && (
+                    <LockIcon className={`w-12 h-12 text-destructive ${showPaymentAction ? 'animate-pulse' : ''}`} />
+                    {showPaymentAction && (
                         <div className="absolute -top-1 -right-1">
                             <AlertCircle className="w-6 h-6 text-destructive fill-background" />
                         </div>
@@ -64,24 +107,41 @@ export function LockedWorkspace() {
                 {/* Title */}
                 <div className="space-y-2">
                     <h1 className="text-3xl font-bold text-foreground">
-                        {isExpired
-                            ? (t('lockedWorkspace.subscriptionExpired') || 'Subscription Expired')
-                            : (t('lockedWorkspace.title') || 'Workspace Locked')
-                        }
+                        {paymentCopy.title}
                     </h1>
                     <p className="text-muted-foreground text-lg">
-                        {isExpired
-                            ? (t('lockedWorkspace.expiryMessage') || `Your subscription expired on ${formatDate(features.subscription_expires_at!)}. Please contact an administrator to extend it.`)
-                            : (t('lockedWorkspace.message') || 'Your workspace has been temporarily locked. Please contact an administrator to regain access.')
-                        }
+                        {paymentCopy.description}
                     </p>
+                    {pendingTransaction && (
+                        <p className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-800 dark:text-amber-200">
+                            {t('workspacePayments.submittedMessage')}
+                        </p>
+                    )}
                 </div>
 
                 {/* Buttons Container */}
                 <div className="flex flex-col gap-3 items-center">
+                    {showPaymentAction && (
+                        <Button
+                            allowViewer={true}
+                            size="lg"
+                            onClick={openWorkspacePaymentDialog}
+                            className="gap-2 w-full max-w-[240px]"
+                        >
+                            <CreditCard className="w-5 h-5" />
+                            {isPaymentSummaryLoading && !paymentSummary
+                                ? t('workspacePayments.loading')
+                                : pendingTransaction
+                                    ? t('workspacePayments.viewPaymentStatus')
+                                    : t('workspacePayments.renewSubscription')}
+                        </Button>
+                    )}
+
                     <Button
+                        allowViewer={true}
                         size="lg"
                         onClick={handleContactAdmin}
+                        variant={showPaymentAction ? 'outline' : 'default'}
                         className="gap-2 w-full max-w-[240px]"
                     >
                         <Mail className="w-5 h-5" />
@@ -89,6 +149,7 @@ export function LockedWorkspace() {
                     </Button>
 
                     <Button
+                        allowViewer={true}
                         variant="outline"
                         size="lg"
                         onClick={handleSignOut}

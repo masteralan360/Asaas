@@ -34,6 +34,9 @@ CREATE TABLE public.workspaces (
   ecommerce boolean NOT NULL DEFAULT false,
   real_estate boolean NOT NULL DEFAULT true,
   upload_limit_mb integer NULL,
+  usage_limit_locked boolean NOT NULL DEFAULT false,
+  payment_renewal_locked boolean NOT NULL DEFAULT false,
+  subscription_expiry_locked boolean NOT NULL DEFAULT false,
   CONSTRAINT workspaces_data_mode_check CHECK ((data_mode::text) = ANY (ARRAY['cloud'::text, 'local'::text, 'hybrid'::text, 'demo'::text])),
   CONSTRAINT workspaces_plan_check CHECK (plan = ANY (ARRAY['basic'::text, 'business'::text, 'enterprise'::text])),
   PRIMARY KEY (id)

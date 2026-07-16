@@ -88,6 +88,39 @@ type RefreshWorkspaceUsageRequest = {
     workspaceId?: string | null
 }
 
+type ListWorkspacePaymentConfigurationsRequest = {
+    action: 'listWorkspacePaymentConfigurations'
+    passkey?: string
+}
+
+type UpsertWorkspacePaymentConfigurationRequest = {
+    action: 'upsertWorkspacePaymentConfiguration'
+    passkey?: string
+    workspaceId?: string
+    subscriptionAmount?: string | number
+    isPaymentEnabled?: boolean
+    usageEnabled?: boolean
+    gbPerPayment?: string | number
+    usageStartDate?: string | null
+    renewalDueAt?: string | null
+}
+
+type ListWorkspacePaymentTransactionsRequest = {
+    action: 'listWorkspacePaymentTransactions'
+    passkey?: string
+    status?: string | null
+}
+
+type ReviewWorkspacePaymentTransactionRequest = {
+    action: 'reviewWorkspacePaymentTransaction'
+    passkey?: string
+    transactionId?: string
+    decision?: 'approved' | 'rejected'
+    reviewerLabel?: string | null
+    note?: string | null
+    providerPaymentId?: string | null
+}
+
 type AdminConsoleRequest =
     | VerifyRequest
     | ListUsersRequest
@@ -101,9 +134,25 @@ type AdminConsoleRequest =
     | ListWorkspaceUsageRequest
     | UpdateWorkspaceUsageRequest
     | RefreshWorkspaceUsageRequest
+    | ListWorkspacePaymentConfigurationsRequest
+    | UpsertWorkspacePaymentConfigurationRequest
+    | ListWorkspacePaymentTransactionsRequest
+    | ReviewWorkspacePaymentTransactionRequest
+
+type WorkspaceUsageStatusRow = {
+    has_limits?: boolean | null
+    workspace_id?: string | null
+    transfer_period_start?: string | null
+}
+
+type AdminPasskeyAccess =
+    | { ok: true; response: null }
+    | { ok: false; response: Response }
 
 const WORKSPACE_TRANSFER_CHARGE_MULTIPLIER = 10n
 const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const PAYMENT_TRANSACTION_STATUSES = new Set(['pending', 'approved', 'rejected', 'expired'])
 
 function currentUsagePeriodStart() {
     const now = new Date()
@@ -140,6 +189,59 @@ function normalizeNullableBigint(value: unknown, field: string): { value: string
     }
 
     return { value: null, error: `${field} must be a non-negative integer` }
+}
+
+function normalizePaymentDecimal(
+    value: unknown,
+    field: string,
+    options: {
+        positive?: boolean
+        maximumDecimalPlaces?: number
+        maximumWholeDigits?: number
+    } = {}
+): { value: string; error?: string } {
+    const maximumDecimalPlaces = options.maximumDecimalPlaces ?? 3
+    const maximumWholeDigits = options.maximumWholeDigits ?? 17
+    const normalized = typeof value === 'number'
+        ? (Number.isFinite(value) ? String(value) : '')
+        : typeof value === 'string'
+            ? value.trim()
+            : ''
+    const decimalPattern = new RegExp(
+        `^\\d{1,${maximumWholeDigits}}(?:\\.\\d{1,${maximumDecimalPlaces}})?$`
+    )
+
+    if (!decimalPattern.test(normalized)) {
+        return {
+            value: '0',
+            error: `${field} must be a non-negative number with up to ${maximumDecimalPlaces} decimal places`
+        }
+    }
+
+    const [wholePart, fractionalPart = ''] = normalized.split('.')
+    const canonicalFraction = fractionalPart.replace(/0+$/, '')
+    const canonical = canonicalFraction
+        ? `${BigInt(wholePart).toString()}.${canonicalFraction}`
+        : BigInt(wholePart).toString()
+
+    if (options.positive && Number(canonical) <= 0) {
+        return { value: canonical, error: `${field} must be greater than zero` }
+    }
+
+    return { value: canonical }
+}
+
+function normalizeOptionalText(value: unknown, field: string, maxLength: number) {
+    if (value === null || value === undefined) return { value: null as string | null }
+    if (typeof value !== 'string') return { value: null as string | null, error: `${field} must be text` }
+
+    const normalized = value.trim()
+    if (!normalized) return { value: null as string | null }
+    if (normalized.length > maxLength) {
+        return { value: null as string | null, error: `${field} must be ${maxLength} characters or fewer` }
+    }
+
+    return { value: normalized }
 }
 
 function resolveNullableBigintAlias(
@@ -242,7 +344,10 @@ async function isValidAdminPasskey(adminClient: ReturnType<typeof createAdminCli
     return passkey === (data?.key_value ?? '')
 }
 
-async function requireValidPasskey(adminClient: ReturnType<typeof createAdminClient>, passkey?: string) {
+async function requireValidPasskey(
+    adminClient: ReturnType<typeof createAdminClient>,
+    passkey?: string
+): Promise<AdminPasskeyAccess> {
     const normalizedPasskey = passkey?.trim() ?? ''
     if (!normalizedPasskey) {
         return { ok: false, response: errorResponse('Admin passkey is required', 403) }
@@ -412,7 +517,13 @@ async function updateWorkspaceFeatures(
     const { error: statusError } = await adminClient
         .from('workspaces')
         .update({
-            locked_workspace: body.locked_workspace
+            locked_workspace: body.locked_workspace,
+            // An explicit platform lock/unlock supersedes every automatic
+            // reason marker. Later approvals may then clear only locks that
+            // the billing/usage services own, never this deliberate lock.
+            usage_limit_locked: false,
+            payment_renewal_locked: false,
+            subscription_expiry_locked: false
         })
         .eq('id', workspaceId)
 
@@ -451,15 +562,37 @@ async function updateWorkspaceSubscription(
         return errorResponse(usageStatusError.message, 500)
     }
 
-    const usageEnabled = Boolean(usageStatus?.has_limits)
-    const targetWorkspaceId = usageEnabled && usageStatus?.workspace_id
-        ? String(usageStatus.workspace_id)
+    const { data: paymentConfigurations, error: paymentConfigurationError } = await adminClient
+        .rpc('admin_list_workspace_payment_configurations')
+
+    if (paymentConfigurationError) {
+        return errorResponse(paymentConfigurationError.message, 500)
+    }
+
+    const typedUsageStatus = usageStatus as WorkspaceUsageStatusRow | null
+    const paymentConfiguration = Array.isArray(paymentConfigurations)
+        ? paymentConfigurations.find((value: unknown) => (
+            typeof value === 'object'
+            && value !== null
+            && String((value as Record<string, unknown>).workspace_id ?? '') === workspaceId
+        )) as Record<string, unknown> | undefined
+        : undefined
+    const usageEnabled = Boolean(
+        typedUsageStatus?.has_limits
+        || paymentConfiguration?.usage_enabled === true
+    )
+    const targetWorkspaceId = usageEnabled && typedUsageStatus?.workspace_id
+        ? String(typedUsageStatus.workspace_id)
         : workspaceId
+    const subscriptionExpired = parsedExpiry.getTime() < Date.now()
     const update = usageEnabled
         ? { subscription_expires_at: parsedExpiry.toISOString() }
         : {
             subscription_expires_at: parsedExpiry.toISOString(),
-            locked_workspace: parsedExpiry.getTime() < Date.now()
+            locked_workspace: subscriptionExpired,
+            usage_limit_locked: false,
+            payment_renewal_locked: false,
+            subscription_expiry_locked: subscriptionExpired
         }
 
     const { error } = await adminClient
@@ -824,8 +957,9 @@ async function updateWorkspaceUsage(
             return errorResponse(usageStatusError.message, 500)
         }
 
-        const effectivePeriodStart = typeof usageStatus?.transfer_period_start === 'string'
-            ? usageStatus.transfer_period_start
+        const typedUsageStatus = usageStatus as WorkspaceUsageStatusRow | null
+        const effectivePeriodStart = typeof typedUsageStatus?.transfer_period_start === 'string'
+            ? typedUsageStatus.transfer_period_start
             : periodStart.value
 
         const { error: usageError } = await adminClient
@@ -884,7 +1018,191 @@ async function refreshWorkspaceUsage(
     return jsonResponse({ success: true })
 }
 
+async function listWorkspacePaymentConfigurations(
+    adminClient: ReturnType<typeof createAdminClient>
+) {
+    const { data, error } = await adminClient.rpc('admin_list_workspace_payment_configurations')
+
+    if (error) {
+        return errorResponse(error.message, 500)
+    }
+
+    return jsonResponse(data ?? [])
+}
+
+async function upsertWorkspacePaymentConfiguration(
+    adminClient: ReturnType<typeof createAdminClient>,
+    body: UpsertWorkspacePaymentConfigurationRequest
+) {
+    const workspaceId = body.workspaceId?.trim() ?? ''
+    if (!UUID_PATTERN.test(workspaceId)) {
+        console.error('upsert error: invalid workspace id')
+        return errorResponse('A valid workspace is required')
+    }
+
+    const hasConfigFields = body.subscriptionAmount !== undefined || body.gbPerPayment !== undefined
+
+    if (!hasConfigFields) {
+        if (typeof body.isPaymentEnabled !== 'boolean' || typeof body.usageEnabled !== 'boolean') {
+            console.error('upsert error: boolean type check failed (date-only path)')
+            return errorResponse('Payment enabled and usage enabled must be true or false')
+        }
+
+        const updates: Record<string, unknown> = {}
+        if (body.usageStartDate !== undefined) {
+            updates.usage_start_date = body.usageStartDate || null
+        }
+        if (body.renewalDueAt !== undefined) {
+            updates.renewal_due_at = body.renewalDueAt || null
+        }
+        if (Object.keys(updates).length === 0) {
+            console.error('upsert error: no fields to update (date-only path)')
+            return errorResponse('No fields to update')
+        }
+        const { error: updateError } = await adminClient
+            .schema('billing')
+            .from('workspace_payment_configurations')
+            .update(updates)
+            .eq('workspace_id', workspaceId)
+        if (updateError) {
+            console.error('upsert error: date-only update failed:', updateError.message)
+            return errorResponse(`Failed to update dates: ${updateError.message}`, 400)
+        }
+        return jsonResponse({ success: true })
+    }
+
+    if (typeof body.isPaymentEnabled !== 'boolean' || typeof body.usageEnabled !== 'boolean') {
+        console.error('upsert error: boolean type check failed (rpc path)')
+        return errorResponse('Payment enabled and usage enabled must be true or false')
+    }
+
+    const amount = normalizePaymentDecimal(body.subscriptionAmount, 'Subscription amount', {
+        positive: false,
+        maximumDecimalPlaces: 3,
+        maximumWholeDigits: 17
+    })
+    if (amount.error) {
+        console.error('upsert error: amount validation:', amount.error)
+        return errorResponse(amount.error)
+    }
+
+    const gbPerPayment = normalizePaymentDecimal(body.gbPerPayment, 'GB per payment', {
+        positive: false,
+        maximumDecimalPlaces: 6,
+        maximumWholeDigits: 8
+    })
+    if (gbPerPayment.error) {
+        console.error('upsert error: gb validation:', gbPerPayment.error)
+        return errorResponse(gbPerPayment.error)
+    }
+
+    console.log('upsert params:', JSON.stringify({
+        p_workspace_id: workspaceId,
+        p_subscription_amount: amount.value,
+        p_is_payment_enabled: body.isPaymentEnabled,
+        p_usage_enabled: body.usageEnabled,
+        p_gb_per_payment: gbPerPayment.value,
+        p_usage_start_date: body.usageStartDate ?? null,
+        p_renewal_due_at: body.renewalDueAt ?? null
+    }))
+
+    const rpcParams: Record<string, unknown> = {
+        p_workspace_id: workspaceId,
+        p_subscription_amount: amount.value,
+        p_is_payment_enabled: body.isPaymentEnabled,
+        p_usage_enabled: body.usageEnabled,
+        p_gb_per_payment: gbPerPayment.value,
+        p_actor: 'admin-console-passkey'
+    }
+    if (body.usageStartDate !== undefined) {
+        rpcParams.p_usage_start_date = body.usageStartDate || null
+    }
+    if (body.renewalDueAt !== undefined) {
+        rpcParams.p_renewal_due_at = body.renewalDueAt || null
+    }
+
+    const { data, error } = await adminClient.rpc('admin_upsert_workspace_payment_configuration', rpcParams)
+
+    if (error) {
+        console.error('RPC error:', JSON.stringify({ message: error.message, code: error.code, details: error.details, hint: error.hint }))
+        return errorResponse(error.message || 'Unknown RPC error', 400, {
+            code: error.code,
+            details: error.details,
+            hint: error.hint
+        })
+    }
+
+    return jsonResponse(data)
+}
+
+async function listWorkspacePaymentTransactions(
+    adminClient: ReturnType<typeof createAdminClient>,
+    body: ListWorkspacePaymentTransactionsRequest
+) {
+    const status = body.status?.trim().toLowerCase() || null
+    if (status && !PAYMENT_TRANSACTION_STATUSES.has(status)) {
+        return errorResponse('Unsupported payment transaction status')
+    }
+
+    const { data, error } = await adminClient.rpc('admin_list_workspace_payment_transactions', {
+        p_status: status
+    })
+
+    if (error) {
+        return errorResponse(error.message, 500)
+    }
+
+    return jsonResponse(data ?? [])
+}
+
+async function reviewWorkspacePaymentTransaction(
+    adminClient: ReturnType<typeof createAdminClient>,
+    body: ReviewWorkspacePaymentTransactionRequest
+) {
+    const transactionId = body.transactionId?.trim() ?? ''
+    if (!UUID_PATTERN.test(transactionId)) {
+        return errorResponse('A valid payment transaction is required')
+    }
+
+    if (body.decision !== 'approved' && body.decision !== 'rejected') {
+        return errorResponse('Decision must be approved or rejected')
+    }
+
+    const reviewerLabel = normalizeOptionalText(body.reviewerLabel, 'Reviewer name', 120)
+    if (reviewerLabel.error || !reviewerLabel.value) {
+        return errorResponse(reviewerLabel.error ?? 'Reviewer name is required')
+    }
+
+    const note = normalizeOptionalText(body.note, 'Review note', 2000)
+    if (note.error) {
+        return errorResponse(note.error)
+    }
+
+    const providerPaymentId = normalizeOptionalText(body.providerPaymentId, 'Provider payment ID', 255)
+    if (providerPaymentId.error) {
+        return errorResponse(providerPaymentId.error)
+    }
+
+    const { data, error } = await adminClient.rpc('admin_review_workspace_payment_transaction', {
+        p_transaction_id: transactionId,
+        p_decision: body.decision,
+        p_note: note.value,
+        p_reviewer_label: reviewerLabel.value,
+        p_provider_payment_id: providerPaymentId.value
+    })
+
+    if (error) {
+        console.error('reviewWorkspacePaymentTransaction RPC error:', JSON.stringify({ message: error.message, details: error.details, hint: error.hint, code: error.code }))
+        const isConflict = /already|no longer pending|expired/i.test(error.message)
+        return errorResponse(error.message, isConflict ? 409 : 400)
+    }
+
+    return jsonResponse(data)
+}
+
 Deno.serve(async (req) => {
+    console.log('admin-console invoked:', req.method, req.url)
+
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
     }
@@ -953,6 +1271,22 @@ Deno.serve(async (req) => {
 
         if (body.action === 'refreshWorkspaceUsage') {
             return await refreshWorkspaceUsage(adminClient, body)
+        }
+
+        if (body.action === 'listWorkspacePaymentConfigurations') {
+            return await listWorkspacePaymentConfigurations(adminClient)
+        }
+
+        if (body.action === 'upsertWorkspacePaymentConfiguration') {
+            return await upsertWorkspacePaymentConfiguration(adminClient, body)
+        }
+
+        if (body.action === 'listWorkspacePaymentTransactions') {
+            return await listWorkspacePaymentTransactions(adminClient, body)
+        }
+
+        if (body.action === 'reviewWorkspacePaymentTransaction') {
+            return await reviewWorkspacePaymentTransaction(adminClient, body)
         }
 
         return errorResponse('Unsupported action', 400)
