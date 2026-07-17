@@ -37,7 +37,7 @@ import { ReactQRCode } from '@lglab/react-qr-code'
 import { BranchManager } from '@/ui/components/workspace/BranchManager'
 import { canManageClinicalRegistryType } from '@/i18n/clinicalRegistry'
 import { setClinicalRegistryType, useClinicalRegistryType } from '@/local-db/clinicalPresets'
-import { openWorkspacePaymentDialog } from '@/lib/workspacePayments'
+import { openWorkspacePaymentStatusDialog } from '@/lib/workspacePayments'
 
 export function Settings() {
     const { user, signOut, isSupabaseConfigured, updateUser } = useAuth()
@@ -1302,32 +1302,6 @@ export function Settings() {
                 </TabsList>
 
                 <TabsContent value="general" className="space-y-6 mt-0">
-                    {!isDemoMode && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2">
-                                    <CreditCard className="h-5 w-5" />
-                                    {t('workspacePayments.paymentHistory')}
-                                </CardTitle>
-                                <CardDescription>
-                                    {t('workspacePayments.historyDescription')}
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <Button
-                                    allowViewer={true}
-                                    type="button"
-                                    variant="outline"
-                                    className="gap-2"
-                                    onClick={openWorkspacePaymentDialog}
-                                >
-                                    <CreditCard className="h-4 w-4" />
-                                    {t('workspacePayments.viewPaymentStatus')}
-                                </Button>
-                            </CardContent>
-                        </Card>
-                    )}
-
                     {/* Theme Settings */}
                     <Card>
                         <CardHeader>
@@ -2820,6 +2794,32 @@ export function Settings() {
                                     </Button>
                                 </CardContent>
                             </Card>
+
+                            {!isDemoMode && (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="flex items-center gap-2">
+                                            <CreditCard className="h-5 w-5" />
+                                            {t('workspacePayments.paymentHistory')}
+                                        </CardTitle>
+                                        <CardDescription>
+                                            {t('workspacePayments.historyDescription')}
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <Button
+                                            allowViewer={true}
+                                            type="button"
+                                            variant="outline"
+                                            className="gap-2"
+                                            onClick={openWorkspacePaymentStatusDialog}
+                                        >
+                                            <CreditCard className="h-4 w-4" />
+                                            {t('workspacePayments.viewPaymentStatus')}
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+                            )}
 
                             {/* Data Management */}
                             <Card>

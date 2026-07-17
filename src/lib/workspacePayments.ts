@@ -4,6 +4,7 @@ import { WORKSPACE_PAYMENT_HOLD_DURATION_MS } from '@/lib/pressAndHold'
 
 export const WORKSPACE_PAYMENT_CURRENCY = 'IQD' as const
 export const OPEN_WORKSPACE_PAYMENT_DIALOG_EVENT = 'open-workspace-payment-dialog'
+export const OPEN_WORKSPACE_PAYMENT_STATUS_DIALOG_EVENT = 'open-workspace-payment-status-dialog'
 export { WORKSPACE_PAYMENT_HOLD_DURATION_MS }
 
 export type WorkspacePaymentProvider = 'fib' | 'qicard' | 'free'
@@ -271,6 +272,11 @@ export function getWorkspacePaymentQrPath(provider: WorkspacePaymentProvider): s
 export function openWorkspacePaymentDialog() {
     if (typeof window === 'undefined') return
     window.dispatchEvent(new CustomEvent(OPEN_WORKSPACE_PAYMENT_DIALOG_EVENT))
+}
+
+export function openWorkspacePaymentStatusDialog() {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new CustomEvent(OPEN_WORKSPACE_PAYMENT_STATUS_DIALOG_EVENT))
 }
 
 export function getWorkspacePaymentAlertKind(

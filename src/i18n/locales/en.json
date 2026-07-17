@@ -65,6 +65,7 @@
       "expired": "Expired"
     },
     "qrAlt": "{{provider}} payment QR code",
+    "or": "or",
     "loading": "Loading payment details…",
     "loadFailed": "Payment details could not be loaded",
     "retry": "Try again",

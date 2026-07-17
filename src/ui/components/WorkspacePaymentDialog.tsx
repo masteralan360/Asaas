@@ -28,6 +28,7 @@ import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
 import { cn } from '@/lib/utils'
 import {
     OPEN_WORKSPACE_PAYMENT_DIALOG_EVENT,
+    OPEN_WORKSPACE_PAYMENT_STATUS_DIALOG_EVENT,
     WORKSPACE_PAYMENT_CURRENCY,
     canSubmitWorkspacePayment,
     formatWorkspacePaymentDecimal,
@@ -121,11 +122,15 @@ function TransactionHistory({
     transactions,
     locale,
     iqdDisplayPreference,
+    showHeading = true,
+    showDivider = true,
     t
 }: {
     transactions: WorkspacePaymentTransaction[]
     locale: string
     iqdDisplayPreference: string
+    showHeading?: boolean
+    showDivider?: boolean
     t: ReturnType<typeof useTranslation>['t']
 }) {
     const dateFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
@@ -134,10 +139,15 @@ function TransactionHistory({
     }), [locale])
 
     return (
-        <section className="space-y-3 border-t border-border/60 pt-5">
-            <h3 className="text-sm font-bold text-foreground">
-                {t('workspacePayments.statusHistory')}
-            </h3>
+        <section className={cn(
+            'space-y-3',
+            showDivider && 'border-t border-border/60 pt-5'
+        )}>
+            {showHeading && (
+                <h3 className="text-sm font-bold text-foreground">
+                    {t('workspacePayments.statusHistory')}
+                </h3>
+            )}
             {transactions.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
                     {t('workspacePayments.noTransactions')}
@@ -657,6 +667,20 @@ export function WorkspacePaymentController() {
                                                         })}
                                                         className="aspect-square w-full rounded-2xl object-contain"
                                                     />
+                                                    {selectedProvider === 'fib' && (
+                                                        <div className="mt-3 text-center">
+                                                            <p className="text-xs font-medium text-slate-500">
+                                                                {t('workspacePayments.or', { defaultValue: 'or' })}
+                                                            </p>
+                                                            <a
+                                                                href="tel:+9647701990012"
+                                                                dir="ltr"
+                                                                className="mt-0.5 inline-block text-sm font-bold tracking-wide text-slate-800 hover:text-primary hover:underline"
+                                                            >
+                                                                0770 199 0012
+                                                            </a>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ) : (
                                                 <div className="flex aspect-square w-full max-w-[20rem] flex-col items-center justify-center rounded-3xl border border-dashed border-border bg-background/70 p-6 text-center text-muted-foreground">
@@ -803,6 +827,109 @@ export function WorkspacePaymentController() {
                                 />
                             )}
                         </>
+                    )}
+                </div>
+
+                <DialogFooter className="border-t border-border/60 bg-muted/[0.12] px-5 py-4 sm:px-8">
+                    <Button allowViewer={true} variant="outline" onClick={() => setOpen(false)}>
+                        {t('workspacePayments.close')}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+export function WorkspacePaymentStatusDialog() {
+    const { t, i18n } = useTranslation()
+    const { isAuthenticated } = useAuth()
+    const {
+        activeWorkspace,
+        features,
+        isDemoMode,
+        paymentSummary,
+        isPaymentSummaryLoading,
+        refreshPaymentSummary,
+    } = useWorkspace()
+    const [open, setOpen] = useState(false)
+    const [loadError, setLoadError] = useState<string | null>(null)
+
+    const refreshStatus = useCallback(async () => {
+        setLoadError(null)
+        try {
+            await refreshPaymentSummary()
+        } catch (error) {
+            setLoadError(getErrorMessage(error))
+        }
+    }, [refreshPaymentSummary])
+
+    useEffect(() => {
+        const handleOpen = () => {
+            setOpen(true)
+            void refreshStatus()
+        }
+
+        window.addEventListener(OPEN_WORKSPACE_PAYMENT_STATUS_DIALOG_EVENT, handleOpen)
+        return () => window.removeEventListener(OPEN_WORKSPACE_PAYMENT_STATUS_DIALOG_EVENT, handleOpen)
+    }, [refreshStatus])
+
+    useEffect(() => {
+        setOpen(false)
+        setLoadError(null)
+    }, [activeWorkspace?.id])
+
+    if (!isAuthenticated || isDemoMode) return null
+
+    const locale = i18n.language || 'en'
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogContent className="max-h-[calc(100vh-1.5rem)] w-[calc(100vw-1rem)] max-w-2xl overflow-y-auto rounded-[28px] p-0 shadow-2xl">
+                <div className="border-b border-border/60 bg-gradient-to-br from-primary/[0.12] via-background to-amber-500/[0.07] px-5 py-5 sm:px-8 sm:py-6">
+                    <DialogHeader className="pe-10 text-start">
+                        <div className="flex items-start gap-4">
+                            <span className="flex h-[3.25rem] w-[3.25rem] shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
+                                <CreditCard className="h-6 w-6" />
+                            </span>
+                            <div className="space-y-1.5">
+                                <DialogTitle className="text-xl sm:text-2xl">
+                                    {t('workspacePayments.statusHistory')}
+                                </DialogTitle>
+                                <DialogDescription className="max-w-2xl leading-relaxed">
+                                    {t('workspacePayments.historyDescription')}
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
+                </div>
+
+                <div className="px-5 py-5 sm:px-8 sm:py-7">
+                    {isPaymentSummaryLoading && !paymentSummary ? (
+                        <div className="flex min-h-44 flex-col items-center justify-center gap-3 text-muted-foreground">
+                            <RefreshCw className="h-6 w-6 animate-spin" />
+                            <p className="text-sm">{t('workspacePayments.loading')}</p>
+                        </div>
+                    ) : loadError ? (
+                        <div className="flex min-h-44 flex-col items-center justify-center gap-3 text-center">
+                            <AlertCircle className="h-8 w-8 text-destructive" />
+                            <div>
+                                <p className="font-semibold text-foreground">{t('workspacePayments.loadFailed')}</p>
+                                <p className="mt-1 max-w-md text-sm text-muted-foreground">{loadError}</p>
+                            </div>
+                            <Button allowViewer={true} variant="outline" onClick={() => void refreshStatus()}>
+                                <RefreshCw className="h-4 w-4" />
+                                {t('workspacePayments.retry')}
+                            </Button>
+                        </div>
+                    ) : (
+                        <TransactionHistory
+                            transactions={paymentSummary?.transactions ?? []}
+                            locale={locale}
+                            iqdDisplayPreference={features.iqd_display_preference}
+                            showHeading={false}
+                            showDivider={false}
+                            t={t}
+                        />
                     )}
                 </div>
 
