@@ -137,3 +137,8 @@ docs/My whole project conversation before.md
 .Secrets
 Secrets/google-services.json
 Secrets/novu-ec341-firebase-adminsdk-fbsvc-ee588ba935.json
+
+# Locally parked removable password-change feature (not part of releases)
+/src/ui/pages/ForgetPasswordFeature.tsx
+/supabase/migrations/20260720100000_add_removable_password_change_feature.sql
+/supabase/reverts/20260720100000_remove_removable_password_change_feature.sql
