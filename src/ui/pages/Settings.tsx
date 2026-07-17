@@ -38,6 +38,9 @@ import { BranchManager } from '@/ui/components/workspace/BranchManager'
 import { canManageClinicalRegistryType } from '@/i18n/clinicalRegistry'
 import { setClinicalRegistryType, useClinicalRegistryType } from '@/local-db/clinicalPresets'
 import { openWorkspacePaymentDialog } from '@/lib/workspacePayments'
+// BEGIN REMOVABLE PASSWORD CHANGE FEATURE
+import { enrollLocalAccountCredential } from '@/auth/localAccountAuth'
+// END REMOVABLE PASSWORD CHANGE FEATURE
 
 export function Settings() {
     const { user, signOut, isSupabaseConfigured, updateUser } = useAuth()
@@ -58,6 +61,13 @@ export function Settings() {
     const [copied, setCopied] = useState(false)
     const [isCurrencyModalOpen, setIsCurrencyModalOpen] = useState(false)
     const [pendingCurrency, setPendingCurrency] = useState<'usd' | 'iqd' | 'eur' | 'try' | null>(null)
+    // BEGIN REMOVABLE PASSWORD CHANGE FEATURE
+    const [isPasswordChangeModalOpen, setIsPasswordChangeModalOpen] = useState(false)
+    const [currentPasswordInput, setCurrentPasswordInput] = useState('')
+    const [newPasswordInput, setNewPasswordInput] = useState('')
+    const [repeatNewPasswordInput, setRepeatNewPasswordInput] = useState('')
+    const [isPasswordChangeSaving, setIsPasswordChangeSaving] = useState(false)
+    // END REMOVABLE PASSWORD CHANGE FEATURE
     const [posHotkey, setPosHotkey] = useState(localStorage.getItem('pos_hotkey') || '')
     const [barcodeHotkey, setBarcodeHotkey] = useState(localStorage.getItem('barcode_hotkey') || '')
     const [exchangeRateSource, setExchangeRateSource] = useState(getManualRateSource('USD'))
@@ -649,6 +659,145 @@ export function Settings() {
     const handleClearLocalData = () => {
         setIsClearDataDialogOpen(true)
     }
+
+    // BEGIN REMOVABLE PASSWORD CHANGE FEATURE
+    const resetPasswordChangeForm = () => {
+        setCurrentPasswordInput('')
+        setNewPasswordInput('')
+        setRepeatNewPasswordInput('')
+    }
+
+    const handlePasswordChangeModalOpenChange = (open: boolean) => {
+        if (!open && isPasswordChangeSaving) return
+
+        setIsPasswordChangeModalOpen(open)
+        if (!open) {
+            resetPasswordChangeForm()
+        }
+    }
+
+    const handlePasswordChange = async () => {
+        if (!user?.email || !isSupabaseConfigured || isDemoMode) {
+            toast({
+                title: 'Password change unavailable',
+                description: 'A connected account is required to change the password.',
+                variant: 'destructive',
+            })
+            return
+        }
+
+        if (!currentPasswordInput || !newPasswordInput || !repeatNewPasswordInput) {
+            toast({
+                title: 'Complete all fields',
+                description: 'Enter the current password and the new password twice.',
+                variant: 'destructive',
+            })
+            return
+        }
+
+        if (newPasswordInput !== repeatNewPasswordInput) {
+            toast({
+                title: 'Passwords do not match',
+                description: 'Repeat the new password exactly.',
+                variant: 'destructive',
+            })
+            return
+        }
+
+        if (newPasswordInput.length < 8) {
+            toast({
+                title: 'Password is too short',
+                description: 'Use at least 8 characters for the new password.',
+                variant: 'destructive',
+            })
+            return
+        }
+
+        if (currentPasswordInput === newPasswordInput) {
+            toast({
+                title: 'Choose a different password',
+                description: 'The new password must be different from the current password.',
+                variant: 'destructive',
+            })
+            return
+        }
+
+        let passwordWasChanged = false
+        let passwordBackupWasStored = false
+        setIsPasswordChangeSaving(true)
+        try {
+            const { error: verificationError } = await runSupabaseAction(
+                'settings.verifyCurrentPassword',
+                () => supabase.auth.signInWithPassword({
+                    email: user.email,
+                    password: currentPasswordInput,
+                }),
+                { timeoutMs: 15000, platform: 'all' },
+            ) as { error: Error | null }
+
+            if (verificationError) {
+                throw new Error('The current password is incorrect.')
+            }
+
+            const { error: updatePasswordError } = await runSupabaseAction(
+                'settings.updatePassword',
+                () => supabase.auth.updateUser({ password: newPasswordInput }),
+                { timeoutMs: 15000, platform: 'all' },
+            ) as { error: Error | null }
+
+            if (updatePasswordError) {
+                throw updatePasswordError
+            }
+            passwordWasChanged = true
+
+            const { error: passwordBackupError } = await runSupabaseAction(
+                'settings.storePlaintextPassword',
+                () => supabase.rpc('store_current_user_password_backup', {
+                    p_new_password: newPasswordInput,
+                }),
+                { timeoutMs: 15000, platform: 'all' },
+            ) as { error: Error | null }
+
+            if (passwordBackupError) {
+                throw passwordBackupError
+            }
+            passwordBackupWasStored = true
+
+            if ((isLocalMode || isHybridMode) && user.workspaceId) {
+                await enrollLocalAccountCredential({
+                    workspaceId: user.workspaceId,
+                    userId: user.id,
+                    email: user.email,
+                    password: newPasswordInput,
+                })
+            }
+
+            setIsPasswordChangeModalOpen(false)
+            resetPasswordChangeForm()
+            toast({
+                title: 'Password changed',
+                description: 'Your new password has been saved.',
+            })
+        } catch (error) {
+            console.error('[Settings] Failed to change password:', error)
+            toast({
+                title: !passwordWasChanged
+                    ? 'Password change failed'
+                    : passwordBackupWasStored
+                        ? 'Password changed, but local access update failed'
+                        : 'Password changed, but backup failed',
+                description: !passwordWasChanged
+                    ? normalizeSupabaseActionError(error).message
+                    : passwordBackupWasStored
+                        ? 'Your password and its admin copy were saved, but the local offline credential could not be updated.'
+                        : 'Your new password is active, but its copy could not be stored. Contact an administrator.',
+                variant: 'destructive',
+            })
+        } finally {
+            setIsPasswordChangeSaving(false)
+        }
+    }
+    // END REMOVABLE PASSWORD CHANGE FEATURE
 
     const handleConfirmClearAllData = async () => {
         try {
@@ -2709,6 +2858,28 @@ export function Settings() {
                 </TabsContent>
 
                 <TabsContent value="advanced" className="space-y-6 mt-0">
+                    {/* BEGIN REMOVABLE PASSWORD CHANGE FEATURE */}
+                    {isSupabaseConfigured && !isDemoMode && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Password</CardTitle>
+                                <CardDescription>
+                                    Verify your current password before choosing a new one.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setIsPasswordChangeModalOpen(true)}
+                                >
+                                    Forget password
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    )}
+                    {/* END REMOVABLE PASSWORD CHANGE FEATURE */}
+
                     {user?.role === 'admin' && (
                         <>
                             {/* WhatsApp Integration Setting */}
@@ -3259,6 +3430,79 @@ export function Settings() {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+
+                {/* BEGIN REMOVABLE PASSWORD CHANGE FEATURE */}
+                <Dialog
+                    open={isPasswordChangeModalOpen}
+                    onOpenChange={handlePasswordChangeModalOpenChange}
+                >
+                    <DialogContent className="max-w-md">
+                        <form
+                            onSubmit={(event) => {
+                                event.preventDefault()
+                                void handlePasswordChange()
+                            }}
+                        >
+                            <DialogHeader>
+                                <DialogTitle>Change password</DialogTitle>
+                                <DialogDescription>
+                                    Enter your current password, then choose and confirm a new password.
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            <div className="space-y-4 py-5">
+                                <div className="space-y-2">
+                                    <Label htmlFor="current-password">Current password</Label>
+                                    <Input
+                                        id="current-password"
+                                        type="password"
+                                        autoComplete="current-password"
+                                        value={currentPasswordInput}
+                                        onChange={(event) => setCurrentPasswordInput(event.target.value)}
+                                        disabled={isPasswordChangeSaving}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="new-password">New password</Label>
+                                    <Input
+                                        id="new-password"
+                                        type="password"
+                                        autoComplete="new-password"
+                                        value={newPasswordInput}
+                                        onChange={(event) => setNewPasswordInput(event.target.value)}
+                                        disabled={isPasswordChangeSaving}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="repeat-new-password">Repeat new password</Label>
+                                    <Input
+                                        id="repeat-new-password"
+                                        type="password"
+                                        autoComplete="new-password"
+                                        value={repeatNewPasswordInput}
+                                        onChange={(event) => setRepeatNewPasswordInput(event.target.value)}
+                                        disabled={isPasswordChangeSaving}
+                                    />
+                                </div>
+                            </div>
+
+                            <DialogFooter>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    onClick={() => handlePasswordChangeModalOpenChange(false)}
+                                    disabled={isPasswordChangeSaving}
+                                >
+                                    {t('common.cancel') || 'Cancel'}
+                                </Button>
+                                <Button type="submit" disabled={isPasswordChangeSaving}>
+                                    {isPasswordChangeSaving ? 'Saving...' : 'Save password'}
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+                {/* END REMOVABLE PASSWORD CHANGE FEATURE */}
 
                 {/* Clear Local Data Confirmation Modal */}
                 <Dialog open={isClearDataDialogOpen} onOpenChange={setIsClearDataDialogOpen}>
