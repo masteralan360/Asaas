@@ -355,7 +355,8 @@ describe('Order Details custom print template', () => {
         const onHiddenFieldChange = vi.fn()
         const element = preview.createElement({
             [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideUnit]: 'true',
-            [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount]: 'true'
+            [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount]: 'true',
+            [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.labelOpacity]: '37'
         }, undefined, undefined, {
             editableComponents: true,
             componentPositions,
@@ -378,6 +379,11 @@ describe('Order Details custom print template', () => {
             expect.objectContaining({
                 key: 'tableRowCount',
                 value: '10',
+                type: 'number'
+            }),
+            expect.objectContaining({
+                key: customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.labelOpacity,
+                value: '100',
                 type: 'number'
             })
         ])
@@ -404,6 +410,9 @@ describe('Order Details custom print template', () => {
         expect(element.props.kind).toBe('sales')
         expect(element.props.hideUnit).toBe(true)
         expect(element.props.hideDiscount).toBe(true)
+        expect(element.props.templateFields).toEqual(expect.objectContaining({
+            [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.labelOpacity]: '37'
+        }))
         expect(element.props.componentPositions).toBe(componentPositions)
         expect(element.props.hiddenFields).toBe(hiddenFields)
         expect(element.props.editableComponents).toBe(true)
@@ -417,6 +426,7 @@ describe('Order Details custom print template', () => {
         expect(html).toContain('aria-label="Move ')
         expect(html).toContain('data-order-print-component="orderItems"')
         expect(html).toContain('data-order-print-component="totals"')
+        expect(html.match(/opacity:0\.37/g)).toHaveLength(6)
     })
 
     it('preserves movable component positions and hidden fields when reading a saved layout', () => {

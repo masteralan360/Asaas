@@ -70,7 +70,8 @@ export const PARTNER_DETAILS_TEMPLATE_FIELD_KEYS = {
 } as const
 export const ORDER_DETAILS_TEMPLATE_FIELD_KEYS = {
     hideUnit: 'hideUnit',
-    hideDiscount: 'hideDiscount'
+    hideDiscount: 'hideDiscount',
+    labelOpacity: 'labelOpacity'
 } as const
 
 export type CustomTemplateTarget = {
@@ -585,6 +586,12 @@ const ORDER_DETAILS_FIELDS = [
         key: 'tableRowCount',
         label: 'Table row count',
         value: '10',
+        type: 'number' as const
+    },
+    {
+        key: ORDER_DETAILS_TEMPLATE_FIELD_KEYS.labelOpacity,
+        label: 'Labels opacity',
+        value: '100',
         type: 'number' as const
     }
 ]
@@ -1113,6 +1120,7 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
                 qrValue={buildQrValue(options.workspaceId, effectiveId, options.features)}
                 hideUnit={data[ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideUnit] === 'true'}
                 hideDiscount={data[ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount] === 'true'}
+                templateFields={data}
                 counterpartyPhone={counterpartyPhone}
                 tableRowCount={Number(data.tableRowCount) || 10}
                 componentPositions={renderOptions?.componentPositions}

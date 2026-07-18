@@ -60,6 +60,7 @@ interface OrderDetailsPrintTemplateProps {
     qrValue?: string | null
     hideUnit?: boolean
     hideDiscount?: boolean
+    templateFields?: Record<string, string>
     counterpartyPhone?: string
     tableRowCount?: number
     componentPositions?: Record<string, CustomTemplateComponentPosition>
@@ -799,6 +800,7 @@ export function OrderDetailsPrintTemplate({
     qrValue,
     hideUnit,
     hideDiscount,
+    templateFields,
     counterpartyPhone,
     tableRowCount,
     componentPositions,
@@ -818,6 +820,8 @@ export function OrderDetailsPrintTemplate({
     const rowCount = tableRowCount || DEFAULT_ORDER_TABLE_ROW_COUNT
     const itemRows = buildOrderItemRows(order.items || [], rowCount)
     const showFreeBonus = hasOrderLineFreeBonus(order.items || [])
+    const labelOpacity = Math.min(100, Math.max(0, parseInt(templateFields?.labelOpacity || '100', 10)))
+    const labelOpacityStyle = { opacity: labelOpacity / 100 }
 
     const counterpartyLabel = isSales
         ? (t('orders.details.customer') || 'Customer')
@@ -853,7 +857,7 @@ export function OrderDetailsPrintTemplate({
                 workspaceName={workspaceName}
                 title={title}
                 subtitle={
-                    <span className="flex items-center justify-center gap-1">
+                    <span className="flex items-center justify-center gap-1" style={labelOpacityStyle}>
                         <span className="font-semibold">{order.orderNumber}</span>
                         <span>•</span>
                         <span>{formatDateTime(new Date().toISOString())}</span>
@@ -980,7 +984,7 @@ export function OrderDetailsPrintTemplate({
                     onPositionChange={onComponentPositionChange}
                 >
                 <HideablePrintFieldCard
-                    title={t('orders.details.created') || 'Created'}
+                    title={<span style={labelOpacityStyle}>{t('orders.details.created') || 'Created'}</span>}
                     className="border border-slate-300 rounded-md p-2"
                     titleClassName="text-slate-500 text-center font-normal mb-0"
                     hiddenFields={hiddenFields}
@@ -1003,7 +1007,7 @@ export function OrderDetailsPrintTemplate({
                     onPositionChange={onComponentPositionChange}
                 >
                 <HideablePrintFieldCard
-                    title={t('orders.details.expectedDelivery') || 'Expected Delivery'}
+                    title={<span style={labelOpacityStyle}>{t('orders.details.expectedDelivery') || 'Expected Delivery'}</span>}
                     className="border border-slate-300 rounded-md p-2"
                     titleClassName="text-slate-500 text-center font-normal mb-0"
                     hiddenFields={hiddenFields}
@@ -1049,7 +1053,9 @@ export function OrderDetailsPrintTemplate({
                     ) : itemRows.map((item, index) => (
                         <tr key={item?.id || `empty-${index}`} className="h-9">
                             <td className="border border-slate-300 p-2 font-medium">{item?.productName || '\u00A0'}</td>
-                            <td className="border border-slate-300 p-2 text-slate-600">{item?.productSku || '\u00A0'}</td>
+                            <td className="border border-slate-300 p-2 text-slate-600">
+                                {item?.productSku ? <span style={labelOpacityStyle}>{item.productSku}</span> : '\u00A0'}
+                            </td>
                             <td className="border border-slate-300 p-2 text-end">
                                 {item ? `${getOrderLinePaidQuantity(item)}${(!hideUnit && (item as any).unit) ? ` ${(item as any).unit}` : ''}` : '\u00A0'}
                             </td>
@@ -1076,18 +1082,18 @@ export function OrderDetailsPrintTemplate({
             <div className="flex justify-end mb-5">
                 <div className="w-60 text-xs space-y-1">
                     <div className="flex justify-between">
-                        <span className="text-slate-600">{t('orders.details.subtotal') || 'Subtotal'}</span>
+                        <span className="text-slate-600" style={labelOpacityStyle}>{t('orders.details.subtotal') || 'Subtotal'}</span>
                         <span className="font-semibold">{formatCurrency(order.subtotal, currency, iqdPreference)}</span>
                     </div>
                     {!hideDiscount && (
                         <div className="flex justify-between">
-                            <span className="text-slate-600">{t('orders.details.discount') || 'Discount'}</span>
+                            <span className="text-slate-600" style={labelOpacityStyle}>{t('orders.details.discount') || 'Discount'}</span>
                             <span className="font-semibold">{formatCurrency(order.discount, currency, iqdPreference)}</span>
                         </div>
                     )}
                     {isSales && salesOrder ? (
                         <div className="flex justify-between">
-                            <span className="text-slate-600">{t('orders.details.tax') || 'Tax'}</span>
+                            <span className="text-slate-600" style={labelOpacityStyle}>{t('orders.details.tax') || 'Tax'}</span>
                             <span className="font-semibold">{formatCurrency(salesOrder.tax, currency, iqdPreference)}</span>
                         </div>
                     ) : null}

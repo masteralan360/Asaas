@@ -267,7 +267,8 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         return {
             fields: [
                 { key: 'counterpartyName', label: counterpartyLabel, value: counterpartyName || '', type: 'text' },
-                { key: 'notes', label: t('common.notes') || 'Notes', value: order.notes || '', type: 'text' }
+                { key: 'notes', label: t('common.notes') || 'Notes', value: order.notes || '', type: 'text' },
+                { key: 'labelOpacity', label: t('orders.print.labelOpacity', { defaultValue: 'Labels opacity' }), value: '100', type: 'number' }
             ],
             createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => {
                 const updatedOrder = {
@@ -289,6 +290,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                         iqdPreference={features.iqd_display_preference}
                         logoUrl={features.logo_url}
                         qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+                        templateFields={data}
                     />
                 )
             },
