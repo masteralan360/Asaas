@@ -28,7 +28,7 @@ function getErrorMessage(error: unknown) {
 
 export function WorkspaceExtraDaysDialog() {
     const { t } = useTranslation()
-    const { isAuthenticated } = useAuth()
+    const { isAuthenticated, user } = useAuth()
     const {
         activeWorkspace,
         isDemoMode,
@@ -75,7 +75,7 @@ export function WorkspaceExtraDaysDialog() {
         }
     }, [isSubscriptionWorkspace, open])
 
-    if (!isAuthenticated || isDemoMode || !isSubscriptionWorkspace) return null
+    if (!isAuthenticated || isDemoMode || user?.role !== 'admin' || !isSubscriptionWorkspace) return null
 
     const handleConfirm = async () => {
         if (isSubmitting || pendingExtraDays) return
@@ -143,7 +143,9 @@ export function WorkspaceExtraDaysDialog() {
                                     </p>
                                     <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                                         {t('workspacePayments.extraDaysPendingDescription', {
-                                            count: pendingExtraDays.extraDays
+                                            count: pendingExtraDays.extraDays,
+                                            consumedDays: Math.floor(pendingExtraDays.consumedDurationSeconds / 86_400),
+                                            remainingDays: pendingExtraDays.remainingDurationSeconds / 86_400
                                         })}
                                     </p>
                                 </div>

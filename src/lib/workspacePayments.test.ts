@@ -191,7 +191,10 @@ describe('workspace payments', () => {
             id: 'extra-days-1',
             workspaceId: 'workspace-1',
             extraDays: 4,
-            grantedAt: '2026-07-18T12:00:00.000Z'
+            grantedAt: '2026-07-18T12:00:00.000Z',
+            temporaryPeriodStartsAt: '2026-07-18T12:00:00.000Z',
+            consumedDurationSeconds: 0,
+            remainingDurationSeconds: 345600
         })
         expect(normalizeWorkspaceSubscriptionExtraDays({
             id: 'extra-days-invalid',

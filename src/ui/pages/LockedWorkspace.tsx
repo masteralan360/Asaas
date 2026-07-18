@@ -14,7 +14,7 @@ import {
 
 export function LockedWorkspace() {
     const { t } = useTranslation()
-    const { signOut } = useAuth()
+    const { signOut, user } = useAuth()
     const { features, isLocked, isLoading, paymentSummary, isPaymentSummaryLoading } = useWorkspace()
     const [, setLocation] = useLocation()
 
@@ -27,8 +27,9 @@ export function LockedWorkspace() {
     const paymentAlertKind = getWorkspacePaymentAlertKind(paymentSummary)
     const pendingTransaction = paymentSummary?.pendingTransaction ?? null
     const showPaymentAction = Boolean(paymentAlertKind || isExpired || pendingTransaction)
+    const canRenewSubscription = user?.role === 'admin' && showPaymentAction
     const canAddExtraDays = Boolean(
-        showPaymentAction
+        canRenewSubscription
         && paymentSummary?.configuration
         && !paymentSummary.configuration.usageEnabled
     )
@@ -98,7 +99,7 @@ export function LockedWorkspace() {
                 {/* Lock Icon */}
                 <div className="mx-auto w-24 h-24 rounded-full bg-destructive/10 flex items-center justify-center relative dark:bg-rose-500/15">
                     <LockIcon className={`w-12 h-12 text-destructive dark:text-rose-400 ${showPaymentAction ? 'animate-pulse' : ''}`} />
-                    {showPaymentAction && (
+                    {canRenewSubscription && (
                         <div className="absolute -top-1 -right-1">
                             <AlertCircle className="w-6 h-6 text-destructive fill-background dark:text-rose-400 dark:fill-slate-950" />
                         </div>
@@ -122,7 +123,7 @@ export function LockedWorkspace() {
 
                 {/* Buttons Container */}
                 <div className="flex flex-col gap-3 items-center">
-                    {showPaymentAction && (
+                    {canRenewSubscription && (
                         <>
                             <Button
                                 allowViewer={true}
@@ -157,8 +158,8 @@ export function LockedWorkspace() {
                         allowViewer={true}
                         size="lg"
                         onClick={handleContactAdmin}
-                        variant={showPaymentAction ? 'outline' : 'default'}
-                        className={`gap-2 w-full max-w-[240px] ${showPaymentAction
+                        variant={canRenewSubscription ? 'outline' : 'default'}
+                        className={`gap-2 w-full max-w-[240px] ${canRenewSubscription
                             ? 'dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:hover:bg-slate-900'
                             : ''}`}
                     >

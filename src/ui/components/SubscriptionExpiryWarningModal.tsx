@@ -11,6 +11,7 @@ import {
     DialogTitle
 } from '@/ui/components/dialog'
 import { useWorkspace } from '@/workspace'
+import { useAuth } from '@/auth'
 import { useSubscriptionExpiryWarning } from '@/hooks/useSubscriptionExpiryWarning'
 import { getSubscriptionExpiryWarningSeenKey } from '@/lib/subscriptionExpiryWarning'
 import { formatDate } from '@/lib/utils'
@@ -23,6 +24,7 @@ import {
 
 export function SubscriptionExpiryWarningModal() {
     const { t } = useTranslation()
+    const { user } = useAuth()
     const { activeWorkspace, features, isDemoMode, isLoading, paymentSummary } = useWorkspace()
     const shouldWarnForSubscription = shouldApplyWorkspaceSubscriptionExpiry({
         hasUsageLimits: features.has_usage_limits,
@@ -38,8 +40,10 @@ export function SubscriptionExpiryWarningModal() {
         isDemoMode || !shouldWarnForSubscription ? null : expiryDateToCheck
     )
     const [open, setOpen] = useState(false)
+    const canRenewSubscription = user?.role === 'admin'
     const canAddExtraDays = Boolean(
-        paymentSummary?.configuration
+        canRenewSubscription
+        && paymentSummary?.configuration
         && !paymentSummary.configuration.usageEnabled
     )
     const hasPendingExtraDays = Boolean(paymentSummary?.pendingExtraDays)
@@ -145,25 +149,27 @@ export function SubscriptionExpiryWarningModal() {
                             defaultValue: 'Got it'
                         })}
                     </Button>
-                    <div className="flex flex-col gap-2">
-                        <Button allowViewer={true} onClick={renew}>
-                            {t('workspacePayments.renewSubscription')}
-                        </Button>
-                        {canAddExtraDays && (
-                            <Button
-                                allowViewer={true}
-                                variant="outline"
-                                disabled={hasPendingExtraDays}
-                                onClick={() => {
-                                    dismiss()
-                                    openWorkspaceExtraDaysDialog()
-                                }}
-                            >
-                                <CalendarPlus className="h-4 w-4" />
-                                {t('workspacePayments.addExtraDays')}
+                    {canRenewSubscription && (
+                        <div className="flex flex-col gap-2">
+                            <Button allowViewer={true} onClick={renew}>
+                                {t('workspacePayments.renewSubscription')}
                             </Button>
-                        )}
-                    </div>
+                            {canAddExtraDays && (
+                                <Button
+                                    allowViewer={true}
+                                    variant="outline"
+                                    disabled={hasPendingExtraDays}
+                                    onClick={() => {
+                                        dismiss()
+                                        openWorkspaceExtraDaysDialog()
+                                    }}
+                                >
+                                    <CalendarPlus className="h-4 w-4" />
+                                    {t('workspacePayments.addExtraDays')}
+                                </Button>
+                            )}
+                        </div>
+                    )}
                 </DialogFooter>
             </DialogContent>
         </Dialog>

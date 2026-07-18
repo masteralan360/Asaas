@@ -793,9 +793,15 @@ SELECT set_config(
 );
 SELECT throws_ok(
   $$SELECT public.submit_workspace_payment('qicard')$$,
-  '23505',
-  'workspace_payment_already_pending_for_workspace',
-  'another workspace user cannot create a competing pending transaction'
+  '42501',
+  'workspace_payment_workspace_admin_required',
+  'a non-admin workspace user cannot submit a renewal'
+);
+SELECT throws_ok(
+  $$SELECT public.grant_workspace_subscription_extra_days(1)$$,
+  '42501',
+  'workspace_subscription_extra_days_workspace_admin_required',
+  'a non-admin workspace user cannot add extra days'
 );
 RESET ROLE;
 
@@ -969,9 +975,37 @@ SELECT set_config(
   '{"sub":"92000000-0000-0000-0000-000000000003","role":"authenticated"}',
   true
 );
+SELECT set_config('atlas.trusted_workspace_lock_update', 'off', true);
+SELECT lives_ok(
+  $$SELECT public.grant_workspace_subscription_extra_days(5)$$,
+  'the trusted grant RPC can update an expired subscription with a five-day temporary extension'
+);
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+-- Model approval exactly two days into the temporary period. The workspace
+-- expiry is also moved to the correct remaining three-day boundary, matching
+-- what would have happened had the grant actually been made two days earlier.
+UPDATE billing.workspace_subscription_extra_days
+SET
+  temporary_period_starts_at = now() - INTERVAL '2 days',
+  consumed_duration_seconds = 0,
+  last_consumption_recorded_at = NULL
+WHERE workspace_id = '91000000-0000-0000-0000-000000000003';
+
+UPDATE public.workspaces
+SET subscription_expires_at = now() + INTERVAL '3 days'
+WHERE id = '91000000-0000-0000-0000-000000000003';
+
+SET LOCAL ROLE authenticated;
+SELECT set_config(
+  'request.jwt.claims',
+  '{"sub":"92000000-0000-0000-0000-000000000003","role":"authenticated"}',
+  true
+);
 SELECT lives_ok(
   $$SELECT public.submit_workspace_payment('fib')$$,
-  'an expired workspace can submit a renewal payment'
+  'a workspace using temporary days can submit a renewal payment'
 );
 RESET ROLE;
 
@@ -991,14 +1025,35 @@ SELECT lives_ok(
   'an administrator can approve an expired subscription renewal'
 );
 
-SELECT ok(
+SELECT is(
   (
-    SELECT subscription_expires_at > now() + INTERVAL '27 days'
-      AND subscription_expires_at < now() + INTERVAL '33 days'
+    SELECT subscription_expires_at
     FROM public.workspaces
     WHERE id = '91000000-0000-0000-0000-000000000003'
   ),
-  'an expired subscription is renewed from the approval date'
+  now() + INTERVAL '1 month',
+  'approval after two temporary days deducts only the remaining three-day duration'
+);
+
+SELECT results_eq(
+  $$
+    SELECT day_number
+    FROM billing.workspace_subscription_extra_day_consumption
+    WHERE workspace_id = '91000000-0000-0000-0000-000000000003'
+    ORDER BY day_number
+  $$,
+  $$VALUES (1::smallint), (2::smallint)$$,
+  'each completed temporary day has an immutable consumption audit entry'
+);
+
+SELECT is(
+  (
+    SELECT count(*)
+    FROM billing.workspace_subscription_extra_days
+    WHERE workspace_id = '91000000-0000-0000-0000-000000000003'
+  ),
+  0::bigint,
+  'the pending temporary-extension row is removed only after its fair settlement succeeds'
 );
 
 SELECT ok(

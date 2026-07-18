@@ -265,7 +265,7 @@ function ProviderButton({
 
 export function WorkspacePaymentController() {
     const { t, i18n } = useTranslation()
-    const { isAuthenticated } = useAuth()
+    const { isAuthenticated, user } = useAuth()
     const {
         activeWorkspace,
         features,
@@ -419,7 +419,7 @@ export function WorkspacePaymentController() {
             })
     }, [])
 
-    if (!isAuthenticated || isDemoMode) return null
+    if (!isAuthenticated || isDemoMode || user?.role !== 'admin') return null
 
     const locale = i18n.language || 'en'
     const workspacePaymentCurrencyLabel = getWorkspacePaymentCurrencyLabel(features.iqd_display_preference)

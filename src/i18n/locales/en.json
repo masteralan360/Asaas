@@ -78,12 +78,12 @@
     "extraDaysCount_other": "{{count}} days",
     "extraDaysSelected_one": "Selected: {{count}} extra day",
     "extraDaysSelected_other": "Selected: {{count}} extra days",
-    "extraDaysDeductionNotice_one": "The selected {{count}} extra day will be added now and deducted from the next approved subscription period.",
-    "extraDaysDeductionNotice_other": "The selected {{count}} extra days will be added now and deducted from the next approved subscription period.",
+    "extraDaysDeductionNotice_one": "The selected {{count}} temporary day will be added now. Atlas tracks its use continuously and deducts only any unused time from the next approved subscription period.",
+    "extraDaysDeductionNotice_other": "The selected {{count}} temporary days will be added now. Atlas tracks their use continuously and deducts only any unused time from the next approved subscription period.",
     "confirmExtraDays": "Add {{days}}",
     "extraDaysAlreadyPending": "Extra days already added",
-    "extraDaysPendingDescription_one": "{{count}} extra day is active now and will be deducted from the next approved subscription period.",
-    "extraDaysPendingDescription_other": "{{count}} extra days are active now and will be deducted from the next approved subscription period."
+    "extraDaysPendingDescription_one": "{{count}} temporary day is active. Its use is tracked continuously, and only the unused remainder will be deducted when the next subscription is approved.",
+    "extraDaysPendingDescription_other": "{{count}} temporary days are active. Their use is tracked continuously, and only the unused remainder will be deducted when the next subscription is approved."
   },
   "offlineLease": {
     "title": "Connect to the internet to continue",

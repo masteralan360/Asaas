@@ -55,6 +55,9 @@ export interface WorkspaceSubscriptionExtraDays {
     workspaceId: string
     extraDays: number
     grantedAt: string
+    temporaryPeriodStartsAt: string
+    consumedDurationSeconds: number
+    remainingDurationSeconds: number
 }
 
 export interface WorkspacePaymentSummary {
@@ -240,12 +243,49 @@ export function normalizeWorkspaceSubscriptionExtraDays(value: unknown): Workspa
             ? Number(value.extra_days)
             : Number.NaN
     const grantedAt = getNullableText(value.granted_at)
+    const temporaryPeriodStartsAt = getNullableText(value.temporary_period_starts_at) ?? grantedAt
+    const maximumDurationSeconds = extraDays * 24 * 60 * 60
+    const rawConsumedDurationSeconds = typeof value.consumed_duration_seconds === 'number'
+        ? value.consumed_duration_seconds
+        : typeof value.consumed_duration_seconds === 'string'
+            ? Number(value.consumed_duration_seconds)
+            : 0
+    const consumedDurationSeconds = Number.isInteger(rawConsumedDurationSeconds)
+        ? rawConsumedDurationSeconds
+        : Number.NaN
+    const rawRemainingDurationSeconds = typeof value.remaining_duration_seconds === 'number'
+        ? value.remaining_duration_seconds
+        : typeof value.remaining_duration_seconds === 'string'
+            ? Number(value.remaining_duration_seconds)
+            : maximumDurationSeconds - consumedDurationSeconds
+    const remainingDurationSeconds = Number.isInteger(rawRemainingDurationSeconds)
+        ? rawRemainingDurationSeconds
+        : Number.NaN
 
-    if (!id || !workspaceId || !Number.isInteger(extraDays) || extraDays < 1 || extraDays > 6 || !grantedAt) {
+    if (
+        !id
+        || !workspaceId
+        || !Number.isInteger(extraDays)
+        || extraDays < 1
+        || extraDays > 6
+        || !grantedAt
+        || !temporaryPeriodStartsAt
+        || consumedDurationSeconds < 0
+        || remainingDurationSeconds < 0
+        || consumedDurationSeconds + remainingDurationSeconds !== maximumDurationSeconds
+    ) {
         return null
     }
 
-    return { id, workspaceId, extraDays, grantedAt }
+    return {
+        id,
+        workspaceId,
+        extraDays,
+        grantedAt,
+        temporaryPeriodStartsAt,
+        consumedDurationSeconds,
+        remainingDurationSeconds
+    }
 }
 
 export function normalizeWorkspacePaymentSummary(value: unknown): WorkspacePaymentSummary {
