@@ -4,13 +4,15 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { useWorkspace } from '@/workspace'
 import { ManualSyncModal } from './ManualSyncModal'
 import { cn } from '@/lib/utils'
-import { CloudOff, Check, AlertCircle } from 'lucide-react'
+import { CloudOff, Check, AlertCircle, Loader2 } from 'lucide-react'
 import { useTheme } from './theme-provider'
+import { useSyncProgress } from '@/sync/syncProgress'
 
 export function SyncStatusIndicator() {
     const pendingCount = usePendingSyncCount()
     const isOnline = useNetworkStatus()
     const { isLocalMode } = useWorkspace()
+    const syncProgress = useSyncProgress()
     const [isModalOpen, setIsModalOpen] = useState(false)
     const { style } = useTheme()
 
@@ -30,6 +32,22 @@ export function SyncStatusIndicator() {
             color: 'text-sky-600',
             bgColor: 'bg-sky-500/10',
             dotColor: 'bg-sky-500',
+            clickable: false
+        }
+    } else if (syncProgress.isSyncing) {
+        const isPushingChanges = syncProgress.phase === 'pushing' && syncProgress.total > 0
+        const isPullingUpdates = syncProgress.phase === 'pulling' && syncProgress.total > 0
+
+        status = {
+            icon: Loader2,
+            label: isPushingChanges
+                ? `Syncing ${syncProgress.completed}/${syncProgress.total}`
+                : isPullingUpdates
+                    ? `Checking ${syncProgress.completed}/${syncProgress.total}`
+                    : 'Syncing...',
+            color: 'text-primary',
+            bgColor: 'bg-primary/10',
+            dotColor: 'bg-primary',
             clickable: false
         }
     } else if (!isOnline) {
@@ -71,7 +89,7 @@ export function SyncStatusIndicator() {
                     style === 'neo-orange' ? "rounded-none" : "rounded-full",
                     dotColor
                 )} />
-                <Icon className={cn('w-4 h-4', style === 'neo-orange' ? 'text-current' : color)} />
+                <Icon className={cn('w-4 h-4', syncProgress.isSyncing && 'animate-spin', style === 'neo-orange' ? 'text-current' : color)} />
                 <span className={cn(style === 'neo-orange' ? 'text-current' : color)}>{label}</span>
             </button>
 

@@ -14,6 +14,7 @@ import { useToast } from '@/ui/components/use-toast'
 import { usePendingSyncCount, clearOfflineMutations } from '@/local-db/hooks'
 import { useTranslation } from 'react-i18next'
 import { runManagedFullSync } from '@/sync/syncCoordinator'
+import { LAST_SYNC_KEY } from '@/sync/constants'
 import { connectionManager } from '@/lib/connectionManager'
 
 interface ManualSyncModalProps {
@@ -52,9 +53,14 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
         setErrorMessage(null)
 
         try {
-            const result = await runManagedFullSync(user.id, user.workspaceId, null)
+            const result = await runManagedFullSync(
+                user.id,
+                user.workspaceId,
+                localStorage.getItem(LAST_SYNC_KEY)
+            )
 
             if (result.success) {
+                localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString())
                 setStatus('success')
                 toast({
                     title: t('sync.toastSyncComplete'),

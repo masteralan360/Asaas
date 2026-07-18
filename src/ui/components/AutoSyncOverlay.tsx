@@ -12,6 +12,7 @@ import { useToast } from '@/ui/components/use-toast'
 import { LAST_SYNC_KEY } from '@/sync/constants'
 import { isRecoverablePriceBookMutation } from '@/sync/syncEngine'
 import { runManagedFullSync } from '@/sync/syncCoordinator'
+import { useSyncProgress } from '@/sync/syncProgress'
 
 const MIN_OVERLAY_MS = 800
 
@@ -38,6 +39,7 @@ export function AutoSyncOverlay() {
     const { toast } = useToast()
     const { user, isAuthenticated } = useAuth()
     const { isLocalMode } = useWorkspace()
+    const syncProgress = useSyncProgress()
     const recoverablePendingCount = useLiveQuery(countRecoverableMutations, []) ?? 0
     const pendingCount = isLocalMode ? 0 : recoverablePendingCount
 
@@ -170,7 +172,19 @@ export function AutoSyncOverlay() {
         }
     }, [isAuthenticated, isLocalMode, pendingCount, runAutoSync, user])
 
-    const displayCount = overlayPendingCount > 0 ? overlayPendingCount : pendingCount
+    const displayCount = syncProgress.isSyncing && syncProgress.phase === 'pushing' && syncProgress.total > 0
+        ? syncProgress.total
+        : overlayPendingCount > 0 ? overlayPendingCount : pendingCount
+    const isPushingChanges = syncProgress.isSyncing && syncProgress.phase === 'pushing' && syncProgress.total > 0
+    const isPullingUpdates = syncProgress.isSyncing && syncProgress.phase === 'pulling'
+    const progressPercent = syncProgress.total > 0
+        ? Math.min(100, Math.round((syncProgress.completed / syncProgress.total) * 100))
+        : 0
+    const progressLabel = isPushingChanges
+        ? `${syncProgress.completed}/${syncProgress.total} changes synced`
+        : isPullingUpdates
+            ? `Checking data: ${syncProgress.completed}/${syncProgress.total}`
+            : t('sync.syncing')
 
     if (!isOverlayVisible || isLocalMode) {
         return null
@@ -195,7 +209,28 @@ export function AutoSyncOverlay() {
 
                     <div className="flex items-center gap-3 rounded-2xl bg-muted/60 px-4 py-3 text-sm font-medium text-foreground">
                         <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                        <span>{t('sync.syncing')}</span>
+                        <span>{progressLabel}</span>
+                    </div>
+
+                    <div className="w-full space-y-2" aria-live="polite">
+                        <div
+                            className="h-2 w-full overflow-hidden rounded-full bg-muted"
+                            role="progressbar"
+                            aria-label="Sync progress"
+                            aria-valuemin={0}
+                            aria-valuemax={syncProgress.total || undefined}
+                            aria-valuenow={syncProgress.total > 0 ? syncProgress.completed : undefined}
+                        >
+                            <div
+                                className="h-full rounded-full bg-primary transition-all duration-300"
+                                style={{ width: `${progressPercent}%` }}
+                            />
+                        </div>
+                        {syncProgress.total > 0 && (
+                            <p className="text-xs font-medium text-muted-foreground">
+                                {progressPercent}% complete
+                            </p>
+                        )}
                     </div>
 
                     <p className="text-xs text-muted-foreground">

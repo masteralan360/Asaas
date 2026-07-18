@@ -6,6 +6,11 @@ import { syncProductBarcodeCachesForWorkspace } from "@/local-db/productBarcodes
 import { rekeyPriceBookItemReferences } from "@/local-db/priceBookReferences";
 import { runSupabaseAction } from "@/lib/supabaseRequest";
 import { getSupabaseClientForTable } from "@/lib/supabaseSchema";
+import {
+  finishSyncProgress,
+  startSyncProgress,
+  updateSyncProgress,
+} from "@/sync/syncProgress";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 // import { getPendingItems, removeFromQueue, incrementRetry } from './syncQueue'
 
@@ -20,6 +25,7 @@ export interface SyncResult {
 
 const PULL_PAGE_SIZE = 1000;
 const SALE_ITEM_PARENT_BATCH_SIZE = 250;
+const PULL_FETCH_CONCURRENCY = 6;
 
 const SYNC_PULL_TABLES = [
   "products",
@@ -409,6 +415,7 @@ export function shouldApplyRemoteItem(
 // Process offline mutation queue
 export async function processMutationQueue(
   _userId: string,
+  onProgress?: (completed: number, total: number) => void,
 ): Promise<{ success: number; failed: number; error?: string }> {
   if (!isSupabaseConfigured) {
     return { success: 0, failed: 1, error: "Supabase not configured" };
@@ -436,6 +443,14 @@ export async function processMutationQueue(
       String(left.createdAt).localeCompare(String(right.createdAt)),
     );
 
+  let completedCount = 0;
+  const reportCompleted = () => {
+    completedCount++;
+    onProgress?.(completedCount, mutations.length);
+  };
+
+  onProgress?.(0, mutations.length);
+
   console.log(
     `[Sync] processMutationQueue: Found ${mutations.length} pending mutations`,
   );
@@ -449,6 +464,7 @@ export async function processMutationQueue(
     if (mutation.entityType === "price_book_items") {
       const referencedPriceBookId = mutation.payload.priceBookId ?? mutation.payload.price_book_id;
       if (typeof referencedPriceBookId === "string" && failedPriceBookIds.has(referencedPriceBookId)) {
+        reportCompleted();
         continue;
       }
     }
@@ -810,6 +826,7 @@ export async function processMutationQueue(
       }
 
       successCount++;
+      reportCompleted();
     } catch (err: any) {
       console.error(`[Sync] Failed mutation ${mutation.id}:`, err);
       const errorMessage = err.message || "Unknown error";
@@ -823,9 +840,11 @@ export async function processMutationQueue(
         }
         failedCount++;
         lastError = errorMessage;
+        reportCompleted();
         continue;
       }
       // Stop processing on first error to maintain order integrity
+      reportCompleted();
       return { success: successCount, failed: failedCount + 1, error: errorMessage };
     }
   }
@@ -852,6 +871,7 @@ export async function pushChanges(
 export async function pullChanges(
   workspaceId: string,
   lastSyncTime: string | null,
+  onProgress?: (completed: number, total: number) => void,
 ): Promise<{ pulled: number; errors: string[] }> {
   if (isLocalWorkspaceMode(workspaceId)) {
     return { pulled: 0, errors: [] };
@@ -870,38 +890,69 @@ export async function pullChanges(
   let totalPulled = 0;
   const errors: string[] = [];
 
-  for (const table of SYNC_PULL_TABLES) {
-    try {
-      const affectedInventoryProducts = new Set<string>();
-      // console.log(`[Sync] pullChanges: Fetching ${table}...`)
-      const data = await fetchPullRows(table, workspaceId, since);
+  for (
+    let batchStart = 0;
+    batchStart < SYNC_PULL_TABLES.length;
+    batchStart += PULL_FETCH_CONCURRENCY
+  ) {
+    const tableBatch = SYNC_PULL_TABLES.slice(
+      batchStart,
+      batchStart + PULL_FETCH_CONCURRENCY,
+    );
+    const fetchedRows = await Promise.all(
+      tableBatch.map(async (table, batchIndex) => {
+        try {
+          return {
+            index: batchStart + batchIndex,
+            table,
+            data: await fetchPullRows(table, workspaceId, since),
+            error: null,
+          };
+        } catch (error) {
+          return {
+            index: batchStart + batchIndex,
+            table,
+            data: null,
+            error,
+          };
+        }
+      }),
+    );
 
-      if (data && data.length > 0) {
-        console.log(
-          `[Sync] pullChanges: Processing ${data.length} items for ${table}`,
-        );
-        const dbTable = (db as any)[table];
+    for (const { index, table, data, error } of fetchedRows) {
+      try {
+        if (error) {
+          throw error;
+        }
 
-        for (const remoteItem of data) {
-          const localItem = await dbTable.get(remoteItem.id);
-          const remoteData = toCamelCase(remoteItem);
+        const affectedInventoryProducts = new Set<string>();
 
-          if (table === "price_book_items") {
-            const priceBookId = (remoteData as { priceBookId?: unknown }).priceBookId;
-            const productId = (remoteData as { productId?: unknown }).productId;
-            if (typeof priceBookId === "string" && typeof productId === "string") {
-              const naturalKeyConflict = await db.price_book_items
-                .where("[priceBookId+productId]")
-                .equals([priceBookId, productId])
-                .first();
-              if (naturalKeyConflict && naturalKeyConflict.id !== remoteItem.id) {
-                if (naturalKeyConflict.syncStatus === "pending") {
-                  continue;
+        if (data && data.length > 0) {
+          console.log(
+            `[Sync] pullChanges: Processing ${data.length} items for ${table}`,
+          );
+          const dbTable = (db as any)[table];
+
+          for (const remoteItem of data) {
+            const localItem = await dbTable.get(remoteItem.id);
+            const remoteData = toCamelCase(remoteItem);
+
+            if (table === "price_book_items") {
+              const priceBookId = (remoteData as { priceBookId?: unknown }).priceBookId;
+              const productId = (remoteData as { productId?: unknown }).productId;
+              if (typeof priceBookId === "string" && typeof productId === "string") {
+                const naturalKeyConflict = await db.price_book_items
+                  .where("[priceBookId+productId]")
+                  .equals([priceBookId, productId])
+                  .first();
+                if (naturalKeyConflict && naturalKeyConflict.id !== remoteItem.id) {
+                  if (naturalKeyConflict.syncStatus === "pending") {
+                    continue;
+                  }
+                  await db.price_book_items.delete(naturalKeyConflict.id);
                 }
-                await db.price_book_items.delete(naturalKeyConflict.id);
               }
             }
-          }
 
           // Version control: Last Write Wins based on updated_at
           // If local has newer version/updatedAt pending sync, don't overwrite?
@@ -917,60 +968,64 @@ export async function pullChanges(
           // When we push, we will re-apply the mutation to server and then server will send back the final state.
           // So it is SAFE to overwrite Entity table because `offline_mutations` is the intent source of truth for "My Pending Changes".
 
-          if (shouldApplyRemoteItem(table, localItem, remoteData)) {
-            const localThermalPrinting =
-              table === "workspaces"
-                ? (localItem as any)?.thermal_printing
-                : undefined;
-            const workspaceOverrides =
-              table === "workspaces" &&
-              typeof localThermalPrinting === "boolean"
-                ? { thermal_printing: localThermalPrinting }
-                : {};
+            if (shouldApplyRemoteItem(table, localItem, remoteData)) {
+              const localThermalPrinting =
+                table === "workspaces"
+                  ? (localItem as any)?.thermal_printing
+                  : undefined;
+              const workspaceOverrides =
+                table === "workspaces" &&
+                typeof localThermalPrinting === "boolean"
+                  ? { thermal_printing: localThermalPrinting }
+                  : {};
 
-            await dbTable.put({
-              ...remoteData,
-              ...workspaceOverrides,
-              syncStatus: "synced",
-              lastSyncedAt: new Date().toISOString(),
-            });
-            if (
-              table === "inventory" &&
-              typeof (remoteData as any).productId === "string"
-            ) {
-              affectedInventoryProducts.add((remoteData as any).productId);
+              await dbTable.put({
+                ...remoteData,
+                ...workspaceOverrides,
+                syncStatus: "synced",
+                lastSyncedAt: new Date().toISOString(),
+              });
+              if (
+                table === "inventory" &&
+                typeof (remoteData as any).productId === "string"
+              ) {
+                affectedInventoryProducts.add((remoteData as any).productId);
+              }
+              totalPulled++;
             }
-            totalPulled++;
+          }
+
+          if (table === "inventory" && affectedInventoryProducts.size > 0) {
+            const { evaluateReorderTransferRulesForProduct } =
+              await import("@/local-db/reorderTransferRules");
+            await Promise.all(
+              Array.from(affectedInventoryProducts).map((productId) =>
+                syncProductStockSnapshot(
+                  productId,
+                  new Date().toISOString(),
+                  "remote",
+                ).then(() =>
+                  evaluateReorderTransferRulesForProduct(workspaceId, productId),
+                ),
+              ),
+            );
+          }
+
+          if (table === "products" || table === "product_barcodes") {
+            await syncProductBarcodeCachesForWorkspace(workspaceId);
           }
         }
 
-        if (table === "inventory" && affectedInventoryProducts.size > 0) {
-          const { evaluateReorderTransferRulesForProduct } =
-            await import("@/local-db/reorderTransferRules");
-          await Promise.all(
-            Array.from(affectedInventoryProducts).map((productId) =>
-              syncProductStockSnapshot(
-                productId,
-                new Date().toISOString(),
-                "remote",
-              ).then(() =>
-                evaluateReorderTransferRulesForProduct(workspaceId, productId),
-              ),
-            ),
-          );
-        }
-
-        if (table === "products" || table === "product_barcodes") {
-          await syncProductBarcodeCachesForWorkspace(workspaceId);
-        }
+      } catch (err: any) {
+        const message = err?.message || String(err) || "Unknown error";
+        errors.push(`${table}: ${message}`);
+        console.error(
+          `[Sync] pullChanges: Critical error fetching ${table}:`,
+          message,
+        );
       }
-    } catch (err: any) {
-      const message = err?.message || String(err) || "Unknown error";
-      errors.push(`${table}: ${message}`);
-      console.error(
-        `[Sync] pullChanges: Critical error fetching ${table}:`,
-        message,
-      );
+
+      onProgress?.(index + 1, SYNC_PULL_TABLES.length);
     }
   }
 
@@ -999,20 +1054,34 @@ export async function fullSync(
     `[Sync] fullSync START for User ${userId}, Workspace ${workspaceId}`,
   );
 
-  // 1. Process Offline Mutations
-  const { success, failed, error } = await processMutationQueue(userId);
+  startSyncProgress();
 
-  // 2. Pull Changes (Force pull to ensure consistency)
-  const { pulled, errors: pullErrors } = await pullChanges(workspaceId, lastSyncTime);
-  const errors = [
-    ...(error ? [error] : []),
-    ...pullErrors,
-  ];
+  try {
+    // 1. Process Offline Mutations
+    const { success, failed, error } = await processMutationQueue(
+      userId,
+      (completed, total) => updateSyncProgress("pushing", completed, total),
+    );
 
-  return {
-    success: failed === 0 && pullErrors.length === 0,
-    pushed: success,
-    pulled,
-    errors,
-  };
+    // 2. Pull Changes (Force pull to ensure consistency)
+    updateSyncProgress("pulling", 0, SYNC_PULL_TABLES.length);
+    const { pulled, errors: pullErrors } = await pullChanges(
+      workspaceId,
+      lastSyncTime,
+      (completed, total) => updateSyncProgress("pulling", completed, total),
+    );
+    const errors = [
+      ...(error ? [error] : []),
+      ...pullErrors,
+    ];
+
+    return {
+      success: failed === 0 && pullErrors.length === 0,
+      pushed: success,
+      pulled,
+      errors,
+    };
+  } finally {
+    finishSyncProgress();
+  }
 }
