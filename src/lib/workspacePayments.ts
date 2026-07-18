@@ -5,6 +5,7 @@ import { WORKSPACE_PAYMENT_HOLD_DURATION_MS } from '@/lib/pressAndHold'
 export const WORKSPACE_PAYMENT_CURRENCY = 'IQD' as const
 export const OPEN_WORKSPACE_PAYMENT_DIALOG_EVENT = 'open-workspace-payment-dialog'
 export const OPEN_WORKSPACE_PAYMENT_STATUS_DIALOG_EVENT = 'open-workspace-payment-status-dialog'
+export const OPEN_WORKSPACE_EXTRA_DAYS_DIALOG_EVENT = 'open-workspace-extra-days-dialog'
 export { WORKSPACE_PAYMENT_HOLD_DURATION_MS }
 
 export type WorkspacePaymentProvider = 'fib' | 'qicard' | 'free'
@@ -49,6 +50,13 @@ export interface WorkspacePaymentEligibility {
     paymentEnabled: boolean
 }
 
+export interface WorkspaceSubscriptionExtraDays {
+    id: string
+    workspaceId: string
+    extraDays: number
+    grantedAt: string
+}
+
 export interface WorkspacePaymentSummary {
     workspaceId: string
     billingWorkspaceId: string
@@ -57,6 +65,7 @@ export interface WorkspacePaymentSummary {
     eligibility: WorkspacePaymentEligibility
     hasWorkspacePendingTransaction: boolean
     pendingTransaction: WorkspacePaymentTransaction | null
+    pendingExtraDays: WorkspaceSubscriptionExtraDays | null
     transactions: WorkspacePaymentTransaction[]
 }
 
@@ -75,6 +84,7 @@ const SUPPORTED_PAYMENT_TYPES = new Set<Exclude<WorkspacePaymentType, 'unknown'>
 ])
 
 let submitPaymentInFlight: Promise<WorkspacePaymentTransaction> | null = null
+let grantExtraDaysInFlight: Promise<WorkspaceSubscriptionExtraDays> | null = null
 
 function isRecord(value: unknown): value is UnknownRecord {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -219,6 +229,25 @@ export function normalizeWorkspacePaymentTransaction(value: unknown): WorkspaceP
     }
 }
 
+export function normalizeWorkspaceSubscriptionExtraDays(value: unknown): WorkspaceSubscriptionExtraDays | null {
+    if (!isRecord(value)) return null
+
+    const id = getText(value.id)
+    const workspaceId = getText(value.workspace_id)
+    const extraDays = typeof value.extra_days === 'number'
+        ? value.extra_days
+        : typeof value.extra_days === 'string'
+            ? Number(value.extra_days)
+            : Number.NaN
+    const grantedAt = getNullableText(value.granted_at)
+
+    if (!id || !workspaceId || !Number.isInteger(extraDays) || extraDays < 1 || extraDays > 6 || !grantedAt) {
+        return null
+    }
+
+    return { id, workspaceId, extraDays, grantedAt }
+}
+
 export function normalizeWorkspacePaymentSummary(value: unknown): WorkspacePaymentSummary {
     const unwrapped = unwrapRpcJson(value)
     if (!isRecord(unwrapped)) {
@@ -235,6 +264,7 @@ export function normalizeWorkspacePaymentSummary(value: unknown): WorkspacePayme
     const pendingTransaction = explicitPending?.status === 'pending'
         ? explicitPending
         : transactions.find((transaction) => transaction.status === 'pending') ?? null
+    const pendingExtraDays = normalizeWorkspaceSubscriptionExtraDays(unwrapped.pending_extra_days)
 
     return {
         workspaceId: getText(unwrapped.workspace_id),
@@ -256,6 +286,7 @@ export function normalizeWorkspacePaymentSummary(value: unknown): WorkspacePayme
             Boolean(pendingTransaction)
         ),
         pendingTransaction,
+        pendingExtraDays,
         transactions
     }
 }
@@ -277,6 +308,11 @@ export function openWorkspacePaymentDialog() {
 export function openWorkspacePaymentStatusDialog() {
     if (typeof window === 'undefined') return
     window.dispatchEvent(new CustomEvent(OPEN_WORKSPACE_PAYMENT_STATUS_DIALOG_EVENT))
+}
+
+export function openWorkspaceExtraDaysDialog() {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new CustomEvent(OPEN_WORKSPACE_EXTRA_DAYS_DIALOG_EVENT))
 }
 
 export function getWorkspacePaymentAlertKind(
@@ -457,6 +493,48 @@ export async function getSavedWorkspacePaymentAccountHolderNames(): Promise<stri
     }))]
 }
 
+async function performWorkspaceSubscriptionExtraDaysGrant(
+    extraDays: number
+): Promise<WorkspaceSubscriptionExtraDays> {
+    const result = await runSupabaseAction(
+        'workspacePayments.grantExtraDays',
+        () => supabase.rpc('grant_workspace_subscription_extra_days', {
+            p_extra_days: extraDays
+        }),
+        { timeoutMs: 12_000, platform: 'all' }
+    ) as { data: unknown; error?: unknown }
+
+    if (result.error) {
+        throw normalizeSupabaseActionError(result.error)
+    }
+
+    const grant = normalizeWorkspaceSubscriptionExtraDays(unwrapRpcJson(result.data))
+    if (!grant) {
+        throw new Error('Workspace extra-days grant is invalid')
+    }
+
+    return grant
+}
+
+export function grantWorkspaceSubscriptionExtraDays(
+    extraDays: number
+): Promise<WorkspaceSubscriptionExtraDays> {
+    if (!Number.isInteger(extraDays) || extraDays < 1 || extraDays > 6) {
+        return Promise.reject(new Error('Extra days must be between 1 and 6'))
+    }
+
+    if (grantExtraDaysInFlight) {
+        return grantExtraDaysInFlight
+    }
+
+    const request = performWorkspaceSubscriptionExtraDaysGrant(extraDays)
+    const guardedRequest = request.finally(() => {
+        grantExtraDaysInFlight = null
+    })
+    grantExtraDaysInFlight = guardedRequest
+    return guardedRequest
+}
+
 async function performWorkspacePaymentSubmission(
     provider: WorkspacePaymentProvider,
     accountHolderName: string
@@ -510,5 +588,6 @@ export function submitWorkspacePayment(
 export const workspacePaymentTestInternals = {
     resetSubmissionGuard() {
         submitPaymentInFlight = null
+        grantExtraDaysInFlight = null
     }
 }

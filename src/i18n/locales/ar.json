@@ -70,7 +70,20 @@
     "loadFailed": "تعذر تحميل تفاصيل الدفع",
     "retry": "حاول مرة أخرى",
     "close": "إغلاق",
-    "pendingAlreadyExists": "يوجد طلب دفع بانتظار تأكيد المسؤول بالفعل."
+    "pendingAlreadyExists": "يوجد طلب دفع بانتظار تأكيد المسؤول بالفعل.",
+    "addExtraDays": "إضافة أيام إضافية",
+    "extraDaysDescription": "مدّد هذا الاشتراك مؤقتاً أثناء انتظار الموافقة على التجديد القادم.",
+    "selectExtraDays": "اختر الأيام الإضافية",
+    "extraDaysCount_one": "يوم واحد",
+    "extraDaysCount_other": "{{count}} أيام",
+    "extraDaysSelected_one": "المحدد: يوم إضافي واحد",
+    "extraDaysSelected_other": "المحدد: {{count}} أيام إضافية",
+    "extraDaysDeductionNotice_one": "سيُضاف اليوم الإضافي المحدد الآن ويُخصم من فترة الاشتراك التالية بعد الموافقة عليها.",
+    "extraDaysDeductionNotice_other": "ستُضاف الأيام الإضافية المحددة الآن وتُخصم من فترة الاشتراك التالية بعد الموافقة عليها.",
+    "confirmExtraDays": "إضافة {{days}}",
+    "extraDaysAlreadyPending": "تمت إضافة أيام إضافية بالفعل",
+    "extraDaysPendingDescription_one": "يوم إضافي واحد نشط الآن وسيُخصم من فترة الاشتراك التالية بعد الموافقة عليها.",
+    "extraDaysPendingDescription_other": "{{count}} أيام إضافية نشطة الآن وستُخصم من فترة الاشتراك التالية بعد الموافقة عليها."
   },
   "offlineLease": {
     "title": "اتصل بالإنترنت للمتابعة",

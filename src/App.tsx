@@ -7,6 +7,7 @@ import { Layout, Toaster, TitleBar, PatchNoteModal, PostSaveInvoiceDialog, Progr
 import { DeviceTokenBootstrap } from "@/ui/components/DeviceTokenBootstrap";
 import { SubscriptionExpiryWarningModal } from "@/ui/components/SubscriptionExpiryWarningModal";
 import { WorkspacePaymentController, WorkspacePaymentStatusDialog } from "@/ui/components/WorkspacePaymentDialog";
+import { WorkspaceExtraDaysDialog } from "@/ui/components/WorkspaceExtraDaysDialog";
 import { lazy, Suspense, useEffect, useCallback, useState } from "react";
 import { usePatchNotes } from "@/hooks/usePatchNotes";
 import { Clock3, Download, LoaderCircle, RotateCw, Upload } from "lucide-react";
@@ -1253,6 +1254,7 @@ function App() {
               <SubscriptionExpiryWarningModal />
               <WorkspacePaymentController />
               <WorkspacePaymentStatusDialog />
+              <WorkspaceExtraDaysDialog />
               <FaviconHandler />
               <AutoSyncOverlay />
               {!isMobile() && <TitleBar />}

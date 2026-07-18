@@ -725,6 +725,25 @@ SELECT throws_ok(
   'unsupported providers are rejected'
 );
 SELECT lives_ok(
+  $$SELECT public.grant_workspace_subscription_extra_days(3)$$,
+  'a subscription workspace can receive temporary extra days'
+);
+SELECT throws_ok(
+  $$SELECT public.grant_workspace_subscription_extra_days(2)$$,
+  '23505',
+  'workspace_subscription_extra_days_already_pending',
+  'a workspace cannot receive a second pending extra-days grant'
+);
+SELECT is(
+  (
+    SELECT extra_days
+    FROM billing.workspace_subscription_extra_days
+    WHERE workspace_id = '91000000-0000-0000-0000-000000000002'
+  ),
+  3::smallint,
+  'the pending extra-days record stores the selected number of days'
+);
+SELECT lives_ok(
   $$SELECT public.submit_workspace_payment('FIB')$$,
   'FIB is normalized and creates a pending payment'
 );
@@ -850,10 +869,21 @@ SELECT is(
   ),
   (
     SELECT value::timestamptz + INTERVAL '1 month'
+      - INTERVAL '3 days'
     FROM workspace_billing_test_state
     WHERE key = 'future_expiry'
   ),
-  'a future subscription is extended from its existing expiry'
+  'a future subscription deducts its temporary extra days from the approved renewal period'
+);
+
+SELECT is(
+  (
+    SELECT count(*)
+    FROM billing.workspace_subscription_extra_days
+    WHERE workspace_id = '91000000-0000-0000-0000-000000000002'
+  ),
+  0::bigint,
+  'the extra-days record is removed only after the adjusted subscription update succeeds'
 );
 
 SELECT ok(
@@ -1025,6 +1055,21 @@ SELECT lives_ok(
   )$$,
   'an administrator can create a usage-based payment configuration'
 );
+
+SET LOCAL ROLE authenticated;
+SELECT set_config(
+  'request.jwt.claims',
+  '{"sub":"92000000-0000-0000-0000-000000000004","role":"authenticated"}',
+  true
+);
+SELECT throws_ok(
+  $$SELECT public.grant_workspace_subscription_extra_days(1)$$,
+  '23514',
+  'workspace_subscription_extra_days_not_available_for_usage_billing',
+  'usage-billed workspaces cannot receive subscription extra days'
+);
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '{"role":"service_role"}', true);
 
 SELECT throws_ok(
   $$SELECT public.admin_upsert_workspace_payment_configuration(

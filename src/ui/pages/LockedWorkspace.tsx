@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertCircle, Clock, CreditCard, HardDrive, Lock, LogOut, Mail } from 'lucide-react'
+import { AlertCircle, CalendarPlus, Clock, CreditCard, HardDrive, Lock, LogOut, Mail } from 'lucide-react'
 import { Button } from '@/ui/components/button'
 import { useAuth } from '@/auth'
 import { useLocation } from 'wouter'
@@ -8,6 +8,7 @@ import { useWorkspace } from '@/workspace'
 import {
     getWorkspacePaymentAlertKind,
     isWorkspacePaymentAccessExpired,
+    openWorkspaceExtraDaysDialog,
     openWorkspacePaymentDialog,
 } from '@/lib/workspacePayments'
 
@@ -26,6 +27,12 @@ export function LockedWorkspace() {
     const paymentAlertKind = getWorkspacePaymentAlertKind(paymentSummary)
     const pendingTransaction = paymentSummary?.pendingTransaction ?? null
     const showPaymentAction = Boolean(paymentAlertKind || isExpired || pendingTransaction)
+    const canAddExtraDays = Boolean(
+        showPaymentAction
+        && paymentSummary?.configuration
+        && !paymentSummary.configuration.usageEnabled
+    )
+    const pendingExtraDays = paymentSummary?.pendingExtraDays ?? null
 
     const paymentCopy = (() => {
         switch (paymentAlertKind) {
@@ -116,19 +123,34 @@ export function LockedWorkspace() {
                 {/* Buttons Container */}
                 <div className="flex flex-col gap-3 items-center">
                     {showPaymentAction && (
-                        <Button
-                            allowViewer={true}
-                            size="lg"
-                            onClick={openWorkspacePaymentDialog}
-                            className="gap-2 w-full max-w-[240px]"
-                        >
-                            <CreditCard className="w-5 h-5" />
-                            {isPaymentSummaryLoading && !paymentSummary
-                                ? t('workspacePayments.loading')
-                                : pendingTransaction
-                                    ? t('workspacePayments.viewPaymentStatus')
-                                    : t('workspacePayments.renewSubscription')}
-                        </Button>
+                        <>
+                            <Button
+                                allowViewer={true}
+                                size="lg"
+                                onClick={openWorkspacePaymentDialog}
+                                className="gap-2 w-full max-w-[240px]"
+                            >
+                                <CreditCard className="w-5 h-5" />
+                                {isPaymentSummaryLoading && !paymentSummary
+                                    ? t('workspacePayments.loading')
+                                    : pendingTransaction
+                                        ? t('workspacePayments.viewPaymentStatus')
+                                        : t('workspacePayments.renewSubscription')}
+                            </Button>
+                            {canAddExtraDays && (
+                                <Button
+                                    allowViewer={true}
+                                    size="lg"
+                                    variant="outline"
+                                    disabled={Boolean(pendingExtraDays)}
+                                    onClick={openWorkspaceExtraDaysDialog}
+                                    className="gap-2 w-full max-w-[240px] dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:hover:bg-slate-900"
+                                >
+                                    <CalendarPlus className="w-5 h-5" />
+                                    {t('workspacePayments.addExtraDays')}
+                                </Button>
+                            )}
+                        </>
                     )}
 
                     <Button

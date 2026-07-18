@@ -19,6 +19,7 @@ import {
     WORKSPACE_PAYMENT_CURRENCY,
     canSubmitWorkspacePayment,
     formatWorkspacePaymentDecimal,
+    grantWorkspaceSubscriptionExtraDays,
     getWorkspacePaymentAlertKind,
     getWorkspacePaymentExpiryDate,
     getWorkspacePaymentQrPath,
@@ -31,6 +32,7 @@ import {
     isValidWorkspacePaymentAccountHolderName,
     normalizeWorkspacePaymentAccountHolderName,
     normalizeWorkspacePaymentSummary,
+    normalizeWorkspaceSubscriptionExtraDays,
     shouldApplyWorkspaceSubscriptionExpiry,
     shouldWorkspacePaymentLockAccess,
     submitWorkspacePayment,
@@ -173,6 +175,30 @@ describe('workspace payments', () => {
         expect(getWorkspacePaymentAlertKind(expired)).toBe('subscription_expired')
         expect(shouldWorkspacePaymentLockAccess(expired)).toBe(true)
         expect(shouldWorkspacePaymentLockAccess(null)).toBe(false)
+    })
+
+    it('normalizes a pending temporary extra-days record from the billing summary', () => {
+        const result = summary({
+            pending_extra_days: {
+                id: 'extra-days-1',
+                workspace_id: 'workspace-1',
+                extra_days: 4,
+                granted_at: '2026-07-18T12:00:00.000Z'
+            }
+        })
+
+        expect(result.pendingExtraDays).toEqual({
+            id: 'extra-days-1',
+            workspaceId: 'workspace-1',
+            extraDays: 4,
+            grantedAt: '2026-07-18T12:00:00.000Z'
+        })
+        expect(normalizeWorkspaceSubscriptionExtraDays({
+            id: 'extra-days-invalid',
+            workspace_id: 'workspace-1',
+            extra_days: 7,
+            granted_at: '2026-07-18T12:00:00.000Z'
+        })).toBeNull()
     })
 
     it('enforces a cached renewal due date while offline', () => {
@@ -359,6 +385,29 @@ describe('workspace payments', () => {
     it('requires at least three account holder name words for paid providers before calling the server', async () => {
         await expect(submitWorkspacePayment('fib', 'John Doe')).rejects.toThrow('Account holder name must contain at least three words')
         expect(testState.rpc).not.toHaveBeenCalled()
+    })
+
+    it('only submits one valid extra-days grant at a time', async () => {
+        testState.rpc.mockResolvedValue({
+            data: {
+                id: 'extra-days-1',
+                workspace_id: 'workspace-1',
+                extra_days: 3,
+                granted_at: '2026-07-18T12:00:00.000Z'
+            },
+            error: null
+        })
+
+        await expect(grantWorkspaceSubscriptionExtraDays(3)).resolves.toMatchObject({
+            id: 'extra-days-1',
+            extraDays: 3
+        })
+        expect(testState.rpc).toHaveBeenCalledWith('grant_workspace_subscription_extra_days', {
+            p_extra_days: 3
+        })
+
+        await expect(grantWorkspaceSubscriptionExtraDays(0)).rejects.toThrow('Extra days must be between 1 and 6')
+        await expect(grantWorkspaceSubscriptionExtraDays(7)).rejects.toThrow('Extra days must be between 1 and 6')
     })
 
     it('sorts transaction history newest first and derives pending from history', () => {

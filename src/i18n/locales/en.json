@@ -70,7 +70,20 @@
     "loadFailed": "Payment details could not be loaded",
     "retry": "Try again",
     "close": "Close",
-    "pendingAlreadyExists": "A payment is already waiting for administrator confirmation."
+    "pendingAlreadyExists": "A payment is already waiting for administrator confirmation.",
+    "addExtraDays": "Add Extra Days",
+    "extraDaysDescription": "Temporarily extend this subscription while you wait for its next renewal approval.",
+    "selectExtraDays": "Select extra days",
+    "extraDaysCount_one": "{{count}} day",
+    "extraDaysCount_other": "{{count}} days",
+    "extraDaysSelected_one": "Selected: {{count}} extra day",
+    "extraDaysSelected_other": "Selected: {{count}} extra days",
+    "extraDaysDeductionNotice_one": "The selected {{count}} extra day will be added now and deducted from the next approved subscription period.",
+    "extraDaysDeductionNotice_other": "The selected {{count}} extra days will be added now and deducted from the next approved subscription period.",
+    "confirmExtraDays": "Add {{days}}",
+    "extraDaysAlreadyPending": "Extra days already added",
+    "extraDaysPendingDescription_one": "{{count}} extra day is active now and will be deducted from the next approved subscription period.",
+    "extraDaysPendingDescription_other": "{{count}} extra days are active now and will be deducted from the next approved subscription period."
   },
   "offlineLease": {
     "title": "Connect to the internet to continue",

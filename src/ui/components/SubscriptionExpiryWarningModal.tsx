@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CalendarClock } from 'lucide-react'
+import { AlertTriangle, CalendarClock, CalendarPlus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/ui/components/button'
 import {
@@ -16,6 +16,7 @@ import { getSubscriptionExpiryWarningSeenKey } from '@/lib/subscriptionExpiryWar
 import { formatDate } from '@/lib/utils'
 import {
     getWorkspacePaymentExpiryDate,
+    openWorkspaceExtraDaysDialog,
     openWorkspacePaymentDialog,
     shouldApplyWorkspaceSubscriptionExpiry
 } from '@/lib/workspacePayments'
@@ -37,6 +38,11 @@ export function SubscriptionExpiryWarningModal() {
         isDemoMode || !shouldWarnForSubscription ? null : expiryDateToCheck
     )
     const [open, setOpen] = useState(false)
+    const canAddExtraDays = Boolean(
+        paymentSummary?.configuration
+        && !paymentSummary.configuration.usageEnabled
+    )
+    const hasPendingExtraDays = Boolean(paymentSummary?.pendingExtraDays)
 
     const seenKey = useMemo(() => {
         if (!activeWorkspace?.id || !warning) return null
@@ -133,15 +139,31 @@ export function SubscriptionExpiryWarningModal() {
                     </div>
                 </div>
 
-                <DialogFooter>
+                <DialogFooter className="gap-2 sm:items-end sm:space-x-0">
                     <Button allowViewer={true} variant="outline" onClick={dismiss}>
                         {t('subscriptionExpiryWarning.acknowledge', {
                             defaultValue: 'Got it'
                         })}
                     </Button>
-                    <Button allowViewer={true} onClick={renew}>
-                        {t('workspacePayments.renewSubscription')}
-                    </Button>
+                    <div className="flex flex-col gap-2">
+                        <Button allowViewer={true} onClick={renew}>
+                            {t('workspacePayments.renewSubscription')}
+                        </Button>
+                        {canAddExtraDays && (
+                            <Button
+                                allowViewer={true}
+                                variant="outline"
+                                disabled={hasPendingExtraDays}
+                                onClick={() => {
+                                    dismiss()
+                                    openWorkspaceExtraDaysDialog()
+                                }}
+                            >
+                                <CalendarPlus className="h-4 w-4" />
+                                {t('workspacePayments.addExtraDays')}
+                            </Button>
+                        )}
+                    </div>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
