@@ -562,7 +562,7 @@ function UpdateHandler() {
   );
 
   const checkForUpdates = useCallback(
-    async (isManual = false) => {
+    async (isManual = false, bypassThrottle = false) => {
       if (!isTauri) return;
 
       // --- DEBUG: Easy to remove check log ---
@@ -632,7 +632,7 @@ function UpdateHandler() {
 
       // Skip automatic checks if already checked this session (refresh protection)
       // OR if checked within the last 12 hours (interval protection)
-      if (!isManual && !mandatoryUpdate) {
+      if (!isManual && !mandatoryUpdate && !bypassThrottle) {
         if (checkedThisSession && !shouldRecheckDeferredUpdate) {
           console.log(
             "[Tauri] Skipping automatic update check (already checked this session/refresh)",
@@ -763,10 +763,8 @@ function UpdateHandler() {
 
   useEffect(() => {
     if (isTauri) {
-      // 1. Startup check (3s delay)
-      const startupTimer = setTimeout(() => {
-        checkForUpdates();
-      }, 3000);
+      // 1. Startup check: bypass the 12-hour polling throttle.
+      void checkForUpdates(false, true);
 
       // 2. Background interval check (every 4 hours)
       const intervalTimer = setInterval(
@@ -817,7 +815,6 @@ function UpdateHandler() {
 
       window.addEventListener("keydown", handleKeyDown);
       return () => {
-        clearTimeout(startupTimer);
         clearInterval(intervalTimer);
         window.removeEventListener("keydown", handleKeyDown);
         window.removeEventListener("check-for-updates", handleManualCheck);
