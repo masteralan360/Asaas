@@ -591,7 +591,7 @@ const ORDER_DETAILS_FIELDS = [
     {
         key: ORDER_DETAILS_TEMPLATE_FIELD_KEYS.labelOpacity,
         label: 'Labels opacity',
-        value: '100',
+        value: '50',
         type: 'number' as const
     }
 ]

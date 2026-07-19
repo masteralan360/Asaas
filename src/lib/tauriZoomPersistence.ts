@@ -35,6 +35,11 @@ let accumulatedWheelDelta = 0
 let lastWheelAt = 0
 let zoomRuntime: 'tauri' | 'pwa' | null = null
 
+const isPdfPreviewRoute = () => {
+    const hashPath = window.location.hash.replace(/^#/, '').split('?')[0] || '/'
+    return /^(?:\/(?:en|ar|ku))?\/pdf-preview\/?$/.test(hashPath)
+}
+
 const clampZoom = (zoom: number): number => {
     if (!Number.isFinite(zoom)) return DEFAULT_ZOOM
     return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(zoom * 100) / 100))
@@ -126,6 +131,9 @@ const stopNativeZoom = (event: KeyboardEvent | WheelEvent) => {
 }
 
 const handleKeyDown = (event: KeyboardEvent) => {
+    // The PDF preview owns Ctrl/⌘ keyboard zoom so it can scale only its document.
+    if (isPdfPreviewRoute()) return
+
     if ((!event.ctrlKey && !event.metaKey) || event.altKey) return
 
     const key = event.key.toLowerCase()
@@ -162,6 +170,9 @@ const normalizeWheelDelta = (event: WheelEvent) => {
 }
 
 const handleWheel = (event: WheelEvent) => {
+    // The PDF preview owns Ctrl/⌘ + wheel zoom so it can scale only its document.
+    if (isPdfPreviewRoute()) return
+
     if (!event.ctrlKey && !event.metaKey) return
 
     stopNativeZoom(event)

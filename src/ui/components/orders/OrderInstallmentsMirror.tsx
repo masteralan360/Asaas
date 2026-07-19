@@ -268,7 +268,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
             fields: [
                 { key: 'counterpartyName', label: counterpartyLabel, value: counterpartyName || '', type: 'text' },
                 { key: 'notes', label: t('common.notes') || 'Notes', value: order.notes || '', type: 'text' },
-                { key: 'labelOpacity', label: t('orders.print.labelOpacity', { defaultValue: 'Labels opacity' }), value: '100', type: 'number' }
+                { key: 'labelOpacity', label: t('orders.print.labelOpacity', { defaultValue: 'Labels opacity' }), value: '50', type: 'number' }
             ],
             createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => {
                 const updatedOrder = {

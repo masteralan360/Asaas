@@ -383,7 +383,7 @@ describe('Order Details custom print template', () => {
             }),
             expect.objectContaining({
                 key: customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.labelOpacity,
-                value: '100',
+                value: '50',
                 type: 'number'
             })
         ])
@@ -426,7 +426,7 @@ describe('Order Details custom print template', () => {
         expect(html).toContain('aria-label="Move ')
         expect(html).toContain('data-order-print-component="orderItems"')
         expect(html).toContain('data-order-print-component="totals"')
-        expect(html.match(/opacity:0\.37/g)).toHaveLength(6)
+        expect(html.match(/opacity:0\.37/g)).toHaveLength(8)
     })
 
     it('preserves movable component positions and hidden fields when reading a saved layout', () => {
