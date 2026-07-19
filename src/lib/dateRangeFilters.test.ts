@@ -24,6 +24,13 @@ describe('isDateInDateRange', () => {
         expect(isDateInDateRange(new Date(2026, 5, 30, 23, 59, 59, 999), 'month', emptyCustomDates, now)).toBe(false)
     })
 
+    it('matches only the previous calendar month', () => {
+        expect(isDateInDateRange(new Date(2026, 5, 1), 'lastMonth', emptyCustomDates, now)).toBe(true)
+        expect(isDateInDateRange(new Date(2026, 5, 30, 23, 59, 59, 999), 'lastMonth', emptyCustomDates, now)).toBe(true)
+        expect(isDateInDateRange(new Date(2026, 6, 1), 'lastMonth', emptyCustomDates, now)).toBe(false)
+        expect(isDateInDateRange(new Date(2026, 4, 31, 23, 59, 59, 999), 'lastMonth', emptyCustomDates, now)).toBe(false)
+    })
+
     it('treats date-only strings as local calendar dates', () => {
         expect(isDateInDateRange('2026-07-06', 'today', emptyCustomDates, now)).toBe(true)
         expect(isDateInDateRange('2026-07-05', 'today', emptyCustomDates, now)).toBe(false)

@@ -272,6 +272,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         || (resolved?.kind === 'sales' ? (resolved?.order as SalesOrder)?.customerId : (resolved?.order as PurchaseOrder)?.supplierId)
     const bizPartner = useBusinessPartner(partnerId)
     const counterpartyPhone = bizPartner?.phone || ''
+    const counterpartyAddress = bizPartner?.address || ''
 
     const creatorId = (resolved?.order as any)?.createdBy ?? null
     const { profile: creatorProfile } = useProfileData(creatorId)
@@ -401,6 +402,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
             fields: [
                 { key: 'counterpartyName', label: counterpartyLabel, value: counterpartyName || '', type: 'text' },
                 { key: 'counterpartyPhone', label: t('common.phone', { defaultValue: 'Phone' }), value: counterpartyPhone || '', type: 'text' },
+                { key: 'counterpartyAddress', label: t('common.address', { defaultValue: 'Address' }), value: counterpartyAddress || '', type: 'text' },
                 { key: 'notes', label: t('common.notes') || 'Notes', value: (order as any).notes || '', type: 'text' },
                 { key: 'hideUnit', label: t('orders.form.hideUnit', { defaultValue: 'Hide Unit' }), value: localStorage.getItem('atlas_print_hide_unit') || 'false', type: 'boolean' },
                 { key: 'hideDiscount', label: t('orders.form.hideDiscount', { defaultValue: 'Hide Discount' }), value: localStorage.getItem('atlas_print_hide_discount') || 'false', type: 'boolean' },
@@ -428,6 +430,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         hideDiscount={data.hideDiscount === 'true'}
                         templateFields={data}
                         counterpartyPhone={data.counterpartyPhone}
+                        counterpartyAddress={data.counterpartyAddress}
                         hiddenFields={renderOptions?.hiddenFields}
                         onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
                         workspaceFooterContacts={renderOptions?.workspaceFooterContacts || workspaceFooterContacts}
@@ -444,7 +447,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 })
             },
         }
-    }, [resolved, features, installments, workspaceName, t, i18n, workspaceId, workspaceFooterContacts, counterpartyPhone])
+    }, [resolved, features, installments, workspaceName, t, i18n, workspaceId, workspaceFooterContacts, counterpartyPhone, counterpartyAddress])
 
     const orderReceiptPreview = useMemo<TemplatePreview | undefined>(() => {
         if (!resolved) return undefined
@@ -1606,6 +1609,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                         logoUrl={features.logo_url}
                                         qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
                                         counterpartyPhone={counterpartyPhone}
+                                        counterpartyAddress={counterpartyAddress}
                                         workspaceFooterContacts={workspaceFooterContacts}
                                     />
                                 )
@@ -1640,6 +1644,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             logoUrl={features.logo_url}
                             qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
                             counterpartyPhone={counterpartyPhone}
+                            counterpartyAddress={counterpartyAddress}
                             workspaceFooterContacts={workspaceFooterContacts}
                         />
                     )

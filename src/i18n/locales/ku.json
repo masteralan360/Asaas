@@ -2652,6 +2652,7 @@
     "filters": {
       "today": "ئەمڕۆ",
       "thisMonth": "ئەم مانگە",
+      "lastMonth": "مانگی ڕابردوو",
       "modernBusiness": "کارە مۆدێرنەکان",
       "allTime": "هەموو کات",
       "custom": "ماوەی دیاریکراو",

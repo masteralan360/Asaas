@@ -58,6 +58,7 @@ export function useOrderCustomPrint({
         || (orderKind === 'sales' ? (order as SalesOrder)?.customerId : (order as PurchaseOrder)?.supplierId)
     const bizPartner = useBusinessPartner(partnerId)
     const counterpartyPhone = bizPartner?.phone || ''
+    const counterpartyAddress = bizPartner?.address || ''
 
     useEffect(() => {
         if (!isOpen || (!isLocalMode && !isSupabaseConfigured)) {
@@ -123,9 +124,10 @@ export function useOrderCustomPrint({
             orderKind,
             orderInstallments: installments,
             counterpartyPhone,
+            counterpartyAddress,
             printLang: currentPrintLanguage
         })
-    }, [currentPrintLanguage, features, installments, isCustomSelected, order, orderKind, selectedTemplateTarget, workspaceId, workspaceName, counterpartyPhone])
+    }, [currentPrintLanguage, features, installments, isCustomSelected, order, orderKind, selectedTemplateTarget, workspaceId, workspaceName, counterpartyPhone, counterpartyAddress])
 
     const buildPdf = useCallback(async ({
         effectiveId,
@@ -150,12 +152,14 @@ export function useOrderCustomPrint({
                 order,
                 orderKind,
                 orderInstallments: installments,
+                counterpartyPhone,
+                counterpartyAddress,
                 printLang: printLangOverride || currentPrintLanguage
             },
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [currentPrintLanguage, features, installments, order, orderKind, selectedLayout, selectedTemplateTarget, workspaceId, workspaceName])
+    }, [counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, selectedLayout, selectedTemplateTarget, workspaceId, workspaceName])
 
     const buildEditablePdf = useCallback(async (
         layout: CustomTemplateLayout,
@@ -177,12 +181,14 @@ export function useOrderCustomPrint({
                 order,
                 orderKind,
                 orderInstallments: installments,
+                counterpartyPhone,
+                counterpartyAddress,
                 printLang: printLangOverride || currentPrintLanguage
             },
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [currentPrintLanguage, features, installments, order, orderKind, selectedTemplateTarget, workspaceId, workspaceName])
+    }, [counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, selectedTemplateTarget, workspaceId, workspaceName])
 
     const nativeOptions = useMemo(() => [
         {

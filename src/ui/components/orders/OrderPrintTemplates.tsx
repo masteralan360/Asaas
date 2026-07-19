@@ -62,6 +62,7 @@ interface OrderDetailsPrintTemplateProps {
     hideDiscount?: boolean
     templateFields?: Record<string, string>
     counterpartyPhone?: string
+    counterpartyAddress?: string
     tableRowCount?: number
     componentPositions?: Record<string, CustomTemplateComponentPosition>
     hiddenFields?: Record<string, boolean>
@@ -802,6 +803,7 @@ export function OrderDetailsPrintTemplate({
     hideDiscount,
     templateFields,
     counterpartyPhone,
+    counterpartyAddress,
     tableRowCount,
     componentPositions,
     hiddenFields,
@@ -829,6 +831,8 @@ export function OrderDetailsPrintTemplate({
     const counterpartyName = isSales
         ? salesOrder!.customerName
         : purchaseOrder!.supplierName
+    const resolvedCounterpartyPhone = (templateFields?.counterpartyPhone || counterpartyPhone || '').trim()
+    const resolvedCounterpartyAddress = (templateFields?.counterpartyAddress || counterpartyAddress || '').trim()
     const title = isSales
         ? (t('orders.details.salesOrder') || 'Sales Order')
         : (t('orders.details.purchaseOrder') || 'Purchase Order')
@@ -890,14 +894,25 @@ export function OrderDetailsPrintTemplate({
                             value: counterpartyName,
                             render: <p className="font-bold text-sm">{counterpartyName}</p>
                         },
-                        ...(counterpartyPhone ? [{
+                        ...(resolvedCounterpartyPhone ? [{
                             key: 'orders.counterparty.phone',
                             label: t('orders.details.phone', { defaultValue: 'Phone' }),
-                            value: counterpartyPhone,
+                            value: resolvedCounterpartyPhone,
                             render: (
-                                <p className="mt-1 flex items-center justify-center gap-1 text-black" style={labelOpacityStyle}>
-                                    <Phone className="h-3 w-3" />
-                                    {counterpartyPhone}
+                                <p className="mt-1 flex items-center justify-center gap-1 leading-5 text-black" style={labelOpacityStyle}>
+                                    <Phone className="h-4 w-4 shrink-0" />
+                                    <span>{resolvedCounterpartyPhone}</span>
+                                </p>
+                            )
+                        }] : []),
+                        ...(resolvedCounterpartyAddress ? [{
+                            key: 'orders.counterparty.address',
+                            label: t('common.address', { defaultValue: 'Address' }),
+                            value: resolvedCounterpartyAddress,
+                            render: (
+                                <p className="mt-1 flex items-center justify-center gap-1 leading-5 text-black" style={labelOpacityStyle}>
+                                    <MapPin className="h-4 w-4 shrink-0" />
+                                    <span className="whitespace-pre-wrap break-words">{resolvedCounterpartyAddress}</span>
                                 </p>
                             )
                         }] : []),

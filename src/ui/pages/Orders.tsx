@@ -367,6 +367,13 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         } else if (dateRange === 'month') {
             const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
             items = items.filter(s => new Date(s.createdAt) >= startOfMonth)
+        } else if (dateRange === 'lastMonth') {
+            const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+            items = items.filter(s => {
+                const createdAt = new Date(s.createdAt)
+                return createdAt >= startOfLastMonth && createdAt < startOfMonth
+            })
         } else if (dateRange === 'custom' && (customDates.start || customDates.end)) {
             const start = customDates.start ? new Date(customDates.start) : null
             if (start) start.setHours(0, 0, 0, 0)
@@ -408,6 +415,13 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         } else if (dateRange === 'month') {
             const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
             items = items.filter(s => new Date(s.createdAt) >= startOfMonth)
+        } else if (dateRange === 'lastMonth') {
+            const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+            items = items.filter(s => {
+                const createdAt = new Date(s.createdAt)
+                return createdAt >= startOfLastMonth && createdAt < startOfMonth
+            })
         } else if (dateRange === 'custom' && (customDates.start || customDates.end)) {
             const start = customDates.start ? new Date(customDates.start) : null
             if (start) start.setHours(0, 0, 0, 0)
@@ -465,6 +479,10 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         if (dateRange === 'month') {
             const now = new Date()
             return formatLocalizedMonthYear(now, i18n.language)
+        }
+        if (dateRange === 'lastMonth') {
+            const now = new Date()
+            return formatLocalizedMonthYear(new Date(now.getFullYear(), now.getMonth() - 1, 1), i18n.language)
         }
         if (dateRange === 'custom') {
             if (activeTab === 'sales' && filteredSalesOrders && filteredSalesOrders.length > 0) {

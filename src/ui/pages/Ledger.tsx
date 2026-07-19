@@ -178,7 +178,7 @@ function getStartOfMonth(now: Date) {
 
 function isEntryInDateRange(
     date: string,
-    dateRange: 'today' | 'month' | 'allTime' | 'custom',
+    dateRange: 'today' | 'month' | 'lastMonth' | 'allTime' | 'custom',
     customDates: { start: string; end: string },
     now = new Date()
 ) {
@@ -190,6 +190,11 @@ function isEntryInDateRange(
 
     if (dateRange === 'month') {
         return value >= getStartOfMonth(now)
+    }
+
+    if (dateRange === 'lastMonth') {
+        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        return value >= startOfLastMonth && value < getStartOfMonth(now)
     }
 
     if (dateRange === 'custom' && (customDates.start || customDates.end)) {
@@ -1182,6 +1187,12 @@ export function Ledger() {
             const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
             return { startDate: startOfMonth.toISOString() }
         }
+        if (dateRange === 'lastMonth') {
+            const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+            const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+            endOfLastMonth.setMilliseconds(-1)
+            return { startDate: startOfLastMonth.toISOString(), endDate: endOfLastMonth.toISOString() }
+        }
         if (dateRange === 'custom' && (customDates.start || customDates.end)) {
             const start = customDates.start ? new Date(customDates.start) : undefined
             if (start) start.setHours(0, 0, 0, 0)
@@ -1387,6 +1398,11 @@ export function Ledger() {
 
         if (dateRange === 'month') {
             return formatLocalizedMonthYear(new Date(), i18n.language)
+        }
+
+        if (dateRange === 'lastMonth') {
+            const now = new Date()
+            return formatLocalizedMonthYear(new Date(now.getFullYear(), now.getMonth() - 1, 1), i18n.language)
         }
 
         if (dateRange === 'custom') {

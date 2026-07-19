@@ -23,7 +23,7 @@ function getStartOfMonth(now: Date) {
 
 function isEntryInDateRange(
     date: string,
-    dateRange: 'today' | 'month' | 'allTime' | 'custom',
+    dateRange: 'today' | 'month' | 'lastMonth' | 'allTime' | 'custom',
     customDates: { start: string; end: string },
     now = new Date()
 ) {
@@ -35,6 +35,11 @@ function isEntryInDateRange(
 
     if (dateRange === 'month') {
         return value >= getStartOfMonth(now)
+    }
+
+    if (dateRange === 'lastMonth') {
+        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        return value >= startOfLastMonth && value < getStartOfMonth(now)
     }
 
     if (dateRange === 'custom' && (customDates.start || customDates.end)) {
@@ -223,7 +228,11 @@ export function Dashboard() {
                     <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
                         <Package className="w-3.5 h-3.5 text-emerald-600" />
                         <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                            {dateRange === 'month' ? t('common.thisMonth') || 'This Month' : t(`common.${dateRange}`)}
+                            {dateRange === 'month'
+                                ? t('common.thisMonth') || 'This Month'
+                                : dateRange === 'lastMonth'
+                                    ? t('performance.filters.lastMonth')
+                                    : t(`common.${dateRange}`)}
                         </span>
                     </div>
                 </div>

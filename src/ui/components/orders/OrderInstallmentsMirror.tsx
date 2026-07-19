@@ -11,6 +11,7 @@ import {
     type PurchaseOrder,
     type SalesOrder,
     type WorkspacePaymentMethod,
+    useBusinessPartner,
     usePurchaseOrders,
     useSalesOrders,
     useWorkspaceOrderInstallments
@@ -120,6 +121,13 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
     const [settlementTarget, setSettlementTarget] = useState<PaymentObligation | null>(null)
     const [isSubmittingSettlement, setIsSubmittingSettlement] = useState(false)
     const [printTarget, setPrintTarget] = useState<OrderInstallmentGroup | null>(null)
+    const printPartnerId = printTarget?.order.businessPartnerId
+        || (printTarget?.kind === 'sales'
+            ? (printTarget.order as SalesOrder).customerId
+            : (printTarget?.order as PurchaseOrder | undefined)?.supplierId)
+    const printPartner = useBusinessPartner(printPartnerId)
+    const counterpartyPhone = printPartner?.phone || ''
+    const counterpartyAddress = printPartner?.address || ''
 
     const salesOrderById = useMemo(
         () => new Map(salesOrders.map((order) => [order.id, order])),
@@ -233,6 +241,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                 iqdPreference={features.iqd_display_preference}
                 logoUrl={features.logo_url}
                 qrValue={effectiveId ? buildQrValue(effectiveId, 'receipt') : undefined}
+                counterpartyPhone={counterpartyPhone}
             />
         ) : (
             <OrderDetailsPrintTemplate
@@ -244,6 +253,8 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                 iqdPreference={features.iqd_display_preference}
                 logoUrl={features.logo_url}
                 qrValue={effectiveId ? buildQrValue(effectiveId, 'a4') : undefined}
+                counterpartyPhone={counterpartyPhone}
+                counterpartyAddress={counterpartyAddress}
             />
         )
     }, [
@@ -253,6 +264,8 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         printInstallments,
         printLang,
         printTarget,
+        counterpartyAddress,
+        counterpartyPhone,
         workspaceName
     ])
     const orderInstallmentPreview = useMemo<TemplatePreview | undefined>(() => {
@@ -267,6 +280,8 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         return {
             fields: [
                 { key: 'counterpartyName', label: counterpartyLabel, value: counterpartyName || '', type: 'text' },
+                { key: 'counterpartyPhone', label: t('common.phone', { defaultValue: 'Phone' }), value: counterpartyPhone, type: 'text' },
+                { key: 'counterpartyAddress', label: t('common.address', { defaultValue: 'Address' }), value: counterpartyAddress, type: 'text' },
                 { key: 'notes', label: t('common.notes') || 'Notes', value: order.notes || '', type: 'text' },
                 { key: 'labelOpacity', label: t('orders.print.labelOpacity', { defaultValue: 'Labels opacity' }), value: '50', type: 'number' }
             ],
@@ -291,6 +306,8 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                         logoUrl={features.logo_url}
                         qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
                         templateFields={data}
+                        counterpartyPhone={data.counterpartyPhone || counterpartyPhone}
+                        counterpartyAddress={data.counterpartyAddress || counterpartyAddress}
                     />
                 )
             },
@@ -310,6 +327,8 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         printInstallments,
         printLang,
         printTarget,
+        counterpartyAddress,
+        counterpartyPhone,
         t,
         workspaceName
     ])
@@ -356,6 +375,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                         iqdPreference={features.iqd_display_preference}
                         logoUrl={features.logo_url}
                         qrValue={effectiveId ? buildQrValue(effectiveId, 'receipt') : undefined}
+                        counterpartyPhone={counterpartyPhone}
                         templateFields={data}
                         editableFields={renderOptions?.editableFields}
                         onTemplateFieldChange={renderOptions?.onFieldChange}
@@ -378,6 +398,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         printInstallments,
         printLang,
         printTarget,
+        counterpartyPhone,
         t,
         workspaceName
     ])

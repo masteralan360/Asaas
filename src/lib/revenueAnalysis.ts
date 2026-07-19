@@ -233,6 +233,11 @@ export function isRecordInDateRange(
         return value >= getStartOfMonth(now)
     }
 
+    if (dateRange === 'lastMonth') {
+        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        return value >= startOfLastMonth && value < getStartOfMonth(now)
+    }
+
     if (dateRange === 'custom' && (customDates.start || customDates.end)) {
         const start = customDates.start ? new Date(customDates.start) : null
         if (start) start.setHours(0, 0, 0, 0)

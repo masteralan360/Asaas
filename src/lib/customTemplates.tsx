@@ -364,6 +364,7 @@ export type CustomTemplatePreviewOptions = {
     orderKind?: 'sales' | 'purchase'
     orderInstallments?: OrderInstallment[]
     counterpartyPhone?: string
+    counterpartyAddress?: string
     printLang?: string
 }
 
@@ -1077,6 +1078,7 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
     const order = options.order || SAMPLE_ORDER_DATA
     const kind = options.orderKind || 'sales'
     const counterpartyPhone = options.counterpartyPhone || (order === SAMPLE_ORDER_DATA ? '+964 750 000 0000' : '')
+    const counterpartyAddress = options.counterpartyAddress || (order === SAMPLE_ORDER_DATA ? 'Business District, Erbil' : '')
     const configuredPrintLang = options.features?.print_lang
     const printLang = options.printLang
         || (configuredPrintLang && configuredPrintLang !== 'auto' ? configuredPrintLang : 'en')
@@ -1122,6 +1124,7 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
                 hideDiscount={data[ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount] === 'true'}
                 templateFields={data}
                 counterpartyPhone={counterpartyPhone}
+                counterpartyAddress={counterpartyAddress}
                 tableRowCount={Number(data.tableRowCount) || 10}
                 componentPositions={renderOptions?.componentPositions}
                 hiddenFields={renderOptions?.hiddenFields}

@@ -341,7 +341,9 @@ describe('Order Details custom print template', () => {
 
         const preview = customTemplates.createCustomTemplatePreview(target!, {
             workspaceName: 'Atlas Test',
-            printLang: 'ku'
+            printLang: 'ku',
+            counterpartyPhone: '+964 750 123 4567',
+            counterpartyAddress: '100 Example Street, Erbil'
         })
         const componentPositions = {
             customer: { x: 12, y: -4 },
@@ -408,6 +410,8 @@ describe('Order Details custom print template', () => {
         expect(element.props.printLang).toBe('ku')
         expect(element.props.order.orderNumber).toBe('SO-00042')
         expect(element.props.kind).toBe('sales')
+        expect(element.props.counterpartyPhone).toBe('+964 750 123 4567')
+        expect(element.props.counterpartyAddress).toBe('100 Example Street, Erbil')
         expect(element.props.hideUnit).toBe(true)
         expect(element.props.hideDiscount).toBe(true)
         expect(element.props.templateFields).toEqual(expect.objectContaining({
@@ -426,7 +430,9 @@ describe('Order Details custom print template', () => {
         expect(html).toContain('aria-label="Move ')
         expect(html).toContain('data-order-print-component="orderItems"')
         expect(html).toContain('data-order-print-component="totals"')
-        expect(html.match(/opacity:0\.37/g)).toHaveLength(8)
+        expect(html).toContain('+964 750 123 4567')
+        expect(html).toContain('100 Example Street, Erbil')
+        expect(html.match(/opacity:0\.37/g)).toHaveLength(9)
     })
 
     it('preserves movable component positions and hidden fields when reading a saved layout', () => {

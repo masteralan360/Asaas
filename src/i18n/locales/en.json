@@ -3455,6 +3455,7 @@
     "filters": {
       "today": "Today",
       "thisMonth": "This Month",
+      "lastMonth": "Last Month",
       "allTime": "All Time",
       "custom": "Custom Range",
       "start": "Start Date",

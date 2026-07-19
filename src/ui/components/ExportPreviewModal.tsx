@@ -118,6 +118,10 @@ export function ExportPreviewModal({
                     } else if (dateRange === 'month') {
                         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
                         if (saleDate < startOfMonth) return false
+                    } else if (dateRange === 'lastMonth') {
+                        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+                        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+                        if (saleDate < startOfLastMonth || saleDate >= startOfMonth) return false
                     } else if (dateRange === 'custom' && customDates.start && customDates.end) {
                         const start = new Date(customDates.start)
                         start.setHours(0, 0, 0, 0)
@@ -195,6 +199,10 @@ export function ExportPreviewModal({
             } else if (dateRange === 'month') {
                 const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
                 query = query.gte('created_at', startOfMonth)
+            } else if (dateRange === 'lastMonth') {
+                const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
+                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+                query = query.gte('created_at', startOfLastMonth).lt('created_at', startOfMonth)
             } else if (dateRange === 'custom' && customDates.start && customDates.end) {
                 const start = new Date(customDates.start)
                 start.setHours(0, 0, 0, 0)

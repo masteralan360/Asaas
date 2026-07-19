@@ -2656,6 +2656,7 @@
     "filters": {
       "today": "اليوم",
       "thisMonth": "هذا الشهر",
+      "lastMonth": "الشهر الماضي",
       "allTime": "كل الوقت",
       "custom": "نطاق مخصص",
       "start": "تاريخ البدء",

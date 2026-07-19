@@ -36,6 +36,16 @@ export function DateRangeFilters({ className }: DateRangeFiltersProps) {
                     {t('performance.filters.thisMonth')}
                 </Button>
                 <Button
+                    variant={dateRange === 'lastMonth' ? 'default' : 'ghost'}
+                    size="sm"
+                    allowViewer={true}
+                    onClick={() => setDateRange('lastMonth')}
+                    className={cn("text-xs h-8 px-4 transition-all duration-200", dateRange === 'lastMonth' && "shadow-sm")}
+                    type="button"
+                >
+                    {t('performance.filters.lastMonth')}
+                </Button>
+                <Button
                     variant={dateRange === 'allTime' ? 'default' : 'ghost'}
                     size="sm"
                     allowViewer={true}

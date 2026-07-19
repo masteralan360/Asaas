@@ -42,7 +42,7 @@ export type PartnerDetailsPrintData = {
         notes?: string
     }
     period: {
-        type: 'today' | 'month' | 'allTime' | 'custom'
+        type: 'today' | 'month' | 'lastMonth' | 'allTime' | 'custom'
         start?: string
         end?: string
     }

@@ -130,6 +130,12 @@ export function TeamPerformance() {
                         return saleDate >= startOfMonth
                     }
 
+                    if (dateRange === 'lastMonth') {
+                        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+                        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+                        return saleDate >= startOfLastMonth && saleDate < startOfMonth
+                    }
+
                     if (dateRange === 'custom' && customDates.start && customDates.end) {
                         const start = new Date(customDates.start)
                         start.setHours(0, 0, 0, 0)
@@ -224,6 +230,10 @@ export function TeamPerformance() {
             } else if (dateRange === 'month') {
                 const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
                 query = query.gte('created_at', startOfMonth)
+            } else if (dateRange === 'lastMonth') {
+                const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
+                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+                query = query.gte('created_at', startOfLastMonth).lt('created_at', startOfMonth)
             } else if (dateRange === 'custom' && customDates.start && customDates.end) {
                 const start = new Date(customDates.start)
                 start.setHours(0, 0, 0, 0)
@@ -358,6 +368,7 @@ export function TeamPerformance() {
     const getDateRangeDisplay = () => {
         if (dateRange === 'today') return t('performance.filters.today')
         if (dateRange === 'month') return t('performance.filters.thisMonth')
+        if (dateRange === 'lastMonth') return t('performance.filters.lastMonth')
         if (dateRange === 'allTime') {
             if (sales && sales.length > 0) {
                 const dates = sales.map(s => new Date(s.created_at).getTime())
@@ -383,6 +394,10 @@ export function TeamPerformance() {
         if (dateRange === 'month') {
             const now = new Date()
             return formatLocalizedMonthYear(now, i18n.language)
+        }
+        if (dateRange === 'lastMonth') {
+            const now = new Date()
+            return formatLocalizedMonthYear(new Date(now.getFullYear(), now.getMonth() - 1, 1), i18n.language)
         }
         if (dateRange === 'allTime') {
             if (sales && sales.length > 0) {

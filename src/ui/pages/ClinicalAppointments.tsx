@@ -304,6 +304,11 @@ function Beauty2AppointmentList({ workspaceId, navigate }: { workspaceId: string
         const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
         return issueDate >= monthStart
       }
+      if (dateRange === 'lastMonth') {
+        const startOfLastMonth = formatLocalDateValue(new Date(now.getFullYear(), now.getMonth() - 1, 1))
+        const startOfMonth = formatLocalDateValue(new Date(now.getFullYear(), now.getMonth(), 1))
+        return issueDate >= startOfLastMonth && issueDate < startOfMonth
+      }
       if (dateRange === 'custom') {
         if (customDates.start && issueDate < customDates.start) return false
         if (customDates.end && issueDate > customDates.end) return false
@@ -812,6 +817,13 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
     } else if (dateRange === 'month') {
       const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
       result = result.filter((a) => a.appointmentDate >= startOfMonth)
+    } else if (dateRange === 'lastMonth') {
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+      result = result.filter((a) => {
+        const appointmentDate = new Date(`${a.appointmentDate}T00:00:00`)
+        return appointmentDate >= startOfLastMonth && appointmentDate < startOfMonth
+      })
     } else if (dateRange === 'custom' && (customDates.start || customDates.end)) {
       result = result.filter((a) => {
         if (customDates.start && a.appointmentDate < customDates.start) return false

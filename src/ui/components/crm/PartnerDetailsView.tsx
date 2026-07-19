@@ -563,6 +563,11 @@ export function PartnerDetailsView({
             const end = new Date(now.getFullYear(), now.getMonth() + 1, 1)
             return { startDate: start.toISOString(), endDate: end.toISOString() }
         }
+        if (dateRange === 'lastMonth') {
+            const start = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+            const end = new Date(now.getFullYear(), now.getMonth(), 1)
+            return { startDate: start.toISOString(), endDate: end.toISOString() }
+        }
         if (dateRange === 'custom' && (customDates.start || customDates.end)) {
             const start = customDates.start ? new Date(customDates.start) : undefined
             const end = customDates.end ? new Date(customDates.end) : undefined
@@ -1158,7 +1163,7 @@ export function PartnerDetailsView({
             }
         }
 
-        if (dateRange === 'today' || dateRange === 'month') {
+        if (dateRange === 'today' || dateRange === 'month' || dateRange === 'lastMonth') {
             const inclusiveEnd = dateBounds.endDate
                 ? new Date(new Date(dateBounds.endDate).getTime() - 1).toISOString()
                 : undefined

@@ -112,6 +112,12 @@ export function InvoicesHistory() {
                     return matchesSearch && invoiceDate >= startOfMonth
                 }
 
+                if (dateRange === 'lastMonth') {
+                    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+                    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+                    return matchesSearch && invoiceDate >= startOfLastMonth && invoiceDate < startOfMonth
+                }
+
                 if (dateRange === 'custom' && (customDates.start || customDates.end)) {
                     const start = customDates.start ? new Date(customDates.start) : null
                     if (start) start.setHours(0, 0, 0, 0)
@@ -134,6 +140,11 @@ export function InvoicesHistory() {
 
         if (dateRange === 'month') {
             return formatLocalizedMonthYear(new Date(), i18n.language)
+        }
+
+        if (dateRange === 'lastMonth') {
+            const now = new Date()
+            return formatLocalizedMonthYear(new Date(now.getFullYear(), now.getMonth() - 1, 1), i18n.language)
         }
 
         if (dateRange === 'custom') {

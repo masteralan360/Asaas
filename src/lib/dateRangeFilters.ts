@@ -46,6 +46,12 @@ export function isDateInDateRange(
         return date >= startOfMonth
     }
 
+    if (dateRange === 'lastMonth') {
+        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0)
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
+        return date >= startOfLastMonth && date < startOfMonth
+    }
+
     if (dateRange === 'custom' && (customDates.start || customDates.end)) {
         const start = toValidDate(customDates.start)
         if (start) start.setHours(0, 0, 0, 0)

@@ -244,6 +244,13 @@ export function Sales() {
             return { startDate: startOfMonth.toISOString() }
         }
 
+        if (dateRange === 'lastMonth') {
+            const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+            const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+            endOfLastMonth.setMilliseconds(-1)
+            return { startDate: startOfLastMonth.toISOString(), endDate: endOfLastMonth.toISOString() }
+        }
+
         if (dateRange === 'custom' && (customDates.start || customDates.end)) {
             const start = customDates.start ? new Date(customDates.start) : undefined
             if (start) start.setHours(0, 0, 0, 0)
@@ -381,6 +388,13 @@ export function Sales() {
         } else if (dateRange === 'month') {
             const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
             result = result.filter(s => new Date(s.created_at) >= startOfMonth)
+        } else if (dateRange === 'lastMonth') {
+            const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+            result = result.filter(s => {
+                const createdAt = new Date(s.created_at)
+                return createdAt >= startOfLastMonth && createdAt < startOfMonth
+            })
         } else if (dateRange === 'custom' && (customDates.start || customDates.end)) {
             const start = customDates.start ? new Date(customDates.start) : null
             if (start) start.setHours(0, 0, 0, 0)
@@ -592,6 +606,10 @@ export function Sales() {
         if (dateRange === 'month') {
             const now = new Date()
             return formatLocalizedMonthYear(now, i18n.language)
+        }
+        if (dateRange === 'lastMonth') {
+            const now = new Date()
+            return formatLocalizedMonthYear(new Date(now.getFullYear(), now.getMonth() - 1, 1), i18n.language)
         }
         if (dateRange === 'custom') {
             if (filteredSales && filteredSales.length > 0) {
