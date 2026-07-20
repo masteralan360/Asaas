@@ -1321,12 +1321,23 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
 
             <Card>
                 <CardHeader className="gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value as OrderTab); navigate(value === 'sales' ? '/orders/sales' : '/orders/purchase') }} className="w-full">
+                    <Tabs
+                        value={activeTab}
+                        onValueChange={(value) => { setActiveTab(value as OrderTab); navigate(value === 'sales' ? '/orders/sales' : '/orders/purchase') }}
+                        className="w-full"
+                        dir={i18n.dir()}
+                    >
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                             <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
                                 <TabsList className="w-full sm:w-auto">
-                                    <TabsTrigger value="sales" className="flex-1 sm:flex-none">{t('orders.tabs.sales') || 'Sales Orders'}</TabsTrigger>
-                                    <TabsTrigger value="purchase" className="flex-1 sm:flex-none">{t('orders.tabs.purchase') || 'Purchase Orders'}</TabsTrigger>
+                                    <TabsTrigger value="sales" className="flex-1 gap-1.5 sm:flex-none">
+                                        <ShoppingCart className="h-4 w-4" />
+                                        {t('orders.tabs.sales') || 'Sales Orders'}
+                                    </TabsTrigger>
+                                    <TabsTrigger value="purchase" className="flex-1 gap-1.5 sm:flex-none">
+                                        <Truck className="h-4 w-4" />
+                                        {t('orders.tabs.purchase') || 'Purchase Orders'}
+                                    </TabsTrigger>
                                 </TabsList>
 
                                 <div className="flex flex-wrap items-center gap-2">
