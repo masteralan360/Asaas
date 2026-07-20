@@ -507,7 +507,8 @@ describe('Order Details custom print template', () => {
                     x: 80,
                     y: 40,
                     width: 25,
-                    rotation: 15
+                    rotation: 15,
+                    layer: 'behind-template'
                 }],
                 updatedAt: new Date().toISOString()
             },
@@ -524,6 +525,7 @@ describe('Order Details custom print template', () => {
         expect(html).toContain('dir="ltr" class="absolute whitespace-pre-wrap')
         expect(html).toContain('0770 199 0012')
         expect(html).toContain('fill="#7c3aed"')
+        expect(html).toContain('z-index:5')
         expect(html).not.toContain('order-template-move-handle absolute')
     })
 })

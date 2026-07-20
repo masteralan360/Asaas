@@ -1,13 +1,15 @@
 import { ArrowDownToLine, ArrowUpToLine, Move, RotateCw, Scaling, X } from 'lucide-react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 
-import { getPdfShapeHeight, type PdfShape } from '@/types'
+import { getPdfShapeHeight, getPdfShapeZIndex, type PdfShape, type PdfShapeLayer } from '@/types'
 import { PdfShapeGraphic } from '@/ui/components/PdfShapeGraphic'
 
 type AttachedShapesOverlayProps = {
     shapes?: PdfShape[]
     onShapesChange?: (shapes: PdfShape[]) => void
     pageWidthMm?: number
+    selectedShapeId?: string | null
+    onSelectionClear?: () => void
 }
 
 type Corner = {
@@ -36,20 +38,22 @@ const sideHandles: Side[] = [
     { axis: 'x', direction: -1, className: 'left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize' }
 ]
 
-export function AttachedShapesOverlay({ shapes = [], onShapesChange, pageWidthMm = 210 }: AttachedShapesOverlayProps) {
+export function AttachedShapesOverlay({
+    shapes = [],
+    onShapesChange,
+    pageWidthMm = 210,
+    selectedShapeId,
+    onSelectionClear
+}: AttachedShapesOverlayProps) {
     const updateShape = (index: number, nextShape: PdfShape) => {
         onShapesChange?.(shapes.map((shape, shapeIndex) => (
             shapeIndex === index ? nextShape : shape
         )))
     }
 
-    const moveLayer = (index: number, direction: -1 | 1) => {
-        const targetIndex = index + direction
-        if (!onShapesChange || targetIndex < 0 || targetIndex >= shapes.length) return
-
-        const nextShapes = [...shapes]
-        ;[nextShapes[index], nextShapes[targetIndex]] = [nextShapes[targetIndex], nextShapes[index]]
-        onShapesChange(nextShapes)
+    const setShapeLayer = (index: number, shape: PdfShape, layer: PdfShapeLayer) => {
+        if (shape.layer === layer) return
+        updateShape(index, { ...shape, layer })
     }
 
     const startMove = (event: ReactPointerEvent<HTMLDivElement>, shape: PdfShape, index: number) => {
@@ -161,33 +165,39 @@ export function AttachedShapesOverlay({ shapes = [], onShapesChange, pageWidthMm
 
     return (
         <>
-            {shapes.map((shape, index) => (
-                <div
-                    key={shape.id || `${shape.kind}-${index}`}
-                    className="absolute group/pdf-shape"
-                    style={{
-                        left: `${shape.x}mm`,
-                        top: `${shape.y}mm`,
-                        width: `${shape.width}mm`,
-                        height: `${getPdfShapeHeight(shape)}mm`,
-                        transform: `translate(-50%, -50%) rotate(${shape.rotation || 0}deg)`,
-                        transformOrigin: 'center',
-                        zIndex: 75 + index
-                    }}
-                >
+            {shapes.map((shape, index) => {
+                const isSelected = selectedShapeId === shape.id
+
+                return (
+                    <div
+                        key={shape.id || `${shape.kind}-${index}`}
+                        data-pdf-template-object-id={`shape:${shape.id}`}
+                        data-pdf-template-object-kind="shape"
+                        className={`absolute group/pdf-shape ${isSelected ? 'ring-1 ring-primary' : ''}`}
+                        style={{
+                            left: `${shape.x}mm`,
+                            top: `${shape.y}mm`,
+                            width: `${shape.width}mm`,
+                            height: `${getPdfShapeHeight(shape)}mm`,
+                            transform: `translate(-50%, -50%) rotate(${shape.rotation || 0}deg)`,
+                            transformOrigin: 'center',
+                            zIndex: isSelected ? 200 : getPdfShapeZIndex(shape)
+                        }}
+                    >
                     <PdfShapeGraphic kind={shape.kind} color={shape.color} />
 
                     {onShapesChange && (
                         <>
                             <button
                                 type="button"
-                                aria-label="Send shape backward"
-                                title="Send backward"
-                                disabled={index === 0}
+                                aria-label="Send shape behind template"
+                                title="Send behind template"
+                                disabled={shape.layer === 'behind-template'}
                                 className="absolute left-1/2 top-0 flex h-6 w-6 -translate-x-[185%] -translate-y-[135%] items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm opacity-0 transition-opacity group-hover/pdf-shape:opacity-100 group-focus-within/pdf-shape:opacity-100 hover:bg-slate-50 active:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                                 onClick={(event) => {
                                     event.stopPropagation()
-                                    moveLayer(index, -1)
+                                    onSelectionClear?.()
+                                    setShapeLayer(index, shape, 'behind-template')
                                 }}
                             >
                                 <ArrowDownToLine className="h-3 w-3 text-primary" />
@@ -202,13 +212,14 @@ export function AttachedShapesOverlay({ shapes = [], onShapesChange, pageWidthMm
 
                             <button
                                 type="button"
-                                aria-label="Bring shape forward"
-                                title="Bring forward"
-                                disabled={index === shapes.length - 1}
+                                aria-label="Bring shape in front of template"
+                                title="Bring in front of template"
+                                disabled={shape.layer !== 'behind-template'}
                                 className="absolute left-1/2 top-0 flex h-6 w-6 translate-x-[85%] -translate-y-[135%] items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm opacity-0 transition-opacity group-hover/pdf-shape:opacity-100 group-focus-within/pdf-shape:opacity-100 hover:bg-slate-50 active:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                                 onClick={(event) => {
                                     event.stopPropagation()
-                                    moveLayer(index, 1)
+                                    onSelectionClear?.()
+                                    setShapeLayer(index, shape, 'above-template')
                                 }}
                             >
                                 <ArrowUpToLine className="h-3 w-3 text-primary" />
@@ -258,8 +269,9 @@ export function AttachedShapesOverlay({ shapes = [], onShapesChange, pageWidthMm
                             </button>
                         </>
                     )}
-                </div>
-            ))}
+                    </div>
+                )
+            })}
         </>
     )
 }

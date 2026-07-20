@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState, useCallback, useRef } from 'react'
+import { type FormEvent, type PointerEvent as ReactPointerEvent, useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ExternalLink, Printer, Loader2, Edit3, X, ZoomIn, ZoomOut, Maximize, ImagePlus, Trash2, PenTool, Brush, Palette, Eraser, Hand, Type, RotateCw, Scaling, Move, Languages, Check, Shapes } from 'lucide-react'
 import {
@@ -417,6 +417,7 @@ export function PdfPreviewPage() {
     const [templateTexts, setTemplateTexts] = useState<CustomTemplateText[]>(() => initialTemplateLayout?.texts || [])
     const [templateImages, setTemplateImages] = useState<CustomTemplateImage[]>(() => initialTemplateLayout?.images || [])
     const [templateShapes, setTemplateShapes] = useState<CustomTemplateShape[]>(() => initialTemplateLayout?.shapes || [])
+    const [selectedTemplateObjectId, setSelectedTemplateObjectId] = useState<string | null>(null)
     const [templateComponentPositions, setTemplateComponentPositions] = useState<Record<string, CustomTemplateComponentPosition>>(() => ({
         ...Object.fromEntries((templatePreview?.movableComponents || []).map((component) => [
             component.key,
@@ -434,6 +435,40 @@ export function PdfPreviewPage() {
             [key]: position
         }))
     }, [])
+    const handleTemplateStackSelection = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+        const clickedObject = (event.target as HTMLElement).closest<HTMLElement>('[data-pdf-template-object-id]')
+
+        if (!event.shiftKey || drawingMode !== 'none') {
+            if (selectedTemplateObjectId && clickedObject?.dataset.pdfTemplateObjectId !== selectedTemplateObjectId) {
+                setSelectedTemplateObjectId(null)
+            }
+            return
+        }
+
+        const objectsUnderPointer: HTMLElement[] = []
+        document.elementsFromPoint(event.clientX, event.clientY).forEach((element) => {
+            const object = element.closest<HTMLElement>('[data-pdf-template-object-id]')
+            if (object && !objectsUnderPointer.includes(object)) {
+                objectsUnderPointer.push(object)
+            }
+        })
+
+        if (objectsUnderPointer.length < 2) return
+
+        const selectedIndex = selectedTemplateObjectId
+            ? objectsUnderPointer.findIndex((object) => object.dataset.pdfTemplateObjectId === selectedTemplateObjectId)
+            : -1
+        const nextObject = objectsUnderPointer
+            .slice(selectedIndex >= 0 ? selectedIndex + 1 : 1)
+            .find((object) => object.dataset.pdfTemplateObjectKind !== 'component')
+        const nextObjectId = nextObject?.dataset.pdfTemplateObjectId
+
+        if (!nextObjectId) return
+
+        event.preventDefault()
+        event.stopPropagation()
+        setSelectedTemplateObjectId(nextObjectId)
+    }, [drawingMode, selectedTemplateObjectId])
     // Thermal receipts grow with their content; they do not have fixed page breaks.
     // The width fallback keeps older saved receipt templates free of A4-style guides.
     const isFixedPageTemplatePreview = source?.printFormat !== 'receipt' && templatePageWidth > 80
@@ -1175,6 +1210,7 @@ export function PdfPreviewPage() {
                                 <div
                                     ref={templateStageRef}
                                     className="relative mx-auto overflow-visible text-black"
+                                    onPointerDownCapture={handleTemplateStackSelection}
                                     style={{
                                         width: `${templatePageWidth}mm`,
                                         height: `${templateStackHeight}mm`
@@ -1277,14 +1313,16 @@ export function PdfPreviewPage() {
                                     <div
                                         key={`timg-${idx}`}
                                         data-template-overflow-measure=""
-                                        className="absolute z-[35] cursor-move group/img"
+                                        data-pdf-template-object-id={`image:${idx}`}
+                                        data-pdf-template-object-kind="image"
+                                        className={cn("absolute z-[35] cursor-move group/img", selectedTemplateObjectId === `image:${idx}` && "ring-1 ring-primary")}
                                         style={{
                                             left: `${(img.x / templatePageWidth) * 100}%`,
                                             top: `${(img.y / templateStackHeight) * 100}%`,
                                             width: `${(img.width / templatePageWidth) * 100}%`,
                                             transform: `rotate(${img.rotation || 0}deg)`,
                                             transformOrigin: 'top left',
-                                            zIndex: 50 + idx,
+                                            zIndex: selectedTemplateObjectId === `image:${idx}` ? 200 : 50 + idx,
                                         }}
                                         onPointerDown={(e) => {
                                             if (drawingMode !== 'none') return
@@ -1387,6 +1425,10 @@ export function PdfPreviewPage() {
                                     shapes={templateShapes}
                                     onShapesChange={setTemplateShapes}
                                     pageWidthMm={templatePageWidth}
+                                    selectedShapeId={selectedTemplateObjectId?.startsWith('shape:')
+                                        ? selectedTemplateObjectId.slice('shape:'.length)
+                                        : null}
+                                    onSelectionClear={() => setSelectedTemplateObjectId(null)}
                                 />
 
                                 {/* Attached texts overlay */}
@@ -1394,14 +1436,16 @@ export function PdfPreviewPage() {
                                     <div
                                         key={`ttxt-${txt.id}`}
                                         data-template-overflow-measure=""
-                                        className="absolute z-[35] group/txt"
+                                        data-pdf-template-object-id={`text:${txt.id}`}
+                                        data-pdf-template-object-kind="text"
+                                        className={cn("absolute z-[35] group/txt", selectedTemplateObjectId === `text:${txt.id}` && "ring-1 ring-primary")}
                                         style={{
                                             left: `${(txt.x / templatePageWidth) * 100}%`,
                                             top: `${(txt.y / templateStackHeight) * 100}%`,
                                             width: `${(txt.width / templatePageWidth) * 100}%`,
                                             transform: `rotate(${txt.rotation}deg)`,
                                             transformOrigin: 'top left',
-                                            zIndex: 100 + idx,
+                                            zIndex: selectedTemplateObjectId === `text:${txt.id}` ? 200 : 100 + idx,
                                         }}
                                     >
                                         <textarea
@@ -1539,7 +1583,7 @@ export function PdfPreviewPage() {
                                     </div>
                                 ))}
 
-                                <div ref={templateContentLayerRef} className="relative z-20">
+                                <div ref={templateContentLayerRef} className="relative">
                                     {templatePreview.createElement(
                                         fieldValues,
                                         source.effectiveId,

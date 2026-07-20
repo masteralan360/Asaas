@@ -197,6 +197,10 @@ export interface AttachedText {
 }
 
 export type PdfShapeKind = 'rectangle' | 'circle' | 'triangle' | 'star'
+export type PdfShapeLayer = 'behind-template' | 'above-template'
+
+export const PDF_SHAPE_BEHIND_TEMPLATE_Z_INDEX = 5
+export const PDF_SHAPE_ABOVE_TEMPLATE_Z_INDEX = 75
 
 export function getPdfShapeHeightRatio(_kind: PdfShapeKind) {
     return 1
@@ -210,6 +214,7 @@ export interface PdfShape {
     width: number
     height?: number
     rotation?: number
+    layer?: PdfShapeLayer
     color: string
 }
 
@@ -221,6 +226,12 @@ export function getPdfShapeHeight(shape: Pick<PdfShape, 'kind' | 'width' | 'heig
 
 export function getPdfShapeBottom(shape: PdfShape) {
     return shape.y + getPdfShapeHeight(shape) / 2
+}
+
+export function getPdfShapeZIndex(shape: Pick<PdfShape, 'layer'>) {
+    return shape.layer === 'behind-template'
+        ? PDF_SHAPE_BEHIND_TEMPLATE_Z_INDEX
+        : PDF_SHAPE_ABOVE_TEMPLATE_Z_INDEX
 }
 
 export interface UniversalInvoice {

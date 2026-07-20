@@ -11,7 +11,7 @@ import {
     getCustomTemplateLayoutPageCount
 } from '@/lib/pdfPreviewStore'
 import { PdfShapeGraphic } from '@/ui/components/PdfShapeGraphic'
-import { getPdfShapeHeight } from '@/types'
+import { getPdfShapeHeight, getPdfShapeZIndex } from '@/types'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { platformService } from '@/services/platformService'
 import {
@@ -1288,10 +1288,10 @@ function CustomTemplateLayoutOverlay({ layout, heightMm }: { layout: CustomTempl
 
     return (
         <div
-            className="pointer-events-none absolute start-0 top-0 z-50 overflow-visible"
+            className="pointer-events-none absolute start-0 top-0 overflow-visible"
             style={{ width: '100%', height: `${heightMm}mm` }}
         >
-            <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${pageWidth} ${heightMm}`}>
+            <svg className="absolute inset-0 z-40 h-full w-full" viewBox={`0 0 ${pageWidth} ${heightMm}`}>
                 {layout.annotations.map((annotation, index) => (
                     <path
                         key={`annotation-${index}`}
@@ -1334,7 +1334,7 @@ function CustomTemplateLayoutOverlay({ layout, heightMm }: { layout: CustomTempl
                         height: `${(getPdfShapeHeight(shape) / heightMm) * 100}%`,
                         transform: `translate(-50%, -50%) rotate(${shape.rotation || 0}deg)`,
                         transformOrigin: 'center',
-                        zIndex: 75 + index
+                        zIndex: getPdfShapeZIndex(shape)
                     }}
                 >
                     <PdfShapeGraphic kind={shape.kind} color={shape.color} />
@@ -1422,7 +1422,7 @@ export function renderCustomTemplateLayoutElement({
                     }}
                 />
             ))}
-            <div className="relative z-10">
+            <div className="relative">
                 {preview.createElement(fieldValues, effectiveId, preview.fixedPrintLang, {
                     tokenFieldTemplates: layout.fieldTokenTemplates,
                     componentPositions: layout.componentPositions,

@@ -1094,9 +1094,9 @@ export function OrderDetailsPrintTemplate({
                 position={componentPositions?.[ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.totals]}
                 editable={editableComponents}
                 onPositionChange={onComponentPositionChange}
+                wrapperClassName="ms-auto mb-5 w-60"
             >
-            <div className="flex justify-end mb-5">
-                <div className="w-60 text-xs space-y-1">
+            <div className="text-xs space-y-1">
                     <div className="flex justify-between">
                         <span className="text-black" style={labelOpacityStyle}>{t('orders.details.subtotal') || 'Subtotal'}</span>
                         <span className="font-semibold">{formatCurrency(order.subtotal, currency, iqdPreference)}</span>
@@ -1117,7 +1117,6 @@ export function OrderDetailsPrintTemplate({
                         <span className="font-bold">{t('common.total') || 'Total'}</span>
                         <span className="font-bold">{formatCurrency(order.total, currency, iqdPreference)}</span>
                     </div>
-                </div>
             </div>
             </MovableOrderPrintBlock>
 

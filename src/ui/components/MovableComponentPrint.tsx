@@ -92,15 +92,18 @@ export function MovableOrderPrintBlock({
                 wrapperClassName
             ].filter(Boolean).join(' ')}
             style={pushFlow ? {
+                position: 'relative',
                 transform: `translate(${resolvedPosition.x}mm, 0)`,
                 marginTop: `${resolvedPosition.y}mm`,
-                zIndex: resolvedPosition.x !== 0 || resolvedPosition.y !== 0 ? 20 : undefined
+                zIndex: 20
             } : {
                 transform: `translate(${resolvedPosition.x}mm, ${resolvedPosition.y}mm)`,
                 position: 'relative',
-                zIndex: resolvedPosition.x !== 0 || resolvedPosition.y !== 0 ? 20 : undefined
+                zIndex: 20
             }}
             data-order-print-component={componentKey}
+            data-pdf-template-object-id={`component:${componentKey}`}
+            data-pdf-template-object-kind="component"
         >
             {children}
             {editable ? (
