@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { Mail, MapPin, Phone, X, RotateCw, Scaling, Move } from 'lucide-react'
 import { EditableField } from '@/ui/components/EditableField'
+import { AttachedShapesOverlay } from '@/ui/components/AttachedShapesOverlay'
 import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
 import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
 import { resolveIsolatedTextDirection } from '@/lib/textDirection'
@@ -831,6 +832,11 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                         ))}
                     </div>
                 )}
+
+                <AttachedShapesOverlay
+                    shapes={data.attached_shapes}
+                    onShapesChange={onDataChange ? (attached_shapes) => onDataChange({ ...data, attached_shapes }) : undefined}
+                />
 
                 <svg
                     className="absolute inset-0 z-[40] pointer-events-none"

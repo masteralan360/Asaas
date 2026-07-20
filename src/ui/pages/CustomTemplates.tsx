@@ -89,6 +89,7 @@ function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout 
         annotations: layout.annotations || [],
         texts: layout.texts || [],
         images: layout.images || [],
+        shapes: layout.shapes || [],
         updatedAt: typeof layout.updatedAt === 'string' ? layout.updatedAt : row.updated_at
     }
 }
@@ -99,6 +100,7 @@ function countLayoutItems(row: CustomTemplateRow) {
     return layout.annotations.length
         + layout.texts.length
         + layout.images.length
+        + layout.shapes.length
         + Object.keys(layout.fields).length
         + Object.keys(layout.hiddenFields || {}).length
         + Object.keys(layout.componentPositions || {}).length

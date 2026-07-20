@@ -16,6 +16,7 @@ function createLayout(overrides: Partial<CustomTemplateLayout> = {}): CustomTemp
         annotations: [],
         texts: [],
         images: [],
+        shapes: [],
         updatedAt: '2026-06-23T00:00:00.000Z',
         ...overrides
     }
@@ -47,6 +48,22 @@ describe('custom template page extents', () => {
                 color: '#000000',
                 brushSize: 2,
                 points: [{ x: 10, y: A4_PAGE_HEIGHT_MM + 1 }]
+            }]
+        })
+
+        expect(getCustomTemplateLayoutPageCount(layout)).toBe(2)
+    })
+
+    it('creates another A4 page when a shape crosses the page bottom', () => {
+        const layout = createLayout({
+            shapes: [{
+                id: 'shape-1',
+                kind: 'circle',
+                color: '#ef4444',
+                x: 10,
+                y: A4_PAGE_HEIGHT_MM,
+                width: 20,
+                rotation: 0
             }]
         })
 

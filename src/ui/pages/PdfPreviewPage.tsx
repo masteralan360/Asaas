@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, ExternalLink, Printer, Loader2, Edit3, X, ZoomIn, ZoomOut, Maximize, ImagePlus, Trash2, PenTool, Brush, Palette, Eraser, Hand, Type, RotateCw, Scaling, Move, Languages, Check } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Printer, Loader2, Edit3, X, ZoomIn, ZoomOut, Maximize, ImagePlus, Trash2, PenTool, Brush, Palette, Eraser, Hand, Type, RotateCw, Scaling, Move, Languages, Check, Shapes } from 'lucide-react'
 import {
     A4_PAGE_HEIGHT_MM,
     getInvoicePreviewSource,
@@ -12,6 +12,7 @@ import {
     type CustomTemplateComponentPosition,
     type CustomTemplateImage,
     type CustomTemplateLayout,
+    type CustomTemplateShape,
     type CustomTemplateText
 } from '@/lib/pdfPreviewStore'
 import { platformService } from '@/services/platformService'
@@ -43,6 +44,9 @@ import { resolveIsolatedTextDirection } from '@/lib/textDirection'
 import type { UniversalInvoice } from '@/types'
 import { useAuth } from '@/auth/AuthContext'
 import { UiAccessGate, useUiAccess } from '@/context/UiAccessContext'
+import { AttachedShapesOverlay } from '@/ui/components/AttachedShapesOverlay'
+import { PDF_SHAPE_OPTIONS } from '@/ui/components/PdfShapeGraphic'
+import type { PdfShapeKind } from '@/types'
 
 const LanguageSelector = ({ value, onChange }: { value: string, onChange: (val: string) => void }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -104,6 +108,45 @@ const LanguageSelector = ({ value, onChange }: { value: string, onChange: (val: 
         </div>
     );
 };
+
+const ShapeToolbarButton = ({ onAdd }: { onAdd: (kind: PdfShapeKind) => void }) => {
+    const [isOpen, setIsOpen] = useState(false)
+
+    return (
+        <div className="relative">
+            <button
+                type="button"
+                onClick={() => setIsOpen((current) => !current)}
+                className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-primary md:w-auto md:gap-1.5 md:px-2 md:text-[11px] md:font-bold"
+                title="Add Shape"
+                aria-label="Add Shape"
+                aria-expanded={isOpen}
+            >
+                <Shapes className="h-3.5 w-3.5" />
+                <span className="hidden md:inline">Add Shape</span>
+            </button>
+            {isOpen && (
+                <div className="absolute left-0 top-full z-50 mt-1.5 flex gap-1 rounded-md border bg-card p-1.5 shadow-lg">
+                    {PDF_SHAPE_OPTIONS.map(({ kind, label, Icon }) => (
+                        <button
+                            key={kind}
+                            type="button"
+                            onClick={() => {
+                                onAdd(kind)
+                                setIsOpen(false)
+                            }}
+                            className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-primary"
+                            title={label}
+                            aria-label={`Add ${label}`}
+                        >
+                            <Icon className="h-4 w-4" />
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    )
+}
 
 
 function EditableInvoicePreview({
@@ -373,6 +416,7 @@ export function PdfPreviewPage() {
     const [templateAnnotations, setTemplateAnnotations] = useState<CustomTemplateAnnotation[]>(() => initialTemplateLayout?.annotations || [])
     const [templateTexts, setTemplateTexts] = useState<CustomTemplateText[]>(() => initialTemplateLayout?.texts || [])
     const [templateImages, setTemplateImages] = useState<CustomTemplateImage[]>(() => initialTemplateLayout?.images || [])
+    const [templateShapes, setTemplateShapes] = useState<CustomTemplateShape[]>(() => initialTemplateLayout?.shapes || [])
     const [templateComponentPositions, setTemplateComponentPositions] = useState<Record<string, CustomTemplateComponentPosition>>(() => ({
         ...Object.fromEntries((templatePreview?.movableComponents || []).map((component) => [
             component.key,
@@ -401,6 +445,7 @@ export function PdfPreviewPage() {
         annotations: templateAnnotations,
         texts: templateTexts,
         images: templateImages,
+        shapes: templateShapes,
         componentPositions: templateComponentPositions
     }
     const estimatedTemplateHeightMm = getCustomTemplateLayoutHeightMm(templateLayoutForMeasurement)
@@ -470,6 +515,7 @@ export function PdfPreviewPage() {
         templateAnnotations,
         templateComponentPositions,
         templateImages,
+        templateShapes,
         templateHiddenFields,
         templatePreview,
         templateTexts
@@ -562,9 +608,10 @@ export function PdfPreviewPage() {
             annotations: templateAnnotations,
             texts: templateTexts,
             images: templateImages,
+            shapes: templateShapes,
             updatedAt: new Date().toISOString()
         }
-    }, [source, templatePreview, fieldValues, initialTemplateLayout?.label, templateAnnotations, templateComponentPositions, templateHiddenFields, templateTexts, templateImages, templatePageHeight, templatePageWidth])
+    }, [source, templatePreview, fieldValues, initialTemplateLayout?.label, templateAnnotations, templateComponentPositions, templateHiddenFields, templateTexts, templateImages, templateShapes, templatePageHeight, templatePageWidth])
 
     const saveTemplatePreview = useCallback(async (layout?: CustomTemplateLayout, label?: string) => {
         if (!source || !templatePreview || !fieldValues || isSaving) return
@@ -736,6 +783,22 @@ export function PdfPreviewPage() {
         }])
     }, [brushColor, templatePageWidth])
 
+    const handleAddTemplateShape = useCallback((kind: PdfShapeKind) => {
+        const width = Math.max(12, templatePageWidth * 0.2)
+        const x = templatePageWidth / 2
+        const y = 70
+        setTemplateShapes(prev => [...prev, {
+            id: Math.random().toString(36).slice(2, 11),
+            kind,
+            x,
+            y,
+            width,
+            height: width,
+            rotation: 0,
+            color: brushColor
+        }])
+    }, [brushColor, templatePageWidth])
+
     const handleAddImage = useCallback(async () => {
         if (!source.workspaceId) return
         try {
@@ -785,6 +848,28 @@ export function PdfPreviewPage() {
                     width: 80,
                     rotation: 0,
                     fontSize: 16,
+                    color: brushColor
+                }]
+            }
+        })
+    }, [brushColor])
+
+    const handleAddShape = useCallback((kind: PdfShapeKind) => {
+        setEditableData(prev => {
+            if (!prev) return null
+            const width = 40
+            const x = 105
+            const y = 100
+            return {
+                ...prev,
+                attached_shapes: [...(prev.attached_shapes || []), {
+                    id: Math.random().toString(36).slice(2, 11),
+                    kind,
+                    x,
+                    y,
+                    width,
+                    height: width,
+                    rotation: 0,
                     color: brushColor
                 }]
             }
@@ -862,6 +947,7 @@ export function PdfPreviewPage() {
                                     <ImagePlus className="h-3.5 w-3.5" />
                                     <span className="hidden md:inline">Add Photo</span>
                                 </button>
+                                <ShapeToolbarButton onAdd={handleAddTemplateShape} />
                                 <div className="w-px h-4 bg-border mx-0.5" />
                                 <button
                                     onClick={handleAddTemplateText}
@@ -1297,6 +1383,12 @@ export function PdfPreviewPage() {
                                     </div>
                                 ))}
 
+                                <AttachedShapesOverlay
+                                    shapes={templateShapes}
+                                    onShapesChange={setTemplateShapes}
+                                    pageWidthMm={templatePageWidth}
+                                />
+
                                 {/* Attached texts overlay */}
                                 {templateTexts.map((txt, idx) => (
                                     <div
@@ -1694,6 +1786,7 @@ export function PdfPreviewPage() {
                                 <ImagePlus className="h-3.5 w-3.5" />
                                 <span className="hidden md:inline">Add Photo</span>
                             </button>
+                            <ShapeToolbarButton onAdd={handleAddShape} />
                             <div className="w-px h-4 bg-border mx-0.5" />
                             <button
                                 onClick={handleAddText}

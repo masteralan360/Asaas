@@ -1348,6 +1348,7 @@ export function PartnerDetailsView({
             annotations: [],
             texts: [],
             images: [],
+            shapes: [],
             updatedAt: new Date().toISOString()
         }
     }, [partnerPrintTarget, selectedPrintLayout, selectedPrintTemplate, t])

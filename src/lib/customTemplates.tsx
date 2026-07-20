@@ -10,6 +10,8 @@ import {
     getCustomTemplateLayoutOverflowHeightMm,
     getCustomTemplateLayoutPageCount
 } from '@/lib/pdfPreviewStore'
+import { PdfShapeGraphic } from '@/ui/components/PdfShapeGraphic'
+import { getPdfShapeHeight } from '@/types'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { platformService } from '@/services/platformService'
 import {
@@ -296,6 +298,7 @@ export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): 
         annotations: layout.annotations || [],
         texts: layout.texts || [],
         images: layout.images || [],
+        shapes: layout.shapes || [],
         updatedAt: typeof layout.updatedAt === 'string' ? layout.updatedAt : row.updated_at || new Date().toISOString()
     }
 }
@@ -345,6 +348,7 @@ export function countCustomTemplateLayoutItems(row: StoredCustomTemplateRow) {
     return layout.annotations.length
         + layout.texts.length
         + layout.images.length
+        + layout.shapes.length
         + Object.keys(layout.fields).length
         + Object.keys(layout.componentPositions || {}).length
 }
@@ -1317,6 +1321,24 @@ function CustomTemplateLayoutOverlay({ layout, heightMm }: { layout: CustomTempl
                         zIndex: 60 + index
                     }}
                 />
+            ))}
+
+            {(layout.shapes || []).map((shape, index) => (
+                <div
+                    key={`shape-${shape.id || index}`}
+                    className="absolute"
+                    style={{
+                        left: `${(shape.x / pageWidth) * 100}%`,
+                        top: `${(shape.y / heightMm) * 100}%`,
+                        width: `${(shape.width / pageWidth) * 100}%`,
+                        height: `${(getPdfShapeHeight(shape) / heightMm) * 100}%`,
+                        transform: `translate(-50%, -50%) rotate(${shape.rotation || 0}deg)`,
+                        transformOrigin: 'center',
+                        zIndex: 75 + index
+                    }}
+                >
+                    <PdfShapeGraphic kind={shape.kind} color={shape.color} />
+                </div>
             ))}
 
             {layout.texts.map((text, index) => (

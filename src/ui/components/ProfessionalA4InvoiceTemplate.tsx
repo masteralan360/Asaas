@@ -11,6 +11,7 @@ import type { UniversalInvoice, UniversalInvoiceItem } from '@/types'
 import { EditableField } from '@/ui/components/EditableField'
 import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
 import { HideablePrintFieldCard } from '@/ui/components/print/HideablePrintFieldCard'
+import { AttachedShapesOverlay } from '@/ui/components/AttachedShapesOverlay'
 
 export const PROFESSIONAL_A4_TABLE_ROW_COUNT = 10
 
@@ -528,6 +529,11 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
                         {t('invoice.generated', { defaultValue: 'Generated' })}
                     </div>
                 ))}
+
+                <AttachedShapesOverlay
+                    shapes={data.attached_shapes}
+                    onShapesChange={onDataChange ? (attached_shapes) => onDataChange({ ...data, attached_shapes }) : undefined}
+                />
 
                 <svg
                     className="absolute inset-0 z-[40] pointer-events-none"

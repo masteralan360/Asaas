@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { Mail, MapPin, Phone, X, RotateCw, Scaling, Move } from 'lucide-react'
 import { resolveIsolatedTextDirection } from '@/lib/textDirection'
+import { AttachedShapesOverlay } from '@/ui/components/AttachedShapesOverlay'
 
 interface WorkspaceContactPair {
     primary?: string
@@ -695,6 +696,11 @@ export const RefundPrimaryA4InvoiceTemplate = forwardRef<HTMLDivElement, RefundP
                             ))}
                         </div>
                     )}
+
+                    <AttachedShapesOverlay
+                        shapes={data.attached_shapes}
+                        onShapesChange={onDataChange ? (attached_shapes) => onDataChange({ ...data, attached_shapes }) : undefined}
+                    />
 
                     {/* Annotations Layer */}
                     <svg 

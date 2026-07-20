@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { X, RotateCw, Scaling, Move } from 'lucide-react'
 import { resolveIsolatedTextDirection } from '@/lib/textDirection'
+import { AttachedShapesOverlay } from '@/ui/components/AttachedShapesOverlay'
 
 interface RefundA4InvoiceTemplateProps {
     data: UniversalInvoice
@@ -566,7 +567,12 @@ export const RefundA4InvoiceTemplate = forwardRef<HTMLDivElement, RefundA4Invoic
                     </div>
                 )}
 
-                {/* Annotations Layer */}
+                    <AttachedShapesOverlay
+                        shapes={data.attached_shapes}
+                        onShapesChange={onDataChange ? (attached_shapes) => onDataChange({ ...data, attached_shapes }) : undefined}
+                    />
+
+                    {/* Annotations Layer */}
                 <svg 
                     className="absolute inset-0 z-[40] pointer-events-none" 
                     viewBox="0 0 210 297"

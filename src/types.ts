@@ -196,6 +196,33 @@ export interface AttachedText {
     color?: string
 }
 
+export type PdfShapeKind = 'rectangle' | 'circle' | 'triangle' | 'star'
+
+export function getPdfShapeHeightRatio(_kind: PdfShapeKind) {
+    return 1
+}
+
+export interface PdfShape {
+    id: string
+    kind: PdfShapeKind
+    x: number
+    y: number
+    width: number
+    height?: number
+    rotation?: number
+    color: string
+}
+
+export function getPdfShapeHeight(shape: Pick<PdfShape, 'kind' | 'width' | 'height'>) {
+    return typeof shape.height === 'number' && Number.isFinite(shape.height) && shape.height > 0
+        ? shape.height
+        : shape.width * getPdfShapeHeightRatio(shape.kind)
+}
+
+export function getPdfShapeBottom(shape: PdfShape) {
+    return shape.y + getPdfShapeHeight(shape) / 2
+}
+
 export interface UniversalInvoice {
     id: string
     sequenceId?: number
@@ -242,6 +269,7 @@ export interface UniversalInvoice {
     }
     annotations?: Annotation[]
     attached_texts?: AttachedText[]
+    attached_shapes?: PdfShape[]
     hiddenPrintFields?: Record<string, boolean>
     notes?: string
 }

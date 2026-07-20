@@ -649,6 +649,7 @@ function RealEstateDetails({
             annotations: [],
             texts: [],
             images: [],
+            shapes: [],
             updatedAt: new Date().toISOString()
         }
     }, [selectedPrintLayout, selectedPrintTarget, selectedPrintTemplate, t])

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { Mail, MapPin, Phone, X, RotateCw, Scaling, Move } from 'lucide-react'
 import { EditableField } from '@/ui/components/EditableField'
+import { AttachedShapesOverlay } from '@/ui/components/AttachedShapesOverlay'
 import { resolveIsolatedTextDirection } from '@/lib/textDirection'
 
 interface WorkspaceContactPair {
@@ -697,6 +698,11 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                         ))}
                         </div>
                     )}
+
+                    <AttachedShapesOverlay
+                        shapes={data.attached_shapes}
+                        onShapesChange={onDataChange ? (attached_shapes) => onDataChange({ ...data, attached_shapes }) : undefined}
+                    />
 
                     {/* Annotations Layer */}
                     <svg 

@@ -1,4 +1,4 @@
-import type { UniversalInvoice } from '@/types'
+import { getPdfShapeBottom, type PdfShape, type UniversalInvoice } from '@/types'
 import type { ReactElement } from 'react'
 
 export type PrintFormat = 'a4' | 'receipt'
@@ -83,6 +83,8 @@ export type CustomTemplateImage = {
     rotation?: number
 }
 
+export type CustomTemplateShape = PdfShape
+
 export type CustomTemplateComponentPosition = {
     x: number
     y: number
@@ -105,6 +107,7 @@ export type CustomTemplateLayout = {
     annotations: CustomTemplateAnnotation[]
     texts: CustomTemplateText[]
     images: CustomTemplateImage[]
+    shapes: CustomTemplateShape[]
     updatedAt: string
 }
 
@@ -131,7 +134,7 @@ export function getFixedPageCountForHeight(heightMm: number, pageHeightMm = A4_P
     return Math.max(1, Math.ceil(Math.max(0, heightMm) / fixedPageHeight))
 }
 
-export function getCustomTemplateLayoutOverflowHeightMm(layout: Pick<CustomTemplateLayout, 'annotations' | 'texts' | 'images' | 'componentPositions'>) {
+export function getCustomTemplateLayoutOverflowHeightMm(layout: Pick<CustomTemplateLayout, 'annotations' | 'texts' | 'images' | 'shapes' | 'componentPositions'>) {
     let maxBottomMm = 0
 
     layout.annotations?.forEach((annotation) => {
@@ -147,6 +150,13 @@ export function getCustomTemplateLayoutOverflowHeightMm(layout: Pick<CustomTempl
         maxBottomMm = Math.max(
             maxBottomMm,
             getPositiveNumber(image.y) + (getPositiveNumber(image.width) * DEFAULT_OVERFLOW_IMAGE_HEIGHT_RATIO)
+        )
+    })
+
+    layout.shapes?.forEach((shape) => {
+        maxBottomMm = Math.max(
+            maxBottomMm,
+            getPdfShapeBottom(shape)
         )
     })
 
@@ -167,12 +177,12 @@ export function getCustomTemplateLayoutOverflowHeightMm(layout: Pick<CustomTempl
     return maxBottomMm
 }
 
-export function getCustomTemplateLayoutHeightMm(layout: Pick<CustomTemplateLayout, 'page' | 'annotations' | 'texts' | 'images' | 'componentPositions'>) {
+export function getCustomTemplateLayoutHeightMm(layout: Pick<CustomTemplateLayout, 'page' | 'annotations' | 'texts' | 'images' | 'shapes' | 'componentPositions'>) {
     const pageHeightMm = getPositiveNumber(layout.page?.heightMm, A4_PAGE_HEIGHT_MM)
     return Math.max(pageHeightMm, getCustomTemplateLayoutOverflowHeightMm(layout))
 }
 
-export function getCustomTemplateLayoutPageCount(layout: Pick<CustomTemplateLayout, 'page' | 'annotations' | 'texts' | 'images' | 'componentPositions'>) {
+export function getCustomTemplateLayoutPageCount(layout: Pick<CustomTemplateLayout, 'page' | 'annotations' | 'texts' | 'images' | 'shapes' | 'componentPositions'>) {
     return getFixedPageCountForHeight(
         getCustomTemplateLayoutHeightMm(layout),
         getPositiveNumber(layout.page?.heightMm, A4_PAGE_HEIGHT_MM)

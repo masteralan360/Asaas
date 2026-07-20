@@ -190,6 +190,7 @@ describe('Partner Details custom print template', () => {
             annotations: [],
             texts: [],
             images: [],
+            shapes: [],
             updatedAt: new Date().toISOString()
         }, 'auto', 'ar-IQ')
         const row = {
@@ -216,6 +217,7 @@ describe('Partner Details custom print template', () => {
                 annotations: [],
                 texts: [],
                 images: [],
+                shapes: [],
                 updatedAt: new Date().toISOString()
             }
         }
@@ -464,6 +466,7 @@ describe('Order Details custom print template', () => {
                 annotations: [],
                 texts: [],
                 images: [],
+                shapes: [],
                 updatedAt: new Date().toISOString()
             }
         })
@@ -497,6 +500,15 @@ describe('Order Details custom print template', () => {
                     rotation: 0
                 }],
                 images: [],
+                shapes: [{
+                    id: 'printed-shape',
+                    kind: 'star',
+                    color: '#7c3aed',
+                    x: 80,
+                    y: 40,
+                    width: 25,
+                    rotation: 15
+                }],
                 updatedAt: new Date().toISOString()
             },
             values: {},
@@ -511,6 +523,7 @@ describe('Order Details custom print template', () => {
         expect(html).toContain('translate(-4mm, 9mm)')
         expect(html).toContain('dir="ltr" class="absolute whitespace-pre-wrap')
         expect(html).toContain('0770 199 0012')
+        expect(html).toContain('fill="#7c3aed"')
         expect(html).not.toContain('order-template-move-handle absolute')
     })
 })
@@ -635,6 +648,7 @@ describe('Receipt custom template pagination', () => {
                     rotation: 0
                 }],
                 images: [],
+                shapes: [],
                 updatedAt: new Date().toISOString()
             },
             values: {}
