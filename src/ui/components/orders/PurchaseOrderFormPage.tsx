@@ -1,6 +1,6 @@
 import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, CalendarDays, CreditCard, PackagePlus, Plus, ShoppingCart, Star, Trash2, Users, Warehouse, X } from 'lucide-react'
+import { ArrowLeft, CalendarDays, CreditCard, LayoutGrid, PackagePlus, Plus, ShoppingCart, Star, Trash2, Users, Warehouse, X } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useDemoTutorial } from '@/demo'
@@ -62,6 +62,7 @@ import {
     useToast
 } from '@/ui/components'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
+import { ProductsViewModal } from '@/ui/components/ProductsViewModal'
 import { ProductAutocompleteInput } from './ProductAutocompleteInput'
 import { LoanPartyPickerDialog } from '@/ui/components/loans/LoanPartyPickerDialog'
 
@@ -199,6 +200,7 @@ export function PurchaseOrderFormPage({
     const [prioritizedMethod, setPrioritizedMethod] = useState<string | null>(getPrioritizedPaymentMethod)
 
     const [isSaving, setIsSaving] = useState(false)
+    const [productsViewItemIndex, setProductsViewItemIndex] = useState<number | null>(null)
     const [supplierId, setSupplierId] = useState(editingOrder?.businessPartnerId || editingOrder?.supplierId || '')
     const [supplierSearch, setSupplierSearch] = useState(editingOrder?.supplierName || '')
     const [isSupplierPickerOpen, setIsSupplierPickerOpen] = useState(false)
@@ -836,22 +838,37 @@ export function PurchaseOrderFormPage({
                                                         data-demo-product-linked={item.productId ? 'true' : 'false'}
                                                     >
                                                         <Label>{t('orders.form.selectProduct', { defaultValue: 'Select Product' })}</Label>
-                                                        <ProductAutocompleteInput
-                                                            value={item.productSearch}
-                                                            onChange={(value) => updateItem(index, { productSearch: value, productId: '' })}
-                                                            onSelectProduct={(product) => updateItem(index, { productId: product.id, productSearch: product.name })}
-                                                            products={products}
-                                                            disabled={priceBooksEnabled && (!isPriceBookCatalogReady || !selectedSupplier)}
-                                                            placeholder={priceBooksEnabled && !selectedSupplier
-                                                                ? t('priceBooks.selectPartnerFirst', { defaultValue: 'Select a business partner first' })
-                                                                : priceBooksEnabled && priceBookCatalogError
-                                                                    ? t('priceBooks.loadingErrorShort', { defaultValue: 'Price Books unavailable - retrying...' })
-                                                                    : t('orders.form.selectProduct', { defaultValue: 'Select Product' })}
-                                                            hasSelection={!!item.productId}
-                                                            storageMissing={!item.storageId}
-                                                            storageMissingLabel={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}
-                                                            onStorageMissingClick={() => handleStorageMissing(index)}
-                                                        />
+                                                        <div className="flex items-start gap-2">
+                                                            <ProductAutocompleteInput
+                                                                value={item.productSearch}
+                                                                onChange={(value) => updateItem(index, { productSearch: value, productId: '' })}
+                                                                onSelectProduct={(product) => updateItem(index, { productId: product.id, productSearch: product.name })}
+                                                                products={products}
+                                                                disabled={priceBooksEnabled && (!isPriceBookCatalogReady || !selectedSupplier)}
+                                                                placeholder={priceBooksEnabled && !selectedSupplier
+                                                                    ? t('priceBooks.selectPartnerFirst', { defaultValue: 'Select a business partner first' })
+                                                                    : priceBooksEnabled && priceBookCatalogError
+                                                                        ? t('priceBooks.loadingErrorShort', { defaultValue: 'Price Books unavailable - retrying...' })
+                                                                        : t('orders.form.selectProduct', { defaultValue: 'Select Product' })}
+                                                                hasSelection={!!item.productId}
+                                                                storageMissing={!item.storageId}
+                                                                storageMissingLabel={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}
+                                                                onStorageMissingClick={() => handleStorageMissing(index)}
+                                                            />
+                                                            {item.storageId && !(priceBooksEnabled && (!isPriceBookCatalogReady || !selectedSupplier)) ? (
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    className="h-10 w-10 shrink-0"
+                                                                    aria-label={t('products.title', { defaultValue: 'Browse products' })}
+                                                                    title={t('products.title', { defaultValue: 'Browse products' })}
+                                                                    onClick={() => setProductsViewItemIndex(index)}
+                                                                >
+                                                                    <LayoutGrid className="h-4 w-4" />
+                                                                </Button>
+                                                            ) : null}
+                                                        </div>
                                                     </div>
                                                     <div id={`purchase-storage-${index}`} className={cn('space-y-2', highlightedStorageIndex === index && 'animate-pulse')} data-tour-id={index === 0 ? 'tutorial-order-storage' : undefined}>
                                                         <Label className={cn(highlightedStorageIndex === index && 'text-destructive font-bold')}>{t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}</Label>
@@ -1185,6 +1202,40 @@ export function PurchaseOrderFormPage({
                             </div>
                         </div>
                     </form>
+            <ProductsViewModal
+                open={productsViewItemIndex !== null}
+                onOpenChange={(open) => {
+                    if (!open) setProductsViewItemIndex(null)
+                }}
+                products={products}
+                storages={storages}
+                initialStorageId={productsViewItemIndex === null
+                    ? ''
+                    : (items[productsViewItemIndex]?.storageId || destinationStorageId)}
+                getStorageLabel={(storage) => storage.isSystem
+                    ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name)
+                    : storage.name}
+                labels={{
+                    title: t('products.title', { defaultValue: 'Products' }),
+                    description: t('orders.form.selectProduct', { defaultValue: 'Select a product for this line item.' }),
+                    searchLabel: t('common.search', { defaultValue: 'Search' }),
+                    searchPlaceholder: t('products.searchPlaceholder', { defaultValue: 'Search products...' }),
+                    storageLabel: t('orders.form.selectStorage', { defaultValue: 'Select Storage' }),
+                    storagePlaceholder: t('orders.form.selectStorage', { defaultValue: 'Select Storage' }),
+                    noProductsLabel: t('inventoryTransfer.noProducts', { defaultValue: 'No products in this storage.' }),
+                    noResultsLabel: t('inventoryTransfer.noMatchingProducts', { defaultValue: 'No products match your search.' })
+                }}
+                onSelectProduct={(product, storageId) => {
+                    if (productsViewItemIndex === null) return
+                    setHighlightedStorageIndex(null)
+                    updateItem(productsViewItemIndex, {
+                        productId: product.id,
+                        productSearch: product.name,
+                        storageId
+                    })
+                    setProductsViewItemIndex(null)
+                }}
+            />
                 </div>
             )
 }

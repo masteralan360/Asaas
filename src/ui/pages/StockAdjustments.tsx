@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
   Boxes,
   History,
+  LayoutGrid,
   Pencil,
   Plus,
   Trash2,
@@ -73,6 +74,8 @@ import {
     Textarea,
     useToast,
 } from "@/ui/components";
+import { ProductAutocompleteInput } from "@/ui/components/orders/ProductAutocompleteInput";
+import { ProductsViewModal } from "@/ui/components/ProductsViewModal";
 
 type ActiveTab = "adjustments" | "batches";
 
@@ -211,11 +214,14 @@ export function StockAdjustments() {
   const [adjustmentDialogOpen, setAdjustmentDialogOpen] = useState(false);
 
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
+  const [batchProductsViewOpen, setBatchProductsViewOpen] = useState(false);
   const [batchSearch, setBatchSearch] = useState("");
   const [batchForm, setBatchForm] = useState<BatchFormState>(emptyBatchForm);
   const [isSavingBatch, setIsSavingBatch] = useState(false);
   const [batchToDelete, setBatchToDelete] = useState<StockBatch | null>(null);
   const [isDeletingBatch, setIsDeletingBatch] = useState(false);
+  const batchUserPickedStorageRef = useRef(false);
+  const batchAutoStorageIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!canManageStockBatches && activeTab === "batches") {
@@ -242,16 +248,6 @@ export function StockAdjustments() {
     [inventory],
   );
 
-  const filteredProductsForBatch = useMemo(() => {
-    const needle = batchSearch.trim().toLowerCase();
-    return products.filter(
-      (product) =>
-        !needle ||
-        product.name.toLowerCase().includes(needle) ||
-        product.sku.toLowerCase().includes(needle),
-    );
-  }, [batchSearch, products]);
-
   const batchStorageOptions = useMemo(() => {
     if (!batchForm.productId) return storages;
     const storageIds = Array.from(
@@ -266,18 +262,37 @@ export function StockAdjustments() {
       : storages;
   }, [batchForm.productId, inventory, storages]);
 
+  const batchProductOptions = useMemo(() => {
+    if (!batchForm.storageId) return products;
+    const productIdsInStorage = new Set(
+      inventory
+        .filter((row) => row.storageId === batchForm.storageId)
+        .map((row) => row.productId),
+    );
+    return products.filter((product) => productIdsInStorage.has(product.id));
+  }, [products, inventory, batchForm.storageId]);
+
   useEffect(() => {
-    if (
-      batchDialogOpen &&
-      batchStorageOptions.length &&
-      !batchStorageOptions.some((storage) => storage.id === batchForm.storageId)
-    ) {
-      setBatchForm((current) => ({
-        ...current,
-        storageId: batchStorageOptions[0].id,
-      }));
+    if (!batchDialogOpen) {
+      batchUserPickedStorageRef.current = false;
+      batchAutoStorageIdRef.current = null;
+      return;
     }
-  }, [batchDialogOpen, batchForm.storageId, batchStorageOptions]);
+    if (batchUserPickedStorageRef.current || batchStorageOptions.length === 0) {
+      return;
+    }
+
+    const desiredStorageId = batchStorageOptions[0].id;
+    if (
+      desiredStorageId === batchAutoStorageIdRef.current &&
+      batchForm.storageId === desiredStorageId
+    ) {
+      return;
+    }
+
+    batchAutoStorageIdRef.current = desiredStorageId;
+    setBatchForm((current) => ({ ...current, storageId: desiredStorageId }));
+  }, [batchDialogOpen, batchForm.productId, batchForm.storageId, batchStorageOptions]);
 
   const batchSelectionKey =
     batchForm.productId && batchForm.storageId
@@ -388,7 +403,22 @@ export function StockAdjustments() {
   const resetBatchForm = () => {
     setBatchForm(emptyBatchForm);
     setBatchSearch("");
+    setBatchProductsViewOpen(false);
     setIsSavingBatch(false);
+  };
+
+  const selectBatchProduct = (productId: string) => {
+    const product = productsById.get(productId);
+    if (!product) return;
+
+    setBatchForm((current) => ({
+      ...current,
+      productId: product.id,
+      price: String(product.price ?? 0),
+      costPrice: String(product.costPrice ?? 0),
+      currency: product.currency ?? "usd",
+    }));
+    setBatchSearch(product.name);
   };
 
   const handleSaveBatch = async () => {
@@ -889,6 +919,7 @@ export function StockAdjustments() {
                                     variant="outline"
                                     className="gap-2 rounded-xl"
                                     onClick={() => {
+                                      batchUserPickedStorageRef.current = true;
                                       setBatchForm({
                                         id: batch.id,
                                         productId: batch.productId,
@@ -914,6 +945,7 @@ export function StockAdjustments() {
                                           batch.manufacturingDate || "",
                                         notes: batch.notes || "",
                                       });
+                                      setBatchSearch(productDefaults?.name ?? "");
                                       setBatchDialogOpen(true);
                                     }}
                                   >
@@ -978,56 +1010,44 @@ export function StockAdjustments() {
               <div className="grid gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="batch-search">{t("stockAdjustments.dialog.batch.productSearch", "Product search")}</Label>
-                  <Input
-                    id="batch-search"
-                    value={batchSearch}
-                    onChange={(event) => setBatchSearch(event.target.value)}
-                    placeholder={t("stockAdjustments.dialog.batch.productSearchPlaceholder", "Search products by name or SKU")}
-                    className="rounded-xl"
-                  />
+                  <div className="flex items-start gap-2">
+                    <ProductAutocompleteInput
+                      value={batchSearch}
+                      onChange={(value) => {
+                        setBatchSearch(value);
+                        setBatchForm((current) => ({ ...current, productId: "" }));
+                      }}
+                      onSelectProduct={(product) => selectBatchProduct(product.id)}
+                      products={batchProductOptions}
+                      placeholder={t("stockAdjustments.dialog.batch.productSearchPlaceholder", "Search products by name or SKU")}
+                      hasSelection={!!batchForm.productId}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10 shrink-0"
+                      aria-label={t("products.title", "Browse products")}
+                      title={t("products.title", "Browse products")}
+                      onClick={() => setBatchProductsViewOpen(true)}
+                      disabled={storages.length === 0}
+                    >
+                      <LayoutGrid className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>{t("stockAdjustments.dialog.batch.product", "Product")} <span className="text-destructive">*</span></Label>
-                    <Select
-                      value={batchForm.productId}
-                      onValueChange={(value) =>
-                        setBatchForm((current) => {
-                          const product = productsById.get(value);
-                          return {
-                            ...current,
-                            productId: value,
-                            price: product ? String(product.price ?? 0) : "",
-                            costPrice: product
-                              ? String(product.costPrice ?? 0)
-                              : "",
-                            currency: product?.currency ?? "usd",
-                          };
-                        })
-                      }
-                    >
-                      <SelectTrigger className="rounded-xl">
-                        <SelectValue placeholder={t("stockAdjustments.dialog.batch.selectProduct", "Select product")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {filteredProductsForBatch.map((product) => (
-                          <SelectItem key={product.id} value={product.id}>
-                            {product.name} • {product.sku}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
                   <div className="space-y-2">
                     <Label>{t("stockAdjustments.dialog.batch.storage", "Storage")} <span className="text-destructive">*</span></Label>
                     <Select
                       value={batchForm.storageId}
-                      onValueChange={(value) =>
+                      onValueChange={(value) => {
+                        batchUserPickedStorageRef.current = true;
                         setBatchForm((current) => ({
                           ...current,
                           storageId: value,
-                        }))
-                      }
+                        }));
+                      }}
                     >
                       <SelectTrigger className="rounded-xl">
                         <SelectValue placeholder={t("stockAdjustments.dialog.batch.selectStorage", "Select storage")} />
@@ -1230,6 +1250,37 @@ export function StockAdjustments() {
             </DialogFooter>
           </form>
         </DialogContent>
+        <ProductsViewModal
+          open={batchProductsViewOpen}
+          onOpenChange={setBatchProductsViewOpen}
+          products={products}
+          storages={storages}
+          initialStorageId={batchForm.storageId}
+          filterProducts={(availableProducts, storageId) => {
+            const productIdsInStorage = new Set(
+              inventory
+                .filter((row) => row.storageId === storageId)
+                .map((row) => row.productId),
+            );
+            return availableProducts.filter((product) => productIdsInStorage.has(product.id));
+          }}
+          labels={{
+            title: t("products.title", "Products"),
+            description: t("stockAdjustments.dialog.batch.productSearch", "Select a product for this stock batch."),
+            searchLabel: t("common.search", "Search"),
+            searchPlaceholder: t("products.searchPlaceholder", "Search products..."),
+            storageLabel: t("stockAdjustments.dialog.batch.storage", "Storage"),
+            storagePlaceholder: t("stockAdjustments.dialog.batch.selectStorage", "Select storage"),
+            noProductsLabel: t("inventoryTransfer.noProducts", "No products in this storage."),
+            noResultsLabel: t("inventoryTransfer.noMatchingProducts", "No products match your search."),
+          }}
+          onSelectProduct={(product, storageId) => {
+            batchUserPickedStorageRef.current = true;
+            selectBatchProduct(product.id);
+            setBatchForm((current) => ({ ...current, storageId }));
+            setBatchProductsViewOpen(false);
+          }}
+        />
       </Dialog>
 
       <DeleteConfirmationModal
