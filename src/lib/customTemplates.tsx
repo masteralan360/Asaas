@@ -71,6 +71,7 @@ export const PARTNER_DETAILS_TEMPLATE_FIELD_KEYS = {
 export const ORDER_DETAILS_TEMPLATE_FIELD_KEYS = {
     hideUnit: 'hideUnit',
     hideDiscount: 'hideDiscount',
+    boldAllText: 'boldAllText',
     labelOpacity: 'labelOpacity'
 } as const
 
@@ -580,6 +581,12 @@ const ORDER_DETAILS_FIELDS = [
     {
         key: ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount,
         label: 'Hide discounts',
+        value: 'false',
+        type: 'boolean' as const
+    },
+    {
+        key: ORDER_DETAILS_TEMPLATE_FIELD_KEYS.boldAllText,
+        label: 'Bold all text',
         value: 'false',
         type: 'boolean' as const
     },

@@ -358,6 +358,7 @@ describe('Order Details custom print template', () => {
         const element = preview.createElement({
             [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideUnit]: 'true',
             [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount]: 'true',
+            [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.boldAllText]: 'true',
             [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.labelOpacity]: '37'
         }, undefined, undefined, {
             editableComponents: true,
@@ -375,6 +376,11 @@ describe('Order Details custom print template', () => {
             }),
             expect.objectContaining({
                 key: customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount,
+                value: 'false',
+                type: 'boolean'
+            }),
+            expect.objectContaining({
+                key: customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.boldAllText,
                 value: 'false',
                 type: 'boolean'
             }),
@@ -415,6 +421,7 @@ describe('Order Details custom print template', () => {
         expect(element.props.hideUnit).toBe(true)
         expect(element.props.hideDiscount).toBe(true)
         expect(element.props.templateFields).toEqual(expect.objectContaining({
+            [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.boldAllText]: 'true',
             [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.labelOpacity]: '37'
         }))
         expect(element.props.componentPositions).toBe(componentPositions)
@@ -432,6 +439,7 @@ describe('Order Details custom print template', () => {
         expect(html).toContain('data-order-print-component="totals"')
         expect(html).toContain('+964 750 123 4567')
         expect(html).toContain('100 Example Street, Erbil')
+        expect(html).toContain('font-bold [&amp;_*]:!font-bold')
         expect(html.match(/opacity:0\.37/g)).toHaveLength(9)
     })
 

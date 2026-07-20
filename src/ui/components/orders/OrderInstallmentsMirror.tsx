@@ -283,6 +283,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                 { key: 'counterpartyPhone', label: t('common.phone', { defaultValue: 'Phone' }), value: counterpartyPhone, type: 'text' },
                 { key: 'counterpartyAddress', label: t('common.address', { defaultValue: 'Address' }), value: counterpartyAddress, type: 'text' },
                 { key: 'notes', label: t('common.notes') || 'Notes', value: order.notes || '', type: 'text' },
+                { key: 'boldAllText', label: t('orders.print.boldAllText', { defaultValue: 'Bold all text' }), value: 'false', type: 'boolean' },
                 { key: 'labelOpacity', label: t('orders.print.labelOpacity', { defaultValue: 'Labels opacity' }), value: '50', type: 'number' }
             ],
             createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => {

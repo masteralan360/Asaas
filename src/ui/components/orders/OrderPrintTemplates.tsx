@@ -824,6 +824,7 @@ export function OrderDetailsPrintTemplate({
     const showFreeBonus = hasOrderLineFreeBonus(order.items || [])
     const labelOpacity = Math.min(100, Math.max(0, parseInt(templateFields?.labelOpacity || '50', 10)))
     const labelOpacityStyle = { opacity: labelOpacity / 100 }
+    const boldAllText = templateFields?.boldAllText === 'true'
 
     const counterpartyLabel = isSales
         ? (t('orders.details.customer') || 'Customer')
@@ -840,7 +841,7 @@ export function OrderDetailsPrintTemplate({
     return (
         <div
             dir={isRTL(printLang) ? 'rtl' : 'ltr'}
-            className="bg-white text-black"
+            className={cn('bg-white text-black', boldAllText && 'font-bold [&_*]:!font-bold')}
             style={{ width: '210mm', minHeight: '297mm', padding: '14mm 12mm' }}
             data-order-print-page
             data-page-width-mm="210"
