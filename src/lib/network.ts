@@ -1,8 +1,8 @@
-// Utility for robust network status check
-// Supplementing navigator.onLine with actual connectivity checks
+// Application connectivity status. The ConnectionManager updates this only after
+// a user confirms offline mode, or when the browser reports connectivity restored.
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
-let isActuallyOnline = navigator.onLine;
+let isActuallyOnline = true;
 let activeBusinessWorkspaceId: string | null = null;
 let activeBusinessUserId: string | null = null;
 
@@ -37,7 +37,7 @@ export function isBusinessDataOnline(workspaceId?: string | null): boolean {
         return false;
     }
 
-    return isActuallyOnline && navigator.onLine;
+    return isActuallyOnline;
 }
 
 // Get the current robust status

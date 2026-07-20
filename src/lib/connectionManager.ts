@@ -1,32 +1,36 @@
-import { isSupabaseConfigured, resolvedSupabaseAnonKey, resolvedSupabaseUrl } from '@/auth/supabase'
 import { setNetworkStatus } from '@/lib/network'
 
-type ConnectionEvent = 'wake' | 'online' | 'offline' | 'heartbeat'
+export type ConnectionEvent = 'wake' | 'online' | 'offline' | 'heartbeat' | 'network-lost'
 type ConnectionListener = (event: ConnectionEvent) => void
 
 interface ConnectionState {
+    /** The app's confirmed connectivity mode. */
     isOnline: boolean
+    /** The last connectivity status reported by the operating system/browser. */
+    isOsOnline: boolean
+    /** True while a cloud or hybrid workspace should ask the user to enter offline mode. */
+    offlineConfirmationRequired: boolean
     isVisible: boolean
     lastActiveAt: number
 }
 
-class ConnectionManager {
+export class ConnectionManager {
     private listeners = new Set<ConnectionListener>()
     private state: ConnectionState = {
-        isOnline: navigator.onLine,
+        // Keep the application online until the user explicitly confirms offline mode.
+        // This also allows the UI to display its blocking confirmation overlay first.
+        isOnline: true,
+        isOsOnline: navigator.onLine !== false,
+        offlineConfirmationRequired: navigator.onLine === false,
         isVisible: document.visibilityState === 'visible',
         lastActiveAt: Date.now()
     }
     private heartbeatTimer: ReturnType<typeof setInterval> | null = null
-    private debounceTimer: ReturnType<typeof setTimeout> | null = null
-    private heartbeatFailures = 0
     private initialized = false
 
     // Minimum idle time (ms) before a "wake" event is emitted.
     private static WAKE_THRESHOLD = 60_000
     private static HEARTBEAT_INTERVAL = 30_000
-    private static HEARTBEAT_TIMEOUT = 10_000
-    private static DEBOUNCE_MS = 500
 
     init() {
         if (this.initialized) return
@@ -39,7 +43,6 @@ class ConnectionManager {
 
         setNetworkStatus(this.state.isOnline)
         this.startHeartbeat()
-        void this.checkConnectivity()
         console.log('[ConnectionManager] Initialized')
     }
 
@@ -62,31 +65,46 @@ class ConnectionManager {
         return { ...this.state }
     }
 
-    reportConnectivitySuccess(source = 'supabase') {
-        this.heartbeatFailures = 0
-        if (navigator.onLine === false) return
-
-        if (!this.state.isOnline) {
-            console.log(`[ConnectionManager] ${source} reachable - marking online`)
-            this.state.isOnline = true
-            setNetworkStatus(true)
-            this.emit('online')
-            this.startHeartbeat()
-            return
+    /**
+     * Enters offline mode only after the user accepts the offline-entry prompt.
+     * Returns false when connectivity has already been restored or offline mode is active.
+     */
+    continueOffline(): boolean {
+        if (navigator.onLine !== false) {
+            this.handleOnline()
+            return false
         }
 
-        setNetworkStatus(true)
+        if (this.state.isOsOnline) {
+            this.handleOffline()
+        }
+
+        if (!this.state.isOnline || !this.state.offlineConfirmationRequired) {
+            return false
+        }
+
+        console.log('[ConnectionManager] Offline mode confirmed by user')
+        this.state.isOnline = false
+        this.state.offlineConfirmationRequired = false
+        setNetworkStatus(false)
+        this.emit('offline')
+        return true
     }
 
-    reportConnectivityFailure(source = 'supabase') {
-        this.heartbeatFailures++
+    /**
+     * Supabase availability is intentionally not used to change connectivity mode.
+     * A slow or unavailable backend is not proof that the device lost internet access.
+     */
+    reportConnectivitySuccess(_source = 'supabase') {
+        // Kept as a no-op compatibility hook for callers that report request results.
+    }
 
-        if (this.state.isOnline) {
-            console.log(`[ConnectionManager] ${source} unreachable - marking offline`)
-            this.state.isOnline = false
-            setNetworkStatus(false)
-            this.emit('offline')
-        }
+    /**
+     * Supabase availability is intentionally not used to change connectivity mode.
+     * A slow or unavailable backend is not proof that the device lost internet access.
+     */
+    reportConnectivityFailure(_source = 'supabase') {
+        // Kept as a no-op compatibility hook for callers that report request results.
     }
 
     private emit(event: ConnectionEvent) {
@@ -97,24 +115,34 @@ class ConnectionManager {
         })
     }
 
-    private debouncedEmit(event: ConnectionEvent) {
-        if (this.debounceTimer) clearTimeout(this.debounceTimer)
-        this.debounceTimer = setTimeout(() => this.emit(event), ConnectionManager.DEBOUNCE_MS)
-    }
-
     private handleOnline = () => {
-        console.log('[ConnectionManager] Browser network: online')
+        const wasDisconnected = !this.state.isOsOnline
+            || !this.state.isOnline
+            || this.state.offlineConfirmationRequired
+
+        this.state.isOsOnline = true
+        this.state.offlineConfirmationRequired = false
+        this.state.isOnline = true
+        setNetworkStatus(true)
         this.startHeartbeat()
-        void this.checkConnectivity(true)
+
+        if (wasDisconnected) {
+            console.log('[ConnectionManager] Browser network: online')
+            this.emit('online')
+        }
     }
 
     private handleOffline = () => {
-        if (!this.state.isOnline) return
+        if (!this.state.isOsOnline) return
+
         console.log('[ConnectionManager] Browser network: offline')
-        this.state.isOnline = false
-        setNetworkStatus(false)
+        this.state.isOsOnline = false
+        this.state.offlineConfirmationRequired = true
         this.stopHeartbeat()
-        this.emit('offline')
+
+        // Do not change the app's online state here. Cloud and hybrid workspaces
+        // must first ask the user whether to continue offline.
+        this.emit('network-lost')
     }
 
     private handleVisibilityChange = () => {
@@ -128,12 +156,8 @@ class ConnectionManager {
             this.state.lastActiveAt = Date.now()
             this.startHeartbeat()
 
-            if (idleDuration >= ConnectionManager.WAKE_THRESHOLD) {
-                void this.checkConnectivity().then((online) => {
-                    if (online) this.emit('wake')
-                })
-            } else {
-                void this.checkConnectivity()
+            if (idleDuration >= ConnectionManager.WAKE_THRESHOLD && this.checkBrowserStatus()) {
+                this.emit('wake')
             }
         } else {
             this.state.lastActiveAt = Date.now()
@@ -144,11 +168,9 @@ class ConnectionManager {
     private handleFocus = () => {
         // Focus can fire without visibilitychange, e.g. alt-tabbing between windows.
         const idleDuration = Date.now() - this.state.lastActiveAt
-        if (idleDuration >= ConnectionManager.WAKE_THRESHOLD) {
+        if (idleDuration >= ConnectionManager.WAKE_THRESHOLD && this.checkBrowserStatus()) {
             this.state.isVisible = true
-            void this.checkConnectivity().then((online) => {
-                if (online) this.emit('wake')
-            })
+            this.emit('wake')
         }
         this.state.lastActiveAt = Date.now()
     }
@@ -157,7 +179,7 @@ class ConnectionManager {
         this.stopHeartbeat()
         this.heartbeatTimer = setInterval(() => {
             if (!this.state.isVisible) return
-            void this.checkConnectivity()
+            this.checkBrowserStatus()
         }, ConnectionManager.HEARTBEAT_INTERVAL)
     }
 
@@ -168,85 +190,22 @@ class ConnectionManager {
         }
     }
 
-    private getConnectivityCheck() {
-        if (isSupabaseConfigured) {
-            const supabaseUrl = resolvedSupabaseUrl.replace(/\/+$/, '')
-
-            return {
-                url: `${supabaseUrl}/auth/v1/health?_=${Date.now()}`,
-                init: {
-                    method: 'GET',
-                    headers: {
-                        apikey: resolvedSupabaseAnonKey,
-                        Authorization: `Bearer ${resolvedSupabaseAnonKey}`
-                    }
-                } satisfies RequestInit
-            }
-        }
-
-        return {
-            url: `https://www.google.com/favicon.ico?v=${Date.now()}`,
-            init: {
-                mode: 'no-cors',
-                cache: 'no-store'
-            } satisfies RequestInit
-        }
-    }
-
-    private async checkConnectivity(useDebouncedOnlineEvent = false): Promise<boolean> {
+    /**
+     * Browser/OS status is the sole source for entering or leaving offline mode.
+     * Backend probes intentionally do not participate in this transition.
+     */
+    private checkBrowserStatus(): boolean {
         if (navigator.onLine === false) {
-            this.reportConnectivityFailure('browser network')
+            this.handleOffline()
             return false
         }
 
-        let timeoutId: ReturnType<typeof setTimeout> | null = null
-
-        try {
-            const controller = new AbortController()
-            timeoutId = setTimeout(() => controller.abort(), ConnectionManager.HEARTBEAT_TIMEOUT)
-            const { url, init } = this.getConnectivityCheck()
-
-            const response = await fetch(url, {
-                ...init,
-                cache: 'no-store',
-                signal: controller.signal
-            })
-
-            if (response.type !== 'opaque' && !response.ok) {
-                throw new Error(`Connectivity check failed with HTTP ${response.status}`)
-            }
-
-            this.heartbeatFailures = 0
-
-            if (!this.state.isOnline) {
-                console.log('[ConnectionManager] Heartbeat restored - marking online')
-                this.state.isOnline = true
-                setNetworkStatus(true)
-                if (useDebouncedOnlineEvent) {
-                    this.debouncedEmit('online')
-                } else {
-                    this.emit('online')
-                }
-            } else {
-                setNetworkStatus(true)
-            }
-
-            this.emit('heartbeat')
-            return true
-        } catch {
-            this.heartbeatFailures++
-
-            if (this.state.isOnline) {
-                console.log(`[ConnectionManager] Heartbeat failed ${this.heartbeatFailures} time(s) - marking offline`)
-                this.state.isOnline = false
-                setNetworkStatus(false)
-                this.emit('offline')
-            }
-
-            return false
-        } finally {
-            if (timeoutId) clearTimeout(timeoutId)
+        if (!this.state.isOsOnline) {
+            this.handleOnline()
         }
+
+        this.emit('heartbeat')
+        return true
     }
 }
 

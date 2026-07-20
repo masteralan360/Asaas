@@ -20,6 +20,7 @@ import { UiAccessProvider } from "@/context/UiAccessContext";
 import { WorkspacePermissionsProvider } from "@/permissions";
 import { FleetLocationSharingProvider } from "@/fleet/FleetLocationSharingContext";
 import { AutoSyncOverlay } from "@/ui/components/AutoSyncOverlay";
+import { OfflineEntryOverlay } from "@/ui/components/OfflineEntryOverlay";
 import {
   isBackendConfigurationRequired,
   isSupabaseConfigured,
@@ -1254,6 +1255,7 @@ function App() {
               <WorkspaceExtraDaysDialog />
               <FaviconHandler />
               <AutoSyncOverlay />
+              <OfflineEntryOverlay />
               {!isMobile() && <TitleBar />}
               {isTauri &&
               isBackendConfigurationRequired &&
