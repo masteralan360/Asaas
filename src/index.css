@@ -575,7 +575,8 @@
      EMERALD THEME (Teal & Charcoal)
      ========================================= */
 .theme-emerald {
-  --radius: 0.75rem;
+  /* Match the Modern Premium theme's rounded component edges. */
+  --radius: 1rem;
 }
 
 .theme-emerald.light {

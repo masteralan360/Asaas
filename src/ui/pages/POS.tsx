@@ -2380,8 +2380,17 @@ export function POS() {
                                                     {remainingQuantity} <span className="text-[10px] opacity-70 ml-0.5">{t(`products.units.${product.unit}`).toUpperCase()}</span>
                                                 </div>
 
+                                                {product.hasBatches && product.nextBatchQuantity !== null && (
+                                                    <div className="absolute bottom-2 left-2 bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20 backdrop-blur-md px-2.5 py-1.5 rounded-2xl text-[12px] font-black uppercase tracking-tighter shadow-md z-10">
+                                                        {product.nextBatchQuantity} <span className="text-[10px] opacity-70 ml-0.5">{t(`products.units.${product.unit}`).toUpperCase()}</span>
+                                                    </div>
+                                                )}
+
                                                 {activeDiscount && (
-                                                    <div className="absolute bottom-2 left-2 rounded-2xl bg-emerald-500 px-2.5 py-1 text-[11px] font-black text-white shadow-md z-10">
+                                                    <div className={cn(
+                                                        "absolute left-2 rounded-2xl bg-emerald-500 px-2.5 py-1 text-[11px] font-black text-white shadow-md z-10",
+                                                        product.hasBatches && product.nextBatchQuantity !== null ? "bottom-12" : "bottom-2"
+                                                    )}>
                                                         {formatDiscountBadge(activeDiscount, product.currency, features.iqd_display_preference)}
                                                     </div>
                                                 )}
@@ -3772,8 +3781,17 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                                     {remainingQuantity} <span className="text-[9px] opacity-70 ml-0.5">{t(`products.units.${product.unit}`).toUpperCase()}</span>
                                 </div>
 
+                                {product.hasBatches && product.nextBatchQuantity !== null && (
+                                    <div className="absolute bottom-2 left-2 backdrop-blur-md px-2.5 py-1 rounded-xl text-[10px] font-black border border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300 transition-colors duration-300">
+                                        {product.nextBatchQuantity} <span className="text-[9px] opacity-70 ml-0.5">{t(`products.units.${product.unit}`).toUpperCase()}</span>
+                                    </div>
+                                )}
+
                                 {activeDiscount && (
-                                    <div className="absolute bottom-2 left-2 rounded-xl bg-emerald-500 px-2 py-1 text-[10px] font-black text-white shadow-sm z-10">
+                                    <div className={cn(
+                                        "absolute left-2 rounded-xl bg-emerald-500 px-2 py-1 text-[10px] font-black text-white shadow-sm z-10",
+                                        product.hasBatches && product.nextBatchQuantity !== null ? "bottom-10" : "bottom-2"
+                                    )}>
                                         {formatDiscountBadge(activeDiscount, product.currency, features.iqd_display_preference)}
                                     </div>
                                 )}
