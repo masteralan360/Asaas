@@ -14,6 +14,7 @@ interface ProductAutocompleteInputProps {
     products: Product[]
     placeholder?: string
     className?: string
+    inputClassName?: string
     disabled?: boolean
     hasSelection?: boolean
     linkedLabel?: string
@@ -64,6 +65,7 @@ export function ProductAutocompleteInput({
     products,
     placeholder,
     className,
+    inputClassName,
     disabled,
     hasSelection,
     linkedLabel = 'Linked',
@@ -162,6 +164,7 @@ export function ProductAutocompleteInput({
                     disabled={disabled}
                     className={cn(
                         'flex-1',
+                        inputClassName,
                         shouldShowLinkedIndicator && 'pr-28',
                         hasSelection && !storageMissing && 'border-green-500/50 bg-green-50/30 dark:bg-green-950/10',
                         storageMissing && 'border-red-500/50 bg-red-50/30 dark:bg-red-950/10'

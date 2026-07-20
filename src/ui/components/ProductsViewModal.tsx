@@ -1,9 +1,11 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Package, Search, Warehouse } from 'lucide-react'
+import { ChevronDown, LayoutGrid, Package, Search, Warehouse } from 'lucide-react'
 
 import type { Product, Storage } from '@/local-db'
+import { cn } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import {
+    Button,
     Dialog,
     DialogContent,
     DialogDescription,
@@ -40,6 +42,36 @@ export interface ProductsViewModalBatchOption {
 export interface ProductsViewModalProductStockOption {
     label: string
     description?: ReactNode
+}
+
+export interface ProductsViewModalTriggerProps {
+    onClick: () => void
+    label?: string
+    className?: string
+}
+
+/**
+ * The standard compact trigger for attaching ProductsViewModal to a product
+ * field. It is intentionally styled as the input's inline-start companion.
+ */
+export function ProductsViewModalTrigger({
+    onClick,
+    label = 'Browse products',
+    className
+}: ProductsViewModalTriggerProps) {
+    return (
+        <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className={cn('h-8 w-8 shrink-0 rounded-e-none rounded-s-lg border-e-0 bg-background p-0 hover:bg-muted/70', className)}
+            aria-label={label}
+            title={label}
+            onClick={onClick}
+        >
+            <LayoutGrid className="h-4 w-4" />
+        </Button>
+    )
 }
 
 export interface ProductsViewModalProps {

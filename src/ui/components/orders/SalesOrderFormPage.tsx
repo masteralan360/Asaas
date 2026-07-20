@@ -1,6 +1,6 @@
 import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, CalendarDays, Check, CreditCard, LayoutGrid, Plus, ShoppingCart, Star, Trash2, Truck, Users, X } from 'lucide-react'
+import { ArrowLeft, CalendarDays, Check, CreditCard, Plus, ShoppingCart, Star, Trash2, Truck, Users, X } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useDemoTutorial } from '@/demo'
@@ -67,7 +67,7 @@ import {
     useToast
 } from '@/ui/components'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
-import { ProductsViewModal } from '@/ui/components/ProductsViewModal'
+import { ProductsViewModal, ProductsViewModalTrigger } from '@/ui/components/ProductsViewModal'
 import { ProductAutocompleteInput } from './ProductAutocompleteInput'
 import { LoanPartyPickerDialog } from '@/ui/components/loans/LoanPartyPickerDialog'
 
@@ -927,6 +927,8 @@ export function SalesOrderFormPage({
                                             const regularStockQuantity = getRegularStockQuantity(item.productId, item.storageId)
                                             const selectedSourceQuantity = selectedBatch?.quantity ?? regularStockQuantity
                                             const selectedSourceExceeded = Boolean(item.productId && item.storageId && inventoryQuantity > selectedSourceQuantity)
+                                            const canOpenProductsView = Boolean(item.storageId)
+                                                && !(priceBooksEnabled && (!isPriceBookCatalogReady || !selectedCustomer))
 
                                             return (
                                                 <div
@@ -972,8 +974,16 @@ export function SalesOrderFormPage({
                                                                 )
                                                             ) : null}
                                                         </Label>
-                                                        <div className="flex items-start gap-2">
+                                                        <div className="flex items-center">
+                                                            {canOpenProductsView ? (
+                                                                <ProductsViewModalTrigger
+                                                                    label={t('products.title', { defaultValue: 'Browse products' })}
+                                                                    onClick={() => setProductsViewItemIndex(index)}
+                                                                />
+                                                            ) : null}
                                                             <ProductAutocompleteInput
+                                                                className="min-w-0 flex-1"
+                                                                inputClassName={canOpenProductsView ? 'rounded-s-none' : undefined}
                                                                 value={item.productSearch}
                                                                 onChange={(value) => updateItem(index, { productSearch: value, productId: '' })}
                                                                 onSelectProduct={(product) => updateItem(index, { productId: product.id, productSearch: product.name })}
@@ -990,19 +1000,6 @@ export function SalesOrderFormPage({
                                                                 storageMissingLabel={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}
                                                                 onStorageMissingClick={() => handleStorageMissing(index)}
                                                             />
-                                                            {item.storageId && !(priceBooksEnabled && (!isPriceBookCatalogReady || !selectedCustomer)) ? (
-                                                                <Button
-                                                                    type="button"
-                                                                    variant="outline"
-                                                                    size="icon"
-                                                                    className="h-10 w-10 shrink-0"
-                                                                    aria-label={t('products.title', { defaultValue: 'Browse products' })}
-                                                                    title={t('products.title', { defaultValue: 'Browse products' })}
-                                                                    onClick={() => setProductsViewItemIndex(index)}
-                                                                >
-                                                                    <LayoutGrid className="h-4 w-4" />
-                                                                </Button>
-                                                            ) : null}
                                                         </div>
                                                         {item.productId && item.storageId ? (
                                                             <div className="space-y-1.5 pt-1">

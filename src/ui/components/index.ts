@@ -71,7 +71,7 @@ export { TopProductsModal, SalesOverviewModal, PeakTradingModal, ReturnsAnalysis
 export { PrintPreviewModal } from './PrintPreviewModal'
 export { ExportPreviewModal } from './ExportPreviewModal'
 export { ProductImportPreviewModal } from './ProductImportPreviewModal'
-export { ProductsViewModal } from './ProductsViewModal'
+export { ProductsViewModal, ProductsViewModalTrigger } from './ProductsViewModal'
 export { Progress } from './ui/progress'
 export { Badge, badgeVariants } from './ui/badge'
 export { CheckoutSuccessModal } from './pos/CheckoutSuccessModal'

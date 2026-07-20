@@ -5,7 +5,6 @@ import {
   ArrowUp,
   Boxes,
   History,
-  LayoutGrid,
   Pencil,
   Plus,
   Trash2,
@@ -75,7 +74,7 @@ import {
     useToast,
 } from "@/ui/components";
 import { ProductAutocompleteInput } from "@/ui/components/orders/ProductAutocompleteInput";
-import { ProductsViewModal } from "@/ui/components/ProductsViewModal";
+import { ProductsViewModal, ProductsViewModalTrigger } from "@/ui/components/ProductsViewModal";
 
 type ActiveTab = "adjustments" | "batches";
 
@@ -399,6 +398,7 @@ export function StockAdjustments() {
     batchCostPriceValue !== null &&
     Number.isFinite(batchCostPriceValue) &&
     batchCostPriceValue >= 0;
+  const canOpenBatchProductsView = Boolean(batchForm.storageId) && storages.length > 0;
 
   const resetBatchForm = () => {
     setBatchForm(emptyBatchForm);
@@ -1010,8 +1010,16 @@ export function StockAdjustments() {
               <div className="grid gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="batch-search">{t("stockAdjustments.dialog.batch.productSearch", "Product search")}</Label>
-                  <div className="flex items-start gap-2">
+                  <div className="flex items-center">
+                    {canOpenBatchProductsView ? (
+                      <ProductsViewModalTrigger
+                        label={t("products.title", "Browse products")}
+                        onClick={() => setBatchProductsViewOpen(true)}
+                      />
+                    ) : null}
                     <ProductAutocompleteInput
+                      className="min-w-0 flex-1"
+                      inputClassName={canOpenBatchProductsView ? "rounded-s-none" : undefined}
                       value={batchSearch}
                       onChange={(value) => {
                         setBatchSearch(value);
@@ -1022,18 +1030,6 @@ export function StockAdjustments() {
                       placeholder={t("stockAdjustments.dialog.batch.productSearchPlaceholder", "Search products by name or SKU")}
                       hasSelection={!!batchForm.productId}
                     />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-10 w-10 shrink-0"
-                      aria-label={t("products.title", "Browse products")}
-                      title={t("products.title", "Browse products")}
-                      onClick={() => setBatchProductsViewOpen(true)}
-                      disabled={storages.length === 0}
-                    >
-                      <LayoutGrid className="h-4 w-4" />
-                    </Button>
                   </div>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">

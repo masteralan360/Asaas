@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Package } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { createStockAdjustment, type Product, type StockAdjustmentReason } from "@/local-db";
+import { createStockAdjustment, type Product, type StockAdjustmentReason, type Storage } from "@/local-db";
 import { isNonNegativeQuantity, quantitiesEqual, QUANTITY_EPSILON, roundQuantity } from "@/lib/quantity";
 import { cn, formatNumericInput, parseFormattedNumber, sanitizeNumericInput } from "@/lib/utils";
 import { platformService } from "@/services/platformService";
 import { ProductAutocompleteInput } from "@/ui/components/orders/ProductAutocompleteInput";
+import { ProductsViewModal, ProductsViewModalTrigger } from "@/ui/components/ProductsViewModal";
 import {
     Button,
     Dialog,
@@ -65,17 +66,12 @@ interface InventoryRow {
     quantity: number;
 }
 
-interface Stock {
-    id: string;
-    name: string;
-}
-
 interface StockAdjustmentDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     preselectedProductId?: string;
     products: Product[];
-    storages: Stock[];
+    storages: Storage[];
     inventory: InventoryRow[];
     workspaceId: string;
     userId: string | null;
@@ -101,6 +97,7 @@ export function StockAdjustmentDialog({
     const [search, setSearch] = useState("");
     const [form, setForm] = useState<AdjustmentFormState>(emptyAdjustmentForm);
     const [isSaving, setIsSaving] = useState(false);
+    const [productsViewOpen, setProductsViewOpen] = useState(false);
     const seededSelectionKeyRef = useRef("");
     const userPickedStorageRef = useRef(false);
     const autoStorageIdRef = useRef<string | null>(null);
@@ -246,10 +243,12 @@ export function StockAdjustmentDialog({
         isNonNegativeQuantity(targetQuantity) &&
         quantityDelta !== null &&
         !quantitiesEqual(quantityDelta, 0);
+    const canOpenProductsView = Boolean(form.storageId) && storages.length > 0;
 
     const resetForm = () => {
         setForm(emptyAdjustmentForm);
         setSearch("");
+        setProductsViewOpen(false);
         setIsSaving(false);
     };
 
@@ -335,20 +334,30 @@ export function StockAdjustmentDialog({
                                 })() : (
                                     <div className="space-y-2">
                                         <Label htmlFor="adjustment-search">{t("stockAdjustments.dialog.adjustment.productSearch", "Product search")}</Label>
-                                        <ProductAutocompleteInput
-                                            value={search}
-                                            onChange={(value) => {
-                                                setSearch(value);
-                                                setForm((current) => ({ ...current, productId: "" }));
-                                            }}
-                                            onSelectProduct={(product) => {
-                                                setForm((current) => ({ ...current, productId: product.id }));
-                                                setSearch(product.name);
-                                            }}
-                                            products={productOptions}
-                                            placeholder={t("stockAdjustments.dialog.adjustment.productSearchPlaceholder", "Search products by name or SKU")}
-                                            hasSelection={!!form.productId}
-                                        />
+                                        <div className="flex items-center">
+                                            {canOpenProductsView ? (
+                                                <ProductsViewModalTrigger
+                                                    label={t("products.title", "Browse products")}
+                                                    onClick={() => setProductsViewOpen(true)}
+                                                />
+                                            ) : null}
+                                            <ProductAutocompleteInput
+                                                className="min-w-0 flex-1"
+                                                inputClassName={canOpenProductsView ? "rounded-s-none" : undefined}
+                                                value={search}
+                                                onChange={(value) => {
+                                                    setSearch(value);
+                                                    setForm((current) => ({ ...current, productId: "" }));
+                                                }}
+                                                onSelectProduct={(product) => {
+                                                    setForm((current) => ({ ...current, productId: product.id }));
+                                                    setSearch(product.name);
+                                                }}
+                                                products={productOptions}
+                                                placeholder={t("stockAdjustments.dialog.adjustment.productSearchPlaceholder", "Search products by name or SKU")}
+                                                hasSelection={!!form.productId}
+                                            />
+                                        </div>
                                     </div>
                                 )}
                                 <div className="space-y-2">
@@ -487,6 +496,45 @@ export function StockAdjustmentDialog({
                     </DialogFooter>
                 </form>
             </DialogContent>
+            {!preselectedProductId ? (
+                <ProductsViewModal
+                    open={productsViewOpen}
+                    onOpenChange={setProductsViewOpen}
+                    products={products}
+                    storages={storages}
+                    initialStorageId={form.storageId}
+                    filterProducts={(availableProducts, storageId) => {
+                        if (allowAnyStorage) return availableProducts;
+
+                        const productIdsInStorage = new Set(
+                            inventory
+                                .filter((row) => row.storageId === storageId)
+                                .map((row) => row.productId),
+                        );
+                        return availableProducts.filter((product) => productIdsInStorage.has(product.id));
+                    }}
+                    getProductMeta={(product, storageId) => t(
+                        "stockAdjustments.dialog.adjustment.currentAvailable",
+                        "Current available {{value}}",
+                        { value: formatNumericInput(String(inventoryByKey.get(groupKey(product.id, storageId)) ?? 0)) },
+                    )}
+                    labels={{
+                        title: t("products.title", "Products"),
+                        description: t("stockAdjustments.dialog.adjustment.productSearch", "Select a product for this adjustment."),
+                        searchLabel: t("common.search", "Search"),
+                        searchPlaceholder: t("products.searchPlaceholder", "Search products..."),
+                        storageLabel: t("stockAdjustments.dialog.adjustment.storage", "Storage"),
+                        storagePlaceholder: t("stockAdjustments.dialog.adjustment.selectStorage", "Select storage"),
+                        noProductsLabel: t("inventoryTransfer.noProducts", "No products in this storage."),
+                        noResultsLabel: t("inventoryTransfer.noMatchingProducts", "No products match your search."),
+                    }}
+                    onSelectProduct={(product, storageId) => {
+                        userPickedStorageRef.current = true;
+                        setForm((current) => ({ ...current, productId: product.id, storageId }));
+                        setSearch(product.name);
+                    }}
+                />
+            ) : null}
         </Dialog>
     );
 }
