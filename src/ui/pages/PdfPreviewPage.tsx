@@ -426,6 +426,18 @@ export function PdfPreviewPage() {
         ...(initialTemplateLayout?.componentPositions || {})
     }))
     const [templateHiddenFields, setTemplateHiddenFields] = useState<Record<string, boolean>>(() => initialTemplateLayout?.hiddenFields || {})
+    useEffect(() => {
+        if (!selectedTemplateObjectId) return
+
+        const clearSelectionOutsidePrint = (event: PointerEvent) => {
+            if (!templateStageRef.current?.contains(event.target as Node)) {
+                setSelectedTemplateObjectId(null)
+            }
+        }
+
+        window.addEventListener('pointerdown', clearSelectionOutsidePrint)
+        return () => window.removeEventListener('pointerdown', clearSelectionOutsidePrint)
+    }, [selectedTemplateObjectId])
     const handleTemplateComponentPositionChange = useCallback((
         key: string,
         position: CustomTemplateComponentPosition

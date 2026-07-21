@@ -1049,14 +1049,14 @@ export function OrderDetailsPrintTemplate({
             >
             <h3 className="font-semibold mb-2 text-sm">{t('orders.details.orderItems') || 'Order Items'}</h3>
             <table className="w-full border-collapse text-xs mb-5">
-                <thead>
-                    <tr className="bg-slate-100">
-                        <th className="border border-slate-300 p-2 text-start">{t('products.title') || 'Product'}</th>
-                        <th className="border border-slate-300 p-2 text-start">SKU</th>
-                        <th className="border border-slate-300 p-2 text-end">{t('orders.form.table.qty') || 'Qty'}</th>
-                        {showFreeBonus ? <th className="border border-slate-300 p-2 text-end">{t('orders.details.freeBonus', { defaultValue: 'Free Bonus' })}</th> : null}
-                        <th className="border border-slate-300 p-2 text-end">{t('orders.form.table.price') || 'Unit Price'}</th>
-                        <th className="border border-slate-300 p-2 text-end">{t('common.total') || 'Total'}</th>
+                <thead className="bg-slate-300" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+                    <tr>
+                        <th className="border border-slate-500 bg-slate-300 p-2 text-start font-bold text-slate-950">{t('products.title') || 'Product'}</th>
+                        <th className="border border-slate-500 bg-slate-300 p-2 text-start font-bold text-slate-950">SKU</th>
+                        <th className="border border-slate-500 bg-slate-300 p-2 text-end font-bold text-slate-950">{t('orders.form.table.qty') || 'Qty'}</th>
+                        {showFreeBonus ? <th className="border border-slate-500 bg-slate-300 p-2 text-end font-bold text-slate-950">{t('orders.details.freeBonus', { defaultValue: 'Free Bonus' })}</th> : null}
+                        <th className="border border-slate-500 bg-slate-300 p-2 text-end font-bold text-slate-950">{t('orders.form.table.price') || 'Unit Price'}</th>
+                        <th className="border border-slate-500 bg-slate-300 p-2 text-end font-bold text-slate-950">{t('common.total') || 'Total'}</th>
                     </tr>
                 </thead>
                 <tbody>
