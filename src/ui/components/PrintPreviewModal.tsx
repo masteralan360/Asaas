@@ -17,7 +17,7 @@ import {
     RefundPrimaryA4InvoiceTemplate,
     SaleReceiptBase
 } from '@/ui/components'
-import { Printer, X, ExternalLink, Loader2 } from 'lucide-react'
+import { Printer, X, ExternalLink } from 'lucide-react'
 import { saveInvoiceFromSnapshot, useWorkspaceContacts } from '@/local-db/hooks'
 import { useAuth } from '@/auth'
 import { db, type Invoice } from '@/local-db'
@@ -91,7 +91,6 @@ export function PrintPreviewModal({
     title,
     children,
     showSaveButton = true,
-    saveButtonText,
     invoiceData,
     pdfData,
     pdfBuilder,
@@ -565,9 +564,6 @@ export function PrintPreviewModal({
         }
     }, [printFormat, printLang, title, t, setLocation, handleSave, pdfData, printableFeatures, workspaceId, workspaceName, workspaceFooterContacts, invoiceData, effectiveId, pdfBuilder, translations, buildPdfBlobs, blobToDataUrl, templatePreviewProp, customTemplate, templateFieldValues, initialTemplateLayout, allowTemplateFieldEditing, enableTemplatePreviewSave, templatePrimaryActionLabel, generateTemplateLayoutBlob, showSaveButton])
 
-    const actionLabel = saveButtonText
-        || (invoiceData ? (t('print.printAndSave') || 'Print & Save') : (t('common.print') || 'Print'))
-
     return (
         <>
             <PrintSelectionModal
@@ -619,19 +615,6 @@ export function PrintPreviewModal({
                         <X className="w-4 h-4 mr-2" />
                         {t('common.cancel')}
                     </Button>
-                    {showSaveButton && (
-                        <Button 
-                            onClick={() => handleSave()} 
-                            disabled={isSaving || !canPrint}
-                        >
-                            {isSaving ? (
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            ) : (
-                                <Printer className="w-4 h-4 mr-2" />
-                            )}
-                            {actionLabel}
-                        </Button>
-                    )}
                 </DialogFooter>
 
                 {hasPdfData && templateContent && (

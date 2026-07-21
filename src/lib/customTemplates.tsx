@@ -40,6 +40,7 @@ import {
 } from '@/ui/components/SaleReceipt'
 import {
     PartnerDetailsPrintTemplate,
+    PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS,
     type PartnerDetailsPrintData
 } from '@/ui/components/crm/PartnerDetailsPrintTemplate'
 import {
@@ -1064,9 +1065,28 @@ function createPartnerDetailsPreview(options: CustomTemplatePreviewOptions): Tem
 
     return {
         fields: PARTNER_DETAILS_FIELDS,
+        movableComponents: [
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.logo, label: 'Workspace Logo' },
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.workspaceName, label: 'Workspace Name' },
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.printType, label: 'Print Type' },
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.printInfo, label: 'Print Information and Date Range' },
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.businessPartnerCard, label: 'Business Partner Card' },
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.financialSummary, label: 'Financial Summary' },
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.incomingCash, label: 'Incoming Cash' },
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.outgoingCash, label: 'Outgoing Cash' },
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.netFlow, label: 'Net Flow' },
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.whoOwesWhom, label: 'Who Owes Whom?' },
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.providedByYou, label: 'Provided by You Table' },
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.providedByPartner, label: 'Provided by Partner Table' },
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.topProducts, label: 'Top Products Table' },
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.notes, label: 'Notes' },
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.ordersHeader, label: 'Show the Orders Header' },
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.salesOrders, label: 'Sales Orders Table' },
+            { key: PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.purchaseOrders, label: 'Purchases Table' }
+        ],
         page: { widthMm: 210, heightMm: 297 },
         fixedPrintLang,
-        createElement: (data, _effectiveId, printLangOverride) => (
+        createElement: (data, _effectiveId, printLangOverride, renderOptions) => (
             <PartnerDetailsPrintTemplate
                 workspaceName={options.workspaceName}
                 printLang={printLangOverride || fixedPrintLang}
@@ -1075,6 +1095,11 @@ function createPartnerDetailsPreview(options: CustomTemplatePreviewOptions): Tem
                 logoUrl={options.features?.logo_url}
                 showWhoOwesWhom={data[PARTNER_DETAILS_TEMPLATE_FIELD_KEYS.showWhoOwesWhom] !== 'false'}
                 showOrders={data[PARTNER_DETAILS_TEMPLATE_FIELD_KEYS.showOrders] === 'true'}
+                componentPositions={renderOptions?.componentPositions}
+                hiddenFields={renderOptions?.hiddenFields}
+                editableComponents={renderOptions?.editableComponents}
+                onComponentPositionChange={renderOptions?.onComponentPositionChange}
+                onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
             />
         ),
         buildPdf: (element, printLangOverride) => generateTemplatePdf({

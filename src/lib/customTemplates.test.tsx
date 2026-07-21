@@ -268,6 +268,14 @@ describe('Partner Details custom print template', () => {
             heightMm: 297
         })
         expect(preview.fixedPrintLang).toBe('en')
+        expect(preview.movableComponents).toEqual(expect.arrayContaining([
+            expect.objectContaining({ key: 'partnerDetailsLogo', label: 'Workspace Logo' }),
+            expect.objectContaining({ key: 'partnerDetailsBusinessPartnerCard', label: 'Business Partner Card' }),
+            expect.objectContaining({ key: 'partnerDetailsFinancialSummary', label: 'Financial Summary' }),
+            expect.objectContaining({ key: 'partnerDetailsProvidedByYou', label: 'Provided by You Table' }),
+            expect.objectContaining({ key: 'partnerDetailsOrdersHeader', label: 'Show the Orders Header' }),
+            expect.objectContaining({ key: 'partnerDetailsPurchaseOrders', label: 'Purchases Table' })
+        ]))
         expect(element.type).toBe(PartnerDetailsPrintTemplate)
         expect(element.props.workspaceName).toBe('Atlas Test')
         expect(element.props.printLang).toBe('en')
@@ -318,6 +326,9 @@ describe('Partner Details custom print template', () => {
         expect(html).toContain('SO-00042')
         expect(html).toContain('PO-00019')
         expect(html).toContain('page-break-before:always')
+        expect(html).toContain('data-order-print-component="partnerDetailsOrdersHeader"')
+        expect(html).toContain('data-order-print-component="partnerDetailsSalesOrders"')
+        expect(html).toContain('data-order-print-component="partnerDetailsPurchaseOrders"')
     })
 })
 
@@ -434,11 +445,13 @@ describe('Order Details custom print template', () => {
 
         const html = renderToStaticMarkup(element)
         expect(html.match(/data-order-print-component=/g)).toHaveLength(12)
+        expect(html).toContain('data-pdf-preview-isolate-components="true"')
         expect(html).toContain('data-order-print-component="customer"')
         expect(html).toContain('translate(12mm, -4mm)')
         expect(html).toContain('aria-label="Move ')
         expect(html).toContain('data-order-print-component="orderItems"')
         expect(html).toContain('data-order-print-component="totals"')
+        expect(html).toContain('data-pdf-preview-page-break-mode="transform"')
         expect(html).toContain('+964 750 123 4567')
         expect(html).toContain('100 Example Street, Erbil')
         expect(html).toContain('font-bold [&amp;_*]:!font-bold')

@@ -1,4 +1,4 @@
-import { type FormEvent, type PointerEvent as ReactPointerEvent, useEffect, useState, useCallback, useRef } from 'react'
+import { type FormEvent, type PointerEvent as ReactPointerEvent, useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ExternalLink, Printer, Loader2, Edit3, X, ZoomIn, ZoomOut, Maximize, ImagePlus, Trash2, PenTool, Brush, Palette, Eraser, Hand, Type, RotateCw, Scaling, Move, Languages, Check, Shapes } from 'lucide-react'
 import {
@@ -47,6 +47,64 @@ import { UiAccessGate, useUiAccess } from '@/context/UiAccessContext'
 import { AttachedShapesOverlay } from '@/ui/components/AttachedShapesOverlay'
 import { PDF_SHAPE_OPTIONS } from '@/ui/components/PdfShapeGraphic'
 import type { PdfShapeKind } from '@/types'
+
+const PREVIEW_PAGE_BREAK_SELECTOR = [
+    '[data-pdf-keep-together]',
+    '[data-qr-sharp="true"]',
+    'table',
+    '.break-inside-avoid',
+    '.page-break-inside-avoid'
+].join(', ')
+const PREVIEW_PAGE_BREAK_MARGIN = 'pdfPreviewPageBreakMargin'
+const PREVIEW_PAGE_BREAK_ORIGINAL_MARGIN = 'pdfPreviewPageBreakOriginalMargin'
+const PREVIEW_PAGE_BREAK_MARGIN_ATTRIBUTE = 'data-pdf-preview-page-break-margin'
+const PREVIEW_PAGE_BREAK_TRANSFORM = 'pdfPreviewPageBreakTransform'
+const PREVIEW_PAGE_BREAK_ORIGINAL_TRANSLATE = 'pdfPreviewPageBreakOriginalTranslate'
+const PREVIEW_PAGE_BREAK_TRANSFORM_ATTRIBUTE = 'data-pdf-preview-page-break-transform'
+const PAGE_BREAK_EPSILON_MM = 0.05
+
+function resetPreviewPageBreakMargins(contentLayer: HTMLElement) {
+    contentLayer.querySelectorAll<HTMLElement>([
+        `[${PREVIEW_PAGE_BREAK_MARGIN_ATTRIBUTE}]`,
+        `[${PREVIEW_PAGE_BREAK_TRANSFORM_ATTRIBUTE}]`
+    ].join(', ')).forEach((element) => {
+        if (element.dataset[PREVIEW_PAGE_BREAK_MARGIN]) {
+            element.style.marginTop = element.dataset[PREVIEW_PAGE_BREAK_ORIGINAL_MARGIN] || ''
+            delete element.dataset[PREVIEW_PAGE_BREAK_MARGIN]
+            delete element.dataset[PREVIEW_PAGE_BREAK_ORIGINAL_MARGIN]
+        }
+        if (element.dataset[PREVIEW_PAGE_BREAK_TRANSFORM]) {
+            element.style.setProperty('translate', element.dataset[PREVIEW_PAGE_BREAK_ORIGINAL_TRANSLATE] || '')
+            delete element.dataset[PREVIEW_PAGE_BREAK_TRANSFORM]
+            delete element.dataset[PREVIEW_PAGE_BREAK_ORIGINAL_TRANSLATE]
+        }
+    })
+}
+
+function getPreviewPageBreakAnchor(
+    block: HTMLElement,
+    stage: HTMLElement,
+    millimetersPerPixel: number
+) {
+    const movableComponent = block.closest<HTMLElement>('[data-order-print-component]')
+    if (!movableComponent || !stage.contains(movableComponent)) return block
+
+    const parent = movableComponent.parentElement
+    if (!parent || parent === stage) return movableComponent
+
+    const display = window.getComputedStyle(parent).display
+    if (!display.includes('grid') && !display.includes('flex')) return movableComponent
+
+    const stageTop = stage.getBoundingClientRect().top
+    const parentTopMm = (parent.getBoundingClientRect().top - stageTop) * millimetersPerPixel
+    const componentTopMm = (movableComponent.getBoundingClientRect().top - stageTop) * millimetersPerPixel
+
+    // Grid/flex siblings that begin on the same line are exported together by
+    // the PDF paginator. Move the shared row to keep the preview in sync.
+    return Math.abs(parentTopMm - componentTopMm) < PAGE_BREAK_EPSILON_MM
+        ? parent
+        : movableComponent
+}
 
 const LanguageSelector = ({ value, onChange }: { value: string, onChange: (val: string) => void }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -536,6 +594,142 @@ export function PdfPreviewPage() {
             Math.abs(current - maxBottomMm) < 0.5 ? current : maxBottomMm
         ))
     }, [isFixedPageTemplatePreview, templatePageHeight, templatePageWidth, templatePreview])
+
+    const syncPreviewPageBreaks = useCallback(() => {
+        const stage = templateStageRef.current
+        const contentLayer = templateContentLayerRef.current
+        if (!stage || !contentLayer || !templatePreview || !isFixedPageTemplatePreview) return
+
+        resetPreviewPageBreakMargins(contentLayer)
+
+        const stageRect = stage.getBoundingClientRect()
+        if (stageRect.width <= 0) return
+
+        const millimetersPerPixel = templatePageWidth / stageRect.width
+        const pageHeightMm = templatePageHeight || A4_PAGE_HEIGHT_MM
+        const blocks = Array.from(contentLayer.querySelectorAll<HTMLElement>(PREVIEW_PAGE_BREAK_SELECTOR))
+            .sort((left, right) => left.getBoundingClientRect().top - right.getBoundingClientRect().top)
+
+        blocks.forEach((block) => {
+            const rect = block.getBoundingClientRect()
+            if (rect.width <= 0 || rect.height <= 0) return
+
+            const topMm = (rect.top - stageRect.top) * millimetersPerPixel
+            const bottomMm = (rect.bottom - stageRect.top) * millimetersPerPixel
+            const heightMm = bottomMm - topMm
+            const currentPageStartMm = Math.floor(topMm / pageHeightMm) * pageHeightMm
+            const currentPageEndMm = currentPageStartMm + pageHeightMm
+            const crossesPageBoundary = topMm > currentPageStartMm + PAGE_BREAK_EPSILON_MM
+                && topMm < currentPageEndMm - PAGE_BREAK_EPSILON_MM
+                && bottomMm > currentPageEndMm + PAGE_BREAK_EPSILON_MM
+                && heightMm <= pageHeightMm + PAGE_BREAK_EPSILON_MM
+
+            if (!crossesPageBoundary) return
+
+            const movableComponent = block.closest<HTMLElement>('[data-order-print-component]')
+            const independentlyPositionedComponent = movableComponent?.closest<HTMLElement>(
+                '[data-pdf-preview-isolate-components]'
+            )
+                ? movableComponent
+                : block.closest<HTMLElement>('[data-pdf-preview-page-break-mode="transform"]')
+            const anchor = independentlyPositionedComponent
+                || getPreviewPageBreakAnchor(block, stage, millimetersPerPixel)
+            const pageBreakOffsetMm = currentPageEndMm - topMm
+
+            if (independentlyPositionedComponent) {
+                if (!anchor.dataset[PREVIEW_PAGE_BREAK_TRANSFORM]) {
+                    anchor.dataset[PREVIEW_PAGE_BREAK_TRANSFORM] = 'true'
+                    anchor.dataset[PREVIEW_PAGE_BREAK_ORIGINAL_TRANSLATE] = anchor.style.getPropertyValue('translate')
+                }
+                // This keeps a manually positioned component out of the red-line area
+                // without changing document flow and dragging its later siblings with it.
+                anchor.style.setProperty('translate', `0 ${pageBreakOffsetMm}mm`)
+                return
+            }
+
+            if (!anchor.dataset[PREVIEW_PAGE_BREAK_MARGIN]) {
+                anchor.dataset[PREVIEW_PAGE_BREAK_MARGIN] = 'true'
+                anchor.dataset[PREVIEW_PAGE_BREAK_ORIGINAL_MARGIN] = anchor.style.marginTop
+            }
+            anchor.style.marginTop = `${pageBreakOffsetMm}mm`
+        })
+
+        measureTemplatePreviewHeight()
+
+    }, [
+        isFixedPageTemplatePreview,
+        measureTemplatePreviewHeight,
+        templatePageHeight,
+        templatePageWidth,
+        templatePreview
+    ])
+
+    useLayoutEffect(() => {
+        const contentLayer = templateContentLayerRef.current
+        if (!contentLayer || !templatePreview || !isFixedPageTemplatePreview) return
+
+        syncPreviewPageBreaks()
+        const frame = window.requestAnimationFrame(syncPreviewPageBreaks)
+
+        return () => {
+            window.cancelAnimationFrame(frame)
+            resetPreviewPageBreakMargins(contentLayer)
+        }
+    }, [
+        fieldValues,
+        isFixedPageTemplatePreview,
+        measuredTemplateHeightMm,
+        templateAnnotations,
+        templateComponentPositions,
+        templateHiddenFields,
+        templateImages,
+        templatePageHeight,
+        templatePageWidth,
+        templatePreview,
+        templateShapes,
+        templateTexts,
+        syncPreviewPageBreaks
+    ])
+
+    useEffect(() => {
+        const stage = templateStageRef.current
+        const contentLayer = templateContentLayerRef.current
+        if (!stage || !contentLayer || !templatePreview || !isFixedPageTemplatePreview) return
+
+        let frame: number | null = null
+        const schedulePaginationSync = () => {
+            if (frame !== null) window.cancelAnimationFrame(frame)
+            frame = window.requestAnimationFrame(() => {
+                frame = null
+                syncPreviewPageBreaks()
+            })
+        }
+        const observer = typeof ResizeObserver === 'undefined'
+            ? null
+            : new ResizeObserver(schedulePaginationSync)
+
+        observer?.observe(stage)
+        observer?.observe(contentLayer)
+
+        const images = Array.from(contentLayer.querySelectorAll('img'))
+        images.forEach((image) => {
+            image.addEventListener('load', schedulePaginationSync)
+            image.addEventListener('error', schedulePaginationSync)
+        })
+        void document.fonts?.ready.then(schedulePaginationSync)
+        schedulePaginationSync()
+        const settledLayoutTimeout = window.setTimeout(schedulePaginationSync, 150)
+
+        return () => {
+            if (frame !== null) window.cancelAnimationFrame(frame)
+            window.clearTimeout(settledLayoutTimeout)
+            observer?.disconnect()
+            images.forEach((image) => {
+                image.removeEventListener('load', schedulePaginationSync)
+                image.removeEventListener('error', schedulePaginationSync)
+            })
+        }
+    }, [isFixedPageTemplatePreview, syncPreviewPageBreaks, templatePreview])
 
     useEffect(() => {
         if (!templatePreview) return

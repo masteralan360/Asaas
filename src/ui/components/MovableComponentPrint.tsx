@@ -12,6 +12,7 @@ export function MovableOrderPrintBlock({
     handleSide = 'right',
     minY,
     pushFlow,
+    previewPageBreakMode,
     children
 }: {
     componentKey: string
@@ -23,6 +24,7 @@ export function MovableOrderPrintBlock({
     handleSide?: 'left' | 'right'
     minY?: number
     pushFlow?: boolean
+    previewPageBreakMode?: 'transform'
     children: ReactNode
 }) {
     const resolvedPosition = position || { x: 0, y: 0 }
@@ -102,6 +104,8 @@ export function MovableOrderPrintBlock({
                 zIndex: 20
             }}
             data-order-print-component={componentKey}
+            data-pdf-keep-together
+            data-pdf-preview-page-break-mode={previewPageBreakMode}
             data-pdf-template-object-id={`component:${componentKey}`}
             data-pdf-template-object-kind="component"
         >

@@ -18,6 +18,7 @@ vi.mock('@/services/platformService', () => ({
 
 import {
     PartnerDetailsPrintTemplate,
+    PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS,
     type PartnerDetailsPrintData
 } from './PartnerDetailsPrintTemplate'
 
@@ -102,7 +103,7 @@ describe('PartnerDetailsPrintTemplate', () => {
         const html = await renderPartnerPrint('ar')
 
         expect(html).toContain('dir="rtl"')
-        expect(html).toContain('class="text-[10px] font-semibold text-slate-500">RTL_ROLE')
+        expect(html).toContain('class="block text-[10px] font-semibold text-slate-500">RTL_ROLE')
         expect(html).toContain('class="text-[10px] text-slate-500">RTL_INCOMING')
         expect(html).toContain('class="mb-2 text-xs font-semibold text-slate-600">RTL_WHO')
     })
@@ -111,8 +112,29 @@ describe('PartnerDetailsPrintTemplate', () => {
         const html = await renderPartnerPrint('en')
 
         expect(html).toContain('dir="ltr"')
-        expect(html).toContain('class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">BOTH_ROLE')
+        expect(html).toContain('class="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide">BOTH_ROLE')
         expect(html).toContain('class="text-[10px] text-slate-500 uppercase tracking-wide">Incoming Cash')
         expect(html).toContain('class="mb-2 text-xs font-semibold text-slate-600 uppercase tracking-wide">Who owes whom?')
+    })
+
+    it('marks partner print blocks so they remain intact across A4 pages', async () => {
+        const html = await renderPartnerPrint('en')
+
+        expect(html).toContain('data-partner-details-print="true"')
+        expect(html).toContain('data-pdf-keep-together="true"')
+        expect(html).toContain('page-break-inside: avoid')
+    })
+
+    it('renders each partner detail section as a separate movable component', async () => {
+        const html = await renderPartnerPrint('en')
+
+        Object.values(PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS).forEach((key) => {
+            if (key === PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.ordersHeader
+                || key === PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.salesOrders
+                || key === PARTNER_DETAILS_MOVABLE_COMPONENT_KEYS.purchaseOrders) {
+                return
+            }
+            expect(html).toContain(`data-order-print-component="${key}"`)
+        })
     })
 })

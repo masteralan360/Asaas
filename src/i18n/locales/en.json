@@ -2210,6 +2210,16 @@
   "sync": {
     "title": "Synchronize Data",
     "pendingCount": "You have {{count}} pending changes to upload.",
+    "queueTitle": "Sync queue",
+    "queueItems_one": "{{count}} item",
+    "queueItems_other": "{{count}} items",
+    "queued": "Queued",
+    "retrying": "Retrying",
+    "operations": {
+      "create": "Create",
+      "update": "Update",
+      "delete": "Delete"
+    },
     "syncing": "Synchronizing with Supabase...",
     "success": "Sync completed successfully!",
     "failed": "Sync failed.",

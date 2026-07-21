@@ -5,6 +5,11 @@ import { I18nextProvider } from 'react-i18next'
 import { A4InvoiceTemplate, ModernA4InvoiceTemplate, ProfessionalA4InvoiceTemplate, RefundA4InvoiceTemplate, RefundPrimaryA4InvoiceTemplate } from '@/ui/components'
 import { SaleReceiptBase } from '@/ui/components/SaleReceipt'
 import { UniversalInvoice } from '@/types'
+import {
+    A4_PAGE_HEIGHT_MM,
+    getA4PageStarts,
+    type A4KeepTogetherBlock
+} from '@/services/a4Pagination'
 
 export type PrintFormat = 'a4' | 'receipt'
 
@@ -18,10 +23,11 @@ interface PDFLayer {
 }
 
 interface RenderResult {
-    background: string // Low-res JPEG dataUrl
+    background: HTMLCanvasElement // Low-res canvas
     qrs: PDFLayer[]    // High-res PNG dataUrls
     widthMm: number
     heightMm: number
+    keepTogetherBlocks: A4KeepTogetherBlock[]
 }
 
 type JsPDFConstructor = typeof import('jspdf').jsPDF
@@ -59,7 +65,7 @@ interface TemplatePdfOptions {
 }
 
 const A4_WIDTH_MM = 210
-const A4_HEIGHT_MM = 297
+const A4_HEIGHT_MM = A4_PAGE_HEIGHT_MM
 const RECEIPT_WIDTH_MM = 80
 
 function resolvePrintLanguage(printLang: string | null | undefined) {
@@ -106,6 +112,56 @@ async function expandContainerToRenderedBounds(container: HTMLElement) {
     }
 }
 
+function collectA4KeepTogetherBlocks(container: HTMLElement, widthMm: number): A4KeepTogetherBlock[] {
+    if (widthMm !== A4_WIDTH_MM) return []
+
+    const containerRect = container.getBoundingClientRect()
+    if (containerRect.width <= 0) return []
+
+    const pxToMm = widthMm / containerRect.width
+    const candidates = new Set([
+        ...container.querySelectorAll<HTMLElement>(
+            '[data-pdf-keep-together], [data-qr-sharp="true"], table, tr, .break-inside-avoid, .page-break-inside-avoid'
+        )
+    ])
+
+    return Array.from(candidates).flatMap((element) => {
+        const rect = element.getBoundingClientRect()
+        if (rect.width <= 0 || rect.height <= 0) return []
+
+        const topMm = (rect.top - containerRect.top) * pxToMm
+        const bottomMm = (rect.bottom - containerRect.top) * pxToMm
+        return Number.isFinite(topMm) && Number.isFinite(bottomMm)
+            ? [{ topMm, bottomMm }]
+            : []
+    })
+}
+
+function createCanvasSlice(
+    source: HTMLCanvasElement,
+    sourceHeightMm: number,
+    pageStartMm: number,
+    pageEndMm: number
+) {
+    const topPx = Math.max(0, Math.floor((pageStartMm / sourceHeightMm) * source.height))
+    const bottomPx = Math.min(source.height, Math.ceil((pageEndMm / sourceHeightMm) * source.height))
+    const slice = document.createElement('canvas')
+    slice.width = source.width
+    slice.height = Math.max(1, bottomPx - topPx)
+    slice.getContext('2d')?.drawImage(
+        source,
+        0,
+        topPx,
+        source.width,
+        slice.height,
+        0,
+        0,
+        source.width,
+        slice.height
+    )
+    return slice
+}
+
 async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm: number): Promise<RenderResult> {
     const { default: html2canvas } = await import('html2canvas')
     const container = document.createElement('div')
@@ -132,9 +188,10 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     await waitForImages(container)
     await expandContainerToRenderedBounds(container)
 
+    const keepTogetherBlocks = collectA4KeepTogetherBlocks(container, widthMm)
+
     const HIGH_SCALE = 6 // Higher scale for perfect QR pixel capture
     const LOW_SCALE = 2.5
-    const JPEG_QUALITY = 0.9
 
     const sharpZones: { x: number, y: number, width: number, height: number }[] = []
 
@@ -209,38 +266,39 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     container.remove()
 
     return {
-        background: lowResCanvas.toDataURL('image/jpeg', JPEG_QUALITY),
+        background: lowResCanvas,
         qrs,
         widthMm,
-        heightMm: calculatedHeightMm
+        heightMm: calculatedHeightMm,
+        keepTogetherBlocks
     }
 }
 
 function canvasToA4Pdf(renderResult: RenderResult, PdfDocument: JsPDFConstructor) {
     const pdf = new PdfDocument({ orientation: 'p', unit: 'mm', format: 'a4' })
-    // Do not subtract from the rendered height here. Even a small overflow beyond
-    // 297mm is real content and must become another page instead of being clipped.
-    const pageCount = Math.max(1, Math.ceil(renderResult.heightMm / A4_HEIGHT_MM))
+    const pageStarts = getA4PageStarts(renderResult.heightMm, renderResult.keepTogetherBlocks, A4_HEIGHT_MM)
 
-    for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+    for (let pageIndex = 0; pageIndex < pageStarts.length; pageIndex += 1) {
         if (pageIndex > 0) {
             pdf.addPage('a4', 'p')
         }
 
-        const pageOffset = pageIndex * A4_HEIGHT_MM
+        const pageOffset = pageStarts[pageIndex]
+        const pageEnd = pageStarts[pageIndex + 1] || renderResult.heightMm
+        const pageContentHeight = pageEnd - pageOffset
         pdf.addImage(
-            renderResult.background,
+            createCanvasSlice(renderResult.background, renderResult.heightMm, pageOffset, pageEnd),
             'JPEG',
             0,
-            -pageOffset,
+            0,
             renderResult.widthMm,
-            renderResult.heightMm,
+            pageContentHeight,
             undefined,
             'FAST'
         )
 
         renderResult.qrs
-            .filter((qr) => qr.y + qr.h > pageOffset && qr.y < pageOffset + A4_HEIGHT_MM)
+            .filter((qr) => qr.y + qr.h > pageOffset && qr.y < pageEnd)
             .forEach((qr) => {
                 pdf.addImage(
                     qr.image as string,

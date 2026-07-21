@@ -8,10 +8,11 @@ import {
     DialogFooter
 } from '@/ui/components/dialog'
 import { Button } from '@/ui/components/button'
-import { Loader2, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertTriangle, ListTodo } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { useToast } from '@/ui/components/use-toast'
-import { usePendingSyncCount, clearOfflineMutations } from '@/local-db/hooks'
+import { usePendingSyncMutations, clearOfflineMutations } from '@/local-db/hooks'
+import type { OfflineMutation } from '@/local-db/models'
 import { useTranslation } from 'react-i18next'
 import { runManagedFullSync } from '@/sync/syncCoordinator'
 import { LAST_SYNC_KEY } from '@/sync/constants'
@@ -23,11 +24,52 @@ interface ManualSyncModalProps {
     onSyncComplete?: () => void
 }
 
+function getEntityLabel(entityType: OfflineMutation['entityType']) {
+    return entityType
+        .replaceAll('_', ' ')
+        .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function getMutationSummary(payload: OfflineMutation['payload']) {
+    const summaryFields = [
+        'name',
+        'title',
+        'invoiceNumber',
+        'invoice_number',
+        'referenceLabel',
+        'reference_label',
+        'code',
+        'sku'
+    ]
+
+    for (const field of summaryFields) {
+        const value = payload[field]
+        if (typeof value === 'string' && value.trim()) {
+            return value.trim()
+        }
+    }
+
+    return null
+}
+
+function formatQueuedAt(createdAt: string, locale: string) {
+    const date = new Date(createdAt)
+    if (Number.isNaN(date.getTime())) return createdAt
+
+    return new Intl.DateTimeFormat(locale, {
+        hour: 'numeric',
+        minute: '2-digit',
+        month: 'short',
+        day: 'numeric'
+    }).format(date)
+}
+
 export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSyncModalProps) {
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     const { user } = useAuth()
     const { toast } = useToast()
-    const pendingCount = usePendingSyncCount()
+    const pendingMutations = usePendingSyncMutations()
+    const pendingCount = pendingMutations.length
     const [isOnline, setIsOnline] = useState(() => connectionManager.getState().isOnline)
 
     const [isSyncing, setIsSyncing] = useState(false)
@@ -117,7 +159,7 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
     return (
         <>
             <Dialog open={open} onOpenChange={isSyncing ? undefined : onOpenChange}>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-lg">
                     <DialogHeader>
                         <DialogTitle>{t('sync.title')}</DialogTitle>
                         <DialogDescription>
@@ -128,10 +170,51 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="flex flex-col items-center justify-center py-6 space-y-4">
+                    <div className="flex flex-col items-center justify-center py-4 space-y-4">
                         {status === 'idle' && (
-                            <div className="text-center space-y-2">
-                                <p className="text-sm text-muted-foreground">
+                            <div className="w-full space-y-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                                        <ListTodo className="h-4 w-4 text-primary" />
+                                        <span>{t('sync.queueTitle')}</span>
+                                    </div>
+                                    <span className="text-xs text-muted-foreground">
+                                        {t('sync.queueItems', { count: pendingMutations.length })}
+                                    </span>
+                                </div>
+
+                                <div
+                                    aria-label={t('sync.queueTitle')}
+                                    className="max-h-52 divide-y overflow-y-auto rounded-md border bg-muted/20 text-left"
+                                >
+                                    {pendingMutations.map((mutation) => {
+                                        const summary = getMutationSummary(mutation.payload)
+                                        const statusLabel = mutation.status === 'failed'
+                                            ? t('sync.retrying')
+                                            : mutation.status === 'syncing'
+                                                ? t('sync.syncing')
+                                                : t('sync.queued')
+
+                                        return (
+                                            <div key={mutation.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                                                <div className="min-w-0">
+                                                    <p className="truncate text-sm font-medium text-foreground">
+                                                        {getEntityLabel(mutation.entityType)}
+                                                        {summary && <span className="font-normal text-muted-foreground"> · {summary}</span>}
+                                                    </p>
+                                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                                        {t(`sync.operations.${mutation.operation}`)} · {formatQueuedAt(mutation.createdAt, i18n.language)}
+                                                    </p>
+                                                </div>
+                                                <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                                                    {statusLabel}
+                                                </span>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+
+                                <p className="text-center text-sm text-muted-foreground">
                                     {t('sync.connectionNote')}
                                 </p>
                             </div>

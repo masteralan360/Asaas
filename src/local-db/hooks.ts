@@ -49,7 +49,8 @@ import type {
     ExchangeRateSnapshot,
     SalesExchange,
     PaymentTransaction,
-    PaymentTransactionSourceType
+    PaymentTransactionSourceType,
+    OfflineMutation
 } from './models'
 import {
     DuplicateProductBarcodeError,
@@ -2276,20 +2277,27 @@ export function useSyncQueue() {
     return queue ?? []
 }
 
-export function usePendingSyncCount() {
-    const count = useLiveQuery(async () => {
+export function usePendingSyncMutations(): OfflineMutation[] {
+    const mutations = useLiveQuery(async () => {
         const [pending, syncing, failedSaleCreates] = await Promise.all([
-            db.offline_mutations.where('status').equals('pending').count(),
-            db.offline_mutations.where('status').equals('syncing').count(),
+            db.offline_mutations.where('status').equals('pending').toArray(),
+            db.offline_mutations.where('status').equals('syncing').toArray(),
             db.offline_mutations
                 .where('status')
                 .equals('failed')
                 .filter((mutation) => mutation.entityType === 'sales' && mutation.operation === 'create')
-                .count()
+                .toArray()
         ])
-        return pending + syncing + failedSaleCreates
+
+        return [...pending, ...syncing, ...failedSaleCreates]
+            .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
     }, [])
-    return count ?? 0
+
+    return mutations ?? []
+}
+
+export function usePendingSyncCount() {
+    return usePendingSyncMutations().length
 }
 
 export async function removeFromSyncQueue(id: string): Promise<void> {

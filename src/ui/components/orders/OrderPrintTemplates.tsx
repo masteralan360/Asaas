@@ -845,6 +845,7 @@ export function OrderDetailsPrintTemplate({
             style={{ width: '210mm', minHeight: '297mm', padding: '14mm 12mm' }}
             data-order-print-page
             data-page-width-mm="210"
+            data-pdf-preview-isolate-components
         >
             <style
                 dangerouslySetInnerHTML={{
@@ -1095,6 +1096,7 @@ export function OrderDetailsPrintTemplate({
                 editable={editableComponents}
                 onPositionChange={onComponentPositionChange}
                 wrapperClassName="ms-auto mb-5 w-60"
+                previewPageBreakMode="transform"
             >
             <div className="text-xs space-y-1">
                     <div className="flex justify-between">
