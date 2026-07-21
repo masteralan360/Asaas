@@ -26,8 +26,8 @@ interface ManualSyncModalProps {
 
 function getEntityLabel(entityType: OfflineMutation['entityType']) {
     return entityType
-        .replaceAll('_', ' ')
-        .replace(/\b\w/g, (letter) => letter.toUpperCase())
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (letter: string) => letter.toUpperCase())
 }
 
 function getMutationSummary(payload: OfflineMutation['payload']) {

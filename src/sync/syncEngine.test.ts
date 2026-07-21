@@ -288,7 +288,8 @@ describe('fullSync error reporting', () => {
 
         expect(result.success).toBe(true)
         expect(dbMock.rows[0]).toMatchObject({ status: 'synced' })
-        const payload = supabaseMock.upsert.mock.calls[0][0] as Record<string, unknown>
+        const retryUpsertCall = supabaseMock.upsert.mock.calls[0] as unknown as [Record<string, unknown>]
+        const payload = retryUpsertCall[0]
         expect(payload).not.toHaveProperty('sku_key')
         expect(payload).not.toHaveProperty('quantity')
         expect(payload).not.toHaveProperty('storage_id')
