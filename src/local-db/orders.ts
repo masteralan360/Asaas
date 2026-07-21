@@ -106,20 +106,6 @@ type BaseEntityPayload = {
     isDeleted: boolean
 }
 
-type ProductLike = {
-    id: string
-    workspaceId: string
-    quantity: number
-    costPrice: number
-    currency: CurrencyCode
-    updatedAt: string
-    syncStatus: 'pending' | 'synced' | 'conflict'
-    lastSyncedAt: string | null
-    version: number
-    isDeleted: boolean
-    storageName?: string
-}
-
 type OrderWithApproval = Pick<
     SalesOrder | PurchaseOrder,
     'approvalStatus' | 'approvalRequestedAt' | 'approvalRequestedBy' | 'approvalReviewedAt' | 'approvalReviewedBy'
@@ -161,6 +147,13 @@ function sanitizeSyncPayload(tableName: SyncableTableName, entity: Record<string
     )
 
     if (tableName === 'products') {
+        // skuKey is a Dexie-only lookup field used for local duplicate-SKU checks.
+        // It must never be sent to the products table.
+        delete snakePayload.sku_key
+        // Product stock is a derived snapshot of inventory, never an
+        // independently synced value.
+        delete snakePayload.quantity
+        delete snakePayload.storage_id
         delete snakePayload.storage_name
     }
 
@@ -690,7 +683,6 @@ async function assertSalesStockAvailable(order: SalesOrder, excludeOrderId?: str
 
 async function deductInventoryForSalesOrder(order: SalesOrder) {
     const now = new Date().toISOString()
-    const updatedProducts: ProductLike[] = []
     const changedInventoryRows: Inventory[] = []
     const changedBatches: StockBatch[] = []
     const updatedItems = [...order.items]
@@ -795,7 +787,6 @@ async function deductInventoryForSalesOrder(order: SalesOrder) {
                     changedInventoryRows.push(changedInventoryRow)
                 }
 
-                updatedProducts.push(updatedProduct)
                 updatedItems[itemIndex] = {
                     ...item,
                     reservedQuantity: inventoryQuantity,
@@ -819,9 +810,6 @@ async function deductInventoryForSalesOrder(order: SalesOrder) {
     ))
 
     return {
-        updatedProducts: Array.from(
-            new Map(updatedProducts.map((product) => [product.id, product])).values()
-        ),
         updatedItems
     }
 }
@@ -1235,18 +1223,11 @@ async function receiveInventoryForPurchaseOrder(order: PurchaseOrder) {
         affectedProductIds.add(item.productId)
     }
 
-    const updatedProducts: ProductLike[] = []
     for (const productId of affectedProductIds) {
-        const inventoryUpdatedProduct = await syncProductStockSnapshot(productId, now)
-        if (!inventoryUpdatedProduct) {
-            continue
-        }
-
-        updatedProducts.push(inventoryUpdatedProduct)
+        await syncProductStockSnapshot(productId, now)
     }
 
     return {
-        updatedProducts,
         changedInventoryRows,
         changedBatches
     }
@@ -1279,12 +1260,7 @@ async function syncPurchaseReceiptResult(workspaceId: string, result: PurchaseRe
 
     await Promise.all([
         syncInventoryRowsBestEffort(result.changedInventoryRows, workspaceId),
-        syncStockBatchesBestEffort(result.changedBatches, workspaceId),
-        syncUpsertEntities(
-            'products',
-            result.updatedProducts as unknown as Array<Record<string, unknown> & { id: string; version: number }>,
-            workspaceId
-        )
+        syncStockBatchesBestEffort(result.changedBatches, workspaceId)
     ])
 }
 
@@ -1734,10 +1710,8 @@ export async function createSalesOrder(
 
     await db.sales_orders.put(order)
 
-    let updatedProducts: ProductLike[] = []
     if (status === 'completed') {
         const fulfillment = await deductInventoryForSalesOrder(order)
-        updatedProducts = fulfillment.updatedProducts
         order.items = fulfillment.updatedItems
         const now = new Date().toISOString()
         await db.sales_orders.update(order.id, {
@@ -1752,9 +1726,6 @@ export async function createSalesOrder(
     }
 
     await syncUpsertEntities('sales_orders', [order as unknown as Record<string, unknown> & { id: string; version: number }], workspaceId)
-    if (updatedProducts.length > 0) {
-        await syncUpsertEntities('products', updatedProducts as unknown as Array<Record<string, unknown> & { id: string; version: number }>, workspaceId)
-    }
     await recalculateCustomerAndPartnerSummaries(workspaceId, order.customerId, order.businessPartnerId)
     const createdOrder = (await db.sales_orders.get(order.id)) as SalesOrder
 
@@ -1962,20 +1933,15 @@ export async function updateSalesOrderStatus(id: string, status: SalesOrderStatu
         ...getSyncMetadata(existing.workspaceId, now)
     }
 
-    let updatedProducts: ProductLike[] = []
     if (status === 'completed') {
         await assertSalesStockAvailable(updated, existing.id)
         const fulfillment = await deductInventoryForSalesOrder(updated)
-        updatedProducts = fulfillment.updatedProducts
         updated.items = fulfillment.updatedItems
     }
 
     await db.sales_orders.put(updated)
 
     await syncUpsertEntities('sales_orders', [updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
-    if (updatedProducts.length > 0) {
-        await syncUpsertEntities('products', updatedProducts as unknown as Array<Record<string, unknown> & { id: string; version: number }>, existing.workspaceId)
-    }
     await Promise.all(
         Array.from(new Set([
             `${existing.customerId}::${existing.businessPartnerId || ''}`,

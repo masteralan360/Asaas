@@ -217,6 +217,14 @@ export async function syncInventoryRowsBestEffort(rows: Array<Inventory | null>,
             if (!error && remoteRows) {
                 const syncedAt = new Date().toISOString()
                 await reconcileInventoryRowsSynced(dedupedRows, remoteRows as Record<string, unknown>[], syncedAt)
+                const productIds = Array.from(new Set(
+                    (remoteRows as Record<string, unknown>[])
+                        .map((row) => row.product_id)
+                        .filter((productId): productId is string => typeof productId === 'string')
+                ))
+                await Promise.all(productIds.map((productId) =>
+                    syncProductStockSnapshot(productId, syncedAt, 'remote')
+                ))
                 return
             }
         } catch (error) {
@@ -596,11 +604,12 @@ export async function syncProductStockSnapshot(
     const resolvedStorage = resolvedStorageId ? await db.storages.get(resolvedStorageId) : undefined
     const resolvedStorageName = resolvedStorageId ? resolvedStorage?.name : undefined
 
-    if (
+    const matchesInventorySnapshot =
         quantitiesEqual(product.quantity, totalQuantity)
         && (product.storageId ?? null) === resolvedStorageId
         && (product.storageName ?? undefined) === resolvedStorageName
-    ) {
+
+    if (matchesInventorySnapshot) {
         return product
     }
 

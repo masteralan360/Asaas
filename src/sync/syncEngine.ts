@@ -123,6 +123,18 @@ function isPriceBookMutation(mutation: { entityType: string }) {
   return mutation.entityType === "price_books" || mutation.entityType === "price_book_items";
 }
 
+function isRecoverableProductSkuKeyMutation(mutation: {
+  entityType: string;
+  error?: string;
+}) {
+  return (
+    mutation.entityType === "products" &&
+    /pgrst204|could not find.*sku_key|sku_key.*schema cache/i.test(
+      mutation.error ?? "",
+    )
+  );
+}
+
 export function isRecoverablePriceBookMutation(mutation: {
   entityType: string;
   error?: string;
@@ -433,6 +445,7 @@ export async function processMutationQueue(
       (mutation) =>
         isSaleCreateMutation(mutation) ||
         isRetriableSaleReturnMutation(mutation) ||
+        isRecoverableProductSkuKeyMutation(mutation) ||
         isRecoverablePriceBookMutation(mutation),
     )
     .sortBy("createdAt");
@@ -502,6 +515,13 @@ export async function processMutationQueue(
       delete dbPayload.last_synced_at;
 
       if (entityType === "products") {
+        // skuKey is local-only and may exist in mutations created before this
+        // filter was added.
+        delete dbPayload.sku_key;
+        // Stock is derived from inventory in the database.  Strip stale
+        // product snapshots from queued mutations created by older clients.
+        delete dbPayload.quantity;
+        delete dbPayload.storage_id;
         delete dbPayload.storage_name;
         delete dbPayload.barcode;
         delete dbPayload.barcodes;

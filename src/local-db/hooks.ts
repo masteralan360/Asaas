@@ -135,6 +135,10 @@ function toSupabaseProductPayload(product: Partial<Product>) {
         syncStatus: undefined,
         lastSyncedAt: undefined,
         skuKey: undefined,
+        // Stock is derived by the database from inventory rows.  Do not let a
+        // product edit or a stale local snapshot overwrite it.
+        quantity: undefined,
+        storageId: undefined,
         storageName: undefined,
         barcode: undefined,
         barcodes: undefined
@@ -228,44 +232,6 @@ async function ensureProductSkuIsAvailable(
 
 const LOAN_PAYMENT_TRANSACTION_SOURCE_TYPES: PaymentTransactionSourceType[] = ['loan_origination', 'loan_payment', 'simple_loan', 'loan_installment']
 const LOAN_SETTLEMENT_TRANSACTION_SOURCE_TYPES: PaymentTransactionSourceType[] = ['loan_payment', 'simple_loan', 'loan_installment']
-
-async function syncUpdatedProductsBestEffort(products: Product[], workspaceId: string): Promise<void> {
-    const dedupedProducts = Array.from(new Map(products.map((product) => [product.id, product])).values())
-    if (dedupedProducts.length === 0) {
-        return
-    }
-
-    if (isOnline() && shouldUseCloudBusinessData(workspaceId)) {
-        try {
-            const payload = dedupedProducts.map((product) => toSupabaseProductPayload(product))
-
-            const { error } = await runMutation('products.inventorySync', () =>
-                supabase.from('products').upsert(payload)
-            )
-
-            if (error) {
-                throw normalizeSupabaseActionError(error)
-            }
-
-            const syncedAt = new Date().toISOString()
-            await Promise.all(dedupedProducts.map((product) =>
-                db.products.update(product.id, {
-                    syncStatus: 'synced',
-                    lastSyncedAt: syncedAt
-                })
-            ))
-            return
-        } catch (error) {
-            if (!shouldUseOfflineMutationFallback(error)) {
-                throw normalizeSupabaseActionError(error)
-            }
-        }
-    }
-
-    await Promise.all(dedupedProducts.map((product) =>
-        addToOfflineMutations('products', product.id, 'update', product as unknown as Record<string, unknown>, workspaceId)
-    ))
-}
 
 // ===================
 // CATEGORIES HOOKS
@@ -518,6 +484,8 @@ export async function createProduct(workspaceId: string, data: Omit<Product, 'id
     const id = generateId()
     const sku = trimProductSku(data.sku)
     const isSavingOnline = isOnline()
+    const initialQuantity = Number(data.quantity) || 0
+    const initialStorageId = data.storageId ?? null
 
     if (isSavingOnline) {
         await ensureProductSkuIsAvailable(workspaceId, sku)
@@ -527,6 +495,11 @@ export async function createProduct(workspaceId: string, data: Omit<Product, 'id
         ...data,
         sku,
         skuKey: normalizeProductSku(sku),
+        // The initial quantity is written as inventory below.  Keeping the
+        // product snapshot empty prevents it racing the inventory sync.
+        quantity: 0,
+        storageId: null,
+        storageName: undefined,
         id,
         workspaceId,
         createdAt: now,
@@ -563,19 +536,19 @@ export async function createProduct(workspaceId: string, data: Omit<Product, 'id
     const normalizedProduct = await setProductInventoryFromLegacyInput({
         workspaceId,
         productId: id,
-        storageId: data.storageId ?? null,
-        quantity: Number(data.quantity) || 0,
+        storageId: initialStorageId,
+        quantity: initialQuantity,
         timestamp: now
     })
 
-    if ((Number(data.quantity) || 0) > 0 && data.storageId) {
+    if (initialQuantity > 0 && initialStorageId) {
         await createInventoryTransaction(workspaceId, {
             productId: id,
-            storageId: data.storageId,
+            storageId: initialStorageId,
             transactionType: 'initial_stock',
-            quantityDelta: Number(data.quantity) || 0,
+            quantityDelta: initialQuantity,
             previousQuantity: 0,
-            newQuantity: Number(data.quantity) || 0,
+            newQuantity: initialQuantity,
             referenceId: id,
             referenceType: 'product',
             createdBy: null
@@ -2691,7 +2664,6 @@ export async function transferInventoryBetweenStorages(
         batchAllocations: Awaited<ReturnType<typeof transferInventoryQuantityWithBatches>>['batchAllocations']
         reverseBatchSelections: Awaited<ReturnType<typeof transferInventoryQuantityWithBatches>>['reverseBatchSelections']
     }> = []
-    const updatedProducts: Product[] = []
     const affectedProductIds = new Set<string>()
     const now = new Date().toISOString()
 
@@ -2728,12 +2700,8 @@ export async function transferInventoryBetweenStorages(
                 reverseBatchSelections: transferResult.reverseBatchSelections
             })
             affectedProductIds.add(item.productId)
-            if (transferResult.updatedProduct) {
-                updatedProducts.push(transferResult.updatedProduct)
-            }
         }
 
-        await syncUpdatedProductsBestEffort(updatedProducts, workspaceId)
         if (affectedProductIds.size > 0) {
             const { evaluateReorderTransferRulesForProduct } = await import('./reorderTransferRules')
             await Promise.all(Array.from(affectedProductIds).map((productId) =>
@@ -2796,7 +2764,6 @@ export async function deleteStorage(id: string, moveProductsToStorageId: string)
         quantity: number
         reverseBatchSelections: Awaited<ReturnType<typeof transferInventoryQuantityWithBatches>>['reverseBatchSelections']
     }> = []
-    const updatedProducts: Product[] = []
 
     try {
         await refreshStockBatchesFromSupabase(existing.workspaceId)
@@ -2818,9 +2785,6 @@ export async function deleteStorage(id: string, moveProductsToStorageId: string)
                 quantity: row.quantity,
                 reverseBatchSelections: transferResult.reverseBatchSelections
             })
-            if (transferResult.updatedProduct) {
-                updatedProducts.push(transferResult.updatedProduct)
-            }
         }
     } catch (error) {
         console.error('[Storage] Failed to move inventory while deleting storage:', error)
@@ -2914,12 +2878,6 @@ export async function deleteStorage(id: string, moveProductsToStorageId: string)
                 existing.workspaceId
             )
         }
-    }
-
-    try {
-        await syncUpdatedProductsBestEffort(updatedProducts, existing.workspaceId)
-    } catch (error) {
-        console.error('[Storage] Failed to sync product snapshots after storage delete:', error)
     }
 
     return { success: true, movedCount: inventoryToMove.length }

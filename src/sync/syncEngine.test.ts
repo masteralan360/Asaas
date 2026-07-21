@@ -219,6 +219,9 @@ describe('fullSync error reporting', () => {
             payload: {
                 id: 'product-1',
                 name: 'Desk',
+                skuKey: 'desk',
+                quantity: 510,
+                storageId: 'storage-1',
                 syncStatus: 'pending',
                 lastSyncedAt: null,
                 updatedAt: '2026-06-03T00:00:00.000Z'
@@ -256,6 +259,39 @@ describe('fullSync error reporting', () => {
         })
         expect(payload).not.toHaveProperty('sync_status')
         expect(payload).not.toHaveProperty('last_synced_at')
+        expect(payload).not.toHaveProperty('sku_key')
+        expect(payload).not.toHaveProperty('quantity')
+        expect(payload).not.toHaveProperty('storage_id')
+    })
+
+    it('retries and repairs product mutations that previously failed because of sku_key', async () => {
+        dbMock.rows.push({
+            id: 'sku-key-mutation',
+            workspaceId: 'workspace-1',
+            entityType: 'products',
+            entityId: 'product-1',
+            operation: 'update',
+            payload: {
+                id: 'product-1',
+                name: 'Desk',
+                skuKey: 'desk',
+                quantity: 510,
+                storageId: 'storage-1'
+            },
+            createdAt: '2026-07-13T00:00:00.000Z',
+            status: 'failed',
+            error: "Could not find the 'sku_key' column of 'products' in the schema cache"
+        })
+        supabaseMock.upsert.mockResolvedValueOnce({ data: null, error: null })
+
+        const result = await fullSync('user-1', 'workspace-1', null)
+
+        expect(result.success).toBe(true)
+        expect(dbMock.rows[0]).toMatchObject({ status: 'synced' })
+        const payload = supabaseMock.upsert.mock.calls[0][0] as Record<string, unknown>
+        expect(payload).not.toHaveProperty('sku_key')
+        expect(payload).not.toHaveProperty('quantity')
+        expect(payload).not.toHaveProperty('storage_id')
     })
 
     it('reports pull failures instead of treating an empty pull as successful', async () => {
