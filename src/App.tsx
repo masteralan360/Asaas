@@ -466,12 +466,18 @@ function UpdateHandler() {
     null,
   );
   const [downloadUpdate, setDownloadUpdate] = useState<Update | null>(null);
+  const [deferredUpdate, setDeferredUpdate] = useState<Update | null>(null);
 
   const deferUpdate = useCallback(
     (update: Update) => {
       sessionStorage.setItem(DEFERRED_UPDATE_SESSION_KEY, update.version);
       localStorage.setItem(PENDING_UPDATE_VERSION_KEY, update.version);
-      setPendingUpdate(null);
+      setDeferredUpdate(update);
+      setPendingUpdate({
+        version: update.version,
+        date: update.date,
+        body: update.body,
+      });
       setUpdateDialog(null);
     },
     [setPendingUpdate],
@@ -480,6 +486,10 @@ function UpdateHandler() {
   const startUpdateDownload = useCallback(
     async (update: Update) => {
       setUpdateDialog(null);
+      setDeferredUpdate(null);
+      setPendingUpdate(null);
+      localStorage.removeItem(PENDING_UPDATE_VERSION_KEY);
+      sessionStorage.removeItem(DEFERRED_UPDATE_SESSION_KEY);
       setDownloadUpdate(update);
       setDownloadState({
         status: "downloading",
@@ -730,6 +740,7 @@ function UpdateHandler() {
 
         if (update) {
           console.log(`[Tauri] Update available: ${update.version}`);
+          setDeferredUpdate(null);
           setPendingUpdate(null);
           setUpdateDialog({
             kind: "update",
@@ -739,6 +750,7 @@ function UpdateHandler() {
         } else {
           console.log("[Tauri] No updates available");
           localStorage.removeItem(PENDING_UPDATE_VERSION_KEY);
+          setDeferredUpdate(null);
           setPendingUpdate(null);
           if (isManual) {
             setUpdateDialog({
@@ -761,6 +773,37 @@ function UpdateHandler() {
     },
     [t, setPendingUpdate],
   );
+
+  useEffect(() => {
+    const pendingVersion = localStorage.getItem(PENDING_UPDATE_VERSION_KEY);
+    if (pendingVersion) {
+      setPendingUpdate({ version: pendingVersion });
+    }
+
+    const handleOpenPendingUpdate = () => {
+      if (deferredUpdate) {
+        setUpdateDialog({
+          kind: "update",
+          update: deferredUpdate,
+          mandatory: false,
+        });
+        return;
+      }
+
+      // The deferred updater object is only valid for the current app session.
+      // After a reload, check again so the same dialog can be reconstructed.
+      // Checking for an update never downloads or installs it.
+      void checkForUpdates(true);
+    };
+
+    window.addEventListener("open-pending-update", handleOpenPendingUpdate);
+    return () => {
+      window.removeEventListener(
+        "open-pending-update",
+        handleOpenPendingUpdate,
+      );
+    };
+  }, [checkForUpdates, deferredUpdate, setPendingUpdate]);
 
   useEffect(() => {
     if (isTauri) {

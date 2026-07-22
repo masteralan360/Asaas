@@ -187,12 +187,7 @@ export function TitleBar() {
                 )}
                 {pendingUpdate && (
                     <button
-                        onClick={() => {
-                            // Logic to trigger update dialog - we can just let App.tsx handle it 
-                            // or better, we can expose the check function.
-                            // For now, let's assume we want to re-run the check.
-                            window.dispatchEvent(new CustomEvent('check-for-updates'))
-                        }}
+                        onClick={() => window.dispatchEvent(new CustomEvent('open-pending-update'))}
                         className="flex items-center gap-1.5 px-3 py-1.5 mr-2 rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-all border border-blue-500/20 group"
                         title={t('updater.available')}
                     >
