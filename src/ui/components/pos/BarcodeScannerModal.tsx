@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BarcodeScanner } from 'react-barcode-scanner'
-import 'react-barcode-scanner/polyfill'
 import {
     BARCODE_SCANNER_ACTIVE_FAST_KEY_COUNT,
     BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS,
@@ -29,8 +27,9 @@ import {
     SelectValue
 } from '@/ui/components'
 import { Camera, Settings as SettingsIcon } from 'lucide-react'
+import { CameraBarcodeScanner } from '@/ui/components/pos/CameraBarcodeScanner'
 
-const BARCODE_SCANNER_VERSION = '1.0'
+const BARCODE_SCANNER_VERSION = '1.1'
 
 interface BarcodeScannerModalProps {
     open: boolean
@@ -310,27 +309,9 @@ export function BarcodeScannerModal({
                             {/* Scanner View */}
                             <div className="relative aspect-video bg-muted rounded-xl overflow-hidden border border-border shadow-inner group">
                                 {isCameraScannerAutoEnabled ? (
-                                    <BarcodeScanner
+                                    <CameraBarcodeScanner
+                                        selectedCameraId={selectedCameraId}
                                         onCapture={(barcodes) => handleBarcodeDetected(barcodes, 'camera')}
-                                        trackConstraints={{
-                                            deviceId: selectedCameraId || undefined,
-                                            facingMode: selectedCameraId ? undefined : 'environment'
-                                        }}
-                                        options={{
-                                            formats: [
-                                                'code_128',
-                                                'code_39',
-                                                'code_93',
-                                                'codabar',
-                                                'ean_13',
-                                                'ean_8',
-                                                'itf',
-                                                'upc_a',
-                                                'upc_e',
-                                                'qr_code'
-                                            ],
-                                            delay: 1000
-                                        }}
                                     />
                                 ) : (
                                     <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground bg-muted/50">

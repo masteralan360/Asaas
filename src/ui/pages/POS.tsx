@@ -93,13 +93,12 @@ import {
     Check,
     Banknote
 } from 'lucide-react'
-import { BarcodeScanner } from 'react-barcode-scanner'
-import 'react-barcode-scanner/polyfill'
 import { isDesktop } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
 import { ExchangeRateList } from '@/ui/components'
 import { CheckoutSuccessModal, HeldSalesModal, type HeldSale, StorageSelector, CrossStorageWarningModal } from '@/ui/components'
 import { BarcodeScannerModal } from '@/ui/components/pos/BarcodeScannerModal'
+import { CameraBarcodeScanner } from '@/ui/components/pos/CameraBarcodeScanner'
 import { mapSaleToUniversal } from '@/lib/mappings'
 import { LoanRegistrationModal, type LoanRegistrationData } from '@/ui/components/pos/LoanRegistrationModal'
 import { SaveBorrowerAsPartnerDialog, usePendingSavePartnerPrompt } from '@/ui/components/loans/SaveBorrowerAsPartnerDialog'
@@ -3019,27 +3018,9 @@ export function POS() {
             {/* --- Shared Modals (Available in both Mobile & Desktop) --- */}
             {isCameraScannerAutoEnabled && !isBarcodeModalOpen && (
                 <div className="fixed left-2 top-2 h-2 w-2 opacity-0 pointer-events-none">
-                    <BarcodeScanner
+                    <CameraBarcodeScanner
+                        selectedCameraId={selectedCameraId}
                         onCapture={(barcodes) => handleBarcodeDetected(barcodes, 'camera')}
-                        trackConstraints={{
-                            deviceId: selectedCameraId || undefined,
-                            facingMode: selectedCameraId ? undefined : 'environment'
-                        }}
-                        options={{
-                            formats: [
-                                'code_128',
-                                'code_39',
-                                'code_93',
-                                'codabar',
-                                'ean_13',
-                                'ean_8',
-                                'itf',
-                                'upc_a',
-                                'upc_e',
-                                'qr_code'
-                            ],
-                            delay: 1000
-                        }}
                     />
                 </div>
             )}
