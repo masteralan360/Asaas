@@ -7,6 +7,7 @@ import {
     Camera,
     ChevronRight,
     Copy,
+    Dices,
     DollarSign,
     FileText,
     ImagePlus,
@@ -33,6 +34,7 @@ import {
     deleteProductBarcode,
     DuplicateProductBarcodeError,
     DuplicateProductSkuError,
+    findActiveProductBySku,
     getPrimaryStorageFromList,
     replaceProductPriceBookItems,
     updateProductBarcode,
@@ -49,6 +51,7 @@ import {
 import type { CurrencyCode } from '@/local-db/models'
 import { assetManager } from '@/lib/assetManager'
 import { normalizeBarcodeDigits, normalizeBarcodeScannerText } from '@/lib/barcodeScanner'
+import { generateRandomUpc } from '@/lib/upc'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { isTauri } from '@/lib/platform'
 import { roundQuantity } from '@/lib/quantity'
@@ -324,8 +327,10 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const [isSubmittingBarcode, setIsSubmittingBarcode] = useState(false)
     const [barcodeToDelete, setBarcodeToDelete] = useState<ProductBarcode | null>(null)
     const [isDeletingBarcode, setIsDeletingBarcode] = useState(false)
+    const [isGeneratingSku, setIsGeneratingSku] = useState(false)
     const [activeScannerTarget, setActiveScannerTarget] = useState<ProductScannerTarget>(() => readStoredScannerTarget())
     const skuInputRef = useRef<HTMLInputElement>(null)
+    const isGeneratingSkuRef = useRef(false)
     const storageTriggerRef = useRef<HTMLButtonElement>(null)
     const newBarcodeInputRef = useRef<HTMLInputElement>(null)
     const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -739,6 +744,42 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
         setFormData((current) => ({ ...current, sku: normalizeBarcodeScannerText(value) }))
     }
 
+    const handleGenerateSku = async () => {
+        if (isReadOnly || !workspaceId || isGeneratingSkuRef.current) {
+            return
+        }
+
+        isGeneratingSkuRef.current = true
+        setIsGeneratingSku(true)
+        try {
+            for (let attempt = 0; attempt < 20; attempt += 1) {
+                const sku = generateRandomUpc()
+                if (sku === formData.sku) {
+                    continue
+                }
+
+                const existingProduct = await findActiveProductBySku(workspaceId, sku)
+
+                if (!existingProduct) {
+                    setFormData((current) => ({ ...current, sku }))
+                    skuInputRef.current?.focus()
+                    return
+                }
+            }
+
+            toast({
+                variant: 'destructive',
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: t('products.form.generateUpcError', {
+                    defaultValue: 'Could not generate a unique UPC. Please try again.'
+                })
+            })
+        } finally {
+            isGeneratingSkuRef.current = false
+            setIsGeneratingSku(false)
+        }
+    }
+
     const handleAdditionalBarcodeScan = (value: string) => {
         if (isReadOnly || !persistedProductId || activeScannerTarget !== 'barcode') {
             return
@@ -1059,10 +1100,47 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                 </div>
                                 <div className="grid gap-6 md:grid-cols-2">
                                     <div className="space-y-2">
-                                        <Label htmlFor="product-sku" className="flex items-center gap-2 font-bold">
-                                            <Barcode className="h-4 w-4 text-primary/60" />
-                                            {t('products.table.sku')}
-                                        </Label>
+                                        <div className="flex items-center gap-1">
+                                            <Label htmlFor="product-sku" className="flex items-center gap-2 font-bold">
+                                                <Barcode className="h-4 w-4 text-primary/60" />
+                                                {t('products.table.sku')}
+                                            </Label>
+                                            {!isReadOnly && (
+                                                <TooltipProvider>
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={(event) => {
+                                                                    if (!isEditing || event.detail === 0) {
+                                                                        void handleGenerateSku()
+                                                                    }
+                                                                }}
+                                                                onDoubleClick={() => {
+                                                                    if (isEditing) {
+                                                                        void handleGenerateSku()
+                                                                    }
+                                                                }}
+                                                                disabled={isGeneratingSku}
+                                                                aria-label={isEditing
+                                                                    ? t('products.form.generateUpcOnDoubleClick', { defaultValue: 'Double-click to generate a unique UPC' })
+                                                                    : t('products.form.generateUpc', { defaultValue: 'Generate a unique UPC' })}
+                                                                className="h-6 w-6 rounded-md text-muted-foreground hover:text-primary"
+                                                            >
+                                                                <Dices className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>
+                                                            {isEditing
+                                                                ? t('products.form.generateUpcOnDoubleClick', { defaultValue: 'Double-click to generate a unique UPC' })
+                                                                : t('products.form.generateUpc', { defaultValue: 'Generate a unique UPC' })}
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                </TooltipProvider>
+                                            )}
+                                        </div>
                                         <div className="flex gap-2">
                                             <Input
                                                 ref={skuInputRef}
