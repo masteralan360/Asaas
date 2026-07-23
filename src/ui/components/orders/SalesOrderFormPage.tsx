@@ -67,6 +67,7 @@ import {
     useToast
 } from '@/ui/components'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
+import { PartnerBalanceSummary } from '@/ui/components/crm/PartnerBalanceSummary'
 import { ProductsViewModal, ProductsViewModalTrigger } from '@/ui/components/ProductsViewModal'
 import { ProductAutocompleteInput } from './ProductAutocompleteInput'
 import { LoanPartyPickerDialog } from '@/ui/components/loans/LoanPartyPickerDialog'
@@ -827,26 +828,35 @@ export function SalesOrderFormPage({
                                                     </Button>
                                                 </div>
                                                 {customerId && selectedCustomer ? (
-                                                    <div className="flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 sm:flex-row sm:items-start sm:justify-between">
-                                                        <div className="min-w-0">
-                                                            <div className="text-[11px] font-bold uppercase tracking-wide text-primary">
-                                                                {t('customers.title', { defaultValue: 'Customer' })}
+                                                    <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
+                                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                                            <div className="min-w-0">
+                                                                <div className="text-[11px] font-bold uppercase tracking-wide text-primary">
+                                                                    {t('customers.title', { defaultValue: 'Customer' })}
+                                                                </div>
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <div className="text-sm font-semibold">{selectedCustomer.name}</div>
+                                                                    <PartnerBalanceSummary
+                                                                        compact
+                                                                        partner={selectedCustomer}
+                                                                        iqdPreference={features.iqd_display_preference}
+                                                                    />
+                                                                </div>
                                                             </div>
-                                                            <div className="text-sm font-semibold">{selectedCustomer.name}</div>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-8 shrink-0 px-2 text-muted-foreground"
+                                                                onClick={() => {
+                                                                    setCustomerId('')
+                                                                    setCustomerSearch('')
+                                                                }}
+                                                            >
+                                                                <X className="h-4 w-4" />
+                                                                {t('loans.clearParty', { defaultValue: 'Clear Link' })}
+                                                            </Button>
                                                         </div>
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-8 shrink-0 px-2 text-muted-foreground"
-                                                            onClick={() => {
-                                                                setCustomerId('')
-                                                                setCustomerSearch('')
-                                                            }}
-                                                        >
-                                                            <X className="h-4 w-4" />
-                                                            {t('loans.clearParty', { defaultValue: 'Clear Link' })}
-                                                        </Button>
                                                     </div>
                                                 ) : null}
                                             </div>

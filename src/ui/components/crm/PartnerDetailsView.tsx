@@ -53,6 +53,7 @@ import {
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { Button } from '@/ui/components/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components/card'
+import { PartnerBalanceSummary } from '@/ui/components/crm/PartnerBalanceSummary'
 import { PrintPreviewModal } from '@/ui/components/PrintPreviewModal'
 import {
     Table,
@@ -1988,32 +1989,7 @@ export function PartnerDetailsView({
                                         ) : null}
                                     </div>
                                 </div>
-                                <div className="grid gap-4 sm:grid-cols-2">
-                                    <div className="rounded-3xl border border-emerald-200/50 bg-emerald-500/[0.04] p-6">
-                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-400">
-                                            <TrendingUp className="h-5 w-5" />
-                                            {t('businessPartners.receivable', { defaultValue: 'Receivable' })}
-                                            <span className="ml-auto rounded-full border border-emerald-200/50 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                                                {t('businessPartners.theyOweUs', { defaultValue: 'They owe us' })}
-                                            </span>
-                                        </div>
-                                        <div className="mt-3 text-4xl font-black tracking-tight text-emerald-600 dark:text-emerald-400">
-                                            {formatCurrency(partner.receivableBalance || 0, defaultCurrency, iqdPreference)}
-                                        </div>
-                                    </div>
-                                    <div className="rounded-3xl border border-amber-200/50 bg-amber-500/[0.04] p-6">
-                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-amber-600 dark:text-amber-400">
-                                            <TrendingDown className="h-5 w-5" />
-                                            {t('businessPartners.payable', { defaultValue: 'Payable' })}
-                                            <span className="ml-auto rounded-full border border-amber-200/50 bg-amber-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                                                {t('businessPartners.weOweThem', { defaultValue: 'We owe them' })}
-                                            </span>
-                                        </div>
-                                        <div className="mt-3 text-4xl font-black tracking-tight text-amber-600 dark:text-amber-400">
-                                            {formatCurrency(partner.payableBalance || 0, defaultCurrency, iqdPreference)}
-                                        </div>
-                                    </div>
-                                </div>
+                                <PartnerBalanceSummary partner={partner} iqdPreference={iqdPreference} />
                             </div>
 
                             <div className="mt-6">
