@@ -102,7 +102,7 @@ vi.mock('@/workspace/workspaceMode', () => ({
     isLocalWorkspaceMode: workspaceModeMock.isLocalWorkspaceMode
 }))
 
-import { addToOfflineMutations, retrySchemaMismatchMutations } from './offlineMutations'
+import { addToOfflineMutations, retrySchemaMismatchMutations, retrySyncIntegrityMutations } from './offlineMutations'
 
 describe('addToOfflineMutations', () => {
     beforeEach(() => {
@@ -261,5 +261,45 @@ describe('addToOfflineMutations', () => {
 
         expect(mutationStore.rows[0]).toMatchObject({ status: 'pending', error: undefined })
         expect(mutationStore.rows[1]).toMatchObject({ status: 'failed', error: 'permission denied' })
+    })
+
+    it('requeues all deterministic integrity failures only after an explicit retry request', async () => {
+        mutationStore.rows.push({
+            id: 'permission-failure',
+            workspaceId: 'workspace-1',
+            entityType: 'products',
+            entityId: 'product-1',
+            operation: 'update',
+            payload: { id: 'product-1' },
+            createdAt: '2026-07-13T00:00:00.000Z',
+            status: 'failed',
+            error: 'permission denied for table products'
+        }, {
+            id: 'validation-failure',
+            workspaceId: 'workspace-1',
+            entityType: 'products',
+            entityId: 'product-2',
+            operation: 'update',
+            payload: { id: 'product-2' },
+            createdAt: '2026-07-13T00:00:00.000Z',
+            status: 'failed',
+            error: 'violates check constraint "inventory_quantity_check"'
+        }, {
+            id: 'network-failure',
+            workspaceId: 'workspace-1',
+            entityType: 'products',
+            entityId: 'product-3',
+            operation: 'update',
+            payload: { id: 'product-3' },
+            createdAt: '2026-07-13T00:00:00.000Z',
+            status: 'failed',
+            error: 'network timeout'
+        })
+
+        await expect(retrySyncIntegrityMutations('workspace-1')).resolves.toBe(2)
+
+        expect(mutationStore.rows[0]).toMatchObject({ status: 'pending', error: undefined })
+        expect(mutationStore.rows[1]).toMatchObject({ status: 'pending', error: undefined })
+        expect(mutationStore.rows[2]).toMatchObject({ status: 'failed', error: 'network timeout' })
     })
 })

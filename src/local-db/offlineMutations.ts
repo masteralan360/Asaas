@@ -1,5 +1,5 @@
 import { generateId } from '@/lib/utils'
-import { isSchemaMismatchError } from '@/sync/syncErrors'
+import { isSchemaMismatchError, isSyncIntegrityError } from '@/sync/syncErrors'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
@@ -72,6 +72,30 @@ export async function retrySchemaMismatchMutations(workspaceId: string): Promise
         .where('status')
         .equals('failed')
         .filter((mutation) => mutation.workspaceId === workspaceId && isSchemaMismatchError(mutation.error))
+        .toArray()
+
+    if (rows.length === 0) return 0
+
+    await db.offline_mutations.bulkUpdate(rows.map((mutation) => ({
+        key: mutation.id,
+        changes: {
+            status: 'pending' as const,
+            error: undefined
+        }
+    })))
+
+    return rows.length
+}
+
+/**
+ * Requeue deterministic server rejections only after a user explicitly asks
+ * to retry. They must never be picked up by background retry loops.
+ */
+export async function retrySyncIntegrityMutations(workspaceId: string): Promise<number> {
+    const rows = await db.offline_mutations
+        .where('status')
+        .equals('failed')
+        .filter((mutation) => mutation.workspaceId === workspaceId && isSyncIntegrityError(mutation.error))
         .toArray()
 
     if (rows.length === 0) return 0

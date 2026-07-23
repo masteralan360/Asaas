@@ -6,7 +6,11 @@ import { syncProductBarcodeCachesForWorkspace } from "@/local-db/productBarcodes
 import { rekeyPriceBookItemReferences } from "@/local-db/priceBookReferences";
 import { runSupabaseAction } from "@/lib/supabaseRequest";
 import { getSupabaseClientForTable } from "@/lib/supabaseSchema";
-import { getSchemaMismatchError, isSchemaMismatchError } from "@/sync/syncErrors";
+import {
+  getSchemaMismatchError,
+  getSyncIntegrityError,
+  isSyncIntegrityError,
+} from "@/sync/syncErrors";
 import { prepareRemoteMutationPayload } from "@/sync/syncPayloadContract";
 import {
   finishSyncProgress,
@@ -104,7 +108,7 @@ function isSaleCreateMutation(mutation: {
   return (
     mutation.entityType === "sales" &&
     mutation.operation === "create" &&
-    !isSchemaMismatchError(mutation.error)
+    !isSyncIntegrityError(mutation.error)
   );
 }
 
@@ -145,6 +149,7 @@ export function isRecoverablePriceBookMutation(mutation: {
   error?: string;
 }) {
   return isPriceBookMutation(mutation) &&
+    !isSyncIntegrityError(mutation.error) &&
     /network|fetch|timeout|timed out|connection|abort|permission|row-level|capability|42501|duplicate|unique|23505|23503|23514|foreign key|same workspace|must reference/i.test(
       mutation.error ?? "",
     );
@@ -469,15 +474,15 @@ export async function processMutationQueue(
   let failedCount = 0;
   const errors: string[] = [];
   const failedPriceBookIds = new Set<string>();
-  const schemaBlockedEntities = new Map<string, string>();
+  const integrityBlockedEntities = new Map<string, string>();
 
   for (const mutation of mutations) {
     const mutationKey = `${mutation.entityType}:${mutation.entityId}`;
-    const priorSchemaMismatch = schemaBlockedEntities.get(mutationKey);
-    if (priorSchemaMismatch) {
+    const priorIntegrityIssue = integrityBlockedEntities.get(mutationKey);
+    if (priorIntegrityIssue) {
       await db.offline_mutations.update(mutation.id, {
         status: "failed",
-        error: `${priorSchemaMismatch} This later change was blocked to preserve record order.`,
+        error: `${priorIntegrityIssue} This later change was blocked to preserve record order.`,
       });
       failedCount++;
       reportCompleted();
@@ -829,18 +834,25 @@ export async function processMutationQueue(
         getTableName(mutation.entityType),
         err,
       );
-      const storedError = schemaMismatchError ?? errorMessage;
+      const syncIntegrityError = schemaMismatchError ?? getSyncIntegrityError(
+        getTableName(mutation.entityType),
+        err,
+      );
+      const storedError = syncIntegrityError ?? errorMessage;
       await db.offline_mutations.update(mutation.id, {
         status: "failed",
         error: storedError,
       });
-      if (schemaMismatchError) {
+      if (syncIntegrityError) {
         const table = (db as any)[mutation.entityType];
         if (table) {
           await table.update(mutation.entityId, { syncStatus: "conflict" });
         }
-        schemaBlockedEntities.set(mutationKey, schemaMismatchError);
-        errors.push(schemaMismatchError);
+        if (mutation.entityType === "price_books") {
+          failedPriceBookIds.add(mutation.entityId);
+        }
+        integrityBlockedEntities.set(mutationKey, syncIntegrityError);
+        errors.push(syncIntegrityError);
         failedCount++;
         reportCompleted();
         continue;

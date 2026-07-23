@@ -7,12 +7,12 @@ import { cn } from '@/lib/utils'
 import { CloudOff, Check, AlertCircle, Loader2 } from 'lucide-react'
 import { useTheme } from './theme-provider'
 import { useSyncProgress } from '@/sync/syncProgress'
-import { isSchemaMismatchError } from '@/sync/syncErrors'
+import { isSyncIntegrityError } from '@/sync/syncErrors'
 
 export function SyncStatusIndicator() {
     const pendingMutations = usePendingSyncMutations()
     const pendingCount = pendingMutations.length
-    const schemaMismatchCount = pendingMutations.filter((mutation) => isSchemaMismatchError(mutation.error)).length
+    const integrityIssueCount = pendingMutations.filter((mutation) => isSyncIntegrityError(mutation.error)).length
     const isOnline = useNetworkStatus()
     const { isLocalMode } = useWorkspace()
     const syncProgress = useSyncProgress()
@@ -62,10 +62,10 @@ export function SyncStatusIndicator() {
             dotColor: 'bg-red-500',
             clickable: false
         }
-    } else if (schemaMismatchCount > 0) {
+    } else if (integrityIssueCount > 0) {
         status = {
             icon: AlertCircle,
-            label: `Sync issue (${schemaMismatchCount})`,
+            label: `Sync issue (${integrityIssueCount})`,
             color: 'text-red-500',
             bgColor: 'bg-red-500/10',
             dotColor: 'bg-red-500',
@@ -95,7 +95,7 @@ export function SyncStatusIndicator() {
                     clickable ? 'hover:opacity-80 cursor-pointer' : 'cursor-default opacity-80'
                 )}
                 title={clickable
-                    ? schemaMismatchCount > 0
+                    ? integrityIssueCount > 0
                         ? "A queued change needs attention. Click to review and retry it."
                         : "Click to sync changes"
                     : undefined}

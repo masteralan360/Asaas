@@ -6,7 +6,7 @@ import { db } from './database'
 import { createInventoryTransferTransactions } from './inventoryTransferTransactions'
 import { createInventoryTransaction } from './inventoryTransactions'
 import { addToOfflineMutations } from './offlineMutations'
-import { isSchemaMismatchError } from '@/sync/syncErrors'
+import { isSyncIntegrityError } from '@/sync/syncErrors'
 import { refreshStockBatchesFromSupabase } from './stockBatches'
 import { roundOrderValue } from '@/lib/orderPrecision'
 import { getPrimaryStorageId as getPrimaryStorageIdForWorkspace, normalizeStorageRecord, sortStoragesByPriority } from './storageUtils'
@@ -2253,7 +2253,7 @@ export function useSyncQueue() {
 
 export function usePendingSyncMutations(): OfflineMutation[] {
     const mutations = useLiveQuery(async () => {
-        const [pending, syncing, failedSaleCreates, failedSchemaMismatches] = await Promise.all([
+        const [pending, syncing, failedSaleCreates, failedIntegrityIssues] = await Promise.all([
             db.offline_mutations.where('status').equals('pending').toArray(),
             db.offline_mutations.where('status').equals('syncing').toArray(),
             db.offline_mutations
@@ -2262,17 +2262,17 @@ export function usePendingSyncMutations(): OfflineMutation[] {
                 .filter((mutation) => (
                     mutation.entityType === 'sales'
                     && mutation.operation === 'create'
-                    && !isSchemaMismatchError(mutation.error)
+                    && !isSyncIntegrityError(mutation.error)
                 ))
                 .toArray(),
             db.offline_mutations
                 .where('status')
                 .equals('failed')
-                .filter((mutation) => isSchemaMismatchError(mutation.error))
+                .filter((mutation) => isSyncIntegrityError(mutation.error))
                 .toArray()
         ])
 
-        return [...pending, ...syncing, ...failedSaleCreates, ...failedSchemaMismatches]
+        return [...pending, ...syncing, ...failedSaleCreates, ...failedIntegrityIssues]
             .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
     }, [])
 

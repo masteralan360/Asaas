@@ -21,6 +21,7 @@ import { WorkspacePermissionsProvider } from "@/permissions";
 import { FleetLocationSharingProvider } from "@/fleet/FleetLocationSharingContext";
 import { AutoSyncOverlay } from "@/ui/components/AutoSyncOverlay";
 import { OfflineEntryOverlay } from "@/ui/components/OfflineEntryOverlay";
+import { SyncIntegrityOverlay } from "@/ui/components/SyncIntegrityOverlay";
 import {
   isBackendConfigurationRequired,
   isSupabaseConfigured,
@@ -1299,6 +1300,7 @@ function App() {
               <FaviconHandler />
               <AutoSyncOverlay />
               <OfflineEntryOverlay />
+              <SyncIntegrityOverlay />
               {!isMobile() && <TitleBar />}
               {isTauri &&
               isBackendConfigurationRequired &&

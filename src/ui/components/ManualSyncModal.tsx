@@ -14,19 +14,21 @@ import { Loader2, CheckCircle2, AlertTriangle, ListTodo } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { useToast } from '@/ui/components/use-toast'
 import { usePendingSyncMutations, clearOfflineMutations } from '@/local-db/hooks'
-import { retrySchemaMismatchMutations } from '@/local-db/offlineMutations'
+import { retrySyncIntegrityMutations } from '@/local-db/offlineMutations'
 import type { OfflineMutation } from '@/local-db/models'
-import { isSchemaMismatchError } from '@/sync/syncErrors'
+import { isSyncIntegrityError } from '@/sync/syncErrors'
 import { inspectRemoteMutationPayload, type RemoteMutationFieldInspection } from '@/sync/syncPayloadContract'
 import { useTranslation } from 'react-i18next'
 import { runManagedFullSync } from '@/sync/syncCoordinator'
 import { LAST_SYNC_KEY } from '@/sync/constants'
 import { connectionManager } from '@/lib/connectionManager'
+import { cn } from '@/lib/utils'
 
 interface ManualSyncModalProps {
     open: boolean
     onOpenChange: (open: boolean) => void
     onSyncComplete?: () => void
+    contentClassName?: string
 }
 
 function getEntityLabel(entityType: OfflineMutation['entityType']) {
@@ -95,7 +97,7 @@ function getFieldStatusDisplay(status: RemoteMutationFieldInspection['status']) 
     return { label: 'Valid', className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' }
 }
 
-export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSyncModalProps) {
+export function ManualSyncModal({ open, onOpenChange, onSyncComplete, contentClassName }: ManualSyncModalProps) {
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
     const { toast } = useToast()
@@ -140,9 +142,9 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
 
         try {
             // This is deliberate user intent. Automatic sync never retries a
-            // schema mismatch because doing so would repeatedly fail until a
-            // server migration is available.
-            await retrySchemaMismatchMutations(user.workspaceId)
+            // deterministic server rejection because it would repeatedly fail
+            // until the underlying schema, permission, or validation issue is fixed.
+            await retrySyncIntegrityMutations(user.workspaceId)
             const result = await runManagedFullSync(
                 user.id,
                 user.workspaceId,
@@ -207,7 +209,7 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
     return (
         <>
             <Dialog open={open} onOpenChange={isSyncing ? undefined : handleOpenChange}>
-                <DialogContent className="sm:max-w-lg">
+                <DialogContent className={cn('sm:max-w-lg', contentClassName)}>
                     <DialogHeader>
                         <DialogTitle>{t('sync.title')}</DialogTitle>
                         <DialogDescription>
@@ -237,8 +239,8 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
                                 >
                                     {pendingMutations.map((mutation) => {
                                         const summary = getMutationSummary(mutation.payload)
-                                        const hasSchemaMismatch = isSchemaMismatchError(mutation.error)
-                                        const statusLabel = hasSchemaMismatch
+                                        const hasSyncIntegrityIssue = isSyncIntegrityError(mutation.error)
+                                        const statusLabel = hasSyncIntegrityIssue
                                             ? t('sync.needsAttention', { defaultValue: 'Needs attention' })
                                             : mutation.status === 'failed'
                                                 ? t('sync.retrying')
@@ -263,7 +265,7 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
                                                         {t(`sync.operations.${mutation.operation}`)} · {formatQueuedAt(mutation.createdAt, i18n.language)}
                                                     </p>
                                                 </div>
-                                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${hasSchemaMismatch ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'}`}>
+                                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${hasSyncIntegrityIssue ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'}`}>
                                                     {statusLabel}
                                                 </span>
                                             </button>
@@ -336,7 +338,7 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
             </Dialog>
 
             <Dialog open={showDiscardConfirm} onOpenChange={setShowDiscardConfirm}>
-                <DialogContent className="sm:max-w-[400px]">
+                <DialogContent className={cn('sm:max-w-[400px]', contentClassName)}>
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-destructive">
                             <AlertTriangle className="h-5 w-5" />
@@ -363,7 +365,7 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
                     if (!nextOpen) setSelectedMutation(null)
                 }}
             >
-                <DialogContent layout="structured" className="max-w-4xl">
+                <DialogContent layout="structured" className={cn('max-w-4xl', contentClassName)}>
                     <DialogHeader layout="structured">
                         <DialogTitle>{getEntityLabel(selectedMutation?.entityType ?? 'products')} sync payload</DialogTitle>
                         <DialogDescription>

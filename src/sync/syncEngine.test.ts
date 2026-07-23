@@ -209,14 +209,18 @@ describe('Price Book sync recovery', () => {
         ]))
     })
 
-    it('recognizes entitlement, dependency, network, and unique-name failures as recoverable', () => {
+    it('only treats transient Price Book failures as recoverable', () => {
+        expect(isRecoverablePriceBookMutation({
+            entityType: 'price_book_items',
+            error: 'fetch failed: network timeout'
+        })).toBe(true)
+
         for (const error of [
             'permission denied by row-level security (42501)',
-            'fetch failed: network timeout',
             'duplicate key violates unique constraint (23505)',
             'Price book item must reference a price book in the same workspace (23514)'
         ]) {
-            expect(isRecoverablePriceBookMutation({ entityType: 'price_book_items', error })).toBe(true)
+            expect(isRecoverablePriceBookMutation({ entityType: 'price_book_items', error })).toBe(false)
         }
         expect(isRecoverablePriceBookMutation({ entityType: 'products', error: 'permission denied' })).toBe(false)
     })
@@ -284,21 +288,21 @@ describe('fullSync error reporting', () => {
 
         const result = await fullSync('user-1', 'workspace-1', null)
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             success: false,
             pushed: 0,
             pulled: 0,
-            errors: ['permission denied']
+            errors: [expect.stringContaining('Sync integrity issue:')]
         })
         expect(dbMock.rows[0]).toMatchObject({
             status: 'failed',
-            error: 'permission denied'
+            error: expect.stringContaining('Sync integrity issue:')
         })
         expect(dbMock.offlineMutations.update).toHaveBeenCalledWith('mutation-1', { status: 'syncing' })
-        expect(dbMock.offlineMutations.update).toHaveBeenLastCalledWith('mutation-1', {
+        expect(dbMock.offlineMutations.update).toHaveBeenLastCalledWith('mutation-1', expect.objectContaining({
             status: 'failed',
-            error: 'permission denied'
-        })
+            error: expect.stringContaining('Sync integrity issue:')
+        }))
 
         expect(supabaseMock.upsert).toHaveBeenCalledTimes(1)
         const firstUpsertCall = supabaseMock.upsert.mock.calls[0] as unknown as [Record<string, unknown>]
@@ -446,7 +450,10 @@ describe('fullSync error reporting', () => {
 
         expect(result.success).toBe(false)
         expect(supabaseMock.upsert).toHaveBeenCalledTimes(1)
-        expect(dbMock.rows[0]).toMatchObject({ status: 'failed', error: 'permission denied' })
+        expect(dbMock.rows[0]).toMatchObject({
+            status: 'failed',
+            error: expect.stringContaining('Sync integrity issue:')
+        })
         expect(dbMock.rows[1]).toMatchObject({ status: 'pending' })
     })
 
