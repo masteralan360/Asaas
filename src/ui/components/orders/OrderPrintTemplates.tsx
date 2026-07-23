@@ -11,6 +11,7 @@ import { getOrderLineFreeBonusQuantity, getOrderLinePaidQuantity, hasOrderLineFr
 import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { MapPin, Phone } from 'lucide-react'
 import { EditableField } from '@/ui/components/EditableField'
@@ -159,12 +160,12 @@ function getOrderLineUnit(
 }
 
 function formatOrderLineUnit(
-    t: (key: string, defaultValue?: string) => string,
+    t: TFunction<'translation', undefined>,
     item: { productId: string; unit?: string | null },
     productUnits?: Record<string, string | null | undefined>
 ) {
     const unit = getOrderLineUnit(item, productUnits)
-    return unit ? t(`products.units.${unit}`, unit) : ''
+    return unit ? t(`products.units.${unit}`, { defaultValue: unit }) : ''
 }
 
 function buildOrderItemRows(items: Array<{ id: string; productName: string; productSku?: string | null; quantity: number; freeBonusQuantity?: number | null; convertedUnitPrice: number; lineTotal: number; unit?: string | null }>, rowCount: number) {
