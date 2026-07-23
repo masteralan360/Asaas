@@ -24,7 +24,7 @@ CREATE TABLE public.workspaces (
   print_qr boolean NULL DEFAULT false,
   subscription_expires_at timestamp with time zone NULL,
   receipt_template text NULL DEFAULT 'primary'::text,
-  a4_template text NULL DEFAULT 'primary'::text,
+  a4_template text NULL DEFAULT 'professional'::text,
 
   coordination text NULL,
   kds_enabled boolean NOT NULL DEFAULT false,

@@ -728,7 +728,7 @@ async function handleCreateBranch(
         print_lang: sourceWorkspace.print_lang ?? 'auto',
         print_qr: sourceWorkspace.print_qr ?? false,
         receipt_template: sourceWorkspace.receipt_template ?? 'primary',
-        a4_template: sourceWorkspace.a4_template ?? 'primary',
+        a4_template: sourceWorkspace.a4_template ?? 'professional',
         subscription_expires_at: sourceWorkspace.subscription_expires_at ?? null,
         visibility: 'private',
         store_slug: null,

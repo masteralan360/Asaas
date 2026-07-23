@@ -2277,7 +2277,7 @@ export function Settings() {
                                     <div className="flex flex-col gap-2">
                                         <Label className="text-xs text-slate-500 uppercase font-semibold">{t('settings.printing.a4Template') || 'A4 Invoice Template'}</Label>
                                         <Select
-                                            value={features.a4_template || 'primary'}
+                                            value={features.a4_template || 'professional'}
                                             onValueChange={(val: any) => updateSettings({ a4_template: val })}
                                         >
                                             <SelectTrigger>
