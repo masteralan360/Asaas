@@ -168,7 +168,7 @@ function formatOrderLineUnit(
     return unit ? t(`products.units.${unit}`, { defaultValue: unit }) : ''
 }
 
-function buildOrderItemRows(items: Array<{ id: string; productName: string; productSku?: string | null; quantity: number; freeBonusQuantity?: number | null; convertedUnitPrice: number; lineTotal: number; unit?: string | null }>, rowCount: number) {
+function buildOrderItemRows(items: Array<{ id: string; productId: string; productName: string; productSku?: string | null; quantity: number; freeBonusQuantity?: number | null; convertedUnitPrice: number; lineTotal: number; unit?: string | null }>, rowCount: number) {
     const overflowItems = items.slice(rowCount - 1)
     return Array.from({ length: rowCount }, (_, index) => {
         if (index < rowCount - 1) return items[index] || null
@@ -178,6 +178,7 @@ function buildOrderItemRows(items: Array<{ id: string; productName: string; prod
         const overflowFreeBonus = overflowItems.reduce((sum, item) => sum + getOrderLineFreeBonusQuantity(item), 0)
         return {
             id: 'additional-items',
+            productId: '',
             productName: `Additional ${overflowItems.length} item${overflowItems.length === 1 ? '' : 's'}`,
             productSku: '',
             quantity: overflowQty,
