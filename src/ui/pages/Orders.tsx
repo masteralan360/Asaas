@@ -66,6 +66,7 @@ import {
     CardTitle,
     DateTimePicker,
     Dialog,
+    DialogBody,
     DialogContent,
     DialogFooter,
     DialogHeader,
@@ -1453,8 +1454,8 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
             </Card>
 
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-0.75rem)] w-[calc(100vw-0.75rem)] max-w-6xl flex-col overflow-hidden rounded-[1.25rem] border-border/60 p-0 sm:w-[calc(100vw-2rem)] sm:max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem)] sm:rounded-[1.75rem]">
-                    <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-start sm:px-6 sm:py-5">
+                <DialogContent layout="structured" className="max-w-6xl sm:w-[calc(100vw-2rem)] sm:max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem)]">
+                    <DialogHeader layout="structured">
                         <DialogTitle className="text-xl">
                             {activeTab === 'sales'
                                 ? (editingSalesOrder ? (t('orders.form.editSalesOrder') || 'Edit Sales Order') : (t('orders.form.newSalesOrder') || 'New Sales Order'))
@@ -1469,7 +1470,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
 
                     {activeTab === 'sales' ? (
                         <form onSubmit={handleSalesSubmit} className="flex min-h-0 flex-1 flex-col">
-                            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+                            <DialogBody>
                                 <div className="mb-6 grid gap-3 sm:grid-cols-3">
                                     <div className="rounded-2xl border bg-background/90 p-3 shadow-sm sm:p-4">
                                         <div className="flex items-start gap-3">
@@ -1705,9 +1706,9 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         </Card>
                                     </div>
                                 </div>
-                            </div>
+                            </DialogBody>
 
-                            <DialogFooter className="border-t bg-muted/20 px-4 py-4 pb-[calc(1rem+var(--safe-area-bottom))] sm:justify-between sm:px-6">
+                            <DialogFooter layout="structured">
                                 <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setDialogOpen(false)}>{t('common.cancel') || 'Cancel'}</Button>
                                 <Button type="submit" className="w-full sm:w-auto" disabled={isSaving}>
                                     {isSaving ? (t('common.loading') || 'Loading...') : (editingSalesOrder ? (t('common.save') || 'Save') : (t('orders.form.saveOrder') || 'Save Order'))}
@@ -1716,7 +1717,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                         </form>
                     ) : (
                         <form onSubmit={handlePurchaseSubmit} className="flex min-h-0 flex-1 flex-col">
-                            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+                            <DialogBody>
                                 <div className="mb-6 grid gap-3 sm:grid-cols-3">
                                     <div className="rounded-2xl border bg-background/90 p-3 shadow-sm sm:p-4">
                                         <div className="flex items-start gap-3">
@@ -1969,9 +1970,9 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         </Card>
                                     </div>
                                 </div>
-                            </div>
+                            </DialogBody>
 
-                            <DialogFooter className="border-t bg-muted/20 px-4 py-4 pb-[calc(1rem+var(--safe-area-bottom))] sm:justify-between sm:px-6">
+                            <DialogFooter layout="structured">
                                 <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setDialogOpen(false)}>{t('common.cancel') || 'Cancel'}</Button>
                                 <Button type="submit" className="w-full sm:w-auto" disabled={isSaving}>
                                     {isSaving ? (t('common.loading') || 'Loading...') : (editingPurchaseOrder ? (t('common.save') || 'Save') : (t('orders.form.saveOrder') || 'Save Order'))}

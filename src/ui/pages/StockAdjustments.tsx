@@ -53,6 +53,7 @@ import {
     DateTimePicker,
     DeleteConfirmationModal,
     Dialog,
+    DialogBody,
     DialogContent,
     DialogDescription,
     DialogFooter,
@@ -993,8 +994,8 @@ export function StockAdjustments() {
           if (!open) resetBatchForm();
         }}
       >
-        <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-0.75rem)] w-[calc(100vw-0.75rem)] max-w-3xl flex-col overflow-hidden rounded-[1.25rem] border-border/60 p-0 sm:w-full sm:max-h-[min(calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem),820px)] sm:rounded-[1.75rem]">
-          <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-start sm:px-6 sm:py-5">
+        <DialogContent layout="structured" className="max-w-3xl">
+          <DialogHeader layout="structured">
             <DialogTitle>
               {batchForm.id ? t("stockAdjustments.dialog.batch.titleEdit", "Edit Stock Batch") : t("stockAdjustments.dialog.batch.titleNew", "New Stock Batch")}
             </DialogTitle>
@@ -1006,7 +1007,7 @@ export function StockAdjustments() {
             onSubmit={handleBatchSubmit}
             className="flex min-h-0 flex-1 flex-col"
           >
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+            <DialogBody>
               <div className="grid gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="batch-search">{t("stockAdjustments.dialog.batch.productSearch", "Product search")}</Label>
@@ -1221,8 +1222,8 @@ export function StockAdjustments() {
                   />
                 </div>
               </div>
-            </div>
-            <DialogFooter className="border-t bg-muted/20 px-4 py-4 pb-[calc(1rem+var(--safe-area-bottom))] sm:justify-between sm:px-6">
+            </DialogBody>
+            <DialogFooter layout="structured">
               <Button
                 type="button"
                 variant="outline"

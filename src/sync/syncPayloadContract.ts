@@ -43,6 +43,14 @@ const NON_REMOTE_FIELDS_BY_ENTITY: Readonly<Record<string, ReadonlySet<string>>>
   suppliers: new Set(["is_locked"]),
 };
 
+// Development-only fault injection. Set VITE_DEBUG_FORCE_SYNC_SCHEMA_MISMATCH
+// to "true" in a local .env.local file and restart the dev app to make the
+// next queued product mutation include a deliberately invalid remote column.
+// It is hard-disabled in production builds.
+const FORCE_PRODUCT_SCHEMA_MISMATCH =
+  import.meta.env.DEV &&
+  import.meta.env.VITE_DEBUG_FORCE_SYNC_SCHEMA_MISMATCH === "true";
+
 export type RemoteMutationFieldStatus = "valid" | "invalid" | "excluded";
 
 export interface RemoteMutationFieldInspection {
@@ -73,6 +81,10 @@ export function prepareRemoteMutationPayload(
   }
   for (const field of nonRemoteFields ?? []) {
     delete remotePayload[field];
+  }
+
+  if (FORCE_PRODUCT_SCHEMA_MISMATCH && entityType === "products") {
+    remotePayload.__debug_force_sync_schema_mismatch = true;
   }
 
   return remotePayload;

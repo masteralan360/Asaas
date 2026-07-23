@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
     Dialog,
+    DialogBody,
     DialogContent,
     DialogHeader,
     DialogTitle,
@@ -362,51 +363,53 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
                     if (!nextOpen) setSelectedMutation(null)
                 }}
             >
-                <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-4xl">
-                    <DialogHeader>
+                <DialogContent layout="structured" className="max-w-4xl">
+                    <DialogHeader layout="structured">
                         <DialogTitle>{getEntityLabel(selectedMutation?.entityType ?? 'products')} sync payload</DialogTitle>
                         <DialogDescription>
                             Review exactly which fields are valid for sync, intentionally excluded, or rejected by Supabase.
                         </DialogDescription>
                     </DialogHeader>
 
-                    {selectedMutation?.error && (
-                        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                            {selectedMutation.error}
-                        </div>
-                    )}
+                    <DialogBody>
+                        {selectedMutation?.error && (
+                            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                                {selectedMutation.error}
+                            </div>
+                        )}
 
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Field</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead>Reason</TableHead>
-                                <TableHead>Value</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {selectedMutationFields.map((field) => {
-                                const statusDisplay = getFieldStatusDisplay(field.status)
-                                return (
-                                    <TableRow key={field.field}>
-                                        <TableCell className="font-mono text-xs font-medium">{field.field}</TableCell>
-                                        <TableCell>
-                                            <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusDisplay.className}`}>
-                                                {statusDisplay.label}
-                                            </span>
-                                        </TableCell>
-                                        <TableCell className="min-w-48 text-xs text-muted-foreground">{field.reason}</TableCell>
-                                        <TableCell className="min-w-56 max-w-80 whitespace-pre-wrap break-all font-mono text-xs">
-                                            {formatPayloadValue(field.value)}
-                                        </TableCell>
-                                    </TableRow>
-                                )
-                            })}
-                        </TableBody>
-                    </Table>
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Field</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead>Reason</TableHead>
+                                    <TableHead>Value</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {selectedMutationFields.map((field) => {
+                                    const statusDisplay = getFieldStatusDisplay(field.status)
+                                    return (
+                                        <TableRow key={field.field}>
+                                            <TableCell className="font-mono text-xs font-medium">{field.field}</TableCell>
+                                            <TableCell>
+                                                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusDisplay.className}`}>
+                                                    {statusDisplay.label}
+                                                </span>
+                                            </TableCell>
+                                            <TableCell className="min-w-48 text-xs text-muted-foreground">{field.reason}</TableCell>
+                                            <TableCell className="min-w-56 max-w-80 whitespace-pre-wrap break-all font-mono text-xs">
+                                                {formatPayloadValue(field.value)}
+                                            </TableCell>
+                                        </TableRow>
+                                    )
+                                })}
+                            </TableBody>
+                        </Table>
+                    </DialogBody>
 
-                    <DialogFooter>
+                    <DialogFooter layout="structured">
                         <Button variant="ghost" onClick={() => setSelectedMutation(null)}>
                             {t('common.close', 'Close')}
                         </Button>

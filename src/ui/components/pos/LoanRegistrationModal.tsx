@@ -6,6 +6,7 @@ import { getLoanLinkedPartyTypeLabel, type LoanPartySelection } from '@/lib/loan
 import { formatCurrency, formatLocalDateValue, parseLocalDateValue } from '@/lib/utils'
 import {
     Dialog,
+    DialogBody,
     DialogContent,
     DialogDescription,
     DialogHeader,
@@ -128,14 +129,14 @@ export function LoanRegistrationModal({
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-0.75rem)] w-[calc(100vw-0.75rem)] max-w-4xl flex-col overflow-hidden rounded-[1.25rem] border-border/60 p-0 sm:w-full sm:max-h-[min(calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem),820px)] sm:rounded-[1.75rem]">
-                <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-start sm:px-6 sm:py-5">
+            <DialogContent layout="structured" className="max-w-4xl">
+                <DialogHeader layout="structured">
                     <DialogTitle>{t('loans.registerFromPos') || 'Register Loan'}</DialogTitle>
                     <DialogDescription>{t('loans.selectPartyHint', { defaultValue: 'You can link this loan to an existing business partner and still edit the borrower fields manually.' })}</DialogDescription>
                 </DialogHeader>
 
                 <div className="flex min-h-0 flex-1 flex-col">
-                    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+                    <DialogBody>
                         <div className="grid gap-4">
                             <div className="text-xs text-muted-foreground">
                                 {(t('loans.currencyHint') || 'Settlement Currency')}: {settlementCurrency.toUpperCase()}
@@ -272,9 +273,9 @@ export function LoanRegistrationModal({
                                 />
                             </div>
                         </div>
-                    </div>
+                    </DialogBody>
 
-                    <DialogFooter className="border-t bg-muted/20 px-4 py-4 pb-[calc(1rem+var(--safe-area-bottom))] sm:justify-between sm:px-6">
+                    <DialogFooter layout="structured">
                         <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
                             {t('common.cancel') || 'Cancel'}
                         </Button>

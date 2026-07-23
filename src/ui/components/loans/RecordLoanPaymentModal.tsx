@@ -6,6 +6,7 @@ import { formatCurrency, formatDate, formatNumberWithCommas, parseFormattedNumbe
 import { recordLoanPayment, type Loan, type LoanInstallment, type LoanPaymentMethod } from '@/local-db'
 import {
     Dialog,
+    DialogBody,
     DialogContent,
     DialogHeader,
     DialogTitle,
@@ -142,13 +143,13 @@ export function RecordLoanPaymentModal({
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-0.75rem)] w-[calc(100vw-0.75rem)] max-w-3xl flex-col overflow-hidden rounded-[1.25rem] border-border/60 p-0 sm:w-full sm:max-h-[min(calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem),820px)] sm:rounded-[1.75rem]">
-                <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-start sm:px-6 sm:py-5">
+            <DialogContent layout="structured" className="max-w-3xl">
+                <DialogHeader layout="structured">
                     <DialogTitle>{getLoanRecordPaymentLabel(loan, t)}</DialogTitle>
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-                    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+                    <DialogBody>
                         <div className="grid gap-4">
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <div className="rounded-xl border bg-muted/20 p-3">
@@ -217,9 +218,9 @@ export function RecordLoanPaymentModal({
                                 <Input value={note} onChange={e => setNote(e.target.value)} />
                             </div>
                         </div>
-                    </div>
+                    </DialogBody>
 
-                    <DialogFooter className="border-t bg-muted/20 px-4 py-4 pb-[calc(1rem+var(--safe-area-bottom))] sm:justify-between sm:px-6">
+                    <DialogFooter layout="structured">
                         <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => onOpenChange(false)} disabled={isSaving}>
                             {t('common.cancel') || 'Cancel'}
                         </Button>
