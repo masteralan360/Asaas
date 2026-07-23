@@ -13,6 +13,7 @@ import {
     type WorkspacePaymentMethod,
     useBusinessPartner,
     usePurchaseOrders,
+    useProductsByIds,
     useSalesOrders,
     useWorkspaceOrderInstallments
 } from '@/local-db'
@@ -121,6 +122,16 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
     const [settlementTarget, setSettlementTarget] = useState<PaymentObligation | null>(null)
     const [isSubmittingSettlement, setIsSubmittingSettlement] = useState(false)
     const [printTarget, setPrintTarget] = useState<OrderInstallmentGroup | null>(null)
+    const printProductIds = useMemo(
+        () => printTarget?.order.items.map((item) => item.productId) || [],
+        [printTarget]
+    )
+    const printProducts = useProductsByIds(workspaceId, printProductIds)
+    const productUnits = useMemo(() => printProducts.reduce<Record<string, string>>((units, product) => {
+        const unit = product.unit?.trim()
+        if (unit) units[product.id] = unit
+        return units
+    }, {}), [printProducts])
     const printPartnerId = printTarget?.order.businessPartnerId
         || (printTarget?.kind === 'sales'
             ? (printTarget.order as SalesOrder).customerId
@@ -241,6 +252,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                 iqdPreference={features.iqd_display_preference}
                 logoUrl={features.logo_url}
                 qrValue={effectiveId ? buildQrValue(effectiveId, 'receipt') : undefined}
+                productUnits={productUnits}
                 counterpartyPhone={counterpartyPhone}
             />
         ) : (
@@ -255,6 +267,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                 qrValue={effectiveId ? buildQrValue(effectiveId, 'a4') : undefined}
                 counterpartyPhone={counterpartyPhone}
                 counterpartyAddress={counterpartyAddress}
+                productUnits={productUnits}
             />
         )
     }, [
@@ -264,6 +277,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         printInstallments,
         printLang,
         printTarget,
+        productUnits,
         counterpartyAddress,
         counterpartyPhone,
         workspaceName
@@ -306,6 +320,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                         iqdPreference={features.iqd_display_preference}
                         logoUrl={features.logo_url}
                         qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+                        productUnits={productUnits}
                         templateFields={data}
                         counterpartyPhone={data.counterpartyPhone || counterpartyPhone}
                         counterpartyAddress={data.counterpartyAddress || counterpartyAddress}
@@ -328,6 +343,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         printInstallments,
         printLang,
         printTarget,
+        productUnits,
         counterpartyAddress,
         counterpartyPhone,
         t,
@@ -377,6 +393,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                         logoUrl={features.logo_url}
                         qrValue={effectiveId ? buildQrValue(effectiveId, 'receipt') : undefined}
                         counterpartyPhone={counterpartyPhone}
+                        productUnits={productUnits}
                         templateFields={data}
                         editableFields={renderOptions?.editableFields}
                         onTemplateFieldChange={renderOptions?.onFieldChange}
@@ -399,6 +416,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         printInstallments,
         printLang,
         printTarget,
+        productUnits,
         counterpartyPhone,
         t,
         workspaceName
@@ -413,6 +431,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         order: printTarget?.order,
         orderKind: printTarget?.kind,
         installments: printInstallments,
+        productUnits,
         t
     })
 

@@ -35,6 +35,7 @@ interface UseOrderCustomPrintOptions {
     order?: SalesOrder | PurchaseOrder
     orderKind?: OrderKind
     installments: OrderInstallment[]
+    productUnits?: Record<string, string | null | undefined>
     t: TFunction
 }
 
@@ -48,6 +49,7 @@ export function useOrderCustomPrint({
     order,
     orderKind,
     installments,
+    productUnits,
     t
 }: UseOrderCustomPrintOptions) {
     const [templates, setTemplates] = useState<StoredCustomTemplateRow[]>([])
@@ -123,11 +125,12 @@ export function useOrderCustomPrint({
             order,
             orderKind,
             orderInstallments: installments,
+            productUnits,
             counterpartyPhone,
             counterpartyAddress,
             printLang: currentPrintLanguage
         })
-    }, [currentPrintLanguage, features, installments, isCustomSelected, order, orderKind, selectedTemplateTarget, workspaceId, workspaceName, counterpartyPhone, counterpartyAddress])
+    }, [currentPrintLanguage, features, installments, isCustomSelected, order, orderKind, productUnits, selectedTemplateTarget, workspaceId, workspaceName, counterpartyPhone, counterpartyAddress])
 
     const buildPdf = useCallback(async ({
         effectiveId,
@@ -152,6 +155,7 @@ export function useOrderCustomPrint({
                 order,
                 orderKind,
                 orderInstallments: installments,
+                productUnits,
                 counterpartyPhone,
                 counterpartyAddress,
                 printLang: printLangOverride || currentPrintLanguage
@@ -159,7 +163,7 @@ export function useOrderCustomPrint({
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, selectedLayout, selectedTemplateTarget, workspaceId, workspaceName])
+    }, [counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, productUnits, selectedLayout, selectedTemplateTarget, workspaceId, workspaceName])
 
     const buildEditablePdf = useCallback(async (
         layout: CustomTemplateLayout,
@@ -181,6 +185,7 @@ export function useOrderCustomPrint({
                 order,
                 orderKind,
                 orderInstallments: installments,
+                productUnits,
                 counterpartyPhone,
                 counterpartyAddress,
                 printLang: printLangOverride || currentPrintLanguage
@@ -188,7 +193,7 @@ export function useOrderCustomPrint({
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, selectedTemplateTarget, workspaceId, workspaceName])
+    }, [counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, productUnits, selectedTemplateTarget, workspaceId, workspaceName])
 
     const nativeOptions = useMemo(() => [
         {

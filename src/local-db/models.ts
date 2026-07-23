@@ -519,6 +519,8 @@ export interface OrderLineItem {
   storageId?: string | null;
   productName: string;
   productSku: string;
+  /** Product unit at the time this line was added, retained for accurate historical prints. */
+  unit?: string | null;
   quantity: number;
   freeBonusQuantity?: number | null;
   lineTotal: number;

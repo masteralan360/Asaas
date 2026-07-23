@@ -369,6 +369,7 @@ export type CustomTemplatePreviewOptions = {
     order?: SalesOrder | PurchaseOrder
     orderKind?: 'sales' | 'purchase'
     orderInstallments?: OrderInstallment[]
+    productUnits?: Record<string, string | null | undefined>
     counterpartyPhone?: string
     counterpartyAddress?: string
     printLang?: string
@@ -522,6 +523,7 @@ const SAMPLE_ORDER_DATA: SalesOrder = {
             productId: 'sample-product',
             productName: 'Sample Product',
             productSku: 'SKU-0001',
+            unit: 'pcs',
             quantity: 2,
             lineTotal: 200,
             originalCurrency: 'usd',
@@ -1157,6 +1159,7 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
                 logoUrl={options.features?.logo_url}
                 qrValue={buildQrValue(options.workspaceId, effectiveId, options.features)}
                 hideUnit={data[ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideUnit] === 'true'}
+                productUnits={options.productUnits}
                 hideDiscount={data[ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount] === 'true'}
                 templateFields={data}
                 counterpartyPhone={counterpartyPhone}
@@ -1220,6 +1223,7 @@ function createOrderReceiptPreview(options: CustomTemplatePreviewOptions): Templ
                 iqdPreference={options.features?.iqd_display_preference}
                 logoUrl={options.features?.logo_url}
                 qrValue={buildQrValue(options.workspaceId, effectiveId, options.features, 'receipt')}
+                productUnits={options.productUnits}
                 counterpartyPhone={counterpartyPhone}
                 workspaceFooterContacts={renderOptions?.workspaceFooterContacts || options.workspaceFooterContacts}
                 templateFields={data}

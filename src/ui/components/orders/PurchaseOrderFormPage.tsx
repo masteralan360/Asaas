@@ -533,6 +533,7 @@ export function PurchaseOrderFormPage({
                         storageId: item.storageId,
                         productName: product.name,
                         productSku: product.sku,
+                        unit: product.unit,
                         quantity,
                         ...(freeBonusQuantity > 0 ? { freeBonusQuantity } : {}),
                         lineTotal: roundFormAmount(quantity * unitPrice),

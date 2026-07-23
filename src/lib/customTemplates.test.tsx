@@ -458,6 +458,30 @@ describe('Order Details custom print template', () => {
         expect(html.match(/opacity:0\.37/g)).toHaveLength(9)
     })
 
+    it('shows the current product unit for legacy order lines when units are not hidden', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_DETAILS_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const sampleOrder = customTemplates
+            .createCustomTemplatePreview(target!, { printLang: 'en' })
+            .createElement({})
+            .props.order
+        const legacyOrder = {
+            ...sampleOrder,
+            items: sampleOrder.items.map(({ unit: _unit, ...item }: typeof sampleOrder.items[number]) => item)
+        }
+        const preview = customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'en',
+            order: legacyOrder,
+            productUnits: { 'sample-product': 'pcs' }
+        })
+        const html = renderToStaticMarkup(preview.createElement({
+            [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideUnit]: 'false'
+        }))
+
+        expect(html).toContain('2 pcs')
+    })
+
     it('preserves movable component positions and hidden fields when reading a saved layout', () => {
         const componentPositions = {
             customer: { x: 10, y: 5 },

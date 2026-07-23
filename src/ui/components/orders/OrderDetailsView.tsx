@@ -34,6 +34,7 @@ import {
     useLoan,
     useLoanInstallments,
     useOrderInstallments,
+    useProductsByIds,
     useSalesOrder,
     useSalesOrderReturnItems,
     useSalesOrderReturns,
@@ -268,6 +269,17 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
             : null,
         [purchaseOrder, salesOrder])
 
+    const orderProductIds = useMemo(
+        () => resolved?.order.items.map((item) => item.productId) || [],
+        [resolved]
+    )
+    const orderProducts = useProductsByIds(workspaceId, orderProductIds)
+    const productUnits = useMemo(() => orderProducts.reduce<Record<string, string>>((units, product) => {
+        const unit = product.unit?.trim()
+        if (unit) units[product.id] = unit
+        return units
+    }, {}), [orderProducts])
+
     const partnerId = resolved?.order.businessPartnerId
         || (resolved?.kind === 'sales' ? (resolved?.order as SalesOrder)?.customerId : (resolved?.order as PurchaseOrder)?.supplierId)
     const bizPartner = useBusinessPartner(partnerId)
@@ -428,6 +440,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         logoUrl={features.logo_url}
                         qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
                         hideUnit={data.hideUnit === 'true'}
+                        productUnits={productUnits}
                         hideDiscount={data.hideDiscount === 'true'}
                         templateFields={data}
                         counterpartyPhone={data.counterpartyPhone}
@@ -448,7 +461,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 })
             },
         }
-    }, [resolved, features, installments, workspaceName, t, i18n, workspaceId, workspaceFooterContacts, counterpartyPhone, counterpartyAddress])
+    }, [resolved, features, installments, workspaceName, t, i18n, workspaceId, workspaceFooterContacts, counterpartyPhone, counterpartyAddress, productUnits])
 
     const orderReceiptPreview = useMemo<TemplatePreview | undefined>(() => {
         if (!resolved) return undefined
@@ -494,6 +507,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/receipts/${effectiveId}.pdf` : undefined}
                         counterpartyPhone={data.counterpartyPhone}
                         workspaceFooterContacts={renderOptions?.workspaceFooterContacts || workspaceFooterContacts}
+                        productUnits={productUnits}
                         templateFields={data}
                         editableFields={renderOptions?.editableFields}
                         onTemplateFieldChange={renderOptions?.onFieldChange}
@@ -512,7 +526,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 })
             },
         }
-    }, [resolved, features, installments, workspaceName, t, i18n, workspaceId, workspaceFooterContacts, counterpartyPhone])
+    }, [resolved, features, installments, workspaceName, t, i18n, workspaceId, workspaceFooterContacts, counterpartyPhone, productUnits])
 
     const customOrderPrint = useOrderCustomPrint({
         workspaceId,
@@ -524,6 +538,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         order: resolved?.order,
         orderKind: resolved?.kind,
         installments,
+        productUnits,
         t
     })
 
@@ -1596,6 +1611,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                         iqdPreference={features.iqd_display_preference}
                                         logoUrl={features.logo_url}
                                         qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/receipts/${effectiveId}.pdf` : undefined}
+                                        productUnits={productUnits}
                                         counterpartyPhone={counterpartyPhone}
                                         workspaceFooterContacts={workspaceFooterContacts}
                                     />
@@ -1611,6 +1627,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                         qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
                                         counterpartyPhone={counterpartyPhone}
                                         counterpartyAddress={counterpartyAddress}
+                                        productUnits={productUnits}
                                         workspaceFooterContacts={workspaceFooterContacts}
                                     />
                                 )
@@ -1631,6 +1648,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             iqdPreference={features.iqd_display_preference}
                             logoUrl={features.logo_url}
                             qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/receipts/${effectiveId}.pdf` : undefined}
+                            productUnits={productUnits}
                             counterpartyPhone={counterpartyPhone}
                             workspaceFooterContacts={workspaceFooterContacts}
                         />
@@ -1646,6 +1664,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
                             counterpartyPhone={counterpartyPhone}
                             counterpartyAddress={counterpartyAddress}
+                            productUnits={productUnits}
                             workspaceFooterContacts={workspaceFooterContacts}
                         />
                     )
