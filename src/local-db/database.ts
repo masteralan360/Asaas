@@ -3049,6 +3049,19 @@ export class AtlasDatabase extends Dexie {
         }
       });
 
+    this.version(87).upgrade(async (tx) => {
+      // Do not let records queued by earlier clients revive the retired cloud logs.
+      const localOnlyEntityTypes = [
+        "inventory_transactions",
+        "inventory_transfer_transactions",
+      ];
+
+      await Promise.all([
+        tx.table("offline_mutations").where("entityType").anyOf(localOnlyEntityTypes).delete(),
+        tx.table("syncQueue").where("entityType").anyOf(localOnlyEntityTypes).delete(),
+      ]);
+    });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }

@@ -1,13 +1,7 @@
-import { useEffect } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 
-import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { isOnline } from "@/lib/network";
 import { isPositiveQuantity, roundQuantity } from "@/lib/quantity";
-import { getSupabaseClientForTable } from "@/lib/supabaseSchema";
-import { runSupabaseAction } from "@/lib/supabaseRequest";
-import { generateId, toCamelCase } from "@/lib/utils";
-import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
+import { generateId } from "@/lib/utils";
 
 import { db } from "./database";
 import {
@@ -22,7 +16,6 @@ import type {
   StockAdjustmentType,
 } from "./models";
 
-const INVENTORY_TRANSACTIONS_TABLE = "inventory_transactions";
 const STOCK_ADJUSTMENT_TRANSACTION_TYPE = "stock_adjustment";
 const ALLOWED_TYPES: StockAdjustmentType[] = ["increase", "decrease"];
 const ALLOWED_REASONS: StockAdjustmentReason[] = [
@@ -53,10 +46,6 @@ export interface StockAdjustmentFilterOptions {
   reason?: StockAdjustmentReason | null;
   startDate?: Date | string | null;
   endDate?: Date | string | null;
-}
-
-function shouldUseCloudBusinessData(workspaceId?: string | null) {
-  return !!workspaceId && !isLocalWorkspaceMode(workspaceId);
 }
 
 function normalizeOptionalString(value?: string | null) {
@@ -266,8 +255,6 @@ export function filterStockAdjustments(
 }
 
 export function useStockAdjustments(workspaceId: string | undefined) {
-  const online = useNetworkStatus();
-
   const adjustments = useLiveQuery(async () => {
     if (!workspaceId) {
       return [];
@@ -292,65 +279,6 @@ export function useStockAdjustments(workspaceId: string | undefined) {
           new Date(left.createdAt).getTime(),
       );
   }, [workspaceId]);
-
-  useEffect(() => {
-    async function fetchFromSupabase() {
-      if (
-        !online ||
-        !workspaceId ||
-        !shouldUseCloudBusinessData(workspaceId) ||
-        !isOnline()
-      ) {
-        return;
-      }
-
-      const client = getSupabaseClientForTable(INVENTORY_TRANSACTIONS_TABLE);
-      const { data, error } = await runSupabaseAction(
-        "inventory_transactions.stock_adjustments.fetch",
-        () =>
-          client
-            .from(INVENTORY_TRANSACTIONS_TABLE)
-            .select("*")
-            .eq("workspace_id", workspaceId)
-            .eq("transaction_type", STOCK_ADJUSTMENT_TRANSACTION_TYPE)
-            .eq("is_deleted", false),
-      );
-
-      if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
-        return;
-      }
-
-      const syncedAt = new Date().toISOString();
-      const remoteIds = new Set(data.map((row: Record<string, unknown>) => row.id as string));
-
-      await db.transaction("rw", db.inventory_transactions, async () => {
-        // Upsert remote records
-        for (const remoteItem of data) {
-          const localItem = toCamelCase(
-            remoteItem as Record<string, unknown>,
-          ) as unknown as InventoryTransaction;
-          localItem.syncStatus = "synced";
-          localItem.lastSyncedAt = syncedAt;
-          await db.inventory_transactions.put(localItem);
-        }
-
-        // Remove local stock_adjustment records that no longer exist in Supabase
-        const localRows = await db.inventory_transactions
-          .where("workspaceId")
-          .equals(workspaceId)
-          .and((row) => row.transactionType === STOCK_ADJUSTMENT_TRANSACTION_TYPE)
-          .toArray();
-        const staleIds = localRows
-          .filter((row) => row.syncStatus === "synced" && !remoteIds.has(row.id))
-          .map((row) => row.id);
-        if (staleIds.length > 0) {
-          await db.inventory_transactions.bulkDelete(staleIds);
-        }
-      });
-    }
-
-    void fetchFromSupabase();
-  }, [online, workspaceId]);
 
   return adjustments ?? [];
 }

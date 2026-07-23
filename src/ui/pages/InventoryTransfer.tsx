@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  db,
   fetchInventoryWorkspaceFromSupabase,
-  refreshInventoryTransactionsFromSupabase,
-  refreshInventoryTransferTransactionsFromSupabase,
   refreshStockBatchesFromSupabase,
   createReorderTransferRule,
   deleteReorderTransferRule,
@@ -14,7 +13,13 @@ import {
   useStockBatches,
   useStorages,
 } from "@/local-db";
-import type { Product, ReorderTransferRule, StockBatch } from "@/local-db";
+import type {
+  InventoryTransaction,
+  InventoryTransferTransaction,
+  Product,
+  ReorderTransferRule,
+  StockBatch,
+} from "@/local-db";
 import { useWorkspace } from "@/workspace";
 import { useAuth } from "@/auth";
 import {
@@ -70,6 +75,7 @@ import {
   formatDate,
   formatLocalDateValue,
   parseLocalDateValue,
+  toCamelCase,
 } from "@/lib/utils";
 import { QUANTITY_EPSILON, isPositiveQuantity } from "@/lib/quantity";
 
@@ -81,6 +87,53 @@ interface RuleFormState {
   transferQuantity: string;
   expiresOn: string;
   isIndefinite: boolean;
+}
+
+interface CrossWorkspaceTransferResponse {
+  moved_products_count?: number;
+  inventory_transaction_records?: Record<string, unknown>[];
+  inventory_transfer_transaction_records?: Record<string, unknown>[];
+}
+
+async function saveCrossWorkspaceTransferActivity(
+  workspaceId: string,
+  response: CrossWorkspaceTransferResponse | null | undefined,
+) {
+  const syncedAt = new Date().toISOString();
+  const inventoryTransactions = (response?.inventory_transaction_records ?? [])
+    .filter((record) => record.workspace_id === workspaceId)
+    .map((record) => ({
+      ...(toCamelCase(record) as unknown as InventoryTransaction),
+      syncStatus: "synced" as const,
+      lastSyncedAt: syncedAt,
+    }));
+  const transferTransactions = (
+    response?.inventory_transfer_transaction_records ?? []
+  )
+    .filter((record) => record.workspace_id === workspaceId)
+    .map((record) => ({
+      ...(toCamelCase(record) as unknown as InventoryTransferTransaction),
+      syncStatus: "synced" as const,
+      lastSyncedAt: syncedAt,
+    }));
+
+  if (inventoryTransactions.length === 0 && transferTransactions.length === 0) {
+    return;
+  }
+
+  await db.transaction(
+    "rw",
+    db.inventory_transactions,
+    db.inventory_transfer_transactions,
+    async () => {
+      if (inventoryTransactions.length > 0) {
+        await db.inventory_transactions.bulkPut(inventoryTransactions);
+      }
+      if (transferTransactions.length > 0) {
+        await db.inventory_transfer_transactions.bulkPut(transferTransactions);
+      }
+    },
+  );
 }
 
 interface TransferWorkspaceOptionStorage {
@@ -981,7 +1034,7 @@ export default function InventoryTransfer() {
         );
         movedCount = result.movedCount;
       } else {
-        const { data, error } = await invokeWorkspaceAccess<{ moved_products_count?: number }>({
+        const { data, error } = await invokeWorkspaceAccess<CrossWorkspaceTransferResponse>({
           label: "inventoryTransfer.crossWorkspaceTransfer",
           fallbackAccessToken: session?.access_token,
           timeoutMs: 40000,
@@ -1007,14 +1060,14 @@ export default function InventoryTransfer() {
           data?.moved_products_count ?? selectedTransferItems.length,
         );
 
+        await saveCrossWorkspaceTransferActivity(activeWorkspace.id, data);
+
         if (
           sourceWorkspaceId === activeWorkspace.id ||
           targetWorkspaceId === activeWorkspace.id
         ) {
           await Promise.all([
             fetchInventoryWorkspaceFromSupabase(activeWorkspace.id),
-            refreshInventoryTransactionsFromSupabase(activeWorkspace.id),
-            refreshInventoryTransferTransactionsFromSupabase(activeWorkspace.id),
             refreshStockBatchesFromSupabase(activeWorkspace.id),
           ]);
         }

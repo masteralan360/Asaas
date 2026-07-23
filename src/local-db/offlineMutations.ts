@@ -4,6 +4,11 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { db } from './database'
 import type { OfflineMutation } from './models'
 
+const LOCAL_ONLY_ENTITY_TYPES = new Set<OfflineMutation['entityType']>([
+    'inventory_transactions',
+    'inventory_transfer_transactions'
+])
+
 export async function addToOfflineMutations(
     entityType: OfflineMutation['entityType'],
     entityId: string,
@@ -11,7 +16,7 @@ export async function addToOfflineMutations(
     payload: Record<string, unknown>,
     workspaceId: string
 ): Promise<void> {
-    if (isLocalWorkspaceMode(workspaceId)) {
+    if (isLocalWorkspaceMode(workspaceId) || LOCAL_ONLY_ENTITY_TYPES.has(entityType)) {
         return
     }
 

@@ -1,29 +1,21 @@
-import { useEffect } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 
-import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { isOnline } from "@/lib/network";
 import {
   QUANTITY_EPSILON,
   isNonNegativeQuantity,
   quantitiesEqual,
   roundQuantity,
 } from "@/lib/quantity";
-import { getSupabaseClientForTable } from "@/lib/supabaseSchema";
-import { runSupabaseAction } from "@/lib/supabaseRequest";
-import { generateId, toCamelCase, toSnakeCase } from "@/lib/utils";
-import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
+import { generateId } from "@/lib/utils";
 
 import { db } from "./database";
-import { addToOfflineMutations } from "./offlineMutations";
 import type {
   InventoryTransaction,
   InventoryTransactionType,
   StockAdjustmentReason,
 } from "./models";
 
-const TABLE_NAME = "inventory_transactions";
-
+// Inventory activity is intentionally device-local in every workspace mode.
 export interface InventoryTransactionInput {
   productId: string;
   storageId: string;
@@ -44,32 +36,6 @@ export interface InventoryTransactionFilterOptions {
   transactionType?: InventoryTransactionType | null;
   startDate?: Date | string | null;
   endDate?: Date | string | null;
-}
-
-function shouldUseCloudBusinessData(workspaceId?: string | null) {
-  return !!workspaceId && !isLocalWorkspaceMode(workspaceId);
-}
-
-function getSyncMetadata(workspaceId: string, timestamp: string) {
-  if (!shouldUseCloudBusinessData(workspaceId)) {
-    return {
-      syncStatus: "synced" as const,
-      lastSyncedAt: timestamp,
-    };
-  }
-
-  return {
-    syncStatus: "pending" as const,
-    lastSyncedAt: null,
-  };
-}
-
-function sanitizeTransactionPayload(transaction: Record<string, unknown>) {
-  return toSnakeCase({
-    ...transaction,
-    syncStatus: undefined,
-    lastSyncedAt: undefined,
-  });
 }
 
 function normalizeOptionalString(value?: string | null) {
@@ -164,128 +130,6 @@ function normalizeTransactionInput(input: InventoryTransactionInput) {
   };
 }
 
-async function markTransactionsSynced(ids: string[]) {
-  if (ids.length === 0) {
-    return;
-  }
-
-  const syncedAt = new Date().toISOString();
-  await Promise.all(
-    ids.map((id) =>
-      db.inventory_transactions.update(id, {
-        syncStatus: "synced",
-        lastSyncedAt: syncedAt,
-      }),
-    ),
-  );
-}
-
-async function queueOfflineUpserts(
-  transactions: InventoryTransaction[],
-  workspaceId: string,
-) {
-  await Promise.all(
-    transactions.map((transaction) =>
-      addToOfflineMutations(
-        TABLE_NAME,
-        transaction.id,
-        transaction.version > 1 ? "update" : "create",
-        transaction as unknown as Record<string, unknown>,
-        workspaceId,
-      ),
-    ),
-  );
-}
-
-async function syncUpsertTransactions(
-  transactions: InventoryTransaction[],
-  workspaceId: string,
-) {
-  if (!transactions.length || !shouldUseCloudBusinessData(workspaceId)) {
-    return;
-  }
-
-  if (!isOnline()) {
-    await queueOfflineUpserts(transactions, workspaceId);
-    return;
-  }
-
-  try {
-    const client = getSupabaseClientForTable(TABLE_NAME);
-    const payload = transactions.map((transaction) =>
-      sanitizeTransactionPayload(
-        transaction as unknown as Record<string, unknown>,
-      ),
-    );
-
-    const { error } = await runSupabaseAction(`${TABLE_NAME}.sync`, () =>
-      client.from(TABLE_NAME).upsert(payload),
-    );
-
-    if (error) {
-      throw error;
-    }
-
-    await markTransactionsSynced(
-      transactions.map((transaction) => transaction.id),
-    );
-  } catch (error) {
-    console.error(
-      "[InventoryTransactions] Failed to sync transactions:",
-      error,
-    );
-    await queueOfflineUpserts(transactions, workspaceId);
-  }
-}
-
-export async function refreshInventoryTransactionsFromSupabase(
-  workspaceId: string,
-) {
-  if (!workspaceId || !shouldUseCloudBusinessData(workspaceId) || !isOnline()) {
-    return;
-  }
-
-  const client = getSupabaseClientForTable(TABLE_NAME);
-  const { data, error } = await runSupabaseAction(`${TABLE_NAME}.fetch`, () =>
-    client
-      .from(TABLE_NAME)
-      .select("*")
-      .eq("workspace_id", workspaceId)
-      .eq("is_deleted", false),
-  );
-
-  if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
-    return;
-  }
-
-  const syncedAt = new Date().toISOString();
-  const remoteIds = new Set(
-    data.map((row: Record<string, unknown>) => row.id as string),
-  );
-
-  await db.transaction("rw", db.inventory_transactions, async () => {
-    for (const remoteItem of data) {
-      const localItem = toCamelCase(
-        remoteItem as Record<string, unknown>,
-      ) as unknown as InventoryTransaction;
-      localItem.syncStatus = "synced";
-      localItem.lastSyncedAt = syncedAt;
-      await db.inventory_transactions.put(localItem);
-    }
-
-    const localRows = await db.inventory_transactions
-      .where("workspaceId")
-      .equals(workspaceId)
-      .toArray();
-    const staleIds = localRows
-      .filter((row) => row.syncStatus === "synced" && !remoteIds.has(row.id))
-      .map((row) => row.id);
-    if (staleIds.length > 0) {
-      await db.inventory_transactions.bulkDelete(staleIds);
-    }
-  });
-}
-
 export async function createInventoryTransaction(
   workspaceId: string,
   input: InventoryTransactionInput,
@@ -305,11 +149,11 @@ export async function createInventoryTransaction(
     updatedAt: timestamp,
     version: 1,
     isDeleted: false,
-    ...getSyncMetadata(workspaceId, timestamp),
+    syncStatus: "synced",
+    lastSyncedAt: timestamp,
   };
 
   await db.inventory_transactions.put(transaction);
-  await syncUpsertTransactions([transaction], workspaceId);
   return transaction;
 }
 
@@ -383,8 +227,6 @@ export function getInventoryTransactionsInDateRange(
 }
 
 export function useInventoryTransactions(workspaceId: string | undefined) {
-  const online = useNetworkStatus();
-
   const transactions = useLiveQuery(async () => {
     if (!workspaceId) {
       return [];
@@ -402,18 +244,6 @@ export function useInventoryTransactions(workspaceId: string | undefined) {
         new Date(left.createdAt).getTime(),
     );
   }, [workspaceId]);
-
-  useEffect(() => {
-    async function fetchFromSupabase() {
-      if (!online || !workspaceId) {
-        return;
-      }
-
-      await refreshInventoryTransactionsFromSupabase(workspaceId);
-    }
-
-    void fetchFromSupabase();
-  }, [online, workspaceId]);
 
   return transactions ?? [];
 }

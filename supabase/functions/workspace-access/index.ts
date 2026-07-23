@@ -2350,8 +2350,6 @@ async function handleTransferInventoryBetweenWorkspaces(
 
     const previousInventoryRows = Array.from(inventoryRowsByPositionKey.values()).map((row) => ({ ...row }))
     const inventoryRowsInserted = Array.from(insertedInventoryRowIds)
-    let inventoryTransactionsInserted = false
-
     const rollbackChanges = async () => {
         if (insertedStockBatchIds.size > 0) {
             await adminClient
@@ -2364,13 +2362,6 @@ async function handleTransferInventoryBetweenWorkspaces(
             await adminClient
                 .from('stock_batches')
                 .upsert(previousStockBatchRows)
-        }
-
-        if (inventoryTransactionsInserted && inventoryTransactionRows.length > 0) {
-            await adminClient
-                .from('inventory_transactions')
-                .delete()
-                .in('id', inventoryTransactionRows.map((row) => String(row.id)))
         }
 
         if (previousInventoryRows.length > 0) {
@@ -2436,31 +2427,6 @@ async function handleTransferInventoryBetweenWorkspaces(
             }
         }
 
-        if (inventoryTransactionRows.length > 0) {
-            const { error: inventoryTransactionsError } = await adminClient
-                .from('inventory_transactions')
-                .insert(inventoryTransactionRows)
-
-            if (inventoryTransactionsError) {
-                console.error('[workspace-access] transfer inventory transaction insert failed', inventoryTransactionsError)
-                await rollbackChanges()
-                return errorResponse(inventoryTransactionsError.message, 500)
-            }
-
-            inventoryTransactionsInserted = true
-        }
-
-        if (inventoryTransferTransactionRows.length > 0) {
-            const { error: transferTransactionsError } = await adminClient
-                .from('inventory_transfer_transactions')
-                .insert(inventoryTransferTransactionRows)
-
-            if (transferTransactionsError) {
-                console.error('[workspace-access] transfer transfer-transaction insert failed', transferTransactionsError)
-                await rollbackChanges()
-                return errorResponse(transferTransactionsError.message, 500)
-            }
-        }
     } catch (error) {
         console.error('[workspace-access] transfer-inventory-between-workspaces failed', error)
         await rollbackChanges()
@@ -2471,7 +2437,10 @@ async function handleTransferInventoryBetweenWorkspaces(
         success: true,
         moved_products_count: normalizedItems.length,
         source_workspace_id: sourceWorkspaceId,
-        destination_workspace_id: destinationWorkspaceId
+        destination_workspace_id: destinationWorkspaceId,
+        // The client persists these records locally; this function no longer writes either log table.
+        inventory_transaction_records: inventoryTransactionRows,
+        inventory_transfer_transaction_records: inventoryTransferTransactionRows
     })
 }
 
