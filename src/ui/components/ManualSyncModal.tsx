@@ -8,6 +8,7 @@ import {
     DialogFooter
 } from '@/ui/components/dialog'
 import { Button } from '@/ui/components/button'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ui/components/table'
 import { Loader2, CheckCircle2, AlertTriangle, ListTodo } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { useToast } from '@/ui/components/use-toast'
@@ -15,6 +16,7 @@ import { usePendingSyncMutations, clearOfflineMutations } from '@/local-db/hooks
 import { retrySchemaMismatchMutations } from '@/local-db/offlineMutations'
 import type { OfflineMutation } from '@/local-db/models'
 import { isSchemaMismatchError } from '@/sync/syncErrors'
+import { inspectRemoteMutationPayload, type RemoteMutationFieldInspection } from '@/sync/syncPayloadContract'
 import { useTranslation } from 'react-i18next'
 import { runManagedFullSync } from '@/sync/syncCoordinator'
 import { LAST_SYNC_KEY } from '@/sync/constants'
@@ -66,6 +68,32 @@ function formatQueuedAt(createdAt: string, locale: string) {
     }).format(date)
 }
 
+function formatPayloadValue(value: unknown) {
+    if (value === null) return 'null'
+    if (value === undefined) return 'undefined'
+    if (typeof value === 'string') return value
+    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value)
+    if (typeof Blob !== 'undefined' && value instanceof Blob) {
+        return `[Blob: ${value.type || 'unknown type'}, ${value.size.toLocaleString()} bytes]`
+    }
+
+    try {
+        return JSON.stringify(value, null, 2)
+    } catch {
+        return String(value)
+    }
+}
+
+function getFieldStatusDisplay(status: RemoteMutationFieldInspection['status']) {
+    if (status === 'invalid') {
+        return { label: 'Invalid', className: 'bg-destructive/10 text-destructive' }
+    }
+    if (status === 'excluded') {
+        return { label: 'Excluded', className: 'bg-muted text-muted-foreground' }
+    }
+    return { label: 'Valid', className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' }
+}
+
 export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSyncModalProps) {
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
@@ -78,6 +106,19 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
     const [status, setStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle')
     const [errorMessage, setErrorMessage] = useState<string | null>(null)
     const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
+    const [selectedMutation, setSelectedMutation] = useState<OfflineMutation | null>(null)
+
+    const selectedMutationFields = selectedMutation
+        ? inspectRemoteMutationPayload(selectedMutation.entityType, selectedMutation.payload, selectedMutation.error)
+        : []
+
+    function handleOpenChange(nextOpen: boolean) {
+        if (!nextOpen) {
+            setSelectedMutation(null)
+            setShowDiscardConfirm(false)
+        }
+        onOpenChange(nextOpen)
+    }
 
     useEffect(() => {
         return connectionManager.subscribe((event) => {
@@ -164,7 +205,7 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
 
     return (
         <>
-            <Dialog open={open} onOpenChange={isSyncing ? undefined : onOpenChange}>
+            <Dialog open={open} onOpenChange={isSyncing ? undefined : handleOpenChange}>
                 <DialogContent className="sm:max-w-lg">
                     <DialogHeader>
                         <DialogTitle>{t('sync.title')}</DialogTitle>
@@ -195,7 +236,8 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
                                 >
                                     {pendingMutations.map((mutation) => {
                                         const summary = getMutationSummary(mutation.payload)
-                                        const statusLabel = isSchemaMismatchError(mutation.error)
+                                        const hasSchemaMismatch = isSchemaMismatchError(mutation.error)
+                                        const statusLabel = hasSchemaMismatch
                                             ? t('sync.needsAttention', { defaultValue: 'Needs attention' })
                                             : mutation.status === 'failed'
                                                 ? t('sync.retrying')
@@ -204,7 +246,13 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
                                                 : t('sync.queued')
 
                                         return (
-                                            <div key={mutation.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                                            <button
+                                                key={mutation.id}
+                                                type="button"
+                                                onClick={() => setSelectedMutation(mutation)}
+                                                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                title="Review sync payload"
+                                            >
                                                 <div className="min-w-0">
                                                     <p className="truncate text-sm font-medium text-foreground">
                                                         {getEntityLabel(mutation.entityType)}
@@ -214,10 +262,10 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
                                                         {t(`sync.operations.${mutation.operation}`)} · {formatQueuedAt(mutation.createdAt, i18n.language)}
                                                     </p>
                                                 </div>
-                                                <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${hasSchemaMismatch ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'}`}>
                                                     {statusLabel}
                                                 </span>
-                                            </div>
+                                            </button>
                                         )
                                     })}
                                 </div>
@@ -259,7 +307,7 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
                         <div className="flex gap-2">
                             <Button
                                 variant="ghost"
-                                onClick={() => onOpenChange(false)}
+                                onClick={() => handleOpenChange(false)}
                                 disabled={isSyncing}
                             >
                                 {status === 'success' ? t('common.close', 'Close') : t('common.cancel', 'Cancel')}
@@ -303,6 +351,64 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
                         </Button>
                         <Button variant="destructive" onClick={handleDiscard}>
                             {t('sync.yesDiscard')}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={selectedMutation !== null}
+                onOpenChange={(nextOpen) => {
+                    if (!nextOpen) setSelectedMutation(null)
+                }}
+            >
+                <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-4xl">
+                    <DialogHeader>
+                        <DialogTitle>{getEntityLabel(selectedMutation?.entityType ?? 'products')} sync payload</DialogTitle>
+                        <DialogDescription>
+                            Review exactly which fields are valid for sync, intentionally excluded, or rejected by Supabase.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {selectedMutation?.error && (
+                        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                            {selectedMutation.error}
+                        </div>
+                    )}
+
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Field</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Reason</TableHead>
+                                <TableHead>Value</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {selectedMutationFields.map((field) => {
+                                const statusDisplay = getFieldStatusDisplay(field.status)
+                                return (
+                                    <TableRow key={field.field}>
+                                        <TableCell className="font-mono text-xs font-medium">{field.field}</TableCell>
+                                        <TableCell>
+                                            <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusDisplay.className}`}>
+                                                {statusDisplay.label}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="min-w-48 text-xs text-muted-foreground">{field.reason}</TableCell>
+                                        <TableCell className="min-w-56 max-w-80 whitespace-pre-wrap break-all font-mono text-xs">
+                                            {formatPayloadValue(field.value)}
+                                        </TableCell>
+                                    </TableRow>
+                                )
+                            })}
+                        </TableBody>
+                    </Table>
+
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setSelectedMutation(null)}>
+                            {t('common.close', 'Close')}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

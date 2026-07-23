@@ -176,7 +176,7 @@ vi.mock('@/workspace/workspaceMode', () => ({
 }))
 
 import { fullSync, isRecoverablePriceBookMutation, shouldApplyRemoteItem } from './syncEngine'
-import { prepareRemoteMutationPayload } from './syncPayloadContract'
+import { inspectRemoteMutationPayload, prepareRemoteMutationPayload } from './syncPayloadContract'
 
 describe('Price Book sync recovery', () => {
     it('removes only explicitly classified local fields from mutation payloads', () => {
@@ -192,6 +192,21 @@ describe('Price Book sync recovery', () => {
         expect(payload).not.toHaveProperty('sku_key')
         expect(payload).not.toHaveProperty('quantity')
         expect(payload).not.toHaveProperty('sync_status')
+    })
+
+    it('explains valid, excluded, and schema-rejected payload fields', () => {
+        const rows = inspectRemoteMutationPayload('products', {
+            id: 'product-1',
+            name: 'Desk',
+            skuKey: 'desk',
+            futureFlag: true
+        }, "Schema mismatch: Supabase does not recognize products.future_flag. Original error: Could not find the 'future_flag' column of 'products' in the schema cache")
+
+        expect(rows).toEqual(expect.arrayContaining([
+            expect.objectContaining({ field: 'name', status: 'valid' }),
+            expect.objectContaining({ field: 'sku_key', status: 'excluded' }),
+            expect.objectContaining({ field: 'future_flag', status: 'invalid' })
+        ]))
     })
 
     it('recognizes entitlement, dependency, network, and unique-name failures as recoverable', () => {

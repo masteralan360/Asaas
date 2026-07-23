@@ -17,15 +17,17 @@ function getErrorCode(error: unknown): string | null {
   return typeof code === "string" ? code : null;
 }
 
-function getUnknownColumnName(message: string): string | null {
+export function getSchemaMismatchColumnName(error?: string): string | null {
+  if (typeof error !== "string") return null;
   const patterns = [
+    /does not recognize (?:[a-z_][a-z0-9_]*\.)?([a-z_][a-z0-9_]*)/i,
     /could not find the ['"]([^'"]+)['"] column/i,
     /column ['"]([^'"]+)['"](?: of relation ['"][^'"]+['"])? does not exist/i,
     /column ([a-z_][a-z0-9_]*) does not exist/i,
   ];
 
   for (const pattern of patterns) {
-    const match = message.match(pattern);
+    const match = error.match(pattern);
     if (match?.[1]) return match[1];
   }
 
@@ -42,7 +44,7 @@ export function getSchemaMismatchError(
 ): string | null {
   const message = getErrorMessage(error);
   const code = getErrorCode(error);
-  const column = getUnknownColumnName(message);
+  const column = getSchemaMismatchColumnName(message);
   const isSchemaMismatch =
     code === "PGRST204" ||
     code === "42703" ||

@@ -1,3 +1,5 @@
+import { getSchemaMismatchColumnName } from "./syncErrors";
+
 /**
  * Fields that exist in the local model but must never be included in an
  * ordinary table mutation. Keep this contract deliberately small and
@@ -41,13 +43,14 @@ const NON_REMOTE_FIELDS_BY_ENTITY: Readonly<Record<string, ReadonlySet<string>>>
   suppliers: new Set(["is_locked"]),
 };
 
-// Development-only fault injection. Set VITE_DEBUG_FORCE_SYNC_SCHEMA_MISMATCH
-// to "true" in a local .env.local file and restart the dev app to make the
-// next queued product mutation include a deliberately invalid remote column.
-// It is hard-disabled in production builds.
-const FORCE_PRODUCT_SCHEMA_MISMATCH =
-  import.meta.env.DEV &&
-  import.meta.env.VITE_DEBUG_FORCE_SYNC_SCHEMA_MISMATCH === "true";
+export type RemoteMutationFieldStatus = "valid" | "invalid" | "excluded";
+
+export interface RemoteMutationFieldInspection {
+  field: string;
+  value: unknown;
+  status: RemoteMutationFieldStatus;
+  reason: string;
+}
 
 function toSnakeCase(payload: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
@@ -72,9 +75,63 @@ export function prepareRemoteMutationPayload(
     delete remotePayload[field];
   }
 
-  if (FORCE_PRODUCT_SCHEMA_MISMATCH && entityType === "products") {
-    remotePayload.__debug_force_sync_schema_mismatch = true;
-  }
-
   return remotePayload;
+}
+
+/**
+ * Produces a user-facing view of a queued payload without changing it. This
+ * lets the sync dialog distinguish fields that will be sent from fields that
+ * were deliberately excluded or rejected by the remote schema.
+ */
+export function inspectRemoteMutationPayload(
+  entityType: string,
+  payload: Record<string, unknown>,
+  error?: string,
+): RemoteMutationFieldInspection[] {
+  const serializedPayload = toSnakeCase(payload);
+  const nonRemoteFields = new Set([
+    ...COMMON_NON_REMOTE_FIELDS,
+    ...(NON_REMOTE_FIELDS_BY_ENTITY[entityType] ?? []),
+  ]);
+  const remotePayload = prepareRemoteMutationPayload(entityType, payload);
+  const rejectedColumn = getSchemaMismatchColumnName(error);
+  const fields = new Set([
+    ...Object.keys(serializedPayload),
+    ...Object.keys(remotePayload),
+  ]);
+
+  const rows = Array.from(fields, (field): RemoteMutationFieldInspection => {
+    const value = remotePayload[field] ?? serializedPayload[field];
+    if (nonRemoteFields.has(field)) {
+      return {
+        field,
+        value,
+        status: "excluded",
+        reason: "Local-only or derived field; it is not sent to Supabase.",
+      };
+    }
+    if (field === rejectedColumn) {
+      return {
+        field,
+        value,
+        status: "invalid",
+        reason: "Supabase rejected this column because it is not in the remote schema.",
+      };
+    }
+    return {
+      field,
+      value,
+      status: "valid",
+      reason: "Will be included in the next Supabase sync request.",
+    };
+  });
+
+  const order: Record<RemoteMutationFieldStatus, number> = {
+    invalid: 0,
+    valid: 1,
+    excluded: 2,
+  };
+  return rows.sort((left, right) =>
+    order[left.status] - order[right.status] || left.field.localeCompare(right.field),
+  );
 }
