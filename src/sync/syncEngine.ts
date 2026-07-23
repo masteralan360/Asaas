@@ -6,6 +6,8 @@ import { syncProductBarcodeCachesForWorkspace } from "@/local-db/productBarcodes
 import { rekeyPriceBookItemReferences } from "@/local-db/priceBookReferences";
 import { runSupabaseAction } from "@/lib/supabaseRequest";
 import { getSupabaseClientForTable } from "@/lib/supabaseSchema";
+import { getSchemaMismatchError, isSchemaMismatchError } from "@/sync/syncErrors";
+import { prepareRemoteMutationPayload } from "@/sync/syncPayloadContract";
 import {
   finishSyncProgress,
   startSyncProgress,
@@ -97,8 +99,13 @@ const SALE_CREATE_RESULT_SELECT =
 function isSaleCreateMutation(mutation: {
   entityType: string;
   operation: string;
+  error?: string;
 }) {
-  return mutation.entityType === "sales" && mutation.operation === "create";
+  return (
+    mutation.entityType === "sales" &&
+    mutation.operation === "create" &&
+    !isSchemaMismatchError(mutation.error)
+  );
 }
 
 function isRetriableSaleReturnMutation(mutation: {
@@ -141,22 +148,6 @@ export function isRecoverablePriceBookMutation(mutation: {
     /network|fetch|timeout|timed out|connection|abort|permission|row-level|capability|42501|duplicate|unique|23505|23503|23514|foreign key|same workspace|must reference/i.test(
       mutation.error ?? "",
     );
-}
-
-// Convert camelCase to snake_case
-function toSnakeCase(obj: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const key in obj) {
-    if (obj[key] === undefined) {
-      continue;
-    }
-    const snakeKey = key.replace(
-      /[A-Z]/g,
-      (letter) => `_${letter.toLowerCase()}`,
-    );
-    result[snakeKey] = obj[key];
-  }
-  return result;
 }
 
 // Convert snake_case to camelCase
@@ -399,6 +390,14 @@ export function shouldApplyRemoteItem(
     return true;
   }
 
+  // The local mutation is the source of truth until it has completed. This
+  // prevents a failed push (including a schema mismatch) from being followed
+  // by a pull that replaces the local record with an older server snapshot.
+  const localSyncStatus = (localItem as { syncStatus?: unknown }).syncStatus;
+  if (localSyncStatus === "pending" || localSyncStatus === "conflict") {
+    return false;
+  }
+
   if (
     (table === "price_books" || table === "price_book_items") &&
     (localItem as { syncStatus?: unknown }).syncStatus === "pending"
@@ -426,9 +425,9 @@ export function shouldApplyRemoteItem(
 export async function processMutationQueue(
   _userId: string,
   onProgress?: (completed: number, total: number) => void,
-): Promise<{ success: number; failed: number; error?: string }> {
+): Promise<{ success: number; failed: number; errors: string[] }> {
   if (!isSupabaseConfigured) {
-    return { success: 0, failed: 1, error: "Supabase not configured" };
+    return { success: 0, failed: 1, errors: ["Supabase not configured"] };
   }
 
   const mutationGroups = await Promise.all(
@@ -468,10 +467,23 @@ export async function processMutationQueue(
 
   let successCount = 0;
   let failedCount = 0;
-  let lastError: string | undefined;
+  const errors: string[] = [];
   const failedPriceBookIds = new Set<string>();
+  const schemaBlockedEntities = new Map<string, string>();
 
   for (const mutation of mutations) {
+    const mutationKey = `${mutation.entityType}:${mutation.entityId}`;
+    const priorSchemaMismatch = schemaBlockedEntities.get(mutationKey);
+    if (priorSchemaMismatch) {
+      await db.offline_mutations.update(mutation.id, {
+        status: "failed",
+        error: `${priorSchemaMismatch} This later change was blocked to preserve record order.`,
+      });
+      failedCount++;
+      reportCompleted();
+      continue;
+    }
+
     if (mutation.entityType === "price_book_items") {
       const referencedPriceBookId = mutation.payload.priceBookId ?? mutation.payload.price_book_id;
       if (typeof referencedPriceBookId === "string" && failedPriceBookIds.has(referencedPriceBookId)) {
@@ -497,8 +509,10 @@ export async function processMutationQueue(
         operation === "delete" &&
         (entityType === "loans" || payload.hardDelete === true);
 
-      // Prepare payload
-      const dbPayload = toSnakeCase(payload) as Record<string, unknown>;
+      // Prepare only fields Atlas has deliberately classified as remote-safe.
+      // Unknown fields are intentionally not removed: a server rejection must
+      // remain visible so that business data cannot be lost silently.
+      const dbPayload = prepareRemoteMutationPayload(entityType, payload);
       // Ensure workspace scope is present for workspace-bound rows.
       if (
         entityType !== "workspaces" &&
@@ -506,27 +520,6 @@ export async function processMutationQueue(
         dbPayload.workspace_id === undefined
       ) {
         dbPayload.workspace_id = workspaceId;
-      }
-
-      // Remove local metadata
-      delete dbPayload.sync_status;
-      delete dbPayload.last_synced_at;
-
-      if (entityType === "products") {
-        // skuKey is local-only and may exist in mutations created before this
-        // filter was added.
-        delete dbPayload.sku_key;
-        // Stock is derived from inventory in the database.  Strip stale
-        // product snapshots from queued mutations created by older clients.
-        delete dbPayload.quantity;
-        delete dbPayload.storage_id;
-        delete dbPayload.storage_name;
-        delete dbPayload.barcode;
-        delete dbPayload.barcodes;
-      }
-
-      if (entityType === "agents") {
-        delete dbPayload.image_url;
       }
 
       if (operation === "create" || operation === "update") {
@@ -751,22 +744,6 @@ export async function processMutationQueue(
           await db.price_book_items.put(localPriceBookItem as never);
           entityHandledInline = true;
         } else {
-          // Special handling for invoices to remove legacy fields
-          if (tableName === "invoices") {
-            delete dbPayload.items;
-            delete dbPayload.currency;
-            delete dbPayload.subtotal;
-            delete dbPayload.discount;
-            delete dbPayload.print_metadata;
-            delete dbPayload.is_snapshot;
-            delete dbPayload.customer_id;
-            delete dbPayload.status;
-            delete dbPayload.local_path_a4;
-            delete dbPayload.local_path_receipt;
-            delete dbPayload.pdf_blob_a4;
-            delete dbPayload.pdf_blob_receipt;
-          }
-
           const { error } = await client.from(tableName).upsert(dbPayload);
           if (error) throw error;
         }
@@ -848,29 +825,45 @@ export async function processMutationQueue(
     } catch (err: any) {
       console.error(`[Sync] Failed mutation ${mutation.id}:`, err);
       const errorMessage = err.message || "Unknown error";
+      const schemaMismatchError = getSchemaMismatchError(
+        getTableName(mutation.entityType),
+        err,
+      );
+      const storedError = schemaMismatchError ?? errorMessage;
       await db.offline_mutations.update(mutation.id, {
         status: "failed",
-        error: errorMessage,
+        error: storedError,
       });
+      if (schemaMismatchError) {
+        const table = (db as any)[mutation.entityType];
+        if (table) {
+          await table.update(mutation.entityId, { syncStatus: "conflict" });
+        }
+        schemaBlockedEntities.set(mutationKey, schemaMismatchError);
+        errors.push(schemaMismatchError);
+        failedCount++;
+        reportCompleted();
+        continue;
+      }
       if (isPriceBookMutation(mutation)) {
         if (mutation.entityType === "price_books") {
           failedPriceBookIds.add(mutation.entityId);
         }
         failedCount++;
-        lastError = errorMessage;
+        errors.push(errorMessage);
         reportCompleted();
         continue;
       }
       // Stop processing on first error to maintain order integrity
       reportCompleted();
-      return { success: successCount, failed: failedCount + 1, error: errorMessage };
+      return { success: successCount, failed: failedCount + 1, errors: [...errors, errorMessage] };
     }
   }
 
   return {
     success: successCount,
     failed: failedCount,
-    ...(lastError ? { error: lastError } : {}),
+    errors,
   };
 }
 
@@ -1076,7 +1069,7 @@ export async function fullSync(
 
   try {
     // 1. Process Offline Mutations
-    const { success, failed, error } = await processMutationQueue(
+    const { success, failed, errors: pushErrors } = await processMutationQueue(
       userId,
       (completed, total) => updateSyncProgress("pushing", completed, total),
     );
@@ -1088,10 +1081,7 @@ export async function fullSync(
       lastSyncTime,
       (completed, total) => updateSyncProgress("pulling", completed, total),
     );
-    const errors = [
-      ...(error ? [error] : []),
-      ...pullErrors,
-    ];
+    const errors = [...pushErrors, ...pullErrors];
 
     return {
       success: failed === 0 && pullErrors.length === 0,

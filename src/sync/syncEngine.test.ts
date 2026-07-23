@@ -18,6 +18,9 @@ const dbMock = vi.hoisted(() => {
             }))
         }))
     }
+    const products = {
+        update: vi.fn(async () => 1)
+    }
 
     const offlineMutations = {
         where: vi.fn((indexName: string) => ({
@@ -56,6 +59,7 @@ const dbMock = vi.hoisted(() => {
         invoices,
         saleReturns,
         saleReturnItems,
+        products,
         reset() {
             rows.splice(0)
             offlineMutations.where.mockClear()
@@ -64,6 +68,7 @@ const dbMock = vi.hoisted(() => {
             invoices.update.mockClear()
             saleReturns.update.mockClear()
             saleReturnItems.where.mockClear()
+            products.update.mockClear()
         }
     }
 })
@@ -145,7 +150,8 @@ vi.mock('@/local-db', () => ({
         sales: dbMock.sales,
         invoices: dbMock.invoices,
         sale_returns: dbMock.saleReturns,
-        sale_return_items: dbMock.saleReturnItems
+        sale_return_items: dbMock.saleReturnItems,
+        products: dbMock.products
     }
 }))
 
@@ -170,8 +176,24 @@ vi.mock('@/workspace/workspaceMode', () => ({
 }))
 
 import { fullSync, isRecoverablePriceBookMutation, shouldApplyRemoteItem } from './syncEngine'
+import { prepareRemoteMutationPayload } from './syncPayloadContract'
 
 describe('Price Book sync recovery', () => {
+    it('removes only explicitly classified local fields from mutation payloads', () => {
+        const payload = prepareRemoteMutationPayload('products', {
+            id: 'product-1',
+            skuKey: 'desk',
+            quantity: 10,
+            futureFlag: true,
+            syncStatus: 'pending'
+        })
+
+        expect(payload).toMatchObject({ id: 'product-1', future_flag: true })
+        expect(payload).not.toHaveProperty('sku_key')
+        expect(payload).not.toHaveProperty('quantity')
+        expect(payload).not.toHaveProperty('sync_status')
+    })
+
     it('recognizes entitlement, dependency, network, and unique-name failures as recoverable', () => {
         for (const error of [
             'permission denied by row-level security (42501)',
@@ -198,6 +220,21 @@ describe('Price Book sync recovery', () => {
             version: 2,
             updatedAt: '2026-07-12T07:00:00.000Z'
         })).toBe(false)
+    })
+
+    it('preserves pending and conflicting local records during a pull', () => {
+        const remote = { version: 99, updatedAt: '2026-07-12T10:00:00.000Z' }
+
+        expect(shouldApplyRemoteItem('products', {
+            version: 1,
+            updatedAt: '2026-07-12T08:00:00.000Z',
+            syncStatus: 'pending'
+        }, remote)).toBe(false)
+        expect(shouldApplyRemoteItem('products', {
+            version: 1,
+            updatedAt: '2026-07-12T08:00:00.000Z',
+            syncStatus: 'conflict'
+        }, remote)).toBe(false)
     })
 })
 
@@ -293,6 +330,62 @@ describe('fullSync error reporting', () => {
         expect(payload).not.toHaveProperty('sku_key')
         expect(payload).not.toHaveProperty('quantity')
         expect(payload).not.toHaveProperty('storage_id')
+    })
+
+    it('keeps an unknown-column mutation, blocks later writes for that record, and syncs unrelated work', async () => {
+        const schemaError = Object.assign(
+            new Error("Could not find the 'future_flag' column of 'products' in the schema cache"),
+            { code: 'PGRST204' }
+        )
+        supabaseMock.upsert
+            .mockResolvedValueOnce({ data: null, error: schemaError })
+            .mockResolvedValueOnce({ data: null, error: null })
+        dbMock.rows.push({
+            id: 'product-schema-mismatch',
+            workspaceId: 'workspace-1',
+            entityType: 'products',
+            entityId: 'product-1',
+            operation: 'update',
+            payload: { id: 'product-1', name: 'Desk', futureFlag: true },
+            createdAt: '2026-07-13T00:00:00.000Z',
+            status: 'pending'
+        }, {
+            id: 'product-follow-up',
+            workspaceId: 'workspace-1',
+            entityType: 'products',
+            entityId: 'product-1',
+            operation: 'update',
+            payload: { id: 'product-1', name: 'Desk v2' },
+            createdAt: '2026-07-13T00:00:01.000Z',
+            status: 'pending'
+        }, {
+            id: 'independent-category',
+            workspaceId: 'workspace-1',
+            entityType: 'categories',
+            entityId: 'category-1',
+            operation: 'create',
+            payload: { id: 'category-1', name: 'Office' },
+            createdAt: '2026-07-13T00:00:02.000Z',
+            status: 'pending'
+        })
+
+        const result = await fullSync('user-1', 'workspace-1', null)
+
+        expect(result).toMatchObject({ success: false, pushed: 1, pulled: 0 })
+        expect(result.errors).toEqual([
+            expect.stringContaining('Schema mismatch: Supabase does not recognize products.future_flag')
+        ])
+        expect(supabaseMock.upsert).toHaveBeenCalledTimes(2)
+        expect(dbMock.rows[0]).toMatchObject({
+            status: 'failed',
+            error: expect.stringContaining('Schema mismatch:')
+        })
+        expect(dbMock.rows[1]).toMatchObject({
+            status: 'failed',
+            error: expect.stringContaining('This later change was blocked to preserve record order.')
+        })
+        expect(dbMock.rows[2]).toMatchObject({ status: 'synced' })
+        expect(dbMock.products.update).toHaveBeenCalledWith('product-1', { syncStatus: 'conflict' })
     })
 
     it('reports pull failures instead of treating an empty pull as successful', async () => {

@@ -12,7 +12,9 @@ import { Loader2, CheckCircle2, AlertTriangle, ListTodo } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { useToast } from '@/ui/components/use-toast'
 import { usePendingSyncMutations, clearOfflineMutations } from '@/local-db/hooks'
+import { retrySchemaMismatchMutations } from '@/local-db/offlineMutations'
 import type { OfflineMutation } from '@/local-db/models'
+import { isSchemaMismatchError } from '@/sync/syncErrors'
 import { useTranslation } from 'react-i18next'
 import { runManagedFullSync } from '@/sync/syncCoordinator'
 import { LAST_SYNC_KEY } from '@/sync/constants'
@@ -95,6 +97,10 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
         setErrorMessage(null)
 
         try {
+            // This is deliberate user intent. Automatic sync never retries a
+            // schema mismatch because doing so would repeatedly fail until a
+            // server migration is available.
+            await retrySchemaMismatchMutations(user.workspaceId)
             const result = await runManagedFullSync(
                 user.id,
                 user.workspaceId,
@@ -147,7 +153,7 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
             })
             setShowDiscardConfirm(false)
             onOpenChange(false)
-        } catch (error: any) {
+        } catch (_error: any) {
             toast({
                 title: t('common.error', 'Error'),
                 description: t('sync.discardError'),
@@ -189,8 +195,10 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
                                 >
                                     {pendingMutations.map((mutation) => {
                                         const summary = getMutationSummary(mutation.payload)
-                                        const statusLabel = mutation.status === 'failed'
-                                            ? t('sync.retrying')
+                                        const statusLabel = isSchemaMismatchError(mutation.error)
+                                            ? t('sync.needsAttention', { defaultValue: 'Needs attention' })
+                                            : mutation.status === 'failed'
+                                                ? t('sync.retrying')
                                             : mutation.status === 'syncing'
                                                 ? t('sync.syncing')
                                                 : t('sync.queued')

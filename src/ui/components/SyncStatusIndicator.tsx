@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { usePendingSyncCount } from '@/local-db/hooks'
+import { usePendingSyncMutations } from '@/local-db/hooks'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { useWorkspace } from '@/workspace'
 import { ManualSyncModal } from './ManualSyncModal'
@@ -7,9 +7,12 @@ import { cn } from '@/lib/utils'
 import { CloudOff, Check, AlertCircle, Loader2 } from 'lucide-react'
 import { useTheme } from './theme-provider'
 import { useSyncProgress } from '@/sync/syncProgress'
+import { isSchemaMismatchError } from '@/sync/syncErrors'
 
 export function SyncStatusIndicator() {
-    const pendingCount = usePendingSyncCount()
+    const pendingMutations = usePendingSyncMutations()
+    const pendingCount = pendingMutations.length
+    const schemaMismatchCount = pendingMutations.filter((mutation) => isSchemaMismatchError(mutation.error)).length
     const isOnline = useNetworkStatus()
     const { isLocalMode } = useWorkspace()
     const syncProgress = useSyncProgress()
@@ -59,6 +62,15 @@ export function SyncStatusIndicator() {
             dotColor: 'bg-red-500',
             clickable: false
         }
+    } else if (schemaMismatchCount > 0) {
+        status = {
+            icon: AlertCircle,
+            label: `Sync issue (${schemaMismatchCount})`,
+            color: 'text-red-500',
+            bgColor: 'bg-red-500/10',
+            dotColor: 'bg-red-500',
+            clickable: true
+        }
     } else if (pendingCount > 0) {
         status = {
             icon: AlertCircle,
@@ -82,7 +94,11 @@ export function SyncStatusIndicator() {
                     style === 'neo-orange' ? 'neo-indicator' : cn(bgColor, 'rounded-full'),
                     clickable ? 'hover:opacity-80 cursor-pointer' : 'cursor-default opacity-80'
                 )}
-                title={clickable ? "Click to sync changes" : undefined}
+                title={clickable
+                    ? schemaMismatchCount > 0
+                        ? "A queued change needs attention. Click to review and retry it."
+                        : "Click to sync changes"
+                    : undefined}
             >
                 <div className={cn(
                     'w-2 h-2',

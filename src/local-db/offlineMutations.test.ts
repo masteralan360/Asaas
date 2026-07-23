@@ -5,20 +5,30 @@ const mutationStore = vi.hoisted(() => {
 
     const table = {
         where: vi.fn((indexName: string) => ({
-            equals: vi.fn((key: unknown) => ({
-                first: vi.fn(async () => {
-                    if (indexName !== '[entityType+entityId+status]') {
-                        throw new Error(`Unsupported index: ${indexName}`)
+            equals: vi.fn((key: unknown) => {
+                if (indexName === '[entityType+entityId+status]') {
+                    return {
+                        first: vi.fn(async () => {
+                            const [entityType, entityId, status] = key as [string, string, string]
+                            return rows.find((row) =>
+                                row.entityType === entityType
+                                && row.entityId === entityId
+                                && row.status === status
+                            )
+                        })
                     }
+                }
 
-                    const [entityType, entityId, status] = key as [string, string, string]
-                    return rows.find((row) =>
-                        row.entityType === entityType
-                        && row.entityId === entityId
-                        && row.status === status
-                    )
-                })
-            }))
+                if (indexName === 'status') {
+                    return {
+                        filter: vi.fn((predicate: (row: Record<string, any>) => boolean) => ({
+                            toArray: vi.fn(async () => rows.filter((row) => row.status === key && predicate(row)))
+                        }))
+                    }
+                }
+
+                throw new Error(`Unsupported index: ${indexName}`)
+            })
         })),
         add: vi.fn(async (row: Record<string, any>) => {
             rows.push({ ...row })
@@ -37,6 +47,13 @@ const mutationStore = vi.hoisted(() => {
 
             rows.splice(index, 1)
             return 1
+        }),
+        bulkUpdate: vi.fn(async (updates: Array<{ key: string, changes: Record<string, any> }>) => {
+            for (const { key, changes } of updates) {
+                const row = rows.find((item) => item.id === key)
+                if (row) Object.assign(row, changes)
+            }
+            return updates.length
         })
     }
 
@@ -49,6 +66,7 @@ const mutationStore = vi.hoisted(() => {
             table.add.mockClear()
             table.update.mockClear()
             table.delete.mockClear()
+            table.bulkUpdate.mockClear()
         }
     }
 })
@@ -84,7 +102,7 @@ vi.mock('@/workspace/workspaceMode', () => ({
     isLocalWorkspaceMode: workspaceModeMock.isLocalWorkspaceMode
 }))
 
-import { addToOfflineMutations } from './offlineMutations'
+import { addToOfflineMutations, retrySchemaMismatchMutations } from './offlineMutations'
 
 describe('addToOfflineMutations', () => {
     beforeEach(() => {
@@ -214,5 +232,34 @@ describe('addToOfflineMutations', () => {
 
         expect(mutationStore.rows).toHaveLength(0)
         expect(mutationStore.table.add).not.toHaveBeenCalled()
+    })
+
+    it('requeues schema mismatches only after an explicit retry request', async () => {
+        mutationStore.rows.push({
+            id: 'schema-mismatch',
+            workspaceId: 'workspace-1',
+            entityType: 'products',
+            entityId: 'product-1',
+            operation: 'update',
+            payload: { id: 'product-1', futureFlag: true },
+            createdAt: '2026-07-13T00:00:00.000Z',
+            status: 'failed',
+            error: 'Schema mismatch: Supabase does not recognize products.future_flag.'
+        }, {
+            id: 'permission-failure',
+            workspaceId: 'workspace-1',
+            entityType: 'products',
+            entityId: 'product-2',
+            operation: 'update',
+            payload: { id: 'product-2' },
+            createdAt: '2026-07-13T00:00:00.000Z',
+            status: 'failed',
+            error: 'permission denied'
+        })
+
+        await expect(retrySchemaMismatchMutations('workspace-1')).resolves.toBe(1)
+
+        expect(mutationStore.rows[0]).toMatchObject({ status: 'pending', error: undefined })
+        expect(mutationStore.rows[1]).toMatchObject({ status: 'failed', error: 'permission denied' })
     })
 })

@@ -1,4 +1,5 @@
 import { generateId } from '@/lib/utils'
+import { isSchemaMismatchError } from '@/sync/syncErrors'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
@@ -60,4 +61,28 @@ export async function addToOfflineMutations(
         createdAt: new Date().toISOString(),
         status: 'pending'
     })
+}
+
+/**
+ * Schema mismatches are intentionally excluded from automatic retries. A user
+ * can explicitly retry them after the database migration has been deployed.
+ */
+export async function retrySchemaMismatchMutations(workspaceId: string): Promise<number> {
+    const rows = await db.offline_mutations
+        .where('status')
+        .equals('failed')
+        .filter((mutation) => mutation.workspaceId === workspaceId && isSchemaMismatchError(mutation.error))
+        .toArray()
+
+    if (rows.length === 0) return 0
+
+    await db.offline_mutations.bulkUpdate(rows.map((mutation) => ({
+        key: mutation.id,
+        changes: {
+            status: 'pending' as const,
+            error: undefined
+        }
+    })))
+
+    return rows.length
 }

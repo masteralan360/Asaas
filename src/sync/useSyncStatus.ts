@@ -5,6 +5,7 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { useAuth } from '@/auth/AuthContext'
 import { useWorkspace } from '@/workspace'
 import { isRecoverablePriceBookMutation, type SyncState } from './syncEngine'
+import { isSchemaMismatchError } from './syncErrors'
 import { isSupabaseConfigured } from '@/auth/supabase'
 import { connectionManager } from '@/lib/connectionManager'
 import { toast } from '@/ui/components/use-toast'
@@ -51,7 +52,11 @@ export function useSyncStatus(): UseSyncStatusResult {
             db.offline_mutations
                 .where('status')
                 .equals('failed')
-                .filter((mutation) => mutation.entityType === 'sales' && mutation.operation === 'create')
+                .filter((mutation) => (
+                    mutation.entityType === 'sales'
+                    && mutation.operation === 'create'
+                    && !isSchemaMismatchError(mutation.error)
+                ))
                 .count(),
             db.offline_mutations
                 .where('status')
@@ -133,7 +138,11 @@ export function useSyncStatus(): UseSyncStatusResult {
                 db.offline_mutations
                     .where('status')
                     .equals('failed')
-                    .filter((mutation) => mutation.entityType === 'sales' && mutation.operation === 'create')
+                    .filter((mutation) => (
+                        mutation.entityType === 'sales'
+                        && mutation.operation === 'create'
+                        && !isSchemaMismatchError(mutation.error)
+                    ))
                     .count(),
                 db.offline_mutations
                     .where('status')
