@@ -27,6 +27,7 @@ import {
     ImagePlus,
     Package,
     MapPin,
+    Phone,
     Zap,
     Star,
     LogOut
@@ -50,6 +51,7 @@ export function WorkspaceConfiguration() {
     const [isLocationSaving, setIsLocationSaving] = useState(false)
     const [logoUrl, setLogoUrl] = useState(currentFeatures.logo_url || '')
     const [coordination, setCoordination] = useState(currentFeatures.coordination || '')
+    const [a2cPhone, setA2cPhone] = useState('')
     const [dataMode, setDataMode] = useState<WorkspaceDataMode>('hybrid')
     const [plan, setPlan] = useState<WorkspacePlan>('enterprise')
     const isTauri = isTauriCheck()
@@ -105,6 +107,14 @@ export function WorkspaceConfiguration() {
         return t('workspaceConfig.location.failed')
     }
 
+    const isValidA2cPhone = (value: string) => {
+        const normalized = value.trim()
+        return normalized.length >= 6
+            && normalized.length <= 32
+            && /^[0-9+().\-\s]+$/.test(normalized)
+            && /\d/.test(normalized)
+    }
+
     const handleShareLocation = async () => {
         if (coordination || isLocationSaving) return
 
@@ -150,8 +160,28 @@ export function WorkspaceConfiguration() {
     }
 
     const handleSave = async () => {
+        const normalizedA2cPhone = a2cPhone.trim()
+        if (!isValidA2cPhone(normalizedA2cPhone)) {
+            toast({
+                title: t('common.error'),
+                description: t('workspaceConfig.a2cPhone.invalid'),
+                variant: 'destructive'
+            })
+            return
+        }
+
         setIsLoading(true)
         try {
+            // This RPC only records the immutable audit value; the app never reads it.
+            const { error: phoneError } = await runSupabaseAction('workspace.recordA2cPhone', () =>
+                supabase.rpc('record_workspace_a2c_phone', {
+                    p_phone_number: normalizedA2cPhone
+                }),
+                { timeoutMs: 12000, platform: 'all' }
+            ) as any
+
+            if (phoneError) throw normalizeSupabaseActionError(phoneError)
+
             const updatePayload: any = {
                 data_mode: dataMode,
                 plan: plan,
@@ -267,6 +297,38 @@ export function WorkspaceConfiguration() {
                             </div>
                         </div>
 
+
+                        {/* Administrator-to-customer audit phone */}
+                        <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-6">
+                            <div className="flex items-start gap-3">
+                                <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                                    <Phone className="h-5 w-5 text-primary" />
+                                </div>
+                                <div className="flex-1 space-y-1">
+                                    <Label htmlFor="workspace-a2c-phone">
+                                        {t('workspaceConfig.a2cPhone.title')}
+                                    </Label>
+                                    <p className="text-sm text-muted-foreground">
+                                        {t('workspaceConfig.a2cPhone.description')}
+                                    </p>
+                                </div>
+                            </div>
+                            <input
+                                id="workspace-a2c-phone"
+                                type="tel"
+                                inputMode="tel"
+                                autoComplete="tel"
+                                maxLength={32}
+                                required
+                                value={a2cPhone}
+                                onChange={(event) => setA2cPhone(event.target.value)}
+                                placeholder={t('workspaceConfig.a2cPhone.placeholder')}
+                                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                {t('workspaceConfig.a2cPhone.auditNote')}
+                            </p>
+                        </div>
 
                         {/* Workspace Location */}
                         <div className="bg-muted/30 rounded-lg p-6 space-y-4">
@@ -400,7 +462,7 @@ export function WorkspaceConfiguration() {
                         <Button
                             className="w-full h-12 text-lg gap-2"
                             onClick={handleSave}
-                            disabled={isLoading}
+                            disabled={isLoading || !isValidA2cPhone(a2cPhone)}
                         >
                             {isLoading ? (
                                 <Loader2 className="w-5 h-5 animate-spin" />

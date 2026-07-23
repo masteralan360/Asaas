@@ -3572,6 +3572,13 @@
       "unknown": "Unknown error",
       "saveFailed": "Failed to save configuration: {{message}}"
     },
+    "a2cPhone": {
+      "title": "Admin-to-customer phone number",
+      "description": "Enter the phone number the administrator uses to contact customers.",
+      "placeholder": "+964 7XX XXX XXXX",
+      "auditNote": "This required number is recorded once for the administrator's audit trail and cannot be changed here.",
+      "invalid": "Enter a valid phone number (6–32 digits and phone symbols only)."
+    },
     "mode": {
       "title": "Workspace Mode",
       "description": "Choose how this workspace stores business data. This choice is permanent after setup.",

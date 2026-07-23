@@ -145,6 +145,11 @@ type WorkspaceUsageStatusRow = {
     transfer_period_start?: string | null
 }
 
+type WorkspaceA2cPhoneRow = {
+    workspace_id: string
+    phone_number: string
+}
+
 type AdminPasskeyAccess =
     | { ok: true; response: null }
     | { ok: false; response: Response }
@@ -153,6 +158,23 @@ const WORKSPACE_TRANSFER_CHARGE_MULTIPLIER = 10n
 const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const PAYMENT_TRANSACTION_STATUSES = new Set(['pending', 'approved', 'rejected', 'expired'])
+
+async function getWorkspaceA2cPhones(
+    adminClient: ReturnType<typeof createAdminClient>
+) {
+    const { data, error } = await adminClient.rpc('admin_list_workspace_a2c_phones')
+
+    if (error) {
+        throw new Error(error.message)
+    }
+
+    return new Map(
+        ((data ?? []) as WorkspaceA2cPhoneRow[]).map((row) => [
+            String(row.workspace_id),
+            row.phone_number
+        ])
+    )
+}
 
 function currentUsagePeriodStart() {
     const now = new Date()
@@ -387,6 +409,14 @@ async function listUsers(adminClient: ReturnType<typeof createAdminClient>) {
         return errorResponse(workspacesError.message, 500)
     }
 
+    let workspaceA2cPhones: Map<string, string>
+    try {
+        workspaceA2cPhones = await getWorkspaceA2cPhones(adminClient)
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to load workspace audit phones'
+        return errorResponse(message, 500)
+    }
+
     const profilesById = new Map<string, { name?: string | null; role?: string | null; workspace_id?: string | null }>()
     for (const profile of profiles ?? []) {
         profilesById.set(String(profile.id), profile)
@@ -406,6 +436,7 @@ async function listUsers(adminClient: ReturnType<typeof createAdminClient>) {
             role: profile?.role ?? String(authUser.user_metadata?.role ?? 'viewer'),
             workspace_id: workspaceId,
             workspace_name: workspaceId ? (workspaceNamesById.get(workspaceId) ?? null) : null,
+            workspace_a2c_phone: workspaceId ? (workspaceA2cPhones.get(workspaceId) ?? null) : null,
             created_at: authUser.created_at,
             email: authUser.email ?? null,
             phone: authUser.user_metadata?.phone ?? null
@@ -433,6 +464,14 @@ async function listWorkspaces(adminClient: ReturnType<typeof createAdminClient>)
         return errorResponse(branchError.message, 500)
     }
 
+    let workspaceA2cPhones: Map<string, string>
+    try {
+        workspaceA2cPhones = await getWorkspaceA2cPhones(adminClient)
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to load workspace audit phones'
+        return errorResponse(message, 500)
+    }
+
     const workspaceNamesById = new Map(
         (data ?? []).map((workspace) => [String(workspace.id), String(workspace.name)])
     )
@@ -444,6 +483,7 @@ async function listWorkspaces(adminClient: ReturnType<typeof createAdminClient>)
         const branch = branchesByWorkspaceId.get(String(workspace.id))
         return {
             ...workspace,
+            a2c_phone: workspaceA2cPhones.get(String(workspace.id)) ?? null,
             is_branch: Boolean(branch),
             source_workspace_id: branch?.source_workspace_id ?? null,
             source_workspace_name: branch?.source_workspace_id
@@ -1027,7 +1067,16 @@ async function listWorkspacePaymentConfigurations(
         return errorResponse(error.message, 500)
     }
 
-    return jsonResponse(data ?? [])
+    try {
+        const workspaceA2cPhones = await getWorkspaceA2cPhones(adminClient)
+        return jsonResponse((data ?? []).map((row) => ({
+            ...row,
+            a2c_phone: workspaceA2cPhones.get(String(row.workspace_id)) ?? null
+        })))
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to load workspace audit phones'
+        return errorResponse(message, 500)
+    }
 }
 
 async function upsertWorkspacePaymentConfiguration(
