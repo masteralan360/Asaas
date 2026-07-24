@@ -8,6 +8,7 @@ import { useAuth } from '@/auth'
 import { useDemoTutorial } from '@/demo'
 import { useProfileData } from '@/hooks/useProfileData'
 import { getOrderLineFreeBonusQuantity, getOrderLineInventoryQuantity, getOrderLinePaidQuantity, hasOrderLineFreeBonus } from '@/lib/orderLineItems'
+import { getOrderAdjustmentTotals, normalizeOrderAdjustments } from '@/lib/orderAdjustments'
 import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import { setInvoicePreviewSource, type TemplatePreview, type TemplatePreviewRenderOptions } from '@/lib/pdfPreviewStore'
@@ -564,6 +565,8 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const isApprovalRequested = isOrderApprovalRequested(order)
     const currency = order.currency
     const iqd = features.iqd_display_preference
+    const orderAdjustments = normalizeOrderAdjustments(order.orderAdjustments, currency)
+    const orderAdjustmentTotals = getOrderAdjustmentTotals(orderAdjustments)
     const mainStorageId = isSales ? (order as SalesOrder).sourceStorageId : (order as PurchaseOrder).destinationStorageId
     const showFreeBonus = hasOrderLineFreeBonus(order.items)
     const totalUnits = order.items.reduce((sum, item) => sum + (isSales
@@ -1418,6 +1421,42 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                     <div className="mt-2 text-xl font-black">{formatCurrency(isSales ? (order as SalesOrder).tax : order.total, currency, iqd)}</div>
                                 </div>
                             </div>
+                            {orderAdjustments.length > 0 ? (
+                                <div className="mt-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div className="text-sm font-black">{t('orders.adjustments.title', { defaultValue: 'Order Adjustments' })}</div>
+                                        <div className="text-sm font-black">
+                                            {t('orders.adjustments.finalTotal', { defaultValue: 'Final order total' })}: {formatCurrency(order.total, currency, iqd)}
+                                        </div>
+                                    </div>
+                                    <div className="mt-3 space-y-2">
+                                        {orderAdjustments.map((adjustment) => (
+                                            <div key={adjustment.id} className="flex items-center justify-between gap-3 rounded-xl border bg-background/80 px-3 py-2 text-sm">
+                                                <div className="min-w-0">
+                                                    <span className={cn('mr-2 font-black', adjustment.type === 'addition' ? 'text-emerald-600' : 'text-rose-600')}>
+                                                        {adjustment.type === 'addition' ? '+' : '−'}
+                                                    </span>
+                                                    <span className="font-medium">{adjustment.name}</span>
+                                                    <span className="ml-2 text-xs uppercase text-muted-foreground">{adjustment.currency}</span>
+                                                </div>
+                                                <span className={cn('shrink-0 font-bold', adjustment.type === 'addition' ? 'text-emerald-600' : 'text-rose-600')}>
+                                                    {adjustment.type === 'addition' ? '+' : '−'}{formatCurrency(adjustment.amount, adjustment.currency, iqd)}
+                                                </span>
+                                                {adjustment.currency !== adjustment.orderCurrency ? (
+                                                    <span className="shrink-0 text-xs font-semibold text-muted-foreground">
+                                                        → {adjustment.type === 'addition' ? '+' : '−'}{formatCurrency(adjustment.convertedAmount, adjustment.orderCurrency, iqd)}
+                                                    </span>
+                                                ) : null}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                        <AdjustmentSummary label={t('orders.adjustments.totalAdditions', { defaultValue: 'Total additions' })} value={`+${formatCurrency(orderAdjustmentTotals.additions, currency, iqd)}`} valueClassName="text-emerald-600" />
+                                        <AdjustmentSummary label={t('orders.adjustments.totalDeductions', { defaultValue: 'Total deductions' })} value={`−${formatCurrency(orderAdjustmentTotals.deductions, currency, iqd)}`} valueClassName="text-rose-600" />
+                                        <AdjustmentSummary label={t('orders.adjustments.finalTotal', { defaultValue: 'Final order total' })} value={formatCurrency(order.total, currency, iqd)} />
+                                    </div>
+                                </div>
+                            ) : null}
                             {isSales && salesOrderReturns.length > 0 ? (
                                 <div className="mt-4 rounded-2xl border border-rose-500/20 bg-rose-500/5 p-4">
                                     <div className="flex items-center justify-between gap-3">
@@ -1682,6 +1721,15 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 printSelectionTemplates={customOrderPrint.templateOptions}
                 onPrintSelection={customOrderPrint.handleSelection}
             />
+        </div>
+    )
+}
+
+function AdjustmentSummary({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
+    return (
+        <div className="rounded-xl border bg-background/70 p-3">
+            <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
+            <div className={cn('mt-1 font-black', valueClassName)}>{value}</div>
         </div>
     )
 }

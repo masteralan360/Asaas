@@ -2,6 +2,7 @@ import type { CurrencyCode, ExchangeRateSnapshot } from '@/local-db/models'
 import { roundOrderValue } from '@/lib/orderPrecision'
 
 export const CACHED_EXCHANGE_RATES_SNAPSHOT_KEY = 'atlas:cached-exchange-rates-snapshot'
+const EXCHANGE_RATE_DECIMAL_PLACES = 8
 
 type RateSnapshot = {
     rate: number
@@ -23,6 +24,21 @@ export interface LiveOrderRates {
 
 function normalizeAmount(amount: number, _currency: CurrencyCode) {
     return roundOrderValue(amount)
+}
+
+function roundExchangeRate(rate: number) {
+    const multiplier = 10 ** EXCHANGE_RATE_DECIMAL_PLACES
+    return Math.round(rate * multiplier) / multiplier
+}
+
+export interface AppliedCurrencyConversion {
+    convertedAmount: number
+    /** One unit of `fromCurrency`, expressed in `toCurrency`. */
+    exchangeRate: number
+    exchangeRateSource: string
+    exchangeRateTimestamp: string
+    /** Exact rate snapshots used for this conversion, including cross-rate legs. */
+    exchangeRates: ExchangeRateSnapshot[]
 }
 
 function normalizeSnapshot(snapshot?: ExchangeRateSnapshot[] | null) {
@@ -144,6 +160,91 @@ export function convertCurrencyAmountWithSnapshot(
     ]))
 
     return convertCurrencyAmountInternal(amount, from, to, (pair) => ratesByPair.get(pair) ?? null)
+}
+
+/**
+ * Resolves and locks a conversion using the order's rate snapshot. Unlike the
+ * display conversion helpers, this returns null when no complete path exists
+ * so callers never accidentally save an unconverted cross-currency amount.
+ */
+export function getAppliedCurrencyConversion(
+    amount: number,
+    fromCurrency: CurrencyCode,
+    toCurrency: CurrencyCode,
+    snapshot?: ExchangeRateSnapshot[] | null
+): AppliedCurrencyConversion | null {
+    if (!Number.isFinite(amount) || amount <= 0) return null
+
+    const now = new Date().toISOString()
+    if (fromCurrency === toCurrency) {
+        return {
+            convertedAmount: normalizeAmount(amount, toCurrency),
+            exchangeRate: 1,
+            exchangeRateSource: 'native',
+            exchangeRateTimestamp: now,
+            exchangeRates: []
+        }
+    }
+
+    type Edge = { to: CurrencyCode, factor: number, snapshot: ExchangeRateSnapshot }
+    const graph = new Map<CurrencyCode, Edge[]>()
+    const addEdge = (from: CurrencyCode, edge: Edge) => {
+        const edges = graph.get(from) ?? []
+        edges.push(edge)
+        graph.set(from, edges)
+    }
+
+    for (const entry of normalizeSnapshot(snapshot)) {
+        const [base, quote, ...rest] = entry.pair.toLowerCase().split('/')
+        const basis = Number(entry.priceBasisAmount || 100)
+        if (
+            rest.length > 0
+            || !base
+            || !quote
+            || !Number.isFinite(basis)
+            || basis <= 0
+            || entry.rate <= 0
+        ) continue
+
+        const factor = entry.rate / basis
+        if (!Number.isFinite(factor) || factor <= 0) continue
+        addEdge(base as CurrencyCode, { to: quote as CurrencyCode, factor, snapshot: entry })
+        addEdge(quote as CurrencyCode, { to: base as CurrencyCode, factor: 1 / factor, snapshot: entry })
+    }
+
+    const queue: Array<{ currency: CurrencyCode, factor: number, snapshots: ExchangeRateSnapshot[] }> = [
+        { currency: fromCurrency, factor: 1, snapshots: [] }
+    ]
+    const visited = new Set<CurrencyCode>([fromCurrency])
+
+    while (queue.length > 0) {
+        const current = queue.shift()!
+        for (const edge of graph.get(current.currency) ?? []) {
+            if (visited.has(edge.to)) continue
+            const next = {
+                currency: edge.to,
+                factor: current.factor * edge.factor,
+                snapshots: [...current.snapshots, edge.snapshot]
+            }
+            if (edge.to === toCurrency) {
+                const exchangeRate = roundExchangeRate(next.factor)
+                if (!Number.isFinite(exchangeRate) || exchangeRate <= 0) return null
+                const sources = Array.from(new Set(next.snapshots.map((rate) => rate.source).filter(Boolean)))
+                const timestamps = next.snapshots.map((rate) => rate.timestamp).filter(Boolean).sort()
+                return {
+                    convertedAmount: normalizeAmount(amount * next.factor, toCurrency),
+                    exchangeRate,
+                    exchangeRateSource: sources.length === 1 ? sources[0] : sources.length > 1 ? 'mixed' : 'unknown',
+                    exchangeRateTimestamp: timestamps.at(-1) || now,
+                    exchangeRates: next.snapshots
+                }
+            }
+            visited.add(edge.to)
+            queue.push(next)
+        }
+    }
+
+    return null
 }
 
 export function cacheExchangeRatesSnapshot(snapshot?: ExchangeRateSnapshot[] | null) {

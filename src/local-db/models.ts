@@ -475,6 +475,7 @@ export type OrderPaymentMethod =
   | "bank_transfer"
   | "loan"
   | "installments";
+export type OrderAdjustmentType = "addition" | "deduction";
 export type WorkspaceVisibility = "private" | "public";
 export type MarketplaceOrderStatus =
   | "pending"
@@ -548,6 +549,27 @@ export interface PurchaseOrderItem extends OrderLineItem {
   batchManufacturingDate?: string | null;
 }
 
+/**
+ * A confirmed commercial adjustment applied to an order total. `amount` is
+ * kept in the currency selected by the user, while `convertedAmount` is the
+ * locked value that is applied to the order total in `orderCurrency`.
+ */
+export interface OrderAdjustment {
+  id: string;
+  type: OrderAdjustmentType;
+  name: string;
+  currency: CurrencyCode;
+  amount: number;
+  orderCurrency: CurrencyCode;
+  convertedAmount: number;
+  /** The applied amount in order currency for one unit of `currency`. */
+  exchangeRate: number;
+  exchangeRateSource: string;
+  exchangeRateTimestamp: string;
+  /** The rate snapshot(s) used to lock this adjustment's conversion. */
+  exchangeRates: ExchangeRateSnapshot[];
+}
+
 export interface SalesOrder extends BaseEntity {
   orderNumber: string;
   businessPartnerId?: string | null;
@@ -560,6 +582,7 @@ export interface SalesOrder extends BaseEntity {
   tax: number;
   total: number;
   currency: CurrencyCode;
+  orderAdjustments?: OrderAdjustment[];
   exchangeRate: number | null;
   exchangeRateSource: string | null;
   exchangeRateTimestamp: string | null;
@@ -612,6 +635,7 @@ export interface PurchaseOrder extends BaseEntity {
   discount: number;
   total: number;
   currency: CurrencyCode;
+  orderAdjustments?: OrderAdjustment[];
   exchangeRate: number | null;
   exchangeRateSource: string | null;
   exchangeRateTimestamp: string | null;

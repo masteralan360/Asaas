@@ -14,6 +14,7 @@ CREATE TABLE crm.sales_orders (
   exchange_rate_source text NULL,
   exchange_rate_timestamp timestamp with time zone NULL,
   exchange_rates jsonb NULL,
+  order_adjustments jsonb NULL,
   status text NOT NULL,
   expected_delivery_date timestamp with time zone NULL,
   actual_delivery_date timestamp with time zone NULL,

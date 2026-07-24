@@ -457,8 +457,8 @@ function applyLedgerFilters(entries: LedgerEntry[], filters: LedgerFilterState) 
             entry.notes,
             entry.description,
             entry.paymentMethod,
-            ledgerTypeLabel(entry.type, { t: (key: string, opts: any) => opts?.defaultValue || key }),
-            sourceModuleLabel(entry.sourceModule, { t: (key: string, opts: any) => opts?.defaultValue || key })
+            ledgerTypeLabel(entry.type, (_key: string, opts: any) => opts?.defaultValue || _key),
+            sourceModuleLabel(entry.sourceModule, (_key: string, opts: any) => opts?.defaultValue || _key)
         ].some((value) => value?.toLowerCase().includes(normalizedSearch))
     })
 

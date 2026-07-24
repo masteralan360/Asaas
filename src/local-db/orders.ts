@@ -6,6 +6,7 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { getTravelSaleCost } from '@/lib/travelAgency'
 import { roundOrderValue } from '@/lib/orderPrecision'
 import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
+import { normalizeOrderAdjustments } from '@/lib/orderAdjustments'
 import { isOnline } from '@/lib/network'
 import { getOrderLineInventoryQuantity } from '@/lib/orderLineItems'
 import { isPositiveQuantity, roundQuantity } from '@/lib/quantity'
@@ -1696,6 +1697,9 @@ export async function createSalesOrder(
         status,
         createdBy: createdBy ?? null
     }) as SalesOrder
+    const confirmedAdjustments = normalizeOrderAdjustments(order.orderAdjustments, order.currency)
+    if (confirmedAdjustments.length > 0) order.orderAdjustments = confirmedAdjustments
+    else delete order.orderAdjustments
     order.nextDueDate = isOrderFinancingMethod(order.paymentMethod) ? order.firstDueDate || null : null
 
     if (status === 'pending' || status === 'completed') {
@@ -1774,9 +1778,16 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
         installmentFrequency: data.installmentFrequency ?? existing.installmentFrequency,
         firstDueDate: data.firstDueDate ?? existing.firstDueDate
     }, now)
+    const hasOrderAdjustmentsUpdate = Object.prototype.hasOwnProperty.call(data, 'orderAdjustments')
+    const orderCurrency = data.currency ?? existing.currency
+    const confirmedAdjustments = normalizeOrderAdjustments(
+        hasOrderAdjustmentsUpdate ? data.orderAdjustments : existing.orderAdjustments,
+        orderCurrency
+    )
     const updated: SalesOrder = {
         ...existing,
         ...data,
+        ...(confirmedAdjustments.length > 0 ? { orderAdjustments: confirmedAdjustments } : {}),
         ...paymentState,
         ...counterparty,
         linkedLoanId: existing.linkedLoanId || null,
@@ -1784,10 +1795,14 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
         version: existing.version + 1,
         ...getSyncMetadata(existing.workspaceId, now)
     }
+    if (confirmedAdjustments.length === 0) delete updated.orderAdjustments
 
     updated.nextDueDate = isOrderFinancingMethod(updated.paymentMethod) ? updated.firstDueDate || null : null
     await db.sales_orders.put(updated)
-    await syncUpsertEntities('sales_orders', [updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
+    const orderForSync = hasOrderAdjustmentsUpdate && confirmedAdjustments.length === 0
+        ? { ...updated, orderAdjustments: null }
+        : updated
+    await syncUpsertEntities('sales_orders', [orderForSync as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
 
     await Promise.all(
         Array.from(new Set([
@@ -2763,6 +2778,9 @@ export async function createPurchaseOrder(
         status,
         createdBy: createdBy ?? null
     }) as PurchaseOrder
+    const confirmedAdjustments = normalizeOrderAdjustments(order.orderAdjustments, order.currency)
+    if (confirmedAdjustments.length > 0) order.orderAdjustments = confirmedAdjustments
+    else delete order.orderAdjustments
     order.nextDueDate = isOrderFinancingMethod(order.paymentMethod) ? order.firstDueDate || null : null
 
     if (status !== 'draft' && isOrderFinancingMethod(order.paymentMethod)) {
@@ -2837,9 +2855,16 @@ export async function updatePurchaseOrder(id: string, data: Partial<PurchaseOrde
         installmentFrequency: data.installmentFrequency ?? existing.installmentFrequency,
         firstDueDate: data.firstDueDate ?? existing.firstDueDate
     }, now)
+    const hasOrderAdjustmentsUpdate = Object.prototype.hasOwnProperty.call(data, 'orderAdjustments')
+    const orderCurrency = data.currency ?? existing.currency
+    const confirmedAdjustments = normalizeOrderAdjustments(
+        hasOrderAdjustmentsUpdate ? data.orderAdjustments : existing.orderAdjustments,
+        orderCurrency
+    )
     const updated: PurchaseOrder = {
         ...existing,
         ...data,
+        ...(confirmedAdjustments.length > 0 ? { orderAdjustments: confirmedAdjustments } : {}),
         ...paymentState,
         ...counterparty,
         linkedLoanId: existing.linkedLoanId || null,
@@ -2847,10 +2872,14 @@ export async function updatePurchaseOrder(id: string, data: Partial<PurchaseOrde
         version: existing.version + 1,
         ...getSyncMetadata(existing.workspaceId, now)
     }
+    if (confirmedAdjustments.length === 0) delete updated.orderAdjustments
 
     updated.nextDueDate = isOrderFinancingMethod(updated.paymentMethod) ? updated.firstDueDate || null : null
     await db.purchase_orders.put(updated)
-    await syncUpsertEntities('purchase_orders', [updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
+    const orderForSync = hasOrderAdjustmentsUpdate && confirmedAdjustments.length === 0
+        ? { ...updated, orderAdjustments: null }
+        : updated
+    await syncUpsertEntities('purchase_orders', [orderForSync as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
 
     await Promise.all(
         Array.from(new Set([

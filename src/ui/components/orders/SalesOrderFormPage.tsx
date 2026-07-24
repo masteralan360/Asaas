@@ -1,6 +1,6 @@
 import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, ArrowLeft, CalendarDays, Check, CreditCard, Plus, ShoppingCart, Star, Trash2, Truck, Users, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CalendarDays, Check, CreditCard, NotebookPen, Plus, ShoppingCart, Star, Trash2, Truck, Users, X } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useDemoTutorial } from '@/demo'
@@ -9,6 +9,7 @@ import { isMobile } from '@/lib/platform'
 import { getPrioritizedPaymentMethod, setPrioritizedPaymentMethod } from '@/lib/prioritizedPaymentMethod'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { buildOrderExchangeRatesSnapshot, convertCurrencyAmountWithLiveRates, getPrimaryExchangeDetails } from '@/lib/orderCurrency'
+import { calculateOrderTotalWithAdjustments, normalizeOrderAdjustments, repriceOrderAdjustment } from '@/lib/orderAdjustments'
 import {
     cn,
     formatCurrency,
@@ -36,6 +37,7 @@ import {
     type BusinessPartner,
     type CurrencyCode,
     type InstallmentFrequency,
+    type OrderAdjustment,
     type SalesOrder,
     type SalesOrderItem,
     type SalesOrderStatus,
@@ -45,6 +47,7 @@ import { useWorkspace } from '@/workspace'
 import { useWorkspacePermissions } from '@/permissions'
 import {
     Button,
+    Badge,
     Card,
     CardContent,
     CardHeader,
@@ -77,6 +80,7 @@ import { PartnerBalanceSummary } from '@/ui/components/crm/PartnerBalanceSummary
 import { ProductsViewModal, ProductsViewModalTrigger } from '@/ui/components/ProductsViewModal'
 import { ProductAutocompleteInput } from './ProductAutocompleteInput'
 import { LoanPartyPickerDialog } from '@/ui/components/loans/LoanPartyPickerDialog'
+import { OrderAdjustmentsDialog } from './OrderAdjustmentsDialog'
 
 interface SalesOrderFormPageProps {
     workspaceId: string
@@ -225,6 +229,10 @@ export function SalesOrderFormPage({
     const [isCustomerPickerOpen, setIsCustomerPickerOpen] = useState(false)
     const [sourceStorageId, setSourceStorageId] = useState(editingOrder?.sourceStorageId || defaultStorageId)
     const [currency, setCurrency] = useState<CurrencyCode>(editingOrder?.currency || features.default_currency)
+    const [orderAdjustments, setOrderAdjustments] = useState<OrderAdjustment[]>(() =>
+        normalizeOrderAdjustments(editingOrder?.orderAdjustments, editingOrder?.currency || features.default_currency)
+    )
+    const [isOrderAdjustmentsOpen, setIsOrderAdjustmentsOpen] = useState(false)
     const [shippingAddress, setShippingAddress] = useState(editingOrder?.shippingAddress || '')
     const [expectedDeliveryDate, setExpectedDeliveryDate] = useState(editingOrder?.expectedDeliveryDate ? formatLocalDateTimeValue(editingOrder.expectedDeliveryDate) : '')
     const [discount, setDiscount] = useState(editingOrder?.discount ? String(editingOrder.discount) : '')
@@ -238,6 +246,22 @@ export function SalesOrderFormPage({
     const [initialPaymentAmount, setInitialPaymentAmount] = useState(
         editingOrder?.initialPaymentAmount ? String(editingOrder.initialPaymentAmount) : ''
     )
+    const changeOrderCurrency = useCallback((nextCurrency: CurrencyCode) => {
+        const adjustmentRates = buildOrderExchangeRatesSnapshot({ exchangeData, eurRates, tryRates })
+        const repricedAdjustments = orderAdjustments.map((adjustment) =>
+            repriceOrderAdjustment(adjustment, nextCurrency, adjustmentRates)
+        )
+        if (repricedAdjustments.some((adjustment) => !adjustment)) {
+            toast({
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: t('orders.adjustments.exchangeRateUnavailable', { defaultValue: 'Exchange rate unavailable for the selected currency.' }),
+                variant: 'destructive'
+            })
+            return
+        }
+        setCurrency(nextCurrency)
+        setOrderAdjustments(repricedAdjustments as OrderAdjustment[])
+    }, [eurRates, exchangeData, orderAdjustments, t, toast, tryRates])
     const [items, setItems] = useState<FormItem[]>(() => {
         if (editingOrder) {
             return editingOrder.items.map((item, idx) => {
@@ -285,6 +309,7 @@ export function SalesOrderFormPage({
         setCustomerSearch(editingOrder.customerName)
         setSourceStorageId(editingOrder.sourceStorageId || defaultStorageId)
         setCurrency(editingOrder.currency)
+        setOrderAdjustments(normalizeOrderAdjustments(editingOrder.orderAdjustments, editingOrder.currency))
         setShippingAddress(editingOrder.shippingAddress || '')
         setExpectedDeliveryDate(editingOrder.expectedDeliveryDate ? formatLocalDateTimeValue(editingOrder.expectedDeliveryDate) : '')
         setDiscount(editingOrder.discount ? String(editingOrder.discount) : '')
@@ -334,6 +359,7 @@ export function SalesOrderFormPage({
     }, [products, editingOrder])
 
     const liveRates = useMemo(() => ({ exchangeData, eurRates, tryRates }), [exchangeData, eurRates, tryRates])
+    const adjustmentExchangeRates = useMemo(() => buildOrderExchangeRatesSnapshot(liveRates), [liveRates])
 
     const availableSalesProductIdsByStorage = useMemo(() => {
         const rows = new Map<string, Set<string>>()
@@ -486,14 +512,14 @@ export function SalesOrderFormPage({
         const nextCurrency = partner.defaultCurrency || currency
         setCustomerSearch(partner.name)
         setCustomerId(partner.id)
-        setCurrency(nextCurrency)
+        changeOrderCurrency(nextCurrency)
         if (priceBooksEnabled) {
             setItems((current) => current.map((item) => item.productId
                 ? { ...item, ...resolveItemPricing(item.productId, item.batchId, nextCurrency, partner) }
                 : item
             ))
         }
-    }, [currency, priceBooksEnabled, resolveItemPricing])
+    }, [changeOrderCurrency, currency, priceBooksEnabled, resolveItemPricing])
 
     const handleStorageMissing = useCallback((index: number) => {
         setHighlightedStorageIndex(index)
@@ -596,9 +622,9 @@ export function SalesOrderFormPage({
 
     const preview = useMemo(() => {
         const subtotal = items.reduce((sum, item) => sum + ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)), 0)
-        const total = subtotal - Number(discount || 0) + Number(tax || 0)
-        return roundFormAmount(total)
-    }, [currency, discount, items, tax])
+        const existingCalculatedTotal = subtotal - Number(discount || 0) + Number(tax || 0)
+        return calculateOrderTotalWithAdjustments(existingCalculatedTotal, orderAdjustments)
+    }, [currency, discount, items, orderAdjustments, tax])
 
     const configuredItemsCount = useMemo(
         () => items.filter((item) => item.productId && Number(item.quantity) > 0).length,
@@ -740,13 +766,15 @@ export function SalesOrderFormPage({
                 return
             }
             const hasMultiCurrency = orderItems.some(item => item.originalCurrency !== item.settlementCurrency)
-            const snapshot = hasMultiCurrency || usesPriceBookPricing ? buildOrderExchangeRatesSnapshot(liveRates) : []
+            const hasAdjustmentCurrencyConversion = orderAdjustments.some((adjustment) => adjustment.currency !== currency)
+            const snapshot = hasMultiCurrency || usesPriceBookPricing || hasAdjustmentCurrencyConversion ? adjustmentExchangeRates : []
             const primaryRate = hasMultiCurrency ? getPrimaryExchangeDetails(currency, features.default_currency, snapshot) : null
             const commonStorageId = getCommonStorageId(orderItems)
             const subtotal = roundFormAmount(orderItems.reduce((sum, item) => sum + item.lineTotal, 0))
             const discountNum = roundFormAmount(Number(discount || 0))
             const taxNum = roundFormAmount(Number(tax || 0))
-            const total = roundFormAmount(subtotal - discountNum + taxNum)
+            const existingCalculatedTotal = roundFormAmount(subtotal - discountNum + taxNum)
+            const total = calculateOrderTotalWithAdjustments(existingCalculatedTotal, orderAdjustments)
             const paidAmount = isFinanced ? initialPayment : isPaid ? total : 0
             const balanceAmount = roundFormAmount(Math.max(total - paidAmount, 0))
             const savedAt = new Date().toISOString()
@@ -762,6 +790,9 @@ export function SalesOrderFormPage({
                 tax: taxNum,
                 total,
                 currency,
+                // Undefined is intentionally used for an empty collection. The
+                // local order layer removes the property and clears JSONB remotely.
+                orderAdjustments: orderAdjustments.length > 0 ? orderAdjustments : undefined,
                 exchangeRate: primaryRate?.exchangeRate ?? null,
                 exchangeRateSource: primaryRate?.exchangeRateSource ?? null,
                 exchangeRateTimestamp: primaryRate?.exchangeRateTimestamp ?? null,
@@ -1247,7 +1278,7 @@ export function SalesOrderFormPage({
                                             <div className="space-y-2" data-tour-id="tutorial-order-currency">
                                                 <CurrencySelector
                                                     value={currency}
-                                                    onChange={(value) => setCurrency(value)}
+                                                    onChange={changeOrderCurrency}
                                                     label={t('orders.form.currency', { defaultValue: 'Currency' })}
                                                     iqdDisplayPreference={features.iqd_display_preference}
                                                     allowedCurrencies={Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]}
@@ -1358,8 +1389,25 @@ export function SalesOrderFormPage({
                                         isCustomerSelectionRequired && 'border-destructive/70 bg-destructive/5'
                                     )}
                                 >
-                                    <CardHeader>
+                                    <CardHeader className="flex-row items-center justify-between space-y-0">
                                         <CardTitle>{t('orders.form.commercials', { defaultValue: 'Commercials' })}</CardTitle>
+                                        <div className="relative">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="icon"
+                                                className="h-10 w-10"
+                                                onClick={() => setIsOrderAdjustmentsOpen(true)}
+                                                aria-label={t('orders.adjustments.title', { defaultValue: 'Order Adjustments' })}
+                                            >
+                                                <NotebookPen className="h-4.5 w-4.5" />
+                                            </Button>
+                                            {orderAdjustments.length > 0 ? (
+                                                <Badge className="absolute -right-2 -top-2 h-5 min-w-5 justify-center px-1 text-[10px]">
+                                                    {orderAdjustments.length}
+                                                </Badge>
+                                            ) : null}
+                                        </div>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
                                         <div className="grid gap-4 sm:grid-cols-2">
@@ -1414,6 +1462,16 @@ export function SalesOrderFormPage({
                             </div>
                         </div>
                     </form>
+            <OrderAdjustmentsDialog
+                open={isOrderAdjustmentsOpen}
+                onOpenChange={setIsOrderAdjustmentsOpen}
+                adjustments={orderAdjustments}
+                onAdjustmentsChange={setOrderAdjustments}
+                orderCurrency={currency}
+                exchangeRates={adjustmentExchangeRates}
+                availableCurrencies={Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]}
+                iqdDisplayPreference={features.iqd_display_preference}
+            />
             <Dialog open={isLossWarningOpen} onOpenChange={setIsLossWarningOpen}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
