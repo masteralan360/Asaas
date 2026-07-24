@@ -123,7 +123,9 @@ interface WorkspaceContextType {
     planCapabilities: ResolvedWorkspacePlan
     workspaceName: string | null
     branchInfo: BranchInfo | null
+    resolvedBranchInfoWorkspaceId: string | null
     isLoading: boolean
+    loadedWorkspaceId: string | null
     paymentSummary: WorkspacePaymentSummary | null
     isPaymentSummaryLoading: boolean
     pendingUpdate: UpdateInfo | null
@@ -393,7 +395,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const [features, setFeatures] = useState<WorkspaceFeatures>(defaultFeatures)
     const [workspaceName, setWorkspaceName] = useState<string | null>(null)
     const [branchInfo, setBranchInfo] = useState<BranchInfo | null>(null)
+    const [resolvedBranchInfoWorkspaceId, setResolvedBranchInfoWorkspaceId] = useState<string | null>(null)
     const [isLoading, setIsLoading] = useState(true)
+    const [loadedWorkspaceId, setLoadedWorkspaceId] = useState<string | null>(null)
     const [paymentSummary, setPaymentSummary] = useState<WorkspacePaymentSummary | null>(null)
     const [isPaymentSummaryLoading, setIsPaymentSummaryLoading] = useState(false)
     const [billingNowMs, setBillingNowMs] = useState(() => Date.now())
@@ -745,6 +749,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             setOverrides(fetchedOverrides)
             setFeatures(fetchedFeatures)
             setWorkspaceName(nextWorkspaceName)
+            setLoadedWorkspaceId(workspaceId)
             if (paymentSummaryResult.error) {
                 console.warn('[WorkspacePayments] Failed to load payment summary:', paymentSummaryResult.error)
             } else {
@@ -807,6 +812,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
             if (!data?.source_workspace_id) {
                 setBranchInfo(null)
+                setResolvedBranchInfoWorkspaceId(workspaceId)
                 return
             }
 
@@ -838,6 +844,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 sourceWorkspaceId: data.source_workspace_id,
                 sourceWorkspaceName: sourceWorkspace?.name ?? undefined
             })
+            setResolvedBranchInfoWorkspaceId(workspaceId)
         } catch (error) {
             console.error('[Workspace] Failed to fetch branch info:', error)
             if (isCurrentBranchWorkspaceRequest(workspaceId, requestId)) {
@@ -853,6 +860,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         currentWorkspaceIdRef.current = workspaceId
         fetchRequestRef.current += 1
         branchFetchRequestRef.current += 1
+        setLoadedWorkspaceId(null)
+        setResolvedBranchInfoWorkspaceId(null)
 
         if (!workspaceId) {
             setFeatures(defaultFeatures)
@@ -1467,7 +1476,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             planCapabilities,
             workspaceName,
             branchInfo,
+            resolvedBranchInfoWorkspaceId,
             isLoading,
+            loadedWorkspaceId,
             paymentSummary,
             isPaymentSummaryLoading,
             pendingUpdate,

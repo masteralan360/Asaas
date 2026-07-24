@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
 import { useLocation } from 'wouter'
@@ -49,6 +49,7 @@ export function WorkspaceConfiguration() {
 
     const [isLoading, setIsLoading] = useState(false)
     const [isLocationSaving, setIsLocationSaving] = useState(false)
+    const locationRequestInFlight = useRef(false)
     const [logoUrl, setLogoUrl] = useState(currentFeatures.logo_url || '')
     const [coordination, setCoordination] = useState(currentFeatures.coordination || '')
     const [a2cPhone, setA2cPhone] = useState('')
@@ -99,7 +100,7 @@ export function WorkspaceConfiguration() {
             return t('workspaceConfig.location.permissionDenied')
         }
         if (error.code === error.POSITION_UNAVAILABLE) {
-            return t('workspaceConfig.location.unavailable')
+            return t('workspaceConfig.location.deviceLocationDisabled')
         }
         if (error.code === error.TIMEOUT) {
             return t('workspaceConfig.location.timeout')
@@ -116,7 +117,7 @@ export function WorkspaceConfiguration() {
     }
 
     const handleShareLocation = async () => {
-        if (coordination || isLocationSaving) return
+        if (coordination || isLocationSaving || locationRequestInFlight.current) return
 
         if (typeof navigator === 'undefined' || !navigator.geolocation) {
             toast({
@@ -127,16 +128,33 @@ export function WorkspaceConfiguration() {
             return
         }
 
-        setIsLocationSaving(true)
+        locationRequestInFlight.current = true
+        let position: GeolocationPosition
         try {
-            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            position = await new Promise<GeolocationPosition>((resolve, reject) => {
                 navigator.geolocation.getCurrentPosition(resolve, reject, {
                     enableHighAccuracy: true,
                     timeout: 15000,
                     maximumAge: 0
                 })
             })
+        } catch (err: unknown) {
+            const message = typeof err === 'object' && err !== null && 'code' in err
+                ? getLocationErrorMessage(err as GeolocationPositionError)
+                : err instanceof Error
+                    ? err.message
+                    : t('workspaceConfig.location.failed')
+            toast({
+                title: t('common.error'),
+                description: message,
+                variant: 'destructive'
+            })
+            locationRequestInFlight.current = false
+            return
+        }
 
+        setIsLocationSaving(true)
+        try {
             const formatted = formatCoordination(position.coords.latitude, position.coords.longitude)
             setCoordination(formatted)
             await updateSettings({ coordination: formatted })
@@ -156,6 +174,7 @@ export function WorkspaceConfiguration() {
             })
         } finally {
             setIsLocationSaving(false)
+            locationRequestInFlight.current = false
         }
     }
 

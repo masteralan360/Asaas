@@ -3612,6 +3612,7 @@
       "unsupported": "Geolocation is not supported on this device.",
       "permissionDenied": "Location permission was denied.",
       "unavailable": "Location information is unavailable.",
+      "deviceLocationDisabled": "Location services are turned off. Enable location on your device and try again.",
       "timeout": "Location request timed out. Please try again.",
       "failed": "Failed to capture location."
     },

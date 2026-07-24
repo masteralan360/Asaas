@@ -35,6 +35,7 @@ import { useFavicon } from "@/hooks/useFavicon";
 import { whatsappManager } from "@/lib/whatsappWebviewManager";
 import { useKdsStream } from "@/hooks/useKdsStream";
 import { UsbBackupWarningModal } from "@/ui/components/UsbBackupWarningModal";
+import { WorkspaceLocationPrompt } from "@/ui/components/WorkspaceLocationPrompt";
 import { validateUsbBackupOnStartup, pickUsbBackupDestination, copyDbToUsb } from "@/local-db/usbBackup";
 import { clearUsbBackupSettings } from "@/local-db/usbBackupSettings";
 import { useClinicalRegistryType } from "@/local-db/clinicalPresets";
@@ -1294,6 +1295,7 @@ function App() {
               <DeepLinkHandler />
               <UsbBackupStartupValidator />
               <SubscriptionExpiryWarningModal />
+              <WorkspaceLocationPrompt />
               <WorkspacePaymentController />
               <WorkspacePaymentStatusDialog />
               <WorkspaceExtraDaysDialog />
