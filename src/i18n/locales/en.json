@@ -1788,6 +1788,10 @@
       "productStock": "Product stock",
       "batch": "Batch",
       "available": "available",
+      "sellingBelowCost": "Selling below cost",
+      "costPrice": "Cost Price",
+      "lossWarningTitle": "Items selling below cost",
+      "lossWarningDescription": "This order has {{count}} item(s) selling below cost. Do you want to continue?",
       "errors": {
         "noSuppliers": "Add suppliers before creating purchase orders.",
         "paymentMethodRequired": "Select an actual payment method for paid orders.",

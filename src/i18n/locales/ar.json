@@ -1261,6 +1261,10 @@
       "productStock": "مخزون المنتج",
       "batch": "الدفعة",
       "available": "متاح",
+      "sellingBelowCost": "سعر البيع أقل من التكلفة",
+      "costPrice": "سعر التكلفة",
+      "lossWarningTitle": "عناصر تُباع بأقل من التكلفة",
+      "lossWarningDescription": "يحتوي هذا الطلب على {{count}} من العناصر التي تُباع بأقل من التكلفة. هل تريد المتابعة؟",
       "errors": {
         "noSuppliers": "أضف موردين قبل إنشاء طلبات الشراء.",
         "paymentMethodRequired": "اختر طريقة دفع فعلية للطلبات المدفوعة.",

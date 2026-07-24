@@ -1,6 +1,6 @@
 import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, CalendarDays, Check, CreditCard, Plus, ShoppingCart, Star, Trash2, Truck, Users, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CalendarDays, Check, CreditCard, Plus, ShoppingCart, Star, Trash2, Truck, Users, X } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useDemoTutorial } from '@/demo'
@@ -50,6 +50,12 @@ import {
     CardHeader,
     CardTitle,
     CurrencySelector,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
     DateTimePicker,
     Input,
     Label,
@@ -212,6 +218,7 @@ export function SalesOrderFormPage({
     const [prioritizedMethod, setPrioritizedMethod] = useState<string | null>(getPrioritizedPaymentMethod)
 
     const [isSaving, setIsSaving] = useState(false)
+    const [isLossWarningOpen, setIsLossWarningOpen] = useState(false)
     const [productsViewItemIndex, setProductsViewItemIndex] = useState<number | null>(null)
     const [customerId, setCustomerId] = useState(editingOrder?.businessPartnerId || editingOrder?.customerId || '')
     const [customerSearch, setCustomerSearch] = useState(editingOrder?.customerName || '')
@@ -442,6 +449,39 @@ export function SalesOrderFormPage({
         }
     }, [getPriceBookItemForPartner, liveRates, products, stockBatchesById])
 
+    const getItemCostDetails = useCallback((item: FormItem, product: typeof products[number]) => {
+        const hasPriceBookProvenance = Boolean(item.priceBookId && item.priceBookItemId)
+        const sourceCurrency = hasPriceBookProvenance && item.priceSourceCurrency
+            ? item.priceSourceCurrency
+            : product.currency
+        const priceBookCostPrice = item.priceBookCostPrice === ''
+            ? product.costPrice
+            : Number(item.priceBookCostPrice)
+        const sourceCostPrice = hasPriceBookProvenance && Number.isFinite(priceBookCostPrice)
+            ? priceBookCostPrice
+            : product.costPrice
+
+        return {
+            sourceCostPrice,
+            convertedCostPrice: convertCurrencyAmountWithLiveRates(
+                sourceCostPrice,
+                sourceCurrency,
+                currency,
+                liveRates
+            )
+        }
+    }, [currency, liveRates])
+
+    const isItemSellingAtLoss = useCallback((item: FormItem, product: typeof products[number] | undefined) => {
+        if (!product || item.unitPrice.trim() === '') return false
+
+        const sellingPrice = Number(item.unitPrice)
+        const { convertedCostPrice } = getItemCostDetails(item, product)
+        return Number.isFinite(sellingPrice)
+            && convertedCostPrice > 0
+            && sellingPrice < convertedCostPrice
+    }, [getItemCostDetails])
+
     const selectCustomerPartner = useCallback((partner: Pick<BusinessPartner, 'id' | 'name' | 'defaultCurrency' | 'priceBookId'>) => {
         const nextCurrency = partner.defaultCurrency || currency
         setCustomerSearch(partner.name)
@@ -531,6 +571,29 @@ export function SalesOrderFormPage({
         })
     }, [currency, getBatchesForPosition, priceBooksEnabled, resolveItemPricing, selectedCustomer, stockBatches.length])
 
+    const lossMakingItems = useMemo(() => {
+        const rows: Array<{
+            index: number
+            productName: string
+            sellingPrice: number
+            costPrice: number
+        }> = []
+
+        items.forEach((item, index) => {
+            const product = products.find((entry) => entry.id === item.productId)
+            if (!product || Number(item.quantity) <= 0 || !isItemSellingAtLoss(item, product)) return
+
+            rows.push({
+                index,
+                productName: product.name,
+                sellingPrice: Number(item.unitPrice),
+                costPrice: getItemCostDetails(item, product).convertedCostPrice
+            })
+        })
+
+        return rows
+    }, [getItemCostDetails, isItemSellingAtLoss, items, products])
+
     const preview = useMemo(() => {
         const subtotal = items.reduce((sum, item) => sum + ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)), 0)
         const total = subtotal - Number(discount || 0) + Number(tax || 0)
@@ -554,8 +617,7 @@ export function SalesOrderFormPage({
             && Boolean(firstDueDate)
         ))
 
-    const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault()
+    const submitOrder = async (skipLossWarning = false) => {
         if (priceBooksEnabled && !isPriceBookCatalogReady) return
         if (!user?.workspaceId || isSaving) return
 
@@ -597,12 +659,7 @@ export function SalesOrderFormPage({
                     const sourceCurrency = hasPriceBookProvenance && item.priceSourceCurrency
                         ? item.priceSourceCurrency
                         : product.currency
-                    const priceBookCostPrice = item.priceBookCostPrice === ''
-                        ? product.costPrice
-                        : Number(item.priceBookCostPrice)
-                    const sourceCostPrice = hasPriceBookProvenance && Number.isFinite(priceBookCostPrice)
-                        ? priceBookCostPrice
-                        : product.costPrice
+                    const { sourceCostPrice, convertedCostPrice } = getItemCostDetails(item, product)
                     const unitPrice = Number(item.unitPrice || 0)
                     if (!Number.isFinite(freeBonusQuantityValue) || freeBonusQuantityValue < 0) {
                         throw new Error(t('orders.form.errors.invalidFreeBonus', {
@@ -653,12 +710,7 @@ export function SalesOrderFormPage({
                         convertedUnitPrice: roundFormAmount(unitPrice),
                         settlementCurrency: currency,
                         costPrice: sourceCostPrice,
-                        convertedCostPrice: convertCurrencyAmountWithLiveRates(
-                            sourceCostPrice,
-                            sourceCurrency,
-                            currency,
-                            liveRates
-                        ),
+                        convertedCostPrice,
                         ...(item.batchId === ''
                             ? { batchAllocations: null }
                             : item.batchId === PRODUCT_STOCK_SELECTION
@@ -680,6 +732,12 @@ export function SalesOrderFormPage({
 
             if (orderItems.length === 0) {
                 throw new Error(t('orders.form.errors.atLeastOneItem', { defaultValue: 'Add at least one item.' }))
+            }
+            if (!skipLossWarning && orderItems.some((item) =>
+                item.convertedCostPrice > 0 && item.convertedUnitPrice < item.convertedCostPrice
+            )) {
+                setIsLossWarningOpen(true)
+                return
             }
             const hasMultiCurrency = orderItems.some(item => item.originalCurrency !== item.settlementCurrency)
             const snapshot = hasMultiCurrency || usesPriceBookPricing ? buildOrderExchangeRatesSnapshot(liveRates) : []
@@ -758,6 +816,11 @@ export function SalesOrderFormPage({
         } finally {
             setIsSaving(false)
         }
+    }
+
+    const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        void submitOrder()
     }
 
     return (
@@ -928,6 +991,8 @@ export function SalesOrderFormPage({
                                         {items.map((item, index) => {
                                             const product = products.find((entry) => entry.id === item.productId)
                                             const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))
+                                            const costPrice = product ? getItemCostDetails(item, product).convertedCostPrice : 0
+                                            const isSellingAtLoss = isItemSellingAtLoss(item, product)
                                             const freeBonusQuantity = Math.max(0, Number(item.freeBonusQuantity || 0))
                                             const inventoryQuantity = (Number(item.quantity) || 0) + (canUseFreeBonus ? freeBonusQuantity : 0)
                                             const lineBatches = getBatchesForPosition(item.productId, item.storageId)
@@ -949,6 +1014,7 @@ export function SalesOrderFormPage({
                                                         canUseFreeBonus
                                                             ? 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_110px_140px_40px]'
                                                             : 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_40px]',
+                                                        isSellingAtLoss && 'border-destructive bg-destructive/5',
                                                         item.seq === highlightedNewSeq && 'border-primary ring-2 ring-primary/60 bg-primary/5'
                                                     )}
                                                 >
@@ -1091,6 +1157,16 @@ export function SalesOrderFormPage({
                                                     <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-unit-price' : undefined}>
                                                         <Label>{t('common.sellingPrice', { defaultValue: 'Selling Price' })}</Label>
                                                         <Input value={formatNumericInput(item.unitPrice)} onChange={(event) => updateItem(index, { unitPrice: sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 3 }) })} placeholder={t('common.sellingPrice', { defaultValue: 'Selling Price' })} />
+                                                        {isSellingAtLoss ? (
+                                                            <div role="alert" className="flex items-start gap-1.5 text-xs text-destructive">
+                                                                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                                                <span>
+                                                                    {t('orders.form.sellingBelowCost', { defaultValue: 'Selling below cost' })}
+                                                                    <br />
+                                                                    {t('orders.form.costPrice', { defaultValue: 'Cost Price' })}: {formatCurrency(costPrice, currency, features.iqd_display_preference)}
+                                                                </span>
+                                                            </div>
+                                                        ) : null}
                                                     </div>
                                                     <div className="flex items-start justify-end" data-tour-id={index === 0 ? 'tutorial-order-line-actions' : undefined}>
                                                         <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
@@ -1338,6 +1414,50 @@ export function SalesOrderFormPage({
                             </div>
                         </div>
                     </form>
+            <Dialog open={isLossWarningOpen} onOpenChange={setIsLossWarningOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-destructive">
+                            <AlertTriangle className="h-5 w-5" />
+                            {t('orders.form.lossWarningTitle', { defaultValue: 'Items selling below cost' })}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {t('orders.form.lossWarningDescription', {
+                                count: lossMakingItems.length,
+                                defaultValue: 'This order has {{count}} item(s) selling below cost. Do you want to continue?'
+                            })}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border border-destructive/20 bg-destructive/5 p-3">
+                        {lossMakingItems.map((item) => (
+                            <div key={`${item.index}-${item.productName}`} className="flex items-center justify-between gap-3 text-sm">
+                                <span className="min-w-0 truncate font-medium">{item.productName}</span>
+                                <span className="shrink-0 text-xs text-muted-foreground">
+                                    {t('common.sellingPrice', { defaultValue: 'Selling Price' })}: {formatCurrency(item.sellingPrice, currency, features.iqd_display_preference)}
+                                    <br />
+                                    {t('orders.form.costPrice', { defaultValue: 'Cost Price' })}: {formatCurrency(item.costPrice, currency, features.iqd_display_preference)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                    <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                        <Button type="button" variant="outline" onClick={() => setIsLossWarningOpen(false)}>
+                            {t('common.cancel', { defaultValue: 'Cancel' })}
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={() => {
+                                setIsLossWarningOpen(false)
+                                void submitOrder(true)
+                            }}
+                            disabled={isSaving}
+                        >
+                            {t('common.continue', { defaultValue: 'Continue' })}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
             <ProductsViewModal
                 open={productsViewItemIndex !== null}
                 onOpenChange={(open) => {
