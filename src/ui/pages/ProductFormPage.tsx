@@ -7,7 +7,7 @@ import {
     Camera,
     ChevronRight,
     Copy,
-    Dices,
+    Shuffle,
     DollarSign,
     FileText,
     ImagePlus,
@@ -1129,7 +1129,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                                     : t('products.form.generateUpc', { defaultValue: 'Generate a unique UPC' })}
                                                                 className="h-6 w-6 rounded-md text-muted-foreground hover:text-primary"
                                                             >
-                                                                <Dices className="h-3.5 w-3.5" />
+                                                                <Shuffle className="h-3.5 w-3.5" />
                                                             </Button>
                                                         </TooltipTrigger>
                                                         <TooltipContent>
