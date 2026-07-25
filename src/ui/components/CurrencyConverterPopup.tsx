@@ -41,7 +41,7 @@ function loadSize() {
 }
 
 export function CurrencyConverterPopup({ open, onClose }: CurrencyConverterPopupProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { exchangeData, eurRates, tryRates, refresh, lastUpdated } = useExchangeRate()
   const { features } = useWorkspace()
 
@@ -109,6 +109,7 @@ export function CurrencyConverterPopup({ open, onClose }: CurrencyConverterPopup
   const [fromCurrency, setFromCurrency] = useState<CurrencyCode>('usd')
   const [toCurrency, setToCurrency] = useState<CurrencyCode>('iqd')
   const [result, setResult] = useState<number>(0)
+  const isRtl = i18n.dir() === 'rtl'
 
   const handleAmountChange = (val: string) => {
     if (val === '') {
@@ -246,11 +247,13 @@ export function CurrencyConverterPopup({ open, onClose }: CurrencyConverterPopup
                   className="h-11 text-lg font-bold pl-3 pr-28 rounded-xl border-2 focus-visible:ring-primary/20 font-mono"
                   placeholder="0.00"
                 />
-                <div className="absolute right-[105px] top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
-                  <span className="text-base font-bold text-muted-foreground/50 border-r border-border pr-2">
-                    {getCurrencySign(fromCurrency)}
-                  </span>
-                </div>
+                {!isRtl && (
+                  <div className="absolute right-[105px] top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
+                    <span className="text-base font-bold text-muted-foreground/50 border-r border-border pr-2">
+                      {getCurrencySign(fromCurrency)}
+                    </span>
+                  </div>
+                )}
                 <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
                   <Select value={fromCurrency} onValueChange={(v) => setFromCurrency(v as CurrencyCode)}>
                     <SelectTrigger className="h-9 bg-muted border-none rounded-lg px-2 font-bold uppercase text-xs focus:ring-2 focus:ring-primary/20 min-w-[85px] text-center shadow-none">
