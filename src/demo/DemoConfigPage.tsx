@@ -13,6 +13,7 @@ import { createDemoWorkspace } from './demoService'
 import { captureDemoBrowserState, clearStoredDemoWorkspaces } from './demoCleanup'
 import { initializeDemoTutorialState } from './tutorial/demoTutorialState'
 import { DEMO_TUTORIAL_ADVANCED_MINUTES, type DemoTutorialMode } from './tutorial/demoTutorialTypes'
+import { isDemoDeployment } from './demoDeployment'
 
 export function DemoConfigPage() {
   const [, setLocation] = useLocation()
@@ -88,7 +89,7 @@ export function DemoConfigPage() {
     <div className={cn(
       "flex bg-white dark:bg-slate-950 transition-colors duration-300",
       // @ts-ignore
-      !!window.__TAURI_INTERNALS__
+      window.__TAURI_INTERNALS__
         ? "h-[calc(100vh-var(--titlebar-height))] mt-[var(--titlebar-height)]"
         : "h-screen w-full"
     )}>
@@ -356,19 +357,21 @@ export function DemoConfigPage() {
             </Button>
           </form>
 
-          <div className="text-center">
-            <button
-              onClick={() => setLocation('/login')}
-              className="text-sm text-gray-500 dark:text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
-            >
-              {t('demo.backToLogin', 'Back to Sign In')}
-            </button>
-          </div>
+          {!isDemoDeployment() && (
+            <div className="text-center">
+              <button
+                onClick={() => setLocation('/login')}
+                className="text-sm text-gray-500 dark:text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+              >
+                {t('demo.backToLogin', 'Back to Sign In')}
+              </button>
+            </div>
+          )}
 
           <div className={cn(
             "fixed max-sm:hidden flex flex-col sm:flex-row items-center gap-3 transition-all duration-300 z-[100]",
             // @ts-ignore
-            !!window.__TAURI_INTERNALS__ ? "top-[60px] end-6" : "top-2 end-6"
+            window.__TAURI_INTERNALS__ ? "top-[60px] end-6" : "top-2 end-6"
           )}>
             <LanguageSwitcher className="w-[110px] sm:w-[140px]" />
             <ThemeToggle className="w-[100px] sm:w-[130px]" />

@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
@@ -22,7 +22,11 @@ function getGitInfo() {
 }
 
 export default defineConfig(({ mode }) => {
+    const environment = loadEnv(mode, process.cwd(), 'VITE_')
     const isTauriBuild = Boolean(process.env.TAURI_ENV_PLATFORM)
+    const isDemoBuild = (process.env.VITE_APP_VARIANT || environment.VITE_APP_VARIANT || '')
+        .trim()
+        .toLowerCase() === 'demo'
     const git = getGitInfo()
 
     // Debug: Log env loading during build
@@ -39,9 +43,12 @@ export default defineConfig(({ mode }) => {
                 registerType: 'autoUpdate',
                 includeAssets: ['logo.ico', 'logo.png', 'pwa-icon.png', 'sql-wasm.wasm'],
                 manifest: {
-                    name: 'Atlas',
-                    short_name: 'Atlas',
-                    description: 'Offline-first Enterprise Resource Planning System',
+                    id: isDemoBuild ? 'com.atlas.demo' : 'com.atlas.app',
+                    name: isDemoBuild ? 'Atlas Demo' : 'Atlas',
+                    short_name: isDemoBuild ? 'Atlas Demo' : 'Atlas',
+                    description: isDemoBuild
+                        ? 'Try the Atlas enterprise resource planning demo.'
+                        : 'Offline-first Enterprise Resource Planning System',
                     theme_color: '#0f172a',
                     background_color: '#0f172a',
                     display: 'standalone',

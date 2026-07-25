@@ -7,6 +7,7 @@ import type { UserRole } from '@/local-db/models'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { useFavicon } from '@/hooks/useFavicon'
+import { getDemoSetupUrl, isDemoEnabled } from '@/demo/demoDeployment'
 
 const GeometricPattern = () => (
     <div className="absolute inset-0 overflow-hidden bg-[#042f2e]">
@@ -47,7 +48,7 @@ const GeometricPattern = () => (
 export function Register() {
     const [, setLocation] = useLocation()
     const { signUp, isSupabaseConfigured } = useAuth()
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     const [name, setName] = useState('')
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
@@ -89,7 +90,7 @@ export function Register() {
                     setLocation('/')
                 }
             }
-        } catch (err) {
+        } catch (_err) {
             setError(t('common.error') || 'An unexpected error occurred')
         } finally {
             setIsLoading(false)
@@ -98,6 +99,16 @@ export function Register() {
 
     // @ts-ignore
     const isTauri = !!window.__TAURI_INTERNALS__
+    const showDemoEntry = isDemoEnabled() || !isTauri
+
+    const handleDemoEntry = () => {
+        if (isDemoEnabled()) {
+            setLocation('/demo-setup')
+            return
+        }
+
+        window.location.assign(getDemoSetupUrl(i18n.language))
+    }
 
     return (
         <div className={cn(
@@ -393,7 +404,7 @@ export function Register() {
                         </Button>
                     </form>
 
-                    {import.meta.env.VITE_ENABLE_DEMO === 'true' && (
+                    {showDemoEntry && (
                         <>
                             <div className="relative">
                                 <div className="absolute inset-0 flex items-center">
@@ -406,7 +417,7 @@ export function Register() {
 
                             <Button
                                 type="button"
-                                onClick={() => setLocation('/demo-setup')}
+                                onClick={handleDemoEntry}
                                 className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
                             >
                                 <Sparkles className="w-5 h-5 mr-2" />

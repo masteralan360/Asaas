@@ -28,6 +28,7 @@ import {
 } from "@/auth/supabase";
 import { isMobile, isDesktop } from "./lib/platform";
 import { DemoTutorialProvider, isDemoEnabled } from "@/demo";
+import { getDemoSetupUrl, isDemoDeployment } from "@/demo/demoDeployment";
 import { getPathWithLang } from "@/lib/i18nRouting";
 import i18n from "@/i18n/config";
 import { ClinicalRegistryLocaleSync } from "@/i18n/ClinicalRegistryLocaleSync";
@@ -1193,18 +1194,81 @@ function WhatsAppPlanGuard() {
 }
 
 function FirstTimeRedirect() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   useEffect(() => {
+    if (isDemoDeployment()) return;
+    if (user?.workspaceMode === 'demo') return;
     if (isLoading || !isAuthenticated) return;
     if (localStorage.getItem('atlas_first_time_done')) return;
 
     localStorage.setItem('atlas_first_time_done', 'true');
     localStorage.setItem('modules_view_mode', 'grid');
     window.location.hash = getPathWithLang('/modules', i18n.language);
-  }, [isAuthenticated, isLoading]);
+  }, [isAuthenticated, isLoading, user?.workspaceMode]);
 
   return null;
+}
+
+function MainDemoSessionRedirect() {
+  const { isLoading, user } = useAuth();
+
+  useEffect(() => {
+    if (isDemoDeployment() || isLoading || user?.workspaceMode !== 'demo') return;
+    window.location.replace(getDemoSetupUrl(i18n.language));
+  }, [isLoading, user?.workspaceMode]);
+
+  return null;
+}
+
+function ExternalDemoRedirect() {
+  useEffect(() => {
+    window.location.replace(getDemoSetupUrl(i18n.language));
+  }, []);
+
+  return <LoadingState />;
+}
+
+function DemoSetupRoute() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (!isDemoDeployment() && !isDemoEnabled()) {
+    return <ExternalDemoRedirect />;
+  }
+
+  if (isLoading) {
+    return <LoadingState />;
+  }
+
+  if (isAuthenticated) {
+    return <Redirect to="/" />;
+  }
+
+  return <DemoConfigPage />;
+}
+
+function HomeRoute() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isDemoDeployment()) {
+    if (isLoading) {
+      return <LoadingState />;
+    }
+
+    if (!isAuthenticated) {
+      return <Redirect to="/demo-setup" />;
+    }
+  }
+
+  return (
+    <ProtectedRoute>
+      <Layout>
+        <Suspense fallback={<DashboardSkeleton />}>
+          <Dashboard />
+        </Suspense>
+      </Layout>
+    </ProtectedRoute>
+  );
 }
 
 function UsbBackupStartupValidator() {
@@ -1289,6 +1353,7 @@ function App() {
             <DateRangeProvider>
               <KdsStreamAutostart />
               <FirstTimeRedirect />
+              <MainDemoSessionRedirect />
               <WhatsAppPlanGuard />
               <UpdateHandler />
               <WorkspaceWarmup />
@@ -1319,25 +1384,31 @@ function App() {
                         <Switch>
                       {/* Guest Routes */}
                       <Route path="/login">
-                        <GuestRoute>
-                          <Login />
-                        </GuestRoute>
+                        {isDemoDeployment() ? (
+                          <Redirect to="/demo-setup" />
+                        ) : (
+                          <GuestRoute>
+                            <Login />
+                          </GuestRoute>
+                        )}
                       </Route>
                       <Route path="/register">
-                        <GuestRoute>
-                          <Register />
-                        </GuestRoute>
+                        {isDemoDeployment() ? (
+                          <Redirect to="/demo-setup" />
+                        ) : (
+                          <GuestRoute>
+                            <Register />
+                          </GuestRoute>
+                        )}
                       </Route>
                       {!isTauri && (
                         <Route path="/monthly-usage-calculator">
                           <MonthlyUsageCalculator />
                         </Route>
                       )}
-                      {isDemoEnabled() && (
-                        <Route path="/demo-setup">
-                          <DemoConfigPage />
-                        </Route>
-                      )}
+                      <Route path="/demo-setup">
+                        <DemoSetupRoute />
+                      </Route>
 
                       {/* Locked Workspace Route - no layout, standalone page */}
                       <Route path="/locked-workspace">
@@ -1355,13 +1426,7 @@ function App() {
 
                       {/* Protected Routes */}
                       <Route path="/">
-                        <ProtectedRoute>
-                          <Layout>
-                            <Suspense fallback={<DashboardSkeleton />}>
-                              <Dashboard />
-                            </Suspense>
-                          </Layout>
-                        </ProtectedRoute>
+                        <HomeRoute />
                       </Route>
                       <Route path="/pos">
                         <ProtectedRoute

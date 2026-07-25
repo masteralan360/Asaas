@@ -269,6 +269,37 @@ Install Command: npm install
 
 Push to `main` branch triggers automatic deployment.
 
+### Dedicated Demo Deployment
+
+Deploy the public demo as a second Vercel project that uses the same repository and
+production branch. Attach `demo1-atlas.vercel.app` to the new project's Production
+environment; adding the domain to the main Atlas project would serve the main build
+instead.
+
+Use these build settings in both projects:
+
+```
+Build Command: npm run build
+Output Directory: dist
+Install Command: npm install
+```
+
+Set project-specific variables before deploying:
+
+| Project | Required variables |
+|---|---|
+| Main Atlas | `VITE_APP_VARIANT=main`, `VITE_ENABLE_DEMO=false`, optional `VITE_DEMO_SITE_URL=https://demo1-atlas.vercel.app` |
+| Atlas Demo | `VITE_APP_VARIANT=demo`, `VITE_ENABLE_DEMO=true` |
+
+The demo project opens the demo configuration page at `/` and does not expose the
+normal sign-in or registration pages. The main site's **Try Demo** links open the
+dedicated demo URL. Existing `#/en/demo-setup` links on the main site are redirected
+in the browser because URL fragments are not sent to Vercel.
+
+Copy `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to the demo project only if
+the optional server-side demo-expiry RPC is enabled. Never copy private deployment,
+GitHub, R2, or signing secrets merely for the demo build.
+
 ---
 
 ## Docker Deployment (Self-Hosted)

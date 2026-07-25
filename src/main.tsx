@@ -6,6 +6,7 @@ import { requestPersistentStorage } from '@/local-db/storagePersist'
 import { isOpfsSupported } from '@/local-db/pwaSqlite'
 import { AtlasSplashScreen } from '@/ui/components/AtlasSplashScreen'
 import { initDesktopZoomPersistence } from '@/lib/tauriZoomPersistence'
+import { isDemoDeployment } from '@/demo/demoDeployment'
 
 const isMarketplaceHost =
     typeof window !== 'undefined'
@@ -13,6 +14,10 @@ const isMarketplaceHost =
 
 const isTauriRuntime =
     typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+
+if (isDemoDeployment()) {
+    document.title = 'Atlas Demo'
+}
 
 function isPwaMode(): boolean {
     if (typeof window === 'undefined') return false
