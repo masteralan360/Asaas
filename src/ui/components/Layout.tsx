@@ -31,9 +31,11 @@ import { WorkspaceUsageButton, WorkspaceUsageCircleButton, WorkspaceUsageModal }
 import { useWorkspaceUsageMeter } from './workspaceUsageMeter'
 import { ThemeAwareLogo } from './ThemeAwareLogo'
 import { LocalAccountSwitcher } from './LocalAccountSwitcher'
+import { DeploymentRefreshVersion } from './DeploymentRefreshVersion'
 import { buildWorkspaceNavigation } from '@/ui/navigation/workspaceNavigation'
 import { useWorkspaceBranchSwitcher } from '@/hooks/useWorkspaceBranchSwitcher'
 import { useClinicalRegistryType } from '@/local-db/clinicalPresets'
+import { refreshToLatestDeployment } from '@/lib/deploymentRefresh'
 
 import {
     LogOut,
@@ -157,7 +159,7 @@ export function Layout({ children }: LayoutProps) {
     const { trigger: triggerHaptic } = useWebHaptics({ debug: true })
     const reorderRules = useReorderTransferRules(activeWorkspace?.id)
 
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     // @ts-ignore
     const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__
     const webUsageMeter = useWorkspaceUsageMeter({
@@ -1311,10 +1313,25 @@ export function Layout({ children }: LayoutProps) {
                             </div>
                             {/* Version Display */}
                             {!(isMini && !mobileSidebarOpen) && version && (
-                                <div className="mt-2 text-center" title={versionTooltip || undefined}>
-                                    <p className="text-[10px] text-muted-foreground font-mono opacity-50 truncate px-2">
-                                        {isTauri ? `v${version}` : version}
-                                    </p>
+                                <div className="mt-2 text-center">
+                                    {isTauri ? (
+                                        <p className="text-[10px] text-muted-foreground font-mono opacity-50 truncate px-2" title={versionTooltip || undefined}>
+                                            {`v${version}`}
+                                        </p>
+                                    ) : (
+                                        <DeploymentRefreshVersion
+                                            version={version}
+                                            title={versionTooltip || undefined}
+                                            holdLabel={t('common.holdToRefreshLatestVersion', {
+                                                defaultValue: 'Hold to refresh the latest version'
+                                            })}
+                                            isRtl={i18n.dir() === 'rtl'}
+                                            onComplete={() => {
+                                                triggerHaptic('success')
+                                                refreshToLatestDeployment()
+                                            }}
+                                        />
+                                    )}
                                 </div>
                             )}
                         </div>

@@ -7,6 +7,7 @@ import { isOpfsSupported } from '@/local-db/pwaSqlite'
 import { AtlasSplashScreen } from '@/ui/components/AtlasSplashScreen'
 import { initDesktopZoomPersistence } from '@/lib/tauriZoomPersistence'
 import { isDemoDeployment } from '@/demo/demoDeployment'
+import { removeDeploymentRefreshParam } from '@/lib/deploymentRefresh'
 
 const isMarketplaceHost =
     typeof window !== 'undefined'
@@ -14,6 +15,14 @@ const isMarketplaceHost =
 
 const isTauriRuntime =
     typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+
+if (typeof window !== 'undefined') {
+    const refreshedUrl = removeDeploymentRefreshParam(window.location.href)
+    const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`
+    if (refreshedUrl !== currentPath) {
+        window.history.replaceState(null, '', refreshedUrl)
+    }
+}
 
 if (isDemoDeployment()) {
     document.title = 'Atlas Demo'
