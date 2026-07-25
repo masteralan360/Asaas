@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
-import { ArrowLeft, CalendarDays, CreditCard, Eye, LayoutGrid, List, Lock, Package, Printer, Receipt, RotateCcw, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse, XCircle } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { ArrowLeft, CalendarDays, CreditCard, Eye, LayoutGrid, List, Loader2, Lock, Package, Printer, Receipt, RotateCcw, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedOrderError } from '@/lib/orderErrors'
 import { Link, useLocation } from 'wouter'
@@ -248,6 +248,8 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(readViewMode)
     const [deleteOpen, setDeleteOpen] = useState(false)
     const [isDeleting, setIsDeleting] = useState(false)
+    const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(null)
+    const activeWorkflowActionRef = useRef<string | null>(null)
     const [showPrintPreview, setShowPrintPreview] = useState(false)
     const [lockConfirm, setLockConfirm] = useState<{ isOpen: boolean }>({ isOpen: false })
     const [isLocking, setIsLocking] = useState(false)
@@ -318,7 +320,12 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         return match.isSystem ? (t(`storages.${match.name.toLowerCase()}`) || match.name) : match.name
     }
 
-    const runAction = async (action: () => Promise<unknown>, successMessage: string) => {
+    const runWorkflowAction = async (actionName: string, action: () => Promise<unknown>, successMessage: string) => {
+        if (activeWorkflowActionRef.current) return
+
+        activeWorkflowActionRef.current = actionName
+        setActiveWorkflowAction(actionName)
+
         try {
             await action()
             toast({ title: successMessage })
@@ -328,6 +335,9 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 description: getLocalizedOrderError(error, t, 'Action failed'),
                 variant: 'destructive'
             })
+        } finally {
+            activeWorkflowActionRef.current = null
+            setActiveWorkflowAction(null)
         }
     }
 
@@ -607,16 +617,16 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
 
     const actions = isSales
         ? [
-            isApprovalRequested && canApproveOrderRequests ? { key: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), onClick: () => runAction(() => approveSalesOrderRequest(order.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })), variant: 'default' as const } : null,
-            !isApprovalRequested && canManage && order.status === 'draft' ? { key: 'reserve', label: t('orders.actions.reserve') || 'Reserve', onClick: () => runAction(() => updateSalesOrderStatus(order.id, 'pending'), t('orders.details.messages.reserveSuccess') || 'Sales order reserved'), variant: 'default' as const } : null,
-            !isApprovalRequested && canManage && order.status === 'pending' ? { key: 'complete', label: t('orders.actions.complete') || 'Complete', onClick: () => runAction(() => updateSalesOrderStatus(order.id, 'completed'), t('orders.details.messages.completeSuccess') || 'Sales order completed'), variant: 'default' as const } : null,
+            isApprovalRequested && canApproveOrderRequests ? { key: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), onClick: () => runWorkflowAction('approve', () => approveSalesOrderRequest(order.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'draft' ? { key: 'reserve', label: t('orders.actions.reserve') || 'Reserve', onClick: () => runWorkflowAction('reserve', () => updateSalesOrderStatus(order.id, 'pending'), t('orders.details.messages.reserveSuccess') || 'Sales order reserved'), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'pending' ? { key: 'complete', label: t('orders.actions.complete') || 'Complete', onClick: () => runWorkflowAction('complete', () => updateSalesOrderStatus(order.id, 'completed'), t('orders.details.messages.completeSuccess') || 'Sales order completed'), variant: 'default' as const } : null,
             !isApprovalRequested && canManage && order.status === 'pending' ? { key: 'cancel', label: t('orders.actions.cancel') || 'Cancel', onClick: () => setCancelConfirm({ isOpen: true }), variant: 'outline' as const } : null
         ].filter(Boolean)
         : [
-            isApprovalRequested && canApproveOrderRequests ? { key: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), onClick: () => runAction(() => approvePurchaseOrderRequest(order.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })), variant: 'default' as const } : null,
-            !isApprovalRequested && canManage && order.status === 'draft' ? { key: 'order', label: t('orders.actions.order') || 'Order', onClick: () => runAction(() => updatePurchaseOrderStatus(order.id, 'ordered'), t('orders.details.messages.orderSuccess') || 'Purchase order sent'), variant: 'default' as const } : null,
-            !isApprovalRequested && canManage && order.status === 'ordered' ? { key: 'receive', label: t('orders.actions.receive') || 'Receive', onClick: () => runAction(() => updatePurchaseOrderStatus(order.id, 'received'), t('orders.details.messages.receiveSuccess') || 'Purchase order received'), variant: 'default' as const } : null,
-            !isApprovalRequested && canManage && order.status === 'received' ? { key: 'complete', label: t('orders.actions.complete') || 'Complete', onClick: () => runAction(() => updatePurchaseOrderStatus(order.id, 'completed'), t('orders.details.messages.completeSuccess') || 'Purchase order completed'), variant: 'default' as const } : null,
+            isApprovalRequested && canApproveOrderRequests ? { key: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), onClick: () => runWorkflowAction('approve', () => approvePurchaseOrderRequest(order.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'draft' ? { key: 'order', label: t('orders.actions.order') || 'Order', onClick: () => runWorkflowAction('order', () => updatePurchaseOrderStatus(order.id, 'ordered'), t('orders.details.messages.orderSuccess') || 'Purchase order sent'), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'ordered' ? { key: 'receive', label: t('orders.actions.receive') || 'Receive', onClick: () => runWorkflowAction('receive', () => updatePurchaseOrderStatus(order.id, 'received'), t('orders.details.messages.receiveSuccess') || 'Purchase order received'), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'received' ? { key: 'complete', label: t('orders.actions.complete') || 'Complete', onClick: () => runWorkflowAction('complete', () => updatePurchaseOrderStatus(order.id, 'completed'), t('orders.details.messages.completeSuccess') || 'Purchase order completed'), variant: 'default' as const } : null,
             !isApprovalRequested && canManage && (order.status === 'draft' || order.status === 'ordered') ? { key: 'cancel', label: t('orders.actions.cancel') || 'Cancel', onClick: () => setCancelConfirm({ isOpen: true }), variant: 'outline' as const } : null
         ].filter(Boolean)
 
@@ -806,7 +816,14 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     {actions.map((action) => action && (
-                        <Button key={action.key} variant={action.variant} onClick={action.onClick}>
+                        <Button
+                            key={action.key}
+                            variant={action.variant}
+                            disabled={activeWorkflowAction !== null}
+                            aria-busy={activeWorkflowAction === action.key}
+                            onClick={action.onClick}
+                        >
+                            {activeWorkflowAction === action.key && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
                             {action.label}
                         </Button>
                     ))}

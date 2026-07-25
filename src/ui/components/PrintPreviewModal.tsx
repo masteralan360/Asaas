@@ -21,7 +21,7 @@ import { Printer, X, ExternalLink } from 'lucide-react'
 import { saveInvoiceFromSnapshot, useWorkspaceContacts } from '@/local-db/hooks'
 import { useAuth } from '@/auth'
 import { db, type Invoice } from '@/local-db'
-import { generateInvoicePdf, type PrintFormat } from '@/services/pdfGenerator'
+import { generateInvoicePdf, isInvoicePrintFormat, type InvoicePrintFormat, type PrintFormat } from '@/services/pdfGenerator'
 import {
     disableInvoiceQrInLocalMode
 } from '@/services/localInvoiceStorage'
@@ -398,6 +398,12 @@ export function PrintPreviewModal({
         if (isSaving) return
         if (!hasPdfData) { handleHtmlPrint(); return }
 
+        // Barcode labels deliberately never create or update invoice records.
+        if (!isInvoicePrintFormat(printFormat)) {
+            throw new Error('Barcode labels cannot be saved as invoices')
+        }
+        const invoicePrintFormat: InvoicePrintFormat = printFormat
+
         setIsSaving(true)
         try {
             const activeBlob = preGeneratedBlob || await ensureSaveBlob()
@@ -409,9 +415,9 @@ export function PrintPreviewModal({
                     sourceId: effectiveId,
                     createdBy: invoiceData.createdBy || user?.id,
                     createdByName: invoiceData.createdByName || user?.name,
-                    printFormat,
+                    printFormat: invoicePrintFormat,
                 }
-                if (printFormat === 'a4') { snapshotData.pdfBlobA4 = activeBlob }
+                if (invoicePrintFormat === 'a4') { snapshotData.pdfBlobA4 = activeBlob }
                 else { snapshotData.pdfBlobReceipt = activeBlob }
 
                 savedInvoice = await saveInvoiceFromSnapshot(workspaceId, snapshotData, effectiveId)
@@ -423,7 +429,7 @@ export function PrintPreviewModal({
                 const finalBlob = preGeneratedBlob || (!pdfBuilder && pdfData && printableFeatures
                     ? await generateInvoicePdf({
                         data: { ...pdfData, ...savedInvoice, id: savedInvoice.sourceId || savedInvoice.id, invoiceid: savedInvoice.invoiceid, sequenceId: savedInvoice.sequenceId },
-                        format: printFormat,
+                        format: invoicePrintFormat,
                         workspaceId: workspaceId || '',
                         features: { ...printableFeatures, logo_url: printableFeatures?.logo_url || undefined },
                         workspaceName: workspaceName || workspaceId || '',
@@ -435,7 +441,7 @@ export function PrintPreviewModal({
                 await persistInvoiceVersion({
                     invoice: { ...savedInvoice, sourceId: savedInvoice.sourceId || effectiveId },
                     blob: finalBlob,
-                    format: printFormat,
+                    format: invoicePrintFormat,
                     author: { id: user?.id, name: user?.name || savedInvoice.createdByName },
                     metadata: {
                         module: module || null,

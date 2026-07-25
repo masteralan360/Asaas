@@ -796,6 +796,8 @@ export function Sales() {
         if (template && !isCustomTemplatePrintLanguageCompatible(template, currentTemplatePrintLanguage)) {
             return
         }
+        // Sales invoices support only the two persisted invoice formats.
+        if (format === 'barcode_35x15') return
         setPrintFormat(format)
         setSelectedCustomReceiptTemplate(format === 'receipt' ? template || null : null)
         setSelectedCustomA4Template(format === 'a4' ? template || null : null)

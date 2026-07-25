@@ -858,7 +858,7 @@ function LoanListView({
                     origin: 'loans',
                     cashierName: loanToPrint.borrowerName,
                     createdByName: loanToPrint.borrowerName,
-                    printFormat: 'a4' as PrintFormat
+                    printFormat: 'a4'
                 } : undefined}
                 pdfBuilder={buildLoanPrintPdf}
                 printTemplate={loanToPrint ? ({ effectiveId }) => renderLoanPrintTemplate(effectiveId) : undefined}

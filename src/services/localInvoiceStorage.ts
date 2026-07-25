@@ -2,7 +2,7 @@ import type { Invoice } from '@/local-db/models'
 import { isTauri } from '@/lib/platform'
 import { isStrictLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
-import { type PrintFormat } from './pdfGenerator'
+import { type InvoicePrintFormat } from './pdfGenerator'
 import { platformService } from './platformService'
 
 type InvoicePrintFeatures = {
@@ -36,7 +36,7 @@ export function disableInvoiceQrInLocalMode<T extends InvoicePrintFeatures | und
 export function getLocalInvoicePdfRelativePath(
     workspaceId: string,
     invoiceId: string,
-    format: PrintFormat,
+    format: InvoicePrintFormat,
     versionId?: string
 ) {
     const folder = format === 'a4' ? 'A4' : 'receipts'
@@ -48,7 +48,7 @@ export function getLocalInvoicePdfRelativePath(
 
 export function getStoredLocalInvoicePdfPath(
     invoice: InvoicePdfRecord,
-    format: PrintFormat
+    format: InvoicePrintFormat
 ) {
     return format === 'a4'
         ? invoice.localPathA4 ?? null
@@ -58,7 +58,7 @@ export function getStoredLocalInvoicePdfPath(
 export async function saveInvoicePdfToLocalAppData(
     workspaceId: string,
     invoiceId: string,
-    format: PrintFormat,
+    format: InvoicePrintFormat,
     blob: Blob,
     versionId?: string
 ) {

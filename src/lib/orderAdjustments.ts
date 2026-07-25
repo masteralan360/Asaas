@@ -14,6 +14,14 @@ function isAdjustmentType(value: unknown): value is OrderAdjustmentType {
     return value === 'addition' || value === 'deduction'
 }
 
+function isCurrencyCode(value: unknown): value is CurrencyCode {
+    return value === 'usd' || value === 'eur' || value === 'iqd' || value === 'try'
+}
+
+type ValidOrderAdjustmentDraft = OrderAdjustmentDraft & {
+    type: OrderAdjustmentType
+}
+
 export function createOrderAdjustment(
     draft: OrderAdjustmentDraft,
     orderCurrency: CurrencyCode,
@@ -75,24 +83,18 @@ export function normalizeOrderAdjustments(value: unknown, orderCurrency: Currenc
             ))
             : []
 
-        const hasValidBaseFields = (
-            typeof row.id === 'string'
-            && Boolean(row.id)
-            && isAdjustmentType(row.type)
-            && Boolean(name)
-            && typeof row.currency === 'string'
-            && Number.isFinite(amount)
-            && amount > 0
-        )
-        if (!hasValidBaseFields) return []
+        const id = typeof row.id === 'string' && row.id ? row.id : null
+        const type = isAdjustmentType(row.type) ? row.type : null
+        const currency = isCurrencyCode(row.currency) ? row.currency : null
+        if (!id || !type || !name || !currency || !Number.isFinite(amount) || amount <= 0) return []
 
         // Backward compatibility for already-saved single-currency rows.
-        if (row.currency === orderCurrency && row.convertedAmount == null) {
+        if (currency === orderCurrency && row.convertedAmount == null) {
             return [{
-                id: row.id!,
-                type: row.type!,
+                id,
+                type,
                 name,
-                currency: row.currency,
+                currency,
                 amount: roundOrderValue(amount),
                 orderCurrency,
                 convertedAmount: roundOrderValue(amount),
@@ -114,16 +116,16 @@ export function normalizeOrderAdjustments(value: unknown, orderCurrency: Currenc
             || typeof row.exchangeRateTimestamp !== 'string'
             || !row.exchangeRateTimestamp
             || !Array.isArray(row.exchangeRates)
-            || (row.currency !== orderCurrency && rowExchangeRates.length === 0)
+            || (currency !== orderCurrency && rowExchangeRates.length === 0)
         ) {
             return []
         }
 
         return [{
-            id: row.id,
-            type: row.type,
+            id,
+            type,
             name,
-            currency: row.currency,
+            currency,
             amount: roundOrderValue(amount),
             orderCurrency,
             convertedAmount: roundOrderValue(convertedAmount),
@@ -157,12 +159,12 @@ export function calculateOrderTotalWithAdjustments(existingCalculatedTotal: numb
     return roundOrderValue(existingCalculatedTotal + getOrderAdjustmentNetAmount(adjustments))
 }
 
-export function isValidOrderAdjustmentDraft(row: OrderAdjustmentDraft) {
+export function isValidOrderAdjustmentDraft(row: OrderAdjustmentDraft): row is ValidOrderAdjustmentDraft {
     const amount = Number(row.amount)
     return Boolean(
         isAdjustmentType(row.type)
         && row.name.trim()
-        && row.currency
+        && isCurrencyCode(row.currency)
         && Number.isFinite(amount)
         && amount > 0
     )

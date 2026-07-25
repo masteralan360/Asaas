@@ -11,7 +11,18 @@ import {
     type A4KeepTogetherBlock
 } from '@/services/a4Pagination'
 
-export type PrintFormat = 'a4' | 'receipt' | 'barcode_35x15'
+/** Formats that can be stored as invoice versions. */
+export type InvoicePrintFormat = 'a4' | 'receipt'
+
+/**
+ * Formats available from the common print selector. Barcode labels are
+ * printable documents, but never invoice versions.
+ */
+export type PrintFormat = InvoicePrintFormat | 'barcode_35x15'
+
+export function isInvoicePrintFormat(format: PrintFormat): format is InvoicePrintFormat {
+    return format === 'a4' || format === 'receipt'
+}
 
 interface PDFLayer {
     image: string | HTMLCanvasElement // dataUrl or Canvas

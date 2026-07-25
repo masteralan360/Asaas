@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { CalendarDays, CreditCard, Eye, LayoutGrid, List, Lock, PackagePlus, Pencil, Plus, Printer, Search, ShoppingCart, Trash2, Truck, UsersRound, Wallet, Warehouse, XCircle } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { CalendarDays, CreditCard, Eye, LayoutGrid, List, Loader2, Lock, PackagePlus, Pencil, Plus, Printer, Search, ShoppingCart, Trash2, Truck, UsersRound, Wallet, Warehouse, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedOrderError } from '@/lib/orderErrors'
 import { useLocation, useRoute } from 'wouter'
@@ -277,6 +277,8 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
     const [editingPurchaseOrder, setEditingPurchaseOrder] = useState<PurchaseOrder | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
     const [isSaving, setIsSaving] = useState(false)
+    const [workflowActionByOrderId, setWorkflowActionByOrderId] = useState<Record<string, string>>({})
+    const workflowActionByOrderIdRef = useRef(new Map<string, string>())
     const [lockConfirm, setLockConfirm] = useState<{ isOpen: boolean; orderId: string; type: 'sales' | 'purchase' | null }>({
         isOpen: false,
         orderId: '',
@@ -931,6 +933,60 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         }
     }
 
+    async function runWorkflowAction(orderId: string, actionName: string, action: () => Promise<unknown>, successMessage: string) {
+        if (workflowActionByOrderIdRef.current.has(orderId)) return
+
+        workflowActionByOrderIdRef.current.set(orderId, actionName)
+        setWorkflowActionByOrderId((current) => ({ ...current, [orderId]: actionName }))
+
+        try {
+            await action()
+            toast({ title: successMessage })
+        } catch (error: any) {
+            toast({
+                title: t('common.error') || 'Error',
+                description: getLocalizedOrderError(error, t, 'Action failed'),
+                variant: 'destructive'
+            })
+        } finally {
+            workflowActionByOrderIdRef.current.delete(orderId)
+            setWorkflowActionByOrderId((current) => {
+                const { [orderId]: _completedAction, ...remainingActions } = current
+                return remainingActions
+            })
+        }
+    }
+
+    function renderWorkflowActionButton({
+        orderId,
+        actionName,
+        label,
+        onClick,
+        className
+    }: {
+        orderId: string
+        actionName: string
+        label: string
+        onClick: () => void
+        className?: string
+    }) {
+        const activeAction = workflowActionByOrderId[orderId]
+        const isLoading = activeAction === actionName
+
+        return (
+            <Button
+                size="sm"
+                className={className}
+                disabled={Boolean(activeAction)}
+                aria-busy={isLoading}
+                onClick={onClick}
+            >
+                {isLoading && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                {label}
+            </Button>
+        )
+    }
+
     async function handleDeleteConfirm() {
         if (!deleteTarget) return
         if (deleteTarget.type === 'sales') {
@@ -1048,9 +1104,9 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                 <>
                                                     <Button variant="outline" size="sm" allowViewer={true} onClick={() => navigate(`/orders/${row.id}`)}><Eye className="mr-1 h-3.5 w-3.5" />{t('common.view') || 'View'}</Button>
                                                     {canEdit && <Button variant="outline" size="sm" onClick={() => openSalesEdit(row as SalesOrder)}><Pencil className="mr-1 h-3.5 w-3.5" />{t('common.edit') || 'Edit'}</Button>}
-                                                    {isApprovalRequested && canApproveOrderRequests && <Button size="sm" onClick={() => runAction(() => approveSalesOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' }))}>{t('orders.actions.approve', { defaultValue: 'Approve' })}</Button>}
-                                                    {!isApprovalRequested && canManageOrders && row.status === 'draft' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved')}>{t('orders.actions.reserve') || 'Reserve'}</Button>}
-                                                    {!isApprovalRequested && canManageOrders && row.status === 'pending' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
+                                                    {isApprovalRequested && canApproveOrderRequests && renderWorkflowActionButton({ orderId: row.id, actionName: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), onClick: () => runWorkflowAction(row.id, 'approve', () => approveSalesOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })) })}
+                                                    {!isApprovalRequested && canManageOrders && row.status === 'draft' && renderWorkflowActionButton({ orderId: row.id, actionName: 'reserve', label: t('orders.actions.reserve') || 'Reserve', onClick: () => runWorkflowAction(row.id, 'reserve', () => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved') })}
+                                                    {!isApprovalRequested && canManageOrders && row.status === 'pending' && renderWorkflowActionButton({ orderId: row.id, actionName: 'complete', label: t('orders.actions.complete') || 'Complete', onClick: () => runWorkflowAction(row.id, 'complete', () => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed') })}
                                                     {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" onClick={() => setCancelConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
                                                     {!isFullyReturnedSalesOrder && !isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
                                                         <Button
@@ -1071,10 +1127,10 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                 <>
                                                     <Button variant="outline" size="sm" allowViewer={true} onClick={() => navigate(`/orders/${row.id}`)}><Eye className="mr-1 h-3.5 w-3.5" />{t('common.view') || 'View'}</Button>
                                                     {canEdit && <Button variant="outline" size="sm" onClick={() => openPurchaseEdit(row as PurchaseOrder)}><Pencil className="mr-1 h-3.5 w-3.5" />{t('common.edit') || 'Edit'}</Button>}
-                                                    {isApprovalRequested && canApproveOrderRequests && <Button size="sm" onClick={() => runAction(() => approvePurchaseOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' }))}>{t('orders.actions.approve', { defaultValue: 'Approve' })}</Button>}
-                                                    {!isApprovalRequested && canManageOrders && row.status === 'draft' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'ordered'), 'Purchase order sent')}>{t('orders.actions.order') || 'Order'}</Button>}
-                                                    {!isApprovalRequested && canManageOrders && row.status === 'ordered' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received')}>{t('orders.actions.receive') || 'Receive'}</Button>}
-                                                    {!isApprovalRequested && canManageOrders && row.status === 'received' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
+                                                    {isApprovalRequested && canApproveOrderRequests && renderWorkflowActionButton({ orderId: row.id, actionName: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), onClick: () => runWorkflowAction(row.id, 'approve', () => approvePurchaseOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })) })}
+                                                    {!isApprovalRequested && canManageOrders && row.status === 'draft' && renderWorkflowActionButton({ orderId: row.id, actionName: 'order', label: t('orders.actions.order') || 'Order', onClick: () => runWorkflowAction(row.id, 'order', () => updatePurchaseOrderStatus(row.id, 'ordered'), 'Purchase order sent') })}
+                                                    {!isApprovalRequested && canManageOrders && row.status === 'ordered' && renderWorkflowActionButton({ orderId: row.id, actionName: 'receive', label: t('orders.actions.receive') || 'Receive', onClick: () => runWorkflowAction(row.id, 'receive', () => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received') })}
+                                                    {!isApprovalRequested && canManageOrders && row.status === 'received' && renderWorkflowActionButton({ orderId: row.id, actionName: 'complete', label: t('orders.actions.complete') || 'Complete', onClick: () => runWorkflowAction(row.id, 'complete', () => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed') })}
                                                     {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" onClick={() => setCancelConfirm({ isOpen: true, orderId: row.id, type: 'purchase' })}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
                                                     {!isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
                                                         <Button
@@ -1206,9 +1262,9 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                 </Button>
                                 {activeTab === 'sales' ? (
                                     <>
-                                        {isApprovalRequested && canApproveOrderRequests && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => approveSalesOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' }))}>{t('orders.actions.approve', { defaultValue: 'Approve' })}</Button>}
-                                        {!isApprovalRequested && canManageOrders && row.status === 'draft' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved')}>{t('orders.actions.reserve') || 'Reserve'}</Button>}
-                                        {!isApprovalRequested && canManageOrders && row.status === 'pending' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
+                                        {isApprovalRequested && canApproveOrderRequests && renderWorkflowActionButton({ orderId: row.id, actionName: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), className: 'h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20', onClick: () => runWorkflowAction(row.id, 'approve', () => approveSalesOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })) })}
+                                        {!isApprovalRequested && canManageOrders && row.status === 'draft' && renderWorkflowActionButton({ orderId: row.id, actionName: 'reserve', label: t('orders.actions.reserve') || 'Reserve', className: 'h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20', onClick: () => runWorkflowAction(row.id, 'reserve', () => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved') })}
+                                        {!isApprovalRequested && canManageOrders && row.status === 'pending' && renderWorkflowActionButton({ orderId: row.id, actionName: 'complete', label: t('orders.actions.complete') || 'Complete', className: 'h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20', onClick: () => runWorkflowAction(row.id, 'complete', () => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed') })}
                                         {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => setCancelConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
                                         {canEdit && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => openSalesEdit(row as SalesOrder)}><Pencil className="h-3.5 w-3.5" /></Button>}
                                         {!isFullyReturnedSalesOrder && !isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
@@ -1229,10 +1285,10 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                     </>
                                 ) : (
                                     <>
-                                        {isApprovalRequested && canApproveOrderRequests && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => approvePurchaseOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' }))}>{t('orders.actions.approve', { defaultValue: 'Approve' })}</Button>}
-                                        {!isApprovalRequested && canManageOrders && row.status === 'draft' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'ordered'), 'Purchase order placed')}>{t('orders.actions.order') || 'Order'}</Button>}
-                                        {!isApprovalRequested && canManageOrders && row.status === 'ordered' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received')}>{t('orders.actions.receive') || 'Receive'}</Button>}
-                                        {!isApprovalRequested && canManageOrders && row.status === 'received' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
+                                        {isApprovalRequested && canApproveOrderRequests && renderWorkflowActionButton({ orderId: row.id, actionName: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), className: 'h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20', onClick: () => runWorkflowAction(row.id, 'approve', () => approvePurchaseOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })) })}
+                                        {!isApprovalRequested && canManageOrders && row.status === 'draft' && renderWorkflowActionButton({ orderId: row.id, actionName: 'order', label: t('orders.actions.order') || 'Order', className: 'h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20', onClick: () => runWorkflowAction(row.id, 'order', () => updatePurchaseOrderStatus(row.id, 'ordered'), 'Purchase order placed') })}
+                                        {!isApprovalRequested && canManageOrders && row.status === 'ordered' && renderWorkflowActionButton({ orderId: row.id, actionName: 'receive', label: t('orders.actions.receive') || 'Receive', className: 'h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20', onClick: () => runWorkflowAction(row.id, 'receive', () => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received') })}
+                                        {!isApprovalRequested && canManageOrders && row.status === 'received' && renderWorkflowActionButton({ orderId: row.id, actionName: 'complete', label: t('orders.actions.complete') || 'Complete', className: 'h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20', onClick: () => runWorkflowAction(row.id, 'complete', () => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed') })}
                                         {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => setCancelConfirm({ isOpen: true, orderId: row.id, type: 'purchase' })}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
                                         {canEdit && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => openPurchaseEdit(row as PurchaseOrder)}><Pencil className="h-3.5 w-3.5" /></Button>}
                                         {!isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (

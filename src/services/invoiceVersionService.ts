@@ -6,7 +6,7 @@ import { generateId, toCamelCase } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { saveInvoicePdfToLocalAppData } from './localInvoiceStorage'
-import type { PrintFormat } from './pdfGenerator'
+import type { InvoicePrintFormat } from './pdfGenerator'
 
 type InvoiceVersionAuthor = {
     id?: string
@@ -16,7 +16,7 @@ type InvoiceVersionAuthor = {
 type PersistInvoiceVersionOptions = {
     invoice: Invoice
     blob: Blob
-    format: PrintFormat
+    format: InvoicePrintFormat
     author: InvoiceVersionAuthor
     metadata?: Record<string, unknown>
 }
@@ -36,7 +36,7 @@ export function getInvoiceVersionR2Path(
     workspaceId: string,
     origin: InvoiceOrigin,
     sourceId: string,
-    format: PrintFormat,
+    format: InvoicePrintFormat,
     versionId: string,
 ) {
     const folder = format === 'a4' ? 'A4' : 'receipts'
@@ -47,7 +47,7 @@ export function getInvoiceVersionR2Path(
 export function getInvoiceLatestAliasR2Path(
     workspaceId: string,
     sourceId: string,
-    format: PrintFormat,
+    format: InvoicePrintFormat,
 ) {
     const folder = format === 'a4' ? 'A4' : 'receipts'
     return `${workspaceId}/printed-invoices/${folder}/${sourceId}.pdf`
@@ -72,7 +72,7 @@ function mapRemoteVersion(row: Record<string, unknown>): InvoiceVersion {
 async function createRemoteVersion(
     invoice: Invoice,
     versionId: string,
-    format: PrintFormat,
+    format: InvoicePrintFormat,
     r2Path: string,
     fileSize: number,
     author: InvoiceVersionAuthor,
@@ -148,7 +148,7 @@ async function storeLocalVersion(
     invoice: Invoice,
     versionId: string,
     blob: Blob,
-    format: PrintFormat,
+    format: InvoicePrintFormat,
     author: InvoiceVersionAuthor,
     syncStatus: InvoiceVersion['syncStatus'],
     localPath?: string | null,
