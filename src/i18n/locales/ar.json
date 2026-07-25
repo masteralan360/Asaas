@@ -1319,6 +1319,7 @@
       "paidAmount": "المبلغ المدفوع",
       "notes": "الملاحظات",
       "freeBonus": "بونص مجاني",
+      "createdBy": "أنشئ بواسطة",
       "activity": {
         "title": "النشاط",
         "created": "تم إنشاء الطلب",

@@ -1845,6 +1845,7 @@
       "expectedDelivery": "Expected Delivery",
       "notes": "Notes",
       "freeBonus": "Free Bonus",
+      "createdBy": "Created by",
       "activity": {
         "title": "Activity",
         "created": "Order created",
