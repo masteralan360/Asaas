@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
@@ -22,11 +22,7 @@ function getGitInfo() {
 }
 
 export default defineConfig(({ mode }) => {
-    const environment = loadEnv(mode, process.cwd(), 'VITE_')
     const isTauriBuild = Boolean(process.env.TAURI_ENV_PLATFORM)
-    const isDemoBuild = (process.env.VITE_APP_VARIANT || environment.VITE_APP_VARIANT || '')
-        .trim()
-        .toLowerCase() === 'demo'
     const git = getGitInfo()
 
     // Debug: Log env loading during build
@@ -39,16 +35,17 @@ export default defineConfig(({ mode }) => {
             react(),
             VitePWA({
                 disable: isTauriBuild,
-                injectRegister: null,
-                registerType: 'autoUpdate',
+                injectRegister: false,
+                // `/sw.js` is the stable, locally controlled worker in public/.
+                // Keep this generated Workbox artifact under another name so a
+                // Vercel deployment never replaces that update gate.
+                filename: 'workbox-sw.js',
+                registerType: 'prompt',
                 includeAssets: ['logo.ico', 'logo.png', 'pwa-icon.png', 'sql-wasm.wasm'],
                 manifest: {
-                    id: isDemoBuild ? 'com.atlas.demo' : 'com.atlas.app',
-                    name: isDemoBuild ? 'Atlas Demo' : 'Atlas',
-                    short_name: isDemoBuild ? 'Atlas Demo' : 'Atlas',
-                    description: isDemoBuild
-                        ? 'Try the Atlas enterprise resource planning demo.'
-                        : 'Offline-first Enterprise Resource Planning System',
+                    name: 'Atlas',
+                    short_name: 'Atlas',
+                    description: 'Offline-first Enterprise Resource Planning System',
                     theme_color: '#0f172a',
                     background_color: '#0f172a',
                     display: 'standalone',
@@ -75,8 +72,8 @@ export default defineConfig(({ mode }) => {
                     maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB limit
                     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,wasm}'],
                     cleanupOutdatedCaches: true,
-                    clientsClaim: true,
-                    skipWaiting: true,
+                    clientsClaim: false,
+                    skipWaiting: false,
                     navigateFallback: null,
                     runtimeCaching: [
                         {

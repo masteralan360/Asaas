@@ -7,7 +7,6 @@ import { useTranslation } from 'react-i18next'
 import { isMobile } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { useFavicon } from '@/hooks/useFavicon'
-import { getDemoSetupUrl, isDemoEnabled } from '@/demo/demoDeployment'
 
 const GeometricPattern = () => (
     <div className="absolute inset-0 overflow-hidden bg-[#042f2e]">
@@ -48,7 +47,7 @@ const GeometricPattern = () => (
 export function Login() {
     const [, setLocation] = useLocation()
     const { signIn, isSupabaseConfigured } = useAuth()
-    const { t, i18n } = useTranslation()
+    const { t } = useTranslation()
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [showPassword, setShowPassword] = useState(false)
@@ -106,7 +105,7 @@ export function Login() {
 
                 setLocation('/')
             }
-        } catch (_err) {
+        } catch (err) {
             setError(t('common.error') || 'An unexpected error occurred')
         } finally {
             setIsLoading(false)
@@ -115,16 +114,6 @@ export function Login() {
 
     // @ts-ignore
     const isTauri = !!window.__TAURI_INTERNALS__
-    const showDemoEntry = isDemoEnabled() || !isTauri
-
-    const handleDemoEntry = () => {
-        if (isDemoEnabled()) {
-            setLocation('/demo-setup')
-            return
-        }
-
-        window.location.assign(getDemoSetupUrl(i18n.language))
-    }
 
     return (
         <div className={cn(
@@ -269,7 +258,7 @@ export function Login() {
                         </Button>
                     </form>
 
-                    {showDemoEntry && (
+                    {import.meta.env.VITE_ENABLE_DEMO === 'true' && (
                         <>
                             <div className="relative">
                                 <div className="absolute inset-0 flex items-center">
@@ -282,7 +271,7 @@ export function Login() {
 
                             <Button
                                 type="button"
-                                onClick={handleDemoEntry}
+                                onClick={() => setLocation('/demo-setup')}
                                 className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
                             >
                                 <Sparkles className="w-5 h-5 mr-2" />

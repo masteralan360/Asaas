@@ -28,7 +28,6 @@ import {
 } from "@/auth/supabase";
 import { isMobile, isDesktop } from "./lib/platform";
 import { DemoTutorialProvider, isDemoEnabled } from "@/demo";
-import { getDemoSetupUrl, isDemoDeployment } from "@/demo/demoDeployment";
 import { getPathWithLang } from "@/lib/i18nRouting";
 import i18n from "@/i18n/config";
 import { ClinicalRegistryLocaleSync } from "@/i18n/ClinicalRegistryLocaleSync";
@@ -41,6 +40,10 @@ import { validateUsbBackupOnStartup, pickUsbBackupDestination, copyDbToUsb } fro
 import { clearUsbBackupSettings } from "@/local-db/usbBackupSettings";
 import { useClinicalRegistryType } from "@/local-db/clinicalPresets";
 import { supportsClinicalPatientsAndServicePresets } from "@/i18n/clinicalRegistry";
+import {
+  areApplicationUpdatesDisabled,
+  UPDATE_PREFERENCE_CHANGED_EVENT,
+} from "@/lib/updatePreference";
 
 // @ts-ignore
 const isTauri = !!window.__TAURI_INTERNALS__;
@@ -457,8 +460,12 @@ function formatEstimatedTime(seconds: number | null): string | null {
 }
 
 function UpdateHandler() {
-  const { setPendingUpdate } = useWorkspace();
+  const { setPendingUpdate, isLoading: isWorkspaceLoading } = useWorkspace();
+  const { isLoading: isAuthLoading } = useAuth();
   const { t } = useTranslation();
+  const [updatesDisabled, setUpdatesDisabled] = useState(() =>
+    areApplicationUpdatesDisabled(),
+  );
   const [isBlocked, setIsBlocked] = useState(
     () => sessionStorage.getItem("version_blocked") === "true",
   );
@@ -470,6 +477,33 @@ function UpdateHandler() {
   );
   const [downloadUpdate, setDownloadUpdate] = useState<Update | null>(null);
   const [deferredUpdate, setDeferredUpdate] = useState<Update | null>(null);
+
+  useEffect(() => {
+    const syncPreference = () => {
+      setUpdatesDisabled(areApplicationUpdatesDisabled());
+    };
+
+    window.addEventListener(UPDATE_PREFERENCE_CHANGED_EVENT, syncPreference);
+    return () => {
+      window.removeEventListener(UPDATE_PREFERENCE_CHANGED_EVENT, syncPreference);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!updatesDisabled) return;
+
+    // Dismiss any already-discovered update. From this point onward no updater
+    // request, download, or installation path can be started by this session.
+    setUpdateDialog(null);
+    setDeferredUpdate(null);
+    setDownloadUpdate(null);
+    setDownloadState(null);
+    setIsBlocked(false);
+    setPendingUpdate(null);
+    localStorage.removeItem(PENDING_UPDATE_VERSION_KEY);
+    sessionStorage.removeItem(DEFERRED_UPDATE_SESSION_KEY);
+    sessionStorage.removeItem("version_blocked");
+  }, [setPendingUpdate, updatesDisabled]);
 
   const deferUpdate = useCallback(
     (update: Update) => {
@@ -488,6 +522,8 @@ function UpdateHandler() {
 
   const startUpdateDownload = useCallback(
     async (update: Update) => {
+      if (updatesDisabled) return;
+
       setUpdateDialog(null);
       setDeferredUpdate(null);
       setPendingUpdate(null);
@@ -572,12 +608,22 @@ function UpdateHandler() {
         }));
       }
     },
-    [setPendingUpdate, t],
+    [setPendingUpdate, t, updatesDisabled],
   );
 
   const checkForUpdates = useCallback(
     async (isManual = false, bypassThrottle = false) => {
-      if (!isTauri) return;
+      // Wait until the persisted Local Mode preference has been resolved. This
+      // is deliberately before every latest.json request and updater plugin
+      // call, so a disabled installation remains isolated from R2.
+      if (
+        !isTauri ||
+        updatesDisabled ||
+        isAuthLoading ||
+        isWorkspaceLoading
+      ) {
+        return;
+      }
 
       // --- DEBUG: Easy to remove check log ---
       console.log(
@@ -774,7 +820,7 @@ function UpdateHandler() {
         }
       }
     },
-    [t, setPendingUpdate],
+    [isAuthLoading, isWorkspaceLoading, setPendingUpdate, t, updatesDisabled],
   );
 
   useEffect(() => {
@@ -809,7 +855,7 @@ function UpdateHandler() {
   }, [checkForUpdates, deferredUpdate, setPendingUpdate]);
 
   useEffect(() => {
-    if (isTauri) {
+    if (isTauri && !updatesDisabled && !isAuthLoading && !isWorkspaceLoading) {
       // 1. Startup check: bypass the 12-hour polling throttle.
       void checkForUpdates(false, true);
 
@@ -867,7 +913,7 @@ function UpdateHandler() {
         window.removeEventListener("check-for-updates", handleManualCheck);
       };
     }
-  }, [checkForUpdates]);
+  }, [checkForUpdates, isAuthLoading, isWorkspaceLoading, updatesDisabled]);
 
   const isDownloading = Boolean(downloadState);
   const isInstalling = downloadState?.status === "installing";
@@ -1194,81 +1240,18 @@ function WhatsAppPlanGuard() {
 }
 
 function FirstTimeRedirect() {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
 
   useEffect(() => {
-    if (isDemoDeployment()) return;
-    if (user?.workspaceMode === 'demo') return;
     if (isLoading || !isAuthenticated) return;
     if (localStorage.getItem('atlas_first_time_done')) return;
 
     localStorage.setItem('atlas_first_time_done', 'true');
     localStorage.setItem('modules_view_mode', 'grid');
     window.location.hash = getPathWithLang('/modules', i18n.language);
-  }, [isAuthenticated, isLoading, user?.workspaceMode]);
+  }, [isAuthenticated, isLoading]);
 
   return null;
-}
-
-function MainDemoSessionRedirect() {
-  const { isLoading, user } = useAuth();
-
-  useEffect(() => {
-    if (isDemoDeployment() || isLoading || user?.workspaceMode !== 'demo') return;
-    window.location.replace(getDemoSetupUrl(i18n.language));
-  }, [isLoading, user?.workspaceMode]);
-
-  return null;
-}
-
-function ExternalDemoRedirect() {
-  useEffect(() => {
-    window.location.replace(getDemoSetupUrl(i18n.language));
-  }, []);
-
-  return <LoadingState />;
-}
-
-function DemoSetupRoute() {
-  const { isAuthenticated, isLoading } = useAuth();
-
-  if (!isDemoDeployment() && !isDemoEnabled()) {
-    return <ExternalDemoRedirect />;
-  }
-
-  if (isLoading) {
-    return <LoadingState />;
-  }
-
-  if (isAuthenticated) {
-    return <Redirect to="/" />;
-  }
-
-  return <DemoConfigPage />;
-}
-
-function HomeRoute() {
-  const { isAuthenticated, isLoading } = useAuth();
-
-  if (isDemoDeployment()) {
-    if (isLoading) {
-      return <LoadingState />;
-    }
-
-    if (!isAuthenticated) {
-      return <Redirect to="/demo-setup" />;
-    }
-  }
-
-  return (
-    <ProtectedRoute>
-      <Layout>
-        <Suspense fallback={<DashboardSkeleton />}>
-          <Dashboard />
-        </Suspense>
-      </Layout>
-    </ProtectedRoute>
-  );
 }
 
 function UsbBackupStartupValidator() {
@@ -1353,7 +1336,6 @@ function App() {
             <DateRangeProvider>
               <KdsStreamAutostart />
               <FirstTimeRedirect />
-              <MainDemoSessionRedirect />
               <WhatsAppPlanGuard />
               <UpdateHandler />
               <WorkspaceWarmup />
@@ -1384,31 +1366,25 @@ function App() {
                         <Switch>
                       {/* Guest Routes */}
                       <Route path="/login">
-                        {isDemoDeployment() ? (
-                          <Redirect to="/demo-setup" />
-                        ) : (
-                          <GuestRoute>
-                            <Login />
-                          </GuestRoute>
-                        )}
+                        <GuestRoute>
+                          <Login />
+                        </GuestRoute>
                       </Route>
                       <Route path="/register">
-                        {isDemoDeployment() ? (
-                          <Redirect to="/demo-setup" />
-                        ) : (
-                          <GuestRoute>
-                            <Register />
-                          </GuestRoute>
-                        )}
+                        <GuestRoute>
+                          <Register />
+                        </GuestRoute>
                       </Route>
                       {!isTauri && (
                         <Route path="/monthly-usage-calculator">
                           <MonthlyUsageCalculator />
                         </Route>
                       )}
-                      <Route path="/demo-setup">
-                        <DemoSetupRoute />
-                      </Route>
+                      {isDemoEnabled() && (
+                        <Route path="/demo-setup">
+                          <DemoConfigPage />
+                        </Route>
+                      )}
 
                       {/* Locked Workspace Route - no layout, standalone page */}
                       <Route path="/locked-workspace">
@@ -1426,7 +1402,13 @@ function App() {
 
                       {/* Protected Routes */}
                       <Route path="/">
-                        <HomeRoute />
+                        <ProtectedRoute>
+                          <Layout>
+                            <Suspense fallback={<DashboardSkeleton />}>
+                              <Dashboard />
+                            </Suspense>
+                          </Layout>
+                        </ProtectedRoute>
                       </Route>
                       <Route path="/pos">
                         <ProtectedRoute

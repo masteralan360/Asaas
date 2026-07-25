@@ -1,13 +1,18 @@
 import { StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Analytics } from '@vercel/analytics/react'
-import { registerSW } from 'virtual:pwa-register'
 import { requestPersistentStorage } from '@/local-db/storagePersist'
 import { isOpfsSupported } from '@/local-db/pwaSqlite'
 import { AtlasSplashScreen } from '@/ui/components/AtlasSplashScreen'
 import { initDesktopZoomPersistence } from '@/lib/tauriZoomPersistence'
-import { isDemoDeployment } from '@/demo/demoDeployment'
 import { removeDeploymentRefreshParam } from '@/lib/deploymentRefresh'
+import {
+    cacheCurrentPwaVersion,
+    initializePwaUpdateControl,
+    requestPwaDeploymentUpdate,
+    setPwaUpdatePolicy
+} from '@/lib/pwaUpdateControl'
+import { areApplicationUpdatesDisabled } from '@/lib/updatePreference'
 
 const isMarketplaceHost =
     typeof window !== 'undefined'
@@ -22,10 +27,6 @@ if (typeof window !== 'undefined') {
     if (refreshedUrl !== currentPath) {
         window.history.replaceState(null, '', refreshedUrl)
     }
-}
-
-if (isDemoDeployment()) {
-    document.title = 'Atlas Demo'
 }
 
 function isPwaMode(): boolean {
@@ -53,32 +54,25 @@ const initPwaLocalMode = async () => {
 }
 
 const registerAppServiceWorker = () => {
-    registerSW({
-        immediate: true,
-        onRegisteredSW: (_swUrl, registration) => {
-            if (!registration) return
+    initializePwaUpdateControl()
 
-            const checkForUpdate = () => {
-                if (document.visibilityState === 'hidden') return
-
-                registration.update().catch((error) => {
-                    console.error('Failed to check for service worker updates:', error)
-                })
+    void navigator.serviceWorker.register('/sw.js', {
+        scope: '/',
+        // The worker is a stable update gate. It must not be replaced by a
+        // deployment-specific Workbox worker on every Vercel build.
+        updateViaCache: 'none'
+    }).then(() => navigator.serviceWorker.ready)
+        .then(() => {
+            const updatesDisabled = areApplicationUpdatesDisabled()
+            setPwaUpdatePolicy(updatesDisabled)
+            if (!updatesDisabled) {
+                cacheCurrentPwaVersion()
+                requestPwaDeploymentUpdate()
             }
-
-            checkForUpdate()
-            window.setInterval(checkForUpdate, 30 * 60 * 1000)
-            window.addEventListener('focus', checkForUpdate)
-            document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'visible') {
-                    checkForUpdate()
-                }
-            })
-        },
-        onRegisterError: (error) => {
+        })
+        .catch((error) => {
             console.error('Failed to register service worker:', error)
-        }
-    })
+        })
 }
 
 if (
@@ -110,6 +104,11 @@ if (
 window.addEventListener('unhandledrejection', (event) => {
     if (event.reason?.message?.includes('Failed to fetch dynamically imported module') ||
         event.reason?.message?.includes('Importing a stopped module')) {
+        if (areApplicationUpdatesDisabled()) {
+            console.error('[Critical] Chunk load failed while updates are disabled. Keeping the installed version.', event.reason)
+            return
+        }
+
         const key = '__atlas_reload_ts__'
         const last = parseInt(sessionStorage.getItem(key) || '0', 10)
         const now = Date.now()

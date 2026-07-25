@@ -38,6 +38,12 @@ import { BranchManager } from '@/ui/components/workspace/BranchManager'
 import { canManageClinicalRegistryType } from '@/i18n/clinicalRegistry'
 import { setClinicalRegistryType, useClinicalRegistryType } from '@/local-db/clinicalPresets'
 import { openWorkspacePaymentStatusDialog } from '@/lib/workspacePayments'
+import {
+    areApplicationUpdatesDisabled,
+    setApplicationUpdatesDisabled,
+    UPDATE_PREFERENCE_CHANGED_EVENT
+} from '@/lib/updatePreference'
+import { requestPwaDeploymentUpdate } from '@/lib/pwaUpdateControl'
 
 export function Settings() {
     const { user, signOut, isSupabaseConfigured, updateUser } = useAuth()
@@ -361,6 +367,7 @@ export function Settings() {
     }, [isThermalDialogOpen, user?.workspaceId, isElectron])
 
     const [updateStatus, setUpdateStatus] = useState<any>(null)
+    const [updatesDisabled, setUpdatesDisabled] = useState(() => areApplicationUpdatesDisabled())
     const [localWorkspaceName, setLocalWorkspaceName] = useState(workspaceName || '')
     const marketplaceSlugPattern = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/
     const marketplaceBaseOrigin = (() => {
@@ -446,9 +453,41 @@ export function Settings() {
         }
     }, [features.store_slug, isLocalMode, isSupabaseConfigured, normalizedMarketplaceSlug, user?.role])
 
+    useEffect(() => {
+        const syncUpdatePreference = () => setUpdatesDisabled(areApplicationUpdatesDisabled())
+        window.addEventListener(UPDATE_PREFERENCE_CHANGED_EVENT, syncUpdatePreference)
+        return () => window.removeEventListener(UPDATE_PREFERENCE_CHANGED_EVENT, syncUpdatePreference)
+    }, [])
+
+    const handleUpdatesDisabledChange = (disabled: boolean) => {
+        setApplicationUpdatesDisabled(disabled)
+        setUpdatesDisabled(disabled)
+        setUpdateStatus(disabled ? { status: 'disabled' } : null)
+        toast({
+            title: disabled ? 'Updates disabled' : 'Updates enabled',
+            description: disabled
+                ? 'This installed app will stay on its current version until updates are enabled again.'
+                : 'Atlas can now check for and apply the latest version.'
+        })
+    }
+
     // Tauri updater doesn't use event listeners for status in the same way, logic is inside handleCheckForUpdates
 
     const handleCheckForUpdates = async () => {
+        if (updatesDisabled) {
+            setUpdateStatus({ status: 'disabled' })
+            return
+        }
+
+        if (!isElectron) {
+            requestPwaDeploymentUpdate()
+            toast({
+                title: 'Checking for updates',
+                description: 'Atlas will reload only if a newer deployed version is available.'
+            })
+            return
+        }
+
         setUpdateStatus({ status: 'checking' })
         try {
             if (isMobile()) {
@@ -1475,8 +1514,8 @@ export function Settings() {
                         </CardContent>
                     </Card>
 
-                    {/* Application Updates (Electron Only) */}
-                    {isElectron && (
+                    {/* Application Updates */}
+                    {(isElectron || isLocalMode) && (
                         <Card>
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2">
@@ -1490,10 +1529,15 @@ export function Settings() {
                                     <div className="space-y-1">
                                         <p className="font-medium">{t('settings.updater.status')} <span className="text-xs font-normal text-muted-foreground font-mono ml-2">(v{version})</span></p>
                                         <p className="text-sm text-muted-foreground">
+                                            {isLocalMode && (updatesDisabled
+                                                ? 'Disabled - this device will remain on its installed version.'
+                                                : 'Enabled - Atlas can download newer versions.')}
+                                            {isLocalMode && updateStatus && ' '}
                                             {updateStatus?.status === 'checking' && t('settings.updater.checking')}
                                             {updateStatus?.status === 'available' && t('settings.updater.available')}
                                             {updateStatus?.status === 'not-available' && t('settings.updater.notAvailable')}
                                             {updateStatus?.status === 'downloaded' && t('settings.updater.downloaded')}
+                                            {updateStatus?.status === 'disabled' && 'Updates are disabled for this device.'}
                                             {updateStatus?.status === 'error' && (
                                                 <span className="flex items-center gap-1 text-red-500">
                                                     <AlertCircle className="w-4 h-4" />
@@ -1501,24 +1545,36 @@ export function Settings() {
                                                 </span>
                                             )}
                                             {updateStatus?.status === 'progress' && `Downloading: ${Math.round(updateStatus.progress)}%`}
-                                            {!updateStatus && t('settings.updater.clickButton')}
+                                            {!updateStatus && !updatesDisabled && <>{' '}{t('settings.updater.clickButton')}</>}
                                         </p>
                                     </div>
-                                    <Button
-                                        allowViewer={true}
-                                        onClick={handleCheckForUpdates}
-                                        disabled={updateStatus?.status === 'checking' || updateStatus?.status === 'progress'}
-                                        variant="outline"
-                                    >
-                                        {updateStatus?.status === 'checking' ? (
-                                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                                        ) : updateStatus?.status === 'downloaded' ? (
-                                            <RefreshCw className="w-4 h-4 mr-2" />
-                                        ) : (
-                                            <RefreshCw className="w-4 h-4 mr-2" />
+                                    <div className="flex items-center gap-3">
+                                        {isLocalMode && (
+                                            <div className="flex items-center gap-2">
+                                                <Label htmlFor="disable-application-updates" className="text-sm">Disable Updates</Label>
+                                                <Switch
+                                                    id="disable-application-updates"
+                                                    checked={updatesDisabled}
+                                                    onCheckedChange={handleUpdatesDisabledChange}
+                                                />
+                                            </div>
                                         )}
-                                        {updateStatus?.status === 'downloaded' ? t('settings.updater.restart') : t('settings.updater.clickButton')}
-                                    </Button>
+                                        <Button
+                                            allowViewer={true}
+                                            onClick={handleCheckForUpdates}
+                                            disabled={updatesDisabled || updateStatus?.status === 'checking' || updateStatus?.status === 'progress'}
+                                            variant="outline"
+                                        >
+                                            {updateStatus?.status === 'checking' ? (
+                                                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                            ) : updateStatus?.status === 'downloaded' ? (
+                                                <RefreshCw className="w-4 h-4 mr-2" />
+                                            ) : (
+                                                <RefreshCw className="w-4 h-4 mr-2" />
+                                            )}
+                                            {updateStatus?.status === 'downloaded' ? t('settings.updater.restart') : t('settings.updater.clickButton')}
+                                        </Button>
+                                    </div>
                                 </div>
                                 {updateStatus?.status === 'progress' && (
                                     <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">

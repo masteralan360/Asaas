@@ -36,6 +36,7 @@ import { buildWorkspaceNavigation } from '@/ui/navigation/workspaceNavigation'
 import { useWorkspaceBranchSwitcher } from '@/hooks/useWorkspaceBranchSwitcher'
 import { useClinicalRegistryType } from '@/local-db/clinicalPresets'
 import { refreshToLatestDeployment } from '@/lib/deploymentRefresh'
+import { areApplicationUpdatesDisabled, UPDATE_PREFERENCE_CHANGED_EVENT } from '@/lib/updatePreference'
 
 import {
     LogOut,
@@ -167,6 +168,7 @@ export function Layout({ children }: LayoutProps) {
         workspaceId: activeWorkspace?.id
     })
     const [demoRemainingSec, setDemoRemainingSec] = useState<number | null>(null)
+    const [updatesDisabled, setUpdatesDisabled] = useState(() => areApplicationUpdatesDisabled())
     const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
     const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(() => {
         if (typeof window !== 'undefined') {
@@ -200,6 +202,12 @@ export function Layout({ children }: LayoutProps) {
         }
         return false
     })
+
+    useEffect(() => {
+        const syncUpdatePreference = () => setUpdatesDisabled(areApplicationUpdatesDisabled())
+        window.addEventListener(UPDATE_PREFERENCE_CHANGED_EVENT, syncUpdatePreference)
+        return () => window.removeEventListener(UPDATE_PREFERENCE_CHANGED_EVENT, syncUpdatePreference)
+    }, [])
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -1318,6 +1326,10 @@ export function Layout({ children }: LayoutProps) {
                                         <p className="text-[10px] text-muted-foreground font-mono opacity-50 truncate px-2" title={versionTooltip || undefined}>
                                             {`v${version}`}
                                         </p>
+                                    ) : (isLocalMode && updatesDisabled ? (
+                                        <p className="text-[10px] text-muted-foreground font-mono opacity-50 truncate px-2" title={versionTooltip || undefined}>
+                                            {version}
+                                        </p>
                                     ) : (
                                         <DeploymentRefreshVersion
                                             version={version}
@@ -1331,7 +1343,7 @@ export function Layout({ children }: LayoutProps) {
                                                 refreshToLatestDeployment()
                                             }}
                                         />
-                                    )}
+                                    ))}
                                 </div>
                             )}
                         </div>
