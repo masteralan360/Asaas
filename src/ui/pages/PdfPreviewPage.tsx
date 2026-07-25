@@ -766,6 +766,7 @@ export function PdfPreviewPage() {
     const hasTemplatePrimaryAction = Boolean(
         source?.onSaveTemplateLayout
         || source?.onSave
+        || source?.onPrint
         || source?.generateTemplateLayoutBlob
     )
 
@@ -863,7 +864,7 @@ export function PdfPreviewPage() {
                 await source.onSaveTemplateLayout(layout, { label })
             }
 
-            const shouldBuildPrintBlob = source.onSave || source.generateTemplateLayoutBlob
+            const shouldBuildPrintBlob = source.onSave || source.onPrint || source.generateTemplateLayoutBlob
             if (shouldBuildPrintBlob) {
                 const overrideLang = fixedTemplatePrintLang || (tempPrintLang !== 'auto' ? tempPrintLang : undefined)
                 const layoutForBlob = source.generateTemplateLayoutBlob
@@ -879,8 +880,15 @@ export function PdfPreviewPage() {
                             hiddenFields: templateHiddenFields,
                             workspaceFooterContacts: sourceWorkspaceFooterContacts
                         }),
-                        overrideLang
+                        overrideLang,
+                        fieldValues
                     )
+
+                if (source.onPrint) {
+                    await source.onPrint(blob)
+                    shouldCloseAfterAction = false
+                    return
+                }
 
                 if (!source.onSave) {
                     const url = URL.createObjectURL(blob)
@@ -1389,13 +1397,13 @@ export function PdfPreviewPage() {
                                 disabled={isSaving}
                                 aria-label={source.onSaveTemplateLayout
                                     ? t('customTemplates.saveLayout', { defaultValue: 'Save Layout' })
-                                    : source.templatePrimaryActionLabel || (source.onSave ? (t('print.printAndSave') || 'Print & Save') : (t('common.print') || 'Print'))}
+                                    : source.templatePrimaryActionLabel || source.printActionLabel || (source.onSave ? (t('print.printAndSave') || 'Print & Save') : (t('common.print') || 'Print'))}
                             >
                                 {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : source.onSaveTemplateLayout ? <Check className="h-3.5 w-3.5" /> : <Printer className="h-3.5 w-3.5" />}
                                 <span className="hidden md:inline">
                                     {source.onSaveTemplateLayout
                                         ? t('customTemplates.saveLayout', { defaultValue: 'Save Layout' })
-                                        : source.templatePrimaryActionLabel || (source.onSave ? (t('print.printAndSave') || 'Print & Save') : (t('common.print') || 'Print'))}
+                                        : source.templatePrimaryActionLabel || source.printActionLabel || (source.onSave ? (t('print.printAndSave') || 'Print & Save') : (t('common.print') || 'Print'))}
                                 </span>
                             </button>
                         )}
@@ -1807,7 +1815,7 @@ export function PdfPreviewPage() {
                                         }
                                     )}
                                 </div>
-                                {source.printFormat !== 'receipt' && (
+                                {source.printFormat === 'a4' && (
                                     <TooltipProvider>
                                         <Tooltip delayDuration={200}>
                                             <TooltipTrigger asChild>
@@ -2291,7 +2299,7 @@ export function PdfPreviewPage() {
                                 workspaceId={source.workspaceId}
                                 workspaceName={source.workspaceName}
                                 workspaceFooterContacts={source.workspaceFooterContacts}
-                                printFormat={source.printFormat}
+                                printFormat={source.printFormat === 'receipt' ? 'receipt' : 'a4'}
                                 onDataChange={isAdmin ? setEditableData : undefined}
                                 drawingMode={drawingMode}
                                 hideUnit={fieldValues.hideUnit === 'true'}

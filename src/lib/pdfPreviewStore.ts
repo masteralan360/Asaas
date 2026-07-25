@@ -1,7 +1,7 @@
 import { getPdfShapeBottom, type PdfShape, type UniversalInvoice } from '@/types'
 import type { ReactElement } from 'react'
 
-export type PrintFormat = 'a4' | 'receipt'
+export type PrintFormat = 'a4' | 'receipt' | 'barcode_35x15'
 export type CustomTemplatePrintLanguage = 'en' | 'ar' | 'ku'
 
 export type TemplatePreviewField = {
@@ -53,7 +53,11 @@ export type TemplatePreview = {
         printLangOverride?: string,
         renderOptions?: TemplatePreviewRenderOptions
     ) => ReactElement
-    buildPdf: (element: ReactElement, printLangOverride?: string) => Promise<Blob>
+    buildPdf: (
+        element: ReactElement,
+        printLangOverride?: string,
+        fieldValues?: Record<string, string>
+    ) => Promise<Blob>
     fixedPrintLang?: 'en' | 'ar' | 'ku'
 }
 
@@ -205,6 +209,9 @@ export type InvoicePreviewSource = {
     printFormat?: PrintFormat
     title: string
     onSave?: (blob: Blob) => Promise<string | undefined | void>
+    /** Opens the browser/native print dialog without persisting the generated document. */
+    onPrint?: (blob: Blob) => Promise<void>
+    printActionLabel?: string
     invoiceData?: any
     effectiveId?: string
     generatePdfBlob?: (editedData: UniversalInvoice, printLangOverride?: string) => Promise<Blob>

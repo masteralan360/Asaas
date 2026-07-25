@@ -71,6 +71,8 @@ interface PrintPreviewModalProps {
     printSelectionOptions?: PrintSelectionNativeOption[]
     printSelectionTemplates?: PrintSelectionTemplateOption[]
     onPrintSelection?: (format: PrintFormat, template?: StoredCustomTemplateRow) => void
+    onPreviewPrint?: (blob: Blob) => Promise<void>
+    previewPrintActionLabel?: string
 }
 
 type WorkspaceContactPair = {
@@ -110,7 +112,9 @@ export function PrintPreviewModal({
     module,
     printSelectionOptions,
     printSelectionTemplates,
-    onPrintSelection
+    onPrintSelection,
+    onPreviewPrint,
+    previewPrintActionLabel
 }: PrintPreviewModalProps) {
     const { t, i18n } = useTranslation()
     const { toast } = useToast()
@@ -330,7 +334,7 @@ export function PrintPreviewModal({
 
 
 
-    const buildPdfBlobs = useCallback(async (requestedFormat?: PrintFormat, printLangOverride?: string): Promise<{ a4?: Blob; receipt?: Blob }> => {
+    const buildPdfBlobs = useCallback(async (requestedFormat?: PrintFormat, printLangOverride?: string): Promise<Partial<Record<PrintFormat, Blob>>> => {
         const format = requestedFormat || printFormat
         const effectiveLang = printLangOverride || printLang
 
@@ -533,6 +537,8 @@ export function PrintPreviewModal({
                     setInvoicePreviewSource({
                         title: title || t('print.previewTitle') || 'Print Preview',
                         onSave: showSaveButton || enableTemplatePreviewSave ? handleSave : undefined,
+                        onPrint: onPreviewPrint,
+                        printActionLabel: previewPrintActionLabel,
                         effectiveId,
                         printFormat,
                         workspaceId,
@@ -562,7 +568,7 @@ export function PrintPreviewModal({
         } catch (err) {
             console.error('Failed to open preview:', err)
         }
-    }, [printFormat, printLang, title, t, setLocation, handleSave, pdfData, printableFeatures, workspaceId, workspaceName, workspaceFooterContacts, invoiceData, effectiveId, pdfBuilder, translations, buildPdfBlobs, blobToDataUrl, templatePreviewProp, customTemplate, templateFieldValues, initialTemplateLayout, allowTemplateFieldEditing, enableTemplatePreviewSave, templatePrimaryActionLabel, generateTemplateLayoutBlob, showSaveButton])
+    }, [printFormat, printLang, title, t, setLocation, handleSave, pdfData, printableFeatures, workspaceId, workspaceName, workspaceFooterContacts, invoiceData, effectiveId, pdfBuilder, translations, buildPdfBlobs, blobToDataUrl, templatePreviewProp, customTemplate, templateFieldValues, initialTemplateLayout, allowTemplateFieldEditing, enableTemplatePreviewSave, templatePrimaryActionLabel, generateTemplateLayoutBlob, onPreviewPrint, previewPrintActionLabel, showSaveButton])
 
     return (
         <>

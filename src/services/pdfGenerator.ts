@@ -11,7 +11,7 @@ import {
     type A4KeepTogetherBlock
 } from '@/services/a4Pagination'
 
-export type PrintFormat = 'a4' | 'receipt'
+export type PrintFormat = 'a4' | 'receipt' | 'barcode_35x15'
 
 interface PDFLayer {
     image: string | HTMLCanvasElement // dataUrl or Canvas

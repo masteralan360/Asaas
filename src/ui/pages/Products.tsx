@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowDown, ArrowUp, ArrowUpDown, BookOpen, Boxes, Copy, FileSpreadsheet, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Barcode, BookOpen, Boxes, Copy, FileSpreadsheet, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import {
@@ -39,7 +39,12 @@ import {
 } from '@/lib/productImport'
 import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
-import { UiAccessGate } from '@/context/UiAccessContext'
+import { UiAccessGate, useUiAccess } from '@/context/UiAccessContext'
+import { getBarcodeLabelData } from '@/lib/barcodeLabel'
+import { type TemplatePreview } from '@/lib/pdfPreviewStore'
+import { generateBarcodeLabelsPdf } from '@/services/barcodeLabelPdf'
+import { printPdfBlob } from '@/services/pdfPrintService'
+import { BarcodeLabelTemplate } from '@/ui/components/BarcodeLabelTemplate'
 import { PriceBookManagementDialog } from '@/ui/components/PriceBookManagementDialog'
 import { ProductImportPreviewModal } from '@/ui/components/ProductImportPreviewModal'
 import {
@@ -81,6 +86,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
     AppPagination,
+    PrintPreviewModal,
     useToast
 } from '@/ui/components'
 
@@ -148,6 +154,7 @@ export function Products() {
     const { features, branchInfo, hasCapability } = useWorkspace()
     const { t } = useTranslation()
     const { toast } = useToast()
+    const { isAccessKeyHeld } = useUiAccess()
     const [, navigate] = useLocation()
     const products = useProducts(user?.workspaceId, { syncBarcodeCache: false })
     const categories = useCategories(user?.workspaceId)
@@ -268,6 +275,9 @@ export function Products() {
     const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string; type: 'product' | 'category' } | null>(null)
     const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set())
     const [isBranchCloneSelectionMode, setIsBranchCloneSelectionMode] = useState(false)
+    const [isBarcodeSelectionMode, setIsBarcodeSelectionMode] = useState(false)
+    const [isBarcodePrintOpen, setIsBarcodePrintOpen] = useState(false)
+    const [barcodePrintProducts, setBarcodePrintProducts] = useState<Product[]>([])
     const [branchCloneDialogOpen, setBranchCloneDialogOpen] = useState(false)
     const [cloneTargets, setCloneTargets] = useState<ProductCloneTarget[]>([])
     const [selectedCloneTargetWorkspaceId, setSelectedCloneTargetWorkspaceId] = useState('')
@@ -316,11 +326,13 @@ export function Products() {
 
     useEffect(() => {
         if (!canCloneToBranch) {
-            setSelectedProductIds(new Set())
+            if (!isBarcodeSelectionMode) {
+                setSelectedProductIds(new Set())
+            }
             setIsBranchCloneSelectionMode(false)
             setBranchCloneDialogOpen(false)
         }
-    }, [canCloneToBranch])
+    }, [canCloneToBranch, isBarcodeSelectionMode])
 
     useEffect(() => {
         if (!workspaceId || !canCloneProducts) {
@@ -618,6 +630,45 @@ export function Products() {
 
     const selectedProductsCount = selectedProductIds.size
     const allWorkspaceProductsSelected = products.length > 0 && selectedProductsCount === products.length
+    const allFilteredProductsSelected = filteredProducts.length > 0
+        && filteredProducts.every((product) => selectedProductIds.has(product.id))
+    const isProductSelectionMode = isBranchCloneSelectionMode || isBarcodeSelectionMode
+    const selectedBarcodeProducts = useMemo(() => {
+        const selectedIds = selectedProductIds
+        const visibleProducts = filteredProducts.filter((product) => selectedIds.has(product.id))
+        const visibleProductIds = new Set(visibleProducts.map((product) => product.id))
+
+        return [
+            ...visibleProducts,
+            ...products.filter((product) => selectedIds.has(product.id) && !visibleProductIds.has(product.id))
+        ]
+    }, [filteredProducts, products, selectedProductIds])
+    const barcodeLabels = useMemo(
+        () => getBarcodeLabelData(barcodePrintProducts, features.iqd_display_preference),
+        [barcodePrintProducts, features.iqd_display_preference]
+    )
+    const barcodeTemplatePreview = useMemo<TemplatePreview>(() => ({
+        fields: [{
+            key: 'showPrice',
+            label: 'Show Price',
+            value: 'true',
+            type: 'boolean'
+        }],
+        page: {
+            widthMm: 35,
+            heightMm: 15
+        },
+        createElement: (fieldValues) => (
+            <BarcodeLabelTemplate
+                labels={barcodeLabels}
+                showPrice={fieldValues.showPrice !== 'false'}
+            />
+        ),
+        buildPdf: async (_element, _printLangOverride, fieldValues) => generateBarcodeLabelsPdf({
+            labels: barcodeLabels,
+            showPrice: fieldValues?.showPrice !== 'false'
+        })
+    }), [barcodeLabels])
     const selectedCloneTarget = cloneTargets.find((target) => target.workspaceId === selectedCloneTargetWorkspaceId)
     const branchCloneActionLabel = isBranchWorkspace
         ? t('products.branchClone.actionWorkspace', { defaultValue: 'Clone to Workspace' })
@@ -711,7 +762,7 @@ export function Products() {
         })
     }
 
-    const toggleSelectAllProducts = () => {
+    const toggleSelectAllWorkspaceProducts = () => {
         if (allWorkspaceProductsSelected) {
             setSelectedProductIds(new Set())
             return
@@ -720,10 +771,49 @@ export function Products() {
         setSelectedProductIds(new Set(products.map((product) => product.id)))
     }
 
+    const toggleSelectAllFilteredProducts = () => {
+        setSelectedProductIds((previous) => {
+            const next = new Set(previous)
+
+            if (allFilteredProductsSelected) {
+                filteredProducts.forEach((product) => next.delete(product.id))
+            } else {
+                filteredProducts.forEach((product) => next.add(product.id))
+            }
+
+            return next
+        })
+    }
+
     const exitBranchCloneSelectionMode = () => {
         setIsBranchCloneSelectionMode(false)
         setSelectedProductIds(new Set())
         setBranchCloneDialogOpen(false)
+    }
+
+    const openBranchCloneSelectionMode = () => {
+        setSelectedProductIds(new Set())
+        setIsBarcodeSelectionMode(false)
+        setIsBranchCloneSelectionMode(true)
+    }
+
+    const openBarcodeSelectionMode = () => {
+        setSelectedProductIds(new Set())
+        setIsBranchCloneSelectionMode(false)
+        setIsBarcodeSelectionMode(true)
+    }
+
+    const exitBarcodeSelectionMode = () => {
+        setIsBarcodeSelectionMode(false)
+        setSelectedProductIds(new Set())
+    }
+
+    const handleOpenBarcodePrint = () => {
+        if (selectedBarcodeProducts.length === 0) return
+
+        setBarcodePrintProducts(selectedBarcodeProducts)
+        setIsBarcodePrintOpen(true)
+        exitBarcodeSelectionMode()
     }
 
     const getCloneTargetLabel = (target: ProductCloneTarget) => {
@@ -1094,10 +1184,10 @@ export function Products() {
                     {canEdit && (
                         <div className="flex flex-wrap justify-end gap-2">
                             <UiAccessGate>
-                                {canCloneToBranch && !isBranchCloneSelectionMode && (
+                                {canCloneToBranch && !isProductSelectionMode && (
                                     <Button
                                         variant="outline"
-                                        onClick={() => setIsBranchCloneSelectionMode(true)}
+                                        onClick={openBranchCloneSelectionMode}
                                         disabled={products.length === 0}
                                     >
                                         <GitBranch className="h-4 w-4" />
@@ -1105,6 +1195,16 @@ export function Products() {
                                     </Button>
                                 )}
                             </UiAccessGate>
+                            {(isMobile() || isAccessKeyHeld) && !isProductSelectionMode && (
+                                <Button
+                                    variant="outline"
+                                    onClick={openBarcodeSelectionMode}
+                                    disabled={products.length === 0}
+                                >
+                                    <Barcode className="h-4 w-4" />
+                                    Print Barcodes
+                                </Button>
+                            )}
                             <Button variant="outline" onClick={() => handleOpenCategoryDialog()}>
                                 <Plus className="h-4 w-4" />
                                 {t('products.addCategory')}
@@ -1157,48 +1257,57 @@ export function Products() {
                 ) : null}
             </div>
 
-            {canCloneToBranch && products.length > 0 && isBranchCloneSelectionMode && (
+            {isProductSelectionMode && products.length > 0 && (
                 <Card className="border-primary/15 bg-primary/5">
                     <CardContent className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
                         <div className="space-y-2">
                             <div className="flex items-center gap-2">
                                 <Checkbox
-                                    id="select-all-workspace-products"
-                                    checked={allWorkspaceProductsSelected}
-                                    onCheckedChange={toggleSelectAllProducts}
+                                    id={isBarcodeSelectionMode ? 'select-all-products-for-barcode-printing' : 'select-all-workspace-products'}
+                                    checked={isBarcodeSelectionMode ? allFilteredProductsSelected : allWorkspaceProductsSelected}
+                                    onCheckedChange={isBarcodeSelectionMode ? toggleSelectAllFilteredProducts : toggleSelectAllWorkspaceProducts}
                                 />
-                                <Label htmlFor="select-all-workspace-products" className="cursor-pointer font-medium">
-                                    {t('products.branchClone.selectAllWorkspace', { defaultValue: 'Select all workspace products' })} ({products.length})
+                                <Label
+                                    htmlFor={isBarcodeSelectionMode ? 'select-all-products-for-barcode-printing' : 'select-all-workspace-products'}
+                                    className="cursor-pointer font-medium"
+                                >
+                                    {isBarcodeSelectionMode
+                                        ? `Select All Products (${filteredProducts.length})`
+                                        : `${t('products.branchClone.selectAllWorkspace', { defaultValue: 'Select all workspace products' })} (${products.length})`}
                                 </Label>
                             </div>
                             <p className="text-sm text-muted-foreground">
-                                {t('products.branchClone.selectedCount', {
-                                    defaultValue: '{{count}} products selected',
-                                    count: selectedProductsCount
-                                })}
+                                {isBarcodeSelectionMode
+                                    ? `${selectedProductsCount} product${selectedProductsCount === 1 ? '' : 's'} selected`
+                                    : t('products.branchClone.selectedCount', {
+                                        defaultValue: '{{count}} products selected',
+                                        count: selectedProductsCount
+                                    })}
                             </p>
                             <p className="text-sm text-muted-foreground">
-                                {t('products.branchClone.selectionHint', {
-                                    defaultValue: 'Select the products you want to copy, then choose the destination workspace and storage.'
-                                })}
+                                {isBarcodeSelectionMode
+                                    ? 'Select the products to print as 35 × 15 mm barcode labels.'
+                                    : t('products.branchClone.selectionHint', {
+                                        defaultValue: 'Select the products you want to copy, then choose the destination workspace and storage.'
+                                    })}
                             </p>
                         </div>
                         <div className="flex flex-col gap-2 sm:flex-row">
                             <Button
                                 type="button"
                                 variant="ghost"
-                                onClick={exitBranchCloneSelectionMode}
+                                onClick={isBarcodeSelectionMode ? exitBarcodeSelectionMode : exitBranchCloneSelectionMode}
                             >
-                                {t('products.branchClone.cancelSelection', { defaultValue: 'Cancel' })}
+                                {isBarcodeSelectionMode ? 'Cancel' : t('products.branchClone.cancelSelection', { defaultValue: 'Cancel' })}
                             </Button>
                             <Button
                                 type="button"
                                 className="gap-2"
-                                onClick={() => setBranchCloneDialogOpen(true)}
+                                onClick={isBarcodeSelectionMode ? handleOpenBarcodePrint : () => setBranchCloneDialogOpen(true)}
                                 disabled={selectedProductsCount === 0}
                             >
-                                <GitBranch className="h-4 w-4" />
-                                {t('products.branchClone.chooseDestination', { defaultValue: 'Choose Destination' })}
+                                {isBarcodeSelectionMode ? <Barcode className="h-4 w-4" /> : <GitBranch className="h-4 w-4" />}
+                                {isBarcodeSelectionMode ? 'Print Barcode' : t('products.branchClone.chooseDestination', { defaultValue: 'Choose Destination' })}
                             </Button>
                         </div>
                     </CardContent>
@@ -1274,10 +1383,10 @@ export function Products() {
                                                 <div
                                                     className={cn(
                                                         'space-y-4 rounded-[2rem] border border-border bg-card p-4 shadow-sm',
-                                                        canCloneToBranch && isBranchCloneSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5'
+                                                        isProductSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5'
                                                     )}
                                                 >
-                                            {canCloneToBranch && isBranchCloneSelectionMode && (
+                                            {isProductSelectionMode && (
                                                 <div className="flex items-center gap-2">
                                                     <Checkbox
                                                         id={`product-select-mobile-${product.id}`}
@@ -1378,10 +1487,10 @@ export function Products() {
                                                         <div
                                                             className={cn(
                                                                 'group relative flex flex-col gap-4 overflow-hidden rounded-[1.5rem] border border-border/50 bg-card p-4 transition-all duration-300 hover:-translate-y-1 hover:bg-accent/5 hover:shadow-2xl hover:shadow-primary/5',
-                                                                canCloneToBranch && isBranchCloneSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5 shadow-lg shadow-primary/10'
+                                                                isProductSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5 shadow-lg shadow-primary/10'
                                                             )}
                                                         >
-                                                    {canCloneToBranch && isBranchCloneSelectionMode && (
+                                                    {isProductSelectionMode && (
                                                         <div className="flex items-center gap-2">
                                                             <Checkbox
                                                                 id={`product-select-grid-${product.id}`}
@@ -1478,7 +1587,7 @@ export function Products() {
                                         <Table>
                                             <TableHeader>
                                                 <TableRow>
-                                                    {canCloneToBranch && isBranchCloneSelectionMode && <TableHead className="w-[52px]" />}
+                                                    {isProductSelectionMode && <TableHead className="w-[52px]" />}
                                                     <TableHead className="w-[80px]">{t('products.table.image') || 'Image'}</TableHead>
                                                     <TableHead
                                                         className="cursor-pointer select-none group/sort"
@@ -1551,8 +1660,8 @@ export function Products() {
                                                 {paginatedProducts.map((product) => (
                                                     <ContextMenu key={product.id}>
                                                         <ContextMenuTrigger asChild>
-                                                    <TableRow className={cn(canCloneToBranch && isBranchCloneSelectionMode && selectedProductIds.has(product.id) && 'bg-primary/5')}>
-                                                        {canCloneToBranch && isBranchCloneSelectionMode && (
+                                                    <TableRow className={cn(isProductSelectionMode && selectedProductIds.has(product.id) && 'bg-primary/5')}>
+                                                        {isProductSelectionMode && (
                                                             <TableCell>
                                                                 <Checkbox
                                                                     id={`product-select-table-${product.id}`}
@@ -1629,6 +1738,26 @@ export function Products() {
                     )}
                 </CardContent>
             </Card>
+
+            <PrintPreviewModal
+                isOpen={isBarcodePrintOpen}
+                onClose={() => {
+                    setIsBarcodePrintOpen(false)
+                    setBarcodePrintProducts([])
+                }}
+                title="Barcode Labels"
+                showSaveButton={false}
+                pdfBuilder={async () => generateBarcodeLabelsPdf({ labels: barcodeLabels })}
+                printSelectionOptions={[{
+                    format: 'barcode_35x15',
+                    label: '35 × 15 mm',
+                    description: 'One barcode label for each selected product.'
+                }]}
+                templatePreview={barcodeTemplatePreview}
+                allowTemplateFieldEditing={true}
+                onPreviewPrint={(blob) => printPdfBlob(blob, { title: 'Barcode Labels' })}
+                previewPrintActionLabel="Print"
+            />
 
             <Dialog open={isCategoryDialogOpen} onOpenChange={handleCategoryDialogChange}>
                 <DialogContent className="max-w-md" onPointerDownOutside={handleCategoryOutsideClick}>
