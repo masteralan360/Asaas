@@ -13,7 +13,6 @@ Atlas can be deployed to multiple platforms:
 | Web | Vercel/Netlify | PWA-enabled |
 
 ---
-
 ## Prerequisites
 
 ### Development Environment
