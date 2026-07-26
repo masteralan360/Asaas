@@ -16,6 +16,11 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { db, type Agent, type FleetLocationPoint, useAgents } from "@/local-db";
 import { getFleetSupabaseClient, getSupabaseClientForTable } from "@/lib/supabaseSchema";
 import { runSupabaseAction } from "@/lib/supabaseRequest";
+import {
+  isGeolocationSupported,
+  isRecoverableGeolocationError,
+  requestCurrentLocation,
+} from "@/lib/geolocation";
 import { toCamelCase } from "@/lib/utils";
 import { useWorkspace } from "@/workspace";
 
@@ -85,16 +90,6 @@ function isGeolocationPositionError(
     "message" in error &&
     typeof error.message === "string"
   );
-}
-
-function requestCurrentPosition() {
-  return new Promise<GeolocationPosition>((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(
-      resolve,
-      reject,
-      GEOLOCATION_OPTIONS,
-    );
-  });
 }
 
 function getDeviceLabel() {
@@ -168,8 +163,7 @@ export function FleetLocationSharingProvider({
   const stoppingRef = useRef(false);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
-  const isSupported =
-    typeof navigator !== "undefined" && "geolocation" in navigator;
+  const isSupported = isGeolocationSupported();
   const canShare =
     Boolean(
       user?.workspaceId &&
@@ -348,7 +342,7 @@ export function FleetLocationSharingProvider({
     [isOnline, linkedAgent, persistLocation, user?.id, user?.workspaceId],
   );
 
-  const stopSharing = useCallback(async () => {
+  const stopSharing = useCallback(async (options?: { preserveErrorStatus?: boolean }) => {
     if (stoppingRef.current) {
       return;
     }
@@ -398,7 +392,7 @@ export function FleetLocationSharingProvider({
       lastHistoryAtRef.current = 0;
       lastHistoryPointRef.current = undefined;
       setLatestLocation(undefined);
-      setStatus("idle");
+      setStatus(options?.preserveErrorStatus ? "error" : "idle");
       stoppingRef.current = false;
     }
   }, [isOnline, isSupported, latestLocation?.recordedAt, linkedAgent]);
@@ -426,17 +420,28 @@ export function FleetLocationSharingProvider({
     setError(undefined);
     try {
       // Trigger the browser or native permission prompt directly from the user action.
-      const initialPosition = await requestCurrentPosition();
+      // iOS may time out while acquiring a fresh GPS fix despite permission being
+      // granted, so requestCurrentLocation falls back to a usable coarse position.
+      const initialPosition = await requestCurrentLocation();
       const fleetClient = getFleetSupabaseClient();
-      await fleetClient
-        .from("location_sessions")
-        .update({
-          status: "stopped",
-          ended_at: new Date().toISOString(),
-        })
-        .eq("workspace_id", user.workspaceId)
-        .eq("user_id", user.id)
-        .eq("status", "active");
+      const { error: previousSessionError } = (await runSupabaseAction(
+        "fleet.locationSession.closePrevious",
+        () =>
+          fleetClient
+            .from("location_sessions")
+            .update({
+              status: "stopped",
+              ended_at: new Date().toISOString(),
+            })
+            .eq("workspace_id", user.workspaceId)
+            .eq("agent_id", linkedAgent.id)
+            .eq("user_id", user.id)
+            .eq("status", "active"),
+        { timeoutMs: 20_000, platform: "all" },
+      )) as { error?: unknown };
+      if (previousSessionError) {
+        throw previousSessionError;
+      }
 
       const { data, error: sessionError } = (await runSupabaseAction(
         "fleet.locationSession.start",
@@ -472,12 +477,24 @@ export function FleetLocationSharingProvider({
         (position) => {
           void handlePosition(position).catch((persistError) => {
             console.warn("[Fleet] Failed to persist location:", persistError);
+            setError(
+              "Location was captured but could not be saved to Supabase. Check your connection and try again.",
+            );
+            setStatus("error");
+            void stopSharing({ preserveErrorStatus: true });
           });
         },
         (positionError) => {
+          if (isRecoverableGeolocationError(positionError)) {
+            // Temporary GPS/network failures are common on mobile devices and do
+            // not mean permission was revoked. Keep the watch active so it can
+            // recover without forcing the agent to start sharing again.
+            setError("Waiting for a GPS signal. Location sharing will resume automatically.");
+            return;
+          }
           setError(geolocationErrorMessage(positionError));
           setStatus("error");
-          void stopSharing();
+          void stopSharing({ preserveErrorStatus: true });
         },
         GEOLOCATION_OPTIONS,
       );
@@ -498,7 +515,7 @@ export function FleetLocationSharingProvider({
           : "Failed to start location sharing",
       );
       setStatus("error");
-      await stopSharing();
+      await stopSharing({ preserveErrorStatus: true });
     }
   }, [
     canShare,

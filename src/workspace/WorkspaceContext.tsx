@@ -140,7 +140,10 @@ interface WorkspaceContextType {
     hasCapability: (capability: PlanCapabilityKey) => boolean
     refreshFeatures: () => Promise<void>
     refreshPaymentSummary: () => Promise<WorkspacePaymentSummary | null>
-    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string }) => Promise<void>
+    updateSettings: (
+        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string },
+        options?: { requireRemoteSync?: boolean }
+    ) => Promise<void>
     switchDataMode: (newMode: 'cloud' | 'hybrid') => Promise<{ error: string | null }>
     activeWorkspace: { id: string } | undefined
 }
@@ -1160,7 +1163,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
 
     const updateSettings = async (
-        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string }
+        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string },
+        options?: { requireRemoteSync?: boolean }
     ) => {
         const workspaceId = user?.workspaceId
         if (!workspaceId) return
@@ -1213,7 +1217,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (name !== undefined) {
             supabaseUpdate.name = name
         }
-        const shouldSync = usesCloudBusinessData && Object.keys(supabaseUpdate).length > 0
+        const shouldSync = (usesCloudBusinessData || options?.requireRemoteSync)
+            && Object.keys(supabaseUpdate).length > 0
 
         const localUpdateData = {
             ...featureSettings,
@@ -1279,15 +1284,40 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
 
         if (navigator.onLine) {
-            const { data: updatedRow, error } = await supabase
-                .from('workspaces')
-                .update(supabaseUpdate)
-                .eq('id', workspaceId)
-                .select('kds_enabled, instant_pos')
-                .maybeSingle()
+            let updatedRow: { kds_enabled?: boolean; instant_pos?: boolean } | null = null
+            let remoteWriteError: unknown = null
 
-            if (error) {
-                console.error('Error updating workspace settings on Supabase:', error)
+            try {
+                const { data, error } = await runSupabaseAction(
+                    'workspace.updateSettings',
+                    () => supabase
+                        .from('workspaces')
+                        .update(supabaseUpdate)
+                        .eq('id', workspaceId)
+                        .select('kds_enabled, instant_pos')
+                        .maybeSingle(),
+                    options?.requireRemoteSync
+                        ? { timeoutMs: 20_000, platform: 'all' }
+                        : undefined
+                ) as {
+                    data: { kds_enabled?: boolean; instant_pos?: boolean } | null
+                    error: unknown
+                }
+                updatedRow = data
+                remoteWriteError = error
+            } catch (error) {
+                remoteWriteError = error
+            }
+
+            // PostgREST returns no error when RLS filters every updated row. Treat
+            // that as a failed save so a location is never reported as cloud-saved
+            // when it only exists in the device cache.
+            if (!remoteWriteError && !updatedRow) {
+                remoteWriteError = new Error('Workspace settings could not be saved to the cloud.')
+            }
+
+            if (remoteWriteError) {
+                console.error('Error updating workspace settings on Supabase:', remoteWriteError)
                 await addToOfflineMutations('workspaces', workspaceId, 'update', supabaseUpdate, workspaceId)
                 if (name !== undefined && currentBranchInfo?.isBranch && currentBranchInfo.relationId) {
                     await addToOfflineMutations(
@@ -1300,6 +1330,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                         },
                         workspaceId
                     )
+                }
+                if (options?.requireRemoteSync) {
+                    throw normalizeSupabaseActionError(remoteWriteError)
                 }
             } else {
                 if (name !== undefined && currentBranchInfo?.isBranch && currentBranchInfo.relationId) {

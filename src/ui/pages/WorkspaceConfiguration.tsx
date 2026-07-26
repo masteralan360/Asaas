@@ -35,6 +35,11 @@ import {
 import { isTauri as isTauriCheck } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
 import { assetManager } from '@/lib/assetManager'
+import {
+    formatCoordinates,
+    isGeolocationSupported,
+    requestCurrentLocation
+} from '@/lib/geolocation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import type { WorkspaceDataMode } from '@/local-db/models'
 import { WORKSPACE_PLANS, getPlanCapabilities } from '@/plans/workspacePlans'
@@ -49,6 +54,7 @@ export function WorkspaceConfiguration() {
 
     const [isLoading, setIsLoading] = useState(false)
     const [isLocationSaving, setIsLocationSaving] = useState(false)
+    const [isLocationSynced, setIsLocationSynced] = useState(Boolean(currentFeatures.coordination))
     const locationRequestInFlight = useRef(false)
     const [logoUrl, setLogoUrl] = useState(currentFeatures.logo_url || '')
     const [coordination, setCoordination] = useState(currentFeatures.coordination || '')
@@ -67,6 +73,7 @@ export function WorkspaceConfiguration() {
 
     useEffect(() => {
         setCoordination(currentFeatures.coordination || '')
+        setIsLocationSynced(Boolean(currentFeatures.coordination))
     }, [currentFeatures.coordination])
 
     const handleImageUpload = async () => {
@@ -87,12 +94,6 @@ export function WorkspaceConfiguration() {
         if (!url) return '';
         if (url.startsWith('http')) return url;
         return platformService.convertFileSrc(url);
-    }
-
-    const formatCoordination = (latitude: number, longitude: number) => {
-        const lat = Number.isFinite(latitude) ? latitude.toFixed(14) : String(latitude)
-        const lon = Number.isFinite(longitude) ? longitude.toFixed(14) : String(longitude)
-        return `${lat}, ${lon}`
     }
 
     const getLocationErrorMessage = (error: GeolocationPositionError) => {
@@ -117,9 +118,9 @@ export function WorkspaceConfiguration() {
     }
 
     const handleShareLocation = async () => {
-        if (coordination || isLocationSaving || locationRequestInFlight.current) return
+        if (isLocationSynced || isLocationSaving || locationRequestInFlight.current) return
 
-        if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        if (!isGeolocationSupported()) {
             toast({
                 title: t('common.error'),
                 description: t('workspaceConfig.location.unsupported'),
@@ -131,13 +132,7 @@ export function WorkspaceConfiguration() {
         locationRequestInFlight.current = true
         let position: GeolocationPosition
         try {
-            position = await new Promise<GeolocationPosition>((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, {
-                    enableHighAccuracy: true,
-                    timeout: 15000,
-                    maximumAge: 0
-                })
-            })
+            position = await requestCurrentLocation()
         } catch (err: unknown) {
             const message = typeof err === 'object' && err !== null && 'code' in err
                 ? getLocationErrorMessage(err as GeolocationPositionError)
@@ -155,15 +150,19 @@ export function WorkspaceConfiguration() {
 
         setIsLocationSaving(true)
         try {
-            const formatted = formatCoordination(position.coords.latitude, position.coords.longitude)
+            const formatted = formatCoordinates(position.coords.latitude, position.coords.longitude)
             setCoordination(formatted)
-            await updateSettings({ coordination: formatted })
+            await updateSettings({ coordination: formatted }, {
+                requireRemoteSync: dataMode !== 'local'
+            })
+            setIsLocationSynced(true)
 
             toast({
                 title: t('common.success'),
                 description: t('workspaceConfig.location.saved')
             })
         } catch (err: any) {
+            setIsLocationSynced(false)
             const message = err?.code
                 ? getLocationErrorMessage(err)
                 : (err?.message || t('workspaceConfig.location.failed'))
@@ -377,14 +376,14 @@ export function WorkspaceConfiguration() {
                                 variant="outline"
                                 className="w-full h-10 gap-2"
                                 onClick={handleShareLocation}
-                                disabled={isLocationSaving || Boolean(coordination)}
+                                disabled={isLocationSaving || isLocationSynced}
                             >
                                 {isLocationSaving ? (
                                     <Loader2 className="w-4 h-4 animate-spin" />
                                 ) : (
                                     <MapPin className="w-4 h-4" />
                                 )}
-                                {coordination
+                                {isLocationSynced
                                     ? t('workspaceConfig.location.savedCta')
                                     : t('workspaceConfig.location.cta')}
                             </Button>

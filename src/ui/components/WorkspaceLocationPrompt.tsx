@@ -4,6 +4,11 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
 import {
+    formatCoordinates,
+    isGeolocationSupported,
+    requestCurrentLocation
+} from '@/lib/geolocation'
+import {
     Button,
     Dialog,
     DialogContent,
@@ -13,12 +18,6 @@ import {
     DialogTitle,
     useToast
 } from '@/ui/components'
-
-function formatCoordination(latitude: number, longitude: number) {
-    const lat = Number.isFinite(latitude) ? latitude.toFixed(14) : String(latitude)
-    const lon = Number.isFinite(longitude) ? longitude.toFixed(14) : String(longitude)
-    return `${lat}, ${lon}`
-}
 
 export function WorkspaceLocationPrompt() {
     const { user } = useAuth()
@@ -83,7 +82,7 @@ export function WorkspaceLocationPrompt() {
     const handleShareLocation = async () => {
         if (isSaving || locationRequestInFlight.current) return
 
-        if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        if (!isGeolocationSupported()) {
             toast({
                 title: t('common.error'),
                 description: t('workspaceConfig.location.unsupported'),
@@ -95,13 +94,7 @@ export function WorkspaceLocationPrompt() {
         locationRequestInFlight.current = true
         let position: GeolocationPosition
         try {
-            position = await new Promise<GeolocationPosition>((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, {
-                    enableHighAccuracy: true,
-                    timeout: 15000,
-                    maximumAge: 0
-                })
-            })
+            position = await requestCurrentLocation()
         } catch (error: unknown) {
             const message = typeof error === 'object' && error !== null && 'code' in error
                 ? getLocationErrorMessage(error as GeolocationPositionError)
@@ -120,7 +113,12 @@ export function WorkspaceLocationPrompt() {
         setIsSaving(true)
         try {
             await updateSettings({
-                coordination: formatCoordination(position.coords.latitude, position.coords.longitude)
+                coordination: formatCoordinates(position.coords.latitude, position.coords.longitude)
+            }, {
+                // Local-only workspaces intentionally keep their settings on-device.
+                // Cloud and hybrid workspaces must confirm the Supabase write before
+                // the dialog tells the user that the location was saved.
+                requireRemoteSync: features.data_mode !== 'local'
             })
             setOpen(false)
             toast({
