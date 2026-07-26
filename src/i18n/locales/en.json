@@ -3106,6 +3106,7 @@
     "loanActive": "Loan Active",
     "loanOverdue": "Loan Overdue",
     "loanCompleted": "Loan Completed",
+    "loanCancelled": "Loan Cancelled",
     "loanBalance": "Balance",
     "loanNextDue": "Next Due",
     "openLoan": "Open Loan",
@@ -3204,7 +3205,11 @@
     "totalPrincipal": "Total Principal",
     "totalRepaid": "Total Repaid",
     "balanceDue": "Balance Due",
+    "cancelledBalance": "Cancelled Balance",
     "completedStep": "Repayment Completed",
+    "cancelledLoanTitle": "Loan Cancelled",
+    "cancelledLoanDescription": "This loan was cancelled because its linked sale was fully returned. No repayment was completed.",
+    "cancelledRepaymentMessage": "Cancelled — no repayment was completed",
     "recentActivity": "Recent Activity",
     "currencyHint": "Settlement Currency",
     "pay": "Pay",
@@ -3250,6 +3255,7 @@
     "activities": {
       "paymentReceived": "Payment Received",
       "paymentMade": "Repayment Made",
+      "loanCancelled": "Loan Cancelled — Full Sale Return",
       "loanDisbursed": "Loan Disbursed",
       "amountLent": "Amount Lent",
       "amountBorrowed": "Amount Borrowed"

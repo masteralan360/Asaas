@@ -72,7 +72,7 @@ import {
     TabsList,
     TabsTrigger,
 } from '@/ui/components'
-import { Search, Plus, ArrowLeft, Printer, Trash2, List, LayoutGrid, MessageCircle, Receipt } from 'lucide-react'
+import { Search, Plus, ArrowLeft, Printer, Trash2, List, LayoutGrid, MessageCircle, Receipt, CircleX } from 'lucide-react'
 import { CreateManualLoanModal } from '@/ui/components/loans/CreateManualLoanModal'
 import { LoanDetailsPrintTemplate, LoanListPrintTemplate } from '@/ui/components/loans/LoanPrintTemplates'
 import { LoanNoDisplay } from '@/ui/components/loans/LoanNoDisplay'
@@ -1070,19 +1070,35 @@ function LoanDetailsView({
     const paidPercent = loan.principalAmount > 0
         ? Math.min(100, (loan.totalPaidAmount / loan.principalAmount) * 100)
         : 0
+    const isCancelled = loan.status === 'cancelled'
 
-    const activityRows = [
+    const activityRows: Array<{
+        id: string
+        date: string
+        label: string
+        amount: number | null
+        isCancellation: boolean
+    }> = [
+        ...(isCancelled ? [{
+            id: `${loan.id}-cancelled`,
+            date: loan.updatedAt,
+            label: t('loans.activities.loanCancelled', { defaultValue: 'Loan Cancelled — Full Sale Return' }),
+            amount: null,
+            isCancellation: true
+        }] : []),
         ...payments.map(payment => ({
             id: payment.id,
             date: payment.paidAt,
             label: getLoanPaymentActivityLabel(loan, t),
-            amount: payment.amount
+            amount: payment.amount,
+            isCancellation: false
         })),
         {
             id: `${loan.id}-created`,
             date: loan.createdAt,
             label: getLoanDisbursementActivityLabel(loan, t),
-            amount: loan.principalAmount
+            amount: loan.principalAmount,
+            isCancellation: false
         }
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
@@ -1148,13 +1164,31 @@ function LoanDetailsView({
                             {t('common.delete') || 'Delete'}
                         </Button>
                     )}
-                    {!isReadOnly && (
+                    {!isReadOnly && !isCancelled && (
                         <Button onClick={() => onOpenPayment(loan)} className="print:hidden">
                             {getLoanRecordPaymentLabel(loan, t)}
                         </Button>
                     )}
                 </div>
             </div>
+
+            {isCancelled ? (
+                <Card className="border-rose-500/30 bg-rose-500/5">
+                    <CardContent className="flex items-start gap-3 py-4">
+                        <div className="rounded-full bg-rose-500/10 p-2 text-rose-600 dark:text-rose-300">
+                            <CircleX className="h-5 w-5" />
+                        </div>
+                        <div>
+                            <div className="font-semibold text-rose-700 dark:text-rose-200">
+                                {t('loans.cancelledLoanTitle', { defaultValue: 'Loan Cancelled' })}
+                            </div>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                {t('loans.cancelledLoanDescription', { defaultValue: 'This loan was cancelled because its linked sale was fully returned. No repayment was completed.' })}
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+            ) : null}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="space-y-4">
@@ -1176,8 +1210,15 @@ function LoanDetailsView({
                     <Card className="overflow-hidden border-none shadow-none bg-transparent">
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-xl font-bold">{loanSummaryTitle}</CardTitle>
-                            <span className="px-2 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-wider">
-                                {t('loans.principalOnly') || 'Principal Only'}
+                            <span className={cn(
+                                'px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider',
+                                isCancelled
+                                    ? 'bg-rose-500/10 text-rose-600 dark:text-rose-300'
+                                    : 'bg-primary/10 text-primary'
+                            )}>
+                                {isCancelled
+                                    ? t('loans.statuses.cancelled', { defaultValue: 'Cancelled' })
+                                    : t('loans.principalOnly', { defaultValue: 'Principal Only' })}
                             </span>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -1200,25 +1241,35 @@ function LoanDetailsView({
                                     </div>
                                 </div>
                                 <div className="bg-muted/20 rounded-2xl p-5 border border-border/40">
-                                    <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider mb-2">{t('loans.balanceDue') || 'Balance Due'}</div>
-                                    <div className="text-2xl font-bold text-blue-500">
+                                    <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider mb-2">
+                                        {isCancelled
+                                            ? t('loans.cancelledBalance', { defaultValue: 'Cancelled Balance' })
+                                            : t('loans.balanceDue', { defaultValue: 'Balance Due' })}
+                                    </div>
+                                    <div className={cn('text-2xl font-bold', isCancelled ? 'text-slate-500' : 'text-blue-500')}>
                                         {formatCurrency(loan.balanceAmount, loan.settlementCurrency, features.iqd_display_preference)}
                                     </div>
                                 </div>
                             </div>
 
                             {/* Bottom Progress Section */}
-                            <div className="pt-2 space-y-2">
-                                <div className="w-full bg-muted/40 h-1.5 rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-emerald-500 transition-all duration-500 ease-out shadow-[0_0_8px_rgba(16,185,129,0.3)]"
-                                        style={{ width: `${paidPercent}%` }}
-                                    />
+                            {isCancelled ? (
+                                <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 px-3 py-2 text-center text-[10px] font-bold uppercase tracking-widest text-rose-700 dark:text-rose-200">
+                                    {t('loans.cancelledRepaymentMessage', { defaultValue: 'Cancelled — no repayment was completed' })}
                                 </div>
-                                <div className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-widest text-center">
-                                    {Math.round(paidPercent)}% {t('loans.completedStep') || 'Repayment Completed'}
+                            ) : (
+                                <div className="pt-2 space-y-2">
+                                    <div className="w-full bg-muted/40 h-1.5 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-emerald-500 transition-all duration-500 ease-out shadow-[0_0_8px_rgba(16,185,129,0.3)]"
+                                            style={{ width: `${paidPercent}%` }}
+                                        />
+                                    </div>
+                                    <div className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-widest text-center">
+                                        {Math.round(paidPercent)}% {t('loans.completedStep') || 'Repayment Completed'}
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </CardContent>
                     </Card>
 
@@ -1235,7 +1286,11 @@ function LoanDetailsView({
                                             {/* Timeline Node */}
                                             <div className={cn(
                                                 "absolute -start-[1.375rem] top-1.5 w-3 h-3 rounded-full border-2 border-background z-10 transition-transform group-hover:scale-125",
-                                                isDisbursement ? "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]" : "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
+                                                row.isCancellation
+                                                    ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]'
+                                                    : isDisbursement
+                                                        ? "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]"
+                                                        : "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
                                             )} />
 
                                             <div className="space-y-0.5">
@@ -1244,10 +1299,14 @@ function LoanDetailsView({
                                                 </div>
                                                 <div className="text-muted-foreground text-xs font-medium flex items-center gap-1.5 pt-1">
                                                     <span>{formatDateTime(row.date)}</span>
-                                                    <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
-                                                    <span className="font-bold text-foreground/80">
-                                                        {formatCurrency(row.amount, loan.settlementCurrency, features.iqd_display_preference)}
-                                                    </span>
+                                                    {row.amount !== null ? (
+                                                        <>
+                                                            <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+                                                            <span className="font-bold text-foreground/80">
+                                                                {formatCurrency(row.amount, loan.settlementCurrency, features.iqd_display_preference)}
+                                                            </span>
+                                                        </>
+                                                    ) : null}
                                                 </div>
                                             </div>
                                         </div>

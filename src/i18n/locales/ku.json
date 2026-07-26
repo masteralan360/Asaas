@@ -2303,6 +2303,7 @@
     "loanActive": "قەرزی چالاک",
     "loanOverdue": "قەرزی بەسەرچوو",
     "loanCompleted": "قەرزی تەواوبوو",
+    "loanCancelled": "قەرز هەڵوەشاوە",
     "loanBalance": "ماوە",
     "loanNextDue": "وادەی داهاتوو",
     "openLoan": "کردنەوەی قەرز",
@@ -2390,7 +2391,11 @@
     "totalPrincipal": "کۆی قەرز",
     "totalRepaid": "کۆی پارەدراو",
     "balanceDue": "ماوە بۆ پارەدان",
+    "cancelledBalance": "باڵانسی هەڵوەشاوە",
     "completedStep": "پارەدانەوە تەواوبوو",
+    "cancelledLoanTitle": "قەرز هەڵوەشاوە",
+    "cancelledLoanDescription": "ئەم قەرزە هەڵوەشاوە چونکە فرۆشتنە پەیوەستکراوەکە بە تەواوی گەڕێندراوەتەوە. هیچ پارەدانەوەیەک تەواو نەبوو.",
+    "cancelledRepaymentMessage": "هەڵوەشاوە — هیچ پارەدانەوەیەک تەواو نەبوو",
     "recentActivity": "کۆتا چالاکی",
     "currencyHint": "دراوی یەکلاکردنەوە",
     "pay": "پارەدان",
@@ -2436,6 +2441,7 @@
     "activities": {
       "paymentReceived": "پارەدان وەرگیرا",
       "paymentMade": "پارەدانەوە کرا",
+      "loanCancelled": "قەرز هەڵوەشاوە — گەڕاندنەوەی تەواوی فرۆشتن",
       "loanDisbursed": "قەرز درا",
       "amountLent": "بڕی قەرزی دراو",
       "amountBorrowed": "بڕی قەرزی وەرگیراو"

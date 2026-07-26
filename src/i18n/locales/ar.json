@@ -2308,6 +2308,7 @@
     "loanActive": "قرض نشط",
     "loanOverdue": "قرض متأخر",
     "loanCompleted": "قرض مكتمل",
+    "loanCancelled": "تم إلغاء القرض",
     "loanBalance": "الرصيد",
     "loanNextDue": "الاستحقاق القادم",
     "openLoan": "فتح القرض",
@@ -2395,7 +2396,11 @@
     "totalPrincipal": "إجمالي الأصل",
     "totalRepaid": "إجمالي المسدد",
     "balanceDue": "الرصيد المستحق",
+    "cancelledBalance": "الرصيد الملغى",
     "completedStep": "تم السداد",
+    "cancelledLoanTitle": "تم إلغاء القرض",
+    "cancelledLoanDescription": "تم إلغاء هذا القرض لأن عملية البيع المرتبطة به أُعيدت بالكامل. لم يكتمل أي سداد.",
+    "cancelledRepaymentMessage": "تم الإلغاء — لم يكتمل أي سداد",
     "recentActivity": "النشاط الأخير",
     "currencyHint": "عملة التسوية",
     "pay": "دفع",
@@ -2441,6 +2446,7 @@
     "activities": {
       "paymentReceived": "تم استلام الدفعة",
       "paymentMade": "تم السداد",
+      "loanCancelled": "تم إلغاء القرض — استرجاع كامل للبيع",
       "loanDisbursed": "تم صرف القرض",
       "amountLent": "تم إقراض المبلغ",
       "amountBorrowed": "تم اقتراض المبلغ"

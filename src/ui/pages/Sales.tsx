@@ -164,10 +164,11 @@ function getExternalSaleDetailsPath(sale: Sale) {
     return null
 }
 
-type EffectiveLoanStatus = 'pending' | 'active' | 'overdue' | 'completed'
+type EffectiveLoanStatus = 'pending' | 'active' | 'overdue' | 'completed' | 'cancelled'
 
 function resolveEffectiveLoanStatus(loan: Loan | undefined): EffectiveLoanStatus {
     if (!loan) return 'pending'
+    if (loan.status === 'cancelled') return 'cancelled'
     if (loan.balanceAmount <= 0) return 'completed'
     const today = new Date().toISOString().slice(0, 10)
     if (loan.nextDueDate && loan.nextDueDate < today) return 'overdue'
@@ -176,6 +177,7 @@ function resolveEffectiveLoanStatus(loan: Loan | undefined): EffectiveLoanStatus
 
 function getLoanStatusChipClass(status: EffectiveLoanStatus, neoStyle: boolean): string {
     const base = neoStyle ? "rounded-[var(--radius)]" : "rounded-full"
+    if (status === 'cancelled') return `${base} bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/20`
     if (status === 'overdue') return `${base} bg-destructive/10 text-destructive border border-destructive/20`
     if (status === 'completed') return `${base} bg-blue-500/10 text-blue-600 dark:text-blue-300 border border-blue-500/20`
     if (status === 'active') return `${base} bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border border-emerald-500/20`
@@ -186,6 +188,7 @@ function getLoanStatusLabelKey(status: EffectiveLoanStatus): string {
     if (status === 'active') return 'sales.loanActive'
     if (status === 'overdue') return 'sales.loanOverdue'
     if (status === 'completed') return 'sales.loanCompleted'
+    if (status === 'cancelled') return 'sales.loanCancelled'
     return 'sales.loanPending'
 }
 
@@ -193,6 +196,7 @@ function getLoanStatusFallbackLabel(status: EffectiveLoanStatus): string {
     if (status === 'active') return 'Loan Active'
     if (status === 'overdue') return 'Loan Overdue'
     if (status === 'completed') return 'Loan Completed'
+    if (status === 'cancelled') return 'Loan Cancelled'
     return 'Loan Pending'
 }
 
