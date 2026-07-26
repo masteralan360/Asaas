@@ -1345,7 +1345,7 @@ export function Sales() {
             }
         }
 
-        const isSaleFullyReturnedBy = (items: Sale['items'], quantities: number[]) => {
+        const isSaleFullyReturnedBy = (items: Sale['items'] = [], quantities: number[] = []) => {
             const quantitiesByItemId = new Map(items.map((item, index) => [item.id, quantities[index] || 0]))
             return (saleToReturn.items || []).every((item) => (
                 (item.returned_quantity || 0) + (quantitiesByItemId.get(item.id) || 0) >= item.quantity
