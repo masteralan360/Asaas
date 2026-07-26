@@ -58,7 +58,6 @@ export function CreateManualLoanModal({
     const [borrowerName, setBorrowerName] = useState('')
     const [borrowerPhone, setBorrowerPhone] = useState('')
     const [borrowerAddress, setBorrowerAddress] = useState('')
-    const [borrowerNationalId, setBorrowerNationalId] = useState('')
     const [selectedParty, setSelectedParty] = useState<LoanPartySelection | null>(null)
     const [isPartyPickerOpen, setIsPartyPickerOpen] = useState(false)
     const [principalAmount, setPrincipalAmount] = useState('')
@@ -75,7 +74,6 @@ export function CreateManualLoanModal({
         setBorrowerName('')
         setBorrowerPhone('')
         setBorrowerAddress('')
-        setBorrowerNationalId('')
         setSelectedParty(null)
         setIsPartyPickerOpen(false)
         setPrincipalAmount('')
@@ -94,7 +92,6 @@ export function CreateManualLoanModal({
     const canSubmit = borrowerName.trim() &&
         borrowerPhone.trim() &&
         borrowerAddress.trim() &&
-        borrowerNationalId.trim() &&
         parseFormattedNumber(principalAmount || '0') > 0 &&
         installmentCount > 0
     const exchangeRateSnapshot = useMemo(() => {
@@ -126,7 +123,7 @@ export function CreateManualLoanModal({
                 borrowerName: borrowerName.trim(),
                 borrowerPhone: borrowerPhone.trim(),
                 borrowerAddress: borrowerAddress.trim(),
-                borrowerNationalId: borrowerNationalId.trim(),
+                borrowerNationalId: '',
                 principalAmount: parseFormattedNumber(principalAmount || '0'),
                 settlementCurrency: selectedCurrency,
                 exchangeRateSnapshot,
@@ -232,14 +229,10 @@ export function CreateManualLoanModal({
                                 ) : null}
                             </div>
 
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div className="grid gap-2">
                                 <div className="grid gap-2">
                                     <Label>{t('loans.borrowerPhone') || 'Borrower Phone'} <span className="text-destructive">*</span></Label>
                                     <Input value={borrowerPhone} onChange={e => setBorrowerPhone(e.target.value)} />
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label>{t('loans.borrowerNationalId') || 'Borrower National ID'} <span className="text-destructive">*</span></Label>
-                                    <Input value={borrowerNationalId} onChange={e => setBorrowerNationalId(e.target.value)} />
                                 </div>
                             </div>
 

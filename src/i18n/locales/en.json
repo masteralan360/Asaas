@@ -3127,7 +3127,13 @@
     },
     "searchPlaceholder": "Search by borrower name or loan number...",
     "simpleSearchPlaceholder": "Search by counterparty, partner, or loan number...",
-    "registerFromPos": "Register Installment Loan",
+    "registerFromPos": "Register Sale Loan",
+    "registerSaleLoan": "Register Sale Loan",
+    "registerSaleInstallmentLoan": "Register Sale Installment Loan",
+    "saleLoanDescription": "Create one loan for this POS sale. Add more repayments to create an installment loan.",
+    "saleInstallmentLoanDescription": "Create an installment loan for this POS sale.",
+    "createSaleLoan": "Create Sale Loan",
+    "createSaleInstallmentLoan": "Create Sale Installment Loan",
     "createManualLoan": "Create Installment Loan",
     "createSimpleLoan": "Create Simple Loan",
     "simpleTab": "Loans",
@@ -3184,9 +3190,14 @@
     "noteLabel": "Note:",
     "installmentSchedule": "Installment Schedule",
     "installmentCount": "Installment Count",
+    "repaymentCount": "Repayment Count",
+    "installment": "installment",
     "installmentPlannedAmount": "Per Installment Amount",
     "frequency": "Frequency",
+    "installmentFrequency": "Installment Frequency",
     "firstDueDate": "First Due Date",
+    "firstInstallmentDueDate": "First Installment Due Date",
+    "totalDue": "Total Due",
     "planned": "Planned",
     "summary": "Loan Summary",
     "principalOnly": "Principal Only",
@@ -3226,13 +3237,15 @@
     "statuses": {
       "active": "Active",
       "overdue": "Overdue",
-      "completed": "Completed"
+      "completed": "Completed",
+      "cancelled": "Cancelled"
     },
     "installmentStatuses": {
       "unpaid": "Unpaid",
       "partial": "Partial",
       "paid": "Paid",
-      "overdue": "Overdue"
+      "overdue": "Overdue",
+      "cancelled": "Cancelled"
     },
     "activities": {
       "paymentReceived": "Payment Received",

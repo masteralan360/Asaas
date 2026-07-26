@@ -41,6 +41,10 @@ export interface LoanRegistrationData {
     notes?: string
 }
 
+type LoanRegistrationFormData = Omit<LoanRegistrationData, 'installmentCount'> & {
+    installmentCount: number | ''
+}
+
 interface LoanRegistrationModalProps {
     isOpen: boolean
     onOpenChange: (open: boolean) => void
@@ -61,7 +65,7 @@ export function LoanRegistrationModal({
     isSubmitting = false
 }: LoanRegistrationModalProps) {
     const { t } = useTranslation()
-    const [form, setForm] = useState<LoanRegistrationData>({
+    const [form, setForm] = useState<LoanRegistrationFormData>({
         linkedPartyType: null,
         linkedPartyId: null,
         linkedPartyName: null,
@@ -94,11 +98,13 @@ export function LoanRegistrationModal({
         setIsPartyPickerOpen(false)
     }, [isOpen])
 
+    const repaymentCount = typeof form.installmentCount === 'number' ? form.installmentCount : 0
     const isValid = form.borrowerName.trim() &&
         form.borrowerPhone.trim() &&
         form.borrowerAddress.trim() &&
-        form.borrowerNationalId.trim() &&
-        form.installmentCount > 0
+        Number.isInteger(repaymentCount) &&
+        repaymentCount > 0
+    const isInstallmentLoan = repaymentCount > 1
 
     const submit = () => {
         if (!isValid) return
@@ -111,6 +117,7 @@ export function LoanRegistrationModal({
             borrowerPhone: form.borrowerPhone.trim(),
             borrowerAddress: form.borrowerAddress.trim(),
             borrowerNationalId: form.borrowerNationalId.trim(),
+            installmentCount: repaymentCount,
             notes: form.notes?.trim() || undefined
         })
     }
@@ -131,8 +138,16 @@ export function LoanRegistrationModal({
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent layout="structured" className="max-w-4xl">
                 <DialogHeader layout="structured">
-                    <DialogTitle>{t('loans.registerFromPos') || 'Register Loan'}</DialogTitle>
-                    <DialogDescription>{t('loans.selectPartyHint', { defaultValue: 'You can link this loan to an existing business partner and still edit the borrower fields manually.' })}</DialogDescription>
+                    <DialogTitle>
+                        {isInstallmentLoan
+                            ? t('loans.registerSaleInstallmentLoan', { defaultValue: 'Register Sale Installment Loan' })
+                            : t('loans.registerSaleLoan', { defaultValue: 'Register Sale Loan' })}
+                    </DialogTitle>
+                    <DialogDescription>
+                        {isInstallmentLoan
+                            ? t('loans.saleInstallmentLoanDescription', { defaultValue: 'Create an installment loan for this POS sale.' })
+                            : t('loans.saleLoanDescription', { defaultValue: 'Create one loan for this POS sale. Add more repayments to create an installment loan.' })}
+                    </DialogDescription>
                 </DialogHeader>
 
                 <div className="flex min-h-0 flex-1 flex-col">
@@ -195,19 +210,12 @@ export function LoanRegistrationModal({
                                 ) : null}
                             </div>
 
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div className="grid gap-2">
                                 <div className="grid gap-2">
                                     <Label>{t('loans.borrowerPhone') || 'Borrower Phone'} <span className="text-destructive">*</span></Label>
                                     <Input
                                         value={form.borrowerPhone}
                                         onChange={e => setForm(prev => ({ ...prev, borrowerPhone: e.target.value }))}
-                                    />
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label>{t('loans.borrowerNationalId') || 'Borrower National ID'} <span className="text-destructive">*</span></Label>
-                                    <Input
-                                        value={form.borrowerNationalId}
-                                        onChange={e => setForm(prev => ({ ...prev, borrowerNationalId: e.target.value }))}
                                     />
                                 </div>
                             </div>
@@ -220,46 +228,70 @@ export function LoanRegistrationModal({
                                 />
                             </div>
 
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                            <div className={`grid grid-cols-1 gap-4 ${isInstallmentLoan ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
                                 <div className="grid gap-2">
-                                    <Label>{t('loans.installmentCount') || 'Installments'} <span className="text-destructive">*</span></Label>
+                                    <Label>
+                                        {isInstallmentLoan
+                                            ? t('loans.installmentCount', { defaultValue: 'Installment Count' })
+                                            : t('loans.repaymentCount', { defaultValue: 'Repayment Count' })}
+                                        {' '}<span className="text-destructive">*</span>
+                                    </Label>
                                     <Input
                                         type="number"
                                         min={1}
+                                        step={1}
                                         inputMode="numeric"
                                         value={form.installmentCount}
-                                        onChange={e => setForm(prev => ({ ...prev, installmentCount: Math.max(1, Number(e.target.value || 1)) }))}
+                                        placeholder="1"
+                                        onChange={e => {
+                                            const rawCount = e.target.value
+                                            const count = Math.trunc(Number(rawCount))
+                                            setForm(prev => ({
+                                                ...prev,
+                                                installmentCount: rawCount && Number.isFinite(count) && count > 0 ? count : ''
+                                            }))
+                                        }}
                                     />
-                                    {principalAmount > 0 && form.installmentCount > 0 && (
+                                    {principalAmount > 0 && repaymentCount > 0 && (
                                         <p className="text-[11px] text-muted-foreground">
-                                            ≈ {formatCurrency(principalAmount / form.installmentCount, settlementCurrency)} / {t('loans.installmentCount') || 'installment'}
+                                            {isInstallmentLoan
+                                                ? `≈ ${formatCurrency(principalAmount / repaymentCount, settlementCurrency)} / ${t('loans.installment', { defaultValue: 'installment' })}`
+                                                : `${t('loans.totalDue', { defaultValue: 'Total Due' })}: ${formatCurrency(principalAmount, settlementCurrency)}`}
                                         </p>
                                     )}
                                 </div>
+                                {isInstallmentLoan ? (
+                                    <div className="grid gap-2">
+                                        <Label>{t('loans.installmentFrequency', { defaultValue: 'Installment Frequency' })}</Label>
+                                        <Select
+                                            value={form.installmentFrequency}
+                                            onValueChange={(value: InstallmentFrequency) => setForm(prev => ({ ...prev, installmentFrequency: value }))}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="weekly">{t('loans.frequencies.weekly') || 'Weekly'}</SelectItem>
+                                                <SelectItem value="biweekly">{t('loans.frequencies.biweekly') || 'Biweekly'}</SelectItem>
+                                                <SelectItem value="monthly">{t('loans.frequencies.monthly') || 'Monthly'}</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                ) : null}
                                 <div className="grid gap-2">
-                                    <Label>{t('loans.frequency') || 'Frequency'}</Label>
-                                    <Select
-                                        value={form.installmentFrequency}
-                                        onValueChange={(value: InstallmentFrequency) => setForm(prev => ({ ...prev, installmentFrequency: value }))}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="weekly">{t('loans.frequencies.weekly') || 'Weekly'}</SelectItem>
-                                            <SelectItem value="biweekly">{t('loans.frequencies.biweekly') || 'Biweekly'}</SelectItem>
-                                            <SelectItem value="monthly">{t('loans.frequencies.monthly') || 'Monthly'}</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label>{t('loans.firstDueDate') || 'First Due Date'}</Label>
+                                    <Label>
+                                        {isInstallmentLoan
+                                            ? t('loans.firstInstallmentDueDate', { defaultValue: 'First Installment Due Date' })
+                                            : t('loans.dueDate', { defaultValue: 'Due Date' })}
+                                    </Label>
                                     <DateTimePicker
                                         id="registration-loan-first-due-date"
                                         mode="date"
                                         date={parseLocalDateValue(form.firstDueDate)}
                                         setDate={(value) => setForm(prev => ({ ...prev, firstDueDate: value ? formatLocalDateValue(value) : null }))}
-                                        placeholder={t('loans.firstDueDate') || 'First Due Date'}
+                                        placeholder={isInstallmentLoan
+                                            ? t('loans.firstInstallmentDueDate', { defaultValue: 'First Installment Due Date' })
+                                            : t('loans.dueDate', { defaultValue: 'Due Date' })}
                                     />
                                 </div>
                             </div>
@@ -280,7 +312,9 @@ export function LoanRegistrationModal({
                             {t('common.cancel') || 'Cancel'}
                         </Button>
                         <Button type="button" className="w-full sm:w-auto" onClick={submit} disabled={!isValid || isSubmitting}>
-                            {t('common.confirm') || 'Confirm'}
+                            {isInstallmentLoan
+                                ? t('loans.createSaleInstallmentLoan', { defaultValue: 'Create Sale Installment Loan' })
+                                : t('loans.createSaleLoan', { defaultValue: 'Create Sale Loan' })}
                         </Button>
                     </DialogFooter>
                 </div>

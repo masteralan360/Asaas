@@ -2330,6 +2330,12 @@
     "searchPlaceholder": "البحث باسم المقترض أو رقم القرض...",
     "simpleSearchPlaceholder": "ابحث باسم الطرف أو الشريك أو رقم القرض...",
     "registerFromPos": "تسجيل قرض تقسيط",
+    "registerSaleLoan": "تسجيل قرض للبيع",
+    "registerSaleInstallmentLoan": "تسجيل قرض تقسيط للبيع",
+    "saleLoanDescription": "أنشئ قرضًا واحدًا لعملية البيع هذه. أضف دفعات سداد أكثر لإنشاء قرض تقسيط.",
+    "saleInstallmentLoanDescription": "أنشئ قرض تقسيط لعملية البيع هذه.",
+    "createSaleLoan": "إنشاء قرض للبيع",
+    "createSaleInstallmentLoan": "إنشاء قرض تقسيط للبيع",
     "createManualLoan": "إنشاء قرض تقسيط",
     "createSimpleLoan": "إنشاء قرض بسيط",
     "simpleTab": "القروض",
@@ -2375,9 +2381,14 @@
     "noteLabel": "ملاحظة:",
     "installmentSchedule": "جدول الأقساط",
     "installmentCount": "عدد الأقساط",
+    "repaymentCount": "عدد دفعات السداد",
+    "installment": "قسط",
     "installmentPlannedAmount": "المبلغ المخطط لكل قسط",
     "frequency": "التكرار",
+    "installmentFrequency": "وتيرة الأقساط",
     "firstDueDate": "تاريخ الاستحقاق الأول",
+    "firstInstallmentDueDate": "تاريخ استحقاق القسط الأول",
+    "totalDue": "إجمالي المستحق",
     "planned": "مخطط له",
     "summary": "ملخص القرض",
     "principalOnly": "الأصل فقط",
@@ -2417,13 +2428,15 @@
     "statuses": {
       "active": "نشط",
       "overdue": "متأخر",
-      "completed": "مكتمل"
+      "completed": "مكتمل",
+      "cancelled": "ملغى"
     },
     "installmentStatuses": {
       "unpaid": "غير مدفوع",
       "partial": "جزئي",
       "paid": "مدفوع",
-      "overdue": "متأخر"
+      "overdue": "متأخر",
+      "cancelled": "ملغى"
     },
     "activities": {
       "paymentReceived": "تم استلام الدفعة",

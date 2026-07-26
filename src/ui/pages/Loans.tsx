@@ -85,6 +85,7 @@ type LoanFilter = 'all' | 'active' | 'overdue' | 'completed'
 
 function statusClass(status: string) {
     if (status === 'completed') return 'bg-blue-500/15 text-blue-600 dark:text-blue-300'
+    if (status === 'cancelled') return 'bg-slate-500/15 text-slate-600 dark:text-slate-300'
     if (status === 'overdue') return 'bg-red-500/15 text-red-600 dark:text-red-300'
     return 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300'
 }
@@ -171,22 +172,20 @@ function LoanListView({
         () => queriedInstallments ?? [],
         [queriedInstallments]
     )
+    const dateScopedLoans = useMemo(
+        () => loans.filter((loan) => isDateInDateRange(loan.createdAt, dateRange, customDates)),
+        [customDates, dateRange, loans]
+    )
+    const dateScopedLoanIds = useMemo(
+        () => new Set(dateScopedLoans.map((loan) => loan.id)),
+        [dateScopedLoans]
+    )
     const dateScopedInstallments = useMemo(
         () => installments.filter((item) => (
             standardLoanIds.has(item.loanId)
-            && isDateInDateRange(item.dueDate, dateRange, customDates)
+            && dateScopedLoanIds.has(item.loanId)
         )),
-        [customDates, dateRange, installments, standardLoanIds]
-    )
-    const dateScopedLoanIds = useMemo(
-        () => new Set(dateScopedInstallments.map((item) => item.loanId)),
-        [dateScopedInstallments]
-    )
-    const dateScopedLoans = useMemo(
-        () => dateRange === 'allTime'
-            ? loans
-            : loans.filter((loan) => dateScopedLoanIds.has(loan.id)),
-        [dateRange, dateScopedLoanIds, loans]
+        [dateScopedLoanIds, installments, standardLoanIds]
     )
     const workspaceSales = useLiveQuery(
         () => db.sales.where('workspaceId').equals(workspaceId).toArray(),

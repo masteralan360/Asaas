@@ -12,7 +12,7 @@ import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, applySalesOrderReturnQuantities, commitStockBatchAllocations, db, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
+import { adjustInventoryQuantity, applySalesOrderReturnQuantities, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
@@ -1307,9 +1307,24 @@ export function Sales() {
         if (!saleToReturn) return
         const returnId = crypto.randomUUID()
 
-        const recordReturnLoanPayment = async (amt: number) => {
+        const recordReturnLoanPayment = async (amt: number, options: {
+            isFullSaleReturn: boolean
+            pendingRemoteSync: boolean
+        }) => {
             if (saleToReturn.payment_method === 'loan' && amt > 0) {
                 try {
+                    if (options.isFullSaleReturn) {
+                        await markPosLoanCancelledForFullSaleReturn({
+                            workspaceId: saleToReturn.workspace_id,
+                            saleId: saleToReturn.id,
+                            returnId,
+                            reason,
+                            createdBy: user?.id,
+                            pendingRemoteSync: options.pendingRemoteSync
+                        })
+                        return
+                    }
+
                     const loan = await db.loans.where('saleId').equals(saleToReturn.id).first()
                     if (loan) {
                         await recordLoanPayment(saleToReturn.workspace_id, {
@@ -1324,6 +1339,13 @@ export function Sales() {
                     console.error('[Sales] Failed to apply loan return payment:', e)
                 }
             }
+        }
+
+        const isSaleFullyReturnedBy = (items: Sale['items'], quantities: number[]) => {
+            const quantitiesByItemId = new Map(items.map((item, index) => [item.id, quantities[index] || 0]))
+            return (saleToReturn.items || []).every((item) => (
+                (item.returned_quantity || 0) + (quantitiesByItemId.get(item.id) || 0) >= item.quantity
+            ))
         }
 
         try {
@@ -1466,7 +1488,10 @@ export function Sales() {
                             description: t('pos.offlineDesc') || 'Sale saved locally and will sync when online.',
                         })
                     }
-                    await recordReturnLoanPayment(returnValue)
+                    await recordReturnLoanPayment(returnValue, {
+                        isFullSaleReturn: isSaleFullyReturnedBy(itemsToReturn, quantities),
+                        pendingRemoteSync: shouldQueueOfflineReturn
+                    })
                 } else {
                     const itemsToReturn = (saleToReturn.items || []).filter(
                         (item) => item.quantity - (item.returned_quantity || 0) > 0
@@ -1592,7 +1617,10 @@ export function Sales() {
                             description: t('pos.offlineDesc') || 'Sale saved locally and will sync when online.',
                         })
                     }
-                    await recordReturnLoanPayment(returnValue)
+                    await recordReturnLoanPayment(returnValue, {
+                        isFullSaleReturn: true,
+                        pendingRemoteSync: shouldQueueOfflineReturn
+                    })
                 }
 
                 if (tutorialSaleId === saleToReturn.id) {
@@ -1717,7 +1745,10 @@ export function Sales() {
                     if (selectedSale?.id === saleToReturn.id) {
                         setSelectedSale(updateSale(selectedSale))
                     }
-                    await recordReturnLoanPayment(returnValue)
+                    await recordReturnLoanPayment(returnValue, {
+                        isFullSaleReturn: isSaleFullyReturnedBy(itemsToReturn, quantities),
+                        pendingRemoteSync: false
+                    })
                 }
             } else {
                 // Whole Sale Return
@@ -1840,7 +1871,10 @@ export function Sales() {
                     if (selectedSale?.id === saleToReturn.id) {
                         setSelectedSale(updateSale(selectedSale))
                     }
-                    await recordReturnLoanPayment(returnValue)
+                    await recordReturnLoanPayment(returnValue, {
+                        isFullSaleReturn: true,
+                        pendingRemoteSync: false
+                    })
                 }
             }
         

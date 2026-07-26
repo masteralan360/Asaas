@@ -1360,8 +1360,8 @@ export type LoanSource = "pos" | "manual" | "order";
 export type LoanCategory = "standard" | "simple";
 export type LoanDirection = "lent" | "borrowed";
 export type LoanOrderType = "sales" | "purchase";
-export type LoanStatus = "active" | "overdue" | "completed";
-export type InstallmentStatus = "unpaid" | "partial" | "paid" | "overdue";
+export type LoanStatus = "active" | "overdue" | "completed" | "cancelled";
+export type InstallmentStatus = "unpaid" | "partial" | "paid" | "overdue" | "cancelled";
 export type InstallmentFrequency = "weekly" | "biweekly" | "monthly";
 export type LoanLinkedPartyType = "business_partner";
 

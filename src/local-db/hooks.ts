@@ -4235,7 +4235,7 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
     if (!borrowerName) {
         throw new Error('Missing borrower information')
     }
-    if (loanCategory === 'standard' && input.source !== 'order' && (!borrowerPhone || !borrowerAddress || !borrowerNationalId)) {
+    if (loanCategory === 'standard' && input.source !== 'order' && (!borrowerPhone || !borrowerAddress)) {
         throw new Error('Missing borrower information')
     }
 
@@ -4489,7 +4489,149 @@ export async function createLoanFromPosSale(
     workspaceId: string,
     input: Omit<LoanCreateInput, 'source'>
 ): Promise<{ loan: Loan; installments: LoanInstallment[] }> {
-    return createLoanAggregate(workspaceId, { ...input, source: 'pos' })
+    const installmentCount = Math.max(1, Math.trunc(Number(input.installmentCount) || 1))
+    return createLoanAggregate(workspaceId, {
+        ...input,
+        installmentCount,
+        loanCategory: installmentCount > 1 ? 'standard' : 'simple',
+        source: 'pos'
+    })
+}
+
+export async function markPosLoanCancelledForFullSaleReturn(input: {
+    workspaceId: string
+    saleId: string
+    returnId: string
+    reason: string
+    createdBy?: string | null
+    pendingRemoteSync?: boolean
+}): Promise<void> {
+    const loan = await db.loans.where('saleId').equals(input.saleId).and((item) => !item.isDeleted).first()
+    if (!loan || loan.source !== 'pos' || loan.status === 'cancelled') {
+        return
+    }
+
+    const now = new Date().toISOString()
+    const [installments, payments] = await Promise.all([
+        db.loan_installments.where('loanId').equals(loan.id).and((item) => !item.isDeleted).toArray(),
+        db.loan_payments.where('loanId').equals(loan.id).and((item) => !item.isDeleted).toArray()
+    ])
+    const syncStatus = input.pendingRemoteSync ? 'pending' as const : 'synced' as const
+    const lastSyncedAt = input.pendingRemoteSync ? null : now
+    const cancelledLoan: Loan = {
+        ...loan,
+        totalPaidAmount: 0,
+        balanceAmount: 0,
+        nextDueDate: null,
+        status: 'cancelled',
+        notes: [loan.notes?.trim(), `Cancelled: linked sale was fully returned (${input.reason || 'Return'}).`]
+            .filter(Boolean)
+            .join('\n'),
+        updatedAt: now,
+        version: loan.version + 1,
+        syncStatus,
+        lastSyncedAt
+    }
+    const cancelledInstallments: LoanInstallment[] = installments.map((installment) => ({
+        ...installment,
+        paidAmount: 0,
+        balanceAmount: 0,
+        status: 'cancelled',
+        paidAt: null,
+        updatedAt: now,
+        version: installment.version + 1,
+        syncStatus,
+        lastSyncedAt
+    }))
+
+    await db.transaction('rw', [db.loans, db.loan_installments], async () => {
+        await db.loans.put(cancelledLoan)
+        if (cancelledInstallments.length > 0) {
+            await db.loan_installments.bulkPut(cancelledInstallments)
+        }
+    })
+
+    // Cloud workspaces receive the authoritative refund rows from the database
+    // trigger that runs with process_sale_return. Local workspaces need to write
+    // those audit rows themselves because they never call Supabase.
+    if (isLocalWorkspaceMode(input.workspaceId)) {
+        const { appendPaymentTransaction } = await import('./payments')
+        const transactions = await db.payment_transactions.where('workspaceId').equals(input.workspaceId).toArray()
+
+        for (const payment of payments) {
+            if (payment.amount <= 0) {
+                continue
+            }
+
+            const sourceTransaction = transactions
+                .filter((transaction) => !transaction.isDeleted && !transaction.reversalOfTransactionId)
+                .find((transaction) => transaction.metadata?.loanPaymentId === payment.id)
+
+            if (sourceTransaction) {
+                const hasReturnReversal = transactions.some((transaction) =>
+                    !transaction.isDeleted
+                    && transaction.reversalOfTransactionId === sourceTransaction.id
+                    && transaction.metadata?.saleReturnId === input.returnId
+                )
+                if (hasReturnReversal) {
+                    continue
+                }
+
+                await appendPaymentTransaction(input.workspaceId, {
+                    sourceModule: sourceTransaction.sourceModule,
+                    sourceType: sourceTransaction.sourceType,
+                    sourceRecordId: sourceTransaction.sourceRecordId,
+                    sourceSubrecordId: sourceTransaction.sourceSubrecordId ?? null,
+                    direction: sourceTransaction.direction,
+                    amount: -Math.abs(payment.amount),
+                    currency: sourceTransaction.currency,
+                    paymentMethod: sourceTransaction.paymentMethod,
+                    paidAt: now,
+                    counterpartyName: sourceTransaction.counterpartyName || null,
+                    referenceLabel: sourceTransaction.referenceLabel || loan.loanNo,
+                    note: `Full sale return ${input.returnId}: ${input.reason || 'Return'}`,
+                    createdBy: input.createdBy || null,
+                    reversalOfTransactionId: sourceTransaction.id,
+                    metadata: {
+                        ...(sourceTransaction.metadata || {}),
+                        saleId: input.saleId,
+                        saleReturnId: input.returnId,
+                        fullSaleReturn: true,
+                        returnReason: input.reason || 'Return'
+                    }
+                })
+                continue
+            }
+
+            await appendPaymentTransaction(input.workspaceId, {
+                sourceModule: 'loans',
+                sourceType: loan.loanCategory === 'simple'
+                    ? 'simple_loan'
+                    : loan.installmentCount > 1 ? 'loan_installment' : 'loan_payment',
+                sourceRecordId: loan.id,
+                sourceSubrecordId: payment.id,
+                direction: loan.direction === 'borrowed' ? 'outgoing' : 'incoming',
+                amount: -Math.abs(payment.amount),
+                currency: loan.settlementCurrency,
+                paymentMethod: payment.paymentMethod,
+                paidAt: now,
+                counterpartyName: loan.borrowerName,
+                referenceLabel: loan.loanNo,
+                note: `Full sale return ${input.returnId}: ${input.reason || 'Return'}`,
+                createdBy: input.createdBy || null,
+                metadata: {
+                    saleId: input.saleId,
+                    saleReturnId: input.returnId,
+                    loanPaymentId: payment.id,
+                    fullSaleReturn: true,
+                    returnReason: input.reason || 'Return',
+                    refundWithoutOriginalTransaction: true
+                }
+            })
+        }
+    }
+
+    await recalculateLoanLinkedBusinessPartnerSummary(input.workspaceId, loan.linkedPartyType, loan.linkedPartyId)
 }
 
 export async function createLoanFromOrder(

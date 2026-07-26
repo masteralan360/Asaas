@@ -2325,6 +2325,12 @@
     "searchPlaceholder": "گەڕان بەپێی ناوی قەرزدار یان ژمارەی قەرز...",
     "simpleSearchPlaceholder": "گەڕان بە ناوی لایەنی بەرامبەر، هاوبەش، یان ژمارەی قەرز...",
     "registerFromPos": "تۆمارکردنی قەرزی قیستی",
+    "registerSaleLoan": "تۆمارکردنی قەرزی فرۆشتن",
+    "registerSaleInstallmentLoan": "تۆمارکردنی قەرزی قیستی فرۆشتن",
+    "saleLoanDescription": "یەک قەرز بۆ ئەم فرۆشتنە دروست بکە. بۆ دروستکردنی قەرزی قیستی، ژمارەی پارەدانەوەکان زیاد بکە.",
+    "saleInstallmentLoanDescription": "قەرزی قیستی بۆ ئەم فرۆشتنە دروست بکە.",
+    "createSaleLoan": "دروستکردنی قەرزی فرۆشتن",
+    "createSaleInstallmentLoan": "دروستکردنی قەرزی قیستی فرۆشتن",
     "createManualLoan": "دروستکردنی قەرزی قیستی",
     "createSimpleLoan": "دروستکردنی قەرزی ئاسان",
     "simpleTab": "قەرزەکان",
@@ -2370,9 +2376,14 @@
     "noteLabel": "تێبینی:",
     "installmentSchedule": "خشتەی قیستەکان",
     "installmentCount": "ژمارەی قیستەکان",
+    "repaymentCount": "ژمارەی پارەدانەوەکان",
+    "installment": "قیست",
     "installmentPlannedAmount": "بڕی پلانکراوی هەر قیستێک",
     "frequency": "دووبارەبوونەوە",
+    "installmentFrequency": "ماوەی قیست",
     "firstDueDate": "یەکەم وادەی پارەدان",
+    "firstInstallmentDueDate": "یەکەم وادەی قیست",
+    "totalDue": "کۆی ماوەی پارەدان",
     "planned": "پلاندراو",
     "summary": "پوختەی قەرز",
     "principalOnly": "تەنها قەرز",
@@ -2412,13 +2423,15 @@
     "statuses": {
       "active": "چالاک",
       "overdue": "بەسەرچوو",
-      "completed": "تەواوبوو"
+      "completed": "تەواوبوو",
+      "cancelled": "هەڵوەشاوە"
     },
     "installmentStatuses": {
       "unpaid": "پارەنەدراو",
       "partial": "بەشەکی",
       "paid": "پارەدراو",
-      "overdue": "بەسەرچوو"
+      "overdue": "بەسەرچوو",
+      "cancelled": "هەڵوەشاوە"
     },
     "activities": {
       "paymentReceived": "پارەدان وەرگیرا",
