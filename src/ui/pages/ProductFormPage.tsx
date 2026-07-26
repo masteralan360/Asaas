@@ -95,7 +95,7 @@ import {
     useToast
 } from '@/ui/components'
 
-const UNITS = ['pcs', 'kg', 'gram', 'liter', 'box', 'pack', 'm²', 'Kg']
+const UNITS = ['pcs', 'kg', 'gram', 'liter', 'box', 'pack', 'carton', 'm²', 'Kg']
 const DYNAMIC_UNITS = new Set(['m²', 'Kg'])
 function isDynamicUnit(unit: string): boolean {
     return DYNAMIC_UNITS.has(unit)
