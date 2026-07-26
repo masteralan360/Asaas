@@ -151,10 +151,13 @@ export function LoanRegistrationModal({
                 </DialogHeader>
 
                 <div className="flex min-h-0 flex-1 flex-col">
-                    <DialogBody>
-                        <div className="grid gap-4">
-                            <div className="text-xs text-muted-foreground">
-                                {(t('loans.currencyHint') || 'Settlement Currency')}: {settlementCurrency.toUpperCase()}
+                    <DialogBody className="py-5">
+                        <div className="grid gap-5">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <span>{t('loans.currencyHint', { defaultValue: 'Settlement Currency' })}</span>
+                                <span className="rounded-md bg-muted px-2 py-1 font-semibold text-foreground">
+                                    {settlementCurrency.toUpperCase()}
+                                </span>
                             </div>
 
                             <div className="grid gap-2">
@@ -210,96 +213,97 @@ export function LoanRegistrationModal({
                                 ) : null}
                             </div>
 
-                            <div className="grid gap-2">
-                                <div className="grid gap-2">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                                <div className="grid gap-2 md:col-span-1">
                                     <Label>{t('loans.borrowerPhone') || 'Borrower Phone'} <span className="text-destructive">*</span></Label>
                                     <Input
                                         value={form.borrowerPhone}
                                         onChange={e => setForm(prev => ({ ...prev, borrowerPhone: e.target.value }))}
                                     />
                                 </div>
-                            </div>
-
-                            <div className="grid gap-2">
-                                <Label>{t('loans.borrowerAddress') || 'Borrower Address'} <span className="text-destructive">*</span></Label>
-                                <Input
-                                    value={form.borrowerAddress}
-                                    onChange={e => setForm(prev => ({ ...prev, borrowerAddress: e.target.value }))}
-                                />
-                            </div>
-
-                            <div className={`grid grid-cols-1 gap-4 ${isInstallmentLoan ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-                                <div className="grid gap-2">
-                                    <Label>
-                                        {isInstallmentLoan
-                                            ? t('loans.installmentCount', { defaultValue: 'Installment Count' })
-                                            : t('loans.repaymentCount', { defaultValue: 'Repayment Count' })}
-                                        {' '}<span className="text-destructive">*</span>
-                                    </Label>
+                                <div className="grid gap-2 md:col-span-2">
+                                    <Label>{t('loans.borrowerAddress') || 'Borrower Address'} <span className="text-destructive">*</span></Label>
                                     <Input
-                                        type="number"
-                                        min={1}
-                                        step={1}
-                                        inputMode="numeric"
-                                        value={form.installmentCount}
-                                        placeholder="1"
-                                        onChange={e => {
-                                            const rawCount = e.target.value
-                                            const count = Math.trunc(Number(rawCount))
-                                            setForm(prev => ({
-                                                ...prev,
-                                                installmentCount: rawCount && Number.isFinite(count) && count > 0 ? count : ''
-                                            }))
-                                        }}
+                                        value={form.borrowerAddress}
+                                        onChange={e => setForm(prev => ({ ...prev, borrowerAddress: e.target.value }))}
                                     />
-                                    {principalAmount > 0 && repaymentCount > 0 && (
-                                        <p className="text-[11px] text-muted-foreground">
-                                            {isInstallmentLoan
-                                                ? `≈ ${formatCurrency(principalAmount / repaymentCount, settlementCurrency)} / ${t('loans.installment', { defaultValue: 'installment' })}`
-                                                : `${t('loans.totalDue', { defaultValue: 'Total Due' })}: ${formatCurrency(principalAmount, settlementCurrency)}`}
-                                        </p>
-                                    )}
                                 </div>
-                                {isInstallmentLoan ? (
+                            </div>
+
+                            <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+                                <div className={`grid grid-cols-1 gap-4 ${isInstallmentLoan ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
                                     <div className="grid gap-2">
-                                        <Label>{t('loans.installmentFrequency', { defaultValue: 'Installment Frequency' })}</Label>
-                                        <Select
-                                            value={form.installmentFrequency}
-                                            onValueChange={(value: InstallmentFrequency) => setForm(prev => ({ ...prev, installmentFrequency: value }))}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="weekly">{t('loans.frequencies.weekly') || 'Weekly'}</SelectItem>
-                                                <SelectItem value="biweekly">{t('loans.frequencies.biweekly') || 'Biweekly'}</SelectItem>
-                                                <SelectItem value="monthly">{t('loans.frequencies.monthly') || 'Monthly'}</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                        <Label>
+                                            {isInstallmentLoan
+                                                ? t('loans.installmentCount', { defaultValue: 'Installment Count' })
+                                                : t('loans.repaymentCount', { defaultValue: 'Repayment Count' })}
+                                            {' '}<span className="text-destructive">*</span>
+                                        </Label>
+                                        <Input
+                                            type="number"
+                                            min={1}
+                                            step={1}
+                                            inputMode="numeric"
+                                            value={form.installmentCount}
+                                            placeholder="1"
+                                            onChange={e => {
+                                                const rawCount = e.target.value
+                                                const count = Math.trunc(Number(rawCount))
+                                                setForm(prev => ({
+                                                    ...prev,
+                                                    installmentCount: rawCount && Number.isFinite(count) && count > 0 ? count : ''
+                                                }))
+                                            }}
+                                        />
+                                        {principalAmount > 0 && repaymentCount > 0 && (
+                                            <p className="text-[11px] text-muted-foreground">
+                                                {isInstallmentLoan
+                                                    ? `≈ ${formatCurrency(principalAmount / repaymentCount, settlementCurrency)} / ${t('loans.installment', { defaultValue: 'installment' })}`
+                                                    : `${t('loans.totalDue', { defaultValue: 'Total Due' })}: ${formatCurrency(principalAmount, settlementCurrency)}`}
+                                            </p>
+                                        )}
                                     </div>
-                                ) : null}
-                                <div className="grid gap-2">
-                                    <Label>
-                                        {isInstallmentLoan
-                                            ? t('loans.firstInstallmentDueDate', { defaultValue: 'First Installment Due Date' })
-                                            : t('loans.dueDate', { defaultValue: 'Due Date' })}
-                                    </Label>
-                                    <DateTimePicker
-                                        id="registration-loan-first-due-date"
-                                        mode="date"
-                                        date={parseLocalDateValue(form.firstDueDate)}
-                                        setDate={(value) => setForm(prev => ({ ...prev, firstDueDate: value ? formatLocalDateValue(value) : null }))}
-                                        placeholder={isInstallmentLoan
-                                            ? t('loans.firstInstallmentDueDate', { defaultValue: 'First Installment Due Date' })
-                                            : t('loans.dueDate', { defaultValue: 'Due Date' })}
-                                    />
+                                    {isInstallmentLoan ? (
+                                        <div className="grid gap-2">
+                                            <Label>{t('loans.installmentFrequency', { defaultValue: 'Installment Frequency' })}</Label>
+                                            <Select
+                                                value={form.installmentFrequency}
+                                                onValueChange={(value: InstallmentFrequency) => setForm(prev => ({ ...prev, installmentFrequency: value }))}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="weekly">{t('loans.frequencies.weekly') || 'Weekly'}</SelectItem>
+                                                    <SelectItem value="biweekly">{t('loans.frequencies.biweekly') || 'Biweekly'}</SelectItem>
+                                                    <SelectItem value="monthly">{t('loans.frequencies.monthly') || 'Monthly'}</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    ) : null}
+                                    <div className="grid gap-2">
+                                        <Label>
+                                            {isInstallmentLoan
+                                                ? t('loans.firstInstallmentDueDate', { defaultValue: 'First Installment Due Date' })
+                                                : t('loans.dueDate', { defaultValue: 'Due Date' })}
+                                        </Label>
+                                        <DateTimePicker
+                                            id="registration-loan-first-due-date"
+                                            mode="date"
+                                            date={parseLocalDateValue(form.firstDueDate)}
+                                            setDate={(value) => setForm(prev => ({ ...prev, firstDueDate: value ? formatLocalDateValue(value) : null }))}
+                                            placeholder={isInstallmentLoan
+                                                ? t('loans.firstInstallmentDueDate', { defaultValue: 'First Installment Due Date' })
+                                                : t('loans.dueDate', { defaultValue: 'Due Date' })}
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
                             <div className="grid gap-2">
                                 <Label>{t('loans.notes') || 'Notes'}</Label>
                                 <Textarea
-                                    rows={4}
+                                    rows={3}
                                     value={form.notes}
                                     onChange={e => setForm(prev => ({ ...prev, notes: e.target.value }))}
                                 />

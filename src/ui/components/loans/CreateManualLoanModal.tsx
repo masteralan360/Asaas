@@ -175,8 +175,8 @@ export function CreateManualLoanModal({
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-                    <DialogBody>
-                        <div className="grid gap-4">
+                    <DialogBody className="py-5">
+                        <div className="grid gap-5">
                             <div className="grid gap-2">
                                 <Label>{t('loans.borrowerName') || 'Borrower Name'} <span className="text-destructive">*</span></Label>
                                 <div className="flex flex-col gap-2 md:flex-row md:items-center">
@@ -229,32 +229,31 @@ export function CreateManualLoanModal({
                                 ) : null}
                             </div>
 
-                            <div className="grid gap-2">
-                                <div className="grid gap-2">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                                <div className="grid gap-2 md:col-span-1">
                                     <Label>{t('loans.borrowerPhone') || 'Borrower Phone'} <span className="text-destructive">*</span></Label>
                                     <Input value={borrowerPhone} onChange={e => setBorrowerPhone(e.target.value)} />
                                 </div>
-                            </div>
-
-                            <div className="grid gap-2">
-                                <Label>{t('loans.borrowerAddress') || 'Borrower Address'} <span className="text-destructive">*</span></Label>
-                                <Input value={borrowerAddress} onChange={e => setBorrowerAddress(e.target.value)} />
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
-                                <div className="grid gap-2 xl:col-span-3">
-                                    <Label>{t('loans.principal') || 'Principal'} <span className="text-destructive">*</span></Label>
-                                    <Input
-                                        type="text"
-                                        inputMode={selectedCurrency === 'iqd' ? 'numeric' : 'decimal'}
-                                        placeholder="0"
-                                        value={formatNumericInput(principalAmount)}
-                                        onChange={e => setPrincipalAmount(sanitizeNumericInput(e.target.value, {
-                                            allowDecimal: selectedCurrency !== 'iqd'
-                                        }))}
-                                    />
+                                <div className="grid gap-2 md:col-span-2">
+                                    <Label>{t('loans.borrowerAddress') || 'Borrower Address'} <span className="text-destructive">*</span></Label>
+                                    <Input value={borrowerAddress} onChange={e => setBorrowerAddress(e.target.value)} />
                                 </div>
-                                <div className="grid gap-2 xl:col-span-2">
+                            </div>
+
+                            <div className="grid gap-4 rounded-2xl border border-border/60 bg-muted/20 p-4">
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <div className="grid gap-2">
+                                        <Label>{t('loans.principal') || 'Principal'} <span className="text-destructive">*</span></Label>
+                                        <Input
+                                            type="text"
+                                            inputMode={selectedCurrency === 'iqd' ? 'numeric' : 'decimal'}
+                                            placeholder="0"
+                                            value={formatNumericInput(principalAmount)}
+                                            onChange={e => setPrincipalAmount(sanitizeNumericInput(e.target.value, {
+                                                allowDecimal: selectedCurrency !== 'iqd'
+                                            }))}
+                                        />
+                                    </div>
                                     <CurrencySelector
                                         value={selectedCurrency}
                                         onChange={(value) => setSelectedCurrency(value)}
@@ -263,47 +262,49 @@ export function CreateManualLoanModal({
                                         allowedCurrencies={Array.from(new Set([settlementCurrency, ...features.allowed_currencies])) as CurrencyCode[]}
                                     />
                                 </div>
-                                <div className="grid gap-2 xl:col-span-2">
-                                    <Label>{t('loans.installmentCount') || 'Installments'} <span className="text-destructive">*</span></Label>
-                                    <Input
-                                        type="number"
-                                        min={1}
-                                        inputMode="numeric"
-                                        value={installmentCount}
-                                        onChange={e => setInstallmentCount(Math.max(1, Number(e.target.value || 1)))}
-                                    />
-                                    {parseFormattedNumber(principalAmount || '0') > 0 && installmentCount > 0 && (
-                                        <p className="text-[11px] text-muted-foreground">
-                                            ≈ {formatCurrency(parseFormattedNumber(principalAmount || '0') / installmentCount, selectedCurrency)} / {t('loans.installmentCount') || 'installment'}
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="grid gap-2 xl:col-span-2">
-                                    <Label>{t('loans.frequency') || 'Frequency'}</Label>
-                                    <Select value={installmentFrequency} onValueChange={(value: InstallmentFrequency) => setInstallmentFrequency(value)}>
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="weekly">{t('loans.frequencies.weekly') || 'Weekly'}</SelectItem>
-                                            <SelectItem value="biweekly">{t('loans.frequencies.biweekly') || 'Biweekly'}</SelectItem>
-                                            <SelectItem value="monthly">{t('loans.frequencies.monthly') || 'Monthly'}</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="grid gap-2 xl:col-span-3">
-                                    <Label>{t('loans.firstDueDate') || 'First Due Date'}</Label>
-                                    <DateTimePicker
-                                        id="manual-loan-first-due-date"
-                                        mode="date"
-                                        date={parseLocalDateValue(firstDueDate)}
-                                        setDate={(value) => setFirstDueDate(value ? formatLocalDateValue(value) : null)}
-                                        placeholder={t('loans.firstDueDate') || 'First Due Date'}
-                                    />
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                                    <div className="grid gap-2">
+                                        <Label>{t('loans.installmentCount') || 'Installments'} <span className="text-destructive">*</span></Label>
+                                        <Input
+                                            type="number"
+                                            min={1}
+                                            inputMode="numeric"
+                                            value={installmentCount}
+                                            onChange={e => setInstallmentCount(Math.max(1, Number(e.target.value || 1)))}
+                                        />
+                                        {parseFormattedNumber(principalAmount || '0') > 0 && installmentCount > 0 && (
+                                            <p className="text-[11px] text-muted-foreground">
+                                                ≈ {formatCurrency(parseFormattedNumber(principalAmount || '0') / installmentCount, selectedCurrency)} / {t('loans.installment', { defaultValue: 'installment' })}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label>{t('loans.frequency') || 'Frequency'}</Label>
+                                        <Select value={installmentFrequency} onValueChange={(value: InstallmentFrequency) => setInstallmentFrequency(value)}>
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="weekly">{t('loans.frequencies.weekly') || 'Weekly'}</SelectItem>
+                                                <SelectItem value="biweekly">{t('loans.frequencies.biweekly') || 'Biweekly'}</SelectItem>
+                                                <SelectItem value="monthly">{t('loans.frequencies.monthly') || 'Monthly'}</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label>{t('loans.firstDueDate') || 'First Due Date'}</Label>
+                                        <DateTimePicker
+                                            id="manual-loan-first-due-date"
+                                            mode="date"
+                                            date={parseLocalDateValue(firstDueDate)}
+                                            setDate={(value) => setFirstDueDate(value ? formatLocalDateValue(value) : null)}
+                                            placeholder={t('loans.firstDueDate') || 'First Due Date'}
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
                             <div className="grid gap-2">
                                 <Label>{t('loans.notes') || 'Notes'}</Label>
-                                <Textarea rows={4} value={notes} onChange={e => setNotes(e.target.value)} />
+                                <Textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
                             </div>
                         </div>
                     </DialogBody>
