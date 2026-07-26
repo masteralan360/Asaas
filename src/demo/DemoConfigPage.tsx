@@ -59,7 +59,7 @@ export function DemoConfigPage() {
     }
   }
 
-  const timeOptions = selectedTutorial === 'advanced' ? [DEMO_TUTORIAL_ADVANCED_MINUTES] : [5, 10, 15]
+  const timeOptions = selectedTutorial === 'advanced' ? [DEMO_TUTORIAL_ADVANCED_MINUTES] : [5, 10, 15, 45]
   const tutorialOptions: Array<{ id: DemoTutorialMode; titleKey: string; descriptionKey: string; title: string; description: string }> = [
     {
       id: 'advanced',

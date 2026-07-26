@@ -162,6 +162,7 @@
     "continue": "متابعة",
     "back": "رجوع",
     "done": "تم",
+    "skip": "تخطي",
     "next": "التالي",
     "refresh": "تحديث",
     "view": "عرض",
@@ -2344,6 +2345,10 @@
     "lenderIdentity": "بيانات المُقرض",
     "borrowerPhone": "هاتف المقترض",
     "borrowerAddress": "عنوان المقترض",
+    "saveAsPartnerTitle": "حفظ كشريك أعمال؟",
+    "saveAsPartnerDescription": "{{name}} غير مرتبط بشريك أعمال. هل تريد حفظهم للاستخدام المستقبلي؟",
+    "borrowerDetails": "بيانات المقترض",
+    "saveAsPartner": "حفظ كشريك",
     "borrowerNationalId": "الرقم الوطني للمقترض",
     "contactPhone": "الهاتف",
     "contactAddress": "العنوان",
@@ -2451,7 +2456,9 @@
       "reminderUnsnoozeFailed": "فشل إلغاء تأجيل التذكير.",
       "paymentRecorded": "تم تسجيل الدفعة بنجاح.",
       "paymentRecordFailed": "فشل في تسجيل الدفعة.",
-      "loanNotFound": "لم يتم العثور على القرض."
+      "loanNotFound": "لم يتم العثور على القرض.",
+      "borrowerSavedAsPartner": "تم حفظ المقترض كشريك أعمال وربطه بالقرض",
+      "borrowerSavePartnerFailed": "فشل في حفظ المقترض كشريك أعمال"
     }
   },
   "categories": {
@@ -4648,7 +4655,7 @@
     "demoType": "نوع العمل / العرض التوضيحي",
     "currency": "العملة",
     "timeLimit": "الحد الزمني للتجربة",
-    "timeRange": "بين 5 و 15 دقيقة",
+    "timeRange": "بين 5 و 45 دقيقة",
     "creating": "جاري إنشاء العرض التوضيحي...",
     "start": "بدء العرض التوضيحي",
     "backToLogin": "العودة إلى تسجيل الدخول",

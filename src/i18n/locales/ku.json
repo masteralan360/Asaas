@@ -162,6 +162,7 @@
     "continue": "بەردەوامبوون",
     "back": "گەڕانەوە",
     "done": "تەواو",
+    "skip": "پەڕان",
     "next": "دواتر",
     "refresh": "نوێکردنەوە",
     "view": "بینین",
@@ -2339,6 +2340,10 @@
     "lenderIdentity": "ناسنامەی قەرزپێدەر",
     "borrowerPhone": "تەلەفۆنی قەرزدار",
     "borrowerAddress": "ناونیشانی قەرزدار",
+    "saveAsPartnerTitle": "پاشەکەوتکردن وەک هاوبەشی بازرگانی؟",
+    "saveAsPartnerDescription": "{{name}} بە هاوبەشی بازرگانی بەستراوە. دەتەوێت بۆ بەکارهێنانی داهاتوو پاشەکەوتی بکەیت؟",
+    "borrowerDetails": "وردەکارییەکانی قەرزدار",
+    "saveAsPartner": "پاشەکەوتکردن وەک هاوبەش",
     "borrowerNationalId": "ناسنامەی نیشتمانی قەرزدار",
     "contactPhone": "تەلەفۆن",
     "contactAddress": "ناونیشان",
@@ -2446,7 +2451,9 @@
       "reminderUnsnoozeFailed": "لابردنی دواخستنی بیرخستنەوە شکستی هێنا.",
       "paymentRecorded": "پارەدان بە سەرکەوتوویی تۆمارکرا.",
       "paymentRecordFailed": "تۆمارکردنی پارەدان شکستی هێنا.",
-      "loanNotFound": "قەرز نەدۆزرایەوە."
+      "loanNotFound": "قەرز نەدۆزرایەوە.",
+      "borrowerSavedAsPartner": "قەرزدار وەک هاوبەشی بازرگانی پاشەکەوتکرا و بە قەرزەکەوە بەسترا",
+      "borrowerSavePartnerFailed": "پاشەکەوتکردنی قەرزدار وەک هاوبەشی بازرگانی شکستی هێنا"
     }
   },
   "categories": {
@@ -4660,7 +4667,7 @@
     "demoType": "جۆری کار / تاقیکاری",
     "currency": "دراو",
     "timeLimit": "سنووری کاتی تاقیکاری",
-    "timeRange": "لە نێوان ٥ بۆ ١٥ خولەک",
+    "timeRange": "لە نێوان ٥ بۆ ٤٥ خولەک",
     "creating": "دروستکردنی تاقیکاری...",
     "start": "دەستپێکردنی تاقیکاری",
     "backToLogin": "گەڕانەوە بۆ چوونەژوورەوە",

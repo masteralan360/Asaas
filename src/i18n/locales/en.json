@@ -164,6 +164,7 @@
     "continue": "Continue",
     "back": "Back",
     "done": "Done",
+    "skip": "Skip",
     "next": "Next",
     "refresh": "Refresh",
     "view": "View",
@@ -3142,6 +3143,10 @@
     "lenderIdentity": "Lender Identity",
     "borrowerPhone": "Borrower Phone",
     "borrowerAddress": "Borrower Address",
+    "saveAsPartnerTitle": "Save as Business Partner?",
+    "saveAsPartnerDescription": "{{name}} is not linked to a business partner. Would you like to save them for future use?",
+    "borrowerDetails": "Borrower Details",
+    "saveAsPartner": "Save as Partner",
     "borrowerNationalId": "Borrower National ID",
     "contactPhone": "Phone",
     "contactAddress": "Address",
@@ -3260,7 +3265,9 @@
       "reminderUnsnoozeFailed": "Failed to un-snooze reminder.",
       "paymentRecorded": "Payment recorded successfully.",
       "paymentRecordFailed": "Failed to record payment.",
-      "loanNotFound": "Loan not found."
+      "loanNotFound": "Loan not found.",
+      "borrowerSavedAsPartner": "Borrower saved as business partner and linked to loan",
+      "borrowerSavePartnerFailed": "Failed to save borrower as business partner"
     }
   },
   "categories": {
@@ -4840,7 +4847,7 @@
     "demoType": "Workspace Job / Demo Type",
     "currency": "Currency",
     "timeLimit": "Demo Time Limit",
-    "timeRange": "Between 5 and 15 minutes",
+    "timeRange": "Between 5 and 45 minutes",
     "creating": "Creating Demo...",
     "start": "Start Demo",
     "backToLogin": "Back to Sign In",
