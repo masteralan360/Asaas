@@ -4,7 +4,14 @@ import { Check, ChevronDown, ChevronUp } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useOptionalAuth } from "@/auth"
 
-const Select = SelectPrimitive.Root
+function getDocumentDirection(): 'ltr' | 'rtl' {
+    if (typeof document === 'undefined') return 'ltr'
+    return document.documentElement.dir === 'rtl' || document.dir === 'rtl' ? 'rtl' : 'ltr'
+}
+
+const Select = ({ dir, ...props }: React.ComponentPropsWithoutRef<typeof SelectPrimitive.Root>) => (
+    <SelectPrimitive.Root dir={dir ?? getDocumentDirection()} {...props} />
+)
 
 const SelectGroup = SelectPrimitive.Group
 
@@ -75,7 +82,7 @@ SelectScrollDownButton.displayName =
 const SelectContent = React.forwardRef<
     React.ElementRef<typeof SelectPrimitive.Content>,
     React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = "popper", ...props }, ref) => (
+>(({ className, children, position = "popper", dir, ...props }, ref) => (
     <SelectPrimitive.Portal>
         <SelectPrimitive.Content
             ref={ref}
@@ -86,6 +93,7 @@ const SelectContent = React.forwardRef<
                 className
             )}
             position={position}
+            dir={dir ?? getDocumentDirection()}
             {...props}
         >
             <SelectScrollUpButton />
@@ -123,17 +131,19 @@ const SelectItem = React.forwardRef<
     <SelectPrimitive.Item
         ref={ref}
         className={cn(
-            "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+            "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 ps-8 pe-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
             className
         )}
         {...props}
     >
-        <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+        <span className="absolute start-2 flex h-3.5 w-3.5 items-center justify-center">
             <SelectPrimitive.ItemIndicator>
                 <Check className="h-4 w-4" />
             </SelectPrimitive.ItemIndicator>
         </span>
-        <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+        <SelectPrimitive.ItemText>
+            <span dir="auto">{children}</span>
+        </SelectPrimitive.ItemText>
     </SelectPrimitive.Item>
 ))
 SelectItem.displayName = SelectPrimitive.Item.displayName

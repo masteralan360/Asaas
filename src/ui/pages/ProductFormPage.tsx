@@ -3,12 +3,15 @@ import { useLocation, useRoute } from 'wouter'
 import {
     ArrowLeft,
     Barcode,
+    Box,
     Boxes,
     Camera,
     ChevronRight,
+    CircleDot,
     Copy,
     Shuffle,
     DollarSign,
+    Droplets,
     FileText,
     ImagePlus,
     Info,
@@ -16,12 +19,15 @@ import {
     Pencil,
     Plus,
     Ruler,
+    Scale,
     Settings,
+    SquareDashed,
     Tag,
     Trash2,
     Type,
     Wallet,
-    Warehouse
+    Warehouse,
+    Weight
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -99,6 +105,32 @@ const UNITS = ['pcs', 'kg', 'gram', 'liter', 'box', 'pack', 'carton', 'm²', 'Kg
 const DYNAMIC_UNITS = new Set(['m²', 'Kg'])
 function isDynamicUnit(unit: string): boolean {
     return DYNAMIC_UNITS.has(unit)
+}
+
+function ProductUnitIcon({ unit }: { unit: string }) {
+    const className = 'h-4 w-4 text-primary/70'
+
+    switch (unit) {
+        case 'pcs':
+            return <CircleDot className={className} />
+        case 'kg':
+        case 'Kg':
+            return <Weight className={className} />
+        case 'gram':
+            return <Scale className={className} />
+        case 'liter':
+            return <Droplets className={className} />
+        case 'box':
+            return <Box className={className} />
+        case 'pack':
+            return <Package className={className} />
+        case 'carton':
+            return <Boxes className={className} />
+        case 'm²':
+            return <SquareDashed className={className} />
+        default:
+            return <Ruler className={className} />
+    }
 }
 type ProductScannerTarget = 'none' | 'sku' | 'barcode'
 
@@ -1253,7 +1285,10 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             <SelectContent>
                                                 {UNITS.map((unit) => (
                                                     <SelectItem key={unit} value={unit}>
-                                                        {t(`products.units.${unit}`, unit)}
+                                                        <span className="flex items-center gap-2">
+                                                            <ProductUnitIcon unit={unit} />
+                                                            {t(`products.units.${unit}`, unit)}
+                                                        </span>
                                                     </SelectItem>
                                                 ))}
                                             </SelectContent>
