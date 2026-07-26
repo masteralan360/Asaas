@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Eye, GitMerge, Pencil, Plus, Search, Trash2, UsersRound } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Eye, GitMerge, MapPin, Pencil, Plus, Search, Trash2, UsersRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 
@@ -30,6 +30,11 @@ import {
     CardHeader,
     CardTitle,
     Input,
+    Map as AtlasMap,
+    MapControls,
+    MapMarker,
+    MarkerContent,
+    MarkerPopup,
     Switch,
     Table,
     TableBody,
@@ -41,10 +46,12 @@ import {
     TabsContent,
     TabsList,
     TabsTrigger,
+    useMap,
     useToast
 } from '@/ui/components'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
 import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
+import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import { UiAccessGate } from '@/context/UiAccessContext'
 
 function roleLabel(role: BusinessPartnerRole, t: (key: string, options?: Record<string, unknown>) => string) {
@@ -84,6 +91,96 @@ function groupPartnerTotalsByCurrency(
         .sort((left, right) => left.currency.localeCompare(right.currency))
 }
 
+type LocatedBusinessPartner = BusinessPartner & {
+    latitude: number
+    longitude: number
+}
+
+const DEFAULT_MAP_CENTER: [number, number] = [44.3661, 33.3152]
+
+function hasValidPartnerLocation(partner: BusinessPartner): partner is LocatedBusinessPartner {
+    return typeof partner.latitude === 'number'
+        && Number.isFinite(partner.latitude)
+        && partner.latitude >= -90
+        && partner.latitude <= 90
+        && typeof partner.longitude === 'number'
+        && Number.isFinite(partner.longitude)
+        && partner.longitude >= -180
+        && partner.longitude <= 180
+}
+
+function PartnerMapBounds({
+    partners,
+    focusedPartnerId
+}: {
+    partners: LocatedBusinessPartner[]
+    focusedPartnerId: string | null
+}) {
+    const { map, isLoaded } = useMap()
+
+    useEffect(() => {
+        if (!map || !isLoaded || partners.length === 0) {
+            return
+        }
+
+        map.resize()
+
+        const focusedPartner = focusedPartnerId
+            ? partners.find((partner) => partner.id === focusedPartnerId)
+            : undefined
+
+        if (focusedPartner) {
+            map.flyTo({
+                center: [focusedPartner.longitude, focusedPartner.latitude],
+                zoom: 14,
+                duration: 500
+            })
+            return
+        }
+
+        const bounds = partners.reduce(
+            (result, partner) => ({
+                minLatitude: Math.min(result.minLatitude, partner.latitude),
+                maxLatitude: Math.max(result.maxLatitude, partner.latitude),
+                minLongitude: Math.min(result.minLongitude, partner.longitude),
+                maxLongitude: Math.max(result.maxLongitude, partner.longitude)
+            }),
+            {
+                minLatitude: partners[0].latitude,
+                maxLatitude: partners[0].latitude,
+                minLongitude: partners[0].longitude,
+                maxLongitude: partners[0].longitude
+            }
+        )
+
+        if (
+            bounds.minLatitude === bounds.maxLatitude
+            && bounds.minLongitude === bounds.maxLongitude
+        ) {
+            map.flyTo({
+                center: [bounds.minLongitude, bounds.minLatitude],
+                zoom: 14,
+                duration: 0
+            })
+            return
+        }
+
+        map.fitBounds(
+            [
+                [bounds.minLongitude, bounds.minLatitude],
+                [bounds.maxLongitude, bounds.maxLatitude]
+            ],
+            {
+                padding: 96,
+                maxZoom: 14,
+                duration: 0
+            }
+        )
+    }, [focusedPartnerId, isLoaded, map, partners])
+
+    return null
+}
+
 export function BusinessPartners() {
     const { t } = useTranslation()
     const { user } = useAuth()
@@ -103,7 +200,9 @@ export function BusinessPartners() {
     const workspaceUsers = useWorkspaceUsers(user?.workspaceId)
     const mergeCandidates = useBusinessPartnerMergeCandidates(user?.workspaceId)
     const [search, setSearch] = useState('')
-    const [activeTab, setActiveTab] = useState<'partners' | 'merge-review'>('partners')
+    const [activeTab, setActiveTab] = useState<'partners' | 'maps' | 'merge-review'>('partners')
+    const [mapPartnerSearch, setMapPartnerSearch] = useState('')
+    const [focusedMapPartnerId, setFocusedMapPartnerId] = useState<string | null>(null)
     const [dialogOpen, setDialogOpen] = useState(false)
     const [editingPartner, setEditingPartner] = useState<BusinessPartner | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<BusinessPartner | null>(null)
@@ -164,6 +263,16 @@ export function BusinessPartners() {
     const payableTotals = useMemo(
         () => groupPartnerTotalsByCurrency(visiblePartners, (partner) => partner.payableBalance),
         [visiblePartners]
+    )
+    const partnersWithLocations = useMemo(
+        () => partners.filter(hasValidPartnerLocation),
+        [partners]
+    )
+    const partnerIdsWithoutLocations = useMemo(
+        () => partners
+            .filter((partner) => !hasValidPartnerLocation(partner))
+            .map((partner) => partner.id),
+        [partners]
     )
 
     const renderGroupedTotals = (totals: Array<{ currency: CurrencyCode; amount: number }>) => {
@@ -363,13 +472,15 @@ export function BusinessPartners() {
                 </Card>
             </div>
 
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'partners' | 'merge-review')} className="space-y-4">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'partners' | 'maps' | 'merge-review')} className="space-y-4">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <TabsList className="grid w-full max-w-[360px] grid-cols-2 rounded-2xl bg-secondary/50 p-1">
+                    <TabsList className="grid w-full max-w-[480px] grid-cols-3 rounded-2xl bg-secondary/50 p-1">
                         <TabsTrigger value="partners" className="rounded-xl">{t('businessPartners.title') || 'Business Partners'}</TabsTrigger>
+                        <TabsTrigger value="maps" className="rounded-xl">{t('businessPartners.maps', { defaultValue: 'Maps' })}</TabsTrigger>
                         <TabsTrigger value="merge-review" className="rounded-xl">{t('businessPartners.mergeReview') || 'Merge Review'}</TabsTrigger>
                     </TabsList>
 
+                    {activeTab === 'partners' ? (
                     <div className="flex w-full flex-col gap-3 lg:max-w-2xl lg:flex-row lg:items-center lg:justify-end">
                         <UiAccessGate>
                             <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/60 px-4 py-3">
@@ -401,6 +512,7 @@ export function BusinessPartners() {
                             />
                         </div>
                     </div>
+                    ) : null}
                 </div>
 
                 <TabsContent value="partners" className="mt-0">
@@ -523,6 +635,120 @@ export function BusinessPartners() {
                                     </TableBody>
                                 </Table>
                             </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="maps" className="mt-0">
+                    <Card className="overflow-hidden">
+                        <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="space-y-1.5">
+                                <CardTitle className="flex items-center gap-2">
+                                    <MapPin className="h-5 w-5 text-primary" />
+                                    {t('businessPartners.maps', { defaultValue: 'Maps' })}
+                                </CardTitle>
+                                <p className="text-sm text-muted-foreground">
+                                    {t('businessPartners.mapsDescription', { defaultValue: 'All business partner locations in this workspace.' })}
+                                </p>
+                            </div>
+                            <div className="flex w-full flex-col gap-3 sm:w-80 sm:items-end">
+                                <PartnerAutocompleteInput
+                                    value={mapPartnerSearch}
+                                    onChange={(value) => {
+                                        setMapPartnerSearch(value)
+                                        if (!value.trim()) {
+                                            setFocusedMapPartnerId(null)
+                                        }
+                                    }}
+                                    onSelectPartner={(partner) => {
+                                        setMapPartnerSearch(partner.name)
+                                        setFocusedMapPartnerId(partner.id)
+                                    }}
+                                    workspaceId={user?.workspaceId || ''}
+                                    includeRealEstateRoles={features.real_estate}
+                                    includeAgentRoles={features.agents}
+                                    excludePartnerIds={partnerIdsWithoutLocations}
+                                    disabled={!user?.workspaceId}
+                                    placeholder={t('businessPartners.searchMapPlaceholder', { defaultValue: 'Search a partner on the map...' })}
+                                />
+                                <div className="shrink-0 rounded-full bg-primary/10 px-3 py-1 text-sm font-semibold text-primary">
+                                    {t('businessPartners.locationsOnMap', {
+                                        count: partnersWithLocations.length,
+                                        defaultValue: '{{count}} locations on map'
+                                    })}
+                                </div>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="relative p-0">
+                            <AtlasMap
+                                center={partnersWithLocations[0]
+                                    ? [partnersWithLocations[0].longitude, partnersWithLocations[0].latitude]
+                                    : DEFAULT_MAP_CENTER}
+                                zoom={partnersWithLocations.length ? 11 : 5}
+                                className="h-[600px] w-full md:h-[720px]"
+                            >
+                                <MapControls showCompass showFullscreen showLocate position="top-right" />
+                                <PartnerMapBounds
+                                    partners={partnersWithLocations}
+                                    focusedPartnerId={focusedMapPartnerId}
+                                />
+                                {partnersWithLocations.map((partner) => (
+                                    <MapMarker
+                                        key={partner.id}
+                                        longitude={partner.longitude}
+                                        latitude={partner.latitude}
+                                    >
+                                        <MarkerContent>
+                                            <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-background bg-primary text-white shadow-lg transition-transform hover:scale-110">
+                                                <MapPin className="h-5 w-5" />
+                                            </div>
+                                        </MarkerContent>
+                                        <MarkerPopup closeButton>
+                                            <div className="min-w-52 space-y-2 pr-4">
+                                                <div>
+                                                    <p className="font-semibold">{partner.name}</p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {roleLabel(partner.role, t)}
+                                                    </p>
+                                                </div>
+                                                {partner.address || partner.city || partner.country ? (
+                                                    <p className="text-sm text-muted-foreground">
+                                                        {[partner.address, partner.city, partner.country]
+                                                            .filter((value): value is string => Boolean(value))
+                                                            .join(', ')}
+                                                    </p>
+                                                ) : null}
+                                                {partner.phone || partner.email ? (
+                                                    <p className="text-sm text-muted-foreground">
+                                                        {partner.phone || partner.email}
+                                                    </p>
+                                                ) : null}
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    allowViewer={true}
+                                                    onClick={() => navigate(`/business-partners/${partner.id}`)}
+                                                >
+                                                    {t('common.view', { defaultValue: 'View' })}
+                                                </Button>
+                                            </div>
+                                        </MarkerPopup>
+                                    </MapMarker>
+                                ))}
+                            </AtlasMap>
+                            {partnersWithLocations.length === 0 ? (
+                                <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/50 p-6 text-center backdrop-blur-[1px]">
+                                    <div className="max-w-sm rounded-2xl border bg-background/95 p-5 shadow-lg">
+                                        <MapPin className="mx-auto mb-3 h-7 w-7 text-muted-foreground" />
+                                        <p className="font-semibold">
+                                            {t('businessPartners.noPartnerLocations', { defaultValue: 'No partner locations yet' })}
+                                        </p>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            {t('businessPartners.noPartnerLocationsDescription', { defaultValue: 'Add a location to a business partner to show it here.' })}
+                                        </p>
+                                    </div>
+                                </div>
+                            ) : null}
                         </CardContent>
                     </Card>
                 </TabsContent>

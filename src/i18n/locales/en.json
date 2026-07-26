@@ -1224,7 +1224,7 @@
       }
     },
     "roles": {
-      "both": "Both",
+      "both": "Customer & Supplier",
       "customer": "Customer",
       "supplier": "Supplier",
       "RealEstateBuyer": "Buyer",

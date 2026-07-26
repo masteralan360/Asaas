@@ -15,6 +15,7 @@ interface PartnerAutocompleteInputProps {
     className?: string
     disabled?: boolean
     includeRealEstateRoles?: boolean
+    includeAgentRoles?: boolean
     excludePartnerIds?: string[]
     roles?: BusinessPartnerRole[]
 }
@@ -28,11 +29,12 @@ export function PartnerAutocompleteInput({
     className,
     disabled,
     includeRealEstateRoles = false,
+    includeAgentRoles = false,
     excludePartnerIds = [],
     roles
 }: PartnerAutocompleteInputProps) {
     const { t } = useTranslation()
-    const partners = useBusinessPartners(workspaceId, { includeRealEstateRoles, roles })
+    const partners = useBusinessPartners(workspaceId, { includeRealEstateRoles, includeAgentRoles, roles })
     const [isFocused, setIsFocused] = useState(false)
     const [justSelected, setJustSelected] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
