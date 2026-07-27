@@ -612,8 +612,10 @@ describe('Atlas Standard order invoice custom print template', () => {
 
         const html = renderToStaticMarkup(element)
         expect(html).toContain('Atlas Test')
+        expect(html).toContain('min-h-[13mm]')
         expect(html).toContain('Sample Product')
         expect(html).toContain('>2 pcs</td>')
+        expect(html).toContain('height:139mm')
         expect(html).toContain('Invoice : </strong>Sales Order')
         expect(html).toContain('Cashier : </strong>')
         expect(html).toContain('Status : </strong>Pending')

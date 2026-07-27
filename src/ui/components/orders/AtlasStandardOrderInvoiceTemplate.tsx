@@ -55,9 +55,9 @@ export interface AtlasStandardOrderInvoiceTemplateProps {
 }
 
 const INK = '#244f87'
-// Use the footer's former bottom gap to extend the blank product-table area without overflowing A4.
-const TABLE_DATA_AREA_MM = 133
-const TABLE_ITEM_ROW_MM = 9
+// The compact grid keeps an 8 mm A4 safety buffer for the financial section and fixed footer.
+const TABLE_DATA_AREA_MM = 145
+const TABLE_ITEM_ROW_MM = 6
 
 export const ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS = {
     logo: 'atlasStandardWorkspaceLogo',
@@ -382,13 +382,13 @@ function HideableSection({
         ? visibleFields.map((field) => (
             <div key={field.key} className={cn('min-w-0', field.className)}>
                 {field.render || (
-                    <div className="min-h-[8.5mm] px-2 py-1.5 text-xs">
+                    <div className="min-h-[6.5mm] px-2 py-1.5 text-xs">
                         <strong>{field.label} : </strong>{field.value}
                     </div>
                 )}
             </div>
         ))
-        : <div className="col-span-4 min-h-[8.5mm] border-l border-t border-[#244f87]" />
+        : <div className="col-span-4 min-h-[6.5mm] border-l border-t border-[#244f87]" />
 
     const section = (
         <div
@@ -596,63 +596,63 @@ export function AtlasStandardOrderInvoiceTemplate({
             label: counterpartyLabel,
             value: counterpartyName || '-',
             className: 'col-span-2 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs"><strong>{counterpartyLabel} : </strong>{counterpartyName || '-'}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{counterpartyLabel} : </strong>{counterpartyName || '-'}</div>
         },
         {
             key: detailsKeys.invoice,
             label: labels.invoice,
             value: isSales ? labels.salesOrder : labels.purchaseOrder,
             className: 'border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs"><strong>{labels.invoice} : </strong>{isSales ? labels.salesOrder : labels.purchaseOrder}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.invoice} : </strong>{isSales ? labels.salesOrder : labels.purchaseOrder}</div>
         },
         {
             key: detailsKeys.number,
             label: labels.number,
             value: order.orderNumber,
             className: 'border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs"><strong>{labels.number} </strong>{order.orderNumber}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.number} </strong>{order.orderNumber}</div>
         },
         {
             key: detailsKeys.salesPerson,
             label: labels.salesPerson,
             value: salesperson,
             className: 'col-span-2 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs"><strong>{labels.salesPerson} : </strong>{salesperson}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.salesPerson} : </strong>{salesperson}</div>
         },
         {
             key: detailsKeys.location,
             label: labels.partnerAddress,
             value: partnerAddress,
             className: 'border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs"><strong>{labels.partnerAddress} : </strong>{partnerAddress}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.partnerAddress} : </strong>{partnerAddress}</div>
         },
         {
             key: detailsKeys.status,
             label: labels.status,
             value: statusLabel,
             className: 'border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs"><strong>{labels.status} : </strong>{statusLabel}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.status} : </strong>{statusLabel}</div>
         },
         {
             key: detailsKeys.documentNumber,
             label: labels.documentNumber,
             value: order.orderNumber,
             className: 'col-span-2 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs"><strong>{labels.documentNumber} : </strong>{order.orderNumber}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.documentNumber} : </strong>{order.orderNumber}</div>
         },
         {
             key: detailsKeys.invoiceDate,
             label: labels.invoiceDate,
             value: issuedAt.date,
             className: 'border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs"><strong>{labels.invoiceDate} : </strong>{issuedAt.date}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.invoiceDate} : </strong>{issuedAt.date}</div>
         },
         {
             key: detailsKeys.time,
             label: labels.time,
             value: issuedAt.time,
             className: 'border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs"><strong>{labels.time} : </strong>{issuedAt.time}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.time} : </strong>{issuedAt.time}</div>
         }
     ]
 
@@ -662,56 +662,56 @@ export function AtlasStandardOrderInvoiceTemplate({
             label: labels.paidAmount,
             value: formatCurrency(paidAmount, currency, iqdPreference),
             className: 'col-span-4 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs"><strong>{labels.paidAmount} : </strong>{formatCurrency(paidAmount, currency, iqdPreference)}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.paidAmount} : </strong>{formatCurrency(paidAmount, currency, iqdPreference)}</div>
         },
         {
             key: financialKeys.outstanding,
             label: labels.outstanding,
             value: formatCurrency(outstanding, currency, iqdPreference),
             className: 'col-span-4 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs"><strong>{labels.outstanding} : </strong>{formatCurrency(outstanding, currency, iqdPreference)}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.outstanding} : </strong>{formatCurrency(outstanding, currency, iqdPreference)}</div>
         },
         {
             key: financialKeys.discount,
             label: labels.discount,
             value: formatCurrency(order.discount, currency, iqdPreference),
             className: 'col-span-4 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs"><strong>{labels.discount} : </strong>{formatCurrency(order.discount, currency, iqdPreference)}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.discount} : </strong>{formatCurrency(order.discount, currency, iqdPreference)}</div>
         },
         {
             key: financialKeys.currentBalance,
             label: labels.currentBalance,
             value: formatPartnerBalance(currentPartnerBalance),
             className: 'col-span-4 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs"><strong>{labels.currentBalance} : </strong>{formatPartnerBalance(currentPartnerBalance)}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.currentBalance} : </strong>{formatPartnerBalance(currentPartnerBalance)}</div>
         },
         {
             key: financialKeys.paymentMethod,
             label: labels.paymentMethod,
             value: paymentMethod,
             className: 'col-span-2 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs"><strong>{labels.paymentMethod} : </strong>{paymentMethod}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.paymentMethod} : </strong>{paymentMethod}</div>
         },
         {
             key: financialKeys.amountInWords,
             label: labels.amountInWords,
             value: amountInWords,
             className: 'col-span-2 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs">{amountInWords}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs">{amountInWords}</div>
         },
         {
             key: financialKeys.printedBy,
             label: labels.printedBy,
             value: salesperson,
             className: 'col-span-2 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs"><strong>{labels.printedBy} : </strong>{salesperson}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.printedBy} : </strong>{salesperson}</div>
         },
         {
             key: financialKeys.notes,
             label: labels.notes,
             value: noteValue,
             className: 'col-span-2 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[8.5mm] px-2 py-1.5 text-xs"><strong>{labels.notes} : </strong>{noteValue}</div>
+            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.notes} : </strong>{noteValue}</div>
         }
     ]
 
@@ -739,7 +739,7 @@ export function AtlasStandardOrderInvoiceTemplate({
 `
             }} />
 
-            <header className="mb-2 flex min-h-[20mm] items-center justify-between border-b-2 px-1 pb-2" style={{ borderColor: INK }}>
+            <header className="mb-1 flex min-h-[13mm] items-center justify-between border-b-2 px-1 pb-1" style={{ borderColor: INK }}>
                 <MovableOrderPrintBlock
                     componentKey={ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS.workspaceName}
                     label={labels.workspaceName}
@@ -748,7 +748,7 @@ export function AtlasStandardOrderInvoiceTemplate({
                     onPositionChange={onComponentPositionChange}
                     wrapperClassName="shrink-0"
                 >
-                    <h1 className="text-[22px] font-bold tracking-wide" style={{ color: INK }}>{workspaceName || 'Atlas'}</h1>
+                    <h1 className="text-[18px] font-bold tracking-wide" style={{ color: INK }}>{workspaceName || 'Atlas'}</h1>
                 </MovableOrderPrintBlock>
                 <MovableOrderPrintBlock
                     componentKey={ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS.logo}
@@ -760,9 +760,9 @@ export function AtlasStandardOrderInvoiceTemplate({
                     handleSide="left"
                 >
                     {logoSrc ? (
-                        <img src={logoSrc} alt={labels.workspaceLogo} className="max-h-[18mm] max-w-[30mm] object-contain" />
+                        <img src={logoSrc} alt={labels.workspaceLogo} className="max-h-[11mm] max-w-[24mm] object-contain" />
                     ) : (
-                        <div className="flex h-[18mm] w-[18mm] items-center justify-center border-[2px] text-sm font-bold tracking-[0.14em]" style={{ borderColor: INK, color: INK }}>{labels.logo}</div>
+                        <div className="flex h-[11mm] w-[11mm] items-center justify-center border-[2px] text-[9px] font-bold tracking-[0.1em]" style={{ borderColor: INK, color: INK }}>{labels.logo}</div>
                     )}
                 </MovableOrderPrintBlock>
             </header>
@@ -814,7 +814,7 @@ export function AtlasStandardOrderInvoiceTemplate({
                                     [tableKeys.total]: formatCurrency(item.lineTotal, currency, iqdPreference)
                                 }
                                 return (
-                                    <tr key={item.id} className="h-[9mm]">
+                                    <tr key={item.id} className="h-[6mm]">
                                         {visibleColumns.map((column) => (
                                             <td
                                                 key={column.key}
@@ -840,7 +840,7 @@ export function AtlasStandardOrderInvoiceTemplate({
                                     ))}
                                 </tr>
                             ) : null}
-                            <tr className="h-[8mm] bg-[#f5f8fc] font-bold">
+                            <tr className="h-[6mm] bg-[#f5f8fc] font-bold">
                                 {visibleColumns.map((column) => {
                                     const value = column.key === tableKeys.quantity
                                         ? items.reduce((sum, item) => sum + getOrderLinePaidQuantity(item), 0)
