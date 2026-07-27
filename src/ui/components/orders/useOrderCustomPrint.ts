@@ -10,6 +10,7 @@ import {
     getCustomTemplateTarget,
     getStoredCustomTemplateLabel,
     isCustomTemplatePrintLanguageCompatible,
+    ORDER_ATLAS_STANDARD_TEMPLATE_KEY,
     ORDER_DETAILS_TEMPLATE_KEY,
     ORDER_RECEIPT_TEMPLATE_KEY,
     readCustomTemplateLayout,
@@ -23,7 +24,7 @@ import type { PrintFormat } from '@/services/pdfGenerator'
 import type { WorkspaceFeatures } from '@/workspace'
 
 type OrderKind = 'sales' | 'purchase'
-type OrderNativeTemplateKey = typeof ORDER_DETAILS_TEMPLATE_KEY | typeof ORDER_RECEIPT_TEMPLATE_KEY
+type OrderNativeTemplateKey = typeof ORDER_ATLAS_STANDARD_TEMPLATE_KEY | typeof ORDER_DETAILS_TEMPLATE_KEY | typeof ORDER_RECEIPT_TEMPLATE_KEY
 
 interface UseOrderCustomPrintOptions {
     workspaceId: string
@@ -54,7 +55,7 @@ export function useOrderCustomPrint({
 }: UseOrderCustomPrintOptions) {
     const [templates, setTemplates] = useState<StoredCustomTemplateRow[]>([])
     const [selectedTemplate, setSelectedTemplate] = useState<StoredCustomTemplateRow | null>(null)
-    const [selectedNativeTemplateKey, setSelectedNativeTemplateKey] = useState<OrderNativeTemplateKey>(ORDER_DETAILS_TEMPLATE_KEY)
+    const [selectedNativeTemplateKey, setSelectedNativeTemplateKey] = useState<OrderNativeTemplateKey>(ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
     const currentPrintLanguage = resolveCustomTemplatePrintLanguage(features.print_lang, printLanguage)
     const partnerId = order?.businessPartnerId
         || (orderKind === 'sales' ? (order as SalesOrder)?.customerId : (order as PurchaseOrder)?.supplierId)
@@ -89,13 +90,14 @@ export function useOrderCustomPrint({
     useEffect(() => {
         if (!isOpen) {
             setSelectedTemplate(null)
-            setSelectedNativeTemplateKey(ORDER_DETAILS_TEMPLATE_KEY)
+            setSelectedNativeTemplateKey(ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
         }
     }, [isOpen])
 
     const availableTemplates = useMemo(
         () => templates.filter((template) =>
-            (template.module_type_key === ORDER_DETAILS_TEMPLATE_KEY
+            (template.module_type_key === ORDER_ATLAS_STANDARD_TEMPLATE_KEY
+                || template.module_type_key === ORDER_DETAILS_TEMPLATE_KEY
                 || template.module_type_key === ORDER_RECEIPT_TEMPLATE_KEY)
             && template.active
             && Boolean(readCustomTemplateLayout(template))
@@ -115,6 +117,7 @@ export function useOrderCustomPrint({
     )
     const isCustomSelected = Boolean(selectedTemplate && selectedLayout)
     const isReceiptSelected = !isCustomSelected && selectedNativeTemplateKey === ORDER_RECEIPT_TEMPLATE_KEY
+    const isAtlasStandardSelected = !isCustomSelected && selectedNativeTemplateKey === ORDER_ATLAS_STANDARD_TEMPLATE_KEY
     const preview = useMemo(() => {
         if (!selectedTemplateTarget || !order || !orderKind || !isCustomSelected) return undefined
 
@@ -125,12 +128,13 @@ export function useOrderCustomPrint({
             order,
             orderKind,
             orderInstallments: installments,
+            businessPartner: bizPartner,
             productUnits,
             counterpartyPhone,
             counterpartyAddress,
             printLang: currentPrintLanguage
         })
-    }, [currentPrintLanguage, features, installments, isCustomSelected, order, orderKind, productUnits, selectedTemplateTarget, workspaceId, workspaceName, counterpartyPhone, counterpartyAddress])
+    }, [bizPartner, currentPrintLanguage, features, installments, isCustomSelected, order, orderKind, productUnits, selectedTemplateTarget, workspaceId, workspaceName, counterpartyPhone, counterpartyAddress])
 
     const buildPdf = useCallback(async ({
         effectiveId,
@@ -155,6 +159,7 @@ export function useOrderCustomPrint({
                 order,
                 orderKind,
                 orderInstallments: installments,
+                businessPartner: bizPartner,
                 productUnits,
                 counterpartyPhone,
                 counterpartyAddress,
@@ -163,7 +168,7 @@ export function useOrderCustomPrint({
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, productUnits, selectedLayout, selectedTemplateTarget, workspaceId, workspaceName])
+    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, productUnits, selectedLayout, selectedTemplateTarget, workspaceId, workspaceName])
 
     const buildEditablePdf = useCallback(async (
         layout: CustomTemplateLayout,
@@ -185,6 +190,7 @@ export function useOrderCustomPrint({
                 order,
                 orderKind,
                 orderInstallments: installments,
+                businessPartner: bizPartner,
                 productUnits,
                 counterpartyPhone,
                 counterpartyAddress,
@@ -193,14 +199,14 @@ export function useOrderCustomPrint({
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, productUnits, selectedTemplateTarget, workspaceId, workspaceName])
+    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, productUnits, selectedTemplateTarget, workspaceId, workspaceName])
 
     const nativeOptions = useMemo(() => [
         {
             format: 'a4' as const,
-            label: t('orders.print.nativeA4Template', { defaultValue: 'Orders - A4 Print' }),
+            label: 'Atlas Standard',
             description: t('orders.print.nativeA4TemplateDescription', {
-                defaultValue: 'Use the built-in order details A4 layout.'
+                defaultValue: 'Use the built-in Atlas Standard order invoice A4 layout.'
             })
         },
         {
@@ -238,18 +244,19 @@ export function useOrderCustomPrint({
         }
         setSelectedTemplate(template || null)
         if (!template) {
-            setSelectedNativeTemplateKey(_format === 'receipt' ? ORDER_RECEIPT_TEMPLATE_KEY : ORDER_DETAILS_TEMPLATE_KEY)
+            setSelectedNativeTemplateKey(_format === 'receipt' ? ORDER_RECEIPT_TEMPLATE_KEY : ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
         }
     }, [currentPrintLanguage])
     const resetSelection = useCallback(() => {
         setSelectedTemplate(null)
-        setSelectedNativeTemplateKey(ORDER_DETAILS_TEMPLATE_KEY)
+        setSelectedNativeTemplateKey(ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
     }, [])
 
     return {
         selectedTemplateLabel: selectedTemplate ? getStoredCustomTemplateLabel(selectedTemplate) : undefined,
         isCustomSelected,
         isReceiptSelected,
+        isAtlasStandardSelected,
         preview,
         buildPdf,
         buildEditablePdf,

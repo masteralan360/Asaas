@@ -86,6 +86,7 @@ import {
     OrderDetailsPrintTemplate,
     OrderReceiptPrintTemplate
 } from './OrderPrintTemplates'
+import { AtlasStandardOrderInvoiceTemplate } from './AtlasStandardOrderInvoiceTemplate'
 import { OrderStatusBadge } from './OrderStatusBadge'
 import { useOrderCustomPrint } from './useOrderCustomPrint'
 
@@ -538,6 +539,37 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
             },
         }
     }, [resolved, features, installments, workspaceName, t, i18n, workspaceId, workspaceFooterContacts, counterpartyPhone, productUnits])
+
+    const orderAtlasStandardPreview = useMemo<TemplatePreview | undefined>(() => {
+        if (!resolved) return undefined
+        const { order, kind } = resolved
+        return {
+            fields: [],
+            createElement: (_data, _effectiveId, printLangOverride, renderOptions) => {
+                const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+                return (
+                    <AtlasStandardOrderInvoiceTemplate
+                        workspaceName={workspaceName}
+                        printLang={printLangOverride || baseLang}
+                        order={order}
+                        installments={installments}
+                        kind={kind}
+                        iqdPreference={features.iqd_display_preference}
+                        logoUrl={features.logo_url}
+                        workspaceFooterContacts={renderOptions?.workspaceFooterContacts || workspaceFooterContacts}
+                        businessPartner={bizPartner}
+                        printedBy={user?.name}
+                        hiddenFields={renderOptions?.hiddenFields}
+                        onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
+                    />
+                )
+            },
+            buildPdf: async (element: ReactElement, printLangOverride?: string) => {
+                const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+                return generateTemplatePdf({ element, format: 'a4', printLang: printLangOverride || baseLang })
+            }
+        }
+    }, [resolved, features, installments, workspaceName, i18n, bizPartner, workspaceFooterContacts, user?.name])
 
     const customOrderPrint = useOrderCustomPrint({
         workspaceId,
@@ -1671,6 +1703,19 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                         counterpartyPhone={counterpartyPhone}
                                         workspaceFooterContacts={workspaceFooterContacts}
                                     />
+                                ) : customOrderPrint.isAtlasStandardSelected ? (
+                                    <AtlasStandardOrderInvoiceTemplate
+                                        workspaceName={workspaceName}
+                                        printLang={printLang}
+                                        order={order}
+                                        installments={installments}
+                                        kind={resolved.kind}
+                                        iqdPreference={features.iqd_display_preference}
+                                        logoUrl={features.logo_url}
+                                        workspaceFooterContacts={workspaceFooterContacts}
+                                        businessPartner={bizPartner}
+                                        printedBy={user?.name}
+                                    />
                                 ) : (
                                     <OrderDetailsPrintTemplate
                                         workspaceName={workspaceName}
@@ -1708,6 +1753,19 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             counterpartyPhone={counterpartyPhone}
                             workspaceFooterContacts={workspaceFooterContacts}
                         />
+                    ) : customOrderPrint.isAtlasStandardSelected ? (
+                        <AtlasStandardOrderInvoiceTemplate
+                            workspaceName={workspaceName}
+                            printLang={printLang}
+                            order={order}
+                            installments={installments}
+                            kind={resolved.kind}
+                            iqdPreference={features.iqd_display_preference}
+                            logoUrl={features.logo_url}
+                            workspaceFooterContacts={workspaceFooterContacts}
+                            businessPartner={bizPartner}
+                            printedBy={user?.name}
+                        />
                     ) : (
                         <OrderDetailsPrintTemplate
                             workspaceName={workspaceName}
@@ -1729,7 +1787,9 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                     ? customOrderPrint.preview
                     : customOrderPrint.isReceiptSelected
                         ? orderReceiptPreview
-                        : orderDetailsPreview}
+                        : customOrderPrint.isAtlasStandardSelected
+                            ? orderAtlasStandardPreview
+                            : orderDetailsPreview}
                 customTemplate={customOrderPrint.customTemplate}
                 initialTemplateLayout={customOrderPrint.initialLayout}
                 enableTemplatePreviewSave={customOrderPrint.isCustomSelected}

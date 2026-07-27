@@ -45,6 +45,7 @@ import {
     OrderDetailsPrintTemplate,
     OrderReceiptPrintTemplate
 } from './OrderPrintTemplates'
+import { AtlasStandardOrderInvoiceTemplate } from './AtlasStandardOrderInvoiceTemplate'
 import { useOrderCustomPrint } from './useOrderCustomPrint'
 
 type OrderInstallmentRow =
@@ -240,7 +241,12 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         const folder = format === 'receipt' ? 'receipts' : 'A4'
         return `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/${folder}/${effectiveId}.pdf`
     }, [features.print_qr, workspaceId])
-    const renderOrderTemplate = useCallback((format: PrintFormat = 'a4', effectiveId?: string, printLangOverride?: string) => {
+    const renderOrderTemplate = useCallback((
+        format: PrintFormat = 'a4',
+        effectiveId?: string,
+        printLangOverride?: string,
+        useAtlasStandard = true
+    ) => {
         if (!printTarget) return null
         return format === 'receipt' ? (
             <OrderReceiptPrintTemplate
@@ -254,6 +260,18 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                 qrValue={effectiveId ? buildQrValue(effectiveId, 'receipt') : undefined}
                 productUnits={productUnits}
                 counterpartyPhone={counterpartyPhone}
+            />
+        ) : useAtlasStandard ? (
+            <AtlasStandardOrderInvoiceTemplate
+                workspaceName={workspaceName}
+                printLang={printLangOverride || printLang}
+                order={printTarget.order}
+                installments={printInstallments}
+                kind={printTarget.kind}
+                iqdPreference={features.iqd_display_preference}
+                logoUrl={features.logo_url}
+                businessPartner={printPartner}
+                printedBy={user?.name}
             />
         ) : (
             <OrderDetailsPrintTemplate
@@ -280,6 +298,8 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         productUnits,
         counterpartyAddress,
         counterpartyPhone,
+        printPartner,
+        user?.name,
         workspaceName
     ])
     const orderInstallmentPreview = useMemo<TemplatePreview | undefined>(() => {
@@ -419,6 +439,42 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         productUnits,
         counterpartyPhone,
         t,
+        workspaceName
+    ])
+
+    const orderInstallmentAtlasStandardPreview = useMemo<TemplatePreview | undefined>(() => {
+        if (!printTarget) return undefined
+        return {
+            fields: [],
+            createElement: (_data, _effectiveId, printLangOverride, renderOptions) => (
+                <AtlasStandardOrderInvoiceTemplate
+                    workspaceName={workspaceName}
+                    printLang={printLangOverride || printLang}
+                    order={printTarget.order}
+                    installments={printInstallments}
+                    kind={printTarget.kind}
+                    iqdPreference={features.iqd_display_preference}
+                    logoUrl={features.logo_url}
+                    businessPartner={printPartner}
+                    printedBy={user?.name}
+                    hiddenFields={renderOptions?.hiddenFields}
+                    onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
+                />
+            ),
+            buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({
+                element,
+                format: 'a4',
+                printLang: printLangOverride || printLang
+            })
+        }
+    }, [
+        features.iqd_display_preference,
+        features.logo_url,
+        printInstallments,
+        printLang,
+        printPartner,
+        printTarget,
+        user?.name,
         workspaceName
     ])
     const customOrderPrint = useOrderCustomPrint({
@@ -631,7 +687,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                         effectiveId: string
                         printLangOverride?: string
                     }) => {
-                        const template = renderOrderTemplate(format, effectiveId, printLangOverride)
+                        const template = renderOrderTemplate(format, effectiveId, printLangOverride, customOrderPrint.isAtlasStandardSelected)
                         if (!template) throw new Error('Order data not ready')
                         return generateTemplatePdf({
                             element: template,
@@ -641,13 +697,17 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                     }}
                 printTemplate={({ effectiveId }) => renderOrderTemplate(
                     customOrderPrint.isReceiptSelected ? 'receipt' : 'a4',
-                    effectiveId
+                    effectiveId,
+                    undefined,
+                    customOrderPrint.isAtlasStandardSelected
                 )}
                 templatePreview={customOrderPrint.isCustomSelected
                     ? customOrderPrint.preview
                     : customOrderPrint.isReceiptSelected
                         ? orderInstallmentReceiptPreview
-                        : orderInstallmentPreview}
+                        : customOrderPrint.isAtlasStandardSelected
+                            ? orderInstallmentAtlasStandardPreview
+                            : orderInstallmentPreview}
                 customTemplate={customOrderPrint.customTemplate}
                 initialTemplateLayout={customOrderPrint.initialLayout}
                 enableTemplatePreviewSave={customOrderPrint.isCustomSelected}

@@ -25,6 +25,7 @@ import {
     type WorkspaceFooterContacts
 } from '@/ui/components/real-estate/RealEstateBuyPrintTemplate'
 import type {
+    BusinessPartner,
     OrderInstallment,
     PurchaseOrder,
     RealEstateTransactionType,
@@ -50,6 +51,10 @@ import {
     OrderReceiptPrintTemplate,
     OrderDetailsPrintTemplate
 } from '@/ui/components/orders/OrderPrintTemplates'
+import {
+    AtlasStandardOrderInvoiceTemplate,
+    ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS
+} from '@/ui/components/orders/AtlasStandardOrderInvoiceTemplate'
 import { ModernA4InvoiceTemplate, MODERN_A4_MOVABLE_COMPONENT_KEYS } from '@/ui/components/ModernA4InvoiceTemplate'
 import {
     ProfessionalA4InvoiceTemplate,
@@ -65,6 +70,7 @@ export const SALES_HISTORY_A4_TEMPLATE_KEYS = [
     SALES_HISTORY_PROFESSIONAL_A4_TEMPLATE_KEY
 ] as const
 export const PARTNER_DETAILS_TEMPLATE_KEY = 'businessPartners.Details'
+export const ORDER_ATLAS_STANDARD_TEMPLATE_KEY = 'orders.AtlasStandard'
 export const ORDER_DETAILS_TEMPLATE_KEY = 'orders.Details'
 export const ORDER_RECEIPT_TEMPLATE_KEY = 'orders.Receipt'
 export const PARTNER_DETAILS_TEMPLATE_FIELD_KEYS = {
@@ -191,11 +197,22 @@ export const CUSTOM_TEMPLATE_TARGETS: CustomTemplateTarget[] = [
         page: { widthMm: 210, heightMm: 297 }
     },
     {
+        moduleTypeKey: ORDER_ATLAS_STANDARD_TEMPLATE_KEY,
+        workspaceModuleKey: 'crm',
+        moduleLabel: 'Orders',
+        typeLabel: 'Atlas Standard',
+        description: 'Atlas Standard order invoice A4 print layout.',
+        nativeTemplateKey: ORDER_ATLAS_STANDARD_TEMPLATE_KEY,
+        nativeTemplateAvailable: true,
+        printFormat: 'a4',
+        page: { widthMm: 210, heightMm: 297 }
+    },
+    {
         moduleTypeKey: ORDER_DETAILS_TEMPLATE_KEY,
         workspaceModuleKey: 'crm',
         moduleLabel: 'Orders',
-        typeLabel: 'Order Print',
-        description: 'Sales and purchase order details A4 print layout.',
+        typeLabel: 'old',
+        description: 'Legacy sales and purchase order details A4 print layout.',
         nativeTemplateKey: ORDER_DETAILS_TEMPLATE_KEY,
         nativeTemplateAvailable: true,
         printFormat: 'a4',
@@ -226,6 +243,9 @@ export function getCustomTemplateTarget(moduleTypeKey: string) {
 export function getCustomTemplateDisplayName(moduleTypeKey: string) {
     const target = getCustomTemplateTarget(moduleTypeKey)
     if (target) {
+        if (moduleTypeKey === ORDER_ATLAS_STANDARD_TEMPLATE_KEY || moduleTypeKey === ORDER_DETAILS_TEMPLATE_KEY) {
+            return target.typeLabel
+        }
         return `${target.moduleLabel} - ${target.typeLabel}`
     }
 
@@ -369,6 +389,7 @@ export type CustomTemplatePreviewOptions = {
     order?: SalesOrder | PurchaseOrder
     orderKind?: 'sales' | 'purchase'
     orderInstallments?: OrderInstallment[]
+    businessPartner?: BusinessPartner | null
     productUnits?: Record<string, string | null | undefined>
     counterpartyPhone?: string
     counterpartyAddress?: string
@@ -1181,6 +1202,52 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
     }
 }
 
+function createAtlasStandardOrderInvoicePreview(options: CustomTemplatePreviewOptions): TemplatePreview {
+    const order = options.order || SAMPLE_ORDER_DATA
+    const kind = options.orderKind || 'sales'
+    const configuredPrintLang = options.features?.print_lang
+    const printLang = options.printLang
+        || (configuredPrintLang && configuredPrintLang !== 'auto' ? configuredPrintLang : 'en')
+    const fixedPrintLang: TemplatePreview['fixedPrintLang'] = printLang.startsWith('ar')
+        ? 'ar'
+        : printLang.startsWith('ku')
+            ? 'ku'
+            : 'en'
+
+    return {
+        fields: [],
+        movableComponents: [
+            { key: ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS.logo, label: 'Workspace Logo' },
+            { key: ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS.workspaceName, label: 'Workspace Name' }
+        ],
+        page: { widthMm: 210, heightMm: 297 },
+        fixedPrintLang,
+        createElement: (_data, _effectiveId, printLangOverride, renderOptions) => (
+            <AtlasStandardOrderInvoiceTemplate
+                workspaceName={options.workspaceName}
+                printLang={printLangOverride || fixedPrintLang}
+                order={order}
+                installments={options.orderInstallments || []}
+                kind={kind}
+                iqdPreference={options.features?.iqd_display_preference}
+                logoUrl={options.features?.logo_url}
+                workspaceFooterContacts={renderOptions?.workspaceFooterContacts || options.workspaceFooterContacts}
+                businessPartner={options.businessPartner}
+                componentPositions={renderOptions?.componentPositions}
+                editableComponents={renderOptions?.editableComponents}
+                onComponentPositionChange={renderOptions?.onComponentPositionChange}
+                hiddenFields={renderOptions?.hiddenFields}
+                onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
+            />
+        ),
+        buildPdf: (element, printLangOverride) => generateTemplatePdf({
+            element,
+            format: 'a4',
+            printLang: printLangOverride || fixedPrintLang
+        })
+    }
+}
+
 function createOrderReceiptPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
     const order = options.order || SAMPLE_ORDER_DATA
     const kind = options.orderKind || 'sales'
@@ -1260,6 +1327,10 @@ export function createCustomTemplatePreview(
 
     if (target.moduleTypeKey === PARTNER_DETAILS_TEMPLATE_KEY) {
         return createPartnerDetailsPreview(options)
+    }
+
+    if (target.moduleTypeKey === ORDER_ATLAS_STANDARD_TEMPLATE_KEY) {
+        return createAtlasStandardOrderInvoicePreview(options)
     }
 
     if (target.moduleTypeKey === ORDER_DETAILS_TEMPLATE_KEY) {

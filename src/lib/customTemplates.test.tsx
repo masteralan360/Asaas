@@ -567,6 +567,96 @@ describe('Order Details custom print template', () => {
     })
 })
 
+describe('Atlas Standard order invoice custom print template', () => {
+    it('registers a fixed A4 target with movable workspace branding and fixed section visibility controls', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
+        expect(target).toMatchObject({
+            moduleTypeKey: customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY,
+            workspaceModuleKey: 'crm',
+            typeLabel: 'Atlas Standard',
+            nativeTemplateAvailable: true,
+            printFormat: 'a4',
+            page: { widthMm: 210, heightMm: 297 }
+        })
+
+        const hiddenFields = {
+            'atlasStandard.table.price': true,
+            'atlasStandard.financialSummary.notes': true
+        }
+        const onHiddenFieldChange = vi.fn()
+        const onComponentPositionChange = vi.fn()
+        const componentPositions = { atlasStandardWorkspaceName: { x: 20, y: 10 } }
+        const preview = customTemplates.createCustomTemplatePreview(target!, {
+            workspaceName: 'Atlas Test',
+            printLang: 'en',
+            counterpartyPhone: '+964 750 123 4567',
+            counterpartyAddress: '100 Example Street, Erbil'
+        })
+        const element = preview.createElement({}, undefined, undefined, {
+            componentPositions,
+            editableComponents: true,
+            onComponentPositionChange,
+            hiddenFields,
+            onHiddenFieldChange
+        })
+
+        expect(preview.fields).toEqual([])
+        expect(preview.movableComponents).toEqual([
+            { key: 'atlasStandardWorkspaceLogo', label: 'Workspace Logo' },
+            { key: 'atlasStandardWorkspaceName', label: 'Workspace Name' }
+        ])
+        expect(element.props.hiddenFields).toBe(hiddenFields)
+        expect(element.props.onHiddenFieldChange).toBe(onHiddenFieldChange)
+        expect(element.props.componentPositions).toBe(componentPositions)
+        expect(element.props.onComponentPositionChange).toBe(onComponentPositionChange)
+
+        const html = renderToStaticMarkup(element)
+        expect(html).toContain('Atlas Test')
+        expect(html).toContain('Sample Product')
+        expect(html).toContain('>2 pcs</td>')
+        expect(html).toContain('Invoice : </strong>Sales Order')
+        expect(html).toContain('Cashier : </strong>')
+        expect(html).toContain('Status : </strong>Pending')
+        expect(html).toContain('Paid Amount : </strong>')
+        expect(html).toContain('Order Outstanding : </strong>')
+        expect(html).toContain('Payment Method : </strong>Cash')
+        expect(html).not.toContain('Previous Balance')
+        expect(html).not.toContain('Net Payable')
+        expect(html).toContain('border-x px-1')
+        expect(html).not.toContain('gap-px')
+        expect(html).toContain('data-order-print-component="atlasStandardWorkspaceName"')
+        expect(html).toContain('data-order-print-component="atlasStandardWorkspaceLogo"')
+        expect((html.match(/data-order-print-component=/g) || [])).toHaveLength(2)
+    })
+
+    it('writes the amount in words using the selected print language', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const english = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'en'
+        }).createElement({}))
+        const arabic = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'ar'
+        }).createElement({}))
+        const kurdish = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'ku'
+        }).createElement({}))
+
+        expect(english).toContain('One Hundred Ninety Nine')
+        expect(arabic).toContain('>2 قطعة</td>')
+        expect(kurdish).toContain('>2 دانە</td>')
+        expect(arabic).toContain('مائة وتسعة وتسعون')
+        expect(kurdish).toContain('سەد و نەوەت و نۆ')
+        expect(arabic).toContain('الحالة : </strong>قيد الانتظار')
+        expect(arabic).toContain('المبلغ المدفوع : </strong>')
+        expect(arabic).toContain('طريقة الدفع : </strong>نقدي')
+        expect(kurdish).toContain('دۆخ : </strong>چاوەڕوان')
+        expect(kurdish).toContain('بڕی دراو : </strong>')
+        expect(kurdish).toContain('شێوازی پارەدان : </strong>کاش')
+    })
+})
+
 describe('Order Receipt custom print template', () => {
     it('registers the thermal Orders - Receipt Print target', () => {
         const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_RECEIPT_TEMPLATE_KEY)

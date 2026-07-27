@@ -2350,6 +2350,7 @@ export function Settings() {
                                         </p>
                                     </div>
                                     )}
+
                                 </div>
 
                                 {(canUseA4Invoices || canUseReceiptPrinting) && (<>
