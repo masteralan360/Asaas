@@ -91,6 +91,7 @@ export interface Sale {
     _clinicalAppointmentId?: string | null
     _counterpartyName?: string | null
     returns?: SaleReturn[]
+    product_exchanges?: SaleProductExchange[]
 }
 
 export interface SalesExchange {
@@ -119,7 +120,7 @@ export interface SaleReturn {
     refund_amount: number
     returned_by?: string | null
     returned_at: string
-    source: 'app' | 'legacy_backfill' | 'system'
+    source: 'app' | 'exchange' | 'legacy_backfill' | 'system'
     created_at: string
     updated_at: string
     items?: SaleReturnItem[]
@@ -194,6 +195,40 @@ export interface AttachedText {
     rotation?: number
     fontSize?: number | ''
     color?: string
+}
+
+export interface SaleProductExchange {
+    id: string
+    workspace_id: string
+    sale_id: string
+    return_id: string
+    return_sale_item_id: string
+    return_product_id: string
+    return_quantity: number
+    return_unit_amount: number
+    return_amount: number
+    return_storage_id?: string | null
+    replacement_product_id: string
+    replacement_storage_id: string
+    replacement_quantity: number
+    replacement_unit_amount: number
+    replacement_amount: number
+    replacement_batch_allocations?: SaleItem['batch_allocations']
+    settlement_currency: string
+    difference_amount: number
+    cash_settlement_amount: number
+    settlement_direction?: 'incoming' | 'outgoing' | null
+    settlement_method?: string | null
+    settlement_transaction_id?: string | null
+    loan_id?: string | null
+    loan_credit_amount: number
+    reason: string
+    notes?: string | null
+    exchanged_by?: string | null
+    exchanged_at: string
+    status: 'posted' | 'voided'
+    created_at: string
+    updated_at: string
 }
 
 export type PdfShapeKind = 'rectangle' | 'circle' | 'triangle' | 'star'

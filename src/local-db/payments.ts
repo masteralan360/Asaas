@@ -188,6 +188,10 @@ function getMetadataString(metadata: Record<string, unknown> | null | undefined,
 }
 
 function getTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceModule' | 'sourceType' | 'sourceRecordId' | 'metadata'>) {
+    if (transaction.sourceModule === 'sales') {
+        return '/sales'
+    }
+
     if (transaction.sourceModule === 'clinical_appointments') {
         return `/clinical-appointments/${transaction.sourceRecordId}/edit`
     }

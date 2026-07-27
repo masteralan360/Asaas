@@ -21,6 +21,7 @@ import type {
   SaleItem,
   SaleReturn,
   SaleReturnItem,
+  SaleProductExchange,
   OrderReturn,
   OrderReturnItem,
   OfflineMutation,
@@ -419,6 +420,7 @@ export class AtlasDatabase extends Dexie {
   sale_items!: EntityTable<SaleItem, "id">;
   sale_returns!: EntityTable<SaleReturn, "id">;
   sale_return_items!: EntityTable<SaleReturnItem, "id">;
+  sale_product_exchanges!: EntityTable<SaleProductExchange, "id">;
   order_returns!: EntityTable<OrderReturn, "id">;
   order_return_items!: EntityTable<OrderReturnItem, "id">;
   workspaces!: EntityTable<Workspace, "id">;
@@ -3062,6 +3064,11 @@ export class AtlasDatabase extends Dexie {
       ]);
     });
 
+    this.version(88).stores({
+      sale_product_exchanges:
+        "id, workspaceId, saleId, returnId, returnSaleItemId, returnProductId, replacementProductId, replacementStorageId, status, exchangedAt, updatedAt, isDeleted, syncStatus, [workspaceId+saleId], [workspaceId+exchangedAt], [saleId+exchangedAt]",
+    });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }
@@ -3195,6 +3202,7 @@ export class AtlasDatabase extends Dexie {
       "sales_exchange",
       "sale_returns",
       "sale_return_items",
+      "sale_product_exchanges",
       "order_returns",
       "order_return_items",
       "workspaces",
@@ -3414,6 +3422,7 @@ export async function clearDatabase(): Promise<void> {
       db.order_installments,
       db.order_returns,
       db.order_return_items,
+      db.sale_product_exchanges,
       db.syncQueue,
     ],
     async () => {
@@ -3453,6 +3462,7 @@ export async function clearDatabase(): Promise<void> {
       await db.order_installments.clear();
       await db.order_returns.clear();
       await db.order_return_items.clear();
+      await db.sale_product_exchanges.clear();
       await db.syncQueue.clear();
     },
   );

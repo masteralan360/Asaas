@@ -27,7 +27,7 @@ import {
     TooltipTrigger,
     TooltipProvider
 } from '@/ui/components'
-import { RotateCcw, ArrowRight, XCircle, MessageCircle, CircleDollarSign, TrendingUp, Download, CircleAlert } from 'lucide-react'
+import { RotateCcw, ArrowRight, ArrowRightLeft, XCircle, MessageCircle, CircleDollarSign, TrendingUp, Download, CircleAlert } from 'lucide-react'
 import { isMobile } from '@/lib/platform'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -69,11 +69,12 @@ interface SaleDetailsModalProps {
     isOpen: boolean
     onClose: () => void
     onReturnItem?: (item: SaleItem) => void
+    onExchangeItem?: (item: SaleItem) => void
     onReturnSale?: (sale: Sale) => void
     onDownloadInvoice?: (sale: Sale) => void
 }
 
-export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturnSale, onDownloadInvoice }: SaleDetailsModalProps) {
+export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onExchangeItem, onReturnSale, onDownloadInvoice }: SaleDetailsModalProps) {
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
     const { features, hasCapability } = useWorkspace()
@@ -532,6 +533,18 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                                                                 <RotateCcw className="h-3 w-3" />
                                                             </Button>
                                                         )}
+                                                        {!isItemReturned && !item.is_returned && netQuantity > 0 && sale.origin === 'pos' && onExchangeItem && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={(e) => { e.stopPropagation(); onExchangeItem(item) }}
+                                                                className="h-6 gap-1 px-2 text-[10px] text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg"
+                                                                title={t('sales.exchange.title', { defaultValue: 'Product Exchange' })}
+                                                            >
+                                                                <ArrowRightLeft className="h-3 w-3" />
+                                                                {t('sales.exchange.action', { defaultValue: 'Exchange' })}
+                                                            </Button>
+                                                        )}
                                                         {hasNegotiated && (
                                                             <span className="inline-flex items-center px-1.5 py-0.5 text-[8px] font-bold bg-emerald-500/15 text-emerald-600 rounded whitespace-nowrap leading-none">
                                                                 {t('pos.negotiatedPrice') || 'Negotiated Price'}
@@ -774,6 +787,18 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                                                                 title={t('sales.return.returnItem') || 'Return Item'}
                                                             >
                                                                 <RotateCcw className="h-3 w-3" />
+                                                            </Button>
+                                                        )}
+                                                        {!isItemReturned && !item.is_returned && netQuantity > 0 && sale.origin === 'pos' && onExchangeItem && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={(e) => { e.stopPropagation(); onExchangeItem(item) }}
+                                                                className="h-6 gap-1 px-2 text-[10px] text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                                                title={t('sales.exchange.title', { defaultValue: 'Product Exchange' })}
+                                                            >
+                                                                <ArrowRightLeft className="h-3 w-3" />
+                                                                {t('sales.exchange.action', { defaultValue: 'Exchange' })}
                                                             </Button>
                                                         )}
                                                         {isItemReturned && (

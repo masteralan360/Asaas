@@ -1287,6 +1287,9 @@ export interface Sale extends BaseEntity {
   systemReviewStatus: "approved" | "flagged" | "inconsistent";
   systemReviewReason: string | null;
   isReturned?: boolean;
+  returnReason?: string | null;
+  returnedAt?: string | null;
+  returnedBy?: string | null;
   notes?: string;
 }
 
@@ -1310,6 +1313,10 @@ export interface SaleItem {
   batchAllocations?: StockBatchAllocation[] | null;
   originalBatchAllocations?: StockBatchAllocation[] | null;
   returnedQuantity?: number;
+  isReturned?: boolean;
+  returnReason?: string | null;
+  returnedAt?: string | null;
+  returnedBy?: string | null;
 }
 
 export interface SaleReturn extends BaseEntity {
@@ -1320,7 +1327,7 @@ export interface SaleReturn extends BaseEntity {
   refundAmount: number;
   returnedBy?: string | null;
   returnedAt: string;
-  source: "app" | "legacy_backfill" | "system";
+  source: "app" | "exchange" | "legacy_backfill" | "system";
 }
 
 export interface SaleReturnItem extends BaseEntity {
@@ -1332,6 +1339,44 @@ export interface SaleReturnItem extends BaseEntity {
   refundAmount: number;
   restoredStorageId?: string | null;
   restoredBatchAllocations?: StockBatchAllocation[] | null;
+}
+
+/**
+ * Immutable inventory and settlement record for one product exchanged against
+ * a POS sale line.  The returned side is also represented in the normal sale
+ * return ledger through `returnId`; this record captures the replacement side
+ * and makes the two operations auditable as a single business action.
+ */
+export interface SaleProductExchange extends BaseEntity {
+  saleId: string;
+  returnId: string;
+  returnSaleItemId: string;
+  returnProductId: string;
+  returnQuantity: number;
+  returnUnitAmount: number;
+  returnAmount: number;
+  returnStorageId?: string | null;
+  replacementProductId: string;
+  replacementStorageId: string;
+  replacementQuantity: number;
+  replacementUnitAmount: number;
+  replacementAmount: number;
+  replacementBatchAllocations?: StockBatchAllocation[] | null;
+  settlementCurrency: CurrencyCode;
+  /** Replacement total minus returned total. Positive means the customer owes more. */
+  differenceAmount: number;
+  /** The part of a negative difference that could not be credited to the linked loan. */
+  cashSettlementAmount: number;
+  settlementDirection?: PaymentTransactionDirection | null;
+  settlementMethod?: WorkspacePaymentMethod | null;
+  settlementTransactionId?: string | null;
+  loanId?: string | null;
+  loanCreditAmount: number;
+  reason: string;
+  notes?: string | null;
+  exchangedBy?: string | null;
+  exchangedAt: string;
+  status: "posted" | "voided";
 }
 
 /** Immutable header for a return posted against a completed sales order. */
@@ -1417,6 +1462,7 @@ export interface LoanPayment extends BaseEntity {
 }
 
 export type PaymentTransactionSourceModule =
+  | "sales"
   | "loans"
   | "orders"
   | "budget"
@@ -1425,6 +1471,7 @@ export type PaymentTransactionSourceModule =
   | "currency_exchange"
   | "payments";
 export type PaymentTransactionSourceType =
+  | "sale_exchange"
   | "loan_origination"
   | "loan_payment"
   | "simple_loan"
@@ -1496,6 +1543,7 @@ export interface SyncQueueItem {
     | "invoices"
     | "users"
     | "sales"
+    | "sale_product_exchanges"
     | "order_returns"
     | "order_return_items"
     | "categories"
@@ -1627,6 +1675,7 @@ export interface OfflineMutation {
     | "invoices"
     | "users"
     | "sales"
+    | "sale_product_exchanges"
     | "order_returns"
     | "order_return_items"
     | "categories"

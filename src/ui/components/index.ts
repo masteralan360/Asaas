@@ -71,6 +71,15 @@ export * from './ExchangeRateIndicator'
 export * from './DeleteConfirmationModal'
 export * from './PrintSelectionModal'
 export { ReturnConfirmationModal } from './ReturnConfirmationModal'
+export { SaleReturnActionDialog } from './SaleReturnActionDialog'
+export {
+    ProductExchangeModal,
+    type ProductExchangeDraft,
+    type ProductExchangeReplacementProduct,
+    type ProductExchangeSaleItem,
+    type ProductExchangeSettlementMethod,
+    type ProductExchangeStorage,
+} from './ProductExchangeModal'
 export { DeleteConfirmationModal } from './DeleteConfirmationModal'
 export { Checkbox } from './checkbox'
 export { ReturnDeclineModal } from './ReturnDeclineModal'

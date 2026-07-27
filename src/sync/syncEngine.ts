@@ -61,6 +61,7 @@ const SYNC_PULL_TABLES = [
   "sale_items",
   "sale_returns",
   "sale_return_items",
+  "sale_product_exchanges",
   "order_returns",
   "order_return_items",
   "sales_orders",
@@ -613,6 +614,33 @@ export async function processMutationQueue(
                   syncStatus: "synced",
                   lastSyncedAt: syncedAt,
                 });
+            }
+          } else if (rpcAction === "process_sale_product_exchange") {
+            const { error } = await supabase.rpc("process_sale_product_exchange", {
+              p_exchange_id: dbPayload.p_exchange_id,
+              p_return_id: dbPayload.p_return_id,
+              p_sale_id: dbPayload.p_sale_id,
+              p_return_sale_item_id: dbPayload.p_return_sale_item_id,
+              p_return_quantity: dbPayload.p_return_quantity,
+              p_replacement_product_id: dbPayload.p_replacement_product_id,
+              p_replacement_storage_id: dbPayload.p_replacement_storage_id,
+              p_replacement_quantity: dbPayload.p_replacement_quantity,
+              p_replacement_unit_amount: dbPayload.p_replacement_unit_amount,
+              p_settlement_method: dbPayload.p_settlement_method,
+              p_note: dbPayload.p_note,
+              p_return_reason: dbPayload.p_return_reason,
+            });
+            if (error) throw error;
+
+            const exchangeId = typeof dbPayload.p_exchange_id === "string"
+              ? dbPayload.p_exchange_id
+              : null;
+            if (exchangeId) {
+              const syncedAt = new Date().toISOString();
+              await db.sale_product_exchanges.update(exchangeId, {
+                syncStatus: "synced",
+                lastSyncedAt: syncedAt,
+              });
             }
           } else if (rpcAction === "return_sale_items") {
             const { error } = await supabase.rpc("return_sale_items", {

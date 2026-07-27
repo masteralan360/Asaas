@@ -49,6 +49,7 @@ import type {
     LoanStatus,
     ExchangeRateSnapshot,
     SalesExchange,
+    SaleProductExchange,
     PaymentTransaction,
     PaymentTransactionSourceType,
     OfflineMutation
@@ -1705,10 +1706,11 @@ export async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
             .map((sale) => sale.cashierId)
             .filter((cashierId): cashierId is string => typeof cashierId === 'string' && cashierId.length > 0)
     ))
-    const [localItems, localExchangeRows, localReturns, cashierUsers, profileRows] = await Promise.all([
+    const [localItems, localExchangeRows, localReturns, localProductExchanges, cashierUsers, profileRows] = await Promise.all([
         db.sale_items.where('saleId').anyOf(saleIds).toArray(),
         db.sales_exchange.where('saleId').anyOf(saleIds).toArray(),
         db.sale_returns.where('saleId').anyOf(saleIds).toArray(),
+        db.sale_product_exchanges.where('saleId').anyOf(saleIds).toArray(),
         cashierIds.length > 0 ? db.users.bulkGet(cashierIds) : Promise.resolve([]),
         cashierIds.length > 0 ? db.profiles.where('id').anyOf(cashierIds).toArray() : Promise.resolve([]),
     ])
@@ -1810,6 +1812,13 @@ export async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
         exchangeBySaleId.set(exchangeRow.saleId, existing)
     }
 
+    const productExchangeBySaleId = new Map<string, typeof localProductExchanges>()
+    for (const exchange of localProductExchanges) {
+        const existing = productExchangeBySaleId.get(exchange.saleId) ?? []
+        existing.push(exchange)
+        productExchangeBySaleId.set(exchange.saleId, existing)
+    }
+
     const returnItemsByReturnId = new Map<string, Record<string, unknown>[]>()
     for (const item of localReturnItems) {
         const existing = returnItemsByReturnId.get(item.returnId) ?? []
@@ -1868,7 +1877,8 @@ export async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
             _cashierName: cashierName,
             _enrichedItems: enrichedItems,
             _salesExchange: exchangeBySaleId.get(sale.id) ?? [],
-            _returns: returnsBySaleId.get(sale.id) ?? []
+            _returns: returnsBySaleId.get(sale.id) ?? [],
+            _productExchanges: productExchangeBySaleId.get(sale.id) ?? []
         }
     })
 }
@@ -2003,7 +2013,8 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
             .from('sales')
             .select(`
               *, sale_items(*, product:product_id(name, sku, category, category_id, can_be_returned, return_rules, unit, is_deleted)),
-              sale_returns(*, sale_return_items(*))
+              sale_returns(*, sale_return_items(*)),
+              sale_product_exchanges(*)
             `)
             .eq('workspace_id', workspaceId)
             .in('id', chunk),
@@ -2049,9 +2060,15 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
   const saleItemsToPut: SaleItem[] = []
   const saleReturnsToPut: any[] = []
   const saleReturnItemsToPut: any[] = []
+  const saleProductExchangesToPut: SaleProductExchange[] = []
 
   for (const remoteSale of fullData || []) {
-    const { sale_items: remoteItems, sale_returns: remoteReturns, ...saleData } = remoteSale as any
+    const {
+      sale_items: remoteItems,
+      sale_returns: remoteReturns,
+      sale_product_exchanges: remoteProductExchanges,
+      ...saleData
+    } = remoteSale as any
     const localSale = toCamelCase(saleData) as unknown as Sale
     localSale.syncStatus = 'synced'
     localSale.lastSyncedAt = syncedAt
@@ -2094,9 +2111,19 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
         })
       }
     }
+
+    for (const remoteExchange of remoteProductExchanges || []) {
+      saleProductExchangesToPut.push({
+        ...(toCamelCase(remoteExchange) as unknown as SaleProductExchange),
+        syncStatus: 'synced',
+        lastSyncedAt: syncedAt,
+        version: 1,
+        isDeleted: false,
+      })
+    }
   }
 
-  await db.transaction('rw', [db.sales, db.sales_exchange, db.sale_items, db.sale_returns, db.sale_return_items], async () => {
+  await db.transaction('rw', [db.sales, db.sales_exchange, db.sale_items, db.sale_returns, db.sale_return_items, db.sale_product_exchanges], async () => {
     if (remoteExchangeRows) {
       await db.sales_exchange.where('saleId').anyOf(idsToFetch).delete()
       if (remoteExchangeRows.length > 0) {
@@ -2115,6 +2142,7 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
       await db.sale_items.where('saleId').anyOf(deletedSaleIds).delete()
       await db.sale_returns.where('saleId').anyOf(deletedSaleIds).delete()
       await db.sale_return_items.where('saleId').anyOf(deletedSaleIds).delete()
+      await db.sale_product_exchanges.where('saleId').anyOf(deletedSaleIds).delete()
     }
 
     const fetchedSaleIds = salesToPut.map((sale) => sale.id)
@@ -2122,10 +2150,12 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
       await db.sale_items.where('saleId').anyOf(fetchedSaleIds).delete()
       await db.sale_returns.where('saleId').anyOf(fetchedSaleIds).delete()
       await db.sale_return_items.where('saleId').anyOf(fetchedSaleIds).delete()
+      await db.sale_product_exchanges.where('saleId').anyOf(fetchedSaleIds).delete()
       await db.sales.bulkPut(salesToPut)
       if (saleItemsToPut.length > 0) await db.sale_items.bulkPut(saleItemsToPut)
       if (saleReturnsToPut.length > 0) await db.sale_returns.bulkPut(saleReturnsToPut)
       if (saleReturnItemsToPut.length > 0) await db.sale_return_items.bulkPut(saleReturnItemsToPut)
+      if (saleProductExchangesToPut.length > 0) await db.sale_product_exchanges.bulkPut(saleProductExchangesToPut)
     }
   })
 }
@@ -2230,6 +2260,7 @@ export function toUISale(localSale: any): any {
         cashier_name: localSale._cashierName || 'Staff',
         items: enrichedItems,
         returns: (localSale as Sale & { _returns?: unknown[] })._returns ?? [],
+        product_exchanges: (localSale as Sale & { _productExchanges?: unknown[] })._productExchanges ?? [],
         is_returned: localSale.isReturned,
         return_reason: localSale.returnReason,
         returned_at: localSale.returnedAt,

@@ -12,7 +12,7 @@ import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, applySalesOrderReturnQuantities, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
+import { adjustInventoryQuantity, applySalesOrderReturnQuantities, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
@@ -33,6 +33,8 @@ import {
     CardTitle,
     Button,
     SaleDetailsModal,
+    SaleReturnActionDialog,
+    ProductExchangeModal,
     ProfileCardModal,
     ReturnConfirmationModal,
     ReturnDeclineModal,
@@ -65,6 +67,9 @@ import {
     ContextMenuItem,
     ContextMenuLabel,
     ContextMenuSeparator,
+    type ProductExchangeDraft,
+    type ProductExchangeReplacementProduct,
+    type ProductExchangeSaleItem,
 } from '@/ui/components'
 import { LoanDetailsPrintTemplate, LoanReceiptPrintTemplate } from '@/ui/components/loans/LoanPrintTemplates'
 import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
@@ -274,6 +279,9 @@ export function Sales() {
     const salesOrderReturnItems = useSalesOrderReturnItemsForWorkspace(user?.workspaceId)
     const rawTravelSales = useTravelAgencySales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const rawExchangeTransactions = useExchangeTransactions(user?.workspaceId)
+    const products = useProducts(user?.workspaceId)
+    const storages = useStorages(user?.workspaceId)
+    const inventory = useInventory(user?.workspaceId)
     const realEstateCommissionTransactions = usePaymentTransactions(user?.workspaceId, {
         direction: 'incoming',
         sourceModule: 'real_estate',
@@ -317,6 +325,10 @@ export function Sales() {
     const [printingSale, setPrintingSale] = useState<Sale | null>(null)
     const [returnModalOpen, setReturnModalOpen] = useState(false)
     const [saleToReturn, setSaleToReturn] = useState<Sale | null>(null)
+    const [saleForReturnAction, setSaleForReturnAction] = useState<Sale | null>(null)
+    const [saleForProductExchange, setSaleForProductExchange] = useState<Sale | null>(null)
+    const [lockedProductExchangeSaleItemId, setLockedProductExchangeSaleItemId] = useState<string | null>(null)
+    const [isSubmittingProductExchange, setIsSubmittingProductExchange] = useState(false)
     const [filters, setFilters] = useState<SalesFilterState>(() => {
         const cachedCashier = localStorage.getItem('sales_selected_cashier') || 'all'
         return { ...DEFAULT_SALES_FILTERS, cashier: cachedCashier }
@@ -327,6 +339,70 @@ export function Sales() {
     const [pageSize, setPageSize] = useState(() => {
         return Number(localStorage.getItem('sales_page_size')) || 20
     })
+
+    const productExchangeSaleItems = useMemo<ProductExchangeSaleItem[]>(() => {
+        if (saleForProductExchange?.origin !== 'pos') {
+            return []
+        }
+
+        const isFlaggedSale = saleForProductExchange.system_review_status === 'flagged'
+        return (saleForProductExchange.items || []).flatMap((item) => {
+            const returnableQuantity = Math.max(
+                0,
+                Number(item.quantity || 0) - Math.max(0, Number(item.returned_quantity || 0)),
+            )
+            const canReturn = isFlaggedSale
+                || !item.product
+                || (item.product.can_be_returned !== false && item.product.is_deleted !== true)
+
+            if (!item.id || !item.product_id || returnableQuantity <= 0 || !canReturn) {
+                return []
+            }
+
+            return [{
+                id: item.id,
+                productId: item.product_id,
+                name: item.product?.name || item.product_name || t('common.unknownProduct', { defaultValue: 'Unknown product' }),
+                sku: item.product?.sku || item.product_sku || null,
+                unit: item.product?.unit || null,
+                returnableQuantity,
+                unitPrice: Number(item.converted_unit_price ?? item.unit_price ?? 0),
+            }]
+        })
+    }, [saleForProductExchange, t])
+
+    const productExchangeReplacementProducts = useMemo<ProductExchangeReplacementProduct[]>(() => {
+        const settlementCurrency = saleForProductExchange?.settlement_currency?.toLowerCase()
+        if (!settlementCurrency) {
+            return []
+        }
+
+        const productsById = new Map(products.map((product) => [product.id, product]))
+        return inventory.flatMap((inventoryItem) => {
+            const product = productsById.get(inventoryItem.productId)
+            const availableQuantity = Number(inventoryItem.quantity || 0)
+            if (
+                !product
+                || product.isDeleted
+                || availableQuantity <= 0
+                || product.currency.toLowerCase() !== settlementCurrency
+            ) {
+                return []
+            }
+
+            return [{
+                id: product.id,
+                storageId: inventoryItem.storageId,
+                name: product.name,
+                sku: product.sku || null,
+                unit: product.unit || null,
+                unitPrice: Number(product.price || 0),
+                currency: product.currency,
+                replacementUnitAmount: Number(product.price || 0),
+                availableQuantity,
+            }]
+        })
+    }, [inventory, products, saleForProductExchange?.settlement_currency])
 
     useEffect(() => {
         localStorage.setItem('sales_page_size', String(pageSize))
@@ -1091,6 +1167,65 @@ export function Sales() {
 
     const handleReturnSale = (sale: Sale) => {
         initiateReturn(sale, true)
+    }
+
+    const openSaleReturnAction = (sale: Sale) => {
+        // Exchanges are an atomic POS-only operation. Other Sales History
+        // records retain the existing return behaviour without presenting an
+        // action that their source cannot fulfil.
+        if (sale.origin !== 'pos') {
+            handleReturnSale(sale)
+            return
+        }
+        setSaleForReturnAction(sale)
+    }
+
+    const handleProductExchangeSubmit = async (draft: ProductExchangeDraft) => {
+        if (!user?.workspaceId || !saleForProductExchange) {
+            throw new Error(t('sales.exchange.submitFailed', { defaultValue: 'The exchange could not be completed. Please try again.' }))
+        }
+
+        setIsSubmittingProductExchange(true)
+        try {
+            await processSaleProductExchange({
+                workspaceId: user.workspaceId,
+                saleId: saleForProductExchange.id,
+                returnSaleItemId: draft.originalSaleItemId,
+                returnQuantity: draft.returnQuantity,
+                replacementProductId: draft.replacementProductId,
+                replacementStorageId: draft.replacementStorageId,
+                replacementQuantity: draft.replacementQuantity,
+                replacementUnitAmount: draft.replacementUnitAmount,
+                settlementMethod: draft.settlementMethod,
+                returnReason: 'Product exchange',
+                createdBy: user.id,
+            })
+            toast({
+                title: t('sales.exchange.complete', { defaultValue: 'Complete Exchange' }),
+                description: t('sales.exchange.completedDescription', { defaultValue: 'The product exchange has been recorded.' }),
+            })
+        } catch (error) {
+            const description = error instanceof Error
+                ? error.message
+                : t('sales.exchange.submitFailed', { defaultValue: 'The exchange could not be completed. Please try again.' })
+            toast({
+                variant: 'destructive',
+                title: t('common.error', { defaultValue: 'Error' }),
+                description,
+            })
+            throw error
+        } finally {
+            setIsSubmittingProductExchange(false)
+        }
+    }
+
+    const handleProductExchangeFromDetails = (item: SaleItem) => {
+        if (!selectedSale || selectedSale.origin !== 'pos') {
+            return
+        }
+
+        setLockedProductExchangeSaleItemId(item.id)
+        setSaleForProductExchange(selectedSale)
     }
 
     const handleReturnItem = (item: SaleItem) => {
@@ -2212,6 +2347,7 @@ export function Sales() {
                                 {sales.map((sale) => {
                                     const { isFullyReturned, hasAnyReturn, totalReturnedQuantity } = getSaleReturnState(sale)
                                     const loanIndicator = getLoanIndicator(sale)
+                                    const hasProductExchange = (sale.product_exchanges || []).some((exchange: { status?: string }) => exchange.status === 'posted')
                                     const isTutorialSale = tutorialSaleId === sale.id
 
                                     return (
@@ -2274,6 +2410,14 @@ export function Sales() {
                                                                             {totalReturnedQuantity > 0
                                                                                 ? <>-{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}</>
                                                                                 : (t('sales.return.partialReturn') || 'PARTIALLY RETURNED')}
+                                                                        </span>
+                                                                    )}
+                                                                    {hasProductExchange && (
+                                                                        <span className={cn(
+                                                                            "px-2 py-0.5 text-[9px] font-bold bg-primary/10 text-primary border border-primary/20 uppercase",
+                                                                            style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                                        )}>
+                                                                            {t('sales.exchange.badge', { defaultValue: 'EXCHANGED' })}
                                                                         </span>
                                                                     )}
                                                                     <span className={cn(
@@ -2411,7 +2555,7 @@ export function Sales() {
                                                                         "h-10 w-10 text-orange-600 hover:bg-orange-50",
                                                                         style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-orange-600 shadow-[2px_2px_0px_0px_rgba(234,88,12,0.5)]" : "rounded-xl"
                                                                     )}
-                                                                    onClick={() => handleReturnSale(sale)}
+                                                                    onClick={() => openSaleReturnAction(sale)}
                                                                 >
                                                                     <RotateCcw className="w-4 h-4" />
                                                                 </Button>
@@ -2455,7 +2599,7 @@ export function Sales() {
                                                 {!isFullyReturned && !getExternalSaleDetailsPath(sale) && (user?.role === 'admin' || user?.role === 'staff') && (
                                                     <ContextMenuItem
                                                         className="gap-2"
-                                                        onSelect={() => handleReturnSale(sale)}
+                                                        onSelect={() => openSaleReturnAction(sale)}
                                                     >
                                                         <RotateCcw className="w-4 h-4 text-orange-600" />
                                                         {t('sales.return.confirmTitle')}
@@ -2583,6 +2727,7 @@ export function Sales() {
                                     {sales.map((sale) => {
                                         const { isFullyReturned, hasAnyReturn, totalReturnedQuantity } = getSaleReturnState(sale)
                                         const loanIndicator = getLoanIndicator(sale)
+                                        const hasProductExchange = (sale.product_exchanges || []).some((exchange: { status?: string }) => exchange.status === 'posted')
                                         const isTutorialSale = tutorialSaleId === sale.id
 
                                         return (
@@ -2634,6 +2779,14 @@ export function Sales() {
                                                                                 ? <>-{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}</>
                                                                                 : (t('sales.return.partialReturn') || 'PARTIALLY RETURNED')}
                                                                         </div>
+                                                                    )}
+                                                                    {hasProductExchange && (
+                                                                        <span className={cn(
+                                                                            "px-2 py-0.5 text-[10px] font-bold bg-primary/10 text-primary border border-primary/20 uppercase",
+                                                                            style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                                        )}>
+                                                                            {t('sales.exchange.badge', { defaultValue: 'EXCHANGED' })}
+                                                                        </span>
                                                                     )}
                                                                     {loanIndicator && (
                                                                         <Tooltip>
@@ -2753,7 +2906,7 @@ export function Sales() {
                                                                             data-tour-id={isTutorialSale ? 'tutorial-return-sale-action' : undefined}
                                                                             variant="ghost"
                                                                             size="icon"
-                                                                            onClick={() => handleReturnSale(sale)}
+                                                                            onClick={() => openSaleReturnAction(sale)}
                                                                             title={t('sales.return') || "Return Sale"}
                                                                             className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
                                                                         >
@@ -2801,7 +2954,7 @@ export function Sales() {
                                                     {!isFullyReturned && !getExternalSaleDetailsPath(sale) && (user?.role === 'admin' || user?.role === 'staff') && (
                                                         <ContextMenuItem
                                                             className="gap-2"
-                                                            onSelect={() => handleReturnSale(sale)}
+                                                            onSelect={() => openSaleReturnAction(sale)}
                                                         >
                                                             <RotateCcw className="w-4 h-4 text-orange-600" />
                                                             {t('sales.return.confirmTitle')}
@@ -2847,8 +3000,41 @@ export function Sales() {
                     onClose={() => setSelectedSale(null)}
                     sale={selectedSale}
                     onReturnItem={handleReturnItem}
+                    onExchangeItem={handleProductExchangeFromDetails}
                     onReturnSale={handleReturnSale}
                     onDownloadInvoice={onPrintClick}
+                />
+
+                <SaleReturnActionDialog
+                    isOpen={!!saleForReturnAction}
+                    onClose={() => setSaleForReturnAction(null)}
+                    onReturnSale={() => {
+                        if (saleForReturnAction) {
+                            handleReturnSale(saleForReturnAction)
+                        }
+                    }}
+                    onProductExchange={() => {
+                        if (saleForReturnAction) {
+                            setLockedProductExchangeSaleItemId(null)
+                            setSaleForProductExchange(saleForReturnAction)
+                        }
+                    }}
+                />
+
+                <ProductExchangeModal
+                    isOpen={!!saleForProductExchange}
+                    onClose={() => {
+                        setSaleForProductExchange(null)
+                        setLockedProductExchangeSaleItemId(null)
+                    }}
+                    saleItems={productExchangeSaleItems}
+                    storages={storages}
+                    productCatalog={products}
+                    replacementProducts={productExchangeReplacementProducts}
+                    settlementCurrency={saleForProductExchange?.settlement_currency || 'usd'}
+                    lockedSaleItemId={lockedProductExchangeSaleItemId}
+                    isSubmitting={isSubmittingProductExchange}
+                    onSubmit={handleProductExchangeSubmit}
                 />
 
                 {/* Return Decline Modal */}

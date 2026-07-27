@@ -1,0 +1,2617 @@
+﻿diff --git a/changes.diff b/changes.diff
+new file mode 100644
+index 00000000..e69de29b
+diff --git a/src/i18n/locales/ar.json b/src/i18n/locales/ar.json
+index 01fd79d3..892c6dfc 100644
+--- a/src/i18n/locales/ar.json
++++ b/src/i18n/locales/ar.json
+@@ -2306,0 +2307,47 @@
++    "exchange": {
++      "title": "╪º╪│╪¬╪¿╪»╪º┘ä ┘à┘å╪¬╪¼",
++      "description": "╪ú╪▒╪¼╪╣ ┘à┘å╪¬╪¼┘ï╪º ┘à┘å ┘ç╪░╪º ╪º┘ä╪¿┘è╪╣ ┘ê╪º╪│╪¬╪¿╪»┘ä┘ç ╪¿┘à┘å╪¬╪¼ ┘à┘å ┘à╪«╪▓┘å ┘à╪¡╪»╪».",
++      "chooseAction": "╪º╪«╪¬╪▒ ╪Ñ╪¼╪▒╪º╪í┘ï",
++      "chooseActionDescription": "╪ú╪▒╪¼╪╣ ┘ç╪░╪º ╪º┘ä╪¿┘è╪╣ ╪ú┘ê ╪º╪│╪¬╪¿╪»┘ä ╪ú╪¡╪» ┘à┘å╪¬╪¼╪º╪¬┘ç.",
++      "returnSaleDescription": "╪Ñ╪▒╪¼╪º╪╣ ┘à┘å╪¬╪¼╪º╪¬ ┘à┘å ┘ç╪░╪º ╪º┘ä╪¿┘è╪╣.",
++      "productExchangeDescription": "╪º╪│╪¬╪¿╪»╪º┘ä ┘à┘å╪¬╪¼ ┘à┘å ┘ç╪░╪º ╪º┘ä╪¿┘è╪╣.",
++      "returnItem": "╪º┘ä┘à┘å╪¬╪¼ ╪º┘ä┘à┘Å╪▒╪º╪» ╪Ñ╪▒╪¼╪º╪╣┘ç",
++      "selectSaleProduct": "╪º╪«╪¬╪▒ ┘à┘å╪¬╪¼┘ï╪º ┘à┘å ╪º┘ä╪¿┘è╪╣",
++      "availableToExchange": "╪º┘ä┘à╪¬╪º╪¡ ┘ä┘ä╪º╪│╪¬╪¿╪»╪º┘ä: {{quantity}}",
++      "returnQuantity": "┘â┘à┘è╪⌐ ╪º┘ä╪Ñ╪▒╪¼╪º╪╣",
++      "returnTotal": "╪Ñ╪¼┘à╪º┘ä┘è ╪º┘ä╪Ñ╪▒╪¼╪º╪╣",
++      "replacementStorage": "┘à╪«╪▓┘å ╪º┘ä┘à┘å╪¬╪¼ ╪º┘ä╪¿╪»┘è┘ä",
++      "selectStorage": "╪º╪«╪¬╪▒ ┘à╪«╪▓┘å┘ï╪º",
++      "replacementProduct": "╪º┘ä┘à┘å╪¬╪¼ ╪º┘ä╪¿╪»┘è┘ä",
++      "selectProduct": "╪º╪«╪¬╪▒ ┘à┘å╪¬╪¼┘ï╪º",
++      "noProductsInStorage": "┘ä╪º ╪¬┘ê╪¼╪» ┘à┘å╪¬╪¼╪º╪¬ ┘à╪¬╪º╪¡╪⌐ ┘ä┘ä╪º╪│╪¬╪¿╪»╪º┘ä ┘ü┘è ┘ç╪░╪º ╪º┘ä┘à╪«╪▓┘å.",
++      "availableStock": "╪º┘ä┘à╪«╪▓┘ê┘å ╪º┘ä┘à╪¬╪º╪¡: {{quantity}}",
++      "unitPrice": "╪│╪╣╪▒ ╪º┘ä┘ê╪¡╪»╪⌐",
++      "replacementQuantity": "┘â┘à┘è╪⌐ ╪º┘ä┘à┘å╪¬╪¼ ╪º┘ä╪¿╪»┘è┘ä",
++      "replacementTotal": "╪Ñ╪¼┘à╪º┘ä┘è ╪º┘ä┘à┘å╪¬╪¼ ╪º┘ä╪¿╪»┘è┘ä",
++      "difference": "╪º┘ä┘ü╪▒┘é",
++      "evenExchange": "╪º╪│╪¬╪¿╪»╪º┘ä ┘à╪¬╪│╪º┘ê┘ì ΓÇö ┘ä╪º ┘è┘ä╪▓┘à ╪»┘ü╪╣ ╪ú┘ê ╪º╪│╪¬╪▒╪»╪º╪».",
++      "collectDifference": "╪¬╪¡╪╡┘è┘ä ╪º┘ä┘ü╪▒┘é",
++      "refundDifference": "╪Ñ╪▒╪¼╪º╪╣ ╪º┘ä┘ü╪▒┘é",
++      "paymentMethod": "╪╖╪▒┘è┘é╪⌐ ╪º┘ä╪»┘ü╪╣",
++      "refundMethod": "╪╖╪▒┘è┘é╪⌐ ╪º┘ä╪º╪│╪¬╪▒╪»╪º╪»",
++      "complete": "╪Ñ╪¬┘à╪º┘à ╪º┘ä╪º╪│╪¬╪¿╪»╪º┘ä",
++      "processing": "╪¼╪º╪▒┘ì ╪º┘ä╪Ñ╪¬┘à╪º┘àΓÇª",
++      "completeAllFields": "╪º╪«╪¬╪▒ ╪º┘ä┘à┘å╪¬╪¼┘è┘å ┘ê╪ú╪»╪«┘ä ┘â┘à┘è╪º╪¬ ╪╡╪¡┘è╪¡╪⌐.",
++      "noReturnableItems": "┘ä╪º ╪¬┘ê╪¼╪» ┘à┘å╪¬╪¼╪º╪¬ ┘à╪¬╪¿┘é┘è╪⌐ ┘ü┘è ┘ç╪░╪º ╪º┘ä╪¿┘è╪╣ ┘è┘à┘â┘å ╪º╪│╪¬╪¿╪»╪º┘ä┘ç╪º.",
++      "submitFailed": "╪¬╪╣╪░╪▒ ╪Ñ╪¬┘à╪º┘à ╪º┘ä╪º╪│╪¬╪¿╪»╪º┘ä. ┘è╪▒╪¼┘ë ╪º┘ä┘à╪¡╪º┘ê┘ä╪⌐ ┘à╪▒╪⌐ ╪ú╪«╪▒┘ë.",
++      "completedDescription": "╪¬┘à ╪¬╪│╪¼┘è┘ä ╪º╪│╪¬╪¿╪»╪º┘ä ╪º┘ä┘à┘å╪¬╪¼.",
++      "badge": "╪¬┘à ╪º┘ä╪º╪│╪¬╪¿╪»╪º┘ä",
++      "action": "╪º╪│╪¬╪¿╪»╪º┘ä",
++      "returnQuantityRequired": "╪ú╪»╪«┘ä ┘â┘à┘è╪⌐ ╪Ñ╪▒╪¼╪º╪╣ ╪ú┘â╪¿╪▒ ┘à┘å ╪╡┘ü╪▒.",
++      "returnQuantityExceedsAvailable": "┘ä╪º ┘è┘à┘â┘å ╪ú┘å ╪¬╪¬╪¼╪º┘ê╪▓ ┘â┘à┘è╪⌐ ╪º┘ä╪Ñ╪▒╪¼╪º╪╣ {{quantity}}.",
++      "replacementQuantityRequired": "╪ú╪»╪«┘ä ┘â┘à┘è╪⌐ ╪¿╪»┘è┘ä╪⌐ ╪ú┘â╪¿╪▒ ┘à┘å ╪╡┘ü╪▒.",
++      "replacementQuantityExceedsAvailable": "┘ä╪º ┘è┘à┘â┘å ╪ú┘å ╪¬╪¬╪¼╪º┘ê╪▓ ╪º┘ä┘â┘à┘è╪⌐ ╪º┘ä╪¿╪»┘è┘ä╪⌐ ╪º┘ä┘à╪«╪▓┘ê┘å ╪º┘ä┘à╪¬┘ê┘ü╪▒ ╪º┘ä╪¿╪º┘ä╪║ {{quantity}}.",
++      "browseProducts": "╪¬╪╡┘ü╪¡ ╪º┘ä┘à┘å╪¬╪¼╪º╪¬",
++      "browseProductsDescription": "╪º╪«╪¬╪▒ ┘à┘å╪¬╪¼┘ï╪º ╪¿╪»┘è┘ä┘ï╪º ┘à╪¬┘ê┘ü╪▒┘ï╪º ┘à┘å ╪ú╪¡╪» ╪º┘ä┘à╪«╪º╪▓┘å.",
++      "searchReplacementProduct": "╪º╪¿╪¡╪½ ╪¿╪º╪│┘à ╪º┘ä┘à┘å╪¬╪¼ ╪ú┘ê ╪▒┘à╪▓ SKU",
++      "collectionRequired": "┘à╪╖┘ä┘ê╪¿ ╪¬╪¡╪╡┘è┘ä ╪º┘ä┘à╪¿┘ä╪║",
++      "refundRequired": "┘à╪╖┘ä┘ê╪¿ ╪▒╪» ╪º┘ä┘à╪¿┘ä╪║",
++      "customerPaysDifference": "╪¡╪╡┘æ┘ä {{amount}} ┘à┘å ╪º┘ä╪╣┘à┘è┘ä.",
++      "customerReceivesRefund": "╪ú╪╣╪» {{amount}} ╪Ñ┘ä┘ë ╪º┘ä╪╣┘à┘è┘ä."
++    },
+diff --git a/src/i18n/locales/en.json b/src/i18n/locales/en.json
+index 442c550c..6f218ed4 100644
+--- a/src/i18n/locales/en.json
++++ b/src/i18n/locales/en.json
+@@ -3104,0 +3105,47 @@
++    "exchange": {
++      "title": "Product Exchange",
++      "description": "Return a product from this sale and replace it from a selected storage.",
++      "chooseAction": "Choose an action",
++      "chooseActionDescription": "Return this sale or exchange one of its products.",
++      "returnSaleDescription": "Return products from this sale.",
++      "productExchangeDescription": "Replace a product from this sale.",
++      "returnItem": "Product to return",
++      "selectSaleProduct": "Select a product from the sale",
++      "availableToExchange": "Available to exchange: {{quantity}}",
++      "returnQuantity": "Return quantity",
++      "returnTotal": "Return total",
++      "replacementStorage": "Replacement storage",
++      "selectStorage": "Select storage",
++      "replacementProduct": "Replacement product",
++      "selectProduct": "Select product",
++      "noProductsInStorage": "This storage has no products available for exchange.",
++      "availableStock": "Available stock: {{quantity}}",
++      "unitPrice": "Unit price",
++      "replacementQuantity": "Replacement quantity",
++      "replacementTotal": "Replacement total",
++      "difference": "Difference",
++      "evenExchange": "Even exchange ΓÇö no payment or refund is needed.",
++      "collectDifference": "Collect difference",
++      "refundDifference": "Refund difference",
++      "paymentMethod": "Payment method",
++      "refundMethod": "Refund method",
++      "complete": "Complete Exchange",
++      "processing": "CompletingΓÇª",
++      "completeAllFields": "Select both products and enter valid quantities.",
++      "noReturnableItems": "There are no products remaining in this sale that can be exchanged.",
++      "submitFailed": "The exchange could not be completed. Please try again.",
++      "completedDescription": "The product exchange has been recorded.",
++      "badge": "EXCHANGED",
++      "action": "Exchange",
++      "returnQuantityRequired": "Enter a return quantity greater than zero.",
++      "returnQuantityExceedsAvailable": "Return quantity cannot exceed {{quantity}}.",
++      "replacementQuantityRequired": "Enter a replacement quantity greater than zero.",
++      "replacementQuantityExceedsAvailable": "Replacement quantity cannot exceed the available stock of {{quantity}}.",
++      "browseProducts": "Browse products",
++      "browseProductsDescription": "Choose an in-stock replacement product from a storage.",
++      "searchReplacementProduct": "Search by product name or SKU",
++      "collectionRequired": "Collection required",
++      "refundRequired": "Refund required",
++      "customerPaysDifference": "Collect {{amount}} from the customer.",
++      "customerReceivesRefund": "Refund {{amount}} to the customer."
++    },
+diff --git a/src/i18n/locales/ku.json b/src/i18n/locales/ku.json
+index 2893ea32..cf37d482 100644
+--- a/src/i18n/locales/ku.json
++++ b/src/i18n/locales/ku.json
+@@ -2301,0 +2302,47 @@
++    "exchange": {
++      "title": "┌»█å┌ò█î┘å█î ╪¿█ò╪▒┘ç█ò┘à",
++      "description": "╪¿█ò╪▒┘ç█ò┘à█Ä┌⌐ ┘ä█ò┘à ┘ü╪▒█å╪┤╪¬┘å█ò ╪¿┌»█ò┌ò█Ä┘å█ò┘ê█ò ┘ê ╪¿█ò ╪¿█ò╪▒┘ç█ò┘à█Ä┌⌐ ┘ä█ò ┌⌐█å┌»╪º█î ┘ç█ò┌╡╪¿┌ÿ█Ä╪▒╪»╪▒╪º┘ê ╪¿█î┌»█å┌ò█ò.",
++      "chooseAction": "┌⌐╪▒╪»╪º╪▒█Ä┌⌐ ┘ç█ò┌╡╪¿┌ÿ█Ä╪▒█ò",
++      "chooseActionDescription": "╪ª█ò┘à ┘ü╪▒█å╪┤╪¬┘å█ò ╪¿┌»█ò┌ò█Ä┘å█ò┘ê█ò █î╪º┘å █î█ò┌⌐█Ä┌⌐ ┘ä█ò ╪¿█ò╪▒┘ç█ò┘à█ò┌⌐╪º┘å█î ╪¿┌»█å┌ò█ò.",
++      "returnSaleDescription": "╪¿█ò╪▒┘ç█ò┘à█ò┌⌐╪º┘å█î ╪ª█ò┘à ┘ü╪▒█å╪┤╪¬┘å█ò ╪¿┌»█ò┌ò█Ä┘å█ò┘ê█ò.",
++      "productExchangeDescription": "╪¿█ò╪▒┘ç█ò┘à█Ä┌⌐ ┘ä█ò┘à ┘ü╪▒█å╪┤╪¬┘å█ò ╪¿┌»█å┌ò█ò.",
++      "returnItem": "╪¿█ò╪▒┘ç█ò┘à█î ╪¿█å ┌»█ò┌ò╪º┘å╪»┘å█ò┘ê█ò",
++      "selectSaleProduct": "╪¿█ò╪▒┘ç█ò┘à█Ä┌⌐ ┘ä█ò ┘ü╪▒█å╪┤╪¬┘å█ò┌⌐█ò ┘ç█ò┌╡╪¿┌ÿ█Ä╪▒█ò",
++      "availableToExchange": "╪¿█ò╪▒╪»█ò╪│╪¬ ╪¿█å ┌»█å┌ò█î┘å: {{quantity}}",
++      "returnQuantity": "╪¿┌ò█î ┌»█ò┌ò╪º┘å╪»┘å█ò┘ê█ò",
++      "returnTotal": "┌⌐█å█î ┌»█ò┌ò╪º┘å╪»┘å█ò┘ê█ò",
++      "replacementStorage": "┌⌐█å┌»╪º█î ╪¿█ò╪▒┘ç█ò┘à█î ╪¼█Ä┌»╪▒█ò┘ê█ò",
++      "selectStorage": "┌⌐█å┌»╪º ┘ç█ò┌╡╪¿┌ÿ█Ä╪▒█ò",
++      "replacementProduct": "╪¿█ò╪▒┘ç█ò┘à█î ╪¼█Ä┌»╪▒█ò┘ê█ò",
++      "selectProduct": "╪¿█ò╪▒┘ç█ò┘à ┘ç█ò┌╡╪¿┌ÿ█Ä╪▒█ò",
++      "noProductsInStorage": "┘ä█ò┘ê ┌⌐█å┌»╪º█î█ò╪»╪º ┘ç█î┌å ╪¿█ò╪▒┘ç█ò┘à█Ä┌⌐ ╪¿█å ┌»█å┌ò█î┘å ╪¿█ò╪▒╪»█ò╪│╪¬ ┘å█î█î█ò.",
++      "availableStock": "┌⌐█å┌»╪º█î ╪¿█ò╪▒╪»█ò╪│╪¬: {{quantity}}",
++      "unitPrice": "┘å╪▒╪«█î █î█ò┌⌐█ò",
++      "replacementQuantity": "╪¿┌ò█î ╪¿█ò╪▒┘ç█ò┘à█î ╪¼█Ä┌»╪▒█ò┘ê█ò",
++      "replacementTotal": "┌⌐█å█î ╪¿█ò╪▒┘ç█ò┘à█î ╪¼█Ä┌»╪▒█ò┘ê█ò",
++      "difference": "╪¼█î╪º┘ê╪º╪▓█î",
++      "evenExchange": "┌»█å┌ò█î┘å█î █î█ò┌⌐╪│╪º┘å█ò ΓÇö ┘ç█î┌å ┘╛╪º╪▒█ò╪»╪º┘å█Ä┌⌐ █î╪º┘å ┌»█ò┌ò╪º┘å╪»┘å█ò┘ê█ò█î ┘╛╪º╪▒█ò ┘╛█Ä┘ê█î╪│╪¬ ┘å█î█î█ò.",
++      "collectDifference": "┘ê█ò╪▒┌»╪▒╪¬┘å█î ╪¼█î╪º┘ê╪º╪▓█î",
++      "refundDifference": "┌»█ò┌ò╪º┘å╪»┘å█ò┘ê█ò█î ╪¼█î╪º┘ê╪º╪▓█î",
++      "paymentMethod": "┌ò█Ä┌»╪º█î ┘╛╪º╪▒█ò╪»╪º┘å",
++      "refundMethod": "┌ò█Ä┌»╪º█î ┌»█ò┌ò╪º┘å╪»┘å█ò┘ê█ò█î ┘╛╪º╪▒█ò",
++      "complete": "╪¬█ò┘ê╪º┘ê┌⌐╪▒╪»┘å█î ┌»█å┌ò█î┘å",
++      "processing": "╪¬█ò┘ê╪º┘ê ╪»█ò┌⌐╪▒█Ä╪¬ΓÇª",
++      "completeAllFields": "┘ç█ò╪▒╪»┘ê┘ê ╪¿█ò╪▒┘ç█ò┘à█ò┌⌐█ò ┘ç█ò┌╡╪¿┌ÿ█Ä╪▒█ò ┘ê ╪¿┌ò█î ╪»╪▒┘ê╪│╪¬ ╪¿┘å┘ê┘ê╪│█ò.",
++      "noReturnableItems": "┘ä█ò┘ê ┘ü╪▒█å╪┤╪¬┘å█ò╪»╪º ┘ç█î┌å ╪¿█ò╪▒┘ç█ò┘à█Ä┌⌐█î ╪¿█ò╪▒╪»█ò╪│╪¬ ╪¿█å ┌»█å┌ò█î┘å ┘å█ò┘à╪º┘ê█ò.",
++      "submitFailed": "┌»█å┌ò█î┘å█ò┌⌐█ò ╪¬█ò┘ê╪º┘ê ┘å█ò╪¿┘ê┘ê. ╪¬┌⌐╪º█î█ò ╪»┘ê┘ê╪¿╪º╪▒█ò ┘ç█ò┘ê┌╡ ╪¿╪»█ò.",
++      "completedDescription": "┌»█å┌ò█î┘å█î ╪¿█ò╪▒┘ç█ò┘à█ò┌⌐█ò ╪¬█å┘à╪º╪▒ ┌⌐╪▒╪º.",
++      "badge": "┌»█å┌ò╪»╪▒╪º",
++      "action": "┌»█å┌ò█î┘å",
++      "returnQuantityRequired": "╪¿┌ò█î ┌»█ò┌ò╪º┘å╪»┘å█Ä┌⌐ ╪¿┘å┘ê┘ê╪│█ò ┌⌐█ò ┘ä█ò ╪│┘ü╪▒ ┌»█ò┘ê╪▒█ò╪¬╪▒ ╪¿█Ä╪¬.",
++      "returnQuantityExceedsAvailable": "╪¿┌ò█î ┌»█ò┌ò╪º┘å╪»┘å ┘å╪º╪¿█Ä╪¬ ┘ä█ò {{quantity}} ╪▓█î╪º╪¬╪▒ ╪¿█Ä╪¬.",
++      "replacementQuantityRequired": "╪¿┌ò█î ╪¼█Ä┌»╪▒█ò┘ê█ò█î█ò┌⌐ ╪¿┘å┘ê┘ê╪│█ò ┌⌐█ò ┘ä█ò ╪│┘ü╪▒ ┌»█ò┘ê╪▒█ò╪¬╪▒ ╪¿█Ä╪¬.",
++      "replacementQuantityExceedsAvailable": "╪¿┌ò█î ╪¼█Ä┌»╪▒█ò┘ê█ò ┘å╪º╪¿█Ä╪¬ ┘ä█ò ┌⌐█å┌»╪º█î ╪¿█ò╪▒╪»█ò╪│╪¬█î {{quantity}} ╪▓█î╪º╪¬╪▒ ╪¿█Ä╪¬.",
++      "browseProducts": "┌»█ò┌ò╪º┘å ╪¿█ò ╪¿█ò╪▒┘ç█ò┘à█ò┌⌐╪º┘å╪»╪º",
++      "browseProductsDescription": "╪¿█ò╪▒┘ç█ò┘à█Ä┌⌐█î ╪¼█Ä┌»╪▒█ò┘ê█ò█î ╪¿█ò╪▒╪»█ò╪│╪¬ ┘ä█ò ┌⌐█å┌»╪º█î█ò┌⌐ ┘ç█ò┌╡╪¿┌ÿ█Ä╪▒█ò.",
++      "searchReplacementProduct": "╪¿█ò ┘å╪º┘ê█î ╪¿█ò╪▒┘ç█ò┘à █î╪º┘å SKU ╪¿┌»█ò┌ò█Ä",
++      "collectionRequired": "┘ê█ò╪▒┌»╪▒╪¬┘å█î ┘╛╪º╪▒█ò ┘╛█Ä┘ê█î╪│╪¬█ò",
++      "refundRequired": "┌»█ò┌ò╪º┘å╪»┘å█ò┘ê█ò█î ┘╛╪º╪▒█ò ┘╛█Ä┘ê█î╪│╪¬█ò",
++      "customerPaysDifference": "{{amount}} ┘ä█ò ┌⌐┌ò█î╪º╪▒ ┘ê█ò╪▒╪¿┌»╪▒█ò.",
++      "customerReceivesRefund": "{{amount}} ╪¿┌»█ò┌ò█Ä┘å█ò┘ê█ò ╪¿█å ┌⌐┌ò█î╪º╪▒."
++    },
+diff --git a/src/local-db/database.ts b/src/local-db/database.ts
+index 757cea4c..79f1705b 100644
+--- a/src/local-db/database.ts
++++ b/src/local-db/database.ts
+@@ -23,0 +24 @@ import type {
++  SaleProductExchange,
+@@ -421,0 +423 @@ export class AtlasDatabase extends Dexie {
++  sale_product_exchanges!: EntityTable<SaleProductExchange, "id">;
+@@ -3064,0 +3067,5 @@ export class AtlasDatabase extends Dexie {
++    this.version(88).stores({
++      sale_product_exchanges:
++        "id, workspaceId, saleId, returnId, returnSaleItemId, returnProductId, replacementProductId, replacementStorageId, status, exchangedAt, updatedAt, isDeleted, syncStatus, [workspaceId+saleId], [workspaceId+exchangedAt], [saleId+exchangedAt]",
++    });
++
+@@ -3197,0 +3205 @@ export class AtlasDatabase extends Dexie {
++      "sale_product_exchanges",
+@@ -3416,0 +3425 @@ export async function clearDatabase(): Promise<void> {
++      db.sale_product_exchanges,
+@@ -3455,0 +3465 @@ export async function clearDatabase(): Promise<void> {
++      await db.sale_product_exchanges.clear();
+diff --git a/src/local-db/hooks.ts b/src/local-db/hooks.ts
+index 2a7ced42..090e2606 100644
+--- a/src/local-db/hooks.ts
++++ b/src/local-db/hooks.ts
+@@ -51,0 +52 @@ import type {
++    SaleProductExchange,
+@@ -1708 +1709 @@ export async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
+-    const [localItems, localExchangeRows, localReturns, cashierUsers, profileRows] = await Promise.all([
++    const [localItems, localExchangeRows, localReturns, localProductExchanges, cashierUsers, profileRows] = await Promise.all([
+@@ -1711,0 +1713 @@ export async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
++        db.sale_product_exchanges.where('saleId').anyOf(saleIds).toArray(),
+@@ -1812,0 +1815,7 @@ export async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
++    const productExchangeBySaleId = new Map<string, typeof localProductExchanges>()
++    for (const exchange of localProductExchanges) {
++        const existing = productExchangeBySaleId.get(exchange.saleId) ?? []
++        existing.push(exchange)
++        productExchangeBySaleId.set(exchange.saleId, existing)
++    }
++
+@@ -1871 +1880,2 @@ export async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
+-            _returns: returnsBySaleId.get(sale.id) ?? []
++            _returns: returnsBySaleId.get(sale.id) ?? [],
++            _productExchanges: productExchangeBySaleId.get(sale.id) ?? []
+@@ -2006 +2016,2 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
+-              sale_returns(*, sale_return_items(*))
++              sale_returns(*, sale_return_items(*)),
++              sale_product_exchanges(*)
+@@ -2051,0 +2063 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
++  const saleProductExchangesToPut: SaleProductExchange[] = []
+@@ -2054 +2066,6 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
+-    const { sale_items: remoteItems, sale_returns: remoteReturns, ...saleData } = remoteSale as any
++    const {
++      sale_items: remoteItems,
++      sale_returns: remoteReturns,
++      sale_product_exchanges: remoteProductExchanges,
++      ...saleData
++    } = remoteSale as any
+@@ -2096,0 +2114,10 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
++
++    for (const remoteExchange of remoteProductExchanges || []) {
++      saleProductExchangesToPut.push({
++        ...(toCamelCase(remoteExchange) as unknown as SaleProductExchange),
++        syncStatus: 'synced',
++        lastSyncedAt: syncedAt,
++        version: 1,
++        isDeleted: false,
++      })
++    }
+@@ -2099 +2126 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
+-  await db.transaction('rw', [db.sales, db.sales_exchange, db.sale_items, db.sale_returns, db.sale_return_items], async () => {
++  await db.transaction('rw', [db.sales, db.sales_exchange, db.sale_items, db.sale_returns, db.sale_return_items, db.sale_product_exchanges], async () => {
+@@ -2117,0 +2145 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
++      await db.sale_product_exchanges.where('saleId').anyOf(deletedSaleIds).delete()
+@@ -2124,0 +2153 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
++      await db.sale_product_exchanges.where('saleId').anyOf(fetchedSaleIds).delete()
+@@ -2128,0 +2158 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
++      if (saleProductExchangesToPut.length > 0) await db.sale_product_exchanges.bulkPut(saleProductExchangesToPut)
+@@ -2232,0 +2263 @@ export function toUISale(localSale: any): any {
++        product_exchanges: (localSale as Sale & { _productExchanges?: unknown[] })._productExchanges ?? [],
+diff --git a/src/local-db/index.ts b/src/local-db/index.ts
+index 6e8ceb2f..320909a9 100644
+--- a/src/local-db/index.ts
++++ b/src/local-db/index.ts
+@@ -21,0 +22 @@ export * from './stockBatches'
++export * from './saleProductExchanges'
+diff --git a/src/local-db/localModeSqlite.ts b/src/local-db/localModeSqlite.ts
+index 63254505..52bcfb34 100644
+--- a/src/local-db/localModeSqlite.ts
++++ b/src/local-db/localModeSqlite.ts
+@@ -24,0 +25 @@ export const LOCAL_MODE_SQLITE_TABLES = [
++  "sale_product_exchanges",
+diff --git a/src/local-db/models.ts b/src/local-db/models.ts
+index cd493015..0ee35ae2 100644
+--- a/src/local-db/models.ts
++++ b/src/local-db/models.ts
+@@ -1289,0 +1290,3 @@ export interface Sale extends BaseEntity {
++  returnReason?: string | null;
++  returnedAt?: string | null;
++  returnedBy?: string | null;
+@@ -1312,0 +1316,4 @@ export interface SaleItem {
++  isReturned?: boolean;
++  returnReason?: string | null;
++  returnedAt?: string | null;
++  returnedBy?: string | null;
+@@ -1323 +1330 @@ export interface SaleReturn extends BaseEntity {
+-  source: "app" | "legacy_backfill" | "system";
++  source: "app" | "exchange" | "legacy_backfill" | "system";
+@@ -1336,0 +1344,38 @@ export interface SaleReturnItem extends BaseEntity {
++/**
++ * Immutable inventory and settlement record for one product exchanged against
++ * a POS sale line.  The returned side is also represented in the normal sale
++ * return ledger through `returnId`; this record captures the replacement side
++ * and makes the two operations auditable as a single business action.
++ */
++export interface SaleProductExchange extends BaseEntity {
++  saleId: string;
++  returnId: string;
++  returnSaleItemId: string;
++  returnProductId: string;
++  returnQuantity: number;
++  returnUnitAmount: number;
++  returnAmount: number;
++  returnStorageId?: string | null;
++  replacementProductId: string;
++  replacementStorageId: string;
++  replacementQuantity: number;
++  replacementUnitAmount: number;
++  replacementAmount: number;
++  replacementBatchAllocations?: StockBatchAllocation[] | null;
++  settlementCurrency: CurrencyCode;
++  /** Replacement total minus returned total. Positive means the customer owes more. */
++  differenceAmount: number;
++  /** The part of a negative difference that could not be credited to the linked loan. */
++  cashSettlementAmount: number;
++  settlementDirection?: PaymentTransactionDirection | null;
++  settlementMethod?: WorkspacePaymentMethod | null;
++  settlementTransactionId?: string | null;
++  loanId?: string | null;
++  loanCreditAmount: number;
++  reason: string;
++  notes?: string | null;
++  exchangedBy?: string | null;
++  exchangedAt: string;
++  status: "posted" | "voided";
++}
++
+@@ -1419,0 +1465 @@ export type PaymentTransactionSourceModule =
++  | "sales"
+@@ -1427,0 +1474 @@ export type PaymentTransactionSourceType =
++  | "sale_exchange"
+@@ -1498,0 +1546 @@ export interface SyncQueueItem {
++    | "sale_product_exchanges"
+@@ -1629,0 +1678 @@ export interface OfflineMutation {
++    | "sale_product_exchanges"
+diff --git a/src/local-db/payments.ts b/src/local-db/payments.ts
+index c7144eaf..1c0fe2ff 100644
+--- a/src/local-db/payments.ts
++++ b/src/local-db/payments.ts
+@@ -190,0 +191,4 @@ function getTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceMo
++    if (transaction.sourceModule === 'sales') {
++        return '/sales'
++    }
++
+diff --git a/src/local-db/saleProductExchanges.test.ts b/src/local-db/saleProductExchanges.test.ts
+new file mode 100644
+index 00000000..eceae808
+--- /dev/null
++++ b/src/local-db/saleProductExchanges.test.ts
+@@ -0,0 +1,115 @@
++import 'fake-indexeddb/auto'
++import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
++
++import { clearWorkspaceModeSnapshot, writeWorkspaceModeSnapshot } from '@/workspace/workspaceMode'
++
++import { db } from './database'
++
++let processSaleProductExchange: typeof import('./saleProductExchanges').processSaleProductExchange
++
++const WORKSPACE_ID = '00000000-0000-4000-8000-000000000401'
++const STORAGE_ID = '00000000-0000-4000-8000-000000000402'
++const SALE_ID = '00000000-0000-4000-8000-000000000403'
++const RETURNED_PRODUCT_ID = '00000000-0000-4000-8000-000000000404'
++const REPLACEMENT_PRODUCT_ID = '00000000-0000-4000-8000-000000000405'
++const SALE_ITEM_ID = '00000000-0000-4000-8000-000000000406'
++
++function installBrowserStorage() {
++    const rows = new Map<string, string>()
++    const storage = {
++        get length() { return rows.size },
++        getItem: (key: string) => rows.get(key) ?? null,
++        setItem: (key: string, value: string) => rows.set(key, value),
++        removeItem: (key: string) => rows.delete(key),
++        clear: () => rows.clear(),
++        key: (index: number) => Array.from(rows.keys())[index] ?? null,
++    }
++    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage })
++    Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: storage })
++    Object.defineProperty(globalThis, 'window', {
++        configurable: true,
++        value: { localStorage: storage, sessionStorage: storage, location: { hash: '', origin: 'http://localhost', pathname: '/' }, addEventListener: () => undefined },
++    })
++    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine: false } })
++    Object.defineProperty(globalThis, 'document', {
++        configurable: true,
++        value: { visibilityState: 'visible', dir: 'ltr', documentElement: { lang: 'en', dir: 'ltr' }, addEventListener: () => undefined, removeEventListener: () => undefined },
++    })
++}
++
++async function seedCashSale() {
++    const now = '2026-07-27T10:00:00.000Z'
++    const base = { workspaceId: WORKSPACE_ID, createdAt: now, updatedAt: now, version: 1, isDeleted: false, syncStatus: 'synced' as const, lastSyncedAt: now }
++    await db.storages.put({ id: STORAGE_ID, ...base, name: 'Main Storage', isSystem: false, isProtected: false, isPrimary: true, isMarketplace: false })
++    await db.products.bulkPut([
++        {
++            id: RETURNED_PRODUCT_ID, ...base, sku: 'RETURN-1', name: 'Returned product', description: '', categoryId: null,
++            price: 10, costPrice: 4, quantity: 1, minStockLevel: 0, unit: 'pcs', currency: 'usd', canBeReturned: true,
++        },
++        {
++            id: REPLACEMENT_PRODUCT_ID, ...base, sku: 'REPLACE-1', name: 'Replacement product', description: '', categoryId: null,
++            price: 15, costPrice: 6, quantity: 3, minStockLevel: 0, unit: 'pcs', currency: 'usd', canBeReturned: true,
++        },
++    ])
++    await db.inventory.bulkPut([
++        { id: '00000000-0000-4000-8000-000000000407', ...base, productId: RETURNED_PRODUCT_ID, storageId: STORAGE_ID, quantity: 0 },
++        { id: '00000000-0000-4000-8000-000000000408', ...base, productId: REPLACEMENT_PRODUCT_ID, storageId: STORAGE_ID, quantity: 3 },
++    ])
++    await db.sales.put({
++        id: SALE_ID, ...base, cashierId: 'cashier', totalAmount: 10, originalTotalAmount: 10, returnedAmount: 0,
++        returnStatus: 'none', settlementCurrency: 'usd', origin: 'pos', payment_method: 'cash',
++        systemVerified: true, systemReviewStatus: 'approved', systemReviewReason: null,
++    })
++    await db.sale_items.put({
++        id: SALE_ITEM_ID, saleId: SALE_ID, productId: RETURNED_PRODUCT_ID, storageId: STORAGE_ID,
++        quantity: 1, unitPrice: 10, totalPrice: 10, costPrice: 4, convertedCostPrice: 4,
++        originalCurrency: 'usd', originalUnitPrice: 10, convertedUnitPrice: 10, settlementCurrency: 'usd', inventorySnapshot: 1,
++        batchAllocations: null, originalBatchAllocations: null, returnedQuantity: 0,
++    })
++}
++
++describe('sale product exchanges', () => {
++    beforeAll(async () => {
++        installBrowserStorage()
++        processSaleProductExchange = (await import('./saleProductExchanges')).processSaleProductExchange
++    })
++
++    beforeEach(async () => {
++        installBrowserStorage()
++        await db.delete()
++        await db.open()
++        writeWorkspaceModeSnapshot({ workspaceId: WORKSPACE_ID, dataMode: 'local' })
++        await seedCashSale()
++    })
++
++    afterEach(() => clearWorkspaceModeSnapshot(WORKSPACE_ID))
++    afterAll(async () => { await db.delete() })
++
++    it('posts the return, replacement stock, and only the net cash settlement together', async () => {
++        const result = await processSaleProductExchange({
++            workspaceId: WORKSPACE_ID, saleId: SALE_ID, returnSaleItemId: SALE_ITEM_ID, returnQuantity: 1,
++            replacementProductId: REPLACEMENT_PRODUCT_ID, replacementStorageId: STORAGE_ID, replacementQuantity: 1,
++            replacementUnitAmount: 15, settlementMethod: 'cash', createdBy: 'cashier',
++        })
++
++        expect(result).toMatchObject({ returnAmount: 10, replacementAmount: 15, differenceAmount: 5, cashSettlementAmount: 5 })
++        expect(await db.sale_product_exchanges.get(result.exchangeId)).toMatchObject({
++            saleId: SALE_ID, returnId: result.returnId, status: 'posted', differenceAmount: 5,
++        })
++        expect(await db.sale_returns.get(result.returnId)).toMatchObject({ source: 'exchange', refundAmount: 10 })
++        expect(await db.inventory.where('[productId+storageId]').equals([RETURNED_PRODUCT_ID, STORAGE_ID]).first()).toMatchObject({ quantity: 1 })
++        expect(await db.inventory.where('[productId+storageId]').equals([REPLACEMENT_PRODUCT_ID, STORAGE_ID]).first()).toMatchObject({ quantity: 2 })
++        expect(await db.payment_transactions.where('sourceRecordId').equals(result.exchangeId).first()).toMatchObject({
++            sourceType: 'sale_exchange', direction: 'incoming', amount: 5, paymentMethod: 'cash',
++        })
++    })
++
++    it('rejects a replacement amount that does not match the current product price', async () => {
++        await expect(processSaleProductExchange({
++            workspaceId: WORKSPACE_ID, saleId: SALE_ID, returnSaleItemId: SALE_ITEM_ID, returnQuantity: 1,
++            replacementProductId: REPLACEMENT_PRODUCT_ID, replacementStorageId: STORAGE_ID, replacementQuantity: 1,
++            replacementUnitAmount: 1, settlementMethod: 'cash',
++        })).rejects.toThrow('Replacement unit amount must match the current product price')
++        expect(await db.sale_product_exchanges.count()).toBe(0)
++    })
++})
+diff --git a/src/local-db/saleProductExchanges.ts b/src/local-db/saleProductExchanges.ts
+new file mode 100644
+index 00000000..aa9d2205
+--- /dev/null
++++ b/src/local-db/saleProductExchanges.ts
+@@ -0,0 +1,553 @@
++import { supabase } from '@/auth/supabase'
++import { useLiveQuery } from 'dexie-react-hooks'
++import { isOnline } from '@/lib/network'
++import { QUANTITY_EPSILON, roundQuantity } from '@/lib/quantity'
++import { isRetriableWebRequestError } from '@/lib/supabaseRequest'
++import { generateId } from '@/lib/utils'
++import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
++
++import { db } from './database'
++import { getInventoryQuantityForProductStorage, putInventoryQuantity, syncProductStockSnapshot } from './inventory'
++import { addToOfflineMutations, fetchTableFromSupabase, syncSalesFromSupabase } from './hooks'
++import { refreshStockBatchesFromSupabase, getStockBatchSalePlan, splitStockBatchAllocationsForReturn } from './stockBatches'
++import { resolveReturnStorageId } from './storageUtils'
++import type {
++    Loan,
++    LoanInstallment,
++    LoanPayment,
++    PaymentTransaction,
++    Sale,
++    SaleItem,
++    SaleProductExchange,
++    SaleReturn,
++    SaleReturnItem,
++    StockBatch,
++    StockBatchAllocation,
++    WorkspacePaymentMethod,
++} from './models'
++
++export interface ProcessSaleProductExchangeInput {
++    workspaceId: string
++    saleId: string
++    returnSaleItemId: string
++    returnQuantity: number
++    replacementProductId: string
++    replacementStorageId: string
++    replacementQuantity: number
++    /** Must be expressed in the original sale's settlement currency. */
++    replacementUnitAmount: number
++    settlementMethod?: WorkspacePaymentMethod | null
++    note?: string | null
++    returnReason?: string | null
++    createdBy?: string | null
++}
++
++export interface ProcessSaleProductExchangeResult {
++    exchangeId: string
++    returnId: string
++    returnAmount: number
++    replacementAmount: number
++    differenceAmount: number
++    cashSettlementAmount: number
++    loanCreditAmount: number
++    idempotentReplay: boolean
++}
++
++type ExchangeIds = { exchangeId: string, returnId: string }
++
++function getSyncMetadata(workspaceId: string, timestamp: string) {
++    return isLocalWorkspaceMode(workspaceId)
++        ? { syncStatus: 'synced' as const, lastSyncedAt: timestamp }
++        : { syncStatus: 'pending' as const, lastSyncedAt: null }
++}
++
++function normalizeAmount(value: number, label: string) {
++    const parsed = Number(value)
++    if (!Number.isFinite(parsed) || parsed < 0) {
++        throw new Error(`${label} must be zero or greater`)
++    }
++    return parsed
++}
++
++function normalizeQuantity(value: number, label: string) {
++    const parsed = Number(value)
++    if (!Number.isFinite(parsed) || parsed <= 0) {
++        throw new Error(`${label} must be greater than zero`)
++    }
++    return roundQuantity(parsed)
++}
++
++function getLoanStatus(loan: Loan, balanceAmount: number): Loan['status'] {
++    if (balanceAmount <= QUANTITY_EPSILON) return 'completed'
++    const dueDate = loan.nextDueDate
++    return dueDate && dueDate < new Date().toISOString().slice(0, 10) ? 'overdue' : 'active'
++}
++
++function getInstallmentStatus(installment: LoanInstallment, balanceAmount: number): LoanInstallment['status'] {
++    if (balanceAmount <= QUANTITY_EPSILON) return 'paid'
++    if (installment.dueDate && installment.dueDate < new Date().toISOString().slice(0, 10)) return 'overdue'
++    return installment.paidAmount > 0 ? 'partial' : 'unpaid'
++}
++
++async function restoreReturnedBatchAllocations(input: {
++    workspaceId: string
++    productId: string
++    storageId: string
++    allocations: StockBatchAllocation[]
++    timestamp: string
++}) {
++    for (const allocation of input.allocations) {
++        const direct = await db.stock_batches.get(allocation.batchId)
++        let target = direct && !direct.isDeleted
++            && direct.productId === input.productId
++            && direct.storageId === input.storageId
++            ? direct
++            : null
++        if (!target) {
++            target = await db.stock_batches
++                .where('[productId+storageId]')
++                .equals([input.productId, input.storageId])
++                .filter((row) => row.batchNumber.trim().toLowerCase() === allocation.batchNumber.trim().toLowerCase())
++                .first() ?? null
++        }
++
++        if (target) {
++            await db.stock_batches.put({
++                ...target,
++                quantity: roundQuantity(target.quantity + allocation.quantity),
++                isDeleted: false,
++                updatedAt: input.timestamp,
++                version: target.version + 1,
++                ...getSyncMetadata(input.workspaceId, input.timestamp),
++            })
++            continue
++        }
++
++        const batch: StockBatch = {
++            id: direct ? generateId() : allocation.batchId,
++            workspaceId: input.workspaceId,
++            productId: input.productId,
++            storageId: input.storageId,
++            batchNumber: allocation.batchNumber,
++            quantity: allocation.quantity,
++            price: allocation.price ?? 0,
++            costPrice: allocation.costPrice ?? 0,
++            currency: allocation.currency ?? 'usd',
++            expiryDate: allocation.expiryDate ?? null,
++            manufacturingDate: allocation.manufacturingDate ?? null,
++            notes: null,
++            createdAt: input.timestamp,
++            updatedAt: input.timestamp,
++            version: 1,
++            isDeleted: false,
++            ...getSyncMetadata(input.workspaceId, input.timestamp),
++        }
++        await db.stock_batches.put(batch)
++    }
++}
++
++async function consumeReplacementBatchAllocations(
++    workspaceId: string,
++    allocations: StockBatchAllocation[],
++    timestamp: string,
++) {
++    for (const allocation of allocations) {
++        const batch = await db.stock_batches.get(allocation.batchId)
++        if (!batch || batch.isDeleted || batch.quantity + QUANTITY_EPSILON < allocation.quantity) {
++            throw new Error(`Replacement batch ${allocation.batchNumber} is no longer available`)
++        }
++        const quantity = roundQuantity(batch.quantity - allocation.quantity)
++        await db.stock_batches.put({
++            ...batch,
++            quantity,
++            isDeleted: quantity <= QUANTITY_EPSILON,
++            updatedAt: timestamp,
++            version: batch.version + 1,
++            ...getSyncMetadata(workspaceId, timestamp),
++        })
++    }
++}
++
++async function applyLocalSaleProductExchange(input: ProcessSaleProductExchangeInput, ids: ExchangeIds) {
++    const timestamp = new Date().toISOString()
++    const returnQuantity = normalizeQuantity(input.returnQuantity, 'Return quantity')
++    const replacementQuantity = normalizeQuantity(input.replacementQuantity, 'Replacement quantity')
++    const replacementUnitAmount = normalizeAmount(input.replacementUnitAmount, 'Replacement unit amount')
++    const sale = await db.sales.get(input.saleId)
++    const returnItem = await db.sale_items.get(input.returnSaleItemId)
++    const replacementProduct = await db.products.get(input.replacementProductId)
++    if (!sale || sale.workspaceId !== input.workspaceId || sale.isDeleted) throw new Error('Sale not found')
++    if (sale.origin.trim().toLowerCase() !== 'pos') throw new Error('Product exchange is available only for POS sales')
++    if (!returnItem || returnItem.saleId !== sale.id) throw new Error('Original sale item not found')
++    if (!replacementProduct || replacementProduct.workspaceId !== input.workspaceId || replacementProduct.isDeleted) throw new Error('Replacement product not found')
++    if (replacementProduct.currency.toLowerCase() !== sale.settlementCurrency.toLowerCase()) {
++        throw new Error('Replacement product currency must match the sale settlement currency')
++    }
++    if (Math.abs(replacementUnitAmount - replacementProduct.price) > 0.000001) {
++        throw new Error('Replacement unit amount must match the current product price')
++    }
++    if ((returnItem.returnedQuantity || 0) + returnQuantity - returnItem.quantity > QUANTITY_EPSILON) {
++        throw new Error('Return quantity exceeds the remaining quantity for this sale item')
++    }
++
++    const returnStorageId = await resolveReturnStorageId({
++        workspaceId: input.workspaceId,
++        productId: returnItem.productId,
++        saleStorageId: returnItem.storageId,
++    })
++    if (!returnStorageId) throw new Error('No active storage is available for the returned product')
++    const replacementInventory = await getInventoryQuantityForProductStorage(input.replacementProductId, input.replacementStorageId)
++    if (replacementInventory + QUANTITY_EPSILON < replacementQuantity) {
++        throw new Error('Insufficient inventory in the selected replacement storage')
++    }
++    const replacementBatchPlan = await getStockBatchSalePlan(
++        input.replacementProductId,
++        input.replacementStorageId,
++        replacementQuantity,
++    )
++    const returnSplit = splitStockBatchAllocationsForReturn(returnItem.batchAllocations || [], returnQuantity)
++    const returnUnitAmount = Number(returnItem.convertedUnitPrice ?? returnItem.unitPrice ?? 0)
++    const returnAmount = returnUnitAmount * returnQuantity
++    const replacementAmount = replacementProduct.price * replacementQuantity
++    const differenceAmount = replacementAmount - returnAmount
++    const sync = getSyncMetadata(input.workspaceId, timestamp)
++    const reason = input.returnReason?.trim() || 'Product exchange'
++
++    let result: ProcessSaleProductExchangeResult = {
++        exchangeId: ids.exchangeId,
++        returnId: ids.returnId,
++        returnAmount,
++        replacementAmount,
++        differenceAmount,
++        cashSettlementAmount: 0,
++        loanCreditAmount: 0,
++        idempotentReplay: false,
++    }
++
++    await db.transaction('rw', [
++        db.sales, db.sale_items, db.sale_returns, db.sale_return_items,
++        db.sale_product_exchanges, db.inventory, db.products, db.stock_batches,
++        db.storages, db.loans, db.loan_installments, db.loan_payments, db.payment_transactions,
++    ], async () => {
++        const existingExchange = await db.sale_product_exchanges.get(ids.exchangeId)
++        if (existingExchange) {
++            result = {
++                exchangeId: existingExchange.id,
++                returnId: existingExchange.returnId,
++                returnAmount: existingExchange.returnAmount,
++                replacementAmount: existingExchange.replacementAmount,
++                differenceAmount: existingExchange.differenceAmount,
++                cashSettlementAmount: existingExchange.cashSettlementAmount,
++                loanCreditAmount: existingExchange.loanCreditAmount,
++                idempotentReplay: true,
++            }
++            return
++        }
++
++        const currentReplacementQuantity = await getInventoryQuantityForProductStorage(input.replacementProductId, input.replacementStorageId)
++        if (currentReplacementQuantity + QUANTITY_EPSILON < replacementQuantity) {
++            throw new Error('Insufficient inventory in the selected replacement storage')
++        }
++
++        await putInventoryQuantity(
++            input.workspaceId,
++            returnItem.productId,
++            returnStorageId,
++            roundQuantity(await getInventoryQuantityForProductStorage(returnItem.productId, returnStorageId) + returnQuantity),
++            timestamp,
++        )
++        await putInventoryQuantity(
++            input.workspaceId,
++            input.replacementProductId,
++            input.replacementStorageId,
++            roundQuantity(currentReplacementQuantity - replacementQuantity),
++            timestamp,
++        )
++        await restoreReturnedBatchAllocations({
++            workspaceId: input.workspaceId,
++            productId: returnItem.productId,
++            storageId: returnStorageId,
++            allocations: returnSplit.restoredAllocations,
++            timestamp,
++        })
++        await consumeReplacementBatchAllocations(input.workspaceId, replacementBatchPlan.allocations, timestamp)
++
++        const nextReturnedQuantity = roundQuantity((returnItem.returnedQuantity || 0) + returnQuantity)
++        const updatedReturnItem: SaleItem = {
++            ...returnItem,
++            originalBatchAllocations: returnItem.originalBatchAllocations || returnItem.batchAllocations || null,
++            batchAllocations: returnSplit.remainingAllocations.length > 0 ? returnSplit.remainingAllocations : null,
++            returnedQuantity: nextReturnedQuantity,
++            storageId: returnItem.storageId || returnStorageId,
++        }
++        updatedReturnItem.isReturned = nextReturnedQuantity + QUANTITY_EPSILON >= returnItem.quantity
++        updatedReturnItem.returnReason = reason
++        updatedReturnItem.returnedAt = timestamp
++        updatedReturnItem.returnedBy = input.createdBy || null
++        await db.sale_items.put(updatedReturnItem)
++
++        const allItems = await db.sale_items.where('saleId').equals(sale.id).toArray()
++        const allReturned = allItems.every((item) => {
++            const itemReturnedQuantity = item.id === updatedReturnItem.id ? nextReturnedQuantity : (item.returnedQuantity || 0)
++            return itemReturnedQuantity + QUANTITY_EPSILON >= item.quantity
++        })
++        const updatedSale: Sale = {
++            ...sale,
++            originalTotalAmount: sale.originalTotalAmount ?? sale.totalAmount,
++            totalAmount: Math.max(0, sale.totalAmount - returnAmount),
++            returnedAmount: (sale.returnedAmount || 0) + returnAmount,
++            returnStatus: allReturned ? 'full' : 'partial',
++            isReturned: allReturned,
++            returnReason: allReturned ? reason : sale.returnReason,
++            returnedAt: allReturned ? timestamp : sale.returnedAt,
++            returnedBy: allReturned ? (input.createdBy || null) : sale.returnedBy,
++            updatedAt: timestamp,
++            version: sale.version + 1,
++            ...sync,
++        }
++        await db.sales.put(updatedSale)
++
++        const saleReturn: SaleReturn = {
++            id: ids.returnId,
++            workspaceId: input.workspaceId,
++            saleId: sale.id,
++            reason,
++            status: 'posted',
++            refundMethod: null,
++            refundAmount: returnAmount,
++            returnedBy: input.createdBy || null,
++            returnedAt: timestamp,
++            source: 'exchange',
++            createdAt: timestamp,
++            updatedAt: timestamp,
++            version: 1,
++            isDeleted: false,
++            ...sync,
++        }
++        const saleReturnItem: SaleReturnItem = {
++            id: generateId(),
++            workspaceId: input.workspaceId,
++            returnId: ids.returnId,
++            saleId: sale.id,
++            saleItemId: returnItem.id,
++            quantity: returnQuantity,
++            unitRefundAmount: returnUnitAmount,
++            refundAmount: returnAmount,
++            restoredStorageId: returnStorageId,
++            restoredBatchAllocations: returnSplit.restoredAllocations,
++            createdAt: timestamp,
++            updatedAt: timestamp,
++            version: 1,
++            isDeleted: false,
++            ...sync,
++        }
++        await db.sale_returns.put(saleReturn)
++        await db.sale_return_items.put(saleReturnItem)
++
++        let cashSettlementAmount = sale.payment_method === 'loan' ? 0 : Math.abs(differenceAmount)
++        let settlementDirection: PaymentTransaction['direction'] | null = cashSettlementAmount > 0
++            ? (differenceAmount > 0 ? 'incoming' : 'outgoing')
++            : null
++        let settlementTransactionId: string | null = null
++        let loanId: string | null = null
++        let loanCreditAmount = 0
++
++        if (sale.payment_method === 'loan') {
++            const loan = await db.loans.where('saleId').equals(sale.id).and((item) => !item.isDeleted && item.source === 'pos').first()
++            if (loan) {
++                loanId = loan.id
++                const installments = await db.loan_installments.where('loanId').equals(loan.id).and((item) => !item.isDeleted).sortBy('installmentNo')
++                const updatedInstallments = installments.map((item) => ({ ...item }))
++                if (differenceAmount < 0) {
++                    loanCreditAmount = Math.min(-differenceAmount, loan.balanceAmount)
++                    let remainingCredit = loanCreditAmount
++                    for (const installment of updatedInstallments) {
++                        if (remainingCredit <= QUANTITY_EPSILON || installment.balanceAmount <= 0) continue
++                        const applied = Math.min(remainingCredit, installment.balanceAmount)
++                        installment.paidAmount = roundQuantity(installment.paidAmount + applied)
++                        installment.balanceAmount = roundQuantity(installment.balanceAmount - applied)
++                        installment.status = getInstallmentStatus(installment, installment.balanceAmount)
++                        installment.paidAt = installment.balanceAmount <= QUANTITY_EPSILON ? timestamp : installment.paidAt
++                        installment.updatedAt = timestamp
++                        installment.version += 1
++                        Object.assign(installment, sync)
++                        remainingCredit = roundQuantity(remainingCredit - applied)
++                    }
++                    cashSettlementAmount = roundQuantity(-differenceAmount - loanCreditAmount)
++                    settlementDirection = cashSettlementAmount > 0 ? 'outgoing' : null
++                } else if (differenceAmount > 0) {
++                    const target = updatedInstallments.find((item) => item.balanceAmount > QUANTITY_EPSILON)
++                        || updatedInstallments[updatedInstallments.length - 1]
++                    if (target) {
++                        target.plannedAmount = roundQuantity(target.plannedAmount + differenceAmount)
++                        target.balanceAmount = roundQuantity(target.balanceAmount + differenceAmount)
++                        target.status = getInstallmentStatus(target, target.balanceAmount)
++                        target.paidAt = null
++                        target.updatedAt = timestamp
++                        target.version += 1
++                        Object.assign(target, sync)
++                    }
++                }
++                const balanceAmount = roundQuantity(Math.max(0, loan.balanceAmount + differenceAmount))
++                const nextDueDate = updatedInstallments.find((item) => item.balanceAmount > QUANTITY_EPSILON)?.dueDate || null
++                const updatedLoan: Loan = {
++                    ...loan,
++                    principalAmount: roundQuantity(loan.principalAmount + Math.max(0, differenceAmount)),
++                    totalPaidAmount: roundQuantity(loan.totalPaidAmount + loanCreditAmount),
++                    balanceAmount,
++                    nextDueDate,
++                    status: getLoanStatus({ ...loan, nextDueDate }, balanceAmount),
++                    updatedAt: timestamp,
++                    version: loan.version + 1,
++                    ...sync,
++                }
++                await db.loans.put(updatedLoan)
++                if (updatedInstallments.length > 0) await db.loan_installments.bulkPut(updatedInstallments)
++                if (loanCreditAmount > 0) {
++                    const loanPayment: LoanPayment = {
++                        id: generateId(), workspaceId: input.workspaceId, loanId: loan.id,
++                        amount: loanCreditAmount, paymentMethod: 'loan_adjustment', paidAt: timestamp,
++                        note: `Product exchange credit ${ids.exchangeId}`, createdBy: input.createdBy || undefined,
++                        createdAt: timestamp, updatedAt: timestamp, version: 1, isDeleted: false, ...sync,
++                    }
++                    await db.loan_payments.put(loanPayment)
++                    const loanLedger: PaymentTransaction = {
++                        id: generateId(), workspaceId: input.workspaceId,
++                        sourceModule: 'loans',
++                        sourceType: loan.loanCategory === 'simple' ? 'simple_loan' : 'loan_installment',
++                        sourceRecordId: loan.id, sourceSubrecordId: loanPayment.id,
++                        direction: loan.direction === 'borrowed' ? 'outgoing' : 'incoming',
++                        amount: loanCreditAmount, currency: loan.settlementCurrency,
++                        paymentMethod: 'loan_adjustment', paidAt: timestamp,
++                        counterpartyName: loan.borrowerName, referenceLabel: loan.loanNo,
++                        note: 'Product exchange credit', createdBy: input.createdBy || null,
++                        metadata: {
++                            saleId: sale.id,
++                            saleProductExchangeId: ids.exchangeId,
++                            loanPaymentId: loanPayment.id,
++                        },
++                        reversalOfTransactionId: null, createdAt: timestamp, updatedAt: timestamp,
++                        version: 1, isDeleted: false, ...sync,
++                    }
++                    await db.payment_transactions.put(loanLedger)
++                }
++            } else {
++                cashSettlementAmount = Math.abs(differenceAmount)
++                settlementDirection = cashSettlementAmount > 0 ? (differenceAmount > 0 ? 'incoming' : 'outgoing') : null
++            }
++        }
++
++        if (cashSettlementAmount > QUANTITY_EPSILON) {
++            if (!input.settlementMethod) throw new Error('A settlement method is required for the cash difference')
++            settlementTransactionId = generateId()
++            const transaction: PaymentTransaction = {
++                id: settlementTransactionId, workspaceId: input.workspaceId,
++                sourceModule: 'sales', sourceType: 'sale_exchange', sourceRecordId: ids.exchangeId,
++                sourceSubrecordId: null, direction: settlementDirection || 'outgoing',
++                amount: cashSettlementAmount, currency: sale.settlementCurrency,
++                paymentMethod: input.settlementMethod, paidAt: timestamp,
++                counterpartyName: null, referenceLabel: ids.exchangeId,
++                note: 'Product exchange settlement', createdBy: input.createdBy || null,
++                metadata: { saleId: sale.id, saleProductExchangeId: ids.exchangeId },
++                reversalOfTransactionId: null, createdAt: timestamp, updatedAt: timestamp,
++                version: 1, isDeleted: false, ...sync,
++            }
++            await db.payment_transactions.put(transaction)
++        }
++
++        const exchange: SaleProductExchange = {
++            id: ids.exchangeId, workspaceId: input.workspaceId, saleId: sale.id, returnId: ids.returnId,
++            returnSaleItemId: returnItem.id, returnProductId: returnItem.productId,
++            returnQuantity, returnUnitAmount, returnAmount, returnStorageId,
++            replacementProductId: input.replacementProductId, replacementStorageId: input.replacementStorageId,
++            replacementQuantity, replacementUnitAmount: replacementProduct.price, replacementAmount,
++            replacementBatchAllocations: replacementBatchPlan.allocations.length ? replacementBatchPlan.allocations : null,
++            settlementCurrency: sale.settlementCurrency, differenceAmount, cashSettlementAmount,
++            settlementDirection, settlementMethod: input.settlementMethod || null,
++            settlementTransactionId, loanId, loanCreditAmount, reason, notes: input.note?.trim() || null,
++            exchangedBy: input.createdBy || null, exchangedAt: timestamp, status: 'posted',
++            createdAt: timestamp, updatedAt: timestamp, version: 1, isDeleted: false, ...sync,
++        }
++        await db.sale_product_exchanges.put(exchange)
++        await syncProductStockSnapshot(returnItem.productId, timestamp)
++        if (input.replacementProductId !== returnItem.productId) {
++            await syncProductStockSnapshot(input.replacementProductId, timestamp)
++        }
++        result = { ...result, cashSettlementAmount, loanCreditAmount }
++    })
++
++    return result
++}
++
++async function refreshAfterCloudExchange(workspaceId: string) {
++    await Promise.all([
++        syncSalesFromSupabase(workspaceId),
++        fetchTableFromSupabase('inventory', db.inventory, workspaceId, { includeDeleted: true }),
++        fetchTableFromSupabase('loans', db.loans, workspaceId, { includeDeleted: true }),
++        fetchTableFromSupabase('loan_installments', db.loan_installments, workspaceId, { includeDeleted: true }),
++        fetchTableFromSupabase('loan_payments', db.loan_payments, workspaceId, { includeDeleted: true }),
++        fetchTableFromSupabase('payment_transactions', db.payment_transactions, workspaceId, { includeDeleted: true }),
++        refreshStockBatchesFromSupabase(workspaceId),
++    ])
++}
++
++export async function processSaleProductExchange(input: ProcessSaleProductExchangeInput): Promise<ProcessSaleProductExchangeResult> {
++    const ids: ExchangeIds = { exchangeId: generateId(), returnId: generateId() }
++    const localMode = isLocalWorkspaceMode(input.workspaceId)
++    const online = isOnline()
++
++    if (!localMode && online) {
++        const { data, error } = await supabase.rpc('process_sale_product_exchange', {
++            p_exchange_id: ids.exchangeId,
++            p_return_id: ids.returnId,
++            p_sale_id: input.saleId,
++            p_return_sale_item_id: input.returnSaleItemId,
++            p_return_quantity: normalizeQuantity(input.returnQuantity, 'Return quantity'),
++            p_replacement_product_id: input.replacementProductId,
++            p_replacement_storage_id: input.replacementStorageId,
++            p_replacement_quantity: normalizeQuantity(input.replacementQuantity, 'Replacement quantity'),
++            p_replacement_unit_amount: normalizeAmount(input.replacementUnitAmount, 'Replacement unit amount'),
++            p_settlement_method: input.settlementMethod || null,
++            p_note: input.note?.trim() || null,
++            p_return_reason: input.returnReason?.trim() || 'Product exchange',
++        })
++        if (!error && data) {
++            await refreshAfterCloudExchange(input.workspaceId)
++            return {
++                exchangeId: data.exchange_id, returnId: data.return_id,
++                returnAmount: Number(data.return_amount || 0), replacementAmount: Number(data.replacement_amount || 0),
++                differenceAmount: Number(data.difference_amount || 0), cashSettlementAmount: Number(data.cash_settlement_amount || 0),
++                loanCreditAmount: Number(data.loan_credit_amount || 0), idempotentReplay: !!data.idempotent_replay,
++            }
++        }
++        if (error && !isRetriableWebRequestError(error)
++            && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
++            throw error
++        }
++    }
++
++    const result = await applyLocalSaleProductExchange(input, ids)
++    if (!localMode) {
++        await addToOfflineMutations('sales', input.saleId, 'update', {
++            __rpc_action: 'process_sale_product_exchange',
++            p_exchange_id: ids.exchangeId, p_return_id: ids.returnId, p_sale_id: input.saleId,
++            p_return_sale_item_id: input.returnSaleItemId, p_return_quantity: input.returnQuantity,
++            p_replacement_product_id: input.replacementProductId, p_replacement_storage_id: input.replacementStorageId,
++            p_replacement_quantity: input.replacementQuantity, p_replacement_unit_amount: input.replacementUnitAmount,
++            p_settlement_method: input.settlementMethod || null, p_note: input.note?.trim() || null,
++            p_return_reason: input.returnReason?.trim() || 'Product exchange',
++        }, input.workspaceId)
++    }
++    return result
++}
++
++export function useSaleProductExchanges(workspaceId: string | undefined, saleId?: string) {
++    return useLiveQuery(
++        () => !workspaceId
++            ? []
++            : saleId
++                ? db.sale_product_exchanges.where('saleId').equals(saleId).toArray()
++                : db.sale_product_exchanges.where('workspaceId').equals(workspaceId).toArray(),
++        [workspaceId, saleId],
++    ) || []
++}
+diff --git a/src/sync/syncEngine.ts b/src/sync/syncEngine.ts
+index 03da040e..7458cdd8 100644
+--- a/src/sync/syncEngine.ts
++++ b/src/sync/syncEngine.ts
+@@ -63,0 +64 @@ const SYNC_PULL_TABLES = [
++  "sale_product_exchanges",
+@@ -616,0 +618,27 @@ export async function processMutationQueue(
++          } else if (rpcAction === "process_sale_product_exchange") {
++            const { error } = await supabase.rpc("process_sale_product_exchange", {
++              p_exchange_id: dbPayload.p_exchange_id,
++              p_return_id: dbPayload.p_return_id,
++              p_sale_id: dbPayload.p_sale_id,
++              p_return_sale_item_id: dbPayload.p_return_sale_item_id,
++              p_return_quantity: dbPayload.p_return_quantity,
++              p_replacement_product_id: dbPayload.p_replacement_product_id,
++              p_replacement_storage_id: dbPayload.p_replacement_storage_id,
++              p_replacement_quantity: dbPayload.p_replacement_quantity,
++              p_replacement_unit_amount: dbPayload.p_replacement_unit_amount,
++              p_settlement_method: dbPayload.p_settlement_method,
++              p_note: dbPayload.p_note,
++              p_return_reason: dbPayload.p_return_reason,
++            });
++            if (error) throw error;
++
++            const exchangeId = typeof dbPayload.p_exchange_id === "string"
++              ? dbPayload.p_exchange_id
++              : null;
++            if (exchangeId) {
++              const syncedAt = new Date().toISOString();
++              await db.sale_product_exchanges.update(exchangeId, {
++                syncStatus: "synced",
++                lastSyncedAt: syncedAt,
++              });
++            }
+diff --git a/src/types.ts b/src/types.ts
+index 5d4ef82c..12d4891b 100644
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -93,0 +94 @@ export interface Sale {
++    product_exchanges?: SaleProductExchange[]
+@@ -122 +123 @@ export interface SaleReturn {
+-    source: 'app' | 'legacy_backfill' | 'system'
++    source: 'app' | 'exchange' | 'legacy_backfill' | 'system'
+@@ -198,0 +200,34 @@ export interface AttachedText {
++export interface SaleProductExchange {
++    id: string
++    workspace_id: string
++    sale_id: string
++    return_id: string
++    return_sale_item_id: string
++    return_product_id: string
++    return_quantity: number
++    return_unit_amount: number
++    return_amount: number
++    return_storage_id?: string | null
++    replacement_product_id: string
++    replacement_storage_id: string
++    replacement_quantity: number
++    replacement_unit_amount: number
++    replacement_amount: number
++    replacement_batch_allocations?: SaleItem['batch_allocations']
++    settlement_currency: string
++    difference_amount: number
++    cash_settlement_amount: number
++    settlement_direction?: 'incoming' | 'outgoing' | null
++    settlement_method?: string | null
++    settlement_transaction_id?: string | null
++    loan_id?: string | null
++    loan_credit_amount: number
++    reason: string
++    notes?: string | null
++    exchanged_by?: string | null
++    exchanged_at: string
++    status: 'posted' | 'voided'
++    created_at: string
++    updated_at: string
++}
++
+diff --git a/src/ui/components/ProductExchangeModal.tsx b/src/ui/components/ProductExchangeModal.tsx
+new file mode 100644
+index 00000000..7ddd79d4
+--- /dev/null
++++ b/src/ui/components/ProductExchangeModal.tsx
+@@ -0,0 +1,616 @@
++import { useEffect, useMemo, useState } from 'react'
++import { AlertTriangle, ArrowDownToLine, ArrowRightLeft, ArrowUpFromLine, CircleCheck, Loader2, LockKeyhole, PackageCheck, Warehouse } from 'lucide-react'
++import { useTranslation } from 'react-i18next'
++import { formatCurrency, cn } from '@/lib/utils'
++import { isPositiveQuantity, roundQuantity } from '@/lib/quantity'
++import type { Product, Storage } from '@/local-db'
++import { ProductAutocompleteInput } from '@/ui/components/orders/ProductAutocompleteInput'
++import { ProductsViewModal, ProductsViewModalTrigger } from '@/ui/components/ProductsViewModal'
++import {
++    Button,
++    Dialog,
++    DialogBody,
++    DialogContent,
++    DialogDescription,
++    DialogFooter,
++    DialogHeader,
++    DialogTitle,
++    Input,
++    Label,
++    Select,
++    SelectContent,
++    SelectItem,
++    SelectTrigger,
++    SelectValue,
++} from '@/ui/components'
++
++export type ProductExchangeSettlementMethod = 'cash' | 'fib' | 'qicard' | 'zaincash' | 'fastpay' | 'bank_transfer'
++
++export interface ProductExchangeSaleItem {
++    /** The immutable sale-item id. */
++    id: string
++    productId: string
++    name: string
++    sku?: string | null
++    unit?: string | null
++    /** Quantity still eligible for return/exchange. */
++    returnableQuantity: number
++    /** The original unit price in the sale's settlement currency. */
++    unitPrice: number
++}
++
++export type ProductExchangeStorage = Storage
++
++export interface ProductExchangeReplacementProduct {
++    id: string
++    storageId: string
++    name: string
++    sku?: string | null
++    unit?: string | null
++    /** Current product price, expressed in `currency`. */
++    unitPrice: number
++    currency: string
++    /**
++     * Current product price converted to the original sale settlement currency.
++     * The parent owns conversion/rate selection so this dialog never performs
++     * mixed-currency calculations itself.
++     */
++    replacementUnitAmount: number
++    /** Quantity currently available in this storage. */
++    availableQuantity: number
++}
++
++export interface ProductExchangeDraft {
++    originalSaleItemId: string
++    returnedProductId: string
++    returnQuantity: number
++    returnUnitPrice: number
++    replacementStorageId: string
++    replacementProductId: string
++    replacementQuantity: number
++    /** Replacement unit amount in the original sale settlement currency. */
++    replacementUnitAmount: number
++    returnedTotal: number
++    replacementTotal: number
++    /** Positive means collect from the customer; negative means refund. */
++    difference: number
++    settlementMethod?: ProductExchangeSettlementMethod
++}
++
++interface ProductExchangeModalProps {
++    isOpen: boolean
++    onClose: () => void
++    saleItems: ProductExchangeSaleItem[]
++    storages: ProductExchangeStorage[]
++    /** Catalog records used by the standard autocomplete and browse-products modal. */
++    productCatalog: Product[]
++    /** Product stock must be supplied per storage, with current price and availability. */
++    replacementProducts: ProductExchangeReplacementProduct[]
++    /** A preselected sale item is used when exchange begins from Sale Details. */
++    lockedSaleItemId?: string | null
++    settlementCurrency: string
++    isSubmitting?: boolean
++    onSubmit: (draft: ProductExchangeDraft) => Promise<void> | void
++}
++
++const SETTLEMENT_METHODS: ProductExchangeSettlementMethod[] = [
++    'cash',
++    'fib',
++    'qicard',
++    'zaincash',
++    'fastpay',
++    'bank_transfer',
++]
++
++function initialQuantity(maximum: number): string {
++    if (!isPositiveQuantity(maximum)) return ''
++    return String(roundQuantity(Math.min(1, maximum)))
++}
++
++function parseQuantity(value: string): number {
++    const parsed = Number(value)
++    return Number.isFinite(parsed) ? roundQuantity(parsed) : 0
++}
++
++function displayProductName(product: { name: string; sku?: string | null }) {
++    return product.sku ? `${product.name} (${product.sku})` : product.name
++}
++
++/**
++ * Collects the complete, validated exchange draft. Persistence is intentionally
++ * supplied by the parent so posting stock, return, payment, and loan changes
++ * can be performed as a single transaction.
++ */
++export function ProductExchangeModal({
++    isOpen,
++    onClose,
++    saleItems,
++    storages,
++    productCatalog,
++    replacementProducts,
++    lockedSaleItemId,
++    settlementCurrency,
++    isSubmitting = false,
++    onSubmit,
++}: ProductExchangeModalProps) {
++    const { t } = useTranslation()
++    const [saleItemId, setSaleItemId] = useState('')
++    const [returnQuantity, setReturnQuantity] = useState('')
++    const [storageId, setStorageId] = useState('')
++    const [replacementProductId, setReplacementProductId] = useState('')
++    const [replacementProductSearch, setReplacementProductSearch] = useState('')
++    const [replacementQuantity, setReplacementQuantity] = useState('')
++    const [isReplacementProductsViewOpen, setIsReplacementProductsViewOpen] = useState(false)
++    const [settlementMethod, setSettlementMethod] = useState<ProductExchangeSettlementMethod>('cash')
++    const [submitError, setSubmitError] = useState('')
++
++    const selectedSaleItem = useMemo(
++        () => saleItems.find((item) => item.id === saleItemId),
++        [saleItemId, saleItems],
++    )
++    const storageProducts = useMemo(
++        () => replacementProducts.filter((product) => product.storageId === storageId && isPositiveQuantity(product.availableQuantity)),
++        [replacementProducts, storageId],
++    )
++    const selectedReplacementProduct = useMemo(
++        () => storageProducts.find((product) => product.id === replacementProductId),
++        [replacementProductId, storageProducts],
++    )
++    const autocompleteReplacementProducts = useMemo(() => {
++        const availableIds = new Set(storageProducts.map((product) => product.id))
++        return productCatalog.filter((product) => availableIds.has(product.id))
++    }, [productCatalog, storageProducts])
++
++    const returnedQuantityValue = parseQuantity(returnQuantity)
++    const replacementQuantityValue = parseQuantity(replacementQuantity)
++    const returnedTotal = selectedSaleItem ? roundQuantity(selectedSaleItem.unitPrice * returnedQuantityValue) : 0
++    const replacementTotal = selectedReplacementProduct
++        ? roundQuantity(selectedReplacementProduct.replacementUnitAmount * replacementQuantityValue)
++        : 0
++    const difference = roundQuantity(replacementTotal - returnedTotal)
++
++    const isReturnQuantityValid = !!selectedSaleItem
++        && isPositiveQuantity(returnedQuantityValue)
++        && returnedQuantityValue <= selectedSaleItem.returnableQuantity
++    const isReplacementQuantityValid = !!selectedReplacementProduct
++        && isPositiveQuantity(replacementQuantityValue)
++        && replacementQuantityValue <= selectedReplacementProduct.availableQuantity
++    const canSubmit = isReturnQuantityValid && isReplacementQuantityValid && !!storageId
++    const hasReturnQuantityError = !!selectedSaleItem && !isReturnQuantityValid
++    const hasReplacementQuantityError = !!selectedReplacementProduct && !isReplacementQuantityValid
++    const returnQuantityError = !selectedSaleItem
++        ? ''
++        : !isPositiveQuantity(returnedQuantityValue)
++            ? t('sales.exchange.returnQuantityRequired', { defaultValue: 'Enter a return quantity greater than zero.' })
++            : t('sales.exchange.returnQuantityExceedsAvailable', {
++                defaultValue: 'Return quantity cannot exceed {{quantity}}.',
++                quantity: selectedSaleItem.returnableQuantity,
++            })
++    const replacementQuantityError = !selectedReplacementProduct
++        ? ''
++        : !isPositiveQuantity(replacementQuantityValue)
++            ? t('sales.exchange.replacementQuantityRequired', { defaultValue: 'Enter a replacement quantity greater than zero.' })
++            : t('sales.exchange.replacementQuantityExceedsAvailable', {
++                defaultValue: 'Replacement quantity cannot exceed the available stock of {{quantity}}.',
++                quantity: selectedReplacementProduct.availableQuantity,
++            })
++
++    const reset = () => {
++        setSaleItemId('')
++        setReturnQuantity('')
++        setStorageId('')
++        setReplacementProductId('')
++        setReplacementProductSearch('')
++        setReplacementQuantity('')
++        setIsReplacementProductsViewOpen(false)
++        setSettlementMethod('cash')
++        setSubmitError('')
++    }
++
++    useEffect(() => {
++        if (!isOpen) reset()
++    }, [isOpen])
++
++    useEffect(() => {
++        if (!isOpen || !lockedSaleItemId) return
++        const item = saleItems.find((candidate) => candidate.id === lockedSaleItemId)
++        if (!item) return
++        setSaleItemId(item.id)
++        setReturnQuantity(initialQuantity(item.returnableQuantity))
++        setSubmitError('')
++    }, [isOpen, lockedSaleItemId, saleItems])
++
++    const handleSaleItemChange = (nextSaleItemId: string) => {
++        const item = saleItems.find((candidate) => candidate.id === nextSaleItemId)
++        setSaleItemId(nextSaleItemId)
++        setReturnQuantity(item ? initialQuantity(item.returnableQuantity) : '')
++        setSubmitError('')
++    }
++
++    const handleStorageChange = (nextStorageId: string) => {
++        setStorageId(nextStorageId)
++        setReplacementProductId('')
++        setReplacementProductSearch('')
++        setReplacementQuantity('')
++        setSubmitError('')
++    }
++
++    const selectReplacementProduct = (nextProductId: string, nextStorageId = storageId) => {
++        const product = replacementProducts.find((candidate) => (
++            candidate.id === nextProductId && candidate.storageId === nextStorageId
++        ))
++        setStorageId(nextStorageId)
++        setReplacementProductId(product?.id || '')
++        setReplacementProductSearch(product?.name || '')
++        setReplacementQuantity(product ? initialQuantity(product.availableQuantity) : '')
++        setSubmitError('')
++    }
++
++    const handleReplacementSearchChange = (value: string) => {
++        setReplacementProductSearch(value)
++        if (replacementProductId) {
++            setReplacementProductId('')
++            setReplacementQuantity('')
++        }
++        setSubmitError('')
++    }
++
++    const productViewFilter = (catalog: Product[], selectedStorageId: string) => {
++        const availableIds = new Set(
++            replacementProducts
++                .filter((product) => product.storageId === selectedStorageId && isPositiveQuantity(product.availableQuantity))
++                .map((product) => product.id),
++        )
++        return catalog.filter((product) => availableIds.has(product.id))
++    }
++
++    const handleSubmit = async () => {
++        if (!selectedSaleItem || !selectedReplacementProduct || !canSubmit) {
++            setSubmitError(t('sales.exchange.completeAllFields', { defaultValue: 'Select both products and enter valid quantities.' }))
++            return
++        }
++
++        setSubmitError('')
++        try {
++            await onSubmit({
++                originalSaleItemId: selectedSaleItem.id,
++                returnedProductId: selectedSaleItem.productId,
++                returnQuantity: returnedQuantityValue,
++                returnUnitPrice: selectedSaleItem.unitPrice,
++                replacementStorageId: storageId,
++                replacementProductId: selectedReplacementProduct.id,
++                replacementQuantity: replacementQuantityValue,
++                replacementUnitAmount: selectedReplacementProduct.replacementUnitAmount,
++                returnedTotal,
++                replacementTotal,
++                difference,
++                settlementMethod: difference === 0 ? undefined : settlementMethod,
++            })
++            onClose()
++        } catch (error) {
++            console.error('[ProductExchangeModal] Failed to submit exchange', error)
++            setSubmitError(t('sales.exchange.submitFailed', { defaultValue: 'The exchange could not be completed. Please try again.' }))
++        }
++    }
++
++    const currency = settlementCurrency || 'usd'
++    const methodLabel = (method: ProductExchangeSettlementMethod) => t(`directTransactions.paymentMethod.${method === 'bank_transfer' ? 'bankTransfer' : method}`, {
++        defaultValue: method === 'bank_transfer' ? 'Bank Transfer' : method.toUpperCase(),
++    })
++
++    return (
++        <>
++            <Dialog open={isOpen} onOpenChange={(open) => { if (!open && !isSubmitting) onClose() }}>
++            <DialogContent layout="structured" className="max-w-3xl" showCloseButton={!isSubmitting}>
++                <DialogHeader layout="structured">
++                    <DialogTitle className="flex items-center gap-2 text-xl font-bold">
++                        <ArrowRightLeft className="h-5 w-5 text-primary" />
++                        {t('sales.exchange.title', { defaultValue: 'Product Exchange' })}
++                    </DialogTitle>
++                    <DialogDescription>
++                        {t('sales.exchange.description', { defaultValue: 'Return a product from this sale and replace it from a selected storage.' })}
++                    </DialogDescription>
++                </DialogHeader>
++
++                <DialogBody className="space-y-6">
++                    {saleItems.length === 0 ? (
++                        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-200">
++                            {t('sales.exchange.noReturnableItems', { defaultValue: 'There are no products remaining in this sale that can be exchanged.' })}
++                        </div>
++                    ) : (
++                        <>
++                            <section className="space-y-3 rounded-2xl border border-border/70 bg-muted/20 p-4">
++                                <div className="flex items-center gap-2 text-sm font-semibold">
++                                    <PackageCheck className="h-4 w-4 text-primary" />
++                                    {t('sales.exchange.returnItem', { defaultValue: 'Product to return' })}
++                                </div>
++                                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
++                                    <div className="space-y-2">
++                                        <Label>{t('sales.exchange.returnItem', { defaultValue: 'Product to return' })}</Label>
++                                        {lockedSaleItemId ? (
++                                            <div className="flex h-10 items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 text-sm font-medium text-foreground">
++                                                <LockKeyhole className="h-4 w-4 shrink-0 text-primary" />
++                                                <span className="truncate">{selectedSaleItem ? displayProductName(selectedSaleItem) : t('sales.exchange.selectSaleProduct', { defaultValue: 'Select a product from the sale' })}</span>
++                                            </div>
++                                        ) : (
++                                            <Select value={saleItemId} onValueChange={handleSaleItemChange} disabled={isSubmitting}>
++                                                <SelectTrigger><SelectValue placeholder={t('sales.exchange.selectSaleProduct', { defaultValue: 'Select a product from the sale' })} /></SelectTrigger>
++                                                <SelectContent>
++                                                    {saleItems.map((item) => (
++                                                        <SelectItem key={item.id} value={item.id}>
++                                                            {displayProductName(item)}
++                                                        </SelectItem>
++                                                    ))}
++                                                </SelectContent>
++                                            </Select>
++                                        )}
++                                        {selectedSaleItem && (
++                                            <p className="text-xs text-muted-foreground">
++                                                {t('sales.exchange.availableToExchange', {
++                                                    defaultValue: 'Available to exchange: {{quantity}}',
++                                                    quantity: selectedSaleItem.returnableQuantity,
++                                                })}
++                                            </p>
++                                        )}
++                                    </div>
++                                    <QuantityField
++                                        label={t('sales.exchange.returnQuantity', { defaultValue: 'Return quantity' })}
++                                        value={returnQuantity}
++                                        onChange={setReturnQuantity}
++                                        max={selectedSaleItem?.returnableQuantity}
++                                        disabled={!selectedSaleItem || isSubmitting}
++                                        invalid={hasReturnQuantityError}
++                                        errorMessage={returnQuantityError}
++                                        errorId="exchange-return-quantity-error"
++                                    />
++                                </div>
++                                <SummaryLine
++                                    label={t('sales.exchange.returnTotal', { defaultValue: 'Return total' })}
++                                    value={formatCurrency(returnedTotal, currency)}
++                                />
++                            </section>
++
++                            <section className="space-y-3 rounded-2xl border border-border/70 p-4">
++                                <div className="flex items-center gap-2 text-sm font-semibold">
++                                    <Warehouse className="h-4 w-4 text-primary" />
++                                    {t('sales.exchange.replacementProduct', { defaultValue: 'Replacement product' })}
++                                </div>
++                                <div className="grid gap-4 sm:grid-cols-2">
++                                    <div className="space-y-2">
++                                        <Label>{t('sales.exchange.replacementStorage', { defaultValue: 'Replacement storage' })}</Label>
++                                        <Select value={storageId} onValueChange={handleStorageChange} disabled={isSubmitting}>
++                                            <SelectTrigger><SelectValue placeholder={t('sales.exchange.selectStorage', { defaultValue: 'Select storage' })} /></SelectTrigger>
++                                            <SelectContent>
++                                                {storages.map((storage) => (
++                                                    <SelectItem key={storage.id} value={storage.id}>{storage.name}</SelectItem>
++                                                ))}
++                                            </SelectContent>
++                                        </Select>
++                                    </div>
++                                    <div className="space-y-2">
++                                        <Label>{t('sales.exchange.replacementProduct', { defaultValue: 'Replacement product' })}</Label>
++                                        <div className="flex items-center">
++                                            <ProductsViewModalTrigger
++                                                label={t('sales.exchange.browseProducts', { defaultValue: 'Browse products' })}
++                                                onClick={() => setIsReplacementProductsViewOpen(true)}
++                                            />
++                                            <ProductAutocompleteInput
++                                                className="min-w-0 flex-1"
++                                                inputClassName="rounded-s-none"
++                                                value={replacementProductSearch}
++                                                onChange={handleReplacementSearchChange}
++                                                onSelectProduct={(product) => selectReplacementProduct(product.id)}
++                                                products={autocompleteReplacementProducts}
++                                                placeholder={t('sales.exchange.searchReplacementProduct', { defaultValue: 'Search by product name or SKU' })}
++                                                disabled={!storageId || storageProducts.length === 0 || isSubmitting}
++                                                hasSelection={!!selectedReplacementProduct}
++                                                linkedLabel={t('common.selected', { defaultValue: 'Selected' })}
++                                                showLinkedIndicator={!!selectedReplacementProduct}
++                                            />
++                                        </div>
++                                        {storageId && storageProducts.length === 0 && (
++                                            <p className="text-xs text-amber-700 dark:text-amber-300">
++                                                {t('sales.exchange.noProductsInStorage', { defaultValue: 'This storage has no products available for exchange.' })}
++                                            </p>
++                                        )}
++                                    </div>
++                                </div>
++                                <div className="grid gap-4 sm:grid-cols-[10rem_minmax(0,1fr)]">
++                                    <QuantityField
++                                        label={t('sales.exchange.replacementQuantity', { defaultValue: 'Replacement quantity' })}
++                                        value={replacementQuantity}
++                                        onChange={setReplacementQuantity}
++                                        max={selectedReplacementProduct?.availableQuantity}
++                                        disabled={!selectedReplacementProduct || isSubmitting}
++                                        invalid={hasReplacementQuantityError}
++                                        errorMessage={replacementQuantityError}
++                                        errorId="exchange-replacement-quantity-error"
++                                    />
++                                    <div className="flex items-end">
++                                        {selectedReplacementProduct && (
++                                            <div className="grid gap-1 pb-1 text-xs text-muted-foreground">
++                                                <p>
++                                                    {t('sales.exchange.availableStock', {
++                                                        defaultValue: 'Available stock: {{quantity}}',
++                                                        quantity: selectedReplacementProduct.availableQuantity,
++                                                    })}
++                                                </p>
++                                                <p>
++                                                    {t('sales.exchange.unitPrice', { defaultValue: 'Unit price' })}: {formatCurrency(selectedReplacementProduct.unitPrice, selectedReplacementProduct.currency)}
++                                                </p>
++                                            </div>
++                                        )}
++                                    </div>
++                                </div>
++                                <SummaryLine
++                                    label={t('sales.exchange.replacementTotal', { defaultValue: 'Replacement total' })}
++                                    value={formatCurrency(replacementTotal, currency)}
++                                />
++                            </section>
++
++                            <section className={cn(
++                                'rounded-2xl border p-4',
++                                difference > 0 && 'border-amber-500/40 bg-amber-500/10',
++                                difference < 0 && 'border-sky-500/40 bg-sky-500/10',
++                                difference === 0 && 'border-primary/25 bg-primary/5',
++                            )}>
++                                <SummaryLine
++                                    label={t('sales.exchange.difference', { defaultValue: 'Difference' })}
++                                    value={formatCurrency(Math.abs(difference), currency)}
++                                    valueClassName="text-base"
++                                />
++                                {difference === 0 ? (
++                                    <div className="mt-3 flex items-start gap-2 text-sm text-muted-foreground">
++                                        <CircleCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
++                                        <p>{t('sales.exchange.evenExchange', { defaultValue: 'Even exchange - no payment or refund is needed.' })}</p>
++                                    </div>
++                                ) : (
++                                    <div className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,1fr)_13rem] sm:items-end">
++                                        <div className="flex items-start gap-3" role="status">
++                                            <span className={cn(
++                                                'grid h-10 w-10 shrink-0 place-items-center rounded-full',
++                                                difference > 0 ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
++                                            )}>
++                                                {difference > 0 ? <ArrowDownToLine className="h-5 w-5" /> : <ArrowUpFromLine className="h-5 w-5" />}
++                                            </span>
++                                            <div className="space-y-0.5">
++                                                <p className="text-sm font-semibold">
++                                                    {difference > 0
++                                                        ? t('sales.exchange.collectionRequired', { defaultValue: 'Collection required' })
++                                                        : t('sales.exchange.refundRequired', { defaultValue: 'Refund required' })}
++                                                </p>
++                                                <p className="text-sm text-muted-foreground">
++                                                    {difference > 0
++                                                        ? t('sales.exchange.customerPaysDifference', {
++                                                            defaultValue: 'Collect {{amount}} from the customer.',
++                                                            amount: formatCurrency(Math.abs(difference), currency),
++                                                        })
++                                                        : t('sales.exchange.customerReceivesRefund', {
++                                                            defaultValue: 'Refund {{amount}} to the customer.',
++                                                            amount: formatCurrency(Math.abs(difference), currency),
++                                                        })}
++                                                </p>
++                                            </div>
++                                        </div>
++                                        <div className="space-y-1.5">
++                                            <Label>
++                                                {difference > 0
++                                                    ? t('sales.exchange.paymentMethod', { defaultValue: 'Payment method' })
++                                                    : t('sales.exchange.refundMethod', { defaultValue: 'Refund method' })}
++                                            </Label>
++                                            <Select value={settlementMethod} onValueChange={(value) => setSettlementMethod(value as ProductExchangeSettlementMethod)} disabled={isSubmitting}>
++                                                <SelectTrigger><SelectValue /></SelectTrigger>
++                                                <SelectContent>
++                                                    {SETTLEMENT_METHODS.map((method) => (
++                                                        <SelectItem key={method} value={method}>{methodLabel(method)}</SelectItem>
++                                                    ))}
++                                                </SelectContent>
++                                            </Select>
++                                        </div>
++                                    </div>
++                                )}
++                            </section>
++                        </>
++                    )}
++                    {submitError && <p className="text-sm font-medium text-destructive" role="alert">{submitError}</p>}
++                </DialogBody>
++
++                <DialogFooter layout="structured">
++                    <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
++                        {t('common.cancel', { defaultValue: 'Cancel' })}
++                    </Button>
++                    <Button type="button" onClick={() => void handleSubmit()} disabled={!canSubmit || isSubmitting}>
++                        {isSubmitting && <Loader2 className="me-2 h-4 w-4 animate-spin" />}
++                        {isSubmitting
++                            ? t('sales.exchange.processing', { defaultValue: 'CompletingΓÇª' })
++                            : t('sales.exchange.complete', { defaultValue: 'Complete Exchange' })}
++                    </Button>
++                </DialogFooter>
++            </DialogContent>
++            </Dialog>
++            <ProductsViewModal
++                open={isReplacementProductsViewOpen}
++                onOpenChange={setIsReplacementProductsViewOpen}
++                products={productCatalog}
++                storages={storages}
++                initialStorageId={storageId}
++                filterProducts={productViewFilter}
++                labels={{
++                    title: t('sales.exchange.browseProducts', { defaultValue: 'Browse products' }),
++                    description: t('sales.exchange.browseProductsDescription', { defaultValue: 'Choose an in-stock replacement product from a storage.' }),
++                    searchLabel: t('common.search', { defaultValue: 'Search' }),
++                    searchPlaceholder: t('sales.exchange.searchReplacementProduct', { defaultValue: 'Search by product name or SKU' }),
++                    storageLabel: t('sales.exchange.replacementStorage', { defaultValue: 'Replacement storage' }),
++                    storagePlaceholder: t('sales.exchange.selectStorage', { defaultValue: 'Select storage' }),
++                    noProductsLabel: t('sales.exchange.noProductsInStorage', { defaultValue: 'This storage has no products available for exchange.' }),
++                    noResultsLabel: t('common.noResults', { defaultValue: 'No matching products found.' }),
++                }}
++                onSelectProduct={(product, selectedStorageId) => {
++                    selectReplacementProduct(product.id, selectedStorageId)
++                }}
++            />
++        </>
++    )
++}
++
++function QuantityField({
++    label,
++    value,
++    onChange,
++    max,
++    disabled,
++    invalid = false,
++    errorMessage,
++    errorId,
++}: {
++    label: string
++    value: string
++    onChange: (value: string) => void
++    max?: number
++    disabled: boolean
++    invalid?: boolean
++    errorMessage?: string
++    errorId?: string
++}) {
++    return (
++        <div className="space-y-2">
++            <Label>{label}</Label>
++            <Input
++                inputMode="decimal"
++                type="number"
++                min="0"
++                max={max}
++                step="any"
++                value={value}
++                onChange={(event) => onChange(event.target.value)}
++                disabled={disabled}
++                aria-invalid={invalid}
++                aria-describedby={invalid ? errorId : undefined}
++                className={cn(invalid && 'border-destructive bg-destructive/5 text-destructive focus-visible:ring-destructive')}
++            />
++            {invalid && errorMessage && (
++                <p id={errorId} className="flex items-start gap-1.5 text-xs font-medium text-destructive" role="alert">
++                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
++                    {errorMessage}
++                </p>
++            )}
++        </div>
++    )
++}
++
++function SummaryLine({
++    label,
++    value,
++    valueClassName,
++}: {
++    label: string
++    value: string
++    valueClassName?: string
++}) {
++    return (
++        <div className="flex items-center justify-between gap-4 border-t border-border/60 pt-3 text-sm">
++            <span className="text-muted-foreground">{label}</span>
++            <span className={cn('font-semibold text-foreground', valueClassName)}>{value}</span>
++        </div>
++    )
++}
+diff --git a/src/ui/components/SaleDetailsModal.tsx b/src/ui/components/SaleDetailsModal.tsx
+index b8e7a868..3e63573c 100644
+--- a/src/ui/components/SaleDetailsModal.tsx
++++ b/src/ui/components/SaleDetailsModal.tsx
+@@ -30 +30 @@ import {
+-import { RotateCcw, ArrowRight, XCircle, MessageCircle, CircleDollarSign, TrendingUp, Download, CircleAlert } from 'lucide-react'
++import { RotateCcw, ArrowRight, ArrowRightLeft, XCircle, MessageCircle, CircleDollarSign, TrendingUp, Download, CircleAlert } from 'lucide-react'
+@@ -71,0 +72 @@ interface SaleDetailsModalProps {
++    onExchangeItem?: (item: SaleItem) => void
+@@ -76 +77 @@ interface SaleDetailsModalProps {
+-export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturnSale, onDownloadInvoice }: SaleDetailsModalProps) {
++export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onExchangeItem, onReturnSale, onDownloadInvoice }: SaleDetailsModalProps) {
+@@ -534,0 +536,12 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
++                                                        {!isItemReturned && !item.is_returned && netQuantity > 0 && sale.origin === 'pos' && onExchangeItem && (user?.role === 'admin' || user?.role === 'staff') && (
++                                                            <Button
++                                                                size="sm"
++                                                                variant="ghost"
++                                                                onClick={(e) => { e.stopPropagation(); onExchangeItem(item) }}
++                                                                className="h-6 gap-1 px-2 text-[10px] text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg"
++                                                                title={t('sales.exchange.title', { defaultValue: 'Product Exchange' })}
++                                                            >
++                                                                <ArrowRightLeft className="h-3 w-3" />
++                                                                {t('sales.exchange.action', { defaultValue: 'Exchange' })}
++                                                            </Button>
++                                                        )}
+@@ -777,0 +791,12 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
++                                                        )}
++                                                        {!isItemReturned && !item.is_returned && netQuantity > 0 && sale.origin === 'pos' && onExchangeItem && (user?.role === 'admin' || user?.role === 'staff') && (
++                                                            <Button
++                                                                size="sm"
++                                                                variant="ghost"
++                                                                onClick={(e) => { e.stopPropagation(); onExchangeItem(item) }}
++                                                                className="h-6 gap-1 px-2 text-[10px] text-muted-foreground hover:text-primary hover:bg-primary/10"
++                                                                title={t('sales.exchange.title', { defaultValue: 'Product Exchange' })}
++                                                            >
++                                                                <ArrowRightLeft className="h-3 w-3" />
++                                                                {t('sales.exchange.action', { defaultValue: 'Exchange' })}
++                                                            </Button>
+diff --git a/src/ui/components/SaleReturnActionDialog.tsx b/src/ui/components/SaleReturnActionDialog.tsx
+new file mode 100644
+index 00000000..e1b63b4f
+--- /dev/null
++++ b/src/ui/components/SaleReturnActionDialog.tsx
+@@ -0,0 +1,96 @@
++import { ArrowRightLeft, RotateCcw } from 'lucide-react'
++import { useTranslation } from 'react-i18next'
++import {
++    Button,
++    SmallDialog,
++    SmallDialogContent,
++    SmallDialogDescription,
++    SmallDialogFooter,
++    SmallDialogHeader,
++    SmallDialogTitle,
++} from '@/ui/components'
++
++interface SaleReturnActionDialogProps {
++    isOpen: boolean
++    onClose: () => void
++    onReturnSale: () => void
++    onProductExchange: () => void
++}
++
++/**
++ * The deliberately small first step for a Sales History return action.  It
++ * keeps the existing return confirmation flow intact and lets the caller open
++ * the exchange form only when the user explicitly picks that action.
++ */
++export function SaleReturnActionDialog({
++    isOpen,
++    onClose,
++    onReturnSale,
++    onProductExchange,
++}: SaleReturnActionDialogProps) {
++    const { t } = useTranslation()
++
++    const chooseAction = (callback: () => void) => {
++        onClose()
++        callback()
++    }
++
++    return (
++        <SmallDialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
++            <SmallDialogContent className="gap-5 rounded-2xl border-border/70 p-5 shadow-2xl sm:max-w-md">
++                <SmallDialogHeader className="space-y-2 text-start">
++                    <SmallDialogTitle className="text-xl font-bold">
++                        {t('sales.exchange.chooseAction', { defaultValue: 'Choose an action' })}
++                    </SmallDialogTitle>
++                    <SmallDialogDescription>
++                        {t('sales.exchange.chooseActionDescription', {
++                            defaultValue: 'Return this sale or exchange one of its products.'
++                        })}
++                    </SmallDialogDescription>
++                </SmallDialogHeader>
++
++                <div className="grid gap-3">
++                    <Button
++                        type="button"
++                        variant="outline"
++                        onClick={() => chooseAction(onReturnSale)}
++                        className="h-auto min-h-20 justify-start gap-4 rounded-xl border-border/80 px-4 py-3 text-start hover:border-destructive/40 hover:bg-destructive/5"
++                    >
++                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-destructive/10 text-destructive">
++                            <RotateCcw className="h-5 w-5" />
++                        </span>
++                        <span className="grid gap-0.5">
++                            <span className="font-semibold">{t('sales.returnSale', { defaultValue: 'Return Sale' })}</span>
++                            <span className="whitespace-normal text-xs font-normal text-muted-foreground">
++                                {t('sales.exchange.returnSaleDescription', { defaultValue: 'Return products from this sale.' })}
++                            </span>
++                        </span>
++                    </Button>
++
++                    <Button
++                        type="button"
++                        variant="outline"
++                        onClick={() => chooseAction(onProductExchange)}
++                        className="h-auto min-h-20 justify-start gap-4 rounded-xl border-border/80 px-4 py-3 text-start hover:border-primary/45 hover:bg-primary/5"
++                    >
++                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
++                            <ArrowRightLeft className="h-5 w-5" />
++                        </span>
++                        <span className="grid gap-0.5">
++                            <span className="font-semibold">{t('sales.exchange.title', { defaultValue: 'Product Exchange' })}</span>
++                            <span className="whitespace-normal text-xs font-normal text-muted-foreground">
++                                {t('sales.exchange.productExchangeDescription', { defaultValue: 'Replace a product from this sale.' })}
++                            </span>
++                        </span>
++                    </Button>
++                </div>
++
++                <SmallDialogFooter className="pt-1 sm:justify-start">
++                    <Button type="button" variant="ghost" onClick={onClose}>
++                        {t('common.cancel', { defaultValue: 'Cancel' })}
++                    </Button>
++                </SmallDialogFooter>
++            </SmallDialogContent>
++        </SmallDialog>
++    )
++}
+diff --git a/src/ui/components/index.ts b/src/ui/components/index.ts
+index 84a137e5..681be977 100644
+--- a/src/ui/components/index.ts
++++ b/src/ui/components/index.ts
+@@ -73,0 +74,9 @@ export { ReturnConfirmationModal } from './ReturnConfirmationModal'
++export { SaleReturnActionDialog } from './SaleReturnActionDialog'
++export {
++    ProductExchangeModal,
++    type ProductExchangeDraft,
++    type ProductExchangeReplacementProduct,
++    type ProductExchangeSaleItem,
++    type ProductExchangeSettlementMethod,
++    type ProductExchangeStorage,
++} from './ProductExchangeModal'
+diff --git a/src/ui/pages/Sales.tsx b/src/ui/pages/Sales.tsx
+index ce389a48..ceb4979f 100644
+--- a/src/ui/pages/Sales.tsx
++++ b/src/ui/pages/Sales.tsx
+@@ -15 +15 @@ import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseA
+-import { adjustInventoryQuantity, applySalesOrderReturnQuantities, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
++import { adjustInventoryQuantity, applySalesOrderReturnQuantities, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
+@@ -35,0 +36,2 @@ import {
++    SaleReturnActionDialog,
++    ProductExchangeModal,
+@@ -67,0 +70,3 @@ import {
++    type ProductExchangeDraft,
++    type ProductExchangeReplacementProduct,
++    type ProductExchangeSaleItem,
+@@ -276,0 +282,3 @@ export function Sales() {
++    const products = useProducts(user?.workspaceId)
++    const storages = useStorages(user?.workspaceId)
++    const inventory = useInventory(user?.workspaceId)
+@@ -319,0 +328,4 @@ export function Sales() {
++    const [saleForReturnAction, setSaleForReturnAction] = useState<Sale | null>(null)
++    const [saleForProductExchange, setSaleForProductExchange] = useState<Sale | null>(null)
++    const [lockedProductExchangeSaleItemId, setLockedProductExchangeSaleItemId] = useState<string | null>(null)
++    const [isSubmittingProductExchange, setIsSubmittingProductExchange] = useState(false)
+@@ -330,0 +343,64 @@ export function Sales() {
++    const productExchangeSaleItems = useMemo<ProductExchangeSaleItem[]>(() => {
++        if (saleForProductExchange?.origin !== 'pos') {
++            return []
++        }
++
++        const isFlaggedSale = saleForProductExchange.system_review_status === 'flagged'
++        return (saleForProductExchange.items || []).flatMap((item) => {
++            const returnableQuantity = Math.max(
++                0,
++                Number(item.quantity || 0) - Math.max(0, Number(item.returned_quantity || 0)),
++            )
++            const canReturn = isFlaggedSale
++                || !item.product
++                || (item.product.can_be_returned !== false && item.product.is_deleted !== true)
++
++            if (!item.id || !item.product_id || returnableQuantity <= 0 || !canReturn) {
++                return []
++            }
++
++            return [{
++                id: item.id,
++                productId: item.product_id,
++                name: item.product?.name || item.product_name || t('common.unknownProduct', { defaultValue: 'Unknown product' }),
++                sku: item.product?.sku || item.product_sku || null,
++                unit: item.product?.unit || null,
++                returnableQuantity,
++                unitPrice: Number(item.converted_unit_price ?? item.unit_price ?? 0),
++            }]
++        })
++    }, [saleForProductExchange, t])
++
++    const productExchangeReplacementProducts = useMemo<ProductExchangeReplacementProduct[]>(() => {
++        const settlementCurrency = saleForProductExchange?.settlement_currency?.toLowerCase()
++        if (!settlementCurrency) {
++            return []
++        }
++
++        const productsById = new Map(products.map((product) => [product.id, product]))
++        return inventory.flatMap((inventoryItem) => {
++            const product = productsById.get(inventoryItem.productId)
++            const availableQuantity = Number(inventoryItem.quantity || 0)
++            if (
++                !product
++                || product.isDeleted
++                || availableQuantity <= 0
++                || product.currency.toLowerCase() !== settlementCurrency
++            ) {
++                return []
++            }
++
++            return [{
++                id: product.id,
++                storageId: inventoryItem.storageId,
++                name: product.name,
++                sku: product.sku || null,
++                unit: product.unit || null,
++                unitPrice: Number(product.price || 0),
++                currency: product.currency,
++                replacementUnitAmount: Number(product.price || 0),
++                availableQuantity,
++            }]
++        })
++    }, [inventory, products, saleForProductExchange?.settlement_currency])
++
+@@ -1095,0 +1172,59 @@ export function Sales() {
++    const openSaleReturnAction = (sale: Sale) => {
++        // Exchanges are an atomic POS-only operation. Other Sales History
++        // records retain the existing return behaviour without presenting an
++        // action that their source cannot fulfil.
++        if (sale.origin !== 'pos') {
++            handleReturnSale(sale)
++            return
++        }
++        setSaleForReturnAction(sale)
++    }
++
++    const handleProductExchangeSubmit = async (draft: ProductExchangeDraft) => {
++        if (!user?.workspaceId || !saleForProductExchange) {
++            throw new Error(t('sales.exchange.submitFailed', { defaultValue: 'The exchange could not be completed. Please try again.' }))
++        }
++
++        setIsSubmittingProductExchange(true)
++        try {
++            await processSaleProductExchange({
++                workspaceId: user.workspaceId,
++                saleId: saleForProductExchange.id,
++                returnSaleItemId: draft.originalSaleItemId,
++                returnQuantity: draft.returnQuantity,
++                replacementProductId: draft.replacementProductId,
++                replacementStorageId: draft.replacementStorageId,
++                replacementQuantity: draft.replacementQuantity,
++                replacementUnitAmount: draft.replacementUnitAmount,
++                settlementMethod: draft.settlementMethod,
++                returnReason: 'Product exchange',
++                createdBy: user.id,
++            })
++            toast({
++                title: t('sales.exchange.complete', { defaultValue: 'Complete Exchange' }),
++                description: t('sales.exchange.completedDescription', { defaultValue: 'The product exchange has been recorded.' }),
++            })
++        } catch (error) {
++            const description = error instanceof Error
++                ? error.message
++                : t('sales.exchange.submitFailed', { defaultValue: 'The exchange could not be completed. Please try again.' })
++            toast({
++                variant: 'destructive',
++                title: t('common.error', { defaultValue: 'Error' }),
++                description,
++            })
++            throw error
++        } finally {
++            setIsSubmittingProductExchange(false)
++        }
++    }
++
++    const handleProductExchangeFromDetails = (item: SaleItem) => {
++        if (!selectedSale || selectedSale.origin !== 'pos') {
++            return
++        }
++
++        setLockedProductExchangeSaleItemId(item.id)
++        setSaleForProductExchange(selectedSale)
++    }
++
+@@ -2214,0 +2350 @@ export function Sales() {
++                                    const hasProductExchange = (sale.product_exchanges || []).some((exchange: { status?: string }) => exchange.status === 'posted')
+@@ -2278,0 +2415,8 @@ export function Sales() {
++                                                                    {hasProductExchange && (
++                                                                        <span className={cn(
++                                                                            "px-2 py-0.5 text-[9px] font-bold bg-primary/10 text-primary border border-primary/20 uppercase",
++                                                                            style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
++                                                                        )}>
++                                                                            {t('sales.exchange.badge', { defaultValue: 'EXCHANGED' })}
++                                                                        </span>
++                                                                    )}
+@@ -2414 +2558 @@ export function Sales() {
+-                                                                    onClick={() => handleReturnSale(sale)}
++                                                                    onClick={() => openSaleReturnAction(sale)}
+@@ -2458 +2602 @@ export function Sales() {
+-                                                        onSelect={() => handleReturnSale(sale)}
++                                                        onSelect={() => openSaleReturnAction(sale)}
+@@ -2585,0 +2730 @@ export function Sales() {
++                                        const hasProductExchange = (sale.product_exchanges || []).some((exchange: { status?: string }) => exchange.status === 'posted')
+@@ -2637,0 +2783,8 @@ export function Sales() {
++                                                                    {hasProductExchange && (
++                                                                        <span className={cn(
++                                                                            "px-2 py-0.5 text-[10px] font-bold bg-primary/10 text-primary border border-primary/20 uppercase",
++                                                                            style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
++                                                                        )}>
++                                                                            {t('sales.exchange.badge', { defaultValue: 'EXCHANGED' })}
++                                                                        </span>
++                                                                    )}
+@@ -2756 +2909 @@ export function Sales() {
+-                                                                            onClick={() => handleReturnSale(sale)}
++                                                                            onClick={() => openSaleReturnAction(sale)}
+@@ -2804 +2957 @@ export function Sales() {
+-                                                            onSelect={() => handleReturnSale(sale)}
++                                                            onSelect={() => openSaleReturnAction(sale)}
+@@ -2849,0 +3003 @@ export function Sales() {
++                    onExchangeItem={handleProductExchangeFromDetails}
+@@ -2853,0 +3008,32 @@ export function Sales() {
++                <SaleReturnActionDialog
++                    isOpen={!!saleForReturnAction}
++                    onClose={() => setSaleForReturnAction(null)}
++                    onReturnSale={() => {
++                        if (saleForReturnAction) {
++                            handleReturnSale(saleForReturnAction)
++                        }
++                    }}
++                    onProductExchange={() => {
++                        if (saleForReturnAction) {
++                            setLockedProductExchangeSaleItemId(null)
++                            setSaleForProductExchange(saleForReturnAction)
++                        }
++                    }}
++                />
++
++                <ProductExchangeModal
++                    isOpen={!!saleForProductExchange}
++                    onClose={() => {
++                        setSaleForProductExchange(null)
++                        setLockedProductExchangeSaleItemId(null)
++                    }}
++                    saleItems={productExchangeSaleItems}
++                    storages={storages}
++                    productCatalog={products}
++                    replacementProducts={productExchangeReplacementProducts}
++                    settlementCurrency={saleForProductExchange?.settlement_currency || 'usd'}
++                    lockedSaleItemId={lockedProductExchangeSaleItemId}
++                    isSubmitting={isSubmittingProductExchange}
++                    onSubmit={handleProductExchangeSubmit}
++                />
++
+diff --git a/supabase/migrations/20260727110000_add_sale_product_exchanges.sql b/supabase/migrations/20260727110000_add_sale_product_exchanges.sql
+new file mode 100644
+index 00000000..c6065cc6
+--- /dev/null
++++ b/supabase/migrations/20260727110000_add_sale_product_exchanges.sql
+@@ -0,0 +1,538 @@
++-- A product exchange is an atomic operation: return one original POS line,
++-- release its stock, issue one replacement item, and settle only the net
++-- difference.  It deliberately has its own ledger instead of overloading the
++-- existing currency `sales_exchange` snapshot table.
++
++CREATE TABLE IF NOT EXISTS public.sale_product_exchanges (
++  id uuid PRIMARY KEY,
++  workspace_id uuid NOT NULL REFERENCES public.workspaces(id),
++  sale_id uuid NOT NULL REFERENCES public.sales(id),
++  return_id uuid NOT NULL REFERENCES public.sale_returns(id) ON DELETE RESTRICT,
++  return_sale_item_id uuid NOT NULL REFERENCES public.sale_items(id),
++  return_product_id uuid NOT NULL REFERENCES public.products(id),
++  return_quantity numeric NOT NULL CHECK (return_quantity > 0),
++  return_unit_amount numeric NOT NULL CHECK (return_unit_amount >= 0),
++  return_amount numeric NOT NULL CHECK (return_amount >= 0),
++  return_storage_id uuid NULL REFERENCES public.storages(id),
++  replacement_product_id uuid NOT NULL REFERENCES public.products(id),
++  replacement_storage_id uuid NOT NULL REFERENCES public.storages(id),
++  replacement_quantity numeric NOT NULL CHECK (replacement_quantity > 0),
++  replacement_unit_amount numeric NOT NULL CHECK (replacement_unit_amount >= 0),
++  replacement_amount numeric NOT NULL CHECK (replacement_amount >= 0),
++  replacement_batch_allocations jsonb NULL,
++  settlement_currency text NOT NULL,
++  difference_amount numeric NOT NULL,
++  cash_settlement_amount numeric NOT NULL DEFAULT 0 CHECK (cash_settlement_amount >= 0),
++  settlement_direction text NULL CHECK (settlement_direction IN ('incoming', 'outgoing')),
++  settlement_method text NULL,
++  settlement_transaction_id uuid NULL REFERENCES public.payment_transactions(id),
++  loan_id uuid NULL REFERENCES public.loans(id),
++  loan_credit_amount numeric NOT NULL DEFAULT 0 CHECK (loan_credit_amount >= 0),
++  reason text NOT NULL,
++  notes text NULL,
++  exchanged_by uuid NULL,
++  exchanged_at timestamptz NOT NULL DEFAULT now(),
++  status text NOT NULL DEFAULT 'posted' CHECK (status IN ('posted', 'voided')),
++  created_at timestamptz NOT NULL DEFAULT now(),
++  updated_at timestamptz NOT NULL DEFAULT timezone('utc', now()),
++  version integer NOT NULL DEFAULT 1,
++  is_deleted boolean NOT NULL DEFAULT false,
++  CONSTRAINT sale_product_exchanges_return_unique UNIQUE (return_id)
++);
++
++ALTER TABLE public.sale_returns
++  DROP CONSTRAINT IF EXISTS sale_returns_source_check;
++ALTER TABLE public.sale_returns
++  ADD CONSTRAINT sale_returns_source_check
++  CHECK (source IN ('app', 'exchange', 'legacy_backfill', 'system'));
++
++CREATE INDEX IF NOT EXISTS sale_product_exchanges_workspace_exchanged_at_idx
++  ON public.sale_product_exchanges (workspace_id, exchanged_at DESC);
++CREATE INDEX IF NOT EXISTS sale_product_exchanges_sale_idx
++  ON public.sale_product_exchanges (sale_id, exchanged_at DESC);
++
++ALTER TABLE public.sale_product_exchanges ENABLE ROW LEVEL SECURITY;
++DROP POLICY IF EXISTS sale_product_exchanges_select ON public.sale_product_exchanges;
++CREATE POLICY sale_product_exchanges_select
++  ON public.sale_product_exchanges
++  FOR SELECT TO authenticated
++  USING (workspace_id = public.current_workspace_id());
++GRANT SELECT ON public.sale_product_exchanges TO authenticated;
++GRANT ALL ON public.sale_product_exchanges TO service_role;
++
++-- A full return normally cancels its POS loan. Re-declare the known trigger
++-- function rather than attempting to rewrite its installed source text: some
++-- deployed databases have a differently formatted body. During an exchange,
++-- the transaction-local setting preserves the linked loan for net settlement.
++CREATE OR REPLACE FUNCTION public.cancel_pos_loan_after_full_sale_return()
++RETURNS trigger
++LANGUAGE plpgsql
++SECURITY DEFINER
++SET search_path = public, pg_temp
++AS $function$
++DECLARE
++  v_loan public.loans%ROWTYPE;
++  v_payment public.loan_payments%ROWTYPE;
++  v_source_transaction public.payment_transactions%ROWTYPE;
++  v_return_id uuid;
++  v_source_type text;
++  v_reason text;
++BEGIN
++  IF current_setting('atlas.product_exchange', true) = 'true' THEN
++    RETURN NEW;
++  END IF;
++
++  IF OLD.return_status = 'full'
++     OR NEW.return_status IS DISTINCT FROM 'full'
++     OR NEW.payment_method IS DISTINCT FROM 'loan' THEN
++    RETURN NEW;
++  END IF;
++
++  SELECT *
++  INTO v_loan
++  FROM public.loans
++  WHERE sale_id = NEW.id
++    AND workspace_id = NEW.workspace_id
++    AND source = 'pos'
++    AND COALESCE(is_deleted, false) = false
++  FOR UPDATE;
++
++  IF NOT FOUND THEN
++    RETURN NEW;
++  END IF;
++
++  v_reason := COALESCE(NULLIF(BTRIM(NEW.return_reason), ''), 'Return');
++
++  SELECT id
++  INTO v_return_id
++  FROM public.sale_returns
++  WHERE sale_id = NEW.id
++    AND workspace_id = NEW.workspace_id
++    AND status = 'posted'
++  ORDER BY returned_at DESC, id DESC
++  LIMIT 1;
++
++  UPDATE public.loans
++  SET
++    total_paid_amount = 0,
++    balance_amount = 0,
++    next_due_date = NULL,
++    status = 'cancelled',
++    notes = concat_ws(E'\n', NULLIF(BTRIM(notes), ''), 'Cancelled: linked sale was fully returned (' || v_reason || ').'),
++    overdue_reminder_snoozed_at = NULL,
++    overdue_reminder_snoozed_for_due_date = NULL,
++    updated_at = timezone('utc', now()),
++    version = COALESCE(version, 0) + 1
++  WHERE id = v_loan.id;
++
++  UPDATE public.loan_installments
++  SET
++    paid_amount = 0,
++    balance_amount = 0,
++    status = 'cancelled',
++    paid_at = NULL,
++    updated_at = timezone('utc', now()),
++    version = COALESCE(version, 0) + 1
++  WHERE loan_id = v_loan.id
++    AND COALESCE(is_deleted, false) = false;
++
++  FOR v_payment IN
++    SELECT *
++    FROM public.loan_payments
++    WHERE loan_id = v_loan.id
++      AND COALESCE(is_deleted, false) = false
++      AND amount > 0
++    ORDER BY paid_at, created_at, id
++  LOOP
++    IF EXISTS (
++      SELECT 1
++      FROM public.payment_transactions existing_refund
++      WHERE existing_refund.workspace_id = NEW.workspace_id
++        AND COALESCE(existing_refund.is_deleted, false) = false
++        AND existing_refund.metadata ->> 'loanPaymentId' = v_payment.id::text
++        AND COALESCE((existing_refund.metadata ->> 'fullSaleReturn')::boolean, false)
++    ) THEN
++      CONTINUE;
++    END IF;
++
++    SELECT *
++    INTO v_source_transaction
++    FROM public.payment_transactions payment_transaction
++    WHERE payment_transaction.workspace_id = NEW.workspace_id
++      AND COALESCE(payment_transaction.is_deleted, false) = false
++      AND payment_transaction.reversal_of_transaction_id IS NULL
++      AND (
++        payment_transaction.metadata ->> 'loanPaymentId' = v_payment.id::text
++        OR (
++          payment_transaction.source_subrecord_id = v_payment.id
++          AND payment_transaction.source_type IN ('loan_payment', 'simple_loan')
++        )
++      )
++    ORDER BY payment_transaction.paid_at DESC, payment_transaction.created_at DESC, payment_transaction.id DESC
++    LIMIT 1;
++
++    IF FOUND THEN
++      INSERT INTO public.payment_transactions (
++        id, workspace_id, source_module, source_type, source_record_id,
++        source_subrecord_id, direction, amount, currency, payment_method,
++        paid_at, counterparty_name, reference_label, note, created_by,
++        reversal_of_transaction_id, metadata, created_at, updated_at, version, is_deleted
++      ) VALUES (
++        gen_random_uuid(), NEW.workspace_id, v_source_transaction.source_module,
++        v_source_transaction.source_type, v_source_transaction.source_record_id,
++        v_source_transaction.source_subrecord_id, v_source_transaction.direction,
++        -ABS(v_payment.amount), v_source_transaction.currency,
++        v_source_transaction.payment_method, now(), v_source_transaction.counterparty_name,
++        v_source_transaction.reference_label,
++        'Full sale return: ' || v_reason, NEW.returned_by,
++        v_source_transaction.id,
++        COALESCE(v_source_transaction.metadata, '{}'::jsonb) || jsonb_build_object(
++          'saleId', NEW.id,
++          'saleReturnId', v_return_id,
++          'loanPaymentId', v_payment.id,
++          'fullSaleReturn', true,
++          'returnReason', v_reason
++        ),
++        now(), timezone('utc', now()), 1, false
++      );
++    ELSE
++      v_source_type := CASE
++        WHEN COALESCE(v_loan.loan_category, 'standard') = 'simple' THEN 'simple_loan'
++        WHEN COALESCE(v_loan.installment_count, 1) > 1 THEN 'loan_installment'
++        ELSE 'loan_payment'
++      END;
++
++      INSERT INTO public.payment_transactions (
++        id, workspace_id, source_module, source_type, source_record_id,
++        source_subrecord_id, direction, amount, currency, payment_method,
++        paid_at, counterparty_name, reference_label, note, created_by,
++        reversal_of_transaction_id, metadata, created_at, updated_at, version, is_deleted
++      ) VALUES (
++        gen_random_uuid(), NEW.workspace_id, 'loans', v_source_type, v_loan.id,
++        v_payment.id,
++        CASE WHEN COALESCE(v_loan.direction, 'lent') = 'borrowed' THEN 'outgoing' ELSE 'incoming' END,
++        -ABS(v_payment.amount), v_loan.settlement_currency, v_payment.payment_method,
++        now(), v_loan.borrower_name, v_loan.loan_no,
++        'Full sale return: ' || v_reason, NEW.returned_by,
++        NULL,
++        jsonb_build_object(
++          'saleId', NEW.id,
++          'saleReturnId', v_return_id,
++          'loanId', v_loan.id,
++          'loanPaymentId', v_payment.id,
++          'fullSaleReturn', true,
++          'returnReason', v_reason,
++          'refundWithoutOriginalTransaction', true
++        ),
++        now(), timezone('utc', now()), 1, false
++      );
++    END IF;
++  END LOOP;
++
++  RETURN NEW;
++END;
++$function$;
++
++DROP TRIGGER IF EXISTS cancel_pos_loan_after_full_sale_return ON public.sales;
++CREATE TRIGGER cancel_pos_loan_after_full_sale_return
++AFTER UPDATE OF return_status ON public.sales
++FOR EACH ROW
++EXECUTE FUNCTION public.cancel_pos_loan_after_full_sale_return();
++
++CREATE OR REPLACE FUNCTION public.process_sale_product_exchange(
++  p_exchange_id uuid,
++  p_return_id uuid,
++  p_sale_id uuid,
++  p_return_sale_item_id uuid,
++  p_return_quantity numeric,
++  p_replacement_product_id uuid,
++  p_replacement_storage_id uuid,
++  p_replacement_quantity numeric,
++  p_replacement_unit_amount numeric,
++  p_settlement_method text DEFAULT NULL,
++  p_note text DEFAULT NULL,
++  p_return_reason text DEFAULT 'Product exchange'
++)
++RETURNS jsonb
++LANGUAGE plpgsql
++SECURITY DEFINER
++SET search_path = public, pg_temp
++AS $function$
++DECLARE
++  v_sale public.sales%ROWTYPE;
++  v_return_item public.sale_items%ROWTYPE;
++  v_replacement_product public.products%ROWTYPE;
++  v_replacement_inventory public.inventory%ROWTYPE;
++  v_batch public.stock_batches%ROWTYPE;
++  v_loan public.loans%ROWTYPE;
++  v_installment public.loan_installments%ROWTYPE;
++  v_user_role text;
++  v_return_result jsonb;
++  v_return_amount numeric := 0;
++  v_replacement_amount numeric := 0;
++  v_difference numeric := 0;
++  v_replacement_remaining numeric := 0;
++  v_allocated_quantity numeric := 0;
++  v_batch_allocations jsonb := '[]'::jsonb;
++  v_cash_settlement numeric := 0;
++  v_settlement_direction text := NULL;
++  v_settlement_transaction_id uuid := NULL;
++  v_loan_credit numeric := 0;
++  v_credit_remaining numeric := 0;
++  v_next_balance numeric := 0;
++  v_next_status text := 'active';
++  v_next_due_date date := NULL;
++  v_payment_id uuid := NULL;
++  v_reason text;
++BEGIN
++  IF p_exchange_id IS NULL OR p_return_id IS NULL OR p_sale_id IS NULL THEN
++    RAISE EXCEPTION 'Exchange, return, and sale IDs are required';
++  END IF;
++  IF p_return_quantity IS NULL OR p_return_quantity <= 0
++     OR p_replacement_quantity IS NULL OR p_replacement_quantity <= 0 THEN
++    RAISE EXCEPTION 'Exchange quantities must be greater than zero';
++  END IF;
++  IF p_replacement_unit_amount IS NULL OR p_replacement_unit_amount < 0 THEN
++    RAISE EXCEPTION 'Replacement unit amount must be zero or greater';
++  END IF;
++
++  IF EXISTS (SELECT 1 FROM public.sale_product_exchanges WHERE id = p_exchange_id) THEN
++    RETURN jsonb_build_object('success', true, 'exchange_id', p_exchange_id, 'idempotent_replay', true);
++  END IF;
++
++  SELECT * INTO v_sale
++  FROM public.sales
++  WHERE id = p_sale_id
++  FOR UPDATE;
++  IF NOT FOUND THEN RAISE EXCEPTION 'Sale not found'; END IF;
++  IF lower(BTRIM(COALESCE(v_sale.origin, ''))) <> 'pos' THEN
++    RAISE EXCEPTION 'Product exchange is available only for POS sales';
++  END IF;
++
++  SELECT role INTO v_user_role
++  FROM public.profiles
++  WHERE id = auth.uid() AND workspace_id = v_sale.workspace_id;
++  IF v_user_role NOT IN ('admin', 'staff') THEN
++    RAISE EXCEPTION 'Unauthorized: Only admins and staff can exchange sale products';
++  END IF;
++
++  SELECT * INTO v_return_item
++  FROM public.sale_items
++  WHERE id = p_return_sale_item_id AND sale_id = p_sale_id
++  FOR UPDATE;
++  IF NOT FOUND THEN RAISE EXCEPTION 'Original sale item not found'; END IF;
++
++  SELECT * INTO v_replacement_product
++  FROM public.products
++  WHERE id = p_replacement_product_id
++    AND workspace_id = v_sale.workspace_id
++    AND COALESCE(is_deleted, false) = false
++  FOR UPDATE;
++  IF NOT FOUND THEN RAISE EXCEPTION 'Replacement product not found'; END IF;
++  IF lower(COALESCE(v_replacement_product.currency, '')) <> lower(v_sale.settlement_currency) THEN
++    RAISE EXCEPTION 'Replacement product currency must match the sale settlement currency';
++  END IF;
++  IF abs(COALESCE(v_replacement_product.price, 0) - p_replacement_unit_amount) > 0.000001 THEN
++    RAISE EXCEPTION 'Replacement unit amount must match the current product price';
++  END IF;
++
++  SELECT * INTO v_replacement_inventory
++  FROM public.inventory
++  WHERE workspace_id = v_sale.workspace_id
++    AND product_id = p_replacement_product_id
++    AND storage_id = p_replacement_storage_id
++    AND COALESCE(is_deleted, false) = false
++  FOR UPDATE;
++  IF NOT FOUND OR COALESCE(v_replacement_inventory.quantity, 0) < p_replacement_quantity THEN
++    RAISE EXCEPTION 'Insufficient inventory in the selected replacement storage';
++  END IF;
++
++  -- Allocate replacement batches exactly like POS checkout (FIFO by expiry).
++  v_replacement_remaining := p_replacement_quantity;
++  FOR v_batch IN
++    SELECT * FROM public.stock_batches
++    WHERE workspace_id = v_sale.workspace_id
++      AND product_id = p_replacement_product_id
++      AND storage_id = p_replacement_storage_id
++      AND COALESCE(is_deleted, false) = false
++    ORDER BY expiry_date ASC NULLS LAST, manufacturing_date ASC NULLS LAST, created_at ASC, batch_number ASC
++    FOR UPDATE
++  LOOP
++    EXIT WHEN v_replacement_remaining <= 0;
++    v_allocated_quantity := LEAST(v_replacement_remaining, COALESCE(v_batch.quantity, 0));
++    IF v_allocated_quantity <= 0 THEN CONTINUE; END IF;
++    UPDATE public.stock_batches
++    SET quantity = quantity - v_allocated_quantity,
++        is_deleted = quantity - v_allocated_quantity <= 0,
++        updated_at = now(), version = COALESCE(version, 0) + 1
++    WHERE id = v_batch.id;
++    v_batch_allocations := v_batch_allocations || jsonb_build_array(jsonb_build_object(
++      'batch_id', v_batch.id, 'batch_number', v_batch.batch_number,
++      'quantity', v_allocated_quantity, 'price', v_batch.price,
++      'cost_price', v_batch.cost_price, 'currency', lower(v_batch.currency),
++      'expiry_date', v_batch.expiry_date, 'manufacturing_date', v_batch.manufacturing_date
++    ));
++    v_replacement_remaining := v_replacement_remaining - v_allocated_quantity;
++  END LOOP;
++
++  -- The standard return routine updates sale quantities, inventory and return
++  -- ledger entries.  Its full-return loan trigger is skipped only for this
++  -- transaction and the return is then labelled as an exchange.
++  PERFORM set_config('atlas.product_exchange', 'true', true);
++  v_reason := COALESCE(NULLIF(BTRIM(p_return_reason), ''), 'Product exchange');
++  v_return_result := public.process_sale_return(
++    p_return_id,
++    p_sale_id,
++    jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'sale_item_id', p_return_sale_item_id, 'quantity', p_return_quantity)),
++    v_reason,
++    'product_exchange'
++  );
++  v_return_amount := COALESCE((v_return_result->>'return_value')::numeric, 0);
++  UPDATE public.sale_returns
++  SET source = 'exchange', refund_method = NULL, updated_at = timezone('utc', now())
++  WHERE id = p_return_id;
++
++  UPDATE public.inventory
++  SET quantity = quantity - p_replacement_quantity,
++      updated_at = now(), version = COALESCE(version, 0) + 1,
++      is_deleted = quantity - p_replacement_quantity <= 0
++  WHERE id = v_replacement_inventory.id;
++  PERFORM public.refresh_product_inventory_snapshot(p_replacement_product_id);
++
++  v_replacement_amount := p_replacement_quantity * p_replacement_unit_amount;
++  v_difference := v_replacement_amount - v_return_amount;
++
++  -- Loan sales retain the same loan.  A cheaper replacement pays down the
++  -- balance; a more expensive one increases that loan's principal and balance.
++  IF v_sale.payment_method = 'loan' THEN
++    SELECT * INTO v_loan
++    FROM public.loans
++    WHERE workspace_id = v_sale.workspace_id
++      AND sale_id = p_sale_id AND source = 'pos'
++      AND COALESCE(is_deleted, false) = false
++    FOR UPDATE;
++
++    IF FOUND THEN
++      IF v_difference < 0 THEN
++        v_loan_credit := LEAST(-v_difference, COALESCE(v_loan.balance_amount, 0));
++        v_credit_remaining := v_loan_credit;
++        FOR v_installment IN
++          SELECT * FROM public.loan_installments
++          WHERE loan_id = v_loan.id AND COALESCE(is_deleted, false) = false
++          ORDER BY installment_no FOR UPDATE
++        LOOP
++          EXIT WHEN v_credit_remaining <= 0;
++          v_allocated_quantity := LEAST(v_credit_remaining, COALESCE(v_installment.balance_amount, 0));
++          IF v_allocated_quantity <= 0 THEN CONTINUE; END IF;
++          UPDATE public.loan_installments
++          SET paid_amount = paid_amount + v_allocated_quantity,
++              balance_amount = balance_amount - v_allocated_quantity,
++              status = CASE WHEN balance_amount - v_allocated_quantity <= 0 THEN 'paid' ELSE 'partial' END,
++              paid_at = CASE WHEN balance_amount - v_allocated_quantity <= 0 THEN now() ELSE paid_at END,
++              updated_at = now(), version = COALESCE(version, 0) + 1
++          WHERE id = v_installment.id;
++          v_credit_remaining := v_credit_remaining - v_allocated_quantity;
++        END LOOP;
++        v_cash_settlement := -v_difference - v_loan_credit;
++      ELSIF v_difference > 0 THEN
++        -- Add the extra value to the next unpaid installment, or revive the
++        -- final installment if the loan had been completed.
++        SELECT * INTO v_installment FROM public.loan_installments
++        WHERE loan_id = v_loan.id AND COALESCE(is_deleted, false) = false AND balance_amount > 0
++        ORDER BY installment_no LIMIT 1 FOR UPDATE;
++        IF NOT FOUND THEN
++          SELECT * INTO v_installment FROM public.loan_installments
++          WHERE loan_id = v_loan.id AND COALESCE(is_deleted, false) = false
++          ORDER BY installment_no DESC LIMIT 1 FOR UPDATE;
++        END IF;
++        IF FOUND THEN
++          UPDATE public.loan_installments
++          SET planned_amount = planned_amount + v_difference,
++              balance_amount = balance_amount + v_difference,
++              status = CASE WHEN due_date < CURRENT_DATE THEN 'overdue' WHEN paid_amount > 0 THEN 'partial' ELSE 'unpaid' END,
++              paid_at = NULL, updated_at = now(), version = COALESCE(version, 0) + 1
++          WHERE id = v_installment.id;
++        END IF;
++      END IF;
++
++      v_next_balance := GREATEST(0, COALESCE(v_loan.balance_amount, 0) + v_difference);
++      SELECT due_date INTO v_next_due_date
++      FROM public.loan_installments
++      WHERE loan_id = v_loan.id
++        AND COALESCE(is_deleted, false) = false
++        AND balance_amount > 0
++      ORDER BY installment_no
++      LIMIT 1;
++      v_next_status := CASE
++        WHEN v_next_balance <= 0 THEN 'completed'
++        WHEN v_next_due_date IS NOT NULL AND v_next_due_date < CURRENT_DATE THEN 'overdue'
++        ELSE 'active'
++      END;
++      UPDATE public.loans
++      SET principal_amount = principal_amount + GREATEST(v_difference, 0),
++          total_paid_amount = total_paid_amount + v_loan_credit,
++          balance_amount = v_next_balance,
++          next_due_date = v_next_due_date,
++          status = v_next_status,
++          updated_at = now(), version = COALESCE(version, 0) + 1
++      WHERE id = v_loan.id;
++
++      IF v_loan_credit > 0 THEN
++        v_payment_id := gen_random_uuid();
++        INSERT INTO public.loan_payments (id, loan_id, workspace_id, amount, payment_method, paid_at, note, created_by, created_at, updated_at, version, is_deleted)
++        VALUES (v_payment_id, v_loan.id, v_sale.workspace_id, v_loan_credit, 'loan_adjustment', now(), 'Product exchange credit ' || p_exchange_id::text, auth.uid(), now(), now(), 1, false);
++        INSERT INTO public.payment_transactions (id, workspace_id, source_module, source_type, source_record_id, source_subrecord_id, direction, amount, currency, payment_method, paid_at, counterparty_name, reference_label, note, created_by, metadata, created_at, updated_at, version, is_deleted)
++        VALUES (gen_random_uuid(), v_sale.workspace_id, 'loans', CASE WHEN COALESCE(v_loan.loan_category, 'standard') = 'simple' THEN 'simple_loan' ELSE 'loan_installment' END, v_loan.id, v_payment_id, CASE WHEN COALESCE(v_loan.direction, 'lent') = 'borrowed' THEN 'outgoing' ELSE 'incoming' END, v_loan_credit, v_loan.settlement_currency, 'loan_adjustment', now(), v_loan.borrower_name, v_loan.loan_no, 'Product exchange credit', auth.uid(), jsonb_build_object('saleId', p_sale_id, 'saleProductExchangeId', p_exchange_id, 'loanPaymentId', v_payment_id), now(), now(), 1, false);
++      END IF;
++    ELSE
++      v_cash_settlement := abs(v_difference);
++    END IF;
++  ELSE
++    v_cash_settlement := abs(v_difference);
++  END IF;
++
++  IF v_cash_settlement > 0 THEN
++    IF NULLIF(BTRIM(p_settlement_method), '') IS NULL THEN
++      RAISE EXCEPTION 'A settlement method is required for the cash difference';
++    END IF;
++    v_settlement_direction := CASE WHEN v_difference > 0 THEN 'incoming' ELSE 'outgoing' END;
++    v_settlement_transaction_id := gen_random_uuid();
++    INSERT INTO public.payment_transactions (id, workspace_id, source_module, source_type, source_record_id, direction, amount, currency, payment_method, paid_at, reference_label, note, created_by, metadata, created_at, updated_at, version, is_deleted)
++    VALUES (v_settlement_transaction_id, v_sale.workspace_id, 'sales', 'sale_exchange', p_exchange_id, v_settlement_direction, v_cash_settlement, v_sale.settlement_currency, p_settlement_method, now(), p_exchange_id::text, 'Product exchange settlement', auth.uid(), jsonb_build_object('saleId', p_sale_id, 'saleProductExchangeId', p_exchange_id), now(), now(), 1, false);
++  END IF;
++
++  INSERT INTO public.sale_product_exchanges (
++    id, workspace_id, sale_id, return_id, return_sale_item_id, return_product_id,
++    return_quantity, return_unit_amount, return_amount, return_storage_id,
++    replacement_product_id, replacement_storage_id, replacement_quantity,
++    replacement_unit_amount, replacement_amount, replacement_batch_allocations,
++    settlement_currency, difference_amount, cash_settlement_amount,
++    settlement_direction, settlement_method, settlement_transaction_id, loan_id,
++    loan_credit_amount, reason, notes, exchanged_by, exchanged_at, status,
++    created_at, updated_at, version, is_deleted
++  ) VALUES (
++    p_exchange_id, v_sale.workspace_id, p_sale_id, p_return_id, p_return_sale_item_id, v_return_item.product_id,
++    p_return_quantity, COALESCE(v_return_item.converted_unit_price, v_return_item.unit_price, 0), v_return_amount,
++    (SELECT restored_storage_id FROM public.sale_return_items WHERE return_id = p_return_id AND sale_item_id = p_return_sale_item_id),
++    p_replacement_product_id, p_replacement_storage_id, p_replacement_quantity,
++    p_replacement_unit_amount, v_replacement_amount,
++    CASE WHEN jsonb_array_length(v_batch_allocations) > 0 THEN v_batch_allocations ELSE NULL END,
++    v_sale.settlement_currency, v_difference, v_cash_settlement,
++    v_settlement_direction, NULLIF(BTRIM(p_settlement_method), ''), v_settlement_transaction_id,
++    CASE WHEN v_loan.id IS NULL THEN NULL ELSE v_loan.id END,
++    v_loan_credit, v_reason, NULLIF(BTRIM(p_note), ''), auth.uid(), now(), 'posted',
++    now(), timezone('utc', now()), 1, false
++  );
++
++  RETURN jsonb_build_object(
++    'success', true, 'exchange_id', p_exchange_id, 'return_id', p_return_id,
++    'return_amount', v_return_amount, 'replacement_amount', v_replacement_amount,
++    'difference_amount', v_difference, 'cash_settlement_amount', v_cash_settlement,
++    'loan_credit_amount', v_loan_credit, 'idempotent_replay', false
++  );
++END;
++$function$;
++
++REVOKE ALL ON FUNCTION public.process_sale_product_exchange(uuid, uuid, uuid, uuid, numeric, uuid, uuid, numeric, numeric, text, text, text) FROM PUBLIC;
++GRANT EXECUTE ON FUNCTION public.process_sale_product_exchange(uuid, uuid, uuid, uuid, numeric, uuid, uuid, numeric, numeric, text, text, text)
++  TO authenticated, service_role;
