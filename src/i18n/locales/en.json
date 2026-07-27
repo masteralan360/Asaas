@@ -3253,7 +3253,14 @@
       "overdue": "Overdue",
       "cancelled": "Cancelled"
     },
+    "partialSaleReturnTitle": "Partial Sale Return",
+    "partialSaleReturnDescription": "A partial return was posted for the linked POS sale. Its return credit is reflected in this loan.",
+    "saleReturnAmount": "Sale Return Amount",
+    "returnCreditApplied": "Return Credit Applied",
+    "lastSaleReturn": "Last Sale Return",
+    "returnCreditIncluded": "Includes {{amount}} from partial sale returns",
     "activities": {
+      "saleReturnCredit": "Sale Return Credit",
       "paymentReceived": "Payment Received",
       "paymentMade": "Repayment Made",
       "loanCancelled": "Loan Cancelled — Full Sale Return",

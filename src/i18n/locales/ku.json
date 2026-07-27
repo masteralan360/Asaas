@@ -2439,7 +2439,14 @@
       "overdue": "بەسەرچوو",
       "cancelled": "هەڵوەشاوە"
     },
+    "partialSaleReturnTitle": "گەڕاندنەوەی بەشەکیی فرۆشتن",
+    "partialSaleReturnDescription": "گەڕاندنەوەیەکی بەشەکی بۆ فرۆشتنی پەیوەست بە POS تۆمارکراوە. کرێدیتی گەڕاندنەوەکە لەم قەرزە پیشان دەدرێت.",
+    "saleReturnAmount": "بڕی گەڕاندنەوەی فرۆشتن",
+    "returnCreditApplied": "کرێدیتی گەڕاندنەوەی جێبەجێکراو",
+    "lastSaleReturn": "دوا گەڕاندنەوەی فرۆشتن",
+    "returnCreditIncluded": "{{amount}} لە گەڕاندنەوە بەشەکییەکانی فرۆشتن لەخۆدەگرێت",
     "activities": {
+      "saleReturnCredit": "کرێدیتی گەڕاندنەوەی فرۆشتن",
       "paymentReceived": "پارەدان وەرگیرا",
       "paymentMade": "پارەدانەوە کرا",
       "loanCancelled": "قەرز هەڵوەشاوە — گەڕاندنەوەی تەواوی فرۆشتن",

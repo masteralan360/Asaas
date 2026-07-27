@@ -15,7 +15,8 @@ import {
     hasLoanTransactionHistory,
     isLoanDeletionAllowed,
     type Loan,
-    type LoanInstallment
+    type LoanInstallment,
+    type LoanPayment
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { isDateInDateRange } from '@/lib/dateRangeFilters'
@@ -72,7 +73,7 @@ import {
     TabsList,
     TabsTrigger,
 } from '@/ui/components'
-import { Search, Plus, ArrowLeft, Printer, Trash2, List, LayoutGrid, MessageCircle, Receipt, CircleX } from 'lucide-react'
+import { Search, Plus, ArrowLeft, Printer, Trash2, List, LayoutGrid, MessageCircle, Receipt, CircleX, Undo2 } from 'lucide-react'
 import { CreateManualLoanModal } from '@/ui/components/loans/CreateManualLoanModal'
 import { LoanDetailsPrintTemplate, LoanListPrintTemplate } from '@/ui/components/loans/LoanPrintTemplates'
 import { LoanNoDisplay } from '@/ui/components/loans/LoanNoDisplay'
@@ -82,6 +83,17 @@ import { RealEstateInstallmentsMirror } from '@/ui/components/real-estate/RealEs
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 type LoanFilter = 'all' | 'active' | 'overdue' | 'completed'
+
+type PartialSaleReturnSummary = {
+    returnedAmount: number
+    lastReturnedAt: string
+    lastReason: string | null
+}
+
+function isPosSaleReturnCredit(payment: Pick<LoanPayment, 'paymentMethod' | 'note'>) {
+    return payment.paymentMethod === 'loan_adjustment'
+        && /^Return Credit\b/i.test(payment.note || '')
+}
 
 function statusClass(status: string) {
     if (status === 'completed') return 'bg-blue-500/15 text-blue-600 dark:text-blue-300'
@@ -894,6 +906,31 @@ function LoanDetailsView({
     const loan = useLoan(loanId)
     const installments = useLoanInstallments(loanId, workspaceId)
     const payments = useLoanPayments(loanId, workspaceId)
+    const partialSaleReturnSummary = useLiveQuery(async (): Promise<PartialSaleReturnSummary | null> => {
+        if (!loan?.saleId || loan.source !== 'pos' || loan.status === 'cancelled') {
+            return null
+        }
+
+        const [sale, returns] = await Promise.all([
+            db.sales.get(loan.saleId),
+            db.sale_returns.where('saleId').equals(loan.saleId).toArray()
+        ])
+        if (!sale || sale.isDeleted || sale.returnStatus !== 'partial') {
+            return null
+        }
+
+        const postedReturns = returns
+            .filter((saleReturn) => !saleReturn.isDeleted && saleReturn.status === 'posted')
+            .sort((a, b) => new Date(b.returnedAt).getTime() - new Date(a.returnedAt).getTime())
+        const latestReturn = postedReturns[0]
+        const recordedReturnAmount = postedReturns.reduce((total, saleReturn) => total + saleReturn.refundAmount, 0)
+
+        return {
+            returnedAmount: recordedReturnAmount || sale.returnedAmount || 0,
+            lastReturnedAt: latestReturn?.returnedAt || sale.updatedAt,
+            lastReason: latestReturn?.reason || null
+        }
+    }, [loan?.saleId, loan?.source, loan?.status])
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
         return (localStorage.getItem('loan_details_view_mode') as 'table' | 'grid') || 'table'
     })
@@ -1071,6 +1108,9 @@ function LoanDetailsView({
         ? Math.min(100, (loan.totalPaidAmount / loan.principalAmount) * 100)
         : 0
     const isCancelled = loan.status === 'cancelled'
+    const partialSaleReturnCredit = loan.source === 'pos'
+        ? payments.filter(isPosSaleReturnCredit).reduce((total, payment) => total + payment.amount, 0)
+        : 0
 
     const activityRows: Array<{
         id: string
@@ -1078,27 +1118,36 @@ function LoanDetailsView({
         label: string
         amount: number | null
         isCancellation: boolean
+        isSaleReturnCredit: boolean
     }> = [
         ...(isCancelled ? [{
             id: `${loan.id}-cancelled`,
             date: loan.updatedAt,
             label: t('loans.activities.loanCancelled', { defaultValue: 'Loan Cancelled — Full Sale Return' }),
             amount: null,
-            isCancellation: true
+            isCancellation: true,
+            isSaleReturnCredit: false
         }] : []),
-        ...payments.map(payment => ({
-            id: payment.id,
-            date: payment.paidAt,
-            label: getLoanPaymentActivityLabel(loan, t),
-            amount: payment.amount,
-            isCancellation: false
-        })),
+        ...payments.map(payment => {
+            const isSaleReturnCredit = loan.source === 'pos' && isPosSaleReturnCredit(payment)
+            return {
+                id: payment.id,
+                date: payment.paidAt,
+                label: isSaleReturnCredit
+                    ? t('loans.activities.saleReturnCredit', { defaultValue: 'Sale Return Credit' })
+                    : getLoanPaymentActivityLabel(loan, t),
+                amount: payment.amount,
+                isCancellation: false,
+                isSaleReturnCredit
+            }
+        }),
         {
             id: `${loan.id}-created`,
             date: loan.createdAt,
             label: getLoanDisbursementActivityLabel(loan, t),
             amount: loan.principalAmount,
-            isCancellation: false
+            isCancellation: false,
+            isSaleReturnCredit: false
         }
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
@@ -1190,6 +1239,58 @@ function LoanDetailsView({
                 </Card>
             ) : null}
 
+            {partialSaleReturnSummary ? (
+                <Card className="border-amber-500/30 bg-amber-500/5">
+                    <CardContent className="py-4">
+                        <div className="flex items-start gap-3">
+                            <div className="rounded-full bg-amber-500/10 p-2 text-amber-700 dark:text-amber-300">
+                                <Undo2 className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <div className="font-semibold text-amber-800 dark:text-amber-200">
+                                    {t('loans.partialSaleReturnTitle', { defaultValue: 'Partial Sale Return' })}
+                                </div>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                    {t('loans.partialSaleReturnDescription', { defaultValue: 'A partial return was posted for the linked POS sale. Its return credit is reflected in this loan.' })}
+                                </p>
+                                <div className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+                                    <div>
+                                        <div className="text-xs font-medium text-muted-foreground">
+                                            {t('loans.saleReturnAmount', { defaultValue: 'Sale Return Amount' })}
+                                        </div>
+                                        <div className="mt-0.5 font-semibold text-foreground">
+                                            {formatCurrency(partialSaleReturnSummary.returnedAmount, loan.settlementCurrency, features.iqd_display_preference)}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="text-xs font-medium text-muted-foreground">
+                                            {t('loans.returnCreditApplied', { defaultValue: 'Return Credit Applied' })}
+                                        </div>
+                                        <div className="mt-0.5 font-semibold text-foreground">
+                                            {formatCurrency(partialSaleReturnCredit, loan.settlementCurrency, features.iqd_display_preference)}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="text-xs font-medium text-muted-foreground">
+                                            {t('loans.lastSaleReturn', { defaultValue: 'Last Sale Return' })}
+                                        </div>
+                                        <div className="mt-0.5 font-semibold text-foreground">
+                                            {formatDateTime(partialSaleReturnSummary.lastReturnedAt)}
+                                        </div>
+                                    </div>
+                                </div>
+                                {partialSaleReturnSummary.lastReason ? (
+                                    <p className="mt-3 text-xs text-muted-foreground">
+                                        <span className="font-semibold text-foreground">{t('sales.return.reason', { defaultValue: 'Reason' })}:</span>{' '}
+                                        {partialSaleReturnSummary.lastReason}
+                                    </p>
+                                ) : null}
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            ) : null}
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="space-y-4">
                     <Card>
@@ -1239,6 +1340,14 @@ function LoanDetailsView({
                                     <div className="text-2xl font-bold text-emerald-500">
                                         {formatCurrency(loan.totalPaidAmount, loan.settlementCurrency, features.iqd_display_preference)}
                                     </div>
+                                    {partialSaleReturnCredit > 0 ? (
+                                        <div className="mt-1 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                                            {t('loans.returnCreditIncluded', {
+                                                defaultValue: 'Includes {{amount}} from partial sale returns',
+                                                amount: formatCurrency(partialSaleReturnCredit, loan.settlementCurrency, features.iqd_display_preference)
+                                            })}
+                                        </div>
+                                    ) : null}
                                 </div>
                                 <div className="bg-muted/20 rounded-2xl p-5 border border-border/40">
                                     <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider mb-2">
@@ -1288,6 +1397,8 @@ function LoanDetailsView({
                                                 "absolute -start-[1.375rem] top-1.5 w-3 h-3 rounded-full border-2 border-background z-10 transition-transform group-hover:scale-125",
                                                 row.isCancellation
                                                     ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]'
+                                                    : row.isSaleReturnCredit
+                                                        ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]'
                                                     : isDisbursement
                                                         ? "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]"
                                                         : "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"

@@ -2444,7 +2444,14 @@
       "overdue": "متأخر",
       "cancelled": "ملغى"
     },
+    "partialSaleReturnTitle": "إرجاع جزئي للبيع",
+    "partialSaleReturnDescription": "تم تسجيل إرجاع جزئي للبيع المرتبط بنقطة البيع. يظهر رصيد الإرجاع في هذا القرض.",
+    "saleReturnAmount": "مبلغ إرجاع البيع",
+    "returnCreditApplied": "رصيد الإرجاع المطبق",
+    "lastSaleReturn": "آخر إرجاع للبيع",
+    "returnCreditIncluded": "يتضمن {{amount}} من إرجاعات البيع الجزئية",
     "activities": {
+      "saleReturnCredit": "رصيد إرجاع البيع",
       "paymentReceived": "تم استلام الدفعة",
       "paymentMade": "تم السداد",
       "loanCancelled": "تم إلغاء القرض — استرجاع كامل للبيع",
