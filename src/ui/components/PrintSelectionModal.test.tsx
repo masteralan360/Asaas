@@ -21,14 +21,14 @@ vi.mock('@/ui/components/button', async () => {
     }
 })
 
-vi.mock('@/ui/components/dialog', async () => {
+vi.mock('@/ui/components/small-dialog', async () => {
     const React = await import('react')
     const Container = ({ children }: { children?: React.ReactNode }) => React.createElement('div', null, children)
     return {
-        Dialog: Container,
-        DialogContent: Container,
-        DialogHeader: Container,
-        DialogTitle: Container
+        SmallDialog: Container,
+        SmallDialogContent: Container,
+        SmallDialogHeader: Container,
+        SmallDialogTitle: Container
     }
 })
 

@@ -17,6 +17,19 @@ export {
     ScrollIndicator
 } from './dialog'
 export {
+    SmallDialog,
+    SmallDialogPortal,
+    SmallDialogOverlay,
+    SmallDialogTrigger,
+    SmallDialogClose,
+    SmallDialogContent,
+    SmallDialogHeader,
+    SmallDialogBody,
+    SmallDialogFooter,
+    SmallDialogTitle,
+    SmallDialogDescription
+} from './small-dialog'
+export {
     Select,
     SelectGroup,
     SelectValue,

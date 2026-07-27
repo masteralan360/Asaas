@@ -6,11 +6,11 @@ import type { PrintFormat } from '@/services/pdfGenerator'
 import { useWorkspace } from '@/workspace'
 import { Button } from '@/ui/components/button'
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle
-} from '@/ui/components/dialog'
+    SmallDialog,
+    SmallDialogContent,
+    SmallDialogHeader,
+    SmallDialogTitle
+} from '@/ui/components/small-dialog'
 
 export type PrintSelectionNativeOption = {
     format: PrintFormat
@@ -63,14 +63,14 @@ export function PrintSelectionModal({
     const visibleOptionCount = visibleNativeOptions.length + visibleTemplateOptions.length
 
     return (
-        <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
+        <SmallDialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+            <SmallDialogContent>
+                <SmallDialogHeader>
+                    <SmallDialogTitle className="flex items-center gap-2">
                         <Printer className="h-5 w-5 text-primary" />
                         {t('common.print', { defaultValue: 'Select Print' })}
-                    </DialogTitle>
-                </DialogHeader>
+                    </SmallDialogTitle>
+                </SmallDialogHeader>
 
                 <div className="grid max-h-[65vh] grid-cols-1 gap-4 overflow-y-auto py-4 sm:grid-cols-2">
                     {visibleNativeOptions.length === 0 && visibleTemplateOptions.length === 0 ? (
@@ -138,7 +138,7 @@ export function PrintSelectionModal({
                         </Button>
                     ))}
                 </div>
-            </DialogContent>
-        </Dialog>
+            </SmallDialogContent>
+        </SmallDialog>
     )
 }

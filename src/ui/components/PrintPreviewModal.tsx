@@ -3,11 +3,11 @@ import { useLocation } from 'wouter'
 import { useReactToPrint } from 'react-to-print'
 import { useTranslation } from 'react-i18next'
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogFooter,
+    SmallDialog,
+    SmallDialogContent,
+    SmallDialogHeader,
+    SmallDialogTitle,
+    SmallDialogFooter,
     Button,
     useToast,
     A4InvoiceTemplate,
@@ -585,17 +585,17 @@ export function PrintPreviewModal({
                 nativeOptions={resolvedPrintSelectionOptions}
                 templateOptions={printSelectionTemplates}
             />
-            <Dialog
+            <SmallDialog
                 open={isOpen && selectedPrintFormat !== null}
                 onOpenChange={(open) => !open && onClose()}
             >
-                <DialogContent className="flex flex-col max-w-lg">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
+                <SmallDialogContent className="flex flex-col max-w-lg sm:max-w-lg">
+                <SmallDialogHeader>
+                    <SmallDialogTitle className="flex items-center gap-2">
                         <Printer className="w-5 h-5 text-primary" />
                         {title || t('print.previewTitle') || 'Print Preview'}
-                    </DialogTitle>
-                </DialogHeader>
+                    </SmallDialogTitle>
+                </SmallDialogHeader>
 
                 <div className="space-y-4 py-2">
                     {hasPdfData ? (
@@ -622,12 +622,12 @@ export function PrintPreviewModal({
                     )}
                 </div>
 
-                <DialogFooter className="shrink-0 pt-2">
+                <SmallDialogFooter className="shrink-0 pt-2">
                     <Button variant="outline" onClick={onClose}>
                         <X className="w-4 h-4 mr-2" />
                         {t('common.cancel')}
                     </Button>
-                </DialogFooter>
+                </SmallDialogFooter>
 
                 {hasPdfData && templateContent && (
                     <div className="fixed left-[-10000px] top-0">
@@ -636,8 +636,8 @@ export function PrintPreviewModal({
                         </div>
                     </div>
                 )}
-                </DialogContent>
-            </Dialog>
+                </SmallDialogContent>
+            </SmallDialog>
         </>
     )
 }
