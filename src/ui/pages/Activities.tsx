@@ -8,6 +8,7 @@ import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
 import { useWorkspacePermissions } from '@/permissions'
 import { UiAccessGate } from '@/context/UiAccessContext'
+import { useDateRange } from '@/context/DateRangeContext'
 import {
     createActivityTransaction,
     hardDeleteActivityTransaction,
@@ -22,9 +23,12 @@ import {
     type ActivityTransactionInput
 } from '@/local-db/activities'
 import type { ActivityCatalogItem, ActivityTransaction, ActivityTransactionLine, IQDDisplayPreference, WorkspacePaymentMethod } from '@/local-db/models'
+import { isDateInDateRange } from '@/lib/dateRangeFilters'
 import { formatCurrency } from '@/lib/utils'
+import { platformService } from '@/services/platformService'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import type { TemplatePreview } from '@/lib/pdfPreviewStore'
+import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import {
     Badge,
     Button,
@@ -92,7 +96,7 @@ type ActivityReceiptLabels = {
     quantity: string
     unitPrice: string
     total: string
-    thankYou: string
+    madeby: string
 }
 
 const PAYMENT_METHODS: WorkspacePaymentMethod[] = [
@@ -185,6 +189,11 @@ function escapeReceiptValue(value: string) {
     }[character] || character))
 }
 
+function resolveWorkspaceLogoSrc(logoUrl?: string | null) {
+    if (!logoUrl) return null
+    return /^(https?:|data:|blob:)/i.test(logoUrl) ? logoUrl : platformService.convertFileSrc(logoUrl)
+}
+
 /** @deprecated Activities now print through PrintPreviewModal and /pdf-preview. */
 export function printActivityReceipt(
     transaction: ActivityTransaction,
@@ -206,7 +215,8 @@ export function printActivityReceipt(
         <td>${money(line.unitPrice)}</td>
         <td>${money(line.lineTotal)}</td>
       </tr>`).join('')
-    const logo = logoUrl ? `<img src="${escapeReceiptValue(logoUrl)}" alt="" />` : ''
+    const resolvedLogoUrl = resolveWorkspaceLogoSrc(logoUrl)
+    const logo = resolvedLogoUrl ? `<img src="${escapeReceiptValue(resolvedLogoUrl)}" alt="" />` : ''
 
     receiptWindow.document.write(`<!doctype html><html><head><title>${escapeReceiptValue(transaction.transactionNo)}</title><style>
       @page { margin: 12mm; } body { font-family: Inter, Arial, sans-serif; color:#111; max-width: 360px; margin:0 auto; } header{text-align:center;border-bottom:1px dashed #777;padding-bottom:12px} img{max-width:64px;max-height:64px;object-fit:contain} h1{font-size:18px;margin:6px 0 2px} p{font-size:12px;margin:4px 0;color:#444}.number{font-weight:700;font-size:13px} table{width:100%;border-collapse:collapse;margin-top:14px;font-size:12px} th{text-align:left;color:#555;border-bottom:1px solid #bbb;padding:6px 2px} td{padding:7px 2px;border-bottom:1px solid #eee;vertical-align:top}td:nth-child(n+2),th:nth-child(n+2){text-align:right}.override{font-size:10px;color:#9a6700;margin-top:2px}.total{display:flex;justify-content:space-between;font-weight:700;font-size:17px;padding-top:13px}.footer{text-align:center;border-top:1px dashed #777;margin-top:16px;padding-top:10px;font-size:11px;color:#555}</style></head><body>
@@ -217,7 +227,7 @@ export function printActivityReceipt(
       <p>${escapeReceiptValue(new Date(transaction.occurredAt).toLocaleString(locale))} · ${escapeReceiptValue(labels.paymentMethod)}</p>
       <table><thead><tr><th>${escapeReceiptValue(labels.activity)}</th><th>${escapeReceiptValue(labels.quantity)}</th><th>${escapeReceiptValue(labels.unitPrice)}</th><th>${escapeReceiptValue(labels.total)}</th></tr></thead><tbody>${rows}</tbody></table>
       <div class="total"><span>${escapeReceiptValue(labels.total)}</span><span>${money(transaction.totalAmount)}</span></div>
-      <div class="footer">${escapeReceiptValue(labels.thankYou)} · ${escapeReceiptValue(transaction.currency.toUpperCase())}</div>
+      <div class="footer">${escapeReceiptValue(labels.madeby)} · ${escapeReceiptValue(transaction.currency.toUpperCase())}</div>
       <script>window.addEventListener('load', () => window.print())</script></body></html>`)
     receiptWindow.document.close()
 }
@@ -234,13 +244,14 @@ function createActivityReceiptLabels(transaction: ActivityTransaction, t: TFunct
         quantity: t('activities.quantity', { defaultValue: 'Qty' }),
         unitPrice: t('activities.unitPrice', { defaultValue: 'Unit price' }),
         total: t('activities.total', { defaultValue: 'Total' }),
-        thankYou: t('activities.thankYou', { defaultValue: 'Thank you' })
+        madeby: t('common.madeBy', { defaultValue: 'Made by AtlasERP' })
     }
 }
 
 function ActivityReceiptPrintTemplate({
     transaction,
     lines,
+    infiniteActivityIds,
     workspaceName,
     logoUrl,
     iqdDisplayPreference,
@@ -249,6 +260,7 @@ function ActivityReceiptPrintTemplate({
 }: {
     transaction: ActivityTransaction
     lines: ActivityTransactionLine[]
+    infiniteActivityIds: ReadonlySet<string>
     workspaceName: string
     logoUrl: string | null
     iqdDisplayPreference: IQDDisplayPreference
@@ -256,7 +268,9 @@ function ActivityReceiptPrintTemplate({
     locale: string
 }): ReactElement {
     const isRtl = locale === 'ar' || locale === 'ku'
+    const resolvedLogoUrl = resolveWorkspaceLogoSrc(logoUrl)
     const quantity = (value: number) => new Intl.NumberFormat(locale, { maximumFractionDigits: 3 }).format(value)
+    const showQuantityColumn = lines.some((line) => !infiniteActivityIds.has(line.activityId))
 
     return (
         <article
@@ -265,7 +279,7 @@ function ActivityReceiptPrintTemplate({
             style={{ fontFamily: 'Inter, Arial, sans-serif', fontSize: '11px', lineHeight: 1.45 }}
         >
             <header className="border-b border-dashed border-slate-400 pb-3 text-center">
-                {logoUrl ? <img src={logoUrl} alt="" className="mx-auto mb-2 max-h-14 max-w-14 object-contain" /> : null}
+                {resolvedLogoUrl ? <img src={resolvedLogoUrl} alt="" className="mx-auto mb-2 h-14 w-14 object-contain" /> : null}
                 <h1 className="m-0 text-base font-bold">{workspaceName}</h1>
                 <p className="m-0 font-semibold text-black">{labels.activityReceipt}</p>
                 <p className="m-0 font-semibold text-black">{transaction.transactionNo}</p>
@@ -282,7 +296,7 @@ function ActivityReceiptPrintTemplate({
                 <thead>
                     <tr className="border-b border-slate-300 text-black">
                         <th className="py-2 text-start font-semibold">{labels.activity}</th>
-                        <th className="py-2 text-end font-semibold">{labels.quantity}</th>
+                        {showQuantityColumn ? <th className="py-2 text-end font-semibold">{labels.quantity}</th> : null}
                         <th className="py-2 text-end font-semibold">{labels.unitPrice}</th>
                         <th className="py-2 text-end font-semibold">{labels.total}</th>
                     </tr>
@@ -291,7 +305,7 @@ function ActivityReceiptPrintTemplate({
                     {lines.map((line) => (
                         <tr key={line.id} className="border-b border-slate-200">
                             <td className="py-2 pe-1"><strong>{line.activityNameSnapshot}</strong>{line.priceOverridden ? <div className="mt-0.5 text-[9px] text-amber-700">{labels.priceOverridden}</div> : null}</td>
-                            <td className="py-2 text-end font-medium">{quantity(line.quantity)}</td>
+                            {showQuantityColumn ? <td className="py-2 text-end font-medium">{infiniteActivityIds.has(line.activityId) ? null : quantity(line.quantity)}</td> : null}
                             <td className="py-2 text-end font-medium">{formatCurrency(line.unitPrice, transaction.currency, iqdDisplayPreference)}</td>
                             <td className="py-2 text-end font-semibold">{formatCurrency(line.lineTotal, transaction.currency, iqdDisplayPreference)}</td>
                         </tr>
@@ -301,7 +315,7 @@ function ActivityReceiptPrintTemplate({
 
             <footer className="mt-3 border-t border-dashed border-slate-400 pt-3">
                 <div className="flex items-center justify-between text-sm font-bold"><span>{labels.total}</span><span>{formatCurrency(transaction.totalAmount, transaction.currency, iqdDisplayPreference)}</span></div>
-                <p className="mb-0 mt-4 text-center text-[10px] font-medium text-black">{labels.thankYou} · {transaction.currency.toUpperCase()}</p>
+                <p className="mb-0 mt-4 text-center text-[10px] font-medium text-black">{labels.madeby}</p>
             </footer>
         </article>
     )
@@ -314,6 +328,7 @@ export function Activities() {
     const [location] = useLocation()
     const { features, workspaceName } = useWorkspace()
     const { hasPermission } = useWorkspacePermissions()
+    const { dateRange, customDates } = useDateRange()
     const workspaceId = user?.workspaceId
     const catalog = useActivityCatalog(workspaceId)
     const transactions = useActivityTransactions(workspaceId)
@@ -328,6 +343,7 @@ export function Activities() {
     const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null)
     const [receiptOpen, setReceiptOpen] = useState(false)
     const [activityPrintOpen, setActivityPrintOpen] = useState(false)
+    const [reverseAction, setReverseAction] = useState<'cancelled' | 'refunded' | null>(null)
     const [deleteOpen, setDeleteOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -344,14 +360,21 @@ export function Activities() {
     const canRefund = hasPermission('activities.refundTransaction')
     const canDelete = hasPermission('activities.deleteTransaction')
     const activeCatalog = catalog.filter((activity) => activity.isActive && !activity.isDeleted && activity.currency === features.default_currency)
+    const infiniteActivityIds = useMemo(() => new Set(catalog
+        .filter((activity) => activity.isInfinite && !activity.isDeleted)
+        .map((activity) => activity.id)), [catalog])
+    const workspaceLogoSrc = resolveWorkspaceLogoSrc(features.logo_url)
     const priceFractionDigits = features.default_currency === 'iqd' ? 0 : 2
     const formatDateTime = (value: string) => new Date(value).toLocaleString(i18n.language)
     const visibleTransactions = useMemo(() => {
         const query = search.trim().toLowerCase()
-        if (!query) return transactions
-        return transactions.filter((transaction) => [transaction.transactionNo, transaction.name, transaction.customerName]
-            .some((value) => value?.toLowerCase().includes(query)))
-    }, [search, transactions])
+        return transactions.filter((transaction) => {
+            if (!isDateInDateRange(transaction.occurredAt, dateRange, customDates)) return false
+            if (!query) return true
+            return [transaction.transactionNo, transaction.name, transaction.customerName]
+            .some((value) => value?.toLowerCase().includes(query))
+        })
+    }, [customDates, dateRange, search, transactions])
 
     const transactionTotal = useMemo(() => transactionDraft.lines.reduce(
         (sum, line) => sum + Math.max(0, Number(line.quantity || 0)) * Math.max(0, Number(line.unitPrice || 0)),
@@ -373,6 +396,7 @@ export function Activities() {
             element: <ActivityReceiptPrintTemplate
                 transaction={selectedTransaction}
                 lines={selectedLines}
+                infiniteActivityIds={infiniteActivityIds}
                 workspaceName={workspaceName || 'Atlas'}
                 logoUrl={features.logo_url}
                 iqdDisplayPreference={features.iqd_display_preference}
@@ -382,7 +406,7 @@ export function Activities() {
             format: 'receipt',
             printLang: printLanguage
         })
-    }, [features.iqd_display_preference, features.logo_url, i18n, selectedLines, selectedTransaction, workspaceName])
+    }, [features.iqd_display_preference, features.logo_url, i18n, infiniteActivityIds, selectedLines, selectedTransaction, workspaceName])
 
     const activityReceiptTemplatePreview = useMemo<TemplatePreview | undefined>(() => {
         if (!selectedTransaction) return undefined
@@ -395,6 +419,7 @@ export function Activities() {
                 return <ActivityReceiptPrintTemplate
                     transaction={selectedTransaction}
                     lines={selectedLines}
+                    infiniteActivityIds={infiniteActivityIds}
                     workspaceName={workspaceName || 'Atlas'}
                     logoUrl={features.logo_url}
                     iqdDisplayPreference={features.iqd_display_preference}
@@ -408,7 +433,7 @@ export function Activities() {
                 printLang: printLangOverride || i18n.language
             })
         }
-    }, [features.iqd_display_preference, features.logo_url, i18n, selectedLines, selectedTransaction, workspaceName])
+    }, [features.iqd_display_preference, features.logo_url, i18n, infiniteActivityIds, selectedLines, selectedTransaction, workspaceName])
 
     const activityReceiptInvoiceData = useMemo(() => selectedTransaction ? ({
         invoiceid: selectedTransaction.transactionNo,
@@ -553,20 +578,17 @@ export function Activities() {
         }
     }
 
-    const handleReverse = async (status: 'cancelled' | 'refunded') => {
-        if (!workspaceId || !selectedTransaction) return
+    const handleReverse = async () => {
+        const status = reverseAction
+        if (!workspaceId || !selectedTransaction || !status) return
         const action = status === 'cancelled'
             ? t('activities.cancel', { defaultValue: 'Cancel' })
             : t('activities.refund', { defaultValue: 'Refund' })
-        if (!window.confirm(t('activities.messages.reverseConfirmation', {
-            defaultValue: 'Do you want to {{action}} {{transactionNo}}? Finite activity availability will be restored.',
-            action: action.toLowerCase(),
-            transactionNo: selectedTransaction.transactionNo
-        }))) return
 
         setIsSubmitting(true)
         try {
             await reverseActivityTransaction(workspaceId, selectedTransaction.id, status, user?.id ?? null)
+            setReverseAction(null)
             toast({ title: t(status === 'cancelled' ? 'activities.messages.transactionCancelled' : 'activities.messages.transactionRefunded', { defaultValue: status === 'cancelled' ? 'Transaction cancelled' : 'Transaction refunded' }) })
         } catch (error) {
             toast({
@@ -635,14 +657,17 @@ export function Activities() {
 
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
                 <Card>
-                    <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <CardHeader className="gap-4">
                         <div>
                             <CardTitle>{t('activities.transactionHistory', { defaultValue: 'Transaction history' })}</CardTitle>
                             <CardDescription>{t('activities.transactionHistoryDescription', { defaultValue: 'Every line retains its own price snapshot.' })}</CardDescription>
                         </div>
-                        <div className="relative w-full sm:w-64">
-                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                            <Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('common.search', { defaultValue: 'Search' })} />
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <DateRangeFilters />
+                            <div className="relative w-full sm:w-64">
+                                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('common.search', { defaultValue: 'Search' })} />
+                            </div>
                         </div>
                     </CardHeader>
                     <CardContent className="space-y-2">
@@ -694,7 +719,7 @@ export function Activities() {
                             <div className="flex flex-wrap gap-2 border-t pt-4">
                                 {canPrint ? <Button variant="outline" onClick={() => setReceiptOpen(true)}><Printer className="mr-2 h-4 w-4" />{t('common.print', { defaultValue: 'Print receipt' })}</Button> : null}
                                 {canEdit && selectedTransaction.status === 'completed' ? <Button variant="outline" onClick={openEditTransaction}><Edit3 className="mr-2 h-4 w-4" />{t('common.edit', { defaultValue: 'Edit' })}</Button> : null}
-                                {canRefund && selectedTransaction.status === 'completed' ? <><Button variant="outline" onClick={() => void handleReverse('cancelled')}><XCircle className="mr-2 h-4 w-4" />{t('activities.cancel', { defaultValue: 'Cancel' })}</Button><Button variant="outline" onClick={() => void handleReverse('refunded')}><RotateCcw className="mr-2 h-4 w-4" />{t('activities.refund', { defaultValue: 'Refund' })}</Button></> : null}
+                                {canRefund && selectedTransaction.status === 'completed' ? <><Button variant="outline" onClick={() => setReverseAction('cancelled')}><XCircle className="mr-2 h-4 w-4" />{t('activities.cancel', { defaultValue: 'Cancel' })}</Button><Button variant="outline" onClick={() => setReverseAction('refunded')}><RotateCcw className="mr-2 h-4 w-4" />{t('activities.refund', { defaultValue: 'Refund' })}</Button></> : null}
                                 {canDelete ? <UiAccessGate><Button variant="destructive" onClick={() => setDeleteOpen(true)}><Trash2 className="mr-2 h-4 w-4" />{t('common.delete', { defaultValue: 'Delete' })}</Button></UiAccessGate> : null}
                             </div>
                         </CardContent>
@@ -710,20 +735,20 @@ export function Activities() {
                             <DialogDescription>{t('activities.catalogDescription', { defaultValue: 'Set a default price and choose whether availability is unlimited or finite.' })}</DialogDescription>
                         </DialogHeader>
                         <DialogBody>
-                        {catalog.length ? <div className="mt-4 space-y-2 rounded-lg border p-3">
-                            <div className="flex items-center justify-between"><Label>{t('activities.existingActivities', { defaultValue: 'Existing activities' })}</Label><Button type="button" size="sm" variant="ghost" onClick={() => setCatalogDraft(createCatalogDraft())}>{t('activities.newActivity', { defaultValue: 'New activity' })}</Button></div>
-                            {catalog.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-md bg-muted/50 px-3 py-2 text-sm">
-                                <button type="button" className="min-w-0 text-left" onClick={() => setCatalogDraft(createCatalogDraft(item))}><p className="truncate font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{item.isInfinite ? t('activities.infinite', { defaultValue: 'Infinite' }) : t('activities.availableCount', { defaultValue: '{{count}} available', count: item.availableQuantity ?? 0 })} · {formatCurrency(item.defaultUnitPrice, item.currency, features.iqd_display_preference)}</p></button>
-                                <Button type="button" size="sm" variant="ghost" onClick={() => void handleCatalogStatus(item)}>{item.isActive ? t('activities.deactivate', { defaultValue: 'Deactivate' }) : t('activities.activate', { defaultValue: 'Activate' })}</Button>
-                            </div>)}
-                        </div> : null}
-                        <div className="grid gap-4 py-5">
-                            <div className="grid gap-2"><Label htmlFor="activity-name">{t('common.name', { defaultValue: 'Name' })}</Label><Input id="activity-name" value={catalogDraft.name} onChange={(event) => setCatalogDraft((current) => ({ ...current, name: event.target.value }))} autoFocus /></div>
-                            <div className="grid gap-2"><Label htmlFor="activity-price">{t('activities.defaultPrice', { defaultValue: 'Default unit price' })} ({features.default_currency.toUpperCase()})</Label><NumericInput id="activity-price" inputMode={priceFractionDigits === 0 ? 'numeric' : 'decimal'} min="0" maxFractionDigits={priceFractionDigits} value={catalogDraft.defaultUnitPrice} onValueChange={(value) => setCatalogDraft((current) => ({ ...current, defaultUnitPrice: value }))} /></div>
-                            <div className="flex items-center justify-between rounded-lg border p-3"><div><Label htmlFor="activity-infinite" className="flex items-center gap-2"><InfinityIcon className="h-4 w-4" />{t('activities.infiniteAvailability', { defaultValue: 'Infinite availability' })}</Label><p className="mt-1 text-xs text-muted-foreground">{t('activities.infiniteAvailabilityDescription', { defaultValue: 'Unlimited activities never consume availability.' })}</p></div><Switch id="activity-infinite" checked={catalogDraft.isInfinite} onCheckedChange={(value) => setCatalogDraft((current) => ({ ...current, isInfinite: value }))} /></div>
-                            {!catalogDraft.isInfinite ? <div className="grid gap-2"><Label htmlFor="activity-quantity">{t('activities.availableQuantity', { defaultValue: 'Available quantity' })}</Label><NumericInput id="activity-quantity" inputMode="decimal" min="0" maxFractionDigits={3} value={catalogDraft.availableQuantity} onValueChange={(value) => setCatalogDraft((current) => ({ ...current, availableQuantity: value }))} /></div> : null}
-                            <div className="flex items-center justify-between rounded-lg border p-3"><div><Label htmlFor="activity-active">{t('common.active', { defaultValue: 'Active' })}</Label><p className="mt-1 text-xs text-muted-foreground">{t('activities.activeDescription', { defaultValue: 'Inactive activities stay in history but cannot be selected for new transactions.' })}</p></div><Switch id="activity-active" checked={catalogDraft.isActive} onCheckedChange={(value) => setCatalogDraft((current) => ({ ...current, isActive: value }))} /></div>
-                        </div>
+                            {catalog.length ? <div className="mt-4 space-y-2 rounded-lg border p-3">
+                                <div className="flex items-center justify-between"><Label>{t('activities.existingActivities', { defaultValue: 'Existing activities' })}</Label><Button type="button" size="sm" variant="ghost" onClick={() => setCatalogDraft(createCatalogDraft())}>{t('activities.newActivity', { defaultValue: 'New activity' })}</Button></div>
+                                {catalog.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-md bg-muted/50 px-3 py-2 text-sm">
+                                    <button type="button" className="min-w-0 text-left" onClick={() => setCatalogDraft(createCatalogDraft(item))}><p className="truncate font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{item.isInfinite ? t('activities.infinite', { defaultValue: 'Infinite' }) : t('activities.availableCount', { defaultValue: '{{count}} available', count: item.availableQuantity ?? 0 })} · {formatCurrency(item.defaultUnitPrice, item.currency, features.iqd_display_preference)}</p></button>
+                                    <Button type="button" size="sm" variant="ghost" onClick={() => void handleCatalogStatus(item)}>{item.isActive ? t('activities.deactivate', { defaultValue: 'Deactivate' }) : t('activities.activate', { defaultValue: 'Activate' })}</Button>
+                                </div>)}
+                            </div> : null}
+                            <div className="grid gap-4 py-5">
+                                <div className="grid gap-2"><Label htmlFor="activity-name">{t('common.name', { defaultValue: 'Name' })}</Label><Input id="activity-name" value={catalogDraft.name} onChange={(event) => setCatalogDraft((current) => ({ ...current, name: event.target.value }))} autoFocus /></div>
+                                <div className="grid gap-2"><Label htmlFor="activity-price">{t('activities.defaultPrice', { defaultValue: 'Default unit price' })} ({features.default_currency.toUpperCase()})</Label><NumericInput id="activity-price" inputMode={priceFractionDigits === 0 ? 'numeric' : 'decimal'} min="0" maxFractionDigits={priceFractionDigits} value={catalogDraft.defaultUnitPrice} onValueChange={(value) => setCatalogDraft((current) => ({ ...current, defaultUnitPrice: value }))} /></div>
+                                <div className="flex items-center justify-between rounded-lg border p-3"><div><Label htmlFor="activity-infinite" className="flex items-center gap-2"><InfinityIcon className="h-4 w-4" />{t('activities.infiniteAvailability', { defaultValue: 'Infinite availability' })}</Label><p className="mt-1 text-xs text-muted-foreground">{t('activities.infiniteAvailabilityDescription', { defaultValue: 'Unlimited activities never consume availability.' })}</p></div><Switch id="activity-infinite" checked={catalogDraft.isInfinite} onCheckedChange={(value) => setCatalogDraft((current) => ({ ...current, isInfinite: value }))} /></div>
+                                {!catalogDraft.isInfinite ? <div className="grid gap-2"><Label htmlFor="activity-quantity">{t('activities.availableQuantity', { defaultValue: 'Available quantity' })}</Label><NumericInput id="activity-quantity" inputMode="decimal" min="0" maxFractionDigits={3} value={catalogDraft.availableQuantity} onValueChange={(value) => setCatalogDraft((current) => ({ ...current, availableQuantity: value }))} /></div> : null}
+                                <div className="flex items-center justify-between rounded-lg border p-3"><div><Label htmlFor="activity-active">{t('common.active', { defaultValue: 'Active' })}</Label><p className="mt-1 text-xs text-muted-foreground">{t('activities.activeDescription', { defaultValue: 'Inactive activities stay in history but cannot be selected for new transactions.' })}</p></div><Switch id="activity-active" checked={catalogDraft.isActive} onCheckedChange={(value) => setCatalogDraft((current) => ({ ...current, isActive: value }))} /></div>
+                            </div>
                         </DialogBody>
                         <DialogFooter layout="structured"><Button type="button" variant="outline" onClick={() => setCatalogOpen(false)}>{t('common.cancel', { defaultValue: 'Cancel' })}</Button><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{t('common.save', { defaultValue: 'Save' })}</Button></DialogFooter>
                     </form>
@@ -735,29 +760,29 @@ export function Activities() {
                     <form className="flex min-h-0 flex-1 flex-col" onSubmit={submitTransaction}>
                         <DialogHeader layout="structured"><DialogTitle>{editingTransactionId ? t('activities.editTransaction', { defaultValue: 'Edit activity transaction' }) : t('activities.newTransaction', { defaultValue: 'New activity transaction' })}</DialogTitle><DialogDescription>{t('activities.transactionDescription', { defaultValue: 'Activity prices are copied into the transaction and can be overridden per line.' })}</DialogDescription></DialogHeader>
                         <DialogBody>
-                        <div className="grid gap-4 py-5">
-                            <div className="grid gap-4 sm:grid-cols-2">
-                                <div className="grid gap-2"><Label htmlFor="transaction-name">{t('activities.transactionName', { defaultValue: 'Transaction name' })}</Label><Input id="transaction-name" value={transactionDraft.name} onChange={(event) => setTransactionDraft((current) => ({ ...current, name: event.target.value }))} /></div>
-                                <div className="grid gap-2"><Label htmlFor="transaction-customer">{t('activities.customerName', { defaultValue: 'Customer name (optional)' })}</Label><Input id="transaction-customer" value={transactionDraft.customerName} onChange={(event) => setTransactionDraft((current) => ({ ...current, customerName: event.target.value }))} /></div>
-                                <div className="grid gap-2"><Label>{t('activities.dateTime', { defaultValue: 'Date and time' })}</Label><DateTimePicker date={transactionDraft.occurredAt} setDate={(date) => date && setTransactionDraft((current) => ({ ...current, occurredAt: date }))} /></div>
-                                <div className="grid gap-2"><Label>{t('activities.paymentMethod', { defaultValue: 'Payment method' })}</Label><Select value={transactionDraft.paymentMethod} onValueChange={(value) => setTransactionDraft((current) => ({ ...current, paymentMethod: value as WorkspacePaymentMethod }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{PAYMENT_METHODS.map((method) => <SelectItem key={method} value={method}>{paymentMethodLabel(method, t)}</SelectItem>)}</SelectContent></Select></div>
+                            <div className="grid gap-4 py-5">
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <div className="grid gap-2"><Label htmlFor="transaction-name">{t('activities.transactionName', { defaultValue: 'Transaction name' })}</Label><Input id="transaction-name" value={transactionDraft.name} onChange={(event) => setTransactionDraft((current) => ({ ...current, name: event.target.value }))} /></div>
+                                    <div className="grid gap-2"><Label htmlFor="transaction-customer">{t('activities.customerName', { defaultValue: 'Customer name (optional)' })}</Label><Input id="transaction-customer" value={transactionDraft.customerName} onChange={(event) => setTransactionDraft((current) => ({ ...current, customerName: event.target.value }))} /></div>
+                                    <div className="grid gap-2"><Label>{t('activities.dateTime', { defaultValue: 'Date and time' })}</Label><DateTimePicker date={transactionDraft.occurredAt} setDate={(date) => date && setTransactionDraft((current) => ({ ...current, occurredAt: date }))} /></div>
+                                    <div className="grid gap-2"><Label>{t('activities.paymentMethod', { defaultValue: 'Payment method' })}</Label><Select value={transactionDraft.paymentMethod} onValueChange={(value) => setTransactionDraft((current) => ({ ...current, paymentMethod: value as WorkspacePaymentMethod }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{PAYMENT_METHODS.map((method) => <SelectItem key={method} value={method}>{paymentMethodLabel(method, t)}</SelectItem>)}</SelectContent></Select></div>
+                                </div>
+                                <div className="space-y-3 rounded-lg border p-3">
+                                    <div className="flex items-center justify-between"><div><Label>{t('activities.lines', { defaultValue: 'Activity lines' })}</Label><p className="text-xs text-muted-foreground">{t('activities.linesDescription', { defaultValue: 'Add one activity or combine several in the same transaction.' })}</p></div><Button type="button" size="sm" variant="outline" onClick={addDraftLine}><Plus className="mr-1 h-4 w-4" />{t('common.add', { defaultValue: 'Add' })}</Button></div>
+                                    {transactionDraft.lines.map((line, index) => {
+                                        const selectedActivity = activeCatalog.find((activity) => activity.id === line.activityId)
+                                        const overridden = selectedActivity && Number(line.unitPrice || 0) !== selectedActivity.defaultUnitPrice
+                                        return <div key={line.id || `${line.activityId}-${index}`} className="grid gap-2 border-t pt-3 sm:grid-cols-[minmax(0,1fr)_88px_120px_auto]">
+                                            <Select value={line.activityId} onValueChange={(value) => updateDraftLine(index, { activityId: value })}><SelectTrigger><SelectValue placeholder={t('activities.selectActivity', { defaultValue: 'Select activity' })} /></SelectTrigger><SelectContent>{activeCatalog.map((activity) => <SelectItem key={activity.id} value={activity.id}>{activity.name}{activity.isInfinite ? ' · ∞' : ` · ${t('activities.quantityLeft', { defaultValue: '{{count}} left', count: activity.availableQuantity ?? 0 })}`}</SelectItem>)}</SelectContent></Select>
+                                            <NumericInput aria-label={t('activities.quantity', { defaultValue: 'Quantity' })} inputMode="decimal" min="0.001" maxFractionDigits={3} value={line.quantity} onValueChange={(value) => updateDraftLine(index, { quantity: value })} />
+                                            <div className="space-y-1"><NumericInput aria-label={t('activities.unitPrice', { defaultValue: 'Unit price' })} inputMode={priceFractionDigits === 0 ? 'numeric' : 'decimal'} min="0" maxFractionDigits={priceFractionDigits} value={line.unitPrice} onValueChange={(value) => updateDraftLine(index, { unitPrice: value })} />{overridden ? <p className="text-xs text-amber-700 dark:text-amber-400">{t('activities.overridden', { defaultValue: 'Overridden' })}</p> : null}</div>
+                                            <Button type="button" variant="ghost" size="icon" disabled={transactionDraft.lines.length === 1} onClick={() => setTransactionDraft((current) => ({ ...current, lines: current.lines.filter((_, lineIndex) => lineIndex !== index) }))}><Trash2 className="h-4 w-4" /><span className="sr-only">{t('common.remove', { defaultValue: 'Remove' })}</span></Button>
+                                        </div>
+                                    })}
+                                </div>
+                                <div className="grid gap-2"><Label htmlFor="transaction-notes">{t('common.notes', { defaultValue: 'Notes' })}</Label><Textarea id="transaction-notes" value={transactionDraft.notes} onChange={(event) => setTransactionDraft((current) => ({ ...current, notes: event.target.value }))} /></div>
+                                <div className="flex items-center justify-between rounded-lg bg-muted px-4 py-3"><span className="font-medium">{t('activities.total', { defaultValue: 'Total' })}</span><span className="text-xl font-bold">{formatCurrency(transactionTotal, features.default_currency, features.iqd_display_preference)}</span></div>
                             </div>
-                            <div className="space-y-3 rounded-lg border p-3">
-                                <div className="flex items-center justify-between"><div><Label>{t('activities.lines', { defaultValue: 'Activity lines' })}</Label><p className="text-xs text-muted-foreground">{t('activities.linesDescription', { defaultValue: 'Add one activity or combine several in the same transaction.' })}</p></div><Button type="button" size="sm" variant="outline" onClick={addDraftLine}><Plus className="mr-1 h-4 w-4" />{t('common.add', { defaultValue: 'Add' })}</Button></div>
-                                {transactionDraft.lines.map((line, index) => {
-                                    const selectedActivity = activeCatalog.find((activity) => activity.id === line.activityId)
-                                    const overridden = selectedActivity && Number(line.unitPrice || 0) !== selectedActivity.defaultUnitPrice
-                                    return <div key={line.id || `${line.activityId}-${index}`} className="grid gap-2 border-t pt-3 sm:grid-cols-[minmax(0,1fr)_88px_120px_auto]">
-                                        <Select value={line.activityId} onValueChange={(value) => updateDraftLine(index, { activityId: value })}><SelectTrigger><SelectValue placeholder={t('activities.selectActivity', { defaultValue: 'Select activity' })} /></SelectTrigger><SelectContent>{activeCatalog.map((activity) => <SelectItem key={activity.id} value={activity.id}>{activity.name}{activity.isInfinite ? ' · ∞' : ` · ${t('activities.quantityLeft', { defaultValue: '{{count}} left', count: activity.availableQuantity ?? 0 })}`}</SelectItem>)}</SelectContent></Select>
-                                        <NumericInput aria-label={t('activities.quantity', { defaultValue: 'Quantity' })} inputMode="decimal" min="0.001" maxFractionDigits={3} value={line.quantity} onValueChange={(value) => updateDraftLine(index, { quantity: value })} />
-                                        <div className="space-y-1"><NumericInput aria-label={t('activities.unitPrice', { defaultValue: 'Unit price' })} inputMode={priceFractionDigits === 0 ? 'numeric' : 'decimal'} min="0" maxFractionDigits={priceFractionDigits} value={line.unitPrice} onValueChange={(value) => updateDraftLine(index, { unitPrice: value })} />{overridden ? <p className="text-xs text-amber-700 dark:text-amber-400">{t('activities.overridden', { defaultValue: 'Overridden' })}</p> : null}</div>
-                                        <Button type="button" variant="ghost" size="icon" disabled={transactionDraft.lines.length === 1} onClick={() => setTransactionDraft((current) => ({ ...current, lines: current.lines.filter((_, lineIndex) => lineIndex !== index) }))}><Trash2 className="h-4 w-4" /><span className="sr-only">{t('common.remove', { defaultValue: 'Remove' })}</span></Button>
-                                    </div>
-                                })}
-                            </div>
-                            <div className="grid gap-2"><Label htmlFor="transaction-notes">{t('common.notes', { defaultValue: 'Notes' })}</Label><Textarea id="transaction-notes" value={transactionDraft.notes} onChange={(event) => setTransactionDraft((current) => ({ ...current, notes: event.target.value }))} /></div>
-                            <div className="flex items-center justify-between rounded-lg bg-muted px-4 py-3"><span className="font-medium">{t('activities.total', { defaultValue: 'Total' })}</span><span className="text-xl font-bold">{formatCurrency(transactionTotal, features.default_currency, features.iqd_display_preference)}</span></div>
-                        </div>
                         </DialogBody>
                         <DialogFooter layout="structured"><Button type="button" variant="outline" onClick={() => setTransactionOpen(false)}>{t('common.cancel', { defaultValue: 'Cancel' })}</Button><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}{editingTransactionId ? t('common.save', { defaultValue: 'Save changes' }) : t('activities.completeTransaction', { defaultValue: 'Complete transaction' })}</Button></DialogFooter>
                     </form>
@@ -768,12 +793,12 @@ export function Activities() {
                 <DialogContent layout="structured" className="sm:max-w-md">
                     <DialogHeader layout="structured"><DialogTitle>{t('activities.receiptPreview', { defaultValue: 'Activity receipt' })}</DialogTitle><DialogDescription>{t('activities.receiptDescription', { defaultValue: 'This is the only print format for Activities.' })}</DialogDescription></DialogHeader>
                     <DialogBody>
-                    {selectedTransaction ? <div className="space-y-3 rounded-lg border p-4 text-sm text-foreground">
-                        <div className="text-center"><p className="font-semibold">{workspaceName || 'Atlas'}</p><p className="text-xs font-semibold text-foreground">{selectedTransaction.transactionNo}</p></div>
-                        <div className="border-y py-3"><p className="font-semibold">{selectedTransaction.name}</p><p className="text-xs font-medium text-foreground">{formatDateTime(selectedTransaction.occurredAt)}</p></div>
-                        {selectedLines.map((line) => <div key={line.id} className="flex justify-between gap-3"><span className="font-medium">{line.activityNameSnapshot} × {line.quantity}</span><span className="font-semibold">{formatCurrency(line.lineTotal, selectedTransaction.currency, features.iqd_display_preference)}</span></div>)}
-                        <div className="flex justify-between border-t pt-3 text-base font-bold"><span>{t('activities.total', { defaultValue: 'Total' })}</span><span>{formatCurrency(selectedTransaction.totalAmount, selectedTransaction.currency, features.iqd_display_preference)}</span></div>
-                    </div> : null}
+                        {selectedTransaction ? <div className="space-y-3 rounded-lg border p-4 text-sm text-foreground">
+                            <div className="text-center">{workspaceLogoSrc ? <img src={workspaceLogoSrc} alt="" className="mx-auto mb-2 h-12 w-12 object-contain" /> : null}<p className="font-semibold">{workspaceName || 'Atlas'}</p><p className="text-xs font-semibold text-foreground">{selectedTransaction.transactionNo}</p></div>
+                            <div className="border-y py-3"><p className="font-semibold">{selectedTransaction.name}</p><p className="text-xs font-medium text-foreground">{formatDateTime(selectedTransaction.occurredAt)}</p></div>
+                            {selectedLines.map((line) => <div key={line.id} className="flex justify-between gap-3"><span className="font-medium">{line.activityNameSnapshot}{infiniteActivityIds.has(line.activityId) ? null : ` × ${line.quantity}`}</span><span className="font-semibold">{formatCurrency(line.lineTotal, selectedTransaction.currency, features.iqd_display_preference)}</span></div>)}
+                            <div className="flex justify-between border-t pt-3 text-base font-bold"><span>{t('activities.total', { defaultValue: 'Total' })}</span><span>{formatCurrency(selectedTransaction.totalAmount, selectedTransaction.currency, features.iqd_display_preference)}</span></div>
+                        </div> : null}
                     </DialogBody>
                     <DialogFooter layout="structured"><Button variant="outline" onClick={() => setReceiptOpen(false)}>{t('common.close', { defaultValue: 'Close' })}</Button>{selectedTransaction ? <Button onClick={openActivityReceiptPrintFlow}><Printer className="mr-2 h-4 w-4" />{t('common.print', { defaultValue: 'Print' })}</Button> : null}</DialogFooter>
                 </DialogContent>
@@ -794,6 +819,38 @@ export function Activities() {
                 module="activities"
                 printSelectionOptions={activityPrintSelectionOptions}
             />
+
+            <Dialog open={reverseAction !== null} onOpenChange={(open) => {
+                if (!open && !isSubmitting) setReverseAction(null)
+            }}>
+                <DialogContent layout="structured" className="sm:max-w-md">
+                    <DialogHeader layout="structured">
+                        <DialogTitle>{reverseAction === 'cancelled'
+                            ? t('activities.cancel', { defaultValue: 'Cancel' })
+                            : t('activities.refund', { defaultValue: 'Refund' })}</DialogTitle>
+                        <DialogDescription>{reverseAction && selectedTransaction ? t('activities.messages.reverseConfirmation', {
+                            defaultValue: 'Do you want to {{action}} {{transactionNo}}? Finite activity availability will be restored.',
+                            action: (reverseAction === 'cancelled'
+                                ? t('activities.cancel', { defaultValue: 'Cancel' })
+                                : t('activities.refund', { defaultValue: 'Refund' })).toLowerCase(),
+                            transactionNo: selectedTransaction.transactionNo
+                        }) : null}</DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter layout="structured">
+                        <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => setReverseAction(null)}>
+                            {t('common.cancel', { defaultValue: 'Cancel' })}
+                        </Button>
+                        <Button type="button" variant="destructive" disabled={isSubmitting} onClick={() => void handleReverse()}>
+                            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : reverseAction === 'cancelled'
+                                ? <XCircle className="mr-2 h-4 w-4" />
+                                : <RotateCcw className="mr-2 h-4 w-4" />}
+                            {reverseAction === 'cancelled'
+                                ? t('activities.cancel', { defaultValue: 'Cancel' })
+                                : t('activities.refund', { defaultValue: 'Refund' })}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <DeleteConfirmationModal
                 isOpen={deleteOpen}
