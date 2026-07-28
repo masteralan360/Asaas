@@ -570,6 +570,7 @@ const SAMPLE_ORDER_DATA: SalesOrder = {
             productId: 'sample-product',
             productName: 'Sample Product',
             productSku: 'SKU-0001',
+            note: 'Sample line item note.',
             unit: 'pcs',
             quantity: 2,
             lineTotal: 200,

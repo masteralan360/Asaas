@@ -1784,6 +1784,8 @@
       "shippingPlaceholder": "Enter shipping address...",
       "notes": "Notes (Optional)",
       "notesPlaceholder": "Order notes, special instructions...",
+      "lineItemNote": "Line item note",
+      "lineItemNoteDescription": "Add a note that will be saved with this line item.",
       "orderDetails": "Order Details",
       "paidOnSave": "Paid on save",
       "paidOnSaveDescription": "Record the order as already settled.",

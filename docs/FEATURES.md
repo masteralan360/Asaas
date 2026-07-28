@@ -326,31 +326,17 @@ Not available on:
 
 ---
 
-## Feature Flags
+## Workspace Access
 
-### Workspace-Level Flags
-
-Controlled via `workspaces` table:
-
-```typescript
-interface WorkspaceFeatures {
-  allow_pos: boolean
-  allow_customers: boolean    // Legacy
-  allow_orders: boolean       // Legacy
-  allow_invoices: boolean
-  allow_whatsapp: boolean
-  locked_workspace: boolean
-  max_discount_percent: number
-}
-```
+Module availability comes from the workspace plan and any per-workspace access overrides. It is not controlled by legacy `allow_crm`, `allow_customers`, `allow_orders`, or `allow_suppliers` columns.
 
 ### Checking Features
 
 ```typescript
 const { hasFeature } = useWorkspace()
 
-if (hasFeature('allow_pos')) {
-  // Show POS feature
+if (hasFeature('orders')) {
+  // Show order-management features
 }
 ```
 

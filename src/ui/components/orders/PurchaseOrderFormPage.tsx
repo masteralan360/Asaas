@@ -70,6 +70,7 @@ import { ProductsViewModal, ProductsViewModalTrigger } from '@/ui/components/Pro
 import { ProductAutocompleteInput } from './ProductAutocompleteInput'
 import { LoanPartyPickerDialog } from '@/ui/components/loans/LoanPartyPickerDialog'
 import { OrderAdjustmentsDialog } from './OrderAdjustmentsDialog'
+import { OrderLineItemNoteDialog } from './OrderLineItemNoteDialog'
 
 interface PurchaseOrderFormPageProps {
     workspaceId: string
@@ -94,6 +95,7 @@ type FormItem = {
     priceBookId: string
     priceBookItemId: string
     priceSourceCurrency: CurrencyCode | ''
+    note: string
 }
 
 function createEmptyItem(storageId = '', seq = 1): FormItem {
@@ -112,7 +114,8 @@ function createEmptyItem(storageId = '', seq = 1): FormItem {
         batchManufacturingDate: '',
         priceBookId: '',
         priceBookItemId: '',
-        priceSourceCurrency: ''
+        priceSourceCurrency: '',
+        note: ''
     }
 }
 
@@ -261,7 +264,8 @@ export function PurchaseOrderFormPage({
                     batchManufacturingDate: item.batchManufacturingDate || '',
                     priceBookId: item.priceBookId || '',
                     priceBookItemId: item.priceBookItemId || '',
-                    priceSourceCurrency: item.priceBookId && item.priceBookItemId ? item.originalCurrency : ''
+                    priceSourceCurrency: item.priceBookId && item.priceBookItemId ? item.originalCurrency : '',
+                    note: item.note || ''
                 }
             })
         }
@@ -319,7 +323,8 @@ export function PurchaseOrderFormPage({
                 batchManufacturingDate: item.batchManufacturingDate || '',
                 priceBookId: item.priceBookId || '',
                 priceBookItemId: item.priceBookItemId || '',
-                priceSourceCurrency: item.priceBookId && item.priceBookItemId ? item.originalCurrency : ''
+                priceSourceCurrency: item.priceBookId && item.priceBookItemId ? item.originalCurrency : '',
+                note: item.note || ''
             }
         }))
     }, [defaultStorageId, editingOrder])
@@ -555,6 +560,7 @@ export function PurchaseOrderFormPage({
                     return {
                         id: item.id,
                         productId: product.id,
+                        note: item.note.trim() || null,
                         priceBookId: hasPriceBookProvenance ? item.priceBookId : null,
                         priceBookItemId: hasPriceBookProvenance ? item.priceBookItemId : null,
                         storageId: item.storageId,
@@ -868,8 +874,8 @@ export function PurchaseOrderFormPage({
                                                     className={cn(
                                                         'relative grid gap-3 rounded-2xl border bg-background p-4 transition-all duration-700',
                                                         canUseFreeBonus
-                                                            ? 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_110px_140px_40px]'
-                                                            : 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_40px]',
+                                                            ? 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_110px_140px_88px]'
+                                                            : 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_88px]',
                                                         item.seq === highlightedNewSeq && 'border-primary ring-2 ring-primary/60 bg-primary/5'
                                                     )}
                                                 >
@@ -957,7 +963,19 @@ export function PurchaseOrderFormPage({
                                                         <Label>{t('common.buyingPrice', { defaultValue: 'Buying Price' })}</Label>
                                                         <Input value={formatNumericInput(item.unitPrice)} onChange={(event) => updateItem(index, { unitPrice: sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 3 }) })} placeholder={t('common.buyingPrice', { defaultValue: 'Buying Price' })} />
                                                     </div>
-                                                    <div className="flex items-start justify-end" data-tour-id={index === 0 ? 'tutorial-order-line-actions' : undefined}>
+                                                    <div className="flex items-start justify-end gap-1" data-tour-id={index === 0 ? 'tutorial-order-line-actions' : undefined}>
+                                                        <OrderLineItemNoteDialog
+                                                            note={item.note}
+                                                            onSave={(note) => updateItem(index, { note })}
+                                                            labels={{
+                                                                trigger: t('orders.form.lineItemNote', { defaultValue: 'Line item note' }),
+                                                                title: t('orders.form.lineItemNote', { defaultValue: 'Line item note' }),
+                                                                description: t('orders.form.lineItemNoteDescription', { defaultValue: 'Add a note that will be saved with this line item.' }),
+                                                                field: t('common.note', { defaultValue: 'Note' }),
+                                                                save: t('common.save', { defaultValue: 'Save' }),
+                                                                cancel: t('common.cancel', { defaultValue: 'Cancel' })
+                                                            }}
+                                                        />
                                                         <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
                                                             <Trash2 className="h-4 w-4" />
                                                         </Button>

@@ -1251,6 +1251,8 @@
       "shippingPlaceholder": "أدخل عنوان الشحن...",
       "notes": "الملاحظات (اختياري)",
       "notesPlaceholder": "ملاحظات الطلب أو التعليمات الخاصة...",
+      "lineItemNote": "ملاحظة بند الطلب",
+      "lineItemNoteDescription": "أضف ملاحظة تُحفظ مع بند الطلب هذا.",
       "orderDetails": "تفاصيل الطلب",
       "paidOnSave": "مدفوع عند الحفظ",
       "paidOnSaveDescription": "سجّل الطلب على أنه مسدد بالفعل.",

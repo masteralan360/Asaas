@@ -99,7 +99,8 @@ export const ATLAS_STANDARD_ORDER_HIDDEN_FIELD_KEYS = {
         quantity: 'atlasStandard.table.quantity',
         freeQuantity: 'atlasStandard.table.freeQuantity',
         price: 'atlasStandard.table.price',
-        total: 'atlasStandard.table.total'
+        total: 'atlasStandard.table.total',
+        note: 'atlasStandard.table.note'
     },
     financialSummary: {
         paidAmount: 'atlasStandard.financialSummary.paidAmount',
@@ -210,7 +211,7 @@ function resolveAtlasStandardLocale(language: string): AtlasStandardLocale {
 const ATLAS_STANDARD_LABELS = {
     en: {
         customer: 'Customer', supplier: 'Supplier', invoice: 'Invoice', salesOrder: 'Sales Order', purchaseOrder: 'Purchase Order', number: 'No.', phone: 'Phone', salesPerson: 'Cashier', partnerAddress: "Partner's Address", status: 'Status', documentNumber: 'Document No.', invoiceDate: 'Inv. date', time: 'Time',
-        productName: 'Product Name', expiry: 'EXP', batchNumber: 'Batch No.', quantity: 'Qty', freeQuantity: 'Free Qty', price: 'Price', total: 'Total',
+        productName: 'Product Name', expiry: 'EXP', batchNumber: 'Batch No.', quantity: 'Qty', freeQuantity: 'Free Qty', price: 'Price', total: 'Total', note: 'Note',
         paidAmount: 'Paid Amount', discount: 'Discount', amountInWords: 'Amount in words', paymentMethod: 'Payment Method', outstanding: 'Order Outstanding', currentBalance: "Partner's Current Balance", printedBy: 'Printed by', notes: 'Notes',
         invoiceDetails: 'Invoice details', orderItemsTable: 'Order items table', financialSummary: 'Financial summary', selectValues: 'Select the values to include in this print.', selectColumns: 'Select the table columns to include in this print.', noColumns: 'No item columns selected', dragToSwap: 'Drag to swap position', renameTitle: 'Rename title', renameTitleDescription: 'Use a custom title for this value in the print.', title: 'Title', save: 'Save', cancel: 'Cancel', resetTitle: 'Reset title', invoiceOrganizer: 'Invoice Organizer', switchToInvoiceOrganizer: 'Switch to Invoice Organizer', switchToCashier: 'Switch to Cashier', logo: 'LOGO', workspaceLogo: 'Workspace logo', workspaceName: 'Workspace Name', email: 'Email', madeBy: 'Made By AtlasERP', page: 'Page', pageOf: 'from', printDate: 'Print date',
         statuses: { draft: 'Draft', pending: 'Pending', completed: 'Completed', cancelled: 'Cancelled', ordered: 'Ordered', received: 'Received' },
@@ -218,7 +219,7 @@ const ATLAS_STANDARD_LABELS = {
     },
     ar: {
         customer: 'العميل', supplier: 'المورد', invoice: 'الفاتورة', salesOrder: 'طلب مبيعات', purchaseOrder: 'طلب شراء', number: 'الرقم', phone: 'الهاتف', salesPerson: 'أمين الصندوق', partnerAddress: 'عنوان الشريك', status: 'الحالة', documentNumber: 'رقم المستند', invoiceDate: 'تاريخ الفاتورة', time: 'الوقت',
-        productName: 'اسم المنتج', expiry: 'الصلاحية', batchNumber: 'رقم التشغيلة', quantity: 'الكمية', freeQuantity: 'كمية مجانية', price: 'السعر', total: 'الإجمالي',
+        productName: 'اسم المنتج', expiry: 'الصلاحية', batchNumber: 'رقم التشغيلة', quantity: 'الكمية', freeQuantity: 'كمية مجانية', price: 'السعر', total: 'الإجمالي', note: 'ملاحظة',
         paidAmount: 'المبلغ المدفوع', discount: 'الخصم', amountInWords: 'المبلغ كتابة', paymentMethod: 'طريقة الدفع', outstanding: 'المبلغ المتبقي للطلب', currentBalance: 'الرصيد الحالي للشريك', printedBy: 'طبع بواسطة', notes: 'ملاحظات',
         invoiceDetails: 'تفاصيل الفاتورة', orderItemsTable: 'جدول أصناف الطلب', financialSummary: 'الملخص المالي', selectValues: 'اختر القيم التي تريد تضمينها في هذه الطباعة.', selectColumns: 'اختر أعمدة الجدول التي تريد تضمينها في هذه الطباعة.', noColumns: 'لم يتم اختيار أي أعمدة للأصناف', dragToSwap: 'اسحب لتبديل الموضع', renameTitle: 'إعادة تسمية العنوان', renameTitleDescription: 'استخدم عنواناً مخصصاً لهذه القيمة في الطباعة.', title: 'العنوان', save: 'حفظ', cancel: 'إلغاء', resetTitle: 'استعادة العنوان', invoiceOrganizer: 'منظم الفاتورة', switchToInvoiceOrganizer: 'التبديل إلى منظم الفاتورة', switchToCashier: 'التبديل إلى أمين الصندوق', logo: 'الشعار', workspaceLogo: 'شعار مساحة العمل', workspaceName: 'اسم مساحة العمل', email: 'البريد الإلكتروني', madeBy: 'تم الإنشاء بواسطة AtlasERP', page: 'الصفحة', pageOf: 'من', printDate: 'تاريخ الطباعة',
         statuses: { draft: 'مسودة', pending: 'قيد الانتظار', completed: 'مكتمل', cancelled: 'ملغى', ordered: 'تم الطلب', received: 'تم الاستلام' },
@@ -226,7 +227,7 @@ const ATLAS_STANDARD_LABELS = {
     },
     ku: {
         customer: 'کڕیار', supplier: 'دابینکەر', invoice: 'پسوڵە', salesOrder: 'داواکاری فرۆشتن', purchaseOrder: 'داواکاری کڕین', number: 'ژمارە', phone: 'تەلەفۆن', salesPerson: 'کاشێر', partnerAddress: 'ناونیشانی هاوبەش', status: 'دۆخ', documentNumber: 'ژمارەی بەڵگە', invoiceDate: 'بەرواری پسوڵە', time: 'کات',
-        productName: 'ناوی کاڵا', expiry: 'بەسەرچوون', batchNumber: 'ژمارەی بچ', quantity: 'بڕ', freeQuantity: 'بڕی بەخۆڕایی', price: 'نرخ', total: 'کۆی گشتی',
+        productName: 'ناوی کاڵا', expiry: 'بەسەرچوون', batchNumber: 'ژمارەی بچ', quantity: 'بڕ', freeQuantity: 'بڕی بەخۆڕایی', price: 'نرخ', total: 'کۆی گشتی', note: 'تێبینی',
         paidAmount: 'بڕی دراو', discount: 'داشکاندن', amountInWords: 'بڕ بە نووسین', paymentMethod: 'شێوازی پارەدان', outstanding: 'بڕی ماوەی داواکاری', currentBalance: 'باڵانسی ئێستای هاوبەش', printedBy: 'چاپکراوە لەلایەن', notes: 'تێبینی',
         invoiceDetails: 'وردەکارییەکانی پسوڵە', orderItemsTable: 'خشتەی کاڵاکانی داواکاری', financialSummary: 'پوختەی دارایی', selectValues: 'ئەو بەهایانە هەڵبژێرە کە دەتهەوێت لەم چاپەدا دەربکەون.', selectColumns: 'ستوونەکانی خشتە هەڵبژێرە کە دەتهەوێت لەم چاپەدا دەربکەون.', noColumns: 'هیچ ستوونی کاڵا هەڵنەبژێردراوە', dragToSwap: 'ڕابکێشە بۆ گۆڕینی شوێن', renameTitle: 'ناونیشان بگۆڕە', renameTitleDescription: 'ناونیشانێکی تایبەت بۆ ئەم بەهایە لە چاپەکەدا بەکاربهێنە.', title: 'ناونیشان', save: 'پاشەکەوتکردن', cancel: 'هەڵوەشاندنەوە', resetTitle: 'ناونیشان بگەڕێنەوە', invoiceOrganizer: 'ڕێکخەری پسوڵە', switchToInvoiceOrganizer: 'بگۆڕە بۆ ڕێکخەری پسوڵە', switchToCashier: 'بگۆڕە بۆ کاشێر', logo: 'لۆگۆ', workspaceLogo: 'لۆگۆی شوێنی کار', workspaceName: 'ناوی شوێنی کار', email: 'ئیمەیڵ', madeBy: 'دروستکراوە لەلایەن AtlasERP', page: 'لاپەڕە', pageOf: 'لە', printDate: 'بەرواری چاپ',
         statuses: { draft: 'ڕەشنووس', pending: 'چاوەڕوان', completed: 'تەواوبوو', cancelled: 'هەڵوەشاوە', ordered: 'داواکراو', received: 'وەرگیراو' },
@@ -847,13 +848,14 @@ export function AtlasStandardOrderInvoiceTemplate({
     const emptyTableAreaMm = Math.max(0, TABLE_DATA_AREA_MM - (items.length * TABLE_ITEM_ROW_MM))
     const tableColumns: TableColumn[] = [
         { key: tableKeys.number, label: labels.number, width: '5%' },
-        { key: tableKeys.product, label: labels.productName, width: '34%' },
-        { key: tableKeys.expiry, label: labels.expiry, width: '9%' },
-        { key: tableKeys.batchNumber, label: labels.batchNumber, width: '10%' },
-        { key: tableKeys.quantity, label: labels.quantity, width: '9%' },
-        { key: tableKeys.freeQuantity, label: labels.freeQuantity, width: '9%' },
-        { key: tableKeys.price, label: labels.price, width: '12%' },
-        { key: tableKeys.total, label: labels.total, width: '12%' }
+        { key: tableKeys.product, label: labels.productName, width: '22%' },
+        { key: tableKeys.expiry, label: labels.expiry, width: '8%' },
+        { key: tableKeys.batchNumber, label: labels.batchNumber, width: '9%' },
+        { key: tableKeys.quantity, label: labels.quantity, width: '8%' },
+        { key: tableKeys.freeQuantity, label: labels.freeQuantity, width: '8%' },
+        { key: tableKeys.price, label: labels.price, width: '10%' },
+        { key: tableKeys.total, label: labels.total, width: '10%' },
+        { key: tableKeys.note, label: labels.note, width: '20%' }
     ]
 
     const invoiceDetailFields: HideablePrintField[] = [
@@ -1125,7 +1127,8 @@ export function AtlasStandardOrderInvoiceTemplate({
                                         : paidQuantity,
                                     [tableKeys.freeQuantity]: getOrderLineFreeBonusQuantity(item) || '\u00a0',
                                     [tableKeys.price]: formatCurrency(item.convertedUnitPrice, currency, iqdPreference),
-                                    [tableKeys.total]: formatCurrency(item.lineTotal, currency, iqdPreference)
+                                    [tableKeys.total]: formatCurrency(item.lineTotal, currency, iqdPreference),
+                                    [tableKeys.note]: item.note?.trim() || '\u00a0'
                                 }
                                 return (
                                     <tr key={item.id} className="h-[8mm]">
@@ -1134,7 +1137,9 @@ export function AtlasStandardOrderInvoiceTemplate({
                                                 key={column.key}
                                                 className={cn(
                                                     'border px-[1.2mm] py-[1mm] text-center align-middle leading-[1.15]',
-                                                    column.key === tableKeys.product ? 'break-words whitespace-normal' : 'whitespace-nowrap'
+                                                    column.key === tableKeys.product || column.key === tableKeys.note
+                                                        ? 'break-words whitespace-pre-wrap'
+                                                        : 'whitespace-nowrap'
                                                 )}
                                                 style={{ borderColor: INK }}
                                             >

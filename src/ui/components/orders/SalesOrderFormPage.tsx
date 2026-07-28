@@ -81,6 +81,7 @@ import { ProductsViewModal, ProductsViewModalTrigger } from '@/ui/components/Pro
 import { ProductAutocompleteInput } from './ProductAutocompleteInput'
 import { LoanPartyPickerDialog } from '@/ui/components/loans/LoanPartyPickerDialog'
 import { OrderAdjustmentsDialog } from './OrderAdjustmentsDialog'
+import { OrderLineItemNoteDialog } from './OrderLineItemNoteDialog'
 
 interface SalesOrderFormPageProps {
     workspaceId: string
@@ -101,6 +102,7 @@ type FormItem = {
     priceBookItemId: string
     priceSourceCurrency: CurrencyCode | ''
     priceBookCostPrice: string
+    note: string
 }
 
 function createEmptyItem(storageId = '', seq = 1): FormItem {
@@ -116,7 +118,8 @@ function createEmptyItem(storageId = '', seq = 1): FormItem {
         priceBookId: '',
         priceBookItemId: '',
         priceSourceCurrency: '',
-        priceBookCostPrice: ''
+        priceBookCostPrice: '',
+        note: ''
     }
 }
 
@@ -278,7 +281,8 @@ export function SalesOrderFormPage({
                     priceBookId: item.priceBookId || '',
                     priceBookItemId: item.priceBookItemId || '',
                     priceSourceCurrency: item.priceBookId && item.priceBookItemId ? item.originalCurrency : '',
-                    priceBookCostPrice: item.priceBookId && item.priceBookItemId ? String(item.costPrice) : ''
+                    priceBookCostPrice: item.priceBookId && item.priceBookItemId ? String(item.costPrice) : '',
+                    note: item.note || ''
                 }
             })
         }
@@ -335,7 +339,8 @@ export function SalesOrderFormPage({
                 priceBookId: item.priceBookId || '',
                 priceBookItemId: item.priceBookItemId || '',
                 priceSourceCurrency: item.priceBookId && item.priceBookItemId ? item.originalCurrency : '',
-                priceBookCostPrice: item.priceBookId && item.priceBookItemId ? String(item.costPrice) : ''
+                priceBookCostPrice: item.priceBookId && item.priceBookItemId ? String(item.costPrice) : '',
+                note: item.note || ''
             }
         }))
     }, [defaultStorageId, editingOrder])
@@ -717,6 +722,7 @@ export function SalesOrderFormPage({
                     return {
                         id: `${product.id}-${item.storageId}-${item.batchId}-${quantity}-${freeBonusQuantity}-${unitPrice}`,
                         productId: product.id,
+                        note: item.note.trim() || null,
                         priceBookId: hasPriceBookProvenance ? item.priceBookId : null,
                         priceBookItemId: hasPriceBookProvenance ? item.priceBookItemId : null,
                         storageId: item.storageId,
@@ -1043,8 +1049,8 @@ export function SalesOrderFormPage({
                                                     className={cn(
                                                         'relative grid gap-3 rounded-2xl border bg-background p-4 transition-all duration-700',
                                                         canUseFreeBonus
-                                                            ? 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_110px_140px_40px]'
-                                                            : 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_40px]',
+                                                            ? 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_110px_140px_88px]'
+                                                            : 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_88px]',
                                                         isSellingAtLoss && 'border-destructive bg-destructive/5',
                                                         item.seq === highlightedNewSeq && 'border-primary ring-2 ring-primary/60 bg-primary/5'
                                                     )}
@@ -1199,7 +1205,19 @@ export function SalesOrderFormPage({
                                                             </div>
                                                         ) : null}
                                                     </div>
-                                                    <div className="flex items-start justify-end" data-tour-id={index === 0 ? 'tutorial-order-line-actions' : undefined}>
+                                                    <div className="flex items-start justify-end gap-1" data-tour-id={index === 0 ? 'tutorial-order-line-actions' : undefined}>
+                                                        <OrderLineItemNoteDialog
+                                                            note={item.note}
+                                                            onSave={(note) => updateItem(index, { note })}
+                                                            labels={{
+                                                                trigger: t('orders.form.lineItemNote', { defaultValue: 'Line item note' }),
+                                                                title: t('orders.form.lineItemNote', { defaultValue: 'Line item note' }),
+                                                                description: t('orders.form.lineItemNoteDescription', { defaultValue: 'Add a note that will be saved with this line item.' }),
+                                                                field: t('common.note', { defaultValue: 'Note' }),
+                                                                save: t('common.save', { defaultValue: 'Save' }),
+                                                                cancel: t('common.cancel', { defaultValue: 'Cancel' })
+                                                            }}
+                                                        />
                                                         <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
                                                             <Trash2 className="h-4 w-4" />
                                                         </Button>

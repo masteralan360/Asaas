@@ -482,8 +482,8 @@ interface SalesOrderItem {
 - **Priority:** P2
 - **Dependencies:** None
 - **INPUT:** WorkspaceContext
-- **OUTPUT:** Add feature flags: `allow_suppliers`, `allow_customers`, `allow_orders`
-- **VERIFY:** Features toggleable per workspace
+- **OUTPUT:** Superseded — module access is derived from the workspace plan and `workspace_access_overrides`.
+- **VERIFY:** Customer, supplier, and order access can be granted or revoked per workspace.
 
 ---
 

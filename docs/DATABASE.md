@@ -182,8 +182,6 @@ interface Workspace extends BaseEntity {
   try_conversion_enabled?: boolean
   locked_workspace: boolean  // Freeze all operations
   allow_pos: boolean
-  allow_customers: boolean
-  allow_orders: boolean
   allow_invoices: boolean
   allow_whatsapp?: boolean
   logo_url?: string | null

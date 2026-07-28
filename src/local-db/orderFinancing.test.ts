@@ -381,6 +381,30 @@ describe('order-linked financing', () => {
         await db.delete()
     })
 
+    it('persists a note on each saved sales and purchase order line', async () => {
+        const supplier = await createSupplier(null)
+        const purchaseInput = purchaseOrderInput(supplier.id, { method: 'cash' })
+        purchaseInput.items[0].note = 'Keep the supplier packing slip with this line.'
+        const purchaseOrder = await createPurchaseOrder(WORKSPACE_ID, purchaseInput)
+
+        expect(purchaseOrder.items[0].note).toBe('Keep the supplier packing slip with this line.')
+        expect((await db.purchase_orders.get(purchaseOrder.id))?.items[0].note)
+            .toBe('Keep the supplier packing slip with this line.')
+
+        const customer = await createCustomer()
+        const salesInput = salesOrderInput(customer.id, {
+            id: PRODUCT_ID,
+            name: 'Test Product',
+            sku: 'TEST-001',
+            costPrice: 50
+        }, '', { method: 'cash' })
+        salesInput.items[0].note = 'Deliver this line before noon.'
+        const salesOrder = await createSalesOrder(WORKSPACE_ID, salesInput)
+
+        expect(salesOrder.items[0].note).toBe('Deliver this line before noon.')
+        expect((await db.sales_orders.get(salesOrder.id))?.items[0].note).toBe('Deliver this line before noon.')
+    })
+
     it('creates one standard borrowed loan and mirrors payments and reversals to the order', async () => {
         const supplier = await createSupplier(200)
         const draft = await createPurchaseOrder(

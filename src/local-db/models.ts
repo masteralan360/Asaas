@@ -515,6 +515,8 @@ export interface SalesExchange {
 export interface OrderLineItem {
   id: string;
   productId: string;
+  /** Optional note recorded for this individual order line. */
+  note?: string | null;
   priceBookId?: string | null;
   priceBookItemId?: string | null;
   storageId?: string | null;

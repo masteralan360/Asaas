@@ -657,6 +657,8 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(html).toContain('Atlas Test')
         expect(html).toContain('min-h-[13mm]')
         expect(html).toContain('Sample Product')
+        expect(html).toContain('Sample line item note.')
+        expect(html).toContain('>Note</th>')
         expect(html).toContain('>2 pcs</td>')
         expect(html).toContain('height:137mm')
         expect(html).toContain('h-[8mm] bg-[#e8f0fa]')
@@ -679,6 +681,12 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(html).toContain('data-order-print-component="atlasStandardWorkspaceLogo"')
         expect(html).toContain('data-template-text-flow-anchor')
         expect((html.match(/data-order-print-component=/g) || [])).toHaveLength(2)
+
+        const hiddenNoteHtml = renderToStaticMarkup(preview.createElement({}, undefined, undefined, {
+            hiddenFields: { 'atlasStandard.table.note': true }
+        }))
+        expect(hiddenNoteHtml).not.toContain('Sample line item note.')
+        expect(hiddenNoteHtml).not.toContain('>Note</th>')
     })
 
     it('writes the amount in words using the selected print language', () => {
