@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
-import { useTranslation, type TFunction } from 'react-i18next'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useLocation } from 'wouter'
 import { Activity, CheckCircle2, ClipboardList, Edit3, Infinity as InfinityIcon, Loader2, Plus, Printer, Receipt, RotateCcw, Search, Trash2, XCircle } from 'lucide-react'
 
@@ -184,7 +185,8 @@ function escapeReceiptValue(value: string) {
     }[character] || character))
 }
 
-function _printActivityReceipt(
+/** @deprecated Activities now print through PrintPreviewModal and /pdf-preview. */
+export function printActivityReceipt(
     transaction: ActivityTransaction,
     lines: ActivityTransactionLine[],
     workspaceName: string,
@@ -711,7 +713,7 @@ export function Activities() {
                         {catalog.length ? <div className="mt-4 space-y-2 rounded-lg border p-3">
                             <div className="flex items-center justify-between"><Label>{t('activities.existingActivities', { defaultValue: 'Existing activities' })}</Label><Button type="button" size="sm" variant="ghost" onClick={() => setCatalogDraft(createCatalogDraft())}>{t('activities.newActivity', { defaultValue: 'New activity' })}</Button></div>
                             {catalog.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-md bg-muted/50 px-3 py-2 text-sm">
-                                <button type="button" className="min-w-0 text-left" onClick={() => setCatalogDraft(createCatalogDraft(item))}><p className="truncate font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{item.isInfinite ? t('activities.infinite', { defaultValue: 'Infinite' }) : t('activities.availableCount', { defaultValue: '{{count}} available', count: item.availableQuantity })} · {formatCurrency(item.defaultUnitPrice, item.currency, features.iqd_display_preference)}</p></button>
+                                <button type="button" className="min-w-0 text-left" onClick={() => setCatalogDraft(createCatalogDraft(item))}><p className="truncate font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{item.isInfinite ? t('activities.infinite', { defaultValue: 'Infinite' }) : t('activities.availableCount', { defaultValue: '{{count}} available', count: item.availableQuantity ?? 0 })} · {formatCurrency(item.defaultUnitPrice, item.currency, features.iqd_display_preference)}</p></button>
                                 <Button type="button" size="sm" variant="ghost" onClick={() => void handleCatalogStatus(item)}>{item.isActive ? t('activities.deactivate', { defaultValue: 'Deactivate' }) : t('activities.activate', { defaultValue: 'Activate' })}</Button>
                             </div>)}
                         </div> : null}
@@ -746,7 +748,7 @@ export function Activities() {
                                     const selectedActivity = activeCatalog.find((activity) => activity.id === line.activityId)
                                     const overridden = selectedActivity && Number(line.unitPrice || 0) !== selectedActivity.defaultUnitPrice
                                     return <div key={line.id || `${line.activityId}-${index}`} className="grid gap-2 border-t pt-3 sm:grid-cols-[minmax(0,1fr)_88px_120px_auto]">
-                                        <Select value={line.activityId} onValueChange={(value) => updateDraftLine(index, { activityId: value })}><SelectTrigger><SelectValue placeholder={t('activities.selectActivity', { defaultValue: 'Select activity' })} /></SelectTrigger><SelectContent>{activeCatalog.map((activity) => <SelectItem key={activity.id} value={activity.id}>{activity.name}{activity.isInfinite ? ' · ∞' : ` · ${t('activities.quantityLeft', { defaultValue: '{{count}} left', count: activity.availableQuantity })}`}</SelectItem>)}</SelectContent></Select>
+                                        <Select value={line.activityId} onValueChange={(value) => updateDraftLine(index, { activityId: value })}><SelectTrigger><SelectValue placeholder={t('activities.selectActivity', { defaultValue: 'Select activity' })} /></SelectTrigger><SelectContent>{activeCatalog.map((activity) => <SelectItem key={activity.id} value={activity.id}>{activity.name}{activity.isInfinite ? ' · ∞' : ` · ${t('activities.quantityLeft', { defaultValue: '{{count}} left', count: activity.availableQuantity ?? 0 })}`}</SelectItem>)}</SelectContent></Select>
                                         <NumericInput aria-label={t('activities.quantity', { defaultValue: 'Quantity' })} inputMode="decimal" min="0.001" maxFractionDigits={3} value={line.quantity} onValueChange={(value) => updateDraftLine(index, { quantity: value })} />
                                         <div className="space-y-1"><NumericInput aria-label={t('activities.unitPrice', { defaultValue: 'Unit price' })} inputMode={priceFractionDigits === 0 ? 'numeric' : 'decimal'} min="0" maxFractionDigits={priceFractionDigits} value={line.unitPrice} onValueChange={(value) => updateDraftLine(index, { unitPrice: value })} />{overridden ? <p className="text-xs text-amber-700 dark:text-amber-400">{t('activities.overridden', { defaultValue: 'Overridden' })}</p> : null}</div>
                                         <Button type="button" variant="ghost" size="icon" disabled={transactionDraft.lines.length === 1} onClick={() => setTransactionDraft((current) => ({ ...current, lines: current.lines.filter((_, lineIndex) => lineIndex !== index) }))}><Trash2 className="h-4 w-4" /><span className="sr-only">{t('common.remove', { defaultValue: 'Remove' })}</span></Button>
