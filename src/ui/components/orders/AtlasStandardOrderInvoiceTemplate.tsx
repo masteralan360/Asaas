@@ -331,15 +331,20 @@ function numberToWords(value: number, language: string) {
     }
 }
 
-function getBatchDetails(item: SalesOrder['items'][number] | PurchaseOrder['items'][number]) {
-    if ('batchNumber' in item) {
+function getBatchDetails(
+    item: SalesOrder['items'][number] | PurchaseOrder['items'][number],
+    kind: OrderKind
+) {
+    if (kind === 'purchase') {
+        const purchaseItem = item as PurchaseOrder['items'][number]
         return {
-            batchNumber: item.batchNumber || '',
-            expiry: item.batchExpiryDate ? formatDate(item.batchExpiryDate) : ''
+            batchNumber: purchaseItem.batchNumber || '',
+            expiry: purchaseItem.batchExpiryDate ? formatDate(purchaseItem.batchExpiryDate) : ''
         }
     }
 
-    const allocations = item.batchAllocations || []
+    const salesItem = item as SalesOrder['items'][number]
+    const allocations = salesItem.batchAllocations || []
     return {
         batchNumber: allocations.map((allocation) => allocation.batchNumber).filter(Boolean).join(', '),
         expiry: allocations
@@ -798,7 +803,7 @@ export function AtlasStandardOrderInvoiceTemplate({
                         </thead>
                         <tbody>
                             {items.map((item, index) => {
-                                const batch = getBatchDetails(item)
+                                const batch = getBatchDetails(item, kind)
                                 const paidQuantity = getOrderLinePaidQuantity(item)
                                 const unit = item.unit?.trim()
                                 const values: Record<string, ReactNode> = {
