@@ -47,6 +47,7 @@
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@fontsource-variable/geist": "^5.2.8",
+    "@hello-pangea/dnd": "^18.0.1",
     "@lglab/react-qr-code": "^1.4.9",
     "@lyfie/luthor": "^2.3.6",
     "@mui/material": "^7.3.8",

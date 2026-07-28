@@ -70,6 +70,20 @@ function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout 
             Object.entries(layout.hiddenFields).filter(([, value]) => typeof value === 'boolean')
         )
         : {}
+    const fieldOrders = layout.fieldOrders && typeof layout.fieldOrders === 'object'
+        ? Object.fromEntries(
+            Object.entries(layout.fieldOrders)
+                .filter(([, value]) => Array.isArray(value))
+                .map(([key, value]) => [key, value.filter((fieldKey): fieldKey is string => typeof fieldKey === 'string')])
+        )
+        : {}
+    const fieldLabelOverrides = layout.fieldLabelOverrides && typeof layout.fieldLabelOverrides === 'object'
+        ? Object.fromEntries(
+            Object.entries(layout.fieldLabelOverrides)
+                .filter(([, value]) => typeof value === 'string' && Boolean(value.trim()))
+                .map(([key, value]) => [key, (value as string).trim()])
+        )
+        : {}
 
     return {
         version: 1,
@@ -85,6 +99,8 @@ function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout 
         },
         fields: layout.fields || {},
         hiddenFields,
+        fieldOrders,
+        fieldLabelOverrides,
         componentPositions: layout.componentPositions || {},
         annotations: layout.annotations || [],
         texts: layout.texts || [],
@@ -103,6 +119,8 @@ function countLayoutItems(row: CustomTemplateRow) {
         + layout.shapes.length
         + Object.keys(layout.fields).length
         + Object.keys(layout.hiddenFields || {}).length
+        + Object.values(layout.fieldOrders || {}).reduce((count, fieldOrder) => count + fieldOrder.length, 0)
+        + Object.keys(layout.fieldLabelOverrides || {}).length
         + Object.keys(layout.componentPositions || {}).length
 }
 

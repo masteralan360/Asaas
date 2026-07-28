@@ -1,3 +1,5 @@
+import type { DraggableProvidedDragHandleProps } from '@hello-pangea/dnd'
+import { GripVertical } from 'lucide-react'
 import { useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -20,8 +22,15 @@ import {
     DialogHeader,
     DialogTitle
 } from '@/ui/components/dialog'
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuTrigger
+} from '@/ui/components/ui/context-menu'
 import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
 import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
+import { ReorderablePickerGrid } from '@/ui/components/ReorderablePickerGrid'
 
 type OrderKind = 'sales' | 'purchase'
 
@@ -52,6 +61,10 @@ export interface AtlasStandardOrderInvoiceTemplateProps {
     onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
     hiddenFields?: Record<string, boolean>
     onHiddenFieldChange?: (key: string, hidden: boolean) => void
+    fieldOrders?: Record<string, string[]>
+    onFieldOrderChange?: (sectionKey: string, fieldKeys: string[]) => void
+    fieldLabelOverrides?: Record<string, string>
+    onFieldLabelChange?: (fieldKey: string, label: string) => void
 }
 
 const INK = '#244f87'
@@ -98,6 +111,11 @@ export const ATLAS_STANDARD_ORDER_HIDDEN_FIELD_KEYS = {
     }
 } as const
 
+export const ATLAS_STANDARD_ORDER_FIELD_ORDER_KEYS = {
+    invoiceDetails: 'atlasStandard.invoiceDetails',
+    financialSummary: 'atlasStandard.financialSummary'
+} as const
+
 type TableColumn = {
     key: string
     label: string
@@ -107,9 +125,36 @@ type TableColumn = {
 type HideablePrintField = {
     key: string
     label: ReactNode
+    defaultLabel?: string
     value?: ReactNode
-    render?: ReactNode
+    render?: ReactNode | ((label: ReactNode) => ReactNode)
     className?: string
+    dialogClassName?: string
+}
+
+function orderFieldsForLayout(fields: HideablePrintField[], fieldOrder?: string[]) {
+    const fieldsByKey = new Map(fields.map((field) => [field.key, field]))
+    const usedKeys = new Set<string>()
+    const orderedKeys = (fieldOrder || [])
+        .filter((key) => fieldsByKey.has(key) && !usedKeys.has(key))
+        .filter((key) => {
+            usedKeys.add(key)
+            return true
+        })
+
+    fields.forEach((field) => {
+        if (!usedKeys.has(field.key)) orderedKeys.push(field.key)
+    })
+
+    return orderedKeys.map((key, index) => {
+        const field = fieldsByKey.get(key)!
+        const slot = fields[index] || field
+        return {
+            ...field,
+            className: slot.className,
+            dialogClassName: slot.dialogClassName
+        }
+    })
 }
 
 function isRTL(language: string) {
@@ -129,7 +174,7 @@ const ATLAS_STANDARD_LABELS = {
         customer: 'Customer', supplier: 'Supplier', invoice: 'Invoice', salesOrder: 'Sales Order', purchaseOrder: 'Purchase Order', number: 'No.', salesPerson: 'Cashier', partnerAddress: "Partner's Address", status: 'Status', documentNumber: 'Document No.', invoiceDate: 'Inv. date', time: 'Time',
         productName: 'Product Name', expiry: 'EXP', batchNumber: 'Batch No.', quantity: 'Qty', freeQuantity: 'Free Qty', price: 'Price', total: 'Total',
         paidAmount: 'Paid Amount', discount: 'Discount', amountInWords: 'Amount in words', paymentMethod: 'Payment Method', outstanding: 'Order Outstanding', currentBalance: "Partner's Current Balance", printedBy: 'Printed by', notes: 'Notes',
-        invoiceDetails: 'Invoice details', orderItemsTable: 'Order items table', financialSummary: 'Financial summary', selectValues: 'Select the values to include in this print.', selectColumns: 'Select the table columns to include in this print.', noColumns: 'No item columns selected', logo: 'LOGO', workspaceLogo: 'Workspace logo', workspaceName: 'Workspace Name', email: 'Email', madeBy: 'Made By AtlasERP', page: 'Page', pageOf: 'from', printDate: 'Print date',
+        invoiceDetails: 'Invoice details', orderItemsTable: 'Order items table', financialSummary: 'Financial summary', selectValues: 'Select the values to include in this print.', selectColumns: 'Select the table columns to include in this print.', noColumns: 'No item columns selected', dragToSwap: 'Drag to swap position', renameTitle: 'Rename title', renameTitleDescription: 'Use a custom title for this value in the print.', title: 'Title', save: 'Save', cancel: 'Cancel', resetTitle: 'Reset title', logo: 'LOGO', workspaceLogo: 'Workspace logo', workspaceName: 'Workspace Name', email: 'Email', madeBy: 'Made By AtlasERP', page: 'Page', pageOf: 'from', printDate: 'Print date',
         statuses: { draft: 'Draft', pending: 'Pending', completed: 'Completed', cancelled: 'Cancelled', ordered: 'Ordered', received: 'Received' },
         paymentMethods: { cash: 'Cash', fib: 'FIB', qicard: 'Qi Card', zaincash: 'Zain Cash', fastpay: 'FastPay', bank_transfer: 'Bank Transfer', loan: 'Loan', installments: 'Installments' }
     },
@@ -137,7 +182,7 @@ const ATLAS_STANDARD_LABELS = {
         customer: 'العميل', supplier: 'المورد', invoice: 'الفاتورة', salesOrder: 'طلب مبيعات', purchaseOrder: 'طلب شراء', number: 'الرقم', salesPerson: 'أمين الصندوق', partnerAddress: 'عنوان الشريك', status: 'الحالة', documentNumber: 'رقم المستند', invoiceDate: 'تاريخ الفاتورة', time: 'الوقت',
         productName: 'اسم المنتج', expiry: 'الصلاحية', batchNumber: 'رقم التشغيلة', quantity: 'الكمية', freeQuantity: 'كمية مجانية', price: 'السعر', total: 'الإجمالي',
         paidAmount: 'المبلغ المدفوع', discount: 'الخصم', amountInWords: 'المبلغ كتابة', paymentMethod: 'طريقة الدفع', outstanding: 'المبلغ المتبقي للطلب', currentBalance: 'الرصيد الحالي للشريك', printedBy: 'طبع بواسطة', notes: 'ملاحظات',
-        invoiceDetails: 'تفاصيل الفاتورة', orderItemsTable: 'جدول أصناف الطلب', financialSummary: 'الملخص المالي', selectValues: 'اختر القيم التي تريد تضمينها في هذه الطباعة.', selectColumns: 'اختر أعمدة الجدول التي تريد تضمينها في هذه الطباعة.', noColumns: 'لم يتم اختيار أي أعمدة للأصناف', logo: 'الشعار', workspaceLogo: 'شعار مساحة العمل', workspaceName: 'اسم مساحة العمل', email: 'البريد الإلكتروني', madeBy: 'تم الإنشاء بواسطة AtlasERP', page: 'الصفحة', pageOf: 'من', printDate: 'تاريخ الطباعة',
+        invoiceDetails: 'تفاصيل الفاتورة', orderItemsTable: 'جدول أصناف الطلب', financialSummary: 'الملخص المالي', selectValues: 'اختر القيم التي تريد تضمينها في هذه الطباعة.', selectColumns: 'اختر أعمدة الجدول التي تريد تضمينها في هذه الطباعة.', noColumns: 'لم يتم اختيار أي أعمدة للأصناف', dragToSwap: 'اسحب لتبديل الموضع', renameTitle: 'إعادة تسمية العنوان', renameTitleDescription: 'استخدم عنواناً مخصصاً لهذه القيمة في الطباعة.', title: 'العنوان', save: 'حفظ', cancel: 'إلغاء', resetTitle: 'استعادة العنوان', logo: 'الشعار', workspaceLogo: 'شعار مساحة العمل', workspaceName: 'اسم مساحة العمل', email: 'البريد الإلكتروني', madeBy: 'تم الإنشاء بواسطة AtlasERP', page: 'الصفحة', pageOf: 'من', printDate: 'تاريخ الطباعة',
         statuses: { draft: 'مسودة', pending: 'قيد الانتظار', completed: 'مكتمل', cancelled: 'ملغى', ordered: 'تم الطلب', received: 'تم الاستلام' },
         paymentMethods: { cash: 'نقدي', fib: 'FIB', qicard: 'كي كارد', zaincash: 'زين كاش', fastpay: 'فاست باي', bank_transfer: 'تحويل بنكي', loan: 'قرض', installments: 'أقساط' }
     },
@@ -145,7 +190,7 @@ const ATLAS_STANDARD_LABELS = {
         customer: 'کڕیار', supplier: 'دابینکەر', invoice: 'پسوڵە', salesOrder: 'داواکاری فرۆشتن', purchaseOrder: 'داواکاری کڕین', number: 'ژمارە', salesPerson: 'کاشێر', partnerAddress: 'ناونیشانی هاوبەش', status: 'دۆخ', documentNumber: 'ژمارەی بەڵگە', invoiceDate: 'بەرواری پسوڵە', time: 'کات',
         productName: 'ناوی کاڵا', expiry: 'بەسەرچوون', batchNumber: 'ژمارەی بچ', quantity: 'بڕ', freeQuantity: 'بڕی بەخۆڕایی', price: 'نرخ', total: 'کۆی گشتی',
         paidAmount: 'بڕی دراو', discount: 'داشکاندن', amountInWords: 'بڕ بە نووسین', paymentMethod: 'شێوازی پارەدان', outstanding: 'بڕی ماوەی داواکاری', currentBalance: 'باڵانسی ئێستای هاوبەش', printedBy: 'چاپکراوە لەلایەن', notes: 'تێبینی',
-        invoiceDetails: 'وردەکارییەکانی پسوڵە', orderItemsTable: 'خشتەی کاڵاکانی داواکاری', financialSummary: 'پوختەی دارایی', selectValues: 'ئەو بەهایانە هەڵبژێرە کە دەتهەوێت لەم چاپەدا دەربکەون.', selectColumns: 'ستوونەکانی خشتە هەڵبژێرە کە دەتهەوێت لەم چاپەدا دەربکەون.', noColumns: 'هیچ ستوونی کاڵا هەڵنەبژێردراوە', logo: 'لۆگۆ', workspaceLogo: 'لۆگۆی شوێنی کار', workspaceName: 'ناوی شوێنی کار', email: 'ئیمەیڵ', madeBy: 'دروستکراوە لەلایەن AtlasERP', page: 'لاپەڕە', pageOf: 'لە', printDate: 'بەرواری چاپ',
+        invoiceDetails: 'وردەکارییەکانی پسوڵە', orderItemsTable: 'خشتەی کاڵاکانی داواکاری', financialSummary: 'پوختەی دارایی', selectValues: 'ئەو بەهایانە هەڵبژێرە کە دەتهەوێت لەم چاپەدا دەربکەون.', selectColumns: 'ستوونەکانی خشتە هەڵبژێرە کە دەتهەوێت لەم چاپەدا دەربکەون.', noColumns: 'هیچ ستوونی کاڵا هەڵنەبژێردراوە', dragToSwap: 'ڕابکێشە بۆ گۆڕینی شوێن', renameTitle: 'ناونیشان بگۆڕە', renameTitleDescription: 'ناونیشانێکی تایبەت بۆ ئەم بەهایە لە چاپەکەدا بەکاربهێنە.', title: 'ناونیشان', save: 'پاشەکەوتکردن', cancel: 'هەڵوەشاندنەوە', resetTitle: 'ناونیشان بگەڕێنەوە', logo: 'لۆگۆ', workspaceLogo: 'لۆگۆی شوێنی کار', workspaceName: 'ناوی شوێنی کار', email: 'ئیمەیڵ', madeBy: 'دروستکراوە لەلایەن AtlasERP', page: 'لاپەڕە', pageOf: 'لە', printDate: 'بەرواری چاپ',
         statuses: { draft: 'ڕەشنووس', pending: 'چاوەڕوان', completed: 'تەواوبوو', cancelled: 'هەڵوەشاوە', ordered: 'داواکراو', received: 'وەرگیراو' },
         paymentMethods: { cash: 'کاش', fib: 'FIB', qicard: 'کیو کارد', zaincash: 'زین کاش', fastpay: 'فاست پەی', bank_transfer: 'گواستنەوەی بانکی', loan: 'قەرز', installments: 'قسط' }
     }
@@ -362,20 +407,60 @@ function HideableSection({
     title,
     dialogDescription,
     fields,
+    fieldOrder,
+    fieldLabelOverrides = {},
     hiddenFields,
     onHiddenFieldChange,
-    className
+    onFieldOrderChange,
+    onFieldLabelChange,
+    className,
+    dialogClassName,
+    dialogFieldsClassName,
+    dialogFieldClassName,
+    dragInstruction,
+    renameTitleLabel = 'Rename title',
+    resetTitleLabel = 'Reset title',
+    renameTitleDescription,
+    titleFieldLabel = 'Title',
+    saveLabel = 'Save',
+    cancelLabel = 'Cancel'
 }: {
     title: string
     dialogDescription: string
     fields: HideablePrintField[]
+    fieldOrder?: string[]
+    fieldLabelOverrides?: Record<string, string>
     hiddenFields: Record<string, boolean>
     onHiddenFieldChange?: (key: string, hidden: boolean) => void
+    onFieldOrderChange?: (fieldKeys: string[]) => void
+    onFieldLabelChange?: (fieldKey: string, label: string) => void
     className?: string
+    dialogClassName?: string
+    dialogFieldsClassName?: string
+    dialogFieldClassName?: string
+    dragInstruction?: string
+    renameTitleLabel?: string
+    resetTitleLabel?: string
+    renameTitleDescription?: string
+    titleFieldLabel?: string
+    saveLabel?: string
+    cancelLabel?: string
 }) {
     const [open, setOpen] = useState(false)
-    const canConfigure = Boolean(onHiddenFieldChange)
-    const visibleFields = fields.filter((field) => !hiddenFields[field.key])
+    const [renamedField, setRenamedField] = useState<HideablePrintField | null>(null)
+    const [titleDraft, setTitleDraft] = useState('')
+    const canConfigure = Boolean(onHiddenFieldChange || onFieldOrderChange || onFieldLabelChange)
+    const titledFields = fields.map((field) => {
+        const defaultLabel = field.defaultLabel || (typeof field.label === 'string' ? field.label : undefined)
+        const labelOverride = fieldLabelOverrides[field.key]?.trim()
+        return {
+            ...field,
+            defaultLabel,
+            label: labelOverride || field.label
+        }
+    })
+    const orderedFields = orderFieldsForLayout(titledFields, fieldOrder)
+    const visibleFields = orderedFields.filter((field) => !hiddenFields[field.key])
     const openDialog = () => setOpen(true)
     const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
         if (event.key !== 'Enter' && event.key !== ' ') return
@@ -383,14 +468,73 @@ function HideableSection({
         event.stopPropagation()
         openDialog()
     }
+    const openRenameTitle = (field: HideablePrintField) => {
+        setRenamedField(field)
+        setTitleDraft(typeof field.label === 'string' ? field.label : field.defaultLabel || '')
+    }
+    const saveTitle = () => {
+        if (!renamedField) return
+        onFieldLabelChange?.(renamedField.key, titleDraft.trim())
+        setRenamedField(null)
+        setTitleDraft('')
+    }
+    const renderFieldContent = (field: HideablePrintField) => {
+        if (typeof field.render === 'function') return field.render(field.label)
+        if (field.render) return field.render
+        return <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{field.label} : </strong>{field.value}</div>
+    }
+    const renderPickerField = (field: HideablePrintField, dragHandleProps?: DraggableProvidedDragHandleProps | null, isDragging = false) => {
+        const hidden = Boolean(hiddenFields[field.key])
+        const card = (
+            <button
+                type="button"
+                aria-pressed={hidden}
+                className={cn(
+                    'flex w-full items-start justify-between gap-4 rounded-md border border-border px-3 py-2 text-start text-sm transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+                    dialogFieldClassName,
+                    isDragging && 'opacity-50',
+                    hidden && 'text-muted-foreground line-through'
+                )}
+                onClick={() => onHiddenFieldChange?.(field.key, !hidden)}
+            >
+                <span className="flex w-full items-start justify-between gap-2 font-medium">
+                    <span>{field.label}</span>
+                    {dragHandleProps ? (
+                        <span
+                            {...dragHandleProps}
+                            className="shrink-0 cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
+                            title={dragInstruction}
+                        >
+                            <GripVertical className="h-4 w-4" aria-hidden="true" />
+                            {dragInstruction ? <span className="sr-only">{dragInstruction}</span> : null}
+                        </span>
+                    ) : null}
+                </span>
+                {field.value !== undefined ? <span className={cn('text-end', dialogFieldClassName && 'w-full text-start text-xs')}>{field.value}</span> : null}
+            </button>
+        )
+        if (!onFieldLabelChange) return card
+
+        return (
+            <ContextMenu>
+                <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
+                <ContextMenuContent className="z-[70]">
+                    <ContextMenuItem onSelect={() => openRenameTitle(field)}>
+                        {renameTitleLabel}
+                    </ContextMenuItem>
+                    {fieldLabelOverrides[field.key]?.trim() ? (
+                        <ContextMenuItem onSelect={() => onFieldLabelChange(field.key, '')}>
+                            {resetTitleLabel}
+                        </ContextMenuItem>
+                    ) : null}
+                </ContextMenuContent>
+            </ContextMenu>
+        )
+    }
     const content = visibleFields.length > 0
         ? visibleFields.map((field) => (
             <div key={field.key} className={cn('min-w-0', field.className)}>
-                {field.render || (
-                    <div className="min-h-[6.5mm] px-2 py-1.5 text-xs">
-                        <strong>{field.label} : </strong>{field.value}
-                    </div>
-                )}
+                {renderFieldContent(field)}
             </div>
         ))
         : <div className="col-span-4 min-h-[6.5mm] border-l border-t border-[#244f87]" />
@@ -419,32 +563,69 @@ function HideableSection({
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             {section}
-            <DialogContent className="max-w-md" onClick={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+            <DialogContent className={cn('max-w-md', dialogClassName)} onClick={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
                 <DialogHeader>
                     <DialogTitle>{title}</DialogTitle>
                     <DialogDescription>{dialogDescription}</DialogDescription>
+                    {onFieldOrderChange && dragInstruction ? <p className="text-sm text-muted-foreground">{dragInstruction}</p> : null}
                 </DialogHeader>
-                <div className="space-y-1">
-                    {fields.map((field) => {
-                        const hidden = Boolean(hiddenFields[field.key])
-                        return (
-                            <button
-                                key={field.key}
-                                type="button"
-                                aria-pressed={hidden}
-                                className={cn(
-                                    'flex w-full items-start justify-between gap-4 rounded-md border border-border px-3 py-2 text-start text-sm transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
-                                    hidden && 'text-muted-foreground line-through'
-                                )}
-                                onClick={() => onHiddenFieldChange?.(field.key, !hidden)}
-                            >
-                                <span className="font-medium">{field.label}</span>
-                                {field.value !== undefined ? <span className="text-end">{field.value}</span> : null}
-                            </button>
-                        )
-                    })}
-                </div>
+                {onFieldOrderChange ? (
+                    <ReorderablePickerGrid
+                        droppableId={fields[0]?.key || title}
+                        items={orderedFields}
+                        getItemId={(field) => field.key}
+                        getSlotClassName={(field) => field.dialogClassName}
+                        onItemsSwap={(nextFields) => onFieldOrderChange(nextFields.map((field) => field.key))}
+                        renderItem={(field, dragHandleProps, isDragging) => renderPickerField(field, dragHandleProps, isDragging)}
+                        className={cn('space-y-1', dialogFieldsClassName)}
+                    />
+                ) : (
+                    <div className={cn('space-y-1', dialogFieldsClassName)}>
+                        {orderedFields.map((field) => (
+                            <div key={field.key} className={field.dialogClassName}>
+                                {renderPickerField(field)}
+                            </div>
+                        ))}
+                    </div>
+                )}
             </DialogContent>
+            <Dialog open={Boolean(renamedField)} onOpenChange={(nextOpen) => {
+                if (!nextOpen) {
+                    setRenamedField(null)
+                    setTitleDraft('')
+                }
+            }}>
+                <DialogContent className="z-[80] max-w-sm" onPointerDown={(event) => event.stopPropagation()}>
+                    <form onSubmit={(event) => {
+                        event.preventDefault()
+                        saveTitle()
+                    }}>
+                        <DialogHeader>
+                            <DialogTitle>{renameTitleLabel}</DialogTitle>
+                            {renameTitleDescription ? <DialogDescription>{renameTitleDescription}</DialogDescription> : null}
+                        </DialogHeader>
+                        <div className="mt-4 grid gap-2">
+                            <label className="text-sm font-medium" htmlFor="atlas-standard-field-title">{titleFieldLabel}</label>
+                            <input
+                                id="atlas-standard-field-title"
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                                value={titleDraft}
+                                onChange={(event) => setTitleDraft(event.target.value)}
+                                autoFocus
+                            />
+                        </div>
+                        <div className="mt-5 flex justify-end gap-2">
+                            <button type="button" className="inline-flex h-10 items-center justify-center rounded-md border border-input px-4 text-sm font-medium hover:bg-accent" onClick={() => {
+                                setRenamedField(null)
+                                setTitleDraft('')
+                            }}>
+                                {cancelLabel}
+                            </button>
+                            <button type="submit" className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">{saveLabel}</button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </Dialog>
     )
 }
@@ -547,7 +728,11 @@ export function AtlasStandardOrderInvoiceTemplate({
     editableComponents,
     onComponentPositionChange,
     hiddenFields = {},
-    onHiddenFieldChange
+    onHiddenFieldChange,
+    fieldOrders = {},
+    onFieldOrderChange,
+    fieldLabelOverrides = {},
+    onFieldLabelChange
 }: AtlasStandardOrderInvoiceTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
@@ -564,6 +749,7 @@ export function AtlasStandardOrderInvoiceTemplate({
     const financialKeys = ATLAS_STANDARD_ORDER_HIDDEN_FIELD_KEYS.financialSummary
     const detailsKeys = ATLAS_STANDARD_ORDER_HIDDEN_FIELD_KEYS.invoiceDetails
     const tableKeys = ATLAS_STANDARD_ORDER_HIDDEN_FIELD_KEYS.table
+    const fieldOrderKeys = ATLAS_STANDARD_ORDER_FIELD_ORDER_KEYS
     const currency = order.currency
     const balanceCurrency = businessPartner?.defaultCurrency || currency
     const noteValue = order.notes?.trim() || '-'
@@ -601,63 +787,63 @@ export function AtlasStandardOrderInvoiceTemplate({
             label: counterpartyLabel,
             value: counterpartyName || '-',
             className: 'col-span-2 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{counterpartyLabel} : </strong>{counterpartyName || '-'}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{counterpartyName || '-'}</div>
         },
         {
             key: detailsKeys.invoice,
             label: labels.invoice,
             value: isSales ? labels.salesOrder : labels.purchaseOrder,
             className: 'border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.invoice} : </strong>{isSales ? labels.salesOrder : labels.purchaseOrder}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{isSales ? labels.salesOrder : labels.purchaseOrder}</div>
         },
         {
             key: detailsKeys.number,
             label: labels.number,
             value: order.orderNumber,
             className: 'border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.number} </strong>{order.orderNumber}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} </strong>{order.orderNumber}</div>
         },
         {
             key: detailsKeys.salesPerson,
             label: labels.salesPerson,
             value: salesperson,
             className: 'col-span-2 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.salesPerson} : </strong>{salesperson}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{salesperson}</div>
         },
         {
             key: detailsKeys.location,
             label: labels.partnerAddress,
             value: partnerAddress,
             className: 'border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.partnerAddress} : </strong>{partnerAddress}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{partnerAddress}</div>
         },
         {
             key: detailsKeys.status,
             label: labels.status,
             value: statusLabel,
             className: 'border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.status} : </strong>{statusLabel}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{statusLabel}</div>
         },
         {
             key: detailsKeys.documentNumber,
             label: labels.documentNumber,
             value: order.orderNumber,
             className: 'col-span-2 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.documentNumber} : </strong>{order.orderNumber}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{order.orderNumber}</div>
         },
         {
             key: detailsKeys.invoiceDate,
             label: labels.invoiceDate,
             value: issuedAt.date,
             className: 'border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.invoiceDate} : </strong>{issuedAt.date}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{issuedAt.date}</div>
         },
         {
             key: detailsKeys.time,
             label: labels.time,
             value: issuedAt.time,
             className: 'border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.time} : </strong>{issuedAt.time}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{issuedAt.time}</div>
         }
     ]
 
@@ -667,56 +853,60 @@ export function AtlasStandardOrderInvoiceTemplate({
             label: labels.paidAmount,
             value: formatCurrency(paidAmount, currency, iqdPreference),
             className: 'col-span-4 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.paidAmount} : </strong>{formatCurrency(paidAmount, currency, iqdPreference)}</div>
+            dialogClassName: 'col-span-2',
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{formatCurrency(paidAmount, currency, iqdPreference)}</div>
         },
         {
             key: financialKeys.outstanding,
             label: labels.outstanding,
             value: formatCurrency(outstanding, currency, iqdPreference),
             className: 'col-span-4 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.outstanding} : </strong>{formatCurrency(outstanding, currency, iqdPreference)}</div>
+            dialogClassName: 'col-span-2',
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{formatCurrency(outstanding, currency, iqdPreference)}</div>
         },
         {
             key: financialKeys.discount,
             label: labels.discount,
             value: formatCurrency(order.discount, currency, iqdPreference),
             className: 'col-span-4 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.discount} : </strong>{formatCurrency(order.discount, currency, iqdPreference)}</div>
+            dialogClassName: 'col-span-2',
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{formatCurrency(order.discount, currency, iqdPreference)}</div>
         },
         {
             key: financialKeys.currentBalance,
             label: labels.currentBalance,
             value: formatPartnerBalance(currentPartnerBalance),
             className: 'col-span-4 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.currentBalance} : </strong>{formatPartnerBalance(currentPartnerBalance)}</div>
+            dialogClassName: 'col-span-2',
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{formatPartnerBalance(currentPartnerBalance)}</div>
         },
         {
             key: financialKeys.paymentMethod,
             label: labels.paymentMethod,
             value: paymentMethod,
             className: 'col-span-2 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.paymentMethod} : </strong>{paymentMethod}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{paymentMethod}</div>
         },
         {
             key: financialKeys.amountInWords,
             label: labels.amountInWords,
             value: amountInWords,
             className: 'col-span-2 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs">{amountInWords}</div>
+            render: () => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs">{amountInWords}</div>
         },
         {
             key: financialKeys.printedBy,
             label: labels.printedBy,
             value: salesperson,
             className: 'col-span-2 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.printedBy} : </strong>{salesperson}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{salesperson}</div>
         },
         {
             key: financialKeys.notes,
             label: labels.notes,
             value: noteValue,
             className: 'col-span-2 border-l border-t border-[#244f87]',
-            render: <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{labels.notes} : </strong>{noteValue}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{noteValue}</div>
         }
     ]
 
@@ -776,9 +966,25 @@ export function AtlasStandardOrderInvoiceTemplate({
                 title={labels.invoiceDetails}
                 dialogDescription={labels.selectValues}
                 fields={invoiceDetailFields}
+                fieldOrder={fieldOrders[fieldOrderKeys.invoiceDetails]}
+                fieldLabelOverrides={fieldLabelOverrides}
                 hiddenFields={hiddenFields}
                 onHiddenFieldChange={onHiddenFieldChange}
+                onFieldOrderChange={onFieldOrderChange
+                    ? (fieldKeys) => onFieldOrderChange(fieldOrderKeys.invoiceDetails, fieldKeys)
+                    : undefined}
+                onFieldLabelChange={onFieldLabelChange}
                 className="mb-2"
+                dialogClassName="max-w-3xl"
+                dialogFieldsClassName="grid grid-cols-3 gap-2"
+                dialogFieldClassName="min-h-[68px] flex-col justify-start gap-1"
+                dragInstruction={labels.dragToSwap}
+                renameTitleLabel={labels.renameTitle}
+                resetTitleLabel={labels.resetTitle}
+                renameTitleDescription={labels.renameTitleDescription}
+                titleFieldLabel={labels.title}
+                saveLabel={labels.save}
+                cancelLabel={labels.cancel}
             />
 
             <HideableTable
@@ -879,9 +1085,25 @@ export function AtlasStandardOrderInvoiceTemplate({
                 title={labels.financialSummary}
                 dialogDescription={labels.selectValues}
                 fields={financialFields}
+                fieldOrder={fieldOrders[fieldOrderKeys.financialSummary]}
+                fieldLabelOverrides={fieldLabelOverrides}
                 hiddenFields={hiddenFields}
                 onHiddenFieldChange={onHiddenFieldChange}
+                onFieldOrderChange={onFieldOrderChange
+                    ? (fieldKeys) => onFieldOrderChange(fieldOrderKeys.financialSummary, fieldKeys)
+                    : undefined}
+                onFieldLabelChange={onFieldLabelChange}
                 className="mb-2"
+                dialogClassName="max-w-2xl"
+                dialogFieldsClassName="grid grid-cols-2 gap-2"
+                dialogFieldClassName="min-h-[68px] flex-col justify-start gap-1"
+                dragInstruction={labels.dragToSwap}
+                renameTitleLabel={labels.renameTitle}
+                resetTitleLabel={labels.resetTitle}
+                renameTitleDescription={labels.renameTitleDescription}
+                titleFieldLabel={labels.title}
+                saveLabel={labels.save}
+                cancelLabel={labels.cancel}
             />
 
             <div className="flex min-h-[13mm] items-start justify-between gap-4 text-[10px]" style={{ color: '#243b5a' }}>

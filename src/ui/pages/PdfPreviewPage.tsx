@@ -484,6 +484,8 @@ export function PdfPreviewPage() {
         ...(initialTemplateLayout?.componentPositions || {})
     }))
     const [templateHiddenFields, setTemplateHiddenFields] = useState<Record<string, boolean>>(() => initialTemplateLayout?.hiddenFields || {})
+    const [templateFieldOrders, setTemplateFieldOrders] = useState<Record<string, string[]>>(() => initialTemplateLayout?.fieldOrders || {})
+    const [templateFieldLabelOverrides, setTemplateFieldLabelOverrides] = useState<Record<string, string>>(() => initialTemplateLayout?.fieldLabelOverrides || {})
     useEffect(() => {
         if (!selectedTemplateObjectId) return
 
@@ -862,13 +864,15 @@ export function PdfPreviewPage() {
             fieldTokenTemplates: initialTemplateLayout?.fieldTokenTemplates,
             componentPositions: templateComponentPositions,
             hiddenFields: templateHiddenFields,
+            fieldOrders: templateFieldOrders,
+            fieldLabelOverrides: templateFieldLabelOverrides,
             annotations: templateAnnotations,
             texts: templateTexts,
             images: templateImages,
             shapes: templateShapes,
             updatedAt: new Date().toISOString()
         }
-    }, [source, templatePreview, fieldValues, initialTemplateLayout?.label, templateAnnotations, templateComponentPositions, templateHiddenFields, templateTexts, templateImages, templateShapes, templatePageHeight, templatePageWidth])
+    }, [source, templatePreview, fieldValues, initialTemplateLayout?.label, templateAnnotations, templateComponentPositions, templateHiddenFields, templateFieldOrders, templateFieldLabelOverrides, templateTexts, templateImages, templateShapes, templatePageHeight, templatePageWidth])
 
     const saveTemplatePreview = useCallback(async (layout?: CustomTemplateLayout, label?: string) => {
         if (!source || !templatePreview || !fieldValues || isSaving) return
@@ -893,6 +897,8 @@ export function PdfPreviewPage() {
                     : await templatePreview.buildPdf(
                         templatePreview.createElement(fieldValues, source.effectiveId, overrideLang, {
                             hiddenFields: templateHiddenFields,
+                            fieldOrders: templateFieldOrders,
+                            fieldLabelOverrides: templateFieldLabelOverrides,
                             workspaceFooterContacts: sourceWorkspaceFooterContacts
                         }),
                         overrideLang,
@@ -934,7 +940,7 @@ export function PdfPreviewPage() {
                 window.history.back()
             }
         }
-    }, [source, templatePreview, fieldValues, isSaving, fixedTemplatePrintLang, tempPrintLang, buildTemplateLayout, sourceWorkspaceFooterContacts, templateHiddenFields])
+    }, [source, templatePreview, fieldValues, isSaving, fixedTemplatePrintLang, tempPrintLang, buildTemplateLayout, sourceWorkspaceFooterContacts, templateHiddenFields, templateFieldOrders, templateFieldLabelOverrides])
 
     const handleTemplatePreviewSave = useCallback(async () => {
         if (!source || !templatePreview || !fieldValues || isSaving) return
@@ -996,6 +1002,26 @@ export function PdfPreviewPage() {
                 next[key] = true
             } else {
                 delete next[key]
+            }
+            return next
+        })
+    }, [])
+
+    const handleTemplateFieldOrderChange = useCallback((sectionKey: string, fieldKeys: string[]) => {
+        setTemplateFieldOrders((current) => ({
+            ...current,
+            [sectionKey]: fieldKeys
+        }))
+    }, [])
+
+    const handleTemplateFieldLabelChange = useCallback((fieldKey: string, label: string) => {
+        setTemplateFieldLabelOverrides((current) => {
+            const next = { ...current }
+            const title = label.trim()
+            if (title) {
+                next[fieldKey] = title
+            } else {
+                delete next[fieldKey]
             }
             return next
         })
@@ -1823,9 +1849,13 @@ export function PdfPreviewPage() {
                                             dataKeys: templatePreview.dataKeys,
                                             componentPositions: templateComponentPositions,
                                             hiddenFields: templateHiddenFields,
+                                            fieldOrders: templateFieldOrders,
+                                            fieldLabelOverrides: templateFieldLabelOverrides,
                                             onFieldChange: handleFieldChange,
                                             onComponentPositionChange: handleTemplateComponentPositionChange,
                                             onHiddenFieldChange: drawingMode === 'none' ? handleTemplateHiddenFieldChange : undefined,
+                                            onFieldOrderChange: drawingMode === 'none' ? handleTemplateFieldOrderChange : undefined,
+                                            onFieldLabelChange: drawingMode === 'none' ? handleTemplateFieldLabelChange : undefined,
                                             workspaceFooterContacts: sourceWorkspaceFooterContacts
                                         }
                                     )}

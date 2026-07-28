@@ -482,13 +482,19 @@ describe('Order Details custom print template', () => {
         expect(html).toContain('2 pcs')
     })
 
-    it('preserves movable component positions and hidden fields when reading a saved layout', () => {
+    it('preserves movable component positions, hidden fields, field orders, and field titles when reading a saved layout', () => {
         const componentPositions = {
             customer: { x: 10, y: 5 },
             commercials: { x: -6, y: 8 }
         }
         const hiddenFields = {
             'orders.commercials.paidAmount': true
+        }
+        const fieldOrders = {
+            'orders.commercials': ['orders.commercials.notes', 'orders.commercials.paidAmount']
+        }
+        const fieldLabelOverrides = {
+            'orders.commercials.paidAmount': 'Received'
         }
         const layout = customTemplates.readCustomTemplateLayout({
             id: 'movable-order-template',
@@ -500,6 +506,8 @@ describe('Order Details custom print template', () => {
                 fields: {},
                 componentPositions,
                 hiddenFields,
+                fieldOrders,
+                fieldLabelOverrides,
                 annotations: [],
                 texts: [],
                 images: [],
@@ -510,6 +518,8 @@ describe('Order Details custom print template', () => {
 
         expect(layout?.componentPositions).toEqual(componentPositions)
         expect(layout?.hiddenFields).toEqual(hiddenFields)
+        expect(layout?.fieldOrders).toEqual(fieldOrders)
+        expect(layout?.fieldLabelOverrides).toEqual(fieldLabelOverrides)
     })
 
     it('applies saved component positions to the printable custom layout without editor controls', () => {
@@ -583,7 +593,22 @@ describe('Atlas Standard order invoice custom print template', () => {
             'atlasStandard.table.price': true,
             'atlasStandard.financialSummary.notes': true
         }
+        const fieldOrders = {
+            'atlasStandard.invoiceDetails': [
+                'atlasStandard.invoiceDetails.invoice',
+                'atlasStandard.invoiceDetails.partner'
+            ],
+            'atlasStandard.financialSummary': [
+                'atlasStandard.financialSummary.discount',
+                'atlasStandard.financialSummary.paidAmount'
+            ]
+        }
+        const fieldLabelOverrides = {
+            'atlasStandard.invoiceDetails.salesPerson': 'Sales Man'
+        }
         const onHiddenFieldChange = vi.fn()
+        const onFieldOrderChange = vi.fn()
+        const onFieldLabelChange = vi.fn()
         const onComponentPositionChange = vi.fn()
         const componentPositions = { atlasStandardWorkspaceName: { x: 20, y: 10 } }
         const preview = customTemplates.createCustomTemplatePreview(target!, {
@@ -597,7 +622,11 @@ describe('Atlas Standard order invoice custom print template', () => {
             editableComponents: true,
             onComponentPositionChange,
             hiddenFields,
-            onHiddenFieldChange
+            onHiddenFieldChange,
+            fieldOrders,
+            onFieldOrderChange,
+            fieldLabelOverrides,
+            onFieldLabelChange
         })
 
         expect(preview.fields).toEqual([])
@@ -607,6 +636,10 @@ describe('Atlas Standard order invoice custom print template', () => {
         ])
         expect(element.props.hiddenFields).toBe(hiddenFields)
         expect(element.props.onHiddenFieldChange).toBe(onHiddenFieldChange)
+        expect(element.props.fieldOrders).toBe(fieldOrders)
+        expect(element.props.onFieldOrderChange).toBe(onFieldOrderChange)
+        expect(element.props.fieldLabelOverrides).toBe(fieldLabelOverrides)
+        expect(element.props.onFieldLabelChange).toBe(onFieldLabelChange)
         expect(element.props.componentPositions).toBe(componentPositions)
         expect(element.props.onComponentPositionChange).toBe(onComponentPositionChange)
 
@@ -619,11 +652,13 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(html).toContain('h-[8mm] bg-[#e8f0fa]')
         expect(html).toContain('text-[9px] leading-[1.2] break-words whitespace-normal')
         expect(html).toContain('Invoice : </strong>Sales Order')
-        expect(html).toContain('Cashier : </strong>')
+        expect(html).toContain('Sales Man : </strong>')
         expect(html).toContain('Status : </strong>Pending')
         expect(html).toContain('Paid Amount : </strong>')
         expect(html).toContain('Order Outstanding : </strong>')
         expect(html).toContain('Payment Method : </strong>Cash')
+        expect(html.indexOf('<strong>Invoice : </strong>Sales Order')).toBeLessThan(html.indexOf('<strong>Customer : </strong>Sample Customer'))
+        expect(html.indexOf('<strong>Discount : </strong>')).toBeLessThan(html.indexOf('<strong>Paid Amount : </strong>'))
         expect(html).not.toContain('Previous Balance')
         expect(html).not.toContain('Net Payable')
         expect(html).toContain('border-x px-1')

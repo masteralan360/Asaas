@@ -300,6 +300,20 @@ export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): 
             Object.entries(layout.hiddenFields).filter(([, value]) => typeof value === 'boolean')
         )
         : {}
+    const fieldOrders = layout.fieldOrders && typeof layout.fieldOrders === 'object'
+        ? Object.fromEntries(
+            Object.entries(layout.fieldOrders)
+                .filter(([, value]) => Array.isArray(value))
+                .map(([key, value]) => [key, value.filter((fieldKey): fieldKey is string => typeof fieldKey === 'string')])
+        )
+        : {}
+    const fieldLabelOverrides = layout.fieldLabelOverrides && typeof layout.fieldLabelOverrides === 'object'
+        ? Object.fromEntries(
+            Object.entries(layout.fieldLabelOverrides)
+                .filter(([, value]) => typeof value === 'string' && Boolean(value.trim()))
+                .map(([key, value]) => [key, (value as string).trim()])
+        )
+        : {}
 
     return {
         version: 1,
@@ -315,6 +329,8 @@ export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): 
         },
         fields: layout.fields || {},
         hiddenFields,
+        fieldOrders,
+        fieldLabelOverrides,
         componentPositions: layout.componentPositions || {},
         annotations: layout.annotations || [],
         texts: layout.texts || [],
@@ -1238,6 +1254,10 @@ function createAtlasStandardOrderInvoicePreview(options: CustomTemplatePreviewOp
                 onComponentPositionChange={renderOptions?.onComponentPositionChange}
                 hiddenFields={renderOptions?.hiddenFields}
                 onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
+                fieldOrders={renderOptions?.fieldOrders}
+                onFieldOrderChange={renderOptions?.onFieldOrderChange}
+                fieldLabelOverrides={renderOptions?.fieldLabelOverrides}
+                onFieldLabelChange={renderOptions?.onFieldLabelChange}
             />
         ),
         buildPdf: (element, printLangOverride) => generateTemplatePdf({
@@ -1526,7 +1546,9 @@ export function renderCustomTemplateLayoutElement({
                 {preview.createElement(fieldValues, effectiveId, preview.fixedPrintLang, {
                     tokenFieldTemplates: layout.fieldTokenTemplates,
                     componentPositions: layout.componentPositions,
-                    hiddenFields: layout.hiddenFields
+                    hiddenFields: layout.hiddenFields,
+                    fieldOrders: layout.fieldOrders,
+                    fieldLabelOverrides: layout.fieldLabelOverrides
                 })}
             </div>
             <CustomTemplateLayoutOverlay
