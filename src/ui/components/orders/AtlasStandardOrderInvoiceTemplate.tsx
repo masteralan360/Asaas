@@ -196,6 +196,10 @@ function isRTL(language: string) {
     return baseLanguage === 'ar' || baseLanguage === 'ku'
 }
 
+function hasRTLText(value: string) {
+    return /[\u0590-\u08FF]/.test(value)
+}
+
 type AtlasStandardLocale = 'en' | 'ar' | 'ku'
 
 function resolveAtlasStandardLocale(language: string): AtlasStandardLocale {
@@ -813,6 +817,8 @@ export function AtlasStandardOrderInvoiceTemplate({
     const counterpartyName = isSales ? salesOrder?.customerName : purchaseOrder?.supplierName
     const issuedAt = formatPrintDateTime(order.createdAt, printLang)
     const logoSrc = resolveLogoSrc(logoUrl)
+    const workspaceNameValue = workspaceName?.trim() || 'Atlas'
+    const workspaceNameDirection = hasRTLText(workspaceNameValue) ? 'rtl' : 'ltr'
     const financialKeys = ATLAS_STANDARD_ORDER_HIDDEN_FIELD_KEYS.financialSummary
     const detailsKeys = ATLAS_STANDARD_ORDER_HIDDEN_FIELD_KEYS.invoiceDetails
     const tableKeys = ATLAS_STANDARD_ORDER_HIDDEN_FIELD_KEYS.table
@@ -1009,6 +1015,13 @@ export function AtlasStandardOrderInvoiceTemplate({
 .atlas-standard-order-invoice { color-scheme: light !important; font-family: Arial, Helvetica, sans-serif; }
 .atlas-standard-order-invoice table { page-break-inside: auto; }
 .atlas-standard-order-invoice tr { page-break-inside: avoid; page-break-after: auto; }
+#pdf-render-container .atlas-standard-workspace-name[data-rtl-workspace-name] {
+    direction: rtl !important;
+    unicode-bidi: plaintext;
+    letter-spacing: 0 !important;
+    font-family: Tahoma, Arial, sans-serif !important;
+    font-kerning: normal;
+}
 `
             }} />
 
@@ -1021,7 +1034,13 @@ export function AtlasStandardOrderInvoiceTemplate({
                     onPositionChange={onComponentPositionChange}
                     wrapperClassName="shrink-0"
                 >
-                    <h1 className="text-[18px] font-bold tracking-wide" style={{ color: INK }}>{workspaceName || 'Atlas'}</h1>
+                    <h1
+                        data-rtl-workspace-name={workspaceNameDirection === 'rtl' ? 'true' : undefined}
+                        className="atlas-standard-workspace-name text-[18px] font-bold tracking-wide"
+                        style={{ color: INK }}
+                    >
+                        {workspaceNameValue}
+                    </h1>
                 </MovableOrderPrintBlock>
                 <MovableOrderPrintBlock
                     componentKey={ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS.logo}
