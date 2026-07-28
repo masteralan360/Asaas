@@ -407,7 +407,7 @@ export function POS() {
         syncRemote: false
     })
     const [crossStorageWarning, setCrossStorageWarning] = useState<{
-        product: InventoryProduct;
+        product: PosCatalogProduct;
         foundStorageName: string;
     } | null>(null)
     const [search, setSearch] = useState('')
@@ -3006,7 +3006,7 @@ export function POS() {
                                                                         })}
                                                                         className="h-7 w-14 text-xs text-center border-0 bg-transparent p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                                     />
-                                                                    <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`, item.unit)}</span>
+                                                                    <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`, { defaultValue: item.unit ?? '' })}</span>
                                                                 </div>
                                                                 <Button
                                                                     variant="ghost"
@@ -3029,7 +3029,7 @@ export function POS() {
                                                                 </Button>
                                                                 <span className="flex flex-col items-center justify-center min-w-[2.5rem] leading-none py-1">
                                                                     <span className="text-sm font-black">{item.quantity}</span>
-                                                                    <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`, item.unit)}</span>
+                                                                    <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`, { defaultValue: item.unit ?? '' })}</span>
                                                                 </span>
                                                                 <Button
                                                                     variant="outline"

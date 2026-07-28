@@ -1298,7 +1298,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
 
         if (navigator.onLine) {
-            let updatedRow: { kds_enabled?: boolean; instant_pos?: boolean } | null = null
+            let updatedRow: {
+                kds_enabled?: boolean
+                instant_pos?: boolean
+                pos_convert_to_workspace_currency?: boolean
+            } | null = null
             let remoteWriteError: unknown = null
 
             try {
