@@ -169,7 +169,7 @@ function formatPrintDateTime(value: string, language: string) {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit'
-    }).format(date).replaceAll('-', '/')
+    }).format(date).replace(/-/g, '/')
     const timePart = new Intl.DateTimeFormat(locale, {
         hour: '2-digit',
         minute: '2-digit',
@@ -332,20 +332,20 @@ function numberToWords(value: number, language: string) {
 }
 
 function getBatchDetails(item: SalesOrder['items'][number] | PurchaseOrder['items'][number]) {
-    if ('batchAllocations' in item) {
-        const allocations = item.batchAllocations || []
+    if ('batchNumber' in item) {
         return {
-            batchNumber: allocations.map((allocation) => allocation.batchNumber).filter(Boolean).join(', '),
-            expiry: allocations
-                .map((allocation) => allocation.expiryDate ? formatDate(allocation.expiryDate) : '')
-                .filter(Boolean)
-                .join(', ')
+            batchNumber: item.batchNumber || '',
+            expiry: item.batchExpiryDate ? formatDate(item.batchExpiryDate) : ''
         }
     }
 
+    const allocations = item.batchAllocations || []
     return {
-        batchNumber: item.batchNumber || '',
-        expiry: item.batchExpiryDate ? formatDate(item.batchExpiryDate) : ''
+        batchNumber: allocations.map((allocation) => allocation.batchNumber).filter(Boolean).join(', '),
+        expiry: allocations
+            .map((allocation) => allocation.expiryDate ? formatDate(allocation.expiryDate) : '')
+            .filter(Boolean)
+            .join(', ')
     }
 }
 
