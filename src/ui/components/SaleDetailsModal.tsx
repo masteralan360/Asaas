@@ -321,6 +321,24 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onExchan
 
                     {/* ─── Status Banners ─── */}
                     <div className="space-y-2">
+                        {sale.currency_conversion_applied === false && (
+                            <div className="relative p-3 overflow-hidden bg-sky-500/10 border border-sky-500/20 rounded-xl">
+                                <div className="flex items-start gap-3 relative z-10">
+                                    <div className="p-2 rounded-lg bg-sky-500/20 text-sky-700 dark:text-sky-300">
+                                        <CircleAlert className="w-4 h-4" />
+                                    </div>
+                                    <div className="space-y-0.5">
+                                        <span className="font-black text-[10px] block uppercase tracking-[0.1em] text-sky-700 dark:text-sky-300">
+                                            {t('sales.currencyConversionDisabled', 'Currency conversion disabled')}
+                                        </span>
+                                        <p className="text-xs font-medium text-sky-950/80 dark:text-sky-100/80">
+                                            {t('sales.currencyConversionDisabledDescription', 'This sale was recorded in its product currency without conversion to the workspace currency.')}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {sale.system_review_status === 'flagged' && (
                             <div className="relative p-3 overflow-hidden bg-orange-500/10 border border-orange-500/20 rounded-xl">
                                 <div className="flex items-start gap-3 relative z-10">

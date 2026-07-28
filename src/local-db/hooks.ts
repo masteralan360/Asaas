@@ -2251,6 +2251,7 @@ export function toUISale(localSale: any): any {
         returned_amount: localSale.returnedAmount,
         return_status: localSale.returnStatus,
         settlement_currency: localSale.settlementCurrency,
+        currency_conversion_applied: localSale.currencyConversionApplied,
         sales_exchange: salesExchange.map((row: any) => toSnakeCase(row)),
         exchange_rates: exchangeRates.length > 0 ? exchangeRates : null,
         created_at: localSale.createdAt,

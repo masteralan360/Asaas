@@ -13,6 +13,7 @@ CREATE TABLE public.workspaces (
   is_configured boolean NOT NULL DEFAULT false,
   deleted_at timestamp with time zone NULL,
   default_currency text NOT NULL DEFAULT 'usd'::text,
+  pos_convert_to_workspace_currency boolean NOT NULL DEFAULT true,
   iqd_display_preference text NOT NULL DEFAULT 'IQD'::text,
   locked_workspace boolean NULL DEFAULT false,
   max_discount_percent integer NULL DEFAULT 100,

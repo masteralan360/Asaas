@@ -81,6 +81,7 @@ export interface WorkspaceFeatures {
     // Other settings
     is_configured: boolean
     default_currency: CurrencyCode
+    pos_convert_to_workspace_currency: boolean
     iqd_display_preference: IQDDisplayPreference
     allowed_currencies: CurrencyCode[]
     locked_workspace: boolean
@@ -142,7 +143,7 @@ interface WorkspaceContextType {
     refreshFeatures: () => Promise<void>
     refreshPaymentSummary: () => Promise<WorkspacePaymentSummary | null>
     updateSettings: (
-        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string },
+        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'pos_convert_to_workspace_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string },
         options?: { requireRemoteSync?: boolean }
     ) => Promise<void>
     switchDataMode: (newMode: 'cloud' | 'hybrid') => Promise<{ error: string | null }>
@@ -224,6 +225,7 @@ const defaultFeatures: WorkspaceFeatures = {
     ...getPlanFeatureFlags(defaultPlan),
     is_configured: true,
     default_currency: 'usd',
+    pos_convert_to_workspace_currency: true,
     iqd_display_preference: 'IQD',
     allowed_currencies: ['usd', 'iqd'],
     locked_workspace: false,
@@ -262,6 +264,7 @@ const WORKSPACE_FEATURE_COLUMNS = [
     'real_estate',
     'is_configured',
     'default_currency',
+    'pos_convert_to_workspace_currency',
     'iqd_display_preference',
     'locked_workspace',
     'logo_url',
@@ -367,6 +370,7 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
         clinical_appointments: localWorkspace.clinical_appointments ?? false,
         is_configured: localWorkspace.is_configured,
         default_currency: localWorkspace.default_currency,
+        pos_convert_to_workspace_currency: localWorkspace.pos_convert_to_workspace_currency ?? true,
         iqd_display_preference: localWorkspace.iqd_display_preference,
         locked_workspace: localWorkspace.locked_workspace ?? false,
         logo_url: localWorkspace.logo_url ?? null,
@@ -535,6 +539,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             invoices_history: nextFeatures.invoices_history,
             hr: nextFeatures.hr,
             default_currency: nextFeatures.default_currency,
+            pos_convert_to_workspace_currency: nextFeatures.pos_convert_to_workspace_currency,
             iqd_display_preference: nextFeatures.iqd_display_preference,
             locked_workspace: nextFeatures.locked_workspace,
             allow_whatsapp: nextFeatures.allow_whatsapp,
@@ -726,6 +731,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 clinical_appointments: currentFeatures.clinical_appointments,
                 is_configured: workspaceRow.is_configured ?? currentFeatures.is_configured,
                 default_currency: workspaceRow.default_currency ?? currentFeatures.default_currency,
+                pos_convert_to_workspace_currency: workspaceRow.pos_convert_to_workspace_currency ?? currentFeatures.pos_convert_to_workspace_currency,
                 iqd_display_preference: workspaceRow.iqd_display_preference ?? currentFeatures.iqd_display_preference,
                 locked_workspace: workspaceRow.locked_workspace ?? currentFeatures.locked_workspace,
                 logo_url: (workspaceRow.data_mode === 'local' || workspaceRow.data_mode === 'hybrid')
@@ -936,6 +942,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             clinical_appointments: currentFeatures.clinical_appointments,
                             is_configured: data.is_configured ?? currentFeatures.is_configured,
                             default_currency: data.default_currency || currentFeatures.default_currency,
+                            pos_convert_to_workspace_currency: data.pos_convert_to_workspace_currency ?? currentFeatures.pos_convert_to_workspace_currency,
                             iqd_display_preference: data.iqd_display_preference || currentFeatures.iqd_display_preference,
                             locked_workspace: data.locked_workspace ?? currentFeatures.locked_workspace,
                             logo_url: data.logo_url ?? currentFeatures.logo_url,
@@ -1169,7 +1176,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
 
     const updateSettings = async (
-        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string },
+        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'pos_convert_to_workspace_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string },
         options?: { requireRemoteSync?: boolean }
     ) => {
         const workspaceId = user?.workspaceId
@@ -1258,6 +1265,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 agents: newFeatures.agents,
                 clinical_appointments: newFeatures.clinical_appointments,
                 default_currency: newFeatures.default_currency,
+                pos_convert_to_workspace_currency: newFeatures.pos_convert_to_workspace_currency,
                 iqd_display_preference: newFeatures.iqd_display_preference,
                 locked_workspace: newFeatures.locked_workspace,
                 allow_whatsapp: newFeatures.allow_whatsapp,
@@ -1300,13 +1308,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                         .from('workspaces')
                         .update(supabaseUpdate)
                         .eq('id', workspaceId)
-                        .select('kds_enabled, instant_pos')
+                        .select('kds_enabled, instant_pos, pos_convert_to_workspace_currency')
                         .maybeSingle(),
                     options?.requireRemoteSync
                         ? { timeoutMs: 20_000, platform: 'all' }
                         : undefined
                 ) as {
-                    data: { kds_enabled?: boolean; instant_pos?: boolean } | null
+                    data: { kds_enabled?: boolean; instant_pos?: boolean; pos_convert_to_workspace_currency?: boolean } | null
                     error: unknown
                 }
                 updatedRow = data
@@ -1365,6 +1373,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     }
                     if ('kds_enabled' in supabaseUpdate && typeof updatedRow.kds_enabled === 'boolean') {
                         patched.kds_enabled = updatedRow.kds_enabled
+                    }
+                    if ('pos_convert_to_workspace_currency' in supabaseUpdate && typeof updatedRow.pos_convert_to_workspace_currency === 'boolean') {
+                        patched.pos_convert_to_workspace_currency = updatedRow.pos_convert_to_workspace_currency
                     }
                     if (Object.keys(patched).length > 0) {
                         const corrected = mergeWorkspaceFeatures({ ...featuresRef.current, ...patched }, overridesRef.current)

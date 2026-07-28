@@ -60,11 +60,13 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
+    DialogDescription,
     DialogFooter,
     DialogTrigger,
     DialogClose,
     useToast,
     Label,
+    Switch,
     Select,
     SelectContent,
     SelectItem,
@@ -116,6 +118,7 @@ import { getLanguageDirection } from '@/lib/i18nRouting'
 import { useDemoTutorial } from '@/demo'
 import { ActivityReceiptPrintTemplate, createActivityReceiptLabels } from '@/ui/components/activities/ActivityReceiptPrintTemplate'
 import { generateTemplatePdf } from '@/services/pdfGenerator'
+import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
 
 const CART_IMAGE_VISIBILITY_THRESHOLD = 450
 const DYNAMIC_UNITS = ['m²', 'Kg']
@@ -374,7 +377,7 @@ export function POS() {
     const { user } = useAuth()
     const demoTutorial = useDemoTutorial()
     const { t, i18n } = useTranslation()
-    const { features, workspaceName, isLocalMode, isLoading: isWorkspaceLoading } = useWorkspace()
+    const { features, workspaceName, isLocalMode, isLoading: isWorkspaceLoading, refreshFeatures } = useWorkspace()
     const isRTL = getLanguageDirection(i18n.resolvedLanguage || i18n.language) === 'rtl'
     const { permissionKeys, hasPermission, isLoading: arePermissionsLoading } = useWorkspacePermissions()
     const canSellActivities = features.activities
@@ -717,6 +720,9 @@ export function POS() {
     const [isHeldSalesModalOpen, setIsHeldSalesModalOpen] = useState(false)
     const [restoredSale, setRestoredSale] = useState<HeldSale | null>(null)
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false)
+    const [isCurrencyConversionDialogOpen, setIsCurrencyConversionDialogOpen] = useState(false)
+    const [currencyConversionDraft, setCurrencyConversionDraft] = useState(true)
+    const [isSavingCurrencyConversion, setIsSavingCurrencyConversion] = useState(false)
     const [completedSaleData, setCompletedSaleData] = useState<any>(null)
     const [completedActivityCheckout, setCompletedActivityCheckout] = useState<CompletedActivityCheckout | null>(null)
     const buildActivityCheckoutReceiptPdf = useCallback(async () => {
@@ -903,7 +909,67 @@ export function POS() {
         try_iqd: { rate: restoredSale.rates.try_iqd * 100, source: restoredSale.rates.sources.try_iqd, timestamp: restoredSale.timestamp, isFallback: false }
     } : globalTryRates
 
-    const settlementCurrency = features.default_currency || 'usd'
+    const currencyConversionEnabled = features.pos_convert_to_workspace_currency
+    const cartCurrencies = useMemo(() => Array.from(new Set(
+        cart.map((item) => (findStockProduct(item.product_id, item.storageId)?.currency || 'usd') as CurrencyCode)
+    )), [cart, findStockProduct])
+    const hasMixedCartCurrencies = cartCurrencies.length > 1
+    const settlementCurrency = (currencyConversionEnabled || cartCurrencies.length === 0
+        ? features.default_currency || 'usd'
+        : cartCurrencies[0]) as CurrencyCode
+
+    const openCurrencyConversionSettings = useCallback(() => {
+        if (!isAdmin || isActivitiesStorage) return
+        setCurrencyConversionDraft(features.pos_convert_to_workspace_currency)
+        setIsCurrencyConversionDialogOpen(true)
+    }, [features.pos_convert_to_workspace_currency, isActivitiesStorage, isAdmin])
+
+    const saveCurrencyConversionSettings = useCallback(async () => {
+        if (!isAdmin || !user) return
+
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: t('pos.currencyConversionOnlineRequired', 'Connect to the internet to update this workspace-wide setting.')
+            })
+            return
+        }
+
+        setIsSavingCurrencyConversion(true)
+        try {
+            const { data, error } = await runSupabaseAction(
+                'pos.updateCurrencyConversionPolicy',
+                () => supabase
+                    .from('workspaces')
+                    .update({ pos_convert_to_workspace_currency: currencyConversionDraft })
+                    .eq('id', user.workspaceId)
+                    .select('pos_convert_to_workspace_currency')
+                    .maybeSingle()
+            )
+
+            if (error) throw normalizeSupabaseActionError(error)
+            if (!data) throw new Error('Workspace currency conversion setting could not be saved.')
+
+            await refreshFeatures()
+            setIsCurrencyConversionDialogOpen(false)
+            toast({
+                title: t('messages.success'),
+                description: currencyConversionDraft
+                    ? t('pos.currencyConversionEnabled', 'POS sales will be converted to the workspace currency.')
+                    : t('pos.currencyConversionDisabled', 'POS sales will be recorded in the product currency without conversion.')
+            })
+        } catch (error) {
+            const normalized = normalizeSupabaseActionError(error)
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: normalized.message || t('pos.currencyConversionSaveFailed', 'Could not update the POS currency conversion setting.')
+            })
+        } finally {
+            setIsSavingCurrencyConversion(false)
+        }
+    }, [currencyConversionDraft, isAdmin, refreshFeatures, t, toast, user])
 
     const convertPrice = useCallback((amount: number, from: CurrencyCode, to: CurrencyCode) => {
         if (from === to) return amount
@@ -1275,6 +1341,18 @@ export function POS() {
         if (!isInfiniteActivity && product.inventoryQuantity <= 0) return // Out of stock
         const activeDiscount = activeDiscountMap.get(product.id)
 
+        if (!currencyConversionEnabled && !isInfiniteActivity) {
+            const cartCurrency = cartCurrencies[0]
+            if (cartCurrency && cartCurrency !== product.currency) {
+                toast({
+                    variant: 'destructive',
+                    title: t('messages.error'),
+                    description: t('pos.currencyConversionSingleCurrencyCart', 'Currency conversion is disabled. A sale can contain products in only one currency.')
+                })
+                return
+            }
+        }
+
         // Check EUR support
         if (product.currency === 'eur' && !features.allowed_currencies.includes('eur')) {
             toast({
@@ -1332,7 +1410,7 @@ export function POS() {
             ]
         })
         hapticTrigger('selection')
-    }, [activeDiscountMap, features, t, toast, hapticTrigger])
+    }, [activeDiscountMap, cartCurrencies, currencyConversionEnabled, features, t, toast, hapticTrigger])
 
     const removeFromCart = (itemKey: string) => {
         setCart((prev) => prev.filter((item) => getCartItemKey(item) !== itemKey))
@@ -1821,6 +1899,52 @@ export function POS() {
             return
         }
 
+        // The workspace policy can be changed from another POS terminal. Check
+        // the authoritative value before building a checkout payload so a stale
+        // feature cache cannot submit conversion snapshots against a disabled
+        // policy.
+        if (!isLocalMode && isOnline(user.workspaceId)) {
+            const { data: currencyPolicy, error: currencyPolicyError } = await runSupabaseAction(
+                'pos.getCurrencyConversionPolicy',
+                () => supabase
+                    .from('workspaces')
+                    .select('pos_convert_to_workspace_currency')
+                    .eq('id', user.workspaceId)
+                    .maybeSingle()
+            )
+
+            if (currencyPolicyError || !currencyPolicy) {
+                const normalized = normalizeSupabaseActionError(
+                    currencyPolicyError || new Error('Workspace currency conversion policy could not be loaded.')
+                )
+                toast({
+                    variant: 'destructive',
+                    title: t('messages.error'),
+                    description: normalized.message
+                })
+                return
+            }
+
+            const authoritativeCurrencyConversionEnabled = currencyPolicy.pos_convert_to_workspace_currency !== false
+            if (authoritativeCurrencyConversionEnabled !== currencyConversionEnabled) {
+                await refreshFeatures()
+                toast({
+                    title: t('pos.currencyConversionPolicyUpdated', 'POS setting updated'),
+                    description: t('pos.currencyConversionPolicyUpdatedDescription', 'Currency conversion changed for this workspace. Review the cart and checkout again.')
+                })
+                return
+            }
+        }
+
+        if (!currencyConversionEnabled && hasMixedCartCurrencies) {
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: t('pos.currencyConversionSingleCurrencyCart', 'Currency conversion is disabled. A sale can contain products in only one currency.')
+            })
+            return
+        }
+
         const validLoanRegistrationData = isLoanRegistrationData(loanRegistrationData)
             ? loanRegistrationData
             : undefined
@@ -1887,8 +2011,15 @@ export function POS() {
             usdTry: tryRates.usd_try ? { rate: tryRates.usd_try.rate, source: tryRates.usd_try.source, timestamp: tryRates.usd_try.timestamp } : null,
         }
 
-        const exchangeRatesSnapshot = buildCheckoutRatesSnapshot(usedCurrencies, settlementCurrency as CurrencyCode, knownRates)
-        const primary = getPrimaryCheckoutRate(usedCurrencies, settlementCurrency as CurrencyCode, knownRates)
+        // Conversion-disabled sales stay in their product currency. Do not let
+        // the snapshot helper's IQD fallback create an exchange record for an
+        // otherwise single-currency checkout.
+        const exchangeRatesSnapshot = currencyConversionEnabled
+            ? buildCheckoutRatesSnapshot(usedCurrencies, settlementCurrency, knownRates)
+            : []
+        const primary = currencyConversionEnabled
+            ? getPrimaryCheckoutRate(usedCurrencies, settlementCurrency, knownRates)
+            : null
 
         const snapshotRate = primary?.rate || 0
         const snapshotSource = primary?.source || 'none'
@@ -1982,6 +2113,7 @@ export function POS() {
             items: itemsWithMetadata,
             total_amount: totalAmount,
             settlement_currency: settlementCurrency,
+            currency_conversion_applied: currencyConversionEnabled,
             sales_exchange: salesExchangePayload,
             origin: 'pos',
             payment_method: (paymentType === 'cash'
@@ -2154,6 +2286,7 @@ export function POS() {
                         returnedAmount: 0,
                         returnStatus: 'none',
                         settlementCurrency: settlementCurrency,
+                        currencyConversionApplied: currencyConversionEnabled,
                         origin: 'pos',
                         payment_method: checkoutPayload.payment_method,
                         sequenceId: localSequenceId,
@@ -2702,7 +2835,20 @@ export function POS() {
                             <div className="flex items-center justify-between">
                                 <h2 className="text-xl font-bold flex items-center gap-2">
                                     <ShoppingCart className="w-5 h-5" />
-                                    {t('pos.currentSale') || 'Current Sale'}
+                                    {isAdmin && !isActivitiesStorage ? (
+                                        <PressAndHoldButton
+                                            variant="ghost"
+                                            size="sm"
+                                            onComplete={openCurrencyConversionSettings}
+                                            idleLabel={t('pos.currentSale') || 'Current Sale'}
+                                            holdingLabel={t('pos.openingCurrencySettings', 'Keep holding…')}
+                                            loadingLabel={t('common.loading', 'Loading…')}
+                                            showProgress={false}
+                                            className="h-auto min-h-0 px-0 py-0 text-xl font-bold hover:bg-transparent hover:text-foreground"
+                                        />
+                                    ) : (
+                                        <span>{t('pos.currentSale') || 'Current Sale'}</span>
+                                    )}
                                 </h2>
                                 {heldSales.length > 0 && (
                                     <Button
@@ -3266,6 +3412,57 @@ export function POS() {
                 setScanDelay={setScanDelay}
                 cameras={cameras}
             />
+
+            <Dialog
+                open={isCurrencyConversionDialogOpen}
+                onOpenChange={(open) => {
+                    if (!isSavingCurrencyConversion) setIsCurrencyConversionDialogOpen(open)
+                }}
+            >
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>{t('pos.currencyConversionSettings', 'POS currency conversion')}</DialogTitle>
+                        <DialogDescription>
+                            {t('pos.currencyConversionSettingsDescription', 'This workspace-wide setting applies to every POS terminal. Only workspace admins can change it.')}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/30 p-4">
+                        <div className="space-y-1">
+                            <Label htmlFor="pos-convert-to-workspace-currency" className="font-semibold">
+                                {t('pos.convertToWorkspaceCurrency', 'Convert to workspace currency')}
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                                {currencyConversionDraft
+                                    ? t('pos.convertToWorkspaceCurrencyEnabledDescription', 'Apply exchange rates and record a rate snapshot for different-currency products.')
+                                    : t('pos.convertToWorkspaceCurrencyDisabledDescription', 'Record POS sales in the product currency. Each sale can contain products in only one currency.')}
+                            </p>
+                        </div>
+                        <Switch
+                            id="pos-convert-to-workspace-currency"
+                            checked={currencyConversionDraft}
+                            disabled={isSavingCurrencyConversion}
+                            onCheckedChange={setCurrencyConversionDraft}
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={isSavingCurrencyConversion}
+                            onClick={() => setIsCurrencyConversionDialogOpen(false)}
+                        >
+                            {t('common.cancel')}
+                        </Button>
+                        <Button
+                            type="button"
+                            disabled={isSavingCurrencyConversion}
+                            onClick={() => void saveCurrencyConversionSettings()}
+                        >
+                            {isSavingCurrencyConversion ? t('common.saving', 'Saving…') : t('common.save')}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* SKU Modal */}
             <Dialog open={isSkuModalOpen} onOpenChange={setIsSkuModalOpen}>

@@ -10,6 +10,7 @@ CREATE TABLE public.sales (
   origin text NULL DEFAULT 'pos'::text,
   currency text NOT NULL DEFAULT 'usd'::text,
   settlement_currency text NOT NULL DEFAULT 'usd'::text,
+  currency_conversion_applied boolean NOT NULL DEFAULT true,
   payment_method text NULL DEFAULT 'cash'::text,
   is_returned boolean NULL DEFAULT false,
   return_reason text NULL,

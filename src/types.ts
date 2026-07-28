@@ -63,6 +63,7 @@ export interface Sale {
     returned_amount?: number
     return_status?: 'none' | 'partial' | 'full'
     settlement_currency: string
+    currency_conversion_applied?: boolean
     sales_exchange?: SalesExchange[]
     // Derived compatibility shape for receipt and invoice rendering.
     exchange_rates?: any[] | null

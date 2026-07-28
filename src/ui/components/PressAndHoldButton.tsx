@@ -13,6 +13,7 @@ interface PressAndHoldButtonProps extends Omit<ButtonProps, 'onClick' | 'onSubmi
     loadingLabel: string
     isLoading?: boolean
     durationMs?: number
+    showProgress?: boolean
 }
 
 export function PressAndHoldButton({
@@ -22,6 +23,7 @@ export function PressAndHoldButton({
     loadingLabel,
     isLoading = false,
     durationMs = WORKSPACE_PAYMENT_HOLD_DURATION_MS,
+    showProgress = true,
     disabled,
     className,
     ...buttonProps
@@ -107,11 +109,13 @@ export function PressAndHoldButton({
                 }
             }}
         >
-            <span
-                aria-hidden="true"
-                className="absolute inset-y-0 start-0 bg-white/20 transition-[width] duration-75"
-                style={{ width: `${progress}%` }}
-            />
+            {showProgress && (
+                <span
+                    aria-hidden="true"
+                    className="absolute inset-y-0 start-0 bg-white/20 transition-[width] duration-75"
+                    style={{ width: `${progress}%` }}
+                />
+            )}
             <span className="relative flex items-center justify-center gap-2">
                 {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
                 {isLoading ? loadingLabel : isHolding ? holdingLabel : idleLabel}
