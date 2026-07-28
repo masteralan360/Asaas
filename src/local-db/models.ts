@@ -855,6 +855,8 @@ export type ActivityTransactionStatus = "completed" | "cancelled" | "refunded";
 /** A workspace-owned activity/service that can be sold from the Activities module. */
 export interface ActivityCatalogItem extends BaseEntity {
   name: string;
+  /** Optional activity image, stored as a local path, data URL, or cloud path. */
+  imageUrl?: string | null;
   defaultUnitPrice: number;
   /** Stored with the price so a later workspace-currency change is explicit. */
   currency: CurrencyCode;

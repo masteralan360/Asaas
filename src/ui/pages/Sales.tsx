@@ -172,6 +172,21 @@ function getExternalSaleDetailsPath(sale: Sale) {
     return null
 }
 
+function getSaleReferenceLabel(sale: Sale) {
+    const transactionNo = (sale as Sale & { _transactionNo?: string | null })._transactionNo
+    if (sale.origin === 'activities' && transactionNo) {
+        return transactionNo
+    }
+
+    if (sale.origin === 'sales_order') {
+        return (sale as Sale & { orderNumber?: string | null; _orderNumber?: string | null }).orderNumber
+            || (sale as Sale & { _orderNumber?: string | null })._orderNumber
+            || `#${sale.id.slice(0, 8)}`
+    }
+
+    return sale.sequenceId ? `#${String(sale.sequenceId).padStart(5, '0')}` : `#${sale.id.slice(0, 8)}`
+}
+
 type EffectiveLoanStatus = 'pending' | 'active' | 'overdue' | 'completed' | 'cancelled'
 
 function resolveEffectiveLoanStatus(loan: Loan | undefined): EffectiveLoanStatus {
@@ -2384,13 +2399,13 @@ export function Sales() {
                                                                     <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-wider">
                                                                         {formatCompactDateTime(sale.created_at)}
                                                                     </span>
-                                                                    {sale.sequenceId ? (
+                                                                    {sale.sequenceId || (sale.origin === 'activities' && (sale as Sale & { _transactionNo?: string | null })._transactionNo) ? (
                                                                         <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-primary/10 text-primary rounded border border-primary/20">
-                                                                            {sale.origin === 'sales_order' ? ((sale as any).orderNumber || sale._orderNumber || `#${sale.id.slice(0, 8)}`) : `#${String(sale.sequenceId).padStart(5, '0')}`}
+                                                                            {getSaleReferenceLabel(sale)}
                                                                         </span>
                                                                     ) : (
                                                                         <span className="text-[10px] text-muted-foreground/50 font-mono">
-                                                                            #{sale.id.slice(0, 8)}
+                                                                            {getSaleReferenceLabel(sale)}
                                                                         </span>
                                                                     )}
                                                                 </div>
@@ -2577,10 +2592,10 @@ export function Sales() {
                                             </ContextMenuTrigger>
                                             <ContextMenuContent>
                                                 <ContextMenuLabel className="font-mono text-xs text-primary text-center">
-                                                    {sale.sequenceId ? (
-                                                        <span>{sale.origin === 'sales_order' ? ((sale as any).orderNumber || sale._orderNumber || `#${sale.id.slice(0, 8)}`) : `#${String(sale.sequenceId).padStart(5, '0')}`}</span>
+                                                    {sale.sequenceId || (sale.origin === 'activities' && (sale as Sale & { _transactionNo?: string | null })._transactionNo) ? (
+                                                        <span>{getSaleReferenceLabel(sale)}</span>
                                                     ) : (
-                                                        <span>#{sale.id.slice(0, 8)}</span>
+                                                        <span>{getSaleReferenceLabel(sale)}</span>
                                                     )}
                                                 </ContextMenuLabel>
                                                 <ContextMenuSeparator />
@@ -2751,10 +2766,10 @@ export function Sales() {
                                                         className={isFullyReturned ? 'bg-destructive/10 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/10 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : ''}
                                                     >
                                                         <TableCell className="font-mono text-sm font-bold text-primary">
-                                                            {sale.sequenceId ? (
-                                                                <span>{sale.origin === 'sales_order' ? ((sale as any).orderNumber || sale._orderNumber || `#${sale.id.slice(0, 8)}`) : `#${String(sale.sequenceId).padStart(5, '0')}`}</span>
+                                                            {sale.sequenceId || (sale.origin === 'activities' && (sale as Sale & { _transactionNo?: string | null })._transactionNo) ? (
+                                                                <span>{getSaleReferenceLabel(sale)}</span>
                                                             ) : (
-                                                                <span className="text-muted-foreground/40 text-xs">#{sale.id.slice(0, 4)}...</span>
+                                                                <span className="text-muted-foreground/40 text-xs">{getSaleReferenceLabel(sale)}</span>
                                                             )}
                                                         </TableCell>
                                                         <TableCell className="text-start font-mono text-sm" data-tour-id={isTutorialSale ? 'tutorial-sales-sale-fields' : undefined}>
@@ -2932,10 +2947,10 @@ export function Sales() {
                                                 </ContextMenuTrigger>
                                                 <ContextMenuContent>
                                                     <ContextMenuLabel className="font-mono text-xs text-primary text-center">
-                                                        {sale.sequenceId ? (
-                                                            <span>{sale.origin === 'sales_order' ? ((sale as any).orderNumber || sale._orderNumber || `#${sale.id.slice(0, 8)}`) : `#${String(sale.sequenceId).padStart(5, '0')}`}</span>
+                                                        {sale.sequenceId || (sale.origin === 'activities' && (sale as Sale & { _transactionNo?: string | null })._transactionNo) ? (
+                                                            <span>{getSaleReferenceLabel(sale)}</span>
                                                         ) : (
-                                                            <span>#{sale.id.slice(0, 8)}</span>
+                                                            <span>{getSaleReferenceLabel(sale)}</span>
                                                         )}
                                                     </ContextMenuLabel>
                                                     <ContextMenuSeparator />

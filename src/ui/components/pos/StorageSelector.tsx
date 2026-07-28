@@ -12,8 +12,13 @@ import {
 } from '@/ui/components/select'
 import type { Storage } from '@/local-db'
 
+export type StorageSelectorOption = Pick<Storage, 'id' | 'name' | 'isSystem'> & {
+    /** A POS-only destination such as the Activities catalog. */
+    isVirtual?: boolean
+}
+
 interface StorageSelectorProps {
-    storages: Storage[]
+    storages: StorageSelectorOption[]
     selectedStorageId: string
     onSelect: (storageId: string) => void
     className?: string

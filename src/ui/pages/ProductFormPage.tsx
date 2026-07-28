@@ -4,10 +4,10 @@ import {
     ArrowLeft,
     Barcode,
     Box,
-    Bottle,
+    BottleWine,
     Boxes,
     Camera,
-    Can,
+    Cylinder,
     ChevronRight,
     CircleDot,
     Copy,
@@ -123,9 +123,9 @@ function ProductUnitIcon({ unit }: { unit: string }) {
         case 'liter':
             return <Droplets className={className} />
         case 'bottle':
-            return <Bottle className={className} />
+            return <BottleWine className={className} />
         case 'can':
-            return <Can className={className} />
+            return <Cylinder className={className} />
         case 'box':
             return <Box className={className} />
         case 'pack':

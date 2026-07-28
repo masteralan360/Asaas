@@ -221,6 +221,7 @@ async function adjustLocalAvailability(lines: Array<Pick<ActivityTransactionLine
 
 export interface ActivityCatalogInput {
     name: string
+    imageUrl?: string | null
     defaultUnitPrice: number
     currency: CurrencyCode
     isInfinite: boolean
@@ -244,6 +245,9 @@ export async function saveActivityCatalogItem(workspaceId: string, input: Activi
         id: existing?.id || generateId(),
         workspaceId,
         name,
+        imageUrl: input.imageUrl === undefined
+            ? existing?.imageUrl ?? null
+            : normalizeOptionalText(input.imageUrl),
         defaultUnitPrice,
         currency: input.currency,
         isInfinite: input.isInfinite,
@@ -478,6 +482,27 @@ export async function updateActivityTransaction(workspaceId: string, transaction
     return { transaction, lines }
 }
 
+/** Updates the transaction note without changing the completed activity sale or its availability. */
+export async function updateActivityTransactionNotes(workspaceId: string, transactionId: string, notes: string | null | undefined) {
+    const existing = await db.activity_transactions.get(transactionId)
+    if (!existing || existing.workspaceId !== workspaceId || existing.isDeleted) {
+        throw new Error('Activity transaction not found')
+    }
+
+    const now = new Date().toISOString()
+    const transaction: ActivityTransaction = {
+        ...existing,
+        notes: normalizeOptionalText(notes),
+        updatedAt: now,
+        version: existing.version + 1,
+        ...getSyncMetadata(workspaceId, now)
+    }
+
+    await db.activity_transactions.put(transaction)
+    await syncUpserts(TRANSACTIONS_TABLE, [transaction as unknown as ActivitiesEntity], workspaceId)
+    return transaction
+}
+
 export async function reverseActivityTransaction(
     workspaceId: string,
     transactionId: string,
@@ -629,6 +654,7 @@ export function useActivityTransactionLinesForWorkspace(workspaceId: string | un
 export function toUISaleFromActivityTransaction(transaction: ActivityTransaction, lines: ActivityTransactionLine[]): any {
     return {
         id: transaction.id,
+        invoiceid: transaction.transactionNo,
         workspace_id: transaction.workspaceId,
         cashier_id: transaction.createdBy || '',
         total_amount: transaction.totalAmount,

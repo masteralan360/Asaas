@@ -39,6 +39,10 @@ interface CheckoutSuccessModalProps {
     saleData: any // Universal format expected by SaleReceipt
     features: WorkspaceFeatures
     tutorialDisablePrint?: boolean
+    /** Uses a source-specific receipt while retaining the normal POS direct-print flow. */
+    receiptPdfBuilder?: () => Promise<Blob>
+    /** Persists the note to the underlying source record instead of the POS sales table. */
+    onSaveNote?: (note: string) => Promise<void> | void
 }
 
 export function CheckoutSuccessModal({
@@ -46,7 +50,9 @@ export function CheckoutSuccessModal({
     onClose,
     saleData,
     features,
-    tutorialDisablePrint = false
+    tutorialDisablePrint = false,
+    receiptPdfBuilder,
+    onSaveNote
 }: CheckoutSuccessModalProps) {
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
@@ -57,6 +63,7 @@ export function CheckoutSuccessModal({
     const [isPaused, setIsPaused] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
     const [note, setNote] = useState(saleData?.notes || '')
+    const [noteSourceId, setNoteSourceId] = useState<string | null>(saleData?.id || null)
     const debouncedNote = useDebounce(note, 1000)
     const [primaryReceiptTemplate, setPrimaryReceiptTemplate] = useState<StoredCustomTemplateRow | null>(null)
     const [isLoadingPrimaryReceiptTemplate, setIsLoadingPrimaryReceiptTemplate] = useState(false)
@@ -71,7 +78,7 @@ export function CheckoutSuccessModal({
 
     useEffect(() => {
         const workspaceId = activeWorkspace?.id || user?.workspaceId
-        if (!isOpen || !workspaceId || (!isLocalMode && !isSupabaseConfigured)) {
+        if (receiptPdfBuilder || !isOpen || !workspaceId || (!isLocalMode && !isSupabaseConfigured)) {
             setPrimaryReceiptTemplate(null)
             setIsLoadingPrimaryReceiptTemplate(false)
             return
@@ -104,7 +111,7 @@ export function CheckoutSuccessModal({
         return () => {
             cancelled = true
         }
-    }, [activeWorkspace?.id, currentTemplatePrintLanguage, isLocalMode, isOpen, user?.workspaceId])
+    }, [activeWorkspace?.id, currentTemplatePrintLanguage, isLocalMode, isOpen, receiptPdfBuilder, user?.workspaceId])
 
     const primaryReceiptTarget = useMemo(
         () => getCustomTemplateTarget(SALES_HISTORY_RECEIPT_TEMPLATE_KEY),
@@ -120,6 +127,10 @@ export function CheckoutSuccessModal({
     const buildCheckoutReceiptPdf = useCallback(async () => {
         if (!saleData) {
             throw new Error('Receipt data is not available.')
+        }
+
+        if (receiptPdfBuilder) {
+            return receiptPdfBuilder()
         }
 
         const workspaceId = activeWorkspace?.id || user?.workspaceId || ''
@@ -147,7 +158,7 @@ export function CheckoutSuccessModal({
             workspaceName: resolvedWorkspaceName,
             workspaceId
         })
-    }, [activeWorkspace?.id, primaryReceiptLayout, primaryReceiptTarget, printFeatures, saleData, user?.workspaceId, workspaceName])
+    }, [activeWorkspace?.id, primaryReceiptLayout, primaryReceiptTarget, printFeatures, receiptPdfBuilder, saleData, user?.workspaceId, workspaceName])
 
     useEffect(() => {
         if (!isOpen) {
@@ -171,12 +182,24 @@ export function CheckoutSuccessModal({
         return () => clearInterval(timer)
     }, [isOpen, onClose, isPaused])
 
+    useEffect(() => {
+        if (isOpen) {
+            setNote(saleData?.notes || '')
+            setNoteSourceId(saleData?.id || null)
+        }
+    }, [isOpen, saleData?.id, saleData?.notes])
+
     // Auto-save note
     useEffect(() => {
         const saveNote = async () => {
-            if (!saleData?.id || debouncedNote === (saleData.notes || '')) return
+            if (!saleData?.id || noteSourceId !== saleData.id || debouncedNote === (saleData.notes || '')) return
 
             try {
+                if (onSaveNote) {
+                    await onSaveNote(debouncedNote)
+                    return
+                }
+
                 // Update Local DB
                 await db.sales.update(saleData.id, { notes: debouncedNote })
 
@@ -201,10 +224,10 @@ export function CheckoutSuccessModal({
         }
 
         saveNote()
-    }, [debouncedNote, isLocalMode, saleData?.id, saleData?.notes])
+    }, [debouncedNote, isLocalMode, noteSourceId, onSaveNote, saleData?.id, saleData?.notes])
 
     const handlePrintAndUpload = async () => {
-        if (isProcessing || !saleData || !user) {
+        if (isProcessing || !saleData) {
             // If already processing or missing data, just close or do nothing
             onClose()
             return
@@ -212,6 +235,11 @@ export function CheckoutSuccessModal({
 
         setIsProcessing(true)
         try {
+            if (!user) {
+                onClose()
+                return
+            }
+
             const workspaceId = activeWorkspace?.id || user.workspaceId
             const resolvedWorkspaceName = workspaceName || workspaceId || 'Atlas'
             let receiptPdfPromise: Promise<Blob> | null = null

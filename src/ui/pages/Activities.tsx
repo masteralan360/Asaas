@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { useLocation } from 'wouter'
-import { Activity, CheckCircle2, ClipboardList, Edit3, Infinity as InfinityIcon, Loader2, Plus, Printer, Receipt, RotateCcw, Search, Trash2, XCircle } from 'lucide-react'
+import { Activity, CheckCircle2, ClipboardList, Edit3, ImagePlus, Infinity as InfinityIcon, Loader2, Plus, Printer, Receipt, RotateCcw, Search, Trash2, XCircle } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -10,7 +10,6 @@ import { useWorkspacePermissions } from '@/permissions'
 import { UiAccessGate } from '@/context/UiAccessContext'
 import { useDateRange } from '@/context/DateRangeContext'
 import {
-    createActivityTransaction,
     hardDeleteActivityTransaction,
     reverseActivityTransaction,
     saveActivityCatalogItem,
@@ -24,8 +23,11 @@ import {
 } from '@/local-db/activities'
 import type { ActivityCatalogItem, ActivityTransaction, ActivityTransactionLine, IQDDisplayPreference, WorkspacePaymentMethod } from '@/local-db/models'
 import { isDateInDateRange } from '@/lib/dateRangeFilters'
+import { assetManager } from '@/lib/assetManager'
+import { isTauri } from '@/lib/platform'
 import { formatCurrency } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
+import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import type { TemplatePreview } from '@/lib/pdfPreviewStore'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
@@ -79,6 +81,7 @@ type TransactionDraft = {
 type CatalogDraft = {
     id?: string
     name: string
+    imageUrl: string
     defaultUnitPrice: string
     isInfinite: boolean
     availableQuantity: string
@@ -130,6 +133,7 @@ function createCatalogDraft(item?: ActivityCatalogItem): CatalogDraft {
     return {
         id: item?.id,
         name: item?.name || '',
+        imageUrl: item?.imageUrl || '',
         defaultUnitPrice: item ? String(item.defaultUnitPrice) : '',
         isInfinite: item?.isInfinite ?? true,
         availableQuantity: item?.availableQuantity == null ? '' : String(item.availableQuantity),
@@ -338,6 +342,8 @@ export function Activities() {
     const [search, setSearch] = useState('')
     const [catalogOpen, setCatalogOpen] = useState(false)
     const [catalogDraft, setCatalogDraft] = useState<CatalogDraft>(() => createCatalogDraft())
+    const [catalogImageError, setCatalogImageError] = useState(false)
+    const activityImageInputRef = useRef<HTMLInputElement>(null)
     const [transactionOpen, setTransactionOpen] = useState(false)
     const [transactionDraft, setTransactionDraft] = useState<TransactionDraft>(() => createTransactionDraft())
     const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null)
@@ -353,7 +359,6 @@ export function Activities() {
     }, [location])
 
     const canManageCatalog = hasPermission('activities.manageCatalog')
-    const canCreate = hasPermission('activities.createTransaction')
     const canViewHistory = hasPermission('activities.viewHistory')
     const canPrint = hasPermission('activities.print')
     const canEdit = hasPermission('activities.editTransaction')
@@ -365,6 +370,7 @@ export function Activities() {
         .map((activity) => activity.id)), [catalog])
     const workspaceLogoSrc = resolveWorkspaceLogoSrc(features.logo_url)
     const priceFractionDigits = features.default_currency === 'iqd' ? 0 : 2
+    const isDesktopShell = isTauri()
     const formatDateTime = (value: string) => new Date(value).toLocaleString(i18n.language)
     const visibleTransactions = useMemo(() => {
         const query = search.trim().toLowerCase()
@@ -451,22 +457,63 @@ export function Activities() {
         setActivityPrintOpen(true)
     }
 
-    const openNewTransaction = () => {
-        if (!activeCatalog.length) {
-            toast({
-                variant: 'destructive',
-                title: t('activities.messages.createActivityFirst', { defaultValue: 'Create an activity first' }),
-                description: t('activities.messages.createActivityFirstDescription', { defaultValue: 'Add an active activity priced in the workspace default currency.' })
-            })
+    const setCatalogImage = (imageUrl: string) => {
+        setCatalogDraft((current) => ({ ...current, imageUrl }))
+        setCatalogImageError(false)
+    }
+
+    const handleCatalogImageUpload = async () => {
+        if (!workspaceId) return
+
+        if (isDesktopShell) {
+            const targetPath = await platformService.pickAndSaveImage(workspaceId, 'activity-images')
+            if (!targetPath) return
+            setCatalogImage(targetPath)
+            void assetManager.uploadFromPath(targetPath).catch(console.error)
             return
         }
-        const first = activeCatalog[0]
-        setEditingTransactionId(null)
-        setTransactionDraft({
-            ...createTransactionDraft(),
-            lines: [{ activityId: first.id, quantity: '1', unitPrice: String(first.defaultUnitPrice) }]
-        })
-        setTransactionOpen(true)
+
+        activityImageInputRef.current?.click()
+    }
+
+    const handleCatalogImageFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0]
+        if (!file || !workspaceId) return
+
+        try {
+            if (isDesktopShell) {
+                const targetPath = await platformService.saveImageFile(file, workspaceId, 'activity-images')
+                if (targetPath) {
+                    setCatalogImage(targetPath)
+                    void assetManager.uploadFromPath(targetPath).catch(console.error)
+                }
+                return
+            }
+
+            const extension = file.name.split('.').pop() || 'jpg'
+            const fileName = `${Date.now()}.${extension}`
+            const targetPath = `activity-images/${workspaceId}/${fileName}`
+            const r2Path = `${workspaceId}/activity-images/${fileName}`
+            const { r2Service } = await import('@/services/r2Service')
+
+            if (!isLocalWorkspaceMode(workspaceId) && r2Service.isConfigured() && await r2Service.upload(r2Path, file)) {
+                setCatalogImage(targetPath)
+                return
+            }
+
+            const reader = new FileReader()
+            reader.onloadend = () => setCatalogImage(String(reader.result || ''))
+            reader.readAsDataURL(file)
+        } catch (error) {
+            console.error('[Activities] Failed to attach activity image:', error)
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: t('activities.messages.imageUploadFailed', { defaultValue: 'Could not attach activity image.' })
+            })
+        } finally {
+            if (activityImageInputRef.current) activityImageInputRef.current.value = ''
+        }
     }
 
     const openEditTransaction = () => {
@@ -507,6 +554,7 @@ export function Activities() {
         try {
             const input: ActivityCatalogInput = {
                 name: catalogDraft.name,
+                imageUrl: catalogDraft.imageUrl,
                 defaultUnitPrice: Number(catalogDraft.defaultUnitPrice || 0),
                 currency: features.default_currency,
                 isInfinite: catalogDraft.isInfinite,
@@ -543,7 +591,7 @@ export function Activities() {
 
     const submitTransaction = async (event: React.FormEvent) => {
         event.preventDefault()
-        if (!workspaceId) return
+        if (!workspaceId || !editingTransactionId) return
         setIsSubmitting(true)
         try {
             const input: ActivityTransactionInput = {
@@ -561,12 +609,10 @@ export function Activities() {
                 })),
                 createdBy: user?.id ?? null
             }
-            const result = editingTransactionId
-                ? await updateActivityTransaction(workspaceId, editingTransactionId, input)
-                : await createActivityTransaction(workspaceId, input)
+            const result = await updateActivityTransaction(workspaceId, editingTransactionId, input)
             setSelectedId(result.transaction.id)
             setTransactionOpen(false)
-            toast({ title: t(editingTransactionId ? 'activities.messages.transactionUpdated' : 'activities.messages.transactionSaved', { defaultValue: editingTransactionId ? 'Activity transaction updated' : 'Activity transaction saved' }) })
+            toast({ title: t('activities.messages.transactionUpdated', { defaultValue: 'Activity transaction updated' }) })
         } catch (error) {
             toast({
                 variant: 'destructive',
@@ -635,15 +681,9 @@ export function Activities() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                     {canManageCatalog ? (
-                        <Button variant="outline" onClick={() => { setCatalogDraft(createCatalogDraft()); setCatalogOpen(true) }}>
+                        <Button variant="outline" onClick={() => { setCatalogDraft(createCatalogDraft()); setCatalogImageError(false); setCatalogOpen(true) }}>
                             <ClipboardList className="mr-2 h-4 w-4" />
                             {t('activities.catalog', { defaultValue: 'Activity catalog' })}
-                        </Button>
-                    ) : null}
-                    {canCreate ? (
-                        <Button onClick={openNewTransaction}>
-                            <Plus className="mr-2 h-4 w-4" />
-                            {t('activities.newTransaction', { defaultValue: 'New transaction' })}
                         </Button>
                     ) : null}
                 </div>
@@ -736,7 +776,7 @@ export function Activities() {
                         </DialogHeader>
                         <DialogBody>
                             {catalog.length ? <div className="mt-4 space-y-2 rounded-lg border p-3">
-                                <div className="flex items-center justify-between"><Label>{t('activities.existingActivities', { defaultValue: 'Existing activities' })}</Label><Button type="button" size="sm" variant="ghost" onClick={() => setCatalogDraft(createCatalogDraft())}>{t('activities.newActivity', { defaultValue: 'New activity' })}</Button></div>
+                                <div className="flex items-center justify-between"><Label>{t('activities.existingActivities', { defaultValue: 'Existing activities' })}</Label><Button type="button" size="sm" variant="ghost" onClick={() => { setCatalogDraft(createCatalogDraft()); setCatalogImageError(false) }}>{t('activities.newActivity', { defaultValue: 'New activity' })}</Button></div>
                                 {catalog.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-md bg-muted/50 px-3 py-2 text-sm">
                                     <button type="button" className="min-w-0 text-left" onClick={() => setCatalogDraft(createCatalogDraft(item))}><p className="truncate font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{item.isInfinite ? t('activities.infinite', { defaultValue: 'Infinite' }) : t('activities.availableCount', { defaultValue: '{{count}} available', count: item.availableQuantity ?? 0 })} · {formatCurrency(item.defaultUnitPrice, item.currency, features.iqd_display_preference)}</p></button>
                                     <Button type="button" size="sm" variant="ghost" onClick={() => void handleCatalogStatus(item)}>{item.isActive ? t('activities.deactivate', { defaultValue: 'Deactivate' }) : t('activities.activate', { defaultValue: 'Activate' })}</Button>
@@ -744,6 +784,22 @@ export function Activities() {
                             </div> : null}
                             <div className="grid gap-4 py-5">
                                 <div className="grid gap-2"><Label htmlFor="activity-name">{t('common.name', { defaultValue: 'Name' })}</Label><Input id="activity-name" value={catalogDraft.name} onChange={(event) => setCatalogDraft((current) => ({ ...current, name: event.target.value }))} autoFocus /></div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="activity-image-url">{t('activities.image', { defaultValue: 'Activity photo' })}</Label>
+                                    <div className="flex items-start gap-3">
+                                        <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-dashed bg-muted/40">
+                                            {!catalogDraft.imageUrl ? <ImagePlus className="h-6 w-6 text-muted-foreground" /> : catalogImageError ? <ImagePlus className="h-6 w-6 text-destructive" /> : <img src={resolveWorkspaceLogoSrc(catalogDraft.imageUrl) || ''} alt="" className="h-full w-full object-cover" onError={() => setCatalogImageError(true)} />}
+                                        </div>
+                                        <div className="min-w-0 flex-1 space-y-2">
+                                            <div className="flex gap-2">
+                                                <Input id="activity-image-url" value={catalogDraft.imageUrl} onChange={(event) => setCatalogImage(event.target.value)} placeholder={t('activities.imageUrlPlaceholder', { defaultValue: 'Image URL or local path' })} />
+                                                <Button type="button" variant="outline" onClick={() => void handleCatalogImageUpload()}><ImagePlus className="mr-2 h-4 w-4" />{t('activities.uploadImage', { defaultValue: 'Upload' })}</Button>
+                                            </div>
+                                            {catalogDraft.imageUrl ? <Button type="button" size="sm" variant="ghost" className="h-auto px-0 text-destructive hover:text-destructive" onClick={() => setCatalogImage('')}><Trash2 className="mr-1 h-3.5 w-3.5" />{t('activities.removeImage', { defaultValue: 'Remove photo' })}</Button> : null}
+                                        </div>
+                                    </div>
+                                    <input ref={activityImageInputRef} type="file" className="hidden" accept="image/*" onChange={(event) => void handleCatalogImageFileSelected(event)} />
+                                </div>
                                 <div className="grid gap-2"><Label htmlFor="activity-price">{t('activities.defaultPrice', { defaultValue: 'Default unit price' })} ({features.default_currency.toUpperCase()})</Label><NumericInput id="activity-price" inputMode={priceFractionDigits === 0 ? 'numeric' : 'decimal'} min="0" maxFractionDigits={priceFractionDigits} value={catalogDraft.defaultUnitPrice} onValueChange={(value) => setCatalogDraft((current) => ({ ...current, defaultUnitPrice: value }))} /></div>
                                 <div className="flex items-center justify-between rounded-lg border p-3"><div><Label htmlFor="activity-infinite" className="flex items-center gap-2"><InfinityIcon className="h-4 w-4" />{t('activities.infiniteAvailability', { defaultValue: 'Infinite availability' })}</Label><p className="mt-1 text-xs text-muted-foreground">{t('activities.infiniteAvailabilityDescription', { defaultValue: 'Unlimited activities never consume availability.' })}</p></div><Switch id="activity-infinite" checked={catalogDraft.isInfinite} onCheckedChange={(value) => setCatalogDraft((current) => ({ ...current, isInfinite: value }))} /></div>
                                 {!catalogDraft.isInfinite ? <div className="grid gap-2"><Label htmlFor="activity-quantity">{t('activities.availableQuantity', { defaultValue: 'Available quantity' })}</Label><NumericInput id="activity-quantity" inputMode="decimal" min="0" maxFractionDigits={3} value={catalogDraft.availableQuantity} onValueChange={(value) => setCatalogDraft((current) => ({ ...current, availableQuantity: value }))} /></div> : null}
@@ -758,7 +814,7 @@ export function Activities() {
             <Dialog open={transactionOpen} onOpenChange={setTransactionOpen}>
                 <DialogContent layout="structured" className="sm:max-w-3xl">
                     <form className="flex min-h-0 flex-1 flex-col" onSubmit={submitTransaction}>
-                        <DialogHeader layout="structured"><DialogTitle>{editingTransactionId ? t('activities.editTransaction', { defaultValue: 'Edit activity transaction' }) : t('activities.newTransaction', { defaultValue: 'New activity transaction' })}</DialogTitle><DialogDescription>{t('activities.transactionDescription', { defaultValue: 'Activity prices are copied into the transaction and can be overridden per line.' })}</DialogDescription></DialogHeader>
+                        <DialogHeader layout="structured"><DialogTitle>{t('activities.editTransaction', { defaultValue: 'Edit activity transaction' })}</DialogTitle><DialogDescription>{t('activities.transactionDescription', { defaultValue: 'Activity prices are copied into the transaction and can be overridden per line.' })}</DialogDescription></DialogHeader>
                         <DialogBody>
                             <div className="grid gap-4 py-5">
                                 <div className="grid gap-4 sm:grid-cols-2">
@@ -784,7 +840,7 @@ export function Activities() {
                                 <div className="flex items-center justify-between rounded-lg bg-muted px-4 py-3"><span className="font-medium">{t('activities.total', { defaultValue: 'Total' })}</span><span className="text-xl font-bold">{formatCurrency(transactionTotal, features.default_currency, features.iqd_display_preference)}</span></div>
                             </div>
                         </DialogBody>
-                        <DialogFooter layout="structured"><Button type="button" variant="outline" onClick={() => setTransactionOpen(false)}>{t('common.cancel', { defaultValue: 'Cancel' })}</Button><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}{editingTransactionId ? t('common.save', { defaultValue: 'Save changes' }) : t('activities.completeTransaction', { defaultValue: 'Complete transaction' })}</Button></DialogFooter>
+                        <DialogFooter layout="structured"><Button type="button" variant="outline" onClick={() => setTransactionOpen(false)}>{t('common.cancel', { defaultValue: 'Cancel' })}</Button><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}{t('common.save', { defaultValue: 'Save changes' })}</Button></DialogFooter>
                     </form>
                 </DialogContent>
             </Dialog>

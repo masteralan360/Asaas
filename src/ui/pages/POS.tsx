@@ -17,10 +17,16 @@ import {
     useCategories,
     useWorkspaceProductBarcodes,
     useStorages,
+    createActivityTransaction,
+    updateActivityTransactionNotes,
+    useActivityCatalog,
+    toUISaleFromActivityTransaction,
     type BatchAwareInventoryProduct,
     type Category,
     type CurrencyCode,
-    type InventoryProduct
+    type InventoryProduct,
+    type ActivityTransaction,
+    type ActivityTransactionLine
 } from '@/local-db'
 import { db } from '@/local-db/database'
 import { formatCurrency, generateId, cn } from '@/lib/utils'
@@ -98,6 +104,7 @@ import { platformService } from '@/services/platformService'
 import { ExchangeRateList } from '@/ui/components'
 import { CheckoutSuccessModal, HeldSalesModal, type HeldSale, StorageSelector, CrossStorageWarningModal } from '@/ui/components'
 import { BarcodeScannerModal } from '@/ui/components/pos/BarcodeScannerModal'
+import type { StorageSelectorOption } from '@/ui/components/pos/StorageSelector'
 import { CameraBarcodeScanner } from '@/ui/components/pos/CameraBarcodeScanner'
 import { mapSaleToUniversal } from '@/lib/mappings'
 import { LoanRegistrationModal, type LoanRegistrationData } from '@/ui/components/pos/LoanRegistrationModal'
@@ -107,9 +114,23 @@ import { isOnline } from '@/lib/network'
 import { useWebHaptics } from 'web-haptics/react'
 import { getLanguageDirection } from '@/lib/i18nRouting'
 import { useDemoTutorial } from '@/demo'
+import { ActivityReceiptPrintTemplate, createActivityReceiptLabels } from '@/ui/components/activities/ActivityReceiptPrintTemplate'
+import { generateTemplatePdf } from '@/services/pdfGenerator'
 
 const CART_IMAGE_VISIBILITY_THRESHOLD = 450
 const DYNAMIC_UNITS = ['m²', 'Kg']
+
+const ACTIVITIES_STORAGE_ID = '__atlas_activities__'
+const ACTIVITY_POS_QUANTITY_LIMIT = Number.MAX_SAFE_INTEGER
+
+type PosCatalogProduct = BatchAwareInventoryProduct & {
+    isInfiniteActivity?: boolean
+}
+
+type CompletedActivityCheckout = {
+    transaction: ActivityTransaction
+    lines: ActivityTransactionLine[]
+}
 
 function isDynamicUnit(unit: string | undefined) {
     return DYNAMIC_UNITS.includes(unit ?? '')
@@ -353,23 +374,33 @@ export function POS() {
     const { user } = useAuth()
     const demoTutorial = useDemoTutorial()
     const { t, i18n } = useTranslation()
-    const { features, isLocalMode } = useWorkspace()
+    const { features, workspaceName, isLocalMode, isLoading: isWorkspaceLoading } = useWorkspace()
     const isRTL = getLanguageDirection(i18n.resolvedLanguage || i18n.language) === 'rtl'
+    const { permissionKeys, hasPermission, isLoading: arePermissionsLoading } = useWorkspacePermissions()
+    const canSellActivities = features.activities
+        && hasPermission('activities.access')
+        && hasPermission('activities.createTransaction')
     const storages = useStorages(user?.workspaceId)
     const [selectedStorageId, setSelectedStorageId] = useState<string>(() => {
         return localStorage.getItem('pos_selected_storage') || ''
     })
+    const isActivitiesStorage = selectedStorageId === ACTIVITIES_STORAGE_ID
     const products = useBatchAwareInventoryProducts(user?.workspaceId, {
-        enabled: !!selectedStorageId,
-        storageId: selectedStorageId || undefined
+        enabled: !!selectedStorageId && !isActivitiesStorage,
+        storageId: !isActivitiesStorage ? selectedStorageId || undefined : undefined
     })
+    const activityCatalog = useActivityCatalog(canSellActivities ? user?.workspaceId : undefined)
+    const infiniteActivityIds = useMemo(
+        () => new Set(activityCatalog.filter((activity) => activity.isInfinite && !activity.isDeleted).map((activity) => activity.id)),
+        [activityCatalog]
+    )
     const productBarcodes = useWorkspaceProductBarcodes(user?.workspaceId, {
         syncProductCache: false
     })
     const activeDiscountMap = useActiveDiscountMap(user?.workspaceId, {
         products,
-        inventoryRows: selectedStorageId ? undefined : [],
-        storageId: selectedStorageId || undefined,
+        inventoryRows: selectedStorageId && !isActivitiesStorage ? undefined : [],
+        storageId: !isActivitiesStorage ? selectedStorageId || undefined : undefined,
         syncRemote: false
     })
     const [crossStorageWarning, setCrossStorageWarning] = useState<{
@@ -441,12 +472,85 @@ export function POS() {
         }
     }, [selectedStorageId])
 
+    const posStorages = useMemo<StorageSelectorOption[]>(() => {
+        if (!canSellActivities) return storages
+        return [
+            ...storages,
+            {
+                id: ACTIVITIES_STORAGE_ID,
+                name: t('activities.title', { defaultValue: 'Activities' }),
+                isSystem: false,
+                isVirtual: true
+            }
+        ]
+    }, [canSellActivities, storages, t])
+
+    const activityProducts = useMemo<PosCatalogProduct[]>(() => activityCatalog
+        .filter((activity) => activity.isActive && !activity.isDeleted && activity.currency === features.default_currency)
+        .map((activity) => {
+            const availableQuantity = activity.isInfinite
+                ? ACTIVITY_POS_QUANTITY_LIMIT
+                : Math.max(0, Number(activity.availableQuantity ?? 0))
+
+            return {
+                id: activity.id,
+                workspaceId: activity.workspaceId,
+                sku: 'ACTIVITY',
+                name: activity.name,
+                description: '',
+                categoryId: null,
+                category: 'Activities',
+                storageId: ACTIVITIES_STORAGE_ID,
+                storageName: t('activities.title', { defaultValue: 'Activities' }),
+                imageUrl: activity.imageUrl || undefined,
+                price: activity.defaultUnitPrice,
+                costPrice: 0,
+                quantity: availableQuantity,
+                minStockLevel: 0,
+                // Activities are sold as activities, not as a product measurement.
+                unit: 'activity',
+                currency: activity.currency,
+                canBeReturned: false,
+                createdBy: activity.createdBy ?? null,
+                createdAt: activity.createdAt,
+                updatedAt: activity.updatedAt,
+                version: activity.version,
+                isDeleted: activity.isDeleted,
+                syncStatus: activity.syncStatus,
+                lastSyncedAt: activity.lastSyncedAt,
+                inventoryId: `activity:${activity.id}`,
+                inventoryQuantity: availableQuantity,
+                hasBatches: false,
+                batchCount: 0,
+                nextBatchNumber: null,
+                nextBatchExpiryDate: null,
+                nextBatchQuantity: null,
+                isInfiniteActivity: activity.isInfinite
+            }
+        }), [activityCatalog, features.default_currency, t])
+
+    const sellableProducts: PosCatalogProduct[] = isActivitiesStorage ? activityProducts : products
+
     useEffect(() => {
-        if (storages.length > 0 && (!selectedStorageId || !storages.find(s => s.id === selectedStorageId))) {
-            const mainStorage = getPrimaryStorageFromList(storages)
-            if (mainStorage) setSelectedStorageId(mainStorage.id)
+        // Keep an explicitly selected Activities storage while workspace features
+        // and permissions are still resolving. It is a virtual storage, so it is
+        // not present in the physical-storage query during that short period.
+        if (selectedStorageId === ACTIVITIES_STORAGE_ID) {
+            if (isWorkspaceLoading || arePermissionsLoading || canSellActivities) return
+        } else if (selectedStorageId && posStorages.some((storage) => storage.id === selectedStorageId)) {
+            return
         }
-    }, [storages, selectedStorageId])
+
+        // A real storage is only chosen as a fallback after the physical list has
+        // loaded, or when Activities is no longer available to this user.
+        if (storages.length === 0) return
+
+        const mainStorage = getPrimaryStorageFromList(storages)
+        const fallbackStorage = mainStorage || storages[0]
+        if (fallbackStorage && selectedStorageId !== fallbackStorage.id) {
+            setSelectedStorageId(fallbackStorage.id)
+        }
+    }, [arePermissionsLoading, canSellActivities, isWorkspaceLoading, posStorages, selectedStorageId, storages])
 
     const handleStorageSelect = useCallback((storageId: string) => {
         if (cart.length > 0 && storageId !== selectedStorageId) {
@@ -464,12 +568,12 @@ export function POS() {
     const findStockProduct = useCallback((productId: string, storageId?: string) => {
         const resolvedStorageId = storageId || selectedStorageId
         if (resolvedStorageId) {
-            return products.find((product) => product.id === productId && product.storageId === resolvedStorageId)
+            return sellableProducts.find((product) => product.id === productId && product.storageId === resolvedStorageId)
         }
 
-        const matches = products.filter((product) => product.id === productId)
+        const matches = sellableProducts.filter((product) => product.id === productId)
         return matches.length === 1 ? matches[0] : undefined
-    }, [products, selectedStorageId])
+    }, [selectedStorageId, sellableProducts])
 
     const getCartItemKey = useCallback((item: Pick<CartItem, 'product_id' | 'storageId'>) => {
         return buildCartItemKey(item.product_id, item.storageId)
@@ -548,7 +652,6 @@ export function POS() {
     const [editingPriceItemKey, setEditingPriceItemKey] = useState<string | null>(null)
     const [negotiatedPriceInput, setNegotiatedPriceInput] = useState('')
     const isAdmin = user?.role === 'admin'
-    const { permissionKeys } = useWorkspacePermissions()
     const isModifyPriceHidden = !isAdmin && permissionKeys.includes('pos.hideModifyPriceButton' as any)
     const isPriceBelowCostHidden = !isAdmin && permissionKeys.includes('pos.hidePriceBelowCostIndicator' as any)
 
@@ -572,6 +675,14 @@ export function POS() {
             setPaymentType('cash')
         }
     }, [isTutorialPosTask, paymentType])
+
+    useEffect(() => {
+        if (isActivitiesStorage) {
+            setSelectedCategory('all')
+            setShowExchangeTicker(false)
+            if (paymentType === 'loan') setPaymentType('cash')
+        }
+    }, [isActivitiesStorage, paymentType])
 
     // Scroll Indicator Logic (Desktop)
     const checkScroll = useCallback(() => {
@@ -607,6 +718,38 @@ export function POS() {
     const [restoredSale, setRestoredSale] = useState<HeldSale | null>(null)
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false)
     const [completedSaleData, setCompletedSaleData] = useState<any>(null)
+    const [completedActivityCheckout, setCompletedActivityCheckout] = useState<CompletedActivityCheckout | null>(null)
+    const buildActivityCheckoutReceiptPdf = useCallback(async () => {
+        if (!completedActivityCheckout) throw new Error('Activity transaction is not available.')
+
+        const printLanguage = features.print_lang !== 'auto' ? features.print_lang : i18n.language
+        return generateTemplatePdf({
+            element: <ActivityReceiptPrintTemplate
+                transaction={completedActivityCheckout.transaction}
+                lines={completedActivityCheckout.lines}
+                infiniteActivityIds={infiniteActivityIds}
+                workspaceName={workspaceName || 'Atlas'}
+                logoUrl={features.logo_url}
+                iqdDisplayPreference={features.iqd_display_preference}
+                labels={createActivityReceiptLabels(completedActivityCheckout.transaction, i18n.getFixedT(printLanguage))}
+                locale={printLanguage}
+            />,
+            format: 'receipt',
+            printLang: printLanguage
+        })
+    }, [completedActivityCheckout, features.iqd_display_preference, features.logo_url, features.print_lang, i18n, infiniteActivityIds, workspaceName])
+
+    const saveCompletedActivityNote = useCallback(async (notes: string) => {
+        if (!user || !completedActivityCheckout) return
+        const transaction = await updateActivityTransactionNotes(user.workspaceId, completedActivityCheckout.transaction.id, notes)
+
+        setCompletedActivityCheckout((current) => current?.transaction.id === transaction.id
+            ? { ...current, transaction }
+            : current)
+        setCompletedSaleData((current: any) => current?.id === transaction.id
+            ? { ...current, notes: transaction.notes, invoiceid: transaction.transactionNo }
+            : current)
+    }, [completedActivityCheckout, user])
     const [showExchangeTicker, setShowExchangeTicker] = useState(() => {
         const saved = localStorage.getItem('pos_show_exchange_ticker')
         if (saved !== null) return saved === 'true'
@@ -681,7 +824,7 @@ export function POS() {
     const filteredProducts = useMemo(() => {
         const normalizedSearch = search.trim().toLowerCase()
 
-        return products.filter((p) => {
+        return sellableProducts.filter((p) => {
             const matchesSearch = !normalizedSearch ||
                 (p.name || '').toLowerCase().includes(normalizedSearch) ||
                 (p.sku || '').toLowerCase().includes(normalizedSearch)
@@ -699,7 +842,7 @@ export function POS() {
             }
             return matchesSearch
         })
-    }, [products, search, selectedCategory, selectedStorageId])
+    }, [search, selectedCategory, selectedStorageId, sellableProducts])
 
     const barcodeMap = useMemo(() => {
         const map = new Map<string, string>()
@@ -1127,8 +1270,9 @@ export function POS() {
         }
     }, [cart.length, isLayoutMobile])
 
-    const addToCart = useCallback((product: InventoryProduct) => {
-        if (product.inventoryQuantity <= 0) return // Out of stock
+    const addToCart = useCallback((product: PosCatalogProduct) => {
+        const isInfiniteActivity = product.isInfiniteActivity === true
+        if (!isInfiniteActivity && product.inventoryQuantity <= 0) return // Out of stock
         const activeDiscount = activeDiscountMap.get(product.id)
 
         // Check EUR support
@@ -1155,11 +1299,15 @@ export function POS() {
             const existing = prev.find((item) => buildCartItemKey(item.product_id, item.storageId) === itemKey)
             if (existing) {
                 // Check stock limit
-                if (existing.quantity >= product.inventoryQuantity) return prev
+                if (!isInfiniteActivity && existing.quantity >= product.inventoryQuantity) return prev
 
                 return prev.map((item) =>
                     buildCartItemKey(item.product_id, item.storageId) === itemKey
-                        ? { ...item, quantity: item.quantity + 1, max_stock: product.inventoryQuantity }
+                        ? {
+                            ...item,
+                            quantity: item.quantity + 1,
+                            max_stock: isInfiniteActivity ? ACTIVITY_POS_QUANTITY_LIMIT : product.inventoryQuantity
+                        }
                         : item
                 )
             }
@@ -1177,7 +1325,7 @@ export function POS() {
                     discount_source: activeDiscount?.source,
                     discount_ends_at: activeDiscount?.endsAt,
                     quantity: 1,
-                    max_stock: product.inventoryQuantity,
+                    max_stock: isInfiniteActivity ? ACTIVITY_POS_QUANTITY_LIMIT : product.inventoryQuantity,
                     imageUrl: product.imageUrl,
                     unit: product.unit
                 }
@@ -1596,8 +1744,82 @@ export function POS() {
         setHeldSales(prev => prev.filter(s => s.id !== id))
     }
 
+    const handleActivitiesCheckout = async () => {
+        if (cart.length === 0 || !user || !canSellActivities) return
+
+        if (paymentType === 'loan') {
+            setPaymentType('cash')
+            return
+        }
+
+        for (const item of cart) {
+            const activity = findStockProduct(item.product_id, item.storageId)
+            if (!activity || activity.storageId !== ACTIVITIES_STORAGE_ID) {
+                toast({
+                    variant: 'destructive',
+                    title: t('messages.error'),
+                    description: t('activities.messages.activityUnavailable', { defaultValue: 'One or more activities are no longer available.' })
+                })
+                return
+            }
+
+            if (!activity.isInfiniteActivity && item.quantity > activity.inventoryQuantity) {
+                toast({
+                    variant: 'destructive',
+                    title: t('messages.error'),
+                    description: t('activities.errors.availabilityInsufficient', { defaultValue: 'This activity no longer has enough availability.' })
+                })
+                return
+            }
+        }
+
+        setIsLoading(true)
+        try {
+            const result = await createActivityTransaction(user.workspaceId, {
+                name: t('activities.posSaleName', { defaultValue: 'POS activity sale' }),
+                customerName: null,
+                occurredAt: new Date().toISOString(),
+                currency: settlementCurrency as CurrencyCode,
+                paymentMethod: paymentType === 'digital' ? digitalProvider : 'cash',
+                notes: null,
+                lines: cart.map((item) => ({
+                    activityId: item.product_id,
+                    quantity: item.quantity,
+                    unitPrice: getCartEffectivePrice(item)
+                })),
+                createdBy: user.id
+            })
+
+            setCart([])
+            setDiscountValue('')
+            setCompletedActivityCheckout(result)
+            setCompletedSaleData(toUISaleFromActivityTransaction(result.transaction, result.lines))
+            setIsSuccessModalOpen(true)
+            hapticTrigger('success')
+            playCheckoutSound()
+            toast({
+                title: t('activities.messages.transactionSaved', { defaultValue: 'Activity transaction saved' }),
+                description: result.transaction.transactionNo
+            })
+        } catch (error) {
+            const normalizedError = normalizeSupabaseActionError(error)
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: normalizedError.message || t('activities.messages.saveTransactionFailed', { defaultValue: 'Could not save activity transaction' })
+            })
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
     const handleCheckout = async (loanRegistrationData?: LoanRegistrationData) => {
         if (cart.length === 0 || !user) return
+
+        if (isActivitiesStorage) {
+            await handleActivitiesCheckout()
+            return
+        }
 
         const validLoanRegistrationData = isLoanRegistrationData(loanRegistrationData)
             ? loanRegistrationData
@@ -1893,6 +2115,7 @@ export function POS() {
             setCart([])
             setDiscountValue('')
             setIsLoanRegistrationModalOpen(false)
+            setCompletedActivityCheckout(null)
             setCompletedSaleData(saleData)
             demoTutorial.recordPosSaleCreated(saleId)
             setIsSuccessModalOpen(true)
@@ -2110,6 +2333,7 @@ export function POS() {
                     setCart([])
                     setDiscountValue('')
                     setIsLoanRegistrationModalOpen(false)
+                    setCompletedActivityCheckout(null)
                     setCompletedSaleData(saleDataOffline)
                     demoTutorial.recordPosSaleCreated(saleId)
                     setIsSuccessModalOpen(true)
@@ -2153,7 +2377,7 @@ export function POS() {
                         mobileView={mobileView}
                         setMobileView={setMobileView}
                         totalItems={totalItems}
-                        storages={storages}
+                        storages={posStorages}
                         selectedStorageId={selectedStorageId}
                         setSelectedStorageId={handleStorageSelect}
                         refreshExchangeRate={refreshExchangeRate}
@@ -2162,14 +2386,15 @@ export function POS() {
                         onOpenHeldSales={() => setIsHeldSalesModalOpen(true)}
                         t={t}
                         toast={toast}
-                        showExchangeTicker={showExchangeTicker}
+                        showExchangeTicker={!isActivitiesStorage && showExchangeTicker}
                         setShowExchangeTicker={setShowExchangeTicker}
+                        showExchangeTools={!isActivitiesStorage}
                     />
                     <div className={cn(
                         "flex-1 relative no-scrollbar",
                         mobileView === 'grid' ? "overflow-y-auto" : "overflow-hidden"
                     )}>
-                        {showExchangeTicker && (
+                        {!isActivitiesStorage && showExchangeTicker && (
                             <div
                                 className="cursor-pointer active:bg-primary/5 transition-colors border-b border-border/50 bg-background"
                                 onClick={() => setShowExchangeTicker(false)}
@@ -2199,7 +2424,7 @@ export function POS() {
                                 updateQuantity={updateQuantity}
                                 features={features}
                                 getDisplayImageUrl={getDisplayImageUrl}
-                                categories={categories}
+                                categories={isActivitiesStorage ? [] : categories}
                                 selectedCategory={selectedCategory}
                                 setSelectedCategory={setSelectedCategory}
                                 activeDiscountMap={activeDiscountMap}
@@ -2223,7 +2448,7 @@ export function POS() {
                                 handleHoldSale={handleHoldSale}
                                 isLoading={isLoading}
                                 getDisplayImageUrl={getDisplayImageUrl}
-                                products={products}
+                                products={sellableProducts}
                                 convertPrice={convertPrice}
                                 openPriceEdit={openPriceEdit}
                                 isAdmin={isAdmin}
@@ -2237,6 +2462,7 @@ export function POS() {
                                 t={t}
                                 setDynamicUnitModal={setDynamicUnitModal}
                                 setExactQuantity={setExactQuantity}
+                                isActivitiesStorage={isActivitiesStorage}
                             />
                         )}
                     </div>
@@ -2248,7 +2474,7 @@ export function POS() {
                     <div className="flex-1 flex flex-col gap-4">
                         <div className="flex items-center gap-4 bg-card p-4 rounded-xl border border-border shadow-sm">
                             <StorageSelector
-                                storages={storages}
+                                storages={posStorages}
                                 selectedStorageId={selectedStorageId}
                                 onSelect={handleStorageSelect}
                             />
@@ -2327,7 +2553,8 @@ export function POS() {
                                 {filteredProducts.map((product, index) => {
                                     const cartItem = cart.find((item) => getCartItemKey(item) === buildCartItemKey(product.id, product.storageId))
                                     const inCartQuantity = cartItem?.quantity || 0
-                                    const remainingQuantity = product.quantity - inCartQuantity
+                                    const isInfiniteActivity = product.isInfiniteActivity === true
+                                    const remainingQuantity = isInfiniteActivity ? ACTIVITY_POS_QUANTITY_LIMIT : product.quantity - inCartQuantity
                                     const minStock = product.minStockLevel || 5
                                     const isLowStock = remainingQuantity <= minStock
                                     const isCriticalStock = remainingQuantity <= (minStock / 2)
@@ -2340,11 +2567,11 @@ export function POS() {
                                             ref={el => productRefs.current[index] = el}
                                             data-tour-id={demoTutorial.state?.productId === product.id ? 'tutorial-pos-product-card' : undefined}
                                             onClick={() => addToCart(product)}
-                                            disabled={remainingQuantity <= 0}
+                                            disabled={!isInfiniteActivity && remainingQuantity <= 0}
                                             className={cn(
                                                 "group relative bg-card hover:bg-accent/5 rounded-[1.5rem] border border-border/50 p-4 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/5 hover:-translate-y-1 flex flex-col gap-4 overflow-hidden text-left outline-none",
                                                 product.hasBatches && "border-sky-300/70 bg-gradient-to-br from-sky-50/70 via-card to-card shadow-[0_10px_30px_rgba(14,165,233,0.08)] dark:border-sky-500/25 dark:from-sky-500/10",
-                                                remainingQuantity <= 0 ? 'opacity-60 cursor-not-allowed' : '',
+                                                !isInfiniteActivity && remainingQuantity <= 0 ? 'opacity-60 cursor-not-allowed' : '',
                                                 // Keyboard focus highlight (Electron only)
                                                 (isPosKeyboardSelectionEnabled && focusedSection === 'grid' && focusedProductIndex === index) ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-[1.02] shadow-lg z-10 box-shadow-[0_0_0_2px_hsl(var(--primary))]" : ""
                                             )}
@@ -2366,7 +2593,7 @@ export function POS() {
                                                     </div>
                                                 )}
 
-                                                <div className={cn(
+                                                {!isInfiniteActivity && <div className={cn(
                                                     "absolute top-2 right-2 px-2.5 py-1.5 rounded-2xl text-[12px] font-black uppercase tracking-tighter shadow-md z-10",
                                                     remainingQuantity <= 0
                                                         ? "bg-destructive text-destructive-foreground"
@@ -2376,12 +2603,12 @@ export function POS() {
                                                                 : "bg-amber-400 text-amber-950"
                                                             : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 backdrop-blur-md"
                                                 )}>
-                                                    {remainingQuantity} <span className="text-[10px] opacity-70 ml-0.5">{t(`products.units.${product.unit}`).toUpperCase()}</span>
-                                                </div>
+                                                    {remainingQuantity} <span className="text-[10px] opacity-70 ml-0.5">{t(`products.units.${product.unit}`, product.unit).toUpperCase()}</span>
+                                                </div>}
 
                                                 {product.hasBatches && product.nextBatchQuantity !== null && (
                                                     <div className="absolute bottom-2 left-2 bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20 backdrop-blur-md px-2.5 py-1.5 rounded-2xl text-[12px] font-black uppercase tracking-tighter shadow-md z-10">
-                                                        {product.nextBatchQuantity} <span className="text-[10px] opacity-70 ml-0.5">{t(`products.units.${product.unit}`).toUpperCase()}</span>
+                                                        {product.nextBatchQuantity} <span className="text-[10px] opacity-70 ml-0.5">{t(`products.units.${product.unit}`, product.unit).toUpperCase()}</span>
                                                     </div>
                                                 )}
 
@@ -2556,11 +2783,11 @@ export function POS() {
                                                                 "text-xs",
                                                                 hasNegotiated || hasDiscount ? "text-muted-foreground/50 line-through" : "text-muted-foreground"
                                                             )}>
-                                                                {formatCurrency(item.price, productCurrency, features.iqd_display_preference)} x {item.quantity} {t(`products.units.${item.unit}`).toUpperCase()}
+                                                                {formatCurrency(item.price, productCurrency, features.iqd_display_preference)} x {item.quantity} {t(`products.units.${item.unit}`, item.unit).toUpperCase()}
                                                             </div>
                                                             {(hasDiscount || hasNegotiated) && (
                                                                 <div className="text-xs text-emerald-600 font-medium flex items-center gap-1">
-                                                                    <span>{formatCurrency(effectivePrice, productCurrency, features.iqd_display_preference)} x {item.quantity} {t(`products.units.${item.unit}`).toUpperCase()}</span>
+                                                                    <span>{formatCurrency(effectivePrice, productCurrency, features.iqd_display_preference)} x {item.quantity} {t(`products.units.${item.unit}`, item.unit).toUpperCase()}</span>
                                                                     {isAdmin && (
                                                                         <button
                                                                             onClick={() => clearNegotiatedPrice(item)}
@@ -2633,7 +2860,7 @@ export function POS() {
                                                                         })}
                                                                         className="h-7 w-14 text-xs text-center border-0 bg-transparent p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                                     />
-                                                                    <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`)}</span>
+                                                                    <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`, item.unit)}</span>
                                                                 </div>
                                                                 <Button
                                                                     variant="ghost"
@@ -2656,7 +2883,7 @@ export function POS() {
                                                                 </Button>
                                                                 <span className="flex flex-col items-center justify-center min-w-[2.5rem] leading-none py-1">
                                                                     <span className="text-sm font-black">{item.quantity}</span>
-                                                                    <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`)}</span>
+                                                                    <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`, item.unit)}</span>
                                                                 </span>
                                                                 <Button
                                                                     variant="outline"
@@ -2689,7 +2916,7 @@ export function POS() {
                         <div className="p-4 border-t border-border bg-muted/10 space-y-3">
                             {/* Exchange Rate Info */}
                             {/* Exchange Rate Info */}
-                            {(exchangeData || (features.allowed_currencies.includes('eur') && eurRates.eur_iqd)) && (
+                            {!isActivitiesStorage && (exchangeData || (features.allowed_currencies.includes('eur') && eurRates.eur_iqd)) && (
                                 <div
                                     className="bg-primary/5 rounded-lg border border-primary/10 overflow-hidden cursor-pointer transition-all hover:bg-primary/[0.07] active:scale-[0.98]"
                                     onClick={() => setShowExchangeTicker(!showExchangeTicker)}
@@ -2865,7 +3092,7 @@ export function POS() {
                                             <Zap className={cn("w-3 h-3 transition-colors", paymentType === 'digital' ? "text-blue-600 dark:text-blue-400" : "text-blue-600/80")} />
                                             {t('pos.digital') || 'Digital'}
                                         </button>
-                                        <button
+                                        {!isActivitiesStorage && <button
                                             data-tour-id="tutorial-pos-payment-loan"
                                             onClick={() => {
                                                 if (!isTutorialPosTask) setPaymentType('loan')
@@ -2882,7 +3109,7 @@ export function POS() {
                                         >
                                             <Coins className={cn("w-3 h-3 transition-colors", isTutorialPosTask ? "text-muted-foreground" : paymentType === 'loan' ? "text-rose-600 dark:text-rose-400" : "text-rose-600/80")} />
                                             {t('pos.loan') || 'Loan'}
-                                        </button>
+                                        </button>}
                                     </div>
                                 </div>
 
@@ -3284,12 +3511,15 @@ export function POS() {
                     demoTutorial.completePosSuccessModal()
                     setIsSuccessModalOpen(false)
                     setCompletedSaleData(null)
+                    setCompletedActivityCheckout(null)
                     // Reset POS focus if needed
                     if (isPosKeyboardSelectionEnabled) searchInputRef.current?.focus()
                 }}
                 saleData={completedSaleData}
                 features={features}
                 tutorialDisablePrint={isTutorialPosTask}
+                receiptPdfBuilder={completedActivityCheckout ? buildActivityCheckoutReceiptPdf : undefined}
+                onSaveNote={completedActivityCheckout ? saveCompletedActivityNote : undefined}
             />
 
             <SaveBorrowerAsPartnerDialog
@@ -3304,7 +3534,7 @@ export function POS() {
                 isOpen={!!crossStorageWarning}
                 onOpenChange={(open: boolean) => !open && setCrossStorageWarning(null)}
                 productName={crossStorageWarning?.product.name || ''}
-                currentStorageName={storages.find(s => s.id === selectedStorageId)?.name || 'Current'}
+                currentStorageName={posStorages.find(s => s.id === selectedStorageId)?.name || 'Current'}
                 foundInStorageName={crossStorageWarning?.foundStorageName || 'Unknown'}
                 onConfirm={() => {
                     if (crossStorageWarning) {
@@ -3443,7 +3673,7 @@ interface MobileHeaderProps {
     mobileView: 'grid' | 'cart'
     setMobileView: (view: 'grid' | 'cart') => void
     totalItems: number
-    storages: ReturnType<typeof useStorages>
+    storages: StorageSelectorOption[]
     selectedStorageId: string
     setSelectedStorageId: (storageId: string) => void
     refreshExchangeRate: () => void
@@ -3454,6 +3684,7 @@ interface MobileHeaderProps {
     toast: any
     showExchangeTicker: boolean
     setShowExchangeTicker: (s: boolean) => void
+    showExchangeTools: boolean
 }
 
 function MobileHeader({
@@ -3470,7 +3701,8 @@ function MobileHeader({
     t,
     toast,
     showExchangeTicker,
-    setShowExchangeTicker
+    setShowExchangeTicker,
+    showExchangeTools
 }: MobileHeaderProps) {
     return (
         <div className="lg:hidden sticky top-0 z-50">
@@ -3558,7 +3790,7 @@ function MobileHeader({
                         )}
 
                         {/* Live Rate Modal (Mobile) */}
-                        <Dialog>
+                        {showExchangeTools && <Dialog>
                             <DialogTrigger asChild>
                                 <button className="p-2 rounded-xl hover:bg-secondary transition-colors cursor-pointer text-muted-foreground">
                                     <TrendingUp className="w-6 h-6" />
@@ -3607,7 +3839,7 @@ function MobileHeader({
                                     </div>
                                 </div>
                             </DialogContent>
-                        </Dialog>
+                        </Dialog>}
                     </div>
                 </div>
             </div>
@@ -3622,9 +3854,9 @@ interface MobileGridProps {
     setIsSkuModalOpen: (o: boolean) => void
     setIsBarcodeModalOpen: (o: boolean) => void
     isDeviceScannerAutoEnabled: boolean
-    filteredProducts: BatchAwareInventoryProduct[]
+    filteredProducts: PosCatalogProduct[]
     cart: CartItem[]
-    addToCart: (p: InventoryProduct) => void
+    addToCart: (p: PosCatalogProduct) => void
     updateQuantity: (itemKey: string, d: number) => void
     features: WorkspaceFeatures
     getDisplayImageUrl: (url?: string) => string
@@ -3713,7 +3945,8 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                 {filteredProducts.map((product) => {
                     const cartItem = cart.find((item) => buildCartItemKey(item.product_id, item.storageId) === buildCartItemKey(product.id, product.storageId))
                     const inCartQuantity = cartItem?.quantity || 0
-                    const remainingQuantity = product.quantity - inCartQuantity
+                    const isInfiniteActivity = product.isInfiniteActivity === true
+                    const remainingQuantity = isInfiniteActivity ? ACTIVITY_POS_QUANTITY_LIMIT : product.quantity - inCartQuantity
                     const minStock = product.minStockLevel || 5
                     const isLowStock = remainingQuantity <= minStock
                     const isCriticalStock = remainingQuantity <= (minStock / 2)
@@ -3730,7 +3963,7 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                             )}
                             onClick={(e) => {
                                 if ((e.target as HTMLElement).closest('button')) return;
-                                if (remainingQuantity > 0) addToCart(product);
+                                if (isInfiniteActivity || remainingQuantity > 0) addToCart(product);
                             }}
                         >
                             <div className="aspect-square bg-muted/30 rounded-[1.5rem] overflow-hidden relative">
@@ -3749,7 +3982,7 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                                 )}
 
                                 {/* Stock Badge */}
-                                <div className={cn(
+                                {!isInfiniteActivity && <div className={cn(
                                     "absolute top-2 right-2 backdrop-blur-md px-2.5 py-1 rounded-xl text-[10px] font-black border transition-colors duration-300",
                                     remainingQuantity <= 0
                                         ? "bg-destructive text-destructive-foreground border-destructive/20"
@@ -3759,12 +3992,12 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                                                 : "bg-amber-400 text-amber-950 border-amber-300/50"
                                             : "bg-primary/20 text-primary border-primary/20"
                                 )}>
-                                    {remainingQuantity} <span className="text-[9px] opacity-70 ml-0.5">{t(`products.units.${product.unit}`).toUpperCase()}</span>
-                                </div>
+                                    {remainingQuantity} <span className="text-[9px] opacity-70 ml-0.5">{t(`products.units.${product.unit}`, product.unit).toUpperCase()}</span>
+                                </div>}
 
                                 {product.hasBatches && product.nextBatchQuantity !== null && (
                                     <div className="absolute bottom-2 left-2 backdrop-blur-md px-2.5 py-1 rounded-xl text-[10px] font-black border border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300 transition-colors duration-300">
-                                        {product.nextBatchQuantity} <span className="text-[9px] opacity-70 ml-0.5">{t(`products.units.${product.unit}`).toUpperCase()}</span>
+                                        {product.nextBatchQuantity} <span className="text-[9px] opacity-70 ml-0.5">{t(`products.units.${product.unit}`, product.unit).toUpperCase()}</span>
                                     </div>
                                 )}
 
@@ -3790,7 +4023,7 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                                     </div>
                                 )}
 
-                                {remainingQuantity <= 0 && (
+                                {!isInfiniteActivity && remainingQuantity <= 0 && (
                                     <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] flex items-center justify-center text-xs font-bold text-destructive">
                                         {t('pos.outOfStock') || 'Out of stock'}
                                     </div>
@@ -3843,7 +4076,7 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                                         e.stopPropagation();
                                         addToCart(product);
                                     }}
-                                    disabled={remainingQuantity <= 0}
+                                    disabled={!isInfiniteActivity && remainingQuantity <= 0}
                                 >
                                     <Plus className="w-3 h-3" />
                                 </Button>
@@ -3884,6 +4117,7 @@ interface MobileCartProps {
     setDiscountType: (type: 'percent' | 'amount') => void
     hasTrulyMissingRates: boolean
     hasLoadingRates: boolean
+    isActivitiesStorage: boolean
     t: any
     setDynamicUnitModal: (modal: { type: 'm²' | 'Kg'; itemKey: string } | null) => void
     setExactQuantity: (itemKey: string, quantity: number) => void
@@ -3896,7 +4130,7 @@ function MobileCart({
     getDisplayImageUrl, products, convertPrice, openPriceEdit,
     clearNegotiatedPrice, isAdmin,
     discountValue, setDiscountValue, discountType, setDiscountType,
-    hasTrulyMissingRates, hasLoadingRates, t,
+    hasTrulyMissingRates, hasLoadingRates, isActivitiesStorage, t,
     setDynamicUnitModal, setExactQuantity
 }: MobileCartProps) {
     const [isExpanded, setIsExpanded] = useState(false)
@@ -4064,12 +4298,12 @@ function MobileCart({
                                                     "text-muted-foreground transition-all duration-300",
                                                     item.negotiated_price !== undefined || hasDiscount ? "line-through opacity-50" : ""
                                                 )}>
-                                                    {formatCurrency(item.price, originalCurrency, features.iqd_display_preference)} x {item.quantity} {t(`products.units.${item.unit}`).toUpperCase()}
+                                                    {formatCurrency(item.price, originalCurrency, features.iqd_display_preference)} x {item.quantity} {t(`products.units.${item.unit}`, item.unit).toUpperCase()}
                                                 </div>
 
                                                 {(item.negotiated_price !== undefined || hasDiscount) && (
                                                     <div className="text-emerald-500 font-bold flex items-center gap-1 animate-in slide-in-from-left-2 duration-300">
-                                                        {formatCurrency(unitPrice, originalCurrency, features.iqd_display_preference)} x {item.quantity} {t(`products.units.${item.unit}`).toUpperCase()}
+                                                        {formatCurrency(unitPrice, originalCurrency, features.iqd_display_preference)} x {item.quantity} {t(`products.units.${item.unit}`, item.unit).toUpperCase()}
                                                         <button
                                                             onClick={() => clearNegotiatedPrice(item)}
                                                             className="p-0.5 rounded-full hover:bg-destructive/10 text-destructive transition-colors"
@@ -4115,7 +4349,7 @@ function MobileCart({
                                                     })}
                                                     className="h-8 w-16 text-xs text-center rounded-lg border-border/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                 />
-                                                <span className="text-[10px] font-bold opacity-50 uppercase tracking-tighter pr-1">{t(`products.units.${item.unit}`)}</span>
+                                                <span className="text-[10px] font-bold opacity-50 uppercase tracking-tighter pr-1">{t(`products.units.${item.unit}`, item.unit)}</span>
                                             </div>
                                         ) : (
                                             <div className="flex items-center gap-3 bg-muted/50 rounded-xl p-0.5 border border-border/50 h-fit">
@@ -4124,7 +4358,7 @@ function MobileCart({
                                                 </button>
                                                 <span className="flex flex-col items-center justify-center min-w-[2.5rem] leading-none py-1">
                                                     <span className="text-sm font-black">{item.quantity}</span>
-                                                    <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`)}</span>
+                                                    <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`, item.unit)}</span>
                                                 </span>
                                                 <button onClick={() => updateQuantity(itemKey, 1)} className="p-1.5 hover:bg-background rounded-lg transition-colors text-primary">
                                                     <Plus className="w-3 h-3" />
@@ -4257,7 +4491,7 @@ function MobileCart({
                             >
                                 <Zap className={cn("w-4 h-4 transition-colors", paymentType === 'digital' ? "text-blue-600 dark:text-blue-400" : "text-blue-600/80")} /> {t('pos.digital') || 'Digital'}
                             </button>
-                            <button
+                            {!isActivitiesStorage && <button
                                 data-tour-id="tutorial-pos-payment-loan"
                                 onClick={() => {
                                     if (!isTutorialPosTask) setPaymentType('loan')
@@ -4273,7 +4507,7 @@ function MobileCart({
                                 )}
                             >
                                 <Coins className={cn("w-4 h-4 transition-colors", isTutorialPosTask ? "text-muted-foreground" : paymentType === 'loan' ? "text-rose-600 dark:text-rose-400" : "text-rose-600/80")} /> {t('pos.loan') || 'Loan'}
-                            </button>
+                            </button>}
                         </div>
 
                         {/* Digital Provider Sub-toggle */}
