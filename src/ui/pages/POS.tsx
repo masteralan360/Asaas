@@ -2929,11 +2929,11 @@ export function POS() {
                                                                 "text-xs",
                                                                 hasNegotiated || hasDiscount ? "text-muted-foreground/50 line-through" : "text-muted-foreground"
                                                             )}>
-                                                                {formatCurrency(item.price, productCurrency, features.iqd_display_preference)} x {item.quantity} {t(`products.units.${item.unit}`, item.unit).toUpperCase()}
+                                                                {formatCurrency(item.price, productCurrency, features.iqd_display_preference)} x {item.quantity} {t(`products.units.${item.unit}`, { defaultValue: item.unit ?? '' }).toUpperCase()}
                                                             </div>
                                                             {(hasDiscount || hasNegotiated) && (
                                                                 <div className="text-xs text-emerald-600 font-medium flex items-center gap-1">
-                                                                    <span>{formatCurrency(effectivePrice, productCurrency, features.iqd_display_preference)} x {item.quantity} {t(`products.units.${item.unit}`, item.unit).toUpperCase()}</span>
+                                                                    <span>{formatCurrency(effectivePrice, productCurrency, features.iqd_display_preference)} x {item.quantity} {t(`products.units.${item.unit}`, { defaultValue: item.unit ?? '' }).toUpperCase()}</span>
                                                                     {isAdmin && (
                                                                         <button
                                                                             onClick={() => clearNegotiatedPrice(item)}
