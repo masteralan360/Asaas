@@ -130,6 +130,15 @@ type HideablePrintField = {
     render?: ReactNode | ((label: ReactNode) => ReactNode)
     className?: string
     dialogClassName?: string
+    layoutRow?: number
+    layoutSpan?: number
+}
+
+function getGridSpan(className?: string) {
+    if (className?.includes('col-span-4')) return 4
+    if (className?.includes('col-span-3')) return 3
+    if (className?.includes('col-span-2')) return 2
+    return 1
 }
 
 function orderFieldsForLayout(fields: HideablePrintField[], fieldOrder?: string[]) {
@@ -146,13 +155,29 @@ function orderFieldsForLayout(fields: HideablePrintField[], fieldOrder?: string[
         if (!usedKeys.has(field.key)) orderedKeys.push(field.key)
     })
 
+    let layoutRow = 0
+    let usedColumns = 0
+
     return orderedKeys.map((key, index) => {
         const field = fieldsByKey.get(key)!
         const slot = fields[index] || field
+        const layoutSpan = getGridSpan(slot.className)
+        if (usedColumns + layoutSpan > 4) {
+            layoutRow += 1
+            usedColumns = 0
+        }
+        const fieldLayoutRow = layoutRow
+        usedColumns += layoutSpan
+        if (usedColumns === 4) {
+            layoutRow += 1
+            usedColumns = 0
+        }
         return {
             ...field,
             className: slot.className,
-            dialogClassName: slot.dialogClassName
+            dialogClassName: slot.dialogClassName,
+            layoutRow: fieldLayoutRow,
+            layoutSpan
         }
     })
 }
@@ -461,6 +486,13 @@ function HideableSection({
     })
     const orderedFields = orderFieldsForLayout(titledFields, fieldOrder)
     const visibleFields = orderedFields.filter((field) => !hiddenFields[field.key])
+    const visibleFieldRows = visibleFields.reduce<HideablePrintField[][]>((rows, field) => {
+        const rowIndex = field.layoutRow || 0
+        const row = rows[rowIndex] || []
+        row.push(field)
+        rows[rowIndex] = row
+        return rows
+    }, [])
     const openDialog = () => setOpen(true)
     const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
         if (event.key !== 'Enter' && event.key !== ' ') return
@@ -532,11 +564,26 @@ function HideableSection({
         )
     }
     const content = visibleFields.length > 0
-        ? visibleFields.map((field) => (
-            <div key={field.key} className={cn('min-w-0', field.className)}>
-                {renderFieldContent(field)}
-            </div>
-        ))
+        ? visibleFieldRows.filter(Boolean).map((row, rowIndex) => {
+            const baseSpan = Math.floor(4 / row.length)
+            const remainingColumns = 4 % row.length
+            return (
+                <div key={`row-${rowIndex}`} className="col-span-4 grid grid-cols-4">
+                    {row.map((field, index) => {
+                        const span = baseSpan + (index < remainingColumns ? 1 : 0)
+                        return (
+                            <div
+                                key={field.key}
+                                className={cn('min-w-0', field.className)}
+                                style={{ gridColumn: `span ${span} / span ${span}` }}
+                            >
+                                {renderFieldContent(field)}
+                            </div>
+                        )
+                    })}
+                </div>
+            )
+        })
         : <div className="col-span-4 min-h-[6.5mm] border-l border-t border-[#244f87]" />
 
     const section = (
