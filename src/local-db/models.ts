@@ -850,6 +850,49 @@ export interface RealEstatePayment extends BaseEntity {
   createdBy?: string | null;
 }
 
+export type ActivityTransactionStatus = "completed" | "cancelled" | "refunded";
+
+/** A workspace-owned activity/service that can be sold from the Activities module. */
+export interface ActivityCatalogItem extends BaseEntity {
+  name: string;
+  defaultUnitPrice: number;
+  /** Stored with the price so a later workspace-currency change is explicit. */
+  currency: CurrencyCode;
+  /** Infinite activities never consume availability. */
+  isInfinite: boolean;
+  /** Required for finite activities and null for infinite activities. */
+  availableQuantity?: number | null;
+  isActive: boolean;
+  createdBy?: string | null;
+}
+
+export interface ActivityTransaction extends BaseEntity {
+  transactionNo: string;
+  name: string;
+  customerName?: string | null;
+  occurredAt: string;
+  currency: CurrencyCode;
+  paymentMethod: WorkspacePaymentMethod;
+  subtotalAmount: number;
+  totalAmount: number;
+  status: ActivityTransactionStatus;
+  notes?: string | null;
+  createdBy?: string | null;
+  cancelledAt?: string | null;
+  refundedAt?: string | null;
+}
+
+export interface ActivityTransactionLine extends BaseEntity {
+  transactionId: string;
+  activityId: string;
+  activityNameSnapshot: string;
+  catalogUnitPriceSnapshot: number;
+  unitPrice: number;
+  priceOverridden: boolean;
+  quantity: number;
+  lineTotal: number;
+}
+
 export type ExchangeTransactionType = "buy" | "sell";
 export type ExchangeFeeType = "fixed" | "percentage";
 export type ExchangeFeeRuleTransactionScope = "buy" | "sell" | "both";
@@ -1215,6 +1258,7 @@ export type InvoiceOrigin =
   | "business_partner"
   | "travel_agency"
   | "clinical_appointment"
+  | "activities"
   | "upload";
 
 export interface Invoice extends BaseEntity {
@@ -1467,6 +1511,7 @@ export type PaymentTransactionSourceModule =
   | "orders"
   | "budget"
   | "real_estate"
+  | "activities"
   | "clinical_appointments"
   | "currency_exchange"
   | "payments";
@@ -1479,6 +1524,8 @@ export type PaymentTransactionSourceType =
   | "real_estate_payment"
   | "real_estate_installment"
   | "real_estate_commission"
+  | "activity_transaction"
+  | "activity_refund"
   | "clinical_appointment"
   | "sales_order"
     | "purchase_order"
@@ -1535,6 +1582,9 @@ export interface SyncQueueItem {
     | "product_barcodes"
     | "price_books"
     | "price_book_items"
+    | "activity_catalog"
+    | "activity_transactions"
+    | "activity_transaction_lines"
     | "inventory"
     | "inventory_transactions"
     | "stock_batches"
@@ -1610,6 +1660,7 @@ export interface Workspace extends BaseEntity {
   orders?: boolean;
   travel_agency?: boolean;
   real_estate?: boolean;
+  activities?: boolean;
   currency_exchange?: boolean;
   agents?: boolean;
   clinical_appointments?: boolean;
@@ -1667,6 +1718,9 @@ export interface OfflineMutation {
     | "product_barcodes"
     | "price_books"
     | "price_book_items"
+    | "activity_catalog"
+    | "activity_transactions"
+    | "activity_transaction_lines"
     | "inventory"
     | "inventory_transactions"
     | "stock_batches"

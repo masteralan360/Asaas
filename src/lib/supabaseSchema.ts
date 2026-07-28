@@ -43,6 +43,12 @@ const clinicsTables = new Set([
     'clinical_presets'
 ])
 
+const activitiesTables = new Set([
+    'activity_catalog',
+    'activity_transactions',
+    'activity_transaction_lines'
+])
+
 const fleetTables = new Set([
     'fleet_vehicles',
     'fleet_vehicle_assignments',
@@ -54,6 +60,7 @@ const fleetTables = new Set([
 const budgetClient = supabase.schema('budget')
 const crmClient = supabase.schema('crm')
 const realEstateClient = supabase.schema('real_estate')
+const activitiesClient = supabase.schema('activities')
 const fxClient = supabase.schema('fx')
 const clinicsClient = supabase.schema('clinics')
 const fleetClient = supabase.schema('fleet')
@@ -78,6 +85,10 @@ export function isClinicsTable(tableName: string): boolean {
     return clinicsTables.has(tableName)
 }
 
+export function isActivitiesTable(tableName: string): boolean {
+    return activitiesTables.has(tableName)
+}
+
 export function isFleetTable(tableName: string): boolean {
     return fleetTables.has(tableName)
 }
@@ -97,6 +108,10 @@ export function getSupabaseClientForTable(tableName: string) {
 
     if (isRealEstateTable(tableName)) {
         return realEstateClient
+    }
+
+    if (isActivitiesTable(tableName)) {
+        return activitiesClient
     }
 
     if (isFxTable(tableName)) {

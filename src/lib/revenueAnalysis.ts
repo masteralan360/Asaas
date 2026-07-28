@@ -17,7 +17,7 @@ export interface RevenueAnalysisItem {
 export interface RevenueAnalysisRecord {
     key: string
     id: string
-    source: 'sale' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate' | 'clinical_appointment'
+    source: 'sale' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate' | 'activities' | 'clinical_appointment'
     sourceRecordId?: string | null
     referenceCode: string
     date: string
@@ -69,6 +69,7 @@ function getSaleRevenueSource(sale: Sale) {
     if (sale.origin === 'travel_agency') return 'travel_agency'
     if (sale.origin === 'exchange') return 'exchange'
     if (sale.origin === 'real_estate') return 'real_estate'
+    if (sale.origin === 'activities') return 'activities'
     if (sale.origin === 'clinical_appointment') return 'clinical_appointment'
     return 'sale'
 }
@@ -105,9 +106,12 @@ export function toRevenueRecordFromSale(sale: Sale, options: RevenueCategoryLook
     const externalSourceRecordId = (sale as Sale & {
         _realEstateTransactionId?: string | null
         _clinicalAppointmentId?: string | null
+        _activityTransactionId?: string | null
     })._realEstateTransactionId
         || (sale as Sale & { _clinicalAppointmentId?: string | null })._clinicalAppointmentId
+        || (sale as Sale & { _activityTransactionId?: string | null })._activityTransactionId
         || null
+    const transactionNo = (sale as Sale & { _transactionNo?: string | null })._transactionNo
     const cashierId = sale.cashier_id || (sale as Sale & { cashierId?: string | null }).cashierId || null
     const paymentMethod = sale.payment_method || (sale as Sale & { paymentMethod?: string | null }).paymentMethod || null
     const partyId = (sale as Sale & {
@@ -126,7 +130,7 @@ export function toRevenueRecordFromSale(sale: Sale, options: RevenueCategoryLook
         id: sale.id,
         source: getSaleRevenueSource(sale),
         sourceRecordId: externalSourceRecordId,
-        referenceCode: sale.sequenceId ? `#${String(sale.sequenceId).padStart(5, '0')}` : `#${sale.id.split('-')[0]}`,
+        referenceCode: transactionNo || (sale.sequenceId ? `#${String(sale.sequenceId).padStart(5, '0')}` : `#${sale.id.split('-')[0]}`),
         date: sale.created_at,
         currency: sale.settlement_currency || 'usd',
         origin: sale.origin,

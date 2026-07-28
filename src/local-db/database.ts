@@ -61,6 +61,9 @@ import type {
   RealEstateTransaction,
   RealEstateInstallment,
   RealEstatePayment,
+  ActivityCatalogItem,
+  ActivityTransaction,
+  ActivityTransactionLine,
   ExchangePairPrice,
   ExchangeTransaction,
   ExchangeFeeRule,
@@ -467,6 +470,9 @@ export class AtlasDatabase extends Dexie {
   real_estate_transactions!: EntityTable<RealEstateTransaction, "id">;
   real_estate_installments!: EntityTable<RealEstateInstallment, "id">;
   real_estate_payments!: EntityTable<RealEstatePayment, "id">;
+  activity_catalog!: EntityTable<ActivityCatalogItem, "id">;
+  activity_transactions!: EntityTable<ActivityTransaction, "id">;
+  activity_transaction_lines!: EntityTable<ActivityTransactionLine, "id">;
   exchange_pair_prices!: EntityTable<ExchangePairPrice, "id">;
   exchange_transactions!: EntityTable<ExchangeTransaction, "id">;
   exchange_fee_rules!: EntityTable<ExchangeFeeRule, "id">;
@@ -3069,6 +3075,15 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, saleId, returnId, returnSaleItemId, returnProductId, replacementProductId, replacementStorageId, status, exchangedAt, updatedAt, isDeleted, syncStatus, [workspaceId+saleId], [workspaceId+exchangedAt], [saleId+exchangedAt]",
     });
 
+    this.version(89).stores({
+      activity_catalog:
+        "id, workspaceId, name, currency, isInfinite, isActive, updatedAt, isDeleted, syncStatus, [workspaceId+name], [workspaceId+isActive], [workspaceId+updatedAt]",
+      activity_transactions:
+        "id, workspaceId, transactionNo, status, currency, occurredAt, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+occurredAt], [workspaceId+status], [workspaceId+createdAt]",
+      activity_transaction_lines:
+        "id, workspaceId, transactionId, activityId, updatedAt, isDeleted, syncStatus, [transactionId+activityId], [workspaceId+transactionId], [workspaceId+activityId]",
+    });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }
@@ -3404,6 +3419,9 @@ export async function clearDatabase(): Promise<void> {
       db.real_estate_transactions,
       db.real_estate_installments,
       db.real_estate_payments,
+      db.activity_catalog,
+      db.activity_transactions,
+      db.activity_transaction_lines,
       db.exchange_pair_prices,
       db.exchange_transactions,
       db.exchange_fee_rules,
@@ -3444,6 +3462,9 @@ export async function clearDatabase(): Promise<void> {
       await db.real_estate_transactions.clear();
       await db.real_estate_installments.clear();
       await db.real_estate_payments.clear();
+      await db.activity_catalog.clear();
+      await db.activity_transactions.clear();
+      await db.activity_transaction_lines.clear();
       await db.exchange_pair_prices.clear();
       await db.exchange_transactions.clear();
       await db.exchange_fee_rules.clear();

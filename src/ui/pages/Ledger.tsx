@@ -73,7 +73,7 @@ import { useWorkspace } from '@/workspace'
 import { useTheme } from '@/ui/components/theme-provider'
 
 type LedgerDirection = 'incoming' | 'outgoing'
-type LedgerSourceModule = 'pos' | 'instant_pos' | 'orders' | 'expenses' | 'payroll' | 'loans' | 'real_estate' | 'clinical_appointments' | 'manual' | 'exchange'
+type LedgerSourceModule = 'pos' | 'instant_pos' | 'orders' | 'expenses' | 'payroll' | 'loans' | 'real_estate' | 'activities' | 'clinical_appointments' | 'manual' | 'exchange'
 type LedgerRelationRole = 'origin' | 'repayment' | 'settlement'
 type LedgerEntryType =
     | 'pos_sale'
@@ -91,6 +91,8 @@ type LedgerEntryType =
     | 'installment_received'
     | 'installment_paid'
     | 'real_estate_commission'
+    | 'activity_transaction'
+    | 'activity_refund'
     | 'clinical_appointment_payment'
     | 'direct_inflow'
     | 'direct_outflow'
@@ -307,6 +309,10 @@ function ledgerTypeLabel(type: LedgerEntryType, t: any) {
             return t('ledger.type.installmentPaid', { defaultValue: 'Installment Paid' })
         case 'real_estate_commission':
             return t('ledger.type.realEstateCommission', { defaultValue: 'Real Estate Commission' })
+        case 'activity_transaction':
+            return t('ledger.type.activityTransaction', { defaultValue: 'Activity Transaction' })
+        case 'activity_refund':
+            return t('ledger.type.activityRefund', { defaultValue: 'Activity Refund' })
         case 'clinical_appointment_payment':
             return t('ledger.type.clinicalAppointmentPayment', { defaultValue: 'Appointment Payment' })
         case 'direct_inflow':
@@ -336,6 +342,8 @@ function sourceModuleLabel(module: LedgerSourceModule, t: any) {
             return t('ledger.sourceModule.loans', { defaultValue: 'Loans' })
         case 'real_estate':
             return t('ledger.sourceModule.realEstate', { defaultValue: 'Real Estate' })
+        case 'activities':
+            return t('ledger.sourceModule.activities', { defaultValue: 'Activities' })
         case 'clinical_appointments':
             return t('ledger.sourceModule.clinicalAppointments', { defaultValue: 'Appointments' })
         case 'manual':
@@ -708,6 +716,9 @@ function buildTransactionReference(transaction: PaymentTransaction) {
             return buildReferenceId('PAY', transaction.sourceRecordId)
         case 'real_estate_commission':
             return buildReferenceId('RE', transaction.sourceRecordId)
+        case 'activity_transaction':
+        case 'activity_refund':
+            return buildReferenceId('ACT', transaction.sourceRecordId)
         case 'clinical_appointment':
             return buildReferenceId('APT', transaction.sourceRecordId)
         default:
@@ -840,6 +851,16 @@ function buildLedgerRelationDescriptor(
                 relationIsCompleted: false
             }
         }
+
+        case 'activity_transaction':
+        case 'activity_refund':
+            return {
+                relationKey: `activities:${transaction.sourceRecordId}`,
+                relationRole: 'settlement',
+                relationTitle: transaction.sourceType === 'activity_refund' ? 'Activity refund' : 'Activity transaction',
+                relationDescription: `Original source: ${reference}.`,
+                relationIsCompleted: transaction.sourceType === 'activity_refund'
+            }
 
         case 'clinical_appointment':
             return {
@@ -1077,6 +1098,26 @@ function buildPaymentLedgerEntry(
                 ...relation
             }
         }
+        case 'activity_transaction':
+        case 'activity_refund':
+            return {
+                id: `payment:${transaction.id}`,
+                transactionId: transaction.id,
+                date: transaction.paidAt,
+                type: transaction.sourceType,
+                direction: transaction.direction,
+                amount: transaction.amount,
+                currency: transaction.currency,
+                sourceModule: 'activities',
+                referenceId: buildTransactionReference(transaction),
+                partner: transaction.counterpartyName || null,
+                businessPartnerId: context.businessPartnerByName.get(transaction.counterpartyName?.trim().toLowerCase() ?? '') ?? null,
+                paymentMethod: transaction.paymentMethod || 'unknown',
+                notes: transaction.note?.trim() || null,
+                description: buildTransactionDescription(transaction, t),
+                routePath: getPaymentTransactionRoutePath(transaction),
+                ...relation
+            }
         case 'clinical_appointment':
             return {
                 id: `payment:${transaction.id}`,
@@ -1175,6 +1216,7 @@ export function Ledger() {
         || features.hr
         || features.loans
         || features.real_estate
+        || features.activities
         || features.clinical_appointments
 
     const dateBounds = useMemo<{ startDate?: string; endDate?: string }>(() => {
@@ -2640,6 +2682,7 @@ export function Ledger() {
                                                     <SelectItem value="payroll">{sourceModuleLabel('payroll', t)}</SelectItem>
                                                     <SelectItem value="loans">{sourceModuleLabel('loans', t)}</SelectItem>
                                                     <SelectItem value="real_estate">{sourceModuleLabel('real_estate', t)}</SelectItem>
+                                                    <SelectItem value="activities">{sourceModuleLabel('activities', t)}</SelectItem>
                                                     <SelectItem value="clinical_appointments">{sourceModuleLabel('clinical_appointments', t)}</SelectItem>
                                                 </SelectContent>
                                             </Select>

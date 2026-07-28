@@ -1,4 +1,4 @@
-import { Search, Command, LayoutDashboard, ShoppingCart, Package, ListOrdered, Settings as SettingsIcon, BarChart3, Users2, UserRound, Globe, MessageSquare, Moon, Sun, LogOut, ChevronRight, ArrowRightLeft, NotebookPen, Wallet, Zap, FileSpreadsheet, Building2, FileText, MapPinned, LocateFixed } from 'lucide-react'
+import { Search, Command, LayoutDashboard, ShoppingCart, Package, ListOrdered, Settings as SettingsIcon, BarChart3, Users2, UserRound, Globe, MessageSquare, Moon, Sun, LogOut, ChevronRight, ArrowRightLeft, NotebookPen, Wallet, Zap, FileSpreadsheet, Building2, FileText, MapPinned, LocateFixed, CalendarClock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState, useEffect, useRef } from 'react'
 import { useHashLocation } from '@/hooks/useHashLocation'
@@ -35,8 +35,8 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
     const inputRef = useRef<HTMLInputElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
 
-    const hasLedgerSurface = features.pos || features.instant_pos || features.sales_history || features.crm || features.budget || features.hr || features.loans || features.real_estate || features.currency_exchange
-    const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr || features.real_estate || features.currency_exchange
+    const hasLedgerSurface = features.pos || features.instant_pos || features.sales_history || features.crm || features.budget || features.hr || features.loans || features.real_estate || features.activities || features.currency_exchange
+    const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr || features.real_estate || features.activities || features.currency_exchange
 
     const commands: CommandItem[] = [
         // Navigation (Matches Layout.tsx paths)
@@ -53,6 +53,7 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
         ...(features.net_revenue && hasPermission('revenueAnalytics.access') ? [{ id: 'nav-revenue', title: t('nav.revenue'), category: 'Navigation' as const, icon: BarChart3, action: () => setLocation('/revenue') }] : []),
         ...(features.budget && hasPermission('accounting.access') ? [{ id: 'nav-budget', title: t('nav.budget', { defaultValue: 'Accounting' }), category: 'Navigation' as const, icon: FileSpreadsheet, action: () => setLocation('/budget') }] : []),
         ...(features.real_estate && hasPermission('realEstate.access') ? [{ id: 'nav-real-estate', title: t('realEstate.title', { defaultValue: 'Real Estate' }), category: 'Navigation' as const, icon: Building2, action: () => setLocation('/real-estate') }] : []),
+        ...(features.activities && hasPermission('activities.access') ? [{ id: 'nav-activities', title: t('activities.title', { defaultValue: 'Activities' }), category: 'Navigation' as const, icon: CalendarClock, action: () => setLocation('/activities') }] : []),
         ...(features.currency_exchange && hasPermission('currencyExchange.access') ? [{ id: 'nav-currency-exchange', title: t('currencyExchange.title', { defaultValue: 'Currency Exchange Service' }), category: 'Navigation' as const, icon: ArrowRightLeft, action: () => setLocation('/currency-exchange') }] : []),
         ...(features.agents && hasPermission('agents.access') ? [{ id: 'nav-agents', title: t('agents.title', { defaultValue: 'Agents' }), category: 'Navigation' as const, icon: UserRound, action: () => setLocation('/agents') }] : []),
         ...(features.agents && hasPermission('fleet.access') ? [{ id: 'nav-fleet', title: t('fleet.title', { defaultValue: 'Fleet Management' }), category: 'Navigation' as const, icon: MapPinned, action: () => setLocation('/agents/fleet') }] : []),

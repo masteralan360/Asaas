@@ -104,7 +104,7 @@ export interface AppendPaymentTransactionInput {
     metadata?: Record<string, unknown> | null
 }
 
-type SourceLocator = {
+export type SourceLocator = {
     sourceType: PaymentTransactionSourceType
     sourceRecordId: string
     sourceSubrecordId?: string | null
@@ -215,6 +215,10 @@ function getTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceMo
 
     if (transaction.sourceModule === 'real_estate') {
         return `/real-estate/${transaction.sourceRecordId}`
+    }
+
+    if (transaction.sourceModule === 'activities') {
+        return `/activities?transaction=${transaction.sourceRecordId}`
     }
 
     if (transaction.sourceType === 'simple_loan') {
@@ -1484,7 +1488,7 @@ async function softDeletePaymentTransaction(transaction: PaymentTransaction) {
     }
 }
 
-async function replacePaymentTransactionForSource(
+export async function replacePaymentTransactionForSource(
     workspaceId: string,
     locator: SourceLocator,
     input: AppendPaymentTransactionInput

@@ -273,6 +273,9 @@ const TravelAgencySaleView = lazy(() =>
 const RealEstate = lazy(() =>
   import("@/ui/pages/RealEstate").then((m) => ({ default: m.RealEstate })),
 );
+const Activities = lazy(() =>
+  import("@/ui/pages/Activities").then((m) => ({ default: m.Activities })),
+);
 const ManualEntry = lazy(() =>
   import("@/ui/pages/ManualEntry").then((m) => ({ default: m.ManualEntry })),
 );
@@ -1748,6 +1751,18 @@ function App() {
                         >
                           <Layout>
                             <RealEstate />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+
+                      <Route path="/activities">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="activities"
+                          requiredPermission="activities.access"
+                        >
+                          <Layout>
+                            <Activities />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { Sale } from '@/types'
-import { applySalesOrderReturnQuantities, useCategories, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useWorkspaceUsers, toUISale, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment } from '@/local-db'
+import { applySalesOrderReturnQuantities, useCategories, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, toUISale, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction } from '@/local-db'
 import { formatCurrency, formatDateTime, formatDate, formatOriginLabel, formatTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
@@ -306,6 +306,8 @@ function revenueOriginLabel(origin: string | null | undefined, sourceChannel: st
             return t('revenue.filters.origins.travelAgency', { defaultValue: 'Travel Agency' })
         case 'real_estate':
             return t('revenue.filters.origins.realEstate', { defaultValue: 'Real Estate' })
+        case 'activities':
+            return t('revenue.filters.origins.activities', { defaultValue: 'Activities' })
         case 'clinical_appointment':
             return t('revenue.filters.origins.appointments', { defaultValue: 'Appointments' })
         case 'agents':
@@ -611,6 +613,8 @@ export function Revenue() {
         sourceType: 'clinical_appointment',
         includeReversals: true
     }, { hydrateSourceTables: false })
+    const activityTransactions = useActivityTransactions(user?.workspaceId)
+    const activityTransactionLines = useActivityTransactionLinesForWorkspace(user?.workspaceId)
     const products = useProducts(user?.workspaceId)
     const categories = useCategories(user?.workspaceId)
     const workspaceUsers = useWorkspaceUsers(user?.workspaceId)
@@ -630,8 +634,14 @@ export function Revenue() {
         const clinicalSales = (clinicalAppointments || [])
             .map(appointment => toUISaleFromPaidClinicalAppointment(appointment, clinicalAppointmentTransactions))
             .filter((sale): sale is NonNullable<typeof sale> => !!sale)
-        return [...sales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales]
-    }, [rawSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions])
+        const activitySales = activityTransactions
+            .filter((transaction) => transaction.status === 'completed')
+            .map((transaction) => toUISaleFromActivityTransaction(
+                transaction,
+                activityTransactionLines.filter((line) => line.transactionId === transaction.id)
+            ))
+        return [...sales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales, ...activitySales]
+    }, [rawSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines])
     const travelSales = useMemo<Sale[]>(() =>
         (rawTravelSales || [])
             .filter(s => s.isPaid && !s.isDeleted)
@@ -902,7 +912,7 @@ export function Revenue() {
         const saleStats: {
             key: string,
             id: string,
-            source: 'sale' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate' | 'clinical_appointment',
+            source: 'sale' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate' | 'activities' | 'clinical_appointment',
             sourceRecordId?: string | null,
             referenceCode: string,
             date: string,
@@ -1875,7 +1885,7 @@ export function Revenue() {
                                         const isFullyReturned = !!sale.isReturned || sale.returnStatus === 'returned'
                                         const hasAnyReturn = isFullyReturned || !!sale.hasPartialReturn || sale.returnStatus === 'partial'
                                         const totalReturnedQuantity = sale.totalReturnedQuantity || 0
-                                        const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'clinical_appointment'
+                                        const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'activities' || sale.source === 'clinical_appointment'
 
                                         const handleRecordClick = () => {
                                             if (sale.source === 'travel_agency') {
@@ -1886,6 +1896,8 @@ export function Revenue() {
                                                 setLocation('/currency-exchange')
                                             } else if (sale.source === 'real_estate') {
                                                 setLocation(`/real-estate/${sale.sourceRecordId || sale.id}`)
+                                            } else if (sale.source === 'activities') {
+                                                setLocation(`/activities?transaction=${sale.sourceRecordId || sale.id}`)
                                             } else if (sale.source === 'clinical_appointment') {
                                                 setLocation(`/clinical-appointments/${sale.sourceRecordId || sale.id}/edit`)
                                             } else if (originalSale) {
@@ -2027,7 +2039,7 @@ export function Revenue() {
                                             const isFullyReturned = !!sale.isReturned || sale.returnStatus === 'returned'
                                             const hasAnyReturn = isFullyReturned || !!sale.hasPartialReturn || sale.returnStatus === 'partial'
                                             const totalReturnedQuantity = sale.totalReturnedQuantity || 0
-                                            const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'clinical_appointment'
+                                            const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'activities' || sale.source === 'clinical_appointment'
 
                                             const handleRecordClick = () => {
                                                 if (sale.source === 'travel_agency') {
@@ -2038,6 +2050,8 @@ export function Revenue() {
                                                     setLocation('/currency-exchange')
                                                 } else if (sale.source === 'real_estate') {
                                                     setLocation(`/real-estate/${sale.sourceRecordId || sale.id}`)
+                                                } else if (sale.source === 'activities') {
+                                                    setLocation(`/activities?transaction=${sale.sourceRecordId || sale.id}`)
                                                 } else if (sale.source === 'clinical_appointment') {
                                                     setLocation(`/clinical-appointments/${sale.sourceRecordId || sale.id}/edit`)
                                                 } else if (originalSale) {

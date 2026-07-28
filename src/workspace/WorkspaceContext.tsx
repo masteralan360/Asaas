@@ -61,6 +61,7 @@ export interface WorkspaceFeatures {
     ecommerce: boolean
     travel_agency: boolean
     real_estate: boolean
+    activities: boolean
     currency_exchange: boolean
     clinical_appointments: boolean
     loans: boolean
@@ -158,6 +159,7 @@ const PLAN_DERIVED_FEATURE_KEYS: ModuleFeatureKey[] = [
     'ecommerce',
     'travel_agency',
     'real_estate',
+    'activities',
     'currency_exchange',
     'clinical_appointments',
     'loans',
@@ -231,6 +233,7 @@ const defaultFeatures: WorkspaceFeatures = {
     allow_whatsapp: false,
     travel_agency: false,
     real_estate: false,
+    activities: false,
     currency_exchange: false,
     agents: false,
     clinical_appointments: false,
@@ -358,6 +361,7 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
         instant_pos: localWorkspace.instant_pos ?? true,
         travel_agency: localWorkspace.travel_agency ?? true,
         real_estate: localWorkspace.real_estate ?? true,
+        activities: localWorkspace.activities ?? false,
         currency_exchange: localWorkspace.currency_exchange ?? false,
         agents: localWorkspace.agents ?? false,
         clinical_appointments: localWorkspace.clinical_appointments ?? false,
@@ -513,6 +517,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             ecommerce: nextFeatures.ecommerce,
             travel_agency: nextFeatures.travel_agency,
             real_estate: nextFeatures.real_estate,
+            activities: nextFeatures.activities,
             currency_exchange: nextFeatures.currency_exchange,
             agents: nextFeatures.agents,
             clinical_appointments: nextFeatures.clinical_appointments,
@@ -715,6 +720,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 instant_pos: workspaceRow.instant_pos ?? currentFeatures.instant_pos,
                 travel_agency: workspaceRow.travel_agency ?? currentFeatures.travel_agency,
                 real_estate: workspaceRow.real_estate ?? currentFeatures.real_estate,
+                activities: currentFeatures.activities,
                 currency_exchange: currentFeatures.currency_exchange,
                 agents: currentFeatures.agents,
                 clinical_appointments: currentFeatures.clinical_appointments,

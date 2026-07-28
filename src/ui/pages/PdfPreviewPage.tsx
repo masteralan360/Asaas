@@ -829,6 +829,21 @@ export function PdfPreviewPage() {
         window.history.back()
     }, [source, isSaving])
 
+    const handleNativePrint = async () => {
+        if (!source?.url || !source.onPrint || isSaving) return
+
+        setIsSaving(true)
+        try {
+            const response = await fetch(source.url)
+            if (!response.ok) throw new Error('Failed to load PDF for printing.')
+            await source.onPrint(await response.blob())
+        } catch (err) {
+            console.error('Failed to print PDF:', err)
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
     const buildTemplateLayout = useCallback((): CustomTemplateLayout | null => {
         if (!source || !templatePreview || !fieldValues || !source.customTemplate?.moduleTypeKey) {
             return null
@@ -1990,6 +2005,17 @@ export function PdfPreviewPage() {
                                 >
                                     {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
                                     <span className="hidden md:inline">{t('print.printAndSave') || 'Print & Save'}</span>
+                                </button>
+                            )}
+                            {source.onPrint && (
+                                <button
+                                    className="inline-flex items-center justify-center rounded-md h-8 w-8 px-0 text-xs font-medium transition-colors gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 md:w-auto md:px-3"
+                                    onClick={handleNativePrint}
+                                    disabled={isSaving}
+                                    aria-label={source.printActionLabel || t('common.print') || 'Print'}
+                                >
+                                    {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+                                    <span className="hidden md:inline">{source.printActionLabel || t('common.print') || 'Print'}</span>
                                 </button>
                             )}
                             <button

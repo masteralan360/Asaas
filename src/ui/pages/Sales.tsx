@@ -12,7 +12,7 @@ import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, applySalesOrderReturnQuantities, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
+import { adjustInventoryQuantity, applySalesOrderReturnQuantities, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
@@ -163,6 +163,9 @@ function getExternalSaleDetailsPath(sale: Sale) {
     if (sale.origin === 'real_estate') {
         return `/real-estate/${sale._realEstateTransactionId || sale.id}`
     }
+    if (sale.origin === 'activities') {
+        return `/activities?transaction=${sale._activityTransactionId || sale.id}`
+    }
     if (sale.origin === 'clinical_appointment') {
         return `/clinical-appointments/${sale._clinicalAppointmentId || sale.id}/edit`
     }
@@ -295,6 +298,8 @@ export function Sales() {
         sourceType: 'clinical_appointment',
         includeReversals: true
     }, { hydrateSourceTables: false })
+    const activityTransactions = useActivityTransactions(user?.workspaceId)
+    const activityTransactionLines = useActivityTransactionLinesForWorkspace(user?.workspaceId)
 
     const loans = useLoans(user?.workspaceId)
     const allSales = useMemo(() => {
@@ -314,8 +319,14 @@ export function Sales() {
         const clinicalSales = (clinicalAppointments || [])
             .map(appointment => toUISaleFromPaidClinicalAppointment(appointment, clinicalAppointmentTransactions))
             .filter((sale): sale is NonNullable<typeof sale> => !!sale)
-        return [...sales, ...orders, ...travelSales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales]
-    }, [rawSales, rawOrders, salesOrderReturnItems, rawTravelSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions])
+        const activitySales = activityTransactions
+            .filter((transaction) => transaction.status === 'completed')
+            .map((transaction) => toUISaleFromActivityTransaction(
+                transaction,
+                activityTransactionLines.filter((line) => line.transactionId === transaction.id)
+            ))
+        return [...sales, ...orders, ...travelSales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales, ...activitySales]
+    }, [rawSales, rawOrders, salesOrderReturnItems, rawTravelSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines])
 
     const isLoading = rawSales === undefined || rawOrders === undefined || rawTravelSales === undefined || rawExchangeTransactions === undefined || realEstateCommissionTransactions === undefined || clinicalAppointments === undefined
     const [isDateLoading, setIsDateLoading] = useState(false)

@@ -67,7 +67,7 @@ export interface Sale {
     // Derived compatibility shape for receipt and invoice rendering.
     exchange_rates?: any[] | null
     created_at: string
-    origin: 'pos' | 'manual' | 'instant_pos' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate' | 'clinical_appointment'
+    origin: 'pos' | 'manual' | 'instant_pos' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate' | 'activities' | 'clinical_appointment'
     payment_method?: 'cash' | 'fib' | 'qicard' | 'zaincash' | 'fastpay' | 'bank_transfer' | 'loan'
     cashier_name?: string
     items?: SaleItem[]
@@ -88,6 +88,8 @@ export interface Sale {
     _isOrder?: boolean
     _sourceChannel?: string | null
     _realEstateTransactionId?: string | null
+    _activityTransactionId?: string | null
+    _transactionNo?: string | null
     _clinicalAppointmentId?: string | null
     _counterpartyName?: string | null
     returns?: SaleReturn[]

@@ -105,6 +105,7 @@ const routePrefetchMap: Record<string, () => Promise<unknown>> = {
     '/orders': () => import('@/ui/pages/Orders'),
     '/travel-agency': () => import('@/ui/pages/TravelAgency'),
     '/real-estate': () => import('@/ui/pages/RealEstate'),
+    '/activities': () => import('@/ui/pages/Activities'),
     '/manual-entry': () => import('@/ui/pages/ManualEntry'),
     '/manual-entry/templates': () => import('@/ui/pages/ManualEntryTemplates'),
 

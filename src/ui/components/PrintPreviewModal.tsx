@@ -566,6 +566,8 @@ export function PrintPreviewModal({
                         url,
                         title: title || t('print.previewTitle') || 'Print Preview',
                         onSave: showSaveButton ? handleSave : undefined,
+                        onPrint: onPreviewPrint,
+                        printActionLabel: previewPrintActionLabel,
                     })
                 }
             }

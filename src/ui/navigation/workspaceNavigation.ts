@@ -281,6 +281,15 @@ export function buildWorkspaceNavigation({
         },
       ]
       : []),
+    ...(isCoreRole && hasFeature("activities") && canAccessPermission("activities.access")
+      ? [
+        {
+          name: t("activities.title", { defaultValue: "Activities" }),
+          href: "/activities",
+          icon: ListChecks,
+        },
+      ]
+      : []),
     ...(isCoreRole && hasFeature("currency_exchange") && canAccessPermission("currencyExchange.access")
       ? [
         {
