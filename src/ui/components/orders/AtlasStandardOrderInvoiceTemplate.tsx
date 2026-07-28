@@ -57,7 +57,7 @@ export interface AtlasStandardOrderInvoiceTemplateProps {
 const INK = '#244f87'
 // The compact grid keeps an 8 mm A4 safety buffer for the financial section and fixed footer.
 const TABLE_DATA_AREA_MM = 145
-const TABLE_ITEM_ROW_MM = 6
+const TABLE_ITEM_ROW_MM = 8
 
 export const ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS = {
     logo: 'atlasStandardWorkspaceLogo',
@@ -586,13 +586,13 @@ export function AtlasStandardOrderInvoiceTemplate({
     const emptyTableAreaMm = Math.max(0, TABLE_DATA_AREA_MM - (items.length * TABLE_ITEM_ROW_MM))
     const tableColumns: TableColumn[] = [
         { key: tableKeys.number, label: labels.number, width: '5%' },
-        { key: tableKeys.product, label: labels.productName, width: '39%' },
-        { key: tableKeys.expiry, label: labels.expiry, width: '10%' },
-        { key: tableKeys.batchNumber, label: labels.batchNumber, width: '11%' },
-        { key: tableKeys.quantity, label: labels.quantity, width: '8%' },
+        { key: tableKeys.product, label: labels.productName, width: '34%' },
+        { key: tableKeys.expiry, label: labels.expiry, width: '9%' },
+        { key: tableKeys.batchNumber, label: labels.batchNumber, width: '10%' },
+        { key: tableKeys.quantity, label: labels.quantity, width: '9%' },
         { key: tableKeys.freeQuantity, label: labels.freeQuantity, width: '9%' },
-        { key: tableKeys.price, label: labels.price, width: '9%' },
-        { key: tableKeys.total, label: labels.total, width: '9%' }
+        { key: tableKeys.price, label: labels.price, width: '12%' },
+        { key: tableKeys.total, label: labels.total, width: '12%' }
     ]
 
     const invoiceDetailFields: HideablePrintField[] = [
@@ -790,14 +790,20 @@ export function AtlasStandardOrderInvoiceTemplate({
                 onHiddenFieldChange={onHiddenFieldChange}
             >
                 {(visibleColumns) => (
-                    <table className="mb-2 w-full table-fixed border-collapse border text-[11px]" style={{ borderColor: INK }}>
+                    <table className="mb-2 w-full table-fixed border-collapse border text-[10px] leading-none" style={{ borderColor: INK }}>
                         <colgroup>
                             {visibleColumns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
                         </colgroup>
                         <thead>
-                            <tr className="bg-[#e8f0fa] text-center font-bold" style={{ color: '#243b5a' }}>
+                            <tr className="h-[8mm] bg-[#e8f0fa] text-center font-bold" style={{ color: '#243b5a' }}>
                                 {visibleColumns.map((column) => (
-                                    <th key={column.key} className="border px-1 py-1.5" style={{ borderColor: INK }}>{column.label}</th>
+                                    <th
+                                        key={column.key}
+                                        className="border px-[0.5mm] py-[0.75mm] text-center align-middle text-[9px] leading-[1.2] break-words whitespace-normal"
+                                        style={{ borderColor: INK }}
+                                    >
+                                        {column.label}
+                                    </th>
                                 ))}
                             </tr>
                         </thead>
@@ -819,11 +825,14 @@ export function AtlasStandardOrderInvoiceTemplate({
                                     [tableKeys.total]: formatCurrency(item.lineTotal, currency, iqdPreference)
                                 }
                                 return (
-                                    <tr key={item.id} className="h-[6mm]">
+                                    <tr key={item.id} className="h-[8mm]">
                                         {visibleColumns.map((column) => (
                                             <td
                                                 key={column.key}
-                                                className="border px-1 text-center align-middle"
+                                                className={cn(
+                                                    'border px-[1.2mm] py-[1mm] text-center align-middle leading-[1.15]',
+                                                    column.key === tableKeys.product ? 'break-words whitespace-normal' : 'whitespace-nowrap'
+                                                )}
                                                 style={{ borderColor: INK }}
                                             >
                                                 {values[column.key]}
@@ -845,7 +854,7 @@ export function AtlasStandardOrderInvoiceTemplate({
                                     ))}
                                 </tr>
                             ) : null}
-                            <tr className="h-[6mm] bg-[#f5f8fc] font-bold">
+                            <tr className="h-[8mm] bg-[#f5f8fc] font-bold">
                                 {visibleColumns.map((column) => {
                                     const value = column.key === tableKeys.quantity
                                         ? items.reduce((sum, item) => sum + getOrderLinePaidQuantity(item), 0)
@@ -854,7 +863,11 @@ export function AtlasStandardOrderInvoiceTemplate({
                                             : column.key === tableKeys.total
                                                 ? formatCurrency(order.total, currency, iqdPreference)
                                                 : '\u00a0'
-                                    return <td key={column.key} className="border px-1 text-center" style={{ borderColor: INK }}>{value}</td>
+                                    return (
+                                        <td key={column.key} className="border px-[1.2mm] py-[1mm] text-center align-middle leading-[1.15] whitespace-nowrap" style={{ borderColor: INK }}>
+                                            {value}
+                                        </td>
+                                    )
                                 })}
                             </tr>
                         </tbody>
