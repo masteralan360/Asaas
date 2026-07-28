@@ -486,6 +486,7 @@ export function PdfPreviewPage() {
     const [templateHiddenFields, setTemplateHiddenFields] = useState<Record<string, boolean>>(() => initialTemplateLayout?.hiddenFields || {})
     const [templateFieldOrders, setTemplateFieldOrders] = useState<Record<string, string[]>>(() => initialTemplateLayout?.fieldOrders || {})
     const [templateFieldLabelOverrides, setTemplateFieldLabelOverrides] = useState<Record<string, string>>(() => initialTemplateLayout?.fieldLabelOverrides || {})
+    const [templateFieldDisplayModes, setTemplateFieldDisplayModes] = useState<Record<string, string>>(() => initialTemplateLayout?.fieldDisplayModes || {})
     useEffect(() => {
         if (!selectedTemplateObjectId) return
 
@@ -866,13 +867,14 @@ export function PdfPreviewPage() {
             hiddenFields: templateHiddenFields,
             fieldOrders: templateFieldOrders,
             fieldLabelOverrides: templateFieldLabelOverrides,
+            fieldDisplayModes: templateFieldDisplayModes,
             annotations: templateAnnotations,
             texts: templateTexts,
             images: templateImages,
             shapes: templateShapes,
             updatedAt: new Date().toISOString()
         }
-    }, [source, templatePreview, fieldValues, initialTemplateLayout?.label, templateAnnotations, templateComponentPositions, templateHiddenFields, templateFieldOrders, templateFieldLabelOverrides, templateTexts, templateImages, templateShapes, templatePageHeight, templatePageWidth])
+    }, [source, templatePreview, fieldValues, initialTemplateLayout?.label, templateAnnotations, templateComponentPositions, templateHiddenFields, templateFieldOrders, templateFieldLabelOverrides, templateFieldDisplayModes, templateTexts, templateImages, templateShapes, templatePageHeight, templatePageWidth])
 
     const saveTemplatePreview = useCallback(async (layout?: CustomTemplateLayout, label?: string) => {
         if (!source || !templatePreview || !fieldValues || isSaving) return
@@ -899,6 +901,7 @@ export function PdfPreviewPage() {
                             hiddenFields: templateHiddenFields,
                             fieldOrders: templateFieldOrders,
                             fieldLabelOverrides: templateFieldLabelOverrides,
+                            fieldDisplayModes: templateFieldDisplayModes,
                             workspaceFooterContacts: sourceWorkspaceFooterContacts
                         }),
                         overrideLang,
@@ -1020,6 +1023,18 @@ export function PdfPreviewPage() {
             const title = label.trim()
             if (title) {
                 next[fieldKey] = title
+            } else {
+                delete next[fieldKey]
+            }
+            return next
+        })
+    }, [])
+
+    const handleTemplateFieldDisplayModeChange = useCallback((fieldKey: string, mode: string) => {
+        setTemplateFieldDisplayModes((current) => {
+            const next = { ...current }
+            if (mode.trim()) {
+                next[fieldKey] = mode.trim()
             } else {
                 delete next[fieldKey]
             }
@@ -1851,11 +1866,13 @@ export function PdfPreviewPage() {
                                             hiddenFields: templateHiddenFields,
                                             fieldOrders: templateFieldOrders,
                                             fieldLabelOverrides: templateFieldLabelOverrides,
+                                            fieldDisplayModes: templateFieldDisplayModes,
                                             onFieldChange: handleFieldChange,
                                             onComponentPositionChange: handleTemplateComponentPositionChange,
                                             onHiddenFieldChange: drawingMode === 'none' ? handleTemplateHiddenFieldChange : undefined,
                                             onFieldOrderChange: drawingMode === 'none' ? handleTemplateFieldOrderChange : undefined,
                                             onFieldLabelChange: drawingMode === 'none' ? handleTemplateFieldLabelChange : undefined,
+                                            onFieldDisplayModeChange: drawingMode === 'none' ? handleTemplateFieldDisplayModeChange : undefined,
                                             workspaceFooterContacts: sourceWorkspaceFooterContacts
                                         }
                                     )}

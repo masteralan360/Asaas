@@ -314,6 +314,13 @@ export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): 
                 .map(([key, value]) => [key, (value as string).trim()])
         )
         : {}
+    const fieldDisplayModes = layout.fieldDisplayModes && typeof layout.fieldDisplayModes === 'object'
+        ? Object.fromEntries(
+            Object.entries(layout.fieldDisplayModes)
+                .filter(([, value]) => typeof value === 'string' && Boolean(value.trim()))
+                .map(([key, value]) => [key, (value as string).trim()])
+        )
+        : {}
 
     return {
         version: 1,
@@ -331,6 +338,7 @@ export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): 
         hiddenFields,
         fieldOrders,
         fieldLabelOverrides,
+        fieldDisplayModes,
         componentPositions: layout.componentPositions || {},
         annotations: layout.annotations || [],
         texts: layout.texts || [],
@@ -409,6 +417,7 @@ export type CustomTemplatePreviewOptions = {
     productUnits?: Record<string, string | null | undefined>
     counterpartyPhone?: string
     counterpartyAddress?: string
+    printedBy?: string | null
     printLang?: string
 }
 
@@ -1249,6 +1258,7 @@ function createAtlasStandardOrderInvoicePreview(options: CustomTemplatePreviewOp
                 logoUrl={options.features?.logo_url}
                 workspaceFooterContacts={renderOptions?.workspaceFooterContacts || options.workspaceFooterContacts}
                 businessPartner={options.businessPartner}
+                printedBy={options.printedBy}
                 componentPositions={renderOptions?.componentPositions}
                 editableComponents={renderOptions?.editableComponents}
                 onComponentPositionChange={renderOptions?.onComponentPositionChange}
@@ -1258,6 +1268,8 @@ function createAtlasStandardOrderInvoicePreview(options: CustomTemplatePreviewOp
                 onFieldOrderChange={renderOptions?.onFieldOrderChange}
                 fieldLabelOverrides={renderOptions?.fieldLabelOverrides}
                 onFieldLabelChange={renderOptions?.onFieldLabelChange}
+                fieldDisplayModes={renderOptions?.fieldDisplayModes}
+                onFieldDisplayModeChange={renderOptions?.onFieldDisplayModeChange}
             />
         ),
         buildPdf: (element, printLangOverride) => generateTemplatePdf({
@@ -1548,7 +1560,8 @@ export function renderCustomTemplateLayoutElement({
                     componentPositions: layout.componentPositions,
                     hiddenFields: layout.hiddenFields,
                     fieldOrders: layout.fieldOrders,
-                    fieldLabelOverrides: layout.fieldLabelOverrides
+                    fieldLabelOverrides: layout.fieldLabelOverrides,
+                    fieldDisplayModes: layout.fieldDisplayModes
                 })}
             </div>
             <CustomTemplateLayoutOverlay

@@ -24,7 +24,7 @@ interface UseProfileDataResult {
 export function useProfileData(userId: string | null): UseProfileDataResult {
     const { user } = useAuth()
     const [profile, setProfile] = useState<ProfileData | null>(null)
-    const [isLoading, setIsLoading] = useState(false)
+    const [isLoading, setIsLoading] = useState(() => Boolean(userId))
     const [error, setError] = useState<string | null>(null)
 
     useEffect(() => {
@@ -40,6 +40,24 @@ export function useProfileData(userId: string | null): UseProfileDataResult {
         const fetchProfile = async () => {
             setIsLoading(true)
             setError(null)
+
+            // Profiles are warmed into Dexie with the workspace data. Use that
+            // value immediately, then refresh it from Supabase in the background.
+            // This prevents callers from having to temporarily show a UUID.
+            void db.profiles.get(userId).then((cachedProfile) => {
+                if (cancelled || !cachedProfile?.name?.trim()) return
+                setProfile({
+                    id: cachedProfile.id,
+                    name: cachedProfile.name,
+                    role: cachedProfile.role || '',
+                    profile_url: cachedProfile.profile_url ?? undefined,
+                    created_at: cachedProfile.created_at || '',
+                    workspace_id: cachedProfile.workspaceId,
+                    current_workspace: cachedProfile.currentWorkspaceId
+                })
+            }).catch((cacheError) => {
+                console.warn('Unable to read cached profile:', cacheError)
+            })
 
             try {
                 const { data, error } = await runSupabaseAction('profileCard.fetch', () =>

@@ -65,6 +65,8 @@ export interface AtlasStandardOrderInvoiceTemplateProps {
     onFieldOrderChange?: (sectionKey: string, fieldKeys: string[]) => void
     fieldLabelOverrides?: Record<string, string>
     onFieldLabelChange?: (fieldKey: string, label: string) => void
+    fieldDisplayModes?: Record<string, string>
+    onFieldDisplayModeChange?: (fieldKey: string, mode: string) => void
 }
 
 const INK = '#244f87'
@@ -132,6 +134,13 @@ type HideablePrintField = {
     dialogClassName?: string
     layoutRow?: number
     layoutSpan?: number
+    suppressLabelOverride?: boolean
+    contextMenuMode?: {
+        active: boolean
+        activateLabel: string
+        deactivateLabel: string
+        onChange: (active: boolean) => void
+    }
 }
 
 function getGridSpan(className?: string) {
@@ -196,26 +205,26 @@ function resolveAtlasStandardLocale(language: string): AtlasStandardLocale {
 
 const ATLAS_STANDARD_LABELS = {
     en: {
-        customer: 'Customer', supplier: 'Supplier', invoice: 'Invoice', salesOrder: 'Sales Order', purchaseOrder: 'Purchase Order', number: 'No.', salesPerson: 'Cashier', partnerAddress: "Partner's Address", status: 'Status', documentNumber: 'Document No.', invoiceDate: 'Inv. date', time: 'Time',
+        customer: 'Customer', supplier: 'Supplier', invoice: 'Invoice', salesOrder: 'Sales Order', purchaseOrder: 'Purchase Order', number: 'No.', phone: 'Phone', salesPerson: 'Cashier', partnerAddress: "Partner's Address", status: 'Status', documentNumber: 'Document No.', invoiceDate: 'Inv. date', time: 'Time',
         productName: 'Product Name', expiry: 'EXP', batchNumber: 'Batch No.', quantity: 'Qty', freeQuantity: 'Free Qty', price: 'Price', total: 'Total',
         paidAmount: 'Paid Amount', discount: 'Discount', amountInWords: 'Amount in words', paymentMethod: 'Payment Method', outstanding: 'Order Outstanding', currentBalance: "Partner's Current Balance", printedBy: 'Printed by', notes: 'Notes',
-        invoiceDetails: 'Invoice details', orderItemsTable: 'Order items table', financialSummary: 'Financial summary', selectValues: 'Select the values to include in this print.', selectColumns: 'Select the table columns to include in this print.', noColumns: 'No item columns selected', dragToSwap: 'Drag to swap position', renameTitle: 'Rename title', renameTitleDescription: 'Use a custom title for this value in the print.', title: 'Title', save: 'Save', cancel: 'Cancel', resetTitle: 'Reset title', logo: 'LOGO', workspaceLogo: 'Workspace logo', workspaceName: 'Workspace Name', email: 'Email', madeBy: 'Made By AtlasERP', page: 'Page', pageOf: 'from', printDate: 'Print date',
+        invoiceDetails: 'Invoice details', orderItemsTable: 'Order items table', financialSummary: 'Financial summary', selectValues: 'Select the values to include in this print.', selectColumns: 'Select the table columns to include in this print.', noColumns: 'No item columns selected', dragToSwap: 'Drag to swap position', renameTitle: 'Rename title', renameTitleDescription: 'Use a custom title for this value in the print.', title: 'Title', save: 'Save', cancel: 'Cancel', resetTitle: 'Reset title', invoiceOrganizer: 'Invoice Organizer', switchToInvoiceOrganizer: 'Switch to Invoice Organizer', switchToCashier: 'Switch to Cashier', logo: 'LOGO', workspaceLogo: 'Workspace logo', workspaceName: 'Workspace Name', email: 'Email', madeBy: 'Made By AtlasERP', page: 'Page', pageOf: 'from', printDate: 'Print date',
         statuses: { draft: 'Draft', pending: 'Pending', completed: 'Completed', cancelled: 'Cancelled', ordered: 'Ordered', received: 'Received' },
         paymentMethods: { cash: 'Cash', fib: 'FIB', qicard: 'Qi Card', zaincash: 'Zain Cash', fastpay: 'FastPay', bank_transfer: 'Bank Transfer', loan: 'Loan', installments: 'Installments' }
     },
     ar: {
-        customer: 'العميل', supplier: 'المورد', invoice: 'الفاتورة', salesOrder: 'طلب مبيعات', purchaseOrder: 'طلب شراء', number: 'الرقم', salesPerson: 'أمين الصندوق', partnerAddress: 'عنوان الشريك', status: 'الحالة', documentNumber: 'رقم المستند', invoiceDate: 'تاريخ الفاتورة', time: 'الوقت',
+        customer: 'العميل', supplier: 'المورد', invoice: 'الفاتورة', salesOrder: 'طلب مبيعات', purchaseOrder: 'طلب شراء', number: 'الرقم', phone: 'الهاتف', salesPerson: 'أمين الصندوق', partnerAddress: 'عنوان الشريك', status: 'الحالة', documentNumber: 'رقم المستند', invoiceDate: 'تاريخ الفاتورة', time: 'الوقت',
         productName: 'اسم المنتج', expiry: 'الصلاحية', batchNumber: 'رقم التشغيلة', quantity: 'الكمية', freeQuantity: 'كمية مجانية', price: 'السعر', total: 'الإجمالي',
         paidAmount: 'المبلغ المدفوع', discount: 'الخصم', amountInWords: 'المبلغ كتابة', paymentMethod: 'طريقة الدفع', outstanding: 'المبلغ المتبقي للطلب', currentBalance: 'الرصيد الحالي للشريك', printedBy: 'طبع بواسطة', notes: 'ملاحظات',
-        invoiceDetails: 'تفاصيل الفاتورة', orderItemsTable: 'جدول أصناف الطلب', financialSummary: 'الملخص المالي', selectValues: 'اختر القيم التي تريد تضمينها في هذه الطباعة.', selectColumns: 'اختر أعمدة الجدول التي تريد تضمينها في هذه الطباعة.', noColumns: 'لم يتم اختيار أي أعمدة للأصناف', dragToSwap: 'اسحب لتبديل الموضع', renameTitle: 'إعادة تسمية العنوان', renameTitleDescription: 'استخدم عنواناً مخصصاً لهذه القيمة في الطباعة.', title: 'العنوان', save: 'حفظ', cancel: 'إلغاء', resetTitle: 'استعادة العنوان', logo: 'الشعار', workspaceLogo: 'شعار مساحة العمل', workspaceName: 'اسم مساحة العمل', email: 'البريد الإلكتروني', madeBy: 'تم الإنشاء بواسطة AtlasERP', page: 'الصفحة', pageOf: 'من', printDate: 'تاريخ الطباعة',
+        invoiceDetails: 'تفاصيل الفاتورة', orderItemsTable: 'جدول أصناف الطلب', financialSummary: 'الملخص المالي', selectValues: 'اختر القيم التي تريد تضمينها في هذه الطباعة.', selectColumns: 'اختر أعمدة الجدول التي تريد تضمينها في هذه الطباعة.', noColumns: 'لم يتم اختيار أي أعمدة للأصناف', dragToSwap: 'اسحب لتبديل الموضع', renameTitle: 'إعادة تسمية العنوان', renameTitleDescription: 'استخدم عنواناً مخصصاً لهذه القيمة في الطباعة.', title: 'العنوان', save: 'حفظ', cancel: 'إلغاء', resetTitle: 'استعادة العنوان', invoiceOrganizer: 'منظم الفاتورة', switchToInvoiceOrganizer: 'التبديل إلى منظم الفاتورة', switchToCashier: 'التبديل إلى أمين الصندوق', logo: 'الشعار', workspaceLogo: 'شعار مساحة العمل', workspaceName: 'اسم مساحة العمل', email: 'البريد الإلكتروني', madeBy: 'تم الإنشاء بواسطة AtlasERP', page: 'الصفحة', pageOf: 'من', printDate: 'تاريخ الطباعة',
         statuses: { draft: 'مسودة', pending: 'قيد الانتظار', completed: 'مكتمل', cancelled: 'ملغى', ordered: 'تم الطلب', received: 'تم الاستلام' },
         paymentMethods: { cash: 'نقدي', fib: 'FIB', qicard: 'كي كارد', zaincash: 'زين كاش', fastpay: 'فاست باي', bank_transfer: 'تحويل بنكي', loan: 'قرض', installments: 'أقساط' }
     },
     ku: {
-        customer: 'کڕیار', supplier: 'دابینکەر', invoice: 'پسوڵە', salesOrder: 'داواکاری فرۆشتن', purchaseOrder: 'داواکاری کڕین', number: 'ژمارە', salesPerson: 'کاشێر', partnerAddress: 'ناونیشانی هاوبەش', status: 'دۆخ', documentNumber: 'ژمارەی بەڵگە', invoiceDate: 'بەرواری پسوڵە', time: 'کات',
+        customer: 'کڕیار', supplier: 'دابینکەر', invoice: 'پسوڵە', salesOrder: 'داواکاری فرۆشتن', purchaseOrder: 'داواکاری کڕین', number: 'ژمارە', phone: 'تەلەفۆن', salesPerson: 'کاشێر', partnerAddress: 'ناونیشانی هاوبەش', status: 'دۆخ', documentNumber: 'ژمارەی بەڵگە', invoiceDate: 'بەرواری پسوڵە', time: 'کات',
         productName: 'ناوی کاڵا', expiry: 'بەسەرچوون', batchNumber: 'ژمارەی بچ', quantity: 'بڕ', freeQuantity: 'بڕی بەخۆڕایی', price: 'نرخ', total: 'کۆی گشتی',
         paidAmount: 'بڕی دراو', discount: 'داشکاندن', amountInWords: 'بڕ بە نووسین', paymentMethod: 'شێوازی پارەدان', outstanding: 'بڕی ماوەی داواکاری', currentBalance: 'باڵانسی ئێستای هاوبەش', printedBy: 'چاپکراوە لەلایەن', notes: 'تێبینی',
-        invoiceDetails: 'وردەکارییەکانی پسوڵە', orderItemsTable: 'خشتەی کاڵاکانی داواکاری', financialSummary: 'پوختەی دارایی', selectValues: 'ئەو بەهایانە هەڵبژێرە کە دەتهەوێت لەم چاپەدا دەربکەون.', selectColumns: 'ستوونەکانی خشتە هەڵبژێرە کە دەتهەوێت لەم چاپەدا دەربکەون.', noColumns: 'هیچ ستوونی کاڵا هەڵنەبژێردراوە', dragToSwap: 'ڕابکێشە بۆ گۆڕینی شوێن', renameTitle: 'ناونیشان بگۆڕە', renameTitleDescription: 'ناونیشانێکی تایبەت بۆ ئەم بەهایە لە چاپەکەدا بەکاربهێنە.', title: 'ناونیشان', save: 'پاشەکەوتکردن', cancel: 'هەڵوەشاندنەوە', resetTitle: 'ناونیشان بگەڕێنەوە', logo: 'لۆگۆ', workspaceLogo: 'لۆگۆی شوێنی کار', workspaceName: 'ناوی شوێنی کار', email: 'ئیمەیڵ', madeBy: 'دروستکراوە لەلایەن AtlasERP', page: 'لاپەڕە', pageOf: 'لە', printDate: 'بەرواری چاپ',
+        invoiceDetails: 'وردەکارییەکانی پسوڵە', orderItemsTable: 'خشتەی کاڵاکانی داواکاری', financialSummary: 'پوختەی دارایی', selectValues: 'ئەو بەهایانە هەڵبژێرە کە دەتهەوێت لەم چاپەدا دەربکەون.', selectColumns: 'ستوونەکانی خشتە هەڵبژێرە کە دەتهەوێت لەم چاپەدا دەربکەون.', noColumns: 'هیچ ستوونی کاڵا هەڵنەبژێردراوە', dragToSwap: 'ڕابکێشە بۆ گۆڕینی شوێن', renameTitle: 'ناونیشان بگۆڕە', renameTitleDescription: 'ناونیشانێکی تایبەت بۆ ئەم بەهایە لە چاپەکەدا بەکاربهێنە.', title: 'ناونیشان', save: 'پاشەکەوتکردن', cancel: 'هەڵوەشاندنەوە', resetTitle: 'ناونیشان بگەڕێنەوە', invoiceOrganizer: 'ڕێکخەری پسوڵە', switchToInvoiceOrganizer: 'بگۆڕە بۆ ڕێکخەری پسوڵە', switchToCashier: 'بگۆڕە بۆ کاشێر', logo: 'لۆگۆ', workspaceLogo: 'لۆگۆی شوێنی کار', workspaceName: 'ناوی شوێنی کار', email: 'ئیمەیڵ', madeBy: 'دروستکراوە لەلایەن AtlasERP', page: 'لاپەڕە', pageOf: 'لە', printDate: 'بەرواری چاپ',
         statuses: { draft: 'ڕەشنووس', pending: 'چاوەڕوان', completed: 'تەواوبوو', cancelled: 'هەڵوەشاوە', ordered: 'داواکراو', received: 'وەرگیراو' },
         paymentMethods: { cash: 'کاش', fib: 'FIB', qicard: 'کیو کارد', zaincash: 'زین کاش', fastpay: 'فاست پەی', bank_transfer: 'گواستنەوەی بانکی', loan: 'قەرز', installments: 'قسط' }
     }
@@ -477,7 +486,7 @@ function HideableSection({
     const canConfigure = Boolean(onHiddenFieldChange || onFieldOrderChange || onFieldLabelChange)
     const titledFields = fields.map((field) => {
         const defaultLabel = field.defaultLabel || (typeof field.label === 'string' ? field.label : undefined)
-        const labelOverride = fieldLabelOverrides[field.key]?.trim()
+        const labelOverride = field.suppressLabelOverride ? '' : fieldLabelOverrides[field.key]?.trim()
         return {
             ...field,
             defaultLabel,
@@ -545,16 +554,25 @@ function HideableSection({
                 {field.value !== undefined ? <span className={cn('text-end', dialogFieldClassName && 'w-full text-start text-xs')}>{field.value}</span> : null}
             </button>
         )
-        if (!onFieldLabelChange) return card
+        if (!onFieldLabelChange && !field.contextMenuMode) return card
 
         return (
             <ContextMenu>
                 <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
                 <ContextMenuContent className="z-[70]">
-                    <ContextMenuItem onSelect={() => openRenameTitle(field)}>
-                        {renameTitleLabel}
-                    </ContextMenuItem>
-                    {fieldLabelOverrides[field.key]?.trim() ? (
+                    {field.contextMenuMode ? (
+                        <ContextMenuItem onSelect={() => field.contextMenuMode?.onChange(!field.contextMenuMode.active)}>
+                            {field.contextMenuMode.active
+                                ? field.contextMenuMode.deactivateLabel
+                                : field.contextMenuMode.activateLabel}
+                        </ContextMenuItem>
+                    ) : null}
+                    {onFieldLabelChange ? (
+                        <ContextMenuItem onSelect={() => openRenameTitle(field)}>
+                            {renameTitleLabel}
+                        </ContextMenuItem>
+                    ) : null}
+                    {onFieldLabelChange && fieldLabelOverrides[field.key]?.trim() ? (
                         <ContextMenuItem onSelect={() => onFieldLabelChange(field.key, '')}>
                             {resetTitleLabel}
                         </ContextMenuItem>
@@ -779,7 +797,9 @@ export function AtlasStandardOrderInvoiceTemplate({
     fieldOrders = {},
     onFieldOrderChange,
     fieldLabelOverrides = {},
-    onFieldLabelChange
+    onFieldLabelChange,
+    fieldDisplayModes = {},
+    onFieldDisplayModeChange
 }: AtlasStandardOrderInvoiceTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
@@ -797,6 +817,7 @@ export function AtlasStandardOrderInvoiceTemplate({
     const detailsKeys = ATLAS_STANDARD_ORDER_HIDDEN_FIELD_KEYS.invoiceDetails
     const tableKeys = ATLAS_STANDARD_ORDER_HIDDEN_FIELD_KEYS.table
     const fieldOrderKeys = ATLAS_STANDARD_ORDER_FIELD_ORDER_KEYS
+    const isInvoiceOrganizer = fieldDisplayModes[detailsKeys.salesPerson] === 'invoiceOrganizer'
     const currency = order.currency
     const balanceCurrency = businessPartner?.defaultCurrency || currency
     const noteValue = order.notes?.trim() || '-'
@@ -808,8 +829,9 @@ export function AtlasStandardOrderInvoiceTemplate({
     const formatPartnerBalance = (value: number | null) => value === null
         ? '-'
         : formatCurrency(value, balanceCurrency, iqdPreference)
-    const salesperson = printedBy || order.createdBy || '-'
+    const salesperson = printedBy?.trim() || '-'
     const partnerAddress = businessPartner?.address?.trim() || '-'
+    const partnerPhone = businessPartner?.phone?.trim() || '-'
     const statusLabel = labels.statuses[order.status as keyof typeof labels.statuses] || order.status
     const paymentMethod = order.paymentMethod
         ? labels.paymentMethods[order.paymentMethod as keyof typeof labels.paymentMethods] || order.paymentMethod
@@ -845,17 +867,26 @@ export function AtlasStandardOrderInvoiceTemplate({
         },
         {
             key: detailsKeys.number,
-            label: labels.number,
-            value: order.orderNumber,
+            // Keep the original field key so saved Atlas Standard layouts continue to work.
+            label: labels.phone,
+            value: partnerPhone,
             className: 'border-l border-t border-[#244f87]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} </strong>{order.orderNumber}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{partnerPhone}</div>
         },
         {
             key: detailsKeys.salesPerson,
-            label: labels.salesPerson,
-            value: salesperson,
+            label: isInvoiceOrganizer ? labels.invoiceOrganizer : labels.salesPerson,
+            defaultLabel: labels.salesPerson,
+            value: isInvoiceOrganizer ? '' : salesperson,
+            suppressLabelOverride: isInvoiceOrganizer,
+            contextMenuMode: onFieldDisplayModeChange ? {
+                active: isInvoiceOrganizer,
+                activateLabel: labels.switchToInvoiceOrganizer,
+                deactivateLabel: labels.switchToCashier,
+                onChange: (active) => onFieldDisplayModeChange(detailsKeys.salesPerson, active ? 'invoiceOrganizer' : '')
+            } : undefined,
             className: 'col-span-2 border-l border-t border-[#244f87]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{salesperson}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{isInvoiceOrganizer ? '' : salesperson}</div>
         },
         {
             key: detailsKeys.location,

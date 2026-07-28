@@ -291,7 +291,10 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const counterpartyAddress = bizPartner?.address || ''
 
     const creatorId = (resolved?.order as any)?.createdBy ?? null
-    const { profile: creatorProfile } = useProfileData(creatorId)
+    const { profile: creatorProfile, isLoading: isCreatorProfileLoading } = useProfileData(creatorId)
+    const creatorName = creatorProfile?.name?.trim()
+        || (creatorId === user?.id ? user?.name?.trim() : '')
+        || null
 
     const canManage = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
@@ -558,9 +561,11 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         logoUrl={features.logo_url}
                         workspaceFooterContacts={renderOptions?.workspaceFooterContacts || workspaceFooterContacts}
                         businessPartner={bizPartner}
-                        printedBy={user?.name}
+                        printedBy={creatorName}
                         hiddenFields={renderOptions?.hiddenFields}
                         onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
+                        fieldDisplayModes={renderOptions?.fieldDisplayModes}
+                        onFieldDisplayModeChange={renderOptions?.onFieldDisplayModeChange}
                     />
                 )
             },
@@ -569,7 +574,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 return generateTemplatePdf({ element, format: 'a4', printLang: printLangOverride || baseLang })
             }
         }
-    }, [resolved, features, installments, workspaceName, i18n, bizPartner, workspaceFooterContacts, user?.name])
+    }, [resolved, features, installments, workspaceName, i18n, bizPartner, workspaceFooterContacts, creatorName])
 
     const customOrderPrint = useOrderCustomPrint({
         workspaceId,
@@ -582,6 +587,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         orderKind: resolved?.kind,
         installments,
         productUnits,
+        printedBy: creatorName,
         t
     })
 
@@ -1058,7 +1064,9 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                         <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{t('orders.details.createdBy') || 'Created By'}</div>
                                         <div className="mt-1 font-medium flex items-center gap-2">
                                             <UsersRound className="h-3.5 w-3.5 text-muted-foreground" />
-                                            {creatorProfile?.name || (order as any).createdBy}
+                                            {creatorName || (isCreatorProfileLoading
+                                                ? t('common.loading', { defaultValue: 'Loading…' })
+                                                : t('common.unknown', { defaultValue: 'Unknown' }))}
                                         </div>
                                     </div>
                                 )}
@@ -1677,8 +1685,8 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                     totalAmount: order.total,
                     settlementCurrency: order.currency,
                     origin: isSales ? 'sales_order' as const : 'purchase_order' as const,
-                    createdByName: user?.name || 'Unknown',
-                    cashierName: user?.name || 'Unknown',
+                    createdByName: creatorName || 'Unknown',
+                    cashierName: creatorName || 'Unknown',
                     printFormat: 'a4' as const,
                     orderId: order.id
                 }}
@@ -1714,7 +1722,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                         logoUrl={features.logo_url}
                                         workspaceFooterContacts={workspaceFooterContacts}
                                         businessPartner={bizPartner}
-                                        printedBy={user?.name}
+                                        printedBy={creatorName}
                                     />
                                 ) : (
                                     <OrderDetailsPrintTemplate
@@ -1764,7 +1772,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             logoUrl={features.logo_url}
                             workspaceFooterContacts={workspaceFooterContacts}
                             businessPartner={bizPartner}
-                            printedBy={user?.name}
+                            printedBy={creatorName}
                         />
                     ) : (
                         <OrderDetailsPrintTemplate

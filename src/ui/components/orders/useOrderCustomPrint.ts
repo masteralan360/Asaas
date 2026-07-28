@@ -37,6 +37,7 @@ interface UseOrderCustomPrintOptions {
     orderKind?: OrderKind
     installments: OrderInstallment[]
     productUnits?: Record<string, string | null | undefined>
+    printedBy?: string | null
     t: TFunction
 }
 
@@ -51,6 +52,7 @@ export function useOrderCustomPrint({
     orderKind,
     installments,
     productUnits,
+    printedBy,
     t
 }: UseOrderCustomPrintOptions) {
     const [templates, setTemplates] = useState<StoredCustomTemplateRow[]>([])
@@ -132,9 +134,10 @@ export function useOrderCustomPrint({
             productUnits,
             counterpartyPhone,
             counterpartyAddress,
+            printedBy,
             printLang: currentPrintLanguage
         })
-    }, [bizPartner, currentPrintLanguage, features, installments, isCustomSelected, order, orderKind, productUnits, selectedTemplateTarget, workspaceId, workspaceName, counterpartyPhone, counterpartyAddress])
+    }, [bizPartner, currentPrintLanguage, features, installments, isCustomSelected, order, orderKind, printedBy, productUnits, selectedTemplateTarget, workspaceId, workspaceName, counterpartyPhone, counterpartyAddress])
 
     const buildPdf = useCallback(async ({
         effectiveId,
@@ -163,12 +166,13 @@ export function useOrderCustomPrint({
                 productUnits,
                 counterpartyPhone,
                 counterpartyAddress,
+                printedBy,
                 printLang: printLangOverride || currentPrintLanguage
             },
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, productUnits, selectedLayout, selectedTemplateTarget, workspaceId, workspaceName])
+    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, printedBy, productUnits, selectedLayout, selectedTemplateTarget, workspaceId, workspaceName])
 
     const buildEditablePdf = useCallback(async (
         layout: CustomTemplateLayout,
@@ -194,12 +198,13 @@ export function useOrderCustomPrint({
                 productUnits,
                 counterpartyPhone,
                 counterpartyAddress,
+                printedBy,
                 printLang: printLangOverride || currentPrintLanguage
             },
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, productUnits, selectedTemplateTarget, workspaceId, workspaceName])
+    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, printedBy, productUnits, selectedTemplateTarget, workspaceId, workspaceName])
 
     const nativeOptions = useMemo(() => [
         {

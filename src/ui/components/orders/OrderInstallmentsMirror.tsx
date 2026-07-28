@@ -459,6 +459,8 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                     printedBy={user?.name}
                     hiddenFields={renderOptions?.hiddenFields}
                     onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
+                    fieldDisplayModes={renderOptions?.fieldDisplayModes}
+                    onFieldDisplayModeChange={renderOptions?.onFieldDisplayModeChange}
                 />
             ),
             buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({

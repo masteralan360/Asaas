@@ -113,7 +113,14 @@ export function ReorderablePickerGrid<T>({
                                     getSlotClassName?.(item, index)
                                 )}
                             >
-                                <Draggable draggableId={getItemId(item)} index={0}>
+                                {/*
+                                    The droppable is a fixed position in the picker. Keep the
+                                    draggable identity attached to that position as well: moving a
+                                    field swaps slot contents, rather than re-parenting the same
+                                    draggable ID into another droppable. This prevents stale drag
+                                    registrations after repeated swaps.
+                                */}
+                                <Draggable draggableId={slotIds[index]} index={0}>
                                     {(dragProvided, snapshot) => {
                                         const draggable = (
                                             <div

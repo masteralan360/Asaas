@@ -606,14 +606,19 @@ describe('Atlas Standard order invoice custom print template', () => {
         const fieldLabelOverrides = {
             'atlasStandard.invoiceDetails.salesPerson': 'Sales Man'
         }
+        const fieldDisplayModes = {
+            'atlasStandard.invoiceDetails.salesPerson': 'invoiceOrganizer'
+        }
         const onHiddenFieldChange = vi.fn()
         const onFieldOrderChange = vi.fn()
         const onFieldLabelChange = vi.fn()
+        const onFieldDisplayModeChange = vi.fn()
         const onComponentPositionChange = vi.fn()
         const componentPositions = { atlasStandardWorkspaceName: { x: 20, y: 10 } }
         const preview = customTemplates.createCustomTemplatePreview(target!, {
             workspaceName: 'Atlas Test',
             printLang: 'en',
+            printedBy: 'Order Cashier',
             counterpartyPhone: '+964 750 123 4567',
             counterpartyAddress: '100 Example Street, Erbil'
         })
@@ -626,7 +631,9 @@ describe('Atlas Standard order invoice custom print template', () => {
             fieldOrders,
             onFieldOrderChange,
             fieldLabelOverrides,
-            onFieldLabelChange
+            onFieldLabelChange,
+            fieldDisplayModes,
+            onFieldDisplayModeChange
         })
 
         expect(preview.fields).toEqual([])
@@ -640,6 +647,8 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(element.props.onFieldOrderChange).toBe(onFieldOrderChange)
         expect(element.props.fieldLabelOverrides).toBe(fieldLabelOverrides)
         expect(element.props.onFieldLabelChange).toBe(onFieldLabelChange)
+        expect(element.props.fieldDisplayModes).toBe(fieldDisplayModes)
+        expect(element.props.onFieldDisplayModeChange).toBe(onFieldDisplayModeChange)
         expect(element.props.componentPositions).toBe(componentPositions)
         expect(element.props.onComponentPositionChange).toBe(onComponentPositionChange)
 
@@ -652,7 +661,9 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(html).toContain('h-[8mm] bg-[#e8f0fa]')
         expect(html).toContain('text-[9px] leading-[1.2] break-words whitespace-normal')
         expect(html).toContain('Invoice : </strong>Sales Order')
-        expect(html).toContain('Sales Man : </strong>')
+        expect(html).toContain('Phone : </strong>-')
+        expect(html).toContain('Invoice Organizer : </strong>')
+        expect(html).not.toContain('Invoice Organizer : </strong>Order Cashier')
         expect(html).toContain('Status : </strong>Pending')
         expect(html).toContain('Paid Amount : </strong>')
         expect(html).toContain('Order Outstanding : </strong>')

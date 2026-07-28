@@ -84,6 +84,13 @@ function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout 
                 .map(([key, value]) => [key, (value as string).trim()])
         )
         : {}
+    const fieldDisplayModes = layout.fieldDisplayModes && typeof layout.fieldDisplayModes === 'object'
+        ? Object.fromEntries(
+            Object.entries(layout.fieldDisplayModes)
+                .filter(([, value]) => typeof value === 'string' && Boolean(value.trim()))
+                .map(([key, value]) => [key, (value as string).trim()])
+        )
+        : {}
 
     return {
         version: 1,
@@ -101,6 +108,7 @@ function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout 
         hiddenFields,
         fieldOrders,
         fieldLabelOverrides,
+        fieldDisplayModes,
         componentPositions: layout.componentPositions || {},
         annotations: layout.annotations || [],
         texts: layout.texts || [],
@@ -121,6 +129,7 @@ function countLayoutItems(row: CustomTemplateRow) {
         + Object.keys(layout.hiddenFields || {}).length
         + Object.values(layout.fieldOrders || {}).reduce((count, fieldOrder) => count + fieldOrder.length, 0)
         + Object.keys(layout.fieldLabelOverrides || {}).length
+        + Object.keys(layout.fieldDisplayModes || {}).length
         + Object.keys(layout.componentPositions || {}).length
 }
 
