@@ -123,6 +123,28 @@ async function expandContainerToRenderedBounds(container: HTMLElement) {
     }
 }
 
+async function reflowTemplateTextAfterContent(container: HTMLElement, widthMm: number) {
+    const anchor = container.querySelector<HTMLElement>('[data-template-text-flow-anchor]')
+    if (!anchor) return
+
+    const containerRect = container.getBoundingClientRect()
+    if (containerRect.width <= 0) return
+
+    const anchorRect = anchor.getBoundingClientRect()
+    const millimetersPerPixel = widthMm / containerRect.width
+    const contentBottomMm = (anchorRect.bottom - containerRect.top) * millimetersPerPixel
+    if (!Number.isFinite(contentBottomMm)) return
+
+    container.querySelectorAll<HTMLElement>('[data-template-text-flow="after-content"]').forEach((text) => {
+        const savedY = Number(text.dataset.templateTextYMm)
+        if (!Number.isFinite(savedY)) return
+
+        text.style.top = `${Math.max(savedY, contentBottomMm + 1)}mm`
+    })
+
+    await new Promise(requestAnimationFrame)
+}
+
 function collectA4KeepTogetherBlocks(container: HTMLElement, widthMm: number): A4KeepTogetherBlock[] {
     if (widthMm !== A4_WIDTH_MM) return []
 
@@ -197,6 +219,7 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
         await document.fonts.ready
     }
     await waitForImages(container)
+    await reflowTemplateTextAfterContent(container, widthMm)
     await expandContainerToRenderedBounds(container)
 
     const keepTogetherBlocks = collectA4KeepTogetherBlocks(container, widthMm)

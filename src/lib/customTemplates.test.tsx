@@ -637,6 +637,7 @@ describe('Atlas Standard order invoice custom print template', () => {
         })
 
         expect(preview.fields).toEqual([])
+        expect(preview.reflowLowerPageText).toBe(true)
         expect(preview.movableComponents).toEqual([
             { key: 'atlasStandardWorkspaceLogo', label: 'Workspace Logo' },
             { key: 'atlasStandardWorkspaceName', label: 'Workspace Name' }
@@ -676,6 +677,7 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(html).not.toContain('gap-px')
         expect(html).toContain('data-order-print-component="atlasStandardWorkspaceName"')
         expect(html).toContain('data-order-print-component="atlasStandardWorkspaceLogo"')
+        expect(html).toContain('data-template-text-flow-anchor')
         expect((html.match(/data-order-print-component=/g) || [])).toHaveLength(2)
     })
 

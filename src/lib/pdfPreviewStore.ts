@@ -49,6 +49,8 @@ export type TemplatePreview = {
     fields: TemplatePreviewField[]
     dataKeys?: TemplatePreviewDataKey[]
     movableComponents?: TemplatePreviewMovableComponent[]
+    /** Keeps legacy lower-page notes below dynamic native content when it expands. */
+    reflowLowerPageText?: boolean
     page?: {
         widthMm: number
         heightMm: number
@@ -83,6 +85,7 @@ export type CustomTemplateText = {
     rotation: number
     fontSize?: number | ''
     color?: string
+    anchor?: 'absolute' | 'afterContent'
 }
 
 export type CustomTemplateImage = {
@@ -128,6 +131,18 @@ export const A4_PAGE_HEIGHT_MM = 297
 const DEFAULT_OVERFLOW_COMPONENT_HEIGHT_MM = 40
 const DEFAULT_OVERFLOW_IMAGE_HEIGHT_RATIO = 1
 const PX_TO_MM = 0.2645833333
+const LEGACY_LOWER_PAGE_TEXT_START_OFFSET_MM = 52
+
+export function shouldReflowCustomTemplateText(
+    text: CustomTemplateText,
+    pageHeightMm: number,
+    enabled = false
+) {
+    if (!enabled || text.anchor === 'absolute') return false
+    if (text.anchor === 'afterContent') return true
+
+    return getPositiveNumber(text.y) >= pageHeightMm - LEGACY_LOWER_PAGE_TEXT_START_OFFSET_MM
+}
 
 function getPositiveNumber(value: unknown, fallback = 0) {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback

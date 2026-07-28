@@ -8,6 +8,7 @@
   font-weight: 400;
   font-style: normal;
   font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2190-2199, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @font-face {
@@ -16,6 +17,7 @@
   font-weight: 700;
   font-style: normal;
   font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2190-2199, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @font-face {
@@ -24,6 +26,7 @@
   font-weight: 900;
   font-style: normal;
   font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2190-2199, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @tailwind base;
@@ -36,33 +39,40 @@
   font-weight: normal;
   font-style: normal;
   font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF;
 }
 
-[lang="ar"] {
-  font-family: 'Noto Kufi Arabic', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+:root {
+  --atlas-latin-font: 'Inter', 'Geist Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --atlas-arabic-font: 'Noto Kufi Arabic', 'Inter', 'Geist Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
-[lang="ar"] * {
-  font-family: 'Noto Kufi Arabic', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+html[lang^="en"] {
+  --font-sans: var(--atlas-latin-font);
+  --atlas-app-font: var(--atlas-latin-font);
 }
 
-[lang="ar"] .font-mono,
-[lang="ar"] code,
-[lang="ar"] pre {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+html[lang^="ar"],
+html[lang^="ku"] {
+  --font-sans: var(--atlas-arabic-font);
+  --atlas-app-font: var(--atlas-arabic-font);
 }
 
-[lang="ku"] {
-  font-family: 'Noto Kufi Arabic', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+html[lang^="en"],
+html[lang^="en"] * {
+  font-family: var(--atlas-app-font) !important;
 }
 
-[lang="ku"] * {
-  font-family: 'Noto Kufi Arabic', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+html[lang^="ar"],
+html[lang^="ar"] *,
+html[lang^="ku"],
+html[lang^="ku"] * {
+  font-family: var(--atlas-app-font) !important;
 }
 
-[lang="ku"] .font-mono,
-[lang="ku"] code,
-[lang="ku"] pre {
+html[lang] .font-mono,
+html[lang] code,
+html[lang] pre {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
 }
 

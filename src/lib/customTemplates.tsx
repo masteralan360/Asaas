@@ -8,7 +8,8 @@ import type {
 import {
     getCustomTemplateLayoutHeightMm,
     getCustomTemplateLayoutOverflowHeightMm,
-    getCustomTemplateLayoutPageCount
+    getCustomTemplateLayoutPageCount,
+    shouldReflowCustomTemplateText
 } from '@/lib/pdfPreviewStore'
 import { PdfShapeGraphic } from '@/ui/components/PdfShapeGraphic'
 import { getPdfShapeHeight, getPdfShapeZIndex } from '@/types'
@@ -1241,6 +1242,7 @@ function createAtlasStandardOrderInvoicePreview(options: CustomTemplatePreviewOp
 
     return {
         fields: [],
+        reflowLowerPageText: true,
         movableComponents: [
             { key: ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS.logo, label: 'Workspace Logo' },
             { key: ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS.workspaceName, label: 'Workspace Name' }
@@ -1415,8 +1417,17 @@ function nonBlankFields(fields: Record<string, string>) {
     )
 }
 
-function CustomTemplateLayoutOverlay({ layout, heightMm }: { layout: CustomTemplateLayout; heightMm: number }) {
+function CustomTemplateLayoutOverlay({
+    layout,
+    heightMm,
+    reflowLowerPageText = false
+}: {
+    layout: CustomTemplateLayout
+    heightMm: number
+    reflowLowerPageText?: boolean
+}) {
     const pageWidth = layout.page.widthMm || 210
+    const pageHeight = layout.page.heightMm || 297
 
     return (
         <div
@@ -1473,25 +1484,31 @@ function CustomTemplateLayoutOverlay({ layout, heightMm }: { layout: CustomTempl
                 </div>
             ))}
 
-            {layout.texts.map((text, index) => (
-                <div
-                    key={`text-${text.id || index}`}
-                    dir={resolveIsolatedTextDirection(text.text)}
-                    className="absolute whitespace-pre-wrap break-words font-bold leading-snug"
-                    style={{
-                        left: `${(text.x / pageWidth) * 100}%`,
-                        top: `${(text.y / heightMm) * 100}%`,
-                        width: `${(text.width / pageWidth) * 100}%`,
-                        transform: `rotate(${text.rotation || 0}deg)`,
-                        transformOrigin: 'top left',
-                        zIndex: 100 + index,
-                        fontSize: `${text.fontSize || 16}px`,
-                        color: text.color || '#000000'
-                    }}
-                >
-                    {text.text}
-                </div>
-            ))}
+            {layout.texts.map((text, index) => {
+                const reflowsAfterContent = shouldReflowCustomTemplateText(text, pageHeight, reflowLowerPageText)
+
+                return (
+                    <div
+                        key={`text-${text.id || index}`}
+                        dir={resolveIsolatedTextDirection(text.text)}
+                        data-template-text-flow={reflowsAfterContent ? 'after-content' : undefined}
+                        data-template-text-y-mm={reflowsAfterContent ? text.y : undefined}
+                        className="absolute whitespace-pre-wrap break-words font-bold leading-snug"
+                        style={{
+                            left: `${(text.x / pageWidth) * 100}%`,
+                            top: `${text.y}mm`,
+                            width: `${(text.width / pageWidth) * 100}%`,
+                            transform: `rotate(${text.rotation || 0}deg)`,
+                            transformOrigin: 'top left',
+                            zIndex: 100 + index,
+                            fontSize: `${text.fontSize || 16}px`,
+                            color: text.color || '#000000'
+                        }}
+                    >
+                        {text.text}
+                    </div>
+                )
+            })}
         </div>
     )
 }
@@ -1569,6 +1586,7 @@ export function renderCustomTemplateLayoutElement({
                 heightMm={isReceiptTemplate
                     ? layoutHeight
                     : Math.max(layoutHeight, getCustomTemplateLayoutHeightMm(layout))}
+                reflowLowerPageText={preview.reflowLowerPageText}
             />
         </div>
     )

@@ -4,8 +4,10 @@ import {
     ArrowLeft,
     Barcode,
     Box,
+    Bottle,
     Boxes,
     Camera,
+    Can,
     ChevronRight,
     CircleDot,
     Copy,
@@ -21,6 +23,7 @@ import {
     Ruler,
     Scale,
     Settings,
+    ShoppingBag,
     SquareDashed,
     Tag,
     Trash2,
@@ -101,7 +104,7 @@ import {
     useToast
 } from '@/ui/components'
 
-const UNITS = ['pcs', 'kg', 'gram', 'liter', 'box', 'pack', 'carton', 'm²', 'Kg']
+const UNITS = ['pcs', 'gram', 'liter', 'bottle', 'can', 'box', 'pack', 'carton', 'bag', 'm²', 'Kg']
 const DYNAMIC_UNITS = new Set(['m²', 'Kg'])
 function isDynamicUnit(unit: string): boolean {
     return DYNAMIC_UNITS.has(unit)
@@ -113,19 +116,24 @@ function ProductUnitIcon({ unit }: { unit: string }) {
     switch (unit) {
         case 'pcs':
             return <CircleDot className={className} />
-        case 'kg':
         case 'Kg':
             return <Weight className={className} />
         case 'gram':
             return <Scale className={className} />
         case 'liter':
             return <Droplets className={className} />
+        case 'bottle':
+            return <Bottle className={className} />
+        case 'can':
+            return <Can className={className} />
         case 'box':
             return <Box className={className} />
         case 'pack':
             return <Package className={className} />
         case 'carton':
             return <Boxes className={className} />
+        case 'bag':
+            return <ShoppingBag className={className} />
         case 'm²':
             return <SquareDashed className={className} />
         default:

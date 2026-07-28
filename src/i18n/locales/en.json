@@ -883,9 +883,12 @@
       "kg": "kg",
       "gram": "gram",
       "liter": "liter",
+      "bottle": "bottle",
+      "can": "can",
       "box": "box",
       "pack": "pack",
       "carton": "carton",
+      "bag": "bag",
       "m²": "m²",
       "Kg": "Kg"
     },

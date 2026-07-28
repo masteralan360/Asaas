@@ -1018,8 +1018,6 @@ export function AtlasStandardOrderInvoiceTemplate({
 #pdf-render-container .atlas-standard-workspace-name[data-rtl-workspace-name] {
     direction: rtl !important;
     unicode-bidi: plaintext;
-    letter-spacing: 0 !important;
-    font-family: Tahoma, Arial, sans-serif !important;
     font-kerning: normal;
 }
 `
@@ -1037,7 +1035,9 @@ export function AtlasStandardOrderInvoiceTemplate({
                     <h1
                         data-rtl-workspace-name={workspaceNameDirection === 'rtl' ? 'true' : undefined}
                         className="atlas-standard-workspace-name text-[18px] font-bold tracking-wide"
-                        style={{ color: INK }}
+                        style={workspaceNameDirection === 'rtl'
+                            ? { color: INK, fontFamily: 'Tahoma, Arial, sans-serif', letterSpacing: 0 }
+                            : { color: INK }}
                     >
                         {workspaceNameValue}
                     </h1>
@@ -1202,6 +1202,7 @@ export function AtlasStandardOrderInvoiceTemplate({
                 saveLabel={labels.save}
                 cancelLabel={labels.cancel}
             />
+            <div data-template-text-flow-anchor="" aria-hidden="true" />
 
             <div className="flex min-h-[13mm] items-start justify-between gap-4 text-[10px]" style={{ color: '#243b5a' }}>
                 <div className="pt-1 font-bold">{footerEmail.length ? `${labels.email}: ${footerEmail.join(' - ')}` : ''}</div>

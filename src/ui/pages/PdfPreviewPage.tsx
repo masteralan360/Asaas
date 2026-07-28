@@ -8,6 +8,7 @@ import {
     setPendingInvoiceView,
     getCustomTemplateLayoutHeightMm,
     getFixedPageCountForHeight,
+    shouldReflowCustomTemplateText,
     type CustomTemplateAnnotation,
     type CustomTemplateComponentPosition,
     type CustomTemplateImage,
@@ -473,6 +474,7 @@ export function PdfPreviewPage() {
 
     const [templateAnnotations, setTemplateAnnotations] = useState<CustomTemplateAnnotation[]>(() => initialTemplateLayout?.annotations || [])
     const [templateTexts, setTemplateTexts] = useState<CustomTemplateText[]>(() => initialTemplateLayout?.texts || [])
+    const [templateTextFlowStartMm, setTemplateTextFlowStartMm] = useState<number | null>(null)
     const [templateImages, setTemplateImages] = useState<CustomTemplateImage[]>(() => initialTemplateLayout?.images || [])
     const [templateShapes, setTemplateShapes] = useState<CustomTemplateShape[]>(() => initialTemplateLayout?.shapes || [])
     const [selectedTemplateObjectId, setSelectedTemplateObjectId] = useState<string | null>(null)
@@ -571,6 +573,31 @@ export function PdfPreviewPage() {
         ? templatePageCount * (templatePageHeight || A4_PAGE_HEIGHT_MM)
         : templateContentHeightMm
     const drawingCoordinateHeight = templatePreview ? templateStackHeight : templatePageHeight
+    const measureTemplateTextFlowStart = useCallback(() => {
+        if (!templatePreview?.reflowLowerPageText) {
+            setTemplateTextFlowStartMm((current) => current === null ? current : null)
+            return
+        }
+
+        const stage = templateStageRef.current
+        const contentLayer = templateContentLayerRef.current
+        const anchor = contentLayer?.querySelector<HTMLElement>('[data-template-text-flow-anchor]')
+        if (!stage || !anchor) {
+            setTemplateTextFlowStartMm((current) => current === null ? current : null)
+            return
+        }
+
+        const stageRect = stage.getBoundingClientRect()
+        if (stageRect.width <= 0) return
+
+        const anchorRect = anchor.getBoundingClientRect()
+        const nextStartMm = ((anchorRect.bottom - stageRect.top) * templatePageWidth / stageRect.width) + 1
+        if (!Number.isFinite(nextStartMm)) return
+
+        setTemplateTextFlowStartMm((current) => (
+            current !== null && Math.abs(current - nextStartMm) < 0.25 ? current : nextStartMm
+        ))
+    }, [templatePageWidth, templatePreview?.reflowLowerPageText])
     const measureTemplatePreviewHeight = useCallback(() => {
         const stage = templateStageRef.current
         if (!stage || !templatePreview) return
@@ -658,10 +685,12 @@ export function PdfPreviewPage() {
         })
 
         measureTemplatePreviewHeight()
+        measureTemplateTextFlowStart()
 
     }, [
         isFixedPageTemplatePreview,
         measureTemplatePreviewHeight,
+        measureTemplateTextFlowStart,
         templatePageHeight,
         templatePageWidth,
         templatePreview
@@ -1702,22 +1731,33 @@ export function PdfPreviewPage() {
                                 />
 
                                 {/* Attached texts overlay */}
-                                {templateTexts.map((txt, idx) => (
-                                    <div
-                                        key={`ttxt-${txt.id}`}
-                                        data-template-overflow-measure=""
-                                        data-pdf-template-object-id={`text:${txt.id}`}
-                                        data-pdf-template-object-kind="text"
-                                        className={cn("absolute z-[35] group/txt", selectedTemplateObjectId === `text:${txt.id}` && "ring-1 ring-primary")}
-                                        style={{
-                                            left: `${(txt.x / templatePageWidth) * 100}%`,
-                                            top: `${(txt.y / templateStackHeight) * 100}%`,
-                                            width: `${(txt.width / templatePageWidth) * 100}%`,
-                                            transform: `rotate(${txt.rotation}deg)`,
-                                            transformOrigin: 'top left',
-                                            zIndex: selectedTemplateObjectId === `text:${txt.id}` ? 200 : 100 + idx,
-                                        }}
-                                    >
+                                {templateTexts.map((txt, idx) => {
+                                    const reflowsAfterContent = shouldReflowCustomTemplateText(
+                                        txt,
+                                        templatePageHeight,
+                                        templatePreview?.reflowLowerPageText
+                                    )
+                                    const displayY = reflowsAfterContent && templateTextFlowStartMm !== null
+                                        ? Math.max(txt.y, templateTextFlowStartMm)
+                                        : txt.y
+
+                                    return (
+                                        <div
+                                            key={`ttxt-${txt.id}`}
+                                            data-template-overflow-measure=""
+                                            data-template-text-flow={reflowsAfterContent ? 'after-content' : undefined}
+                                            data-pdf-template-object-id={`text:${txt.id}`}
+                                            data-pdf-template-object-kind="text"
+                                            className={cn("absolute z-[35] group/txt", selectedTemplateObjectId === `text:${txt.id}` && "ring-1 ring-primary")}
+                                            style={{
+                                                left: `${(txt.x / templatePageWidth) * 100}%`,
+                                                top: `${(displayY / templateStackHeight) * 100}%`,
+                                                width: `${(txt.width / templatePageWidth) * 100}%`,
+                                                transform: `rotate(${txt.rotation}deg)`,
+                                                transformOrigin: 'top left',
+                                                zIndex: selectedTemplateObjectId === `text:${txt.id}` ? 200 : 100 + idx,
+                                            }}
+                                        >
                                         <textarea
                                             value={txt.text}
                                             dir={resolveIsolatedTextDirection(txt.text)}
@@ -1767,7 +1807,7 @@ export function PdfPreviewPage() {
                                                 const startX = e.clientX
                                                 const startY = e.clientY
                                                 const origX = txt.x
-                                                const origY = txt.y
+                                                const origY = displayY
                                                 const container = (e.currentTarget.parentElement?.parentElement as HTMLElement)
                                                 const cRect = container.getBoundingClientRect()
                                                 const scaleX = templatePageWidth / cRect.width
@@ -1775,7 +1815,12 @@ export function PdfPreviewPage() {
                                                 const onMoveEv = (ev: PointerEvent) => {
                                                     const dx = (ev.clientX - startX) * scaleX
                                                     const dy = (ev.clientY - startY) * scaleY
-                                                    setTemplateTexts(prev => prev.map((t, i) => i === idx ? { ...t, x: origX + dx, y: origY + dy } : t))
+                                                    setTemplateTexts(prev => prev.map((t, i) => i === idx ? {
+                                                        ...t,
+                                                        x: origX + dx,
+                                                        y: origY + dy,
+                                                        anchor: reflowsAfterContent ? 'afterContent' : t.anchor
+                                                    } : t))
                                                 }
                                                 const onUp = () => {
                                                     window.removeEventListener('pointermove', onMoveEv)
@@ -1850,8 +1895,9 @@ export function PdfPreviewPage() {
                                         >
                                             <X className="w-3 h-3" />
                                         </button>
-                                    </div>
-                                ))}
+                                        </div>
+                                    )
+                                })}
 
                                 <div ref={templateContentLayerRef} className="relative">
                                     {templatePreview.createElement(

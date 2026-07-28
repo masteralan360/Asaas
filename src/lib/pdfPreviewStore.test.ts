@@ -3,7 +3,8 @@ import {
     A4_PAGE_HEIGHT_MM,
     getCustomTemplateLayoutHeightMm,
     getCustomTemplateLayoutOverflowHeightMm,
-    getCustomTemplateLayoutPageCount
+    getCustomTemplateLayoutPageCount,
+    shouldReflowCustomTemplateText
 } from './pdfPreviewStore'
 import type { CustomTemplateLayout } from './pdfPreviewStore'
 
@@ -68,5 +69,26 @@ describe('custom template page extents', () => {
         })
 
         expect(getCustomTemplateLayoutPageCount(layout)).toBe(2)
+    })
+})
+
+describe('lower-page text reflow', () => {
+    const footerText = {
+        id: 'footer-note',
+        text: 'Footer note',
+        x: 20,
+        y: 260,
+        width: 140,
+        rotation: 0
+    }
+
+    it('reflows legacy lower-page text only when the template supports it', () => {
+        expect(shouldReflowCustomTemplateText(footerText, A4_PAGE_HEIGHT_MM, true)).toBe(true)
+        expect(shouldReflowCustomTemplateText(footerText, A4_PAGE_HEIGHT_MM, false)).toBe(false)
+    })
+
+    it('respects explicit absolute and after-content anchors', () => {
+        expect(shouldReflowCustomTemplateText({ ...footerText, anchor: 'absolute' }, A4_PAGE_HEIGHT_MM, true)).toBe(false)
+        expect(shouldReflowCustomTemplateText({ ...footerText, y: 20, anchor: 'afterContent' }, A4_PAGE_HEIGHT_MM, true)).toBe(true)
     })
 })
