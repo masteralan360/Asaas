@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
+import { setNetworkStatus } from '@/lib/network'
 import { clearWorkspaceModeSnapshot, writeWorkspaceModeSnapshot } from '@/workspace/workspaceMode'
 
 import { db } from './database'
@@ -8,7 +9,42 @@ import { db } from './database'
 const WORKSPACE_ID = '00000000-0000-4000-8000-000000000001'
 let createBusinessPartner: typeof import('./businessPartners').createBusinessPartner
 let mergeBusinessPartners: typeof import('./businessPartners').mergeBusinessPartners
+let replaceAgentExcludedCategories: typeof import('./businessPartners').replaceAgentExcludedCategories
 let updateBusinessPartner: typeof import('./businessPartners').updateBusinessPartner
+
+async function createAgentForExcludedCategoryTest() {
+    const partner = await createBusinessPartner(WORKSPACE_ID, {
+        name: 'Excluded Category Agent',
+        phone: '07500000008',
+        defaultCurrency: 'iqd',
+        creditLimit: 0,
+        role: 'agent',
+        agent: {
+            zone: 'Central District',
+            agentType: 'field_agent',
+            status: 'active'
+        }
+    }, { allowAgentRole: true })
+
+    return partner.agentFacetId!
+}
+
+async function createCategoryForExcludedCategoryTest() {
+    const now = new Date().toISOString()
+    const categoryId = '00000000-0000-4000-8000-000000000010'
+    await db.categories.put({
+        id: categoryId,
+        workspaceId: WORKSPACE_ID,
+        name: 'Restricted category',
+        createdAt: now,
+        updatedAt: now,
+        syncStatus: 'synced',
+        lastSyncedAt: now,
+        version: 1,
+        isDeleted: false
+    })
+    return categoryId
+}
 
 function installBrowserStorage() {
     const rows = new Map<string, string>()
@@ -65,17 +101,20 @@ describe('business partner agent facets', () => {
         const businessPartners = await import('./businessPartners')
         createBusinessPartner = businessPartners.createBusinessPartner
         mergeBusinessPartners = businessPartners.mergeBusinessPartners
+        replaceAgentExcludedCategories = businessPartners.replaceAgentExcludedCategories
         updateBusinessPartner = businessPartners.updateBusinessPartner
     })
 
     beforeEach(async () => {
         await db.delete()
         await db.open()
+        setNetworkStatus(true)
         writeWorkspaceModeSnapshot({ workspaceId: WORKSPACE_ID, dataMode: 'local' })
     })
 
     afterEach(async () => {
         clearWorkspaceModeSnapshot(WORKSPACE_ID)
+        setNetworkStatus(true)
     })
 
     afterAll(async () => {
@@ -275,5 +314,59 @@ describe('business partner agent facets', () => {
 
         await expect(mergeBusinessPartners(agent.id, customer.id))
             .rejects.toThrow('Agents can only be merged with other agents')
+    })
+
+    it('hard deletes a removed excluded-category row', async () => {
+        const [agentId, categoryId] = await Promise.all([
+            createAgentForExcludedCategoryTest(),
+            createCategoryForExcludedCategoryTest()
+        ])
+
+        await replaceAgentExcludedCategories(WORKSPACE_ID, agentId, [categoryId])
+        const exclusion = await db.agent_excluded_categories
+            .where('[agentId+categoryId]')
+            .equals([agentId, categoryId])
+            .first()
+        expect(exclusion).toBeDefined()
+
+        await replaceAgentExcludedCategories(WORKSPACE_ID, agentId, [])
+
+        expect(await db.agent_excluded_categories.get(exclusion!.id)).toBeUndefined()
+        expect(await db.agent_excluded_categories.where('agentId').equals(agentId).count()).toBe(0)
+    })
+
+    it('queues a hard delete for a removed cloud exclusion while offline', async () => {
+        const [agentId, categoryId] = await Promise.all([
+            createAgentForExcludedCategoryTest(),
+            createCategoryForExcludedCategoryTest()
+        ])
+        const now = new Date().toISOString()
+        const exclusionId = '00000000-0000-4000-8000-000000000011'
+        await db.agent_excluded_categories.add({
+            id: exclusionId,
+            workspaceId: WORKSPACE_ID,
+            agentId,
+            categoryId,
+            createdAt: now,
+            updatedAt: now,
+            syncStatus: 'synced',
+            lastSyncedAt: now,
+            version: 1,
+            isDeleted: false
+        })
+
+        writeWorkspaceModeSnapshot({ workspaceId: WORKSPACE_ID, dataMode: 'cloud' })
+        setNetworkStatus(false)
+        await replaceAgentExcludedCategories(WORKSPACE_ID, agentId, [])
+
+        expect(await db.agent_excluded_categories.get(exclusionId)).toBeUndefined()
+        expect(await db.offline_mutations
+            .where('[entityType+entityId+status]')
+            .equals(['agent_excluded_categories', exclusionId, 'pending'])
+            .first())
+            .toMatchObject({
+                operation: 'delete',
+                payload: { id: exclusionId, hardDelete: true }
+            })
     })
 })

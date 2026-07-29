@@ -337,6 +337,37 @@ async function syncSoftDelete(tableName: PartnerTableName, entityId: string, wor
     }
 }
 
+async function syncHardDelete(tableName: PartnerTableName, entityId: string, workspaceId: string) {
+    if (!shouldUseCloudBusinessData(workspaceId)) {
+        return
+    }
+
+    if (!isOnline(workspaceId)) {
+        await addToOfflineMutations(tableName, entityId, 'delete', { id: entityId, hardDelete: true }, workspaceId)
+        return
+    }
+
+    try {
+        const client = getSupabaseClientForTable(tableName)
+        const { error } = await runMutation(`${tableName}.hardDelete`, () =>
+            client
+                .from(tableName)
+                .delete()
+                .eq('id', entityId)
+        )
+        if (error) {
+            throw error
+        }
+
+        // A prior offline edit could otherwise replay after this successful
+        // deletion and recreate the exclusion remotely.
+        await removeOfflineMutationsForEntityIds(tableName, [entityId])
+    } catch (error) {
+        console.error(`[BusinessPartners] Failed to hard delete ${tableName}:`, error)
+        await addToOfflineMutations(tableName, entityId, 'delete', { id: entityId, hardDelete: true }, workspaceId)
+    }
+}
+
 function buildBaseEntity<T extends Record<string, unknown>>(workspaceId: string, data: T): T & BaseEntityPayload {
     const now = new Date().toISOString()
 
@@ -706,24 +737,30 @@ export async function replaceAgentExcludedCategories(
         )
     }
 
-    for (const existing of current) {
-        if (!existing.isDeleted && !requestedIds.has(existing.categoryId)) {
-            updates.push({
-                ...existing,
-                isDeleted: true,
-                updatedAt: now,
-                version: existing.version + 1,
-                ...getSyncMetadata(workspaceId, now)
-            })
-        }
-    }
+    // Deleting an exclusion must remove it instead of leaving a tombstone.
+    // Include old tombstones here so the next save also cleans up rows created
+    // by earlier app versions.
+    const removed = current.filter((existing) => !requestedIds.has(existing.categoryId))
 
-    if (updates.length === 0) {
+    if (updates.length === 0 && removed.length === 0) {
         return
     }
 
-    await db.agent_excluded_categories.bulkPut(updates)
-    await syncUpsertEntities('agent_excluded_categories', updates as unknown as SyncEntity[], workspaceId)
+    await db.transaction('rw', db.agent_excluded_categories, async () => {
+        if (removed.length > 0) {
+            await db.agent_excluded_categories.bulkDelete(removed.map((existing) => existing.id))
+        }
+        if (updates.length > 0) {
+            await db.agent_excluded_categories.bulkPut(updates)
+        }
+    })
+
+    await Promise.all([
+        ...(updates.length > 0
+            ? [syncUpsertEntities('agent_excluded_categories', updates as unknown as SyncEntity[], workspaceId)]
+            : []),
+        ...removed.map((existing) => syncHardDelete('agent_excluded_categories', existing.id, workspaceId))
+    ])
 }
 
 function normalizeAgentFacetInput(input: Partial<AgentFacetInput> | undefined, existing?: Agent): AgentFacetInput {
