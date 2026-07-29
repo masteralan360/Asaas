@@ -206,4 +206,28 @@ describe("local-mode SQLite authority", () => {
     expect(await testDb.categories.get("category-3")).toBeUndefined();
     expect(await testDb.products.get("product-3")).toBeUndefined();
   });
+
+  it("mirrors Activity data for hybrid workspaces", async () => {
+    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+    writeWorkspaceModeSnapshot({
+      workspaceId: WORKSPACE_ID,
+      dataMode: "hybrid",
+    });
+
+    try {
+      await testDb.activity_catalog.put({
+        ...entity("activity", "activity-1"),
+        isInfinite: true,
+        isActive: true,
+        availableQuantity: null,
+        price: 1000,
+        currency: "iqd",
+      } as never);
+
+      await waitFor(() => sqlite.rows.has("activity_catalog:activity-1"));
+      expect(sqlite.rows.has("activity_catalog:activity-1")).toBe(true);
+    } finally {
+      delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    }
+  });
 });

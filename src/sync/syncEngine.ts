@@ -1047,6 +1047,7 @@ export async function pullChanges(
               }
               totalPulled++;
             }
+
           }
 
           if (table === "inventory" && affectedInventoryProducts.size > 0) {

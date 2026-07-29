@@ -60,6 +60,9 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "real_estate_transactions",
   "real_estate_installments",
   "real_estate_payments",
+  "activity_catalog",
+  "activity_transactions",
+  "activity_transaction_lines",
   "exchange_pair_prices",
   "exchange_transactions",
   "exchange_fee_rules",
@@ -79,6 +82,12 @@ export const LOCAL_MODE_SQLITE_TABLES = [
 
 export type LocalModeSqliteTableName =
   (typeof LOCAL_MODE_SQLITE_TABLES)[number];
+
+const LEGACY_HYBRID_MIRROR_SEED_TABLES = [
+  "activity_catalog",
+  "activity_transactions",
+  "activity_transaction_lines",
+] as const satisfies readonly LocalModeSqliteTableName[];
 
 export interface SqliteConnection {
   execute(query: string, bindValues?: unknown[]): Promise<unknown>;
@@ -582,6 +591,50 @@ async function getStoredWorkspaceRowCount(
     : Number(count ?? 0);
 }
 
+/**
+ * Preserve cache rows when a new table is added to the SQLite mirror after a
+ * hybrid workspace already exists. Without this bridge, hydration would clear
+ * that newly supported Dexie table before its first SQLite seed.
+ */
+async function seedMissingMirrorTablesFromDexie(
+  connection: SqliteConnection,
+  cacheDb: Dexie,
+  workspaceId: string,
+  storedRows: readonly StoredEntityRow[],
+) {
+  const storedTableNames = new Set(
+    storedRows
+      .map((row) => row.entity_type)
+      .filter(isMirroredTableName),
+  );
+  let seeded = false;
+
+  for (const tableName of LEGACY_HYBRID_MIRROR_SEED_TABLES) {
+    if (storedTableNames.has(tableName)) {
+      continue;
+    }
+
+    const cachedRows = await readCacheRowsForWorkspace(
+      cacheDb,
+      tableName,
+      workspaceId,
+    );
+    if (cachedRows.length === 0) {
+      continue;
+    }
+
+    for (const row of cachedRows) {
+      await persistEntity(cacheDb, tableName, row as Record<string, unknown>, {
+        connection,
+        workspaceId,
+      });
+    }
+    seeded = true;
+  }
+
+  return seeded;
+}
+
 async function persistEntity(
   cacheDb: Dexie,
   tableName: LocalModeSqliteTableName,
@@ -804,7 +857,7 @@ export async function hydrateLocalModeCacheFromSqlite(
       return;
     }
 
-    const rows = await connection.select<StoredEntityRow[]>(
+    let rows = await connection.select<StoredEntityRow[]>(
       `
                 SELECT entity_type, entity_id, workspace_id, current_workspace, payload, updated_at
                 FROM local_entities
@@ -812,9 +865,23 @@ export async function hydrateLocalModeCacheFromSqlite(
                    OR (entity_type = 'profiles' AND current_workspace = $1)
                    OR (entity_type = 'workspaces' AND entity_id = $1)
                 ORDER BY entity_type, updated_at
-            `,
+      `,
       [workspaceId],
     );
+
+    if (await seedMissingMirrorTablesFromDexie(connection, cacheDb, workspaceId, rows)) {
+      rows = await connection.select<StoredEntityRow[]>(
+        `
+                  SELECT entity_type, entity_id, workspace_id, current_workspace, payload, updated_at
+                  FROM local_entities
+                  WHERE workspace_id = $1
+                     OR (entity_type = 'profiles' AND current_workspace = $1)
+                     OR (entity_type = 'workspaces' AND entity_id = $1)
+                  ORDER BY entity_type, updated_at
+              `,
+        [workspaceId],
+      );
+    }
 
     await withMirroringPaused(async () => {
       await clearCacheRowsForWorkspace(cacheDb, workspaceId);

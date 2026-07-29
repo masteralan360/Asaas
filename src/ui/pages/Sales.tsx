@@ -320,7 +320,6 @@ export function Sales() {
         () => new Map(workspaceUsers.map((member) => [member.id, member.name || member.email || 'Staff'] as const)),
         [workspaceUsers]
     )
-
     const loans = useLoans(user?.workspaceId)
     const allSales = useMemo(() => {
         const sales = (rawSales || []).map(toUISale)
