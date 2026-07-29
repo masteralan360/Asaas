@@ -36,6 +36,7 @@ import type {
   Supplier,
   Customer,
   Agent,
+  AgentExcludedCategory,
   FleetVehicle,
   FleetVehicleAssignment,
   BusinessPartner,
@@ -441,6 +442,7 @@ export class AtlasDatabase extends Dexie {
   suppliers!: EntityTable<Supplier, "id">;
   customers!: EntityTable<Customer, "id">;
   agents!: EntityTable<Agent, "id">;
+  agent_excluded_categories!: EntityTable<AgentExcludedCategory, "id">;
   fleet_vehicles!: EntityTable<FleetVehicle, "id">;
   fleet_vehicle_assignments!: EntityTable<FleetVehicleAssignment, "id">;
   business_partners!: EntityTable<BusinessPartner, "id">;
@@ -3082,6 +3084,11 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, transactionNo, status, currency, occurredAt, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+occurredAt], [workspaceId+status], [workspaceId+createdAt]",
       activity_transaction_lines:
         "id, workspaceId, transactionId, activityId, updatedAt, isDeleted, syncStatus, [transactionId+activityId], [workspaceId+transactionId], [workspaceId+activityId]",
+    });
+
+    this.version(90).stores({
+      agent_excluded_categories:
+        "id, workspaceId, agentId, categoryId, updatedAt, isDeleted, syncStatus, [workspaceId+agentId], [workspaceId+categoryId], [agentId+categoryId]",
     });
 
     this.registerLocalModeSqliteAuthority();

@@ -13,6 +13,7 @@ const crmTables = new Set([
     'customers',
     'suppliers',
     'agents',
+    'agent_excluded_categories',
     'business_partners',
     'business_partner_merge_candidates',
     'sales_orders',

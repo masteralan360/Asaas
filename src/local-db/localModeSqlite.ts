@@ -37,6 +37,7 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "suppliers",
   "customers",
   "agents",
+  "agent_excluded_categories",
   "fleet_vehicles",
   "fleet_vehicle_assignments",
   "business_partners",

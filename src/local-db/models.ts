@@ -351,6 +351,12 @@ export interface Agent extends BaseEntity {
   status: AgentStatus;
 }
 
+/** A product category an agent's linked user may view but cannot select. */
+export interface AgentExcludedCategory extends BaseEntity {
+  agentId: string;
+  categoryId: string;
+}
+
 export interface AgentFacetInput {
   zone: string;
   agentType: AgentType;
@@ -1621,6 +1627,7 @@ export interface SyncQueueItem {
     | "customers"
     | "suppliers"
     | "agents"
+    | "agent_excluded_categories"
     | "fleet_vehicles"
     | "fleet_vehicle_assignments"
     | "business_partners"
@@ -1760,6 +1767,7 @@ export interface OfflineMutation {
     | "customers"
     | "suppliers"
     | "agents"
+    | "agent_excluded_categories"
     | "fleet_vehicles"
     | "fleet_vehicle_assignments"
     | "business_partners"

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Check, Package } from 'lucide-react'
 
-import type { Product } from '@/local-db'
+import { useProductSelectionAccess, type Product } from '@/local-db'
+import { useOptionalAuth } from '@/auth'
 import { Input, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/components'
 import { cn } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
@@ -77,30 +78,39 @@ export function ProductAutocompleteInput({
     storageMissingLabel = 'Select Storage'
 }: ProductAutocompleteInputProps) {
     const { i18n } = useTranslation()
+    const user = useOptionalAuth()?.user
+    const { canSelectProduct, filterProducts } = useProductSelectionAccess(user?.workspaceId, user?.id)
     const [isFocused, setIsFocused] = useState(false)
     const [justSelected, setJustSelected] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
 
     const query = value.trim().toLowerCase()
+    const selectableProducts = useMemo(
+        () => filterProducts(products),
+        [filterProducts, products]
+    )
 
     const filtered = useMemo(() => {
         if (!query || query.length < 1) return []
-        return products
+        return selectableProducts
             .filter((p) =>
                 p.name.toLowerCase().includes(query) ||
                 (p.sku && p.sku.toLowerCase().includes(query))
             )
             .slice(0, 8)
-    }, [products, query])
+    }, [query, selectableProducts])
 
     const showDropdown = isFocused && !justSelected && filtered.length > 0
     const shouldShowLinkedIndicator = Boolean(hasSelection && !storageMissing && showLinkedIndicator)
 
     const handleSelect = useCallback((product: Product) => {
+        if (!canSelectProduct(product)) {
+            return
+        }
         setJustSelected(true)
         onChange(product.name)
         onSelectProduct(product)
-    }, [onChange, onSelectProduct])
+    }, [canSelectProduct, onChange, onSelectProduct])
 
     useEffect(() => {
         if (justSelected) {

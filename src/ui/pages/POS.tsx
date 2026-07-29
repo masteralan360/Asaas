@@ -13,6 +13,7 @@ import {
     getPrimaryStorageFromList,
     refreshStockBatchesFromSupabase,
     useBatchAwareInventoryProducts,
+    useProductSelectionAccess,
     useActiveDiscountMap,
     useCategories,
     useWorkspaceProductBarcodes,
@@ -393,6 +394,7 @@ export function POS() {
         enabled: !!selectedStorageId && !isActivitiesStorage,
         storageId: !isActivitiesStorage ? selectedStorageId || undefined : undefined
     })
+    const { canSelectProduct, filterProducts: filterSelectableProducts } = useProductSelectionAccess(user?.workspaceId, user?.id)
     const activityCatalog = useActivityCatalog(canSellActivities ? user?.workspaceId : undefined)
     const infiniteActivityIds = useMemo(
         () => new Set(activityCatalog.filter((activity) => activity.isInfinite && !activity.isDeleted).map((activity) => activity.id)),
@@ -533,7 +535,35 @@ export function POS() {
             }
         }), [activityCatalog, features.default_currency, t])
 
-    const sellableProducts: PosCatalogProduct[] = isActivitiesStorage ? activityProducts : products
+    const selectableInventoryProducts = useMemo(
+        () => filterSelectableProducts(products),
+        [filterSelectableProducts, products]
+    )
+    const sellableProducts: PosCatalogProduct[] = isActivitiesStorage ? activityProducts : selectableInventoryProducts
+
+    useEffect(() => {
+        const excludedProductIds = new Set(
+            products
+                .filter((product) => !canSelectProduct(product))
+                .map((product) => product.id)
+        )
+
+        if (excludedProductIds.size === 0) {
+            return
+        }
+
+        setCart((current) => {
+            const next = current.filter((item) => !excludedProductIds.has(item.product_id))
+            if (next.length !== current.length) {
+                toast({
+                    variant: 'destructive',
+                    title: t('messages.error'),
+                    description: t('businessPartners.agent.excludedProductsRemoved', { defaultValue: 'Products from excluded categories were removed from the cart.' })
+                })
+            }
+            return next.length === current.length ? current : next
+        })
+    }, [canSelectProduct, products, t, toast])
 
     useEffect(() => {
         // Keep an explicitly selected Activities storage while workspace features
@@ -774,6 +804,23 @@ export function POS() {
         localStorage.setItem('pos_held_sales', JSON.stringify(heldSales))
     }, [heldSales])
 
+    useEffect(() => {
+        const excludedProductIds = new Set(
+            products
+                .filter((product) => !canSelectProduct(product))
+                .map((product) => product.id)
+        )
+
+        if (excludedProductIds.size === 0) {
+            return
+        }
+
+        setHeldSales((current) => current.map((sale) => {
+            const items = sale.items.filter((item) => !excludedProductIds.has(item.product_id))
+            return items.length === sale.items.length ? sale : { ...sale, items }
+        }))
+    }, [canSelectProduct, products])
+
     // Cart resizing state
     const [cartWidth, setCartWidth] = useState<number>(() => {
         const saved = localStorage.getItem('pos_cart_width')
@@ -854,31 +901,35 @@ export function POS() {
     const barcodeMap = useMemo(() => {
         const map = new Map<string, string>()
         for (const barcodeRow of productBarcodes) {
-            addBarcodeLookupCode(map, barcodeRow.barcode, barcodeRow.productId, barcodeRow.isPrimary)
+            if (selectableInventoryProducts.some((product) => product.id === barcodeRow.productId)) {
+                addBarcodeLookupCode(map, barcodeRow.barcode, barcodeRow.productId, barcodeRow.isPrimary)
+            }
         }
-        for (const product of products) {
+        for (const product of selectableInventoryProducts) {
             addBarcodeLookupCode(map, product.barcode, product.id)
             for (const barcode of product.barcodes ?? []) {
                 addBarcodeLookupCode(map, barcode, product.id)
             }
         }
         return map
-    }, [productBarcodes, products])
+    }, [productBarcodes, selectableInventoryProducts])
 
     const knownScannerCodeIndex = useMemo(() => {
         const codes: string[] = []
 
         for (const barcodeRow of productBarcodes) {
-            codes.push(barcodeRow.barcode)
+            if (selectableInventoryProducts.some((product) => product.id === barcodeRow.productId)) {
+                codes.push(barcodeRow.barcode)
+            }
         }
 
-        for (const product of products) {
+        for (const product of selectableInventoryProducts) {
             codes.push(product.sku, product.barcode ?? '')
             codes.push(...(product.barcodes ?? []))
         }
 
         return createBarcodeScannerCodeIndex(codes)
-    }, [productBarcodes, products])
+    }, [productBarcodes, selectableInventoryProducts])
 
     const getDisplayImageUrl = (url?: string) => {
         if (!url) return '';
@@ -1339,6 +1390,15 @@ export function POS() {
 
     const addToCart = useCallback((product: PosCatalogProduct) => {
         const isInfiniteActivity = product.isInfiniteActivity === true
+        if (!canSelectProduct(product)) {
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: t('businessPartners.agent.productCategoryExcluded', { defaultValue: 'This product category is not available to this user.' })
+            })
+            hapticTrigger('error')
+            return
+        }
         if (!isInfiniteActivity && product.inventoryQuantity <= 0) return // Out of stock
         const activeDiscount = activeDiscountMap.get(product.id)
 
@@ -1411,7 +1471,7 @@ export function POS() {
             ]
         })
         hapticTrigger('selection')
-    }, [activeDiscountMap, cartCurrencies, currencyConversionEnabled, features, t, toast, hapticTrigger])
+    }, [activeDiscountMap, canSelectProduct, cartCurrencies, currencyConversionEnabled, features, t, toast, hapticTrigger])
 
     const removeFromCart = (itemKey: string) => {
         setCart((prev) => prev.filter((item) => getCartItemKey(item) !== itemKey))
@@ -1510,8 +1570,8 @@ export function POS() {
 
         const barcodeProductId = barcodeMap.get(normalizedInput) ?? barcodeMap.get(term)
         const candidates = barcodeProductId
-            ? products.filter((product) => product.id === barcodeProductId)
-            : products.filter((product) => product.sku.toLowerCase() === term)
+            ? selectableInventoryProducts.filter((product) => product.id === barcodeProductId)
+            : selectableInventoryProducts.filter((product) => product.sku.toLowerCase() === term)
 
         const exactMatch = candidates.find(p => p.storageId === selectedStorageId)
         const otherMatch = candidates.find(p => p.storageId !== selectedStorageId)
@@ -1560,8 +1620,8 @@ export function POS() {
         const term = text.toLowerCase()
         const barcodeProductId = barcodeMap.get(text) ?? barcodeMap.get(term)
         const candidates = barcodeProductId
-            ? products.filter((product) => product.id === barcodeProductId)
-            : products.filter((product) => product.sku.toLowerCase() === term)
+            ? selectableInventoryProducts.filter((product) => product.id === barcodeProductId)
+            : selectableInventoryProducts.filter((product) => product.sku.toLowerCase() === term)
 
         const exactMatch = candidates.find(p => p.storageId === selectedStorageId)
         const otherMatch = candidates.find(p => p.storageId !== selectedStorageId)
@@ -1585,7 +1645,7 @@ export function POS() {
             })
             hapticTrigger('error')
         }
-    }, [isCameraScannerAutoEnabled, isDeviceScannerAutoEnabled, scanDelay, barcodeMap, products, addToCart, t, toast, selectedStorageId, storages, hapticTrigger])
+    }, [isCameraScannerAutoEnabled, isDeviceScannerAutoEnabled, scanDelay, barcodeMap, selectableInventoryProducts, addToCart, t, toast, selectedStorageId, storages, hapticTrigger])
 
     useEffect(() => {
         const clearDeviceScanTimeout = () => {
@@ -1897,6 +1957,19 @@ export function POS() {
 
         if (isActivitiesStorage) {
             await handleActivitiesCheckout()
+            return
+        }
+
+        const restrictedCartItem = cart.find((item) => {
+            const product = products.find((candidate) => candidate.id === item.product_id && candidate.storageId === item.storageId)
+            return product ? !canSelectProduct(product) : false
+        })
+        if (restrictedCartItem) {
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: t('businessPartners.agent.productCategoryExcluded', { defaultValue: 'This product category is not available to this user.' })
+            })
             return
         }
 

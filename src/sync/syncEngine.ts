@@ -48,6 +48,7 @@ const SYNC_PULL_TABLES = [
   "customers",
   "suppliers",
   "agents",
+  "agent_excluded_categories",
   "fleet_vehicles",
   "fleet_vehicle_assignments",
   "business_partners",

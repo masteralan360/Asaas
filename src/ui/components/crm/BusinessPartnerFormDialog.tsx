@@ -7,9 +7,12 @@ import {
     isAgentBusinessPartnerRole,
     isRealEstateBusinessPartnerRole,
     useAgent,
+    useAgentExcludedCategories,
     useAgents,
+    useCategories,
     usePriceBooks,
     useWorkspaceUsers,
+    replaceAgentExcludedCategories,
     type Agent,
     type AgentFacetInput,
     type AgentStatus,
@@ -20,6 +23,7 @@ import {
 } from '@/local-db'
 import {
     Button,
+    Checkbox,
     CurrencySelector,
     Dialog,
     DialogBody,
@@ -34,7 +38,8 @@ import {
     SelectItem,
     SelectTrigger,
     SelectValue,
-    Textarea
+    Textarea,
+    useToast
 } from '@/ui/components'
 import { useWorkspace } from '@/workspace'
 import { PartnerLocationField } from '@/ui/components/crm/PartnerLocationField'
@@ -506,6 +511,12 @@ export function BusinessPartnerFormDialog({
                                             </SelectContent>
                                         </Select>
                                     </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <AgentExcludedCategoriesButton
+                                            agent={agent}
+                                            workspaceId={effectiveWorkspaceId}
+                                        />
+                                    </div>
                                 </>
                             ) : null}
                             <div className="space-y-2" data-tour-id="tutorial-business-partner-currency">
@@ -597,5 +608,137 @@ export function BusinessPartnerFormDialog({
                 </form>
             </DialogContent>
         </Dialog>
+    )
+}
+
+function AgentExcludedCategoriesButton({
+    agent,
+    workspaceId
+}: {
+    agent?: Agent
+    workspaceId?: string
+}) {
+    const { t } = useTranslation()
+    const { toast } = useToast()
+    const categories = useCategories(workspaceId)
+    const exclusions = useAgentExcludedCategories(workspaceId, agent?.id)
+    const [open, setOpen] = useState(false)
+    const [search, setSearch] = useState('')
+    const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set())
+    const [isSaving, setIsSaving] = useState(false)
+
+    useEffect(() => {
+        if (!open) {
+            setSearch('')
+            return
+        }
+
+        setSelectedCategoryIds(new Set(exclusions.map((exclusion) => exclusion.categoryId)))
+    }, [exclusions, open])
+
+    const visibleCategories = useMemo(() => {
+        const normalizedSearch = search.trim().toLocaleLowerCase()
+        return categories
+            .filter((category) => !normalizedSearch || category.name.toLocaleLowerCase().includes(normalizedSearch))
+            .sort((left, right) => left.name.localeCompare(right.name))
+    }, [categories, search])
+
+    const toggleCategory = (categoryId: string, checked: boolean) => {
+        setSelectedCategoryIds((current) => {
+            const next = new Set(current)
+            if (checked) {
+                next.add(categoryId)
+            } else {
+                next.delete(categoryId)
+            }
+            return next
+        })
+    }
+
+    const save = async () => {
+        if (!agent || !workspaceId) {
+            return
+        }
+
+        setIsSaving(true)
+        try {
+            await replaceAgentExcludedCategories(workspaceId, agent.id, [...selectedCategoryIds])
+            setOpen(false)
+        } catch (error) {
+            toast({
+                variant: 'destructive',
+                title: t('messages.error', { defaultValue: 'Unable to save excluded categories' }),
+                description: error instanceof Error ? error.message : String(error)
+            })
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    const exclusionCount = exclusions.length
+    const canConfigure = Boolean(agent && workspaceId)
+
+    return (
+        <>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/20 p-3">
+                <div className="space-y-0.5">
+                    <Label>{t('businessPartners.agent.excludedCategories', { defaultValue: 'Excluded product categories' })}</Label>
+                    <p className="text-xs text-muted-foreground">
+                        {t('businessPartners.agent.excludedCategoriesDescription', {
+                            defaultValue: 'The linked user can view these products but cannot select or sell them.'
+                        })}
+                    </p>
+                </div>
+                <Button type="button" variant="outline" onClick={() => setOpen(true)} disabled={!canConfigure}>
+                    {t('businessPartners.agent.manageExcludedCategories', { defaultValue: 'Excluded categories' })}
+                    {exclusionCount > 0 ? ` (${exclusionCount})` : ''}
+                </Button>
+            </div>
+            <Dialog open={open} onOpenChange={setOpen}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>{t('businessPartners.agent.excludedCategories', { defaultValue: 'Excluded product categories' })}</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                            {t('businessPartners.agent.excludedCategoriesModalDescription', {
+                                defaultValue: 'Select categories this agent\'s linked user cannot select or sell. Products remain visible elsewhere.'
+                            })}
+                        </p>
+                        <Input
+                            value={search}
+                            onChange={(event) => setSearch(event.target.value)}
+                            placeholder={t('common.search', { defaultValue: 'Search categories...' })}
+                        />
+                        <div className="max-h-80 space-y-1 overflow-y-auto rounded-lg border p-2">
+                            {visibleCategories.length > 0 ? visibleCategories.map((category) => {
+                                const checked = selectedCategoryIds.has(category.id)
+                                return (
+                                    <label key={category.id} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-muted/70">
+                                        <Checkbox
+                                            checked={checked}
+                                            onCheckedChange={(nextChecked) => toggleCategory(category.id, Boolean(nextChecked))}
+                                        />
+                                        <span className="min-w-0 flex-1 truncate text-sm font-medium">{category.name}</span>
+                                    </label>
+                                )
+                            }) : (
+                                <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                                    {t('categories.noCategories', { defaultValue: 'No categories found.' })}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isSaving}>
+                            {t('common.cancel', { defaultValue: 'Cancel' })}
+                        </Button>
+                        <Button type="button" onClick={() => void save()} disabled={isSaving}>
+                            {isSaving ? t('common.loading', { defaultValue: 'Saving...' }) : t('common.save', { defaultValue: 'Save' })}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </>
     )
 }

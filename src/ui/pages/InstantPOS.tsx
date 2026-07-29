@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
-import { addToOfflineMutations, adjustInventoryQuantity, calculateStockBatchUnitCost, commitStockBatchAllocations, generateLocalSaleSequenceId, getPrimaryStorageFromList, getStockBatchSalePlans, refreshStockBatchesFromSupabase, useActiveDiscountMap, useBatchAwareInventoryProducts, useCategories, useStorages } from '@/local-db'
+import { addToOfflineMutations, adjustInventoryQuantity, calculateStockBatchUnitCost, commitStockBatchAllocations, generateLocalSaleSequenceId, getPrimaryStorageFromList, getStockBatchSalePlans, refreshStockBatchesFromSupabase, useActiveDiscountMap, useBatchAwareInventoryProducts, useCategories, useProductSelectionAccess, useStorages } from '@/local-db'
 import { db } from '@/local-db/database'
 import type { CurrencyCode } from '@/local-db/models'
 import { useWorkspace } from '@/workspace'
@@ -490,6 +490,11 @@ export function InstantPOS() {
         enabled: !!selectedStorageId,
         storageId: selectedStorageId || undefined
     })
+    const { canSelectProduct, filterProducts: filterSelectableProducts } = useProductSelectionAccess(user?.workspaceId, user?.id)
+    const selectableProducts = useMemo(
+        () => filterSelectableProducts(products),
+        [filterSelectableProducts, products]
+    )
     const activeDiscountMap = useActiveDiscountMap(user?.workspaceId, {
         products,
         inventoryRows: selectedStorageId ? undefined : [],
@@ -619,17 +624,17 @@ export function InstantPOS() {
 
     const resolveTicketProduct = useCallback((item: Pick<InstantPosItem, 'productId' | 'storageId'>) => {
         if (item.storageId) {
-            return products.find(product => product.id === item.productId && product.storageId === item.storageId)
+            return selectableProducts.find(product => product.id === item.productId && product.storageId === item.storageId)
         }
 
-        const matches = products.filter(product => product.id === item.productId)
+        const matches = selectableProducts.filter(product => product.id === item.productId)
         return matches.length === 1 ? matches[0] : undefined
-    }, [products])
+    }, [selectableProducts])
 
     const filteredProducts = useMemo(() => {
         const term = search.trim().toLowerCase()
         const normalizedSettlement = settlementCurrency?.toLowerCase()
-        return products.filter(product => {
+        return selectableProducts.filter(product => {
             if (!product.storageId || !selectedStorageId || product.storageId !== selectedStorageId) return false
             const matchesSearch = !term
                 || (product.name || '').toLowerCase().includes(term)
@@ -643,7 +648,24 @@ export function InstantPOS() {
             if (selectedCategory === 'none') return !product.categoryId
             return product.categoryId === selectedCategory
         })
-    }, [products, search, selectedCategory, selectedStorageId, settlementCurrency])
+    }, [search, selectableProducts, selectedCategory, selectedStorageId, settlementCurrency])
+
+    useEffect(() => {
+        const excludedProductIds = new Set(
+            products
+                .filter((product) => !canSelectProduct(product))
+                .map((product) => product.id)
+        )
+
+        if (excludedProductIds.size === 0) {
+            return
+        }
+
+        setTickets((current) => current.map((ticket) => {
+            const items = ticket.items.filter((item) => !excludedProductIds.has(item.productId))
+            return items.length === ticket.items.length ? ticket : { ...ticket, items }
+        }))
+    }, [canSelectProduct, products])
 
     const activeTicketTotals = useMemo(() => {
         if (!activeTicket) {
@@ -691,7 +713,7 @@ export function InstantPOS() {
             return
         }
 
-        const product = products.find(item => item.id === productId && item.storageId === selectedStorageId)
+        const product = selectableProducts.find(item => item.id === productId && item.storageId === selectedStorageId)
         const activeDiscount = activeDiscountMap.get(productId)
         if (!product) return
         if (product.quantity <= 0) {
@@ -840,6 +862,19 @@ export function InstantPOS() {
     const checkoutTicket = async () => {
         if (!activeTicket || !user?.workspaceId || !user?.id) return
         if (activeTicket.items.length === 0) return
+
+        const restrictedItem = activeTicket.items.find((item) => {
+            const product = products.find((candidate) => candidate.id === item.productId && candidate.storageId === item.storageId)
+            return product ? !canSelectProduct(product) : false
+        })
+        if (restrictedItem) {
+            toast({
+                title: t('common.error') || 'Error',
+                description: t('businessPartners.agent.productCategoryExcluded', { defaultValue: 'This product category is not available to this user.' }),
+                variant: 'destructive'
+            })
+            return
+        }
 
         if (activeTicketTotals.hasMixedCurrency) {
             toast({

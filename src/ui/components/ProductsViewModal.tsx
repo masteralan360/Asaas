@@ -1,7 +1,8 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, LayoutGrid, Package, Search, Warehouse } from 'lucide-react'
 
-import type { Product, Storage } from '@/local-db'
+import { useProductSelectionAccess, type Product, type Storage } from '@/local-db'
+import { useOptionalAuth } from '@/auth'
 import { cn } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import {
@@ -139,6 +140,8 @@ export function ProductsViewModal({
     getProductStockOption,
     labels
 }: ProductsViewModalProps) {
+    const user = useOptionalAuth()?.user
+    const { canSelectProduct, filterProducts: filterSelectableProducts } = useProductSelectionAccess(user?.workspaceId, user?.id)
     const [search, setSearch] = useState('')
     const [storageId, setStorageId] = useState('')
     const [expandedProductId, setExpandedProductId] = useState<string | null>(null)
@@ -156,9 +159,14 @@ export function ProductsViewModal({
         setExpandedProductId(null)
     }, [selectedStorageId])
 
+    const selectableProducts = useMemo(
+        () => filterSelectableProducts(products),
+        [filterSelectableProducts, products]
+    )
+
     const storageProducts = useMemo(
-        () => filterProducts ? filterProducts(products, selectedStorageId) : products,
-        [filterProducts, products, selectedStorageId]
+        () => filterProducts ? filterProducts(selectableProducts, selectedStorageId) : selectableProducts,
+        [filterProducts, selectableProducts, selectedStorageId]
     )
 
     const visibleProducts = useMemo(() => {
@@ -188,6 +196,9 @@ export function ProductsViewModal({
     }
 
     const selectProduct = (product: Product, batchId?: string) => {
+        if (!canSelectProduct(product)) {
+            return
+        }
         onSelectProduct(product, selectedStorageId, batchId)
         onOpenChange(false)
     }

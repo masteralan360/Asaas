@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
@@ -7,6 +7,11 @@ import { isOnline } from '@/lib/network'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
 import { getTravelSaleCost } from '@/lib/travelAgency'
+import {
+    canSelectProductForExcludedCategories,
+    filterSelectableProducts,
+    getAgentExcludedCategoryIds
+} from '@/lib/agentProductSelection'
 import { roundOrderValue } from '@/lib/orderPrecision'
 import { generateId, toCamelCase } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
@@ -21,6 +26,7 @@ import {
 } from './fleet'
 import type {
     Agent,
+    AgentExcludedCategory,
     AgentFacetInput,
     BusinessPartner,
     BusinessPartnerMergeCandidate,
@@ -35,7 +41,7 @@ import type {
 } from './models'
 import { isRealEstateBusinessPartnerRole } from './models'
 
-type PartnerTableName = 'business_partners' | 'business_partner_merge_candidates' | 'customers' | 'suppliers' | 'agents'
+type PartnerTableName = 'business_partners' | 'business_partner_merge_candidates' | 'customers' | 'suppliers' | 'agents' | 'agent_excluded_categories'
 type PartnerFacetType = 'customer' | 'supplier'
 type SyncEntity = { id: string; version: number } & Record<string, unknown>
 type PartnerFilterOptions = {
@@ -590,6 +596,136 @@ async function syncAgentFacet(agent: Agent) {
     await syncUpsertEntities('agents', [agent as unknown as SyncEntity], agent.workspaceId)
 }
 
+export function useAgentExcludedCategories(workspaceId: string | undefined, agentId?: string | null) {
+    const online = useNetworkStatus()
+    const exclusions = useLiveQuery(
+        () => workspaceId
+            ? db.agent_excluded_categories
+                .where('workspaceId')
+                .equals(workspaceId)
+                .and((row) => !row.isDeleted && (!agentId || row.agentId === agentId))
+                .toArray()
+            : [],
+        [agentId, workspaceId]
+    ) ?? []
+
+    useEffect(() => {
+        if (!online || !workspaceId || !shouldUseCloudBusinessData(workspaceId)) {
+            return
+        }
+
+        void fetchTableFromSupabase('agent_excluded_categories', db.agent_excluded_categories, workspaceId)
+            .catch((error) => {
+                console.error('[Agents] Failed to hydrate excluded categories:', error)
+            })
+    }, [online, workspaceId])
+
+    return exclusions
+}
+
+export function useProductSelectionAccess(workspaceId: string | undefined, userId: string | null | undefined) {
+    const online = useNetworkStatus()
+    const agents = useLiveQuery(
+        () => workspaceId
+            ? db.agents.where('workspaceId').equals(workspaceId).and((agent) => !agent.isDeleted).toArray()
+            : [],
+        [workspaceId]
+    )
+    const exclusions = useAgentExcludedCategories(workspaceId)
+
+    useEffect(() => {
+        if (!online || !workspaceId || !shouldUseCloudBusinessData(workspaceId)) {
+            return
+        }
+
+        void fetchTableFromSupabase('agents', db.agents, workspaceId)
+            .catch((error) => {
+                console.error('[Agents] Failed to hydrate product selection access:', error)
+            })
+    }, [online, workspaceId])
+
+    const excludedCategoryIds = useMemo(
+        () => getAgentExcludedCategoryIds(agents ?? [], exclusions, userId),
+        [agents, exclusions, userId]
+    )
+    const canSelectProduct = useCallback(
+        (product: { categoryId?: string | null }) => canSelectProductForExcludedCategories(product, excludedCategoryIds),
+        [excludedCategoryIds]
+    )
+    const filterProducts = useCallback(
+        <T extends { categoryId?: string | null }>(products: readonly T[]) => filterSelectableProducts(products, excludedCategoryIds),
+        [excludedCategoryIds]
+    )
+
+    return {
+        excludedCategoryIds,
+        canSelectProduct,
+        filterProducts
+    }
+}
+
+export async function replaceAgentExcludedCategories(
+    workspaceId: string,
+    agentId: string,
+    categoryIds: readonly string[]
+) {
+    const agent = await db.agents.get(agentId)
+    if (!agent || agent.isDeleted || agent.workspaceId !== workspaceId) {
+        throw new Error('Agent not found in this workspace')
+    }
+
+    const requestedCategoryIds = [...new Set(categoryIds.filter(Boolean))]
+    const categories = await db.categories.where('workspaceId').equals(workspaceId).toArray()
+    const validCategoryIds = new Set(categories.filter((category) => !category.isDeleted).map((category) => category.id))
+    const invalidCategoryId = requestedCategoryIds.find((categoryId) => !validCategoryIds.has(categoryId))
+    if (invalidCategoryId) {
+        throw new Error('Excluded categories must belong to the agent workspace')
+    }
+
+    const current = await db.agent_excluded_categories.where('agentId').equals(agentId).toArray()
+    const currentByCategoryId = new Map(current.map((row) => [row.categoryId, row]))
+    const requestedIds = new Set(requestedCategoryIds)
+    const now = new Date().toISOString()
+    const updates: AgentExcludedCategory[] = []
+
+    for (const categoryId of requestedCategoryIds) {
+        const existing = currentByCategoryId.get(categoryId)
+        if (existing && !existing.isDeleted) {
+            continue
+        }
+
+        updates.push(existing
+            ? {
+                ...existing,
+                isDeleted: false,
+                updatedAt: now,
+                version: existing.version + 1,
+                ...getSyncMetadata(workspaceId, now)
+            }
+            : buildBaseEntity(workspaceId, { agentId, categoryId }) as AgentExcludedCategory
+        )
+    }
+
+    for (const existing of current) {
+        if (!existing.isDeleted && !requestedIds.has(existing.categoryId)) {
+            updates.push({
+                ...existing,
+                isDeleted: true,
+                updatedAt: now,
+                version: existing.version + 1,
+                ...getSyncMetadata(workspaceId, now)
+            })
+        }
+    }
+
+    if (updates.length === 0) {
+        return
+    }
+
+    await db.agent_excluded_categories.bulkPut(updates)
+    await syncUpsertEntities('agent_excluded_categories', updates as unknown as SyncEntity[], workspaceId)
+}
+
 function normalizeAgentFacetInput(input: Partial<AgentFacetInput> | undefined, existing?: Agent): AgentFacetInput {
     const agentType = input?.agentType ?? existing?.agentType
     const status = input?.status ?? existing?.status ?? 'active'
@@ -1137,6 +1273,7 @@ export function useBusinessPartners(workspaceId: string | undefined, filters?: P
                     fetchTableFromSupabase('customers', db.customers, workspaceId),
                     fetchTableFromSupabase('suppliers', db.suppliers, workspaceId),
                     fetchTableFromSupabase('agents', db.agents, workspaceId),
+                    fetchTableFromSupabase('agent_excluded_categories', db.agent_excluded_categories, workspaceId),
                     fetchTableFromSupabase('sales_orders', db.sales_orders, workspaceId),
                     fetchTableFromSupabase('purchase_orders', db.purchase_orders, workspaceId),
                     fetchTableFromSupabase('travel_agency_sales', db.travel_agency_sales, workspaceId),
