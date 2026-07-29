@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { getLoanRecordPaymentLabel } from '@/lib/loanPresentation'
+import { LOAN_ADJUSTMENT_PAYMENT_METHOD, STANDARD_PAYMENT_METHODS } from '@/lib/paymentMethods'
 import { formatCurrency, formatDate, formatNumberWithCommas, parseFormattedNumber } from '@/lib/utils'
 import { recordLoanPayment, type Loan, type LoanInstallment, type LoanPaymentMethod } from '@/local-db'
 import {
@@ -14,15 +15,11 @@ import {
     Label,
     Input,
     Button,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
     useToast
 } from '@/ui/components'
 import { DateTimePicker } from '@/ui/components/ui/date-time-picker'
 import { useWorkspace } from '@/workspace'
+import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
 
 interface RecordLoanPaymentModalProps {
     isOpen: boolean
@@ -191,18 +188,11 @@ export function RecordLoanPaymentModal({
 
                             <div className="grid gap-2">
                                 <Label>{t('pos.paymentMethod') || 'Payment Method'}</Label>
-                                <Select value={method} onValueChange={(value: LoanPaymentMethod) => setMethod(value)}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="cash">{t('pos.cash') || 'Cash'}</SelectItem>
-                                        <SelectItem value="fib">FIB</SelectItem>
-                                        <SelectItem value="qicard">QiCard</SelectItem>
-                                        <SelectItem value="zaincash">ZainCash</SelectItem>
-                                        <SelectItem value="fastpay">FastPay</SelectItem>
-                                        <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                                        <SelectItem value="loan_adjustment">{t('loans.adjustment') || 'Loan Adjustment'}</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                <PaymentMethodSelect
+                                    value={method}
+                                    onValueChange={(value) => setMethod(value as LoanPaymentMethod)}
+                                    methods={[...STANDARD_PAYMENT_METHODS, LOAN_ADJUSTMENT_PAYMENT_METHOD]}
+                                />
                             </div>
 
                             <div className="grid gap-2">

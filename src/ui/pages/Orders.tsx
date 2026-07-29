@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { CalendarDays, CreditCard, Eye, LayoutGrid, List, Loader2, Lock, PackagePlus, Pencil, Plus, Printer, Search, ShoppingCart, Trash2, Truck, UsersRound, Wallet, Warehouse, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedOrderError } from '@/lib/orderErrors'
+import type { PaymentMethodOption } from '@/lib/paymentMethods'
 import { useLocation, useRoute } from 'wouter'
 
 import { SalesOrderFormPage } from '@/ui/components/orders/SalesOrderFormPage'
@@ -89,6 +90,7 @@ import {
     TabsContent,
     TabsList,
     TabsTrigger,
+    PaymentMethodSelect,
     SettlementDialog,
     Textarea,
     PrintPreviewModal,
@@ -1695,13 +1697,12 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                         <CreditCard className="h-4 w-4 text-muted-foreground" />
                                                         {t('pos.paymentMethod') || 'Payment Method'}
                                                     </Label>
-                                                    <Select value={salesForm.paymentMethod} onValueChange={(value) => setSalesForm((current) => ({ ...current, paymentMethod: value }))}>
-                                                        <SelectTrigger id="sales-payment"><SelectValue /></SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="cash">Cash</SelectItem>
-                                                            <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
+                                                    <PaymentMethodSelect
+                                                        id="sales-payment"
+                                                        value={salesForm.paymentMethod as PaymentMethodOption}
+                                                        onValueChange={(value) => setSalesForm((current) => ({ ...current, paymentMethod: value }))}
+                                                        methods={['cash', 'bank_transfer'] as const}
+                                                    />
                                                 </div>
                                                 <div className="flex items-center justify-between rounded-2xl border bg-muted/20 px-4 py-3">
                                                     <div>
@@ -1972,13 +1973,12 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                         <CreditCard className="h-4 w-4 text-muted-foreground" />
                                                         {t('pos.paymentMethod') || 'Payment Method'}
                                                     </Label>
-                                                    <Select value={purchaseForm.paymentMethod} onValueChange={(value) => setPurchaseForm((current) => ({ ...current, paymentMethod: value }))}>
-                                                        <SelectTrigger id="purchase-payment"><SelectValue /></SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="cash">Cash</SelectItem>
-                                                            <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
+                                                    <PaymentMethodSelect
+                                                        id="purchase-payment"
+                                                        value={purchaseForm.paymentMethod as PaymentMethodOption}
+                                                        onValueChange={(value) => setPurchaseForm((current) => ({ ...current, paymentMethod: value }))}
+                                                        methods={['cash', 'bank_transfer'] as const}
+                                                    />
                                                 </div>
                                                 <div className="flex items-center justify-between rounded-2xl border bg-muted/20 px-4 py-3">
                                                     <div>

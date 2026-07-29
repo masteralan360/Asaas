@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowRightLeft, CalendarClock, ClipboardList, HelpCircle, Hi
 
 import { useAuth } from '@/auth'
 import { cn, formatCurrency, formatDateTime, formatNumberWithCommas, formatNumericInput, parseFormattedNumber, parseLocalDateTimeValue, sanitizeNumericInput } from '@/lib/utils'
+import { CASH_AND_DIGITAL_PAYMENT_METHODS } from '@/lib/paymentMethods'
 import {
     buildExchangeFeeRuleSnapshot,
     buildExchangePairOptions,
@@ -92,6 +93,7 @@ import {
     TooltipTrigger,
     useToast
 } from '@/ui/components'
+import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
 import { useWorkspace } from '@/workspace'
 import { useWorkspacePermissions } from '@/permissions'
 
@@ -116,7 +118,6 @@ type ExchangeRelationRange = {
 
 type ExchangeRateCardSlot = string | null
 
-const paymentMethods: ExchangePaymentMethod[] = ['cash', 'fib', 'qicard', 'zaincash', 'fastpay']
 const EXCHANGE_RATE_CARD_SLOT_COUNT = 4
 const EMPTY_EXCHANGE_RATE_CARD_SLOTS: ExchangeRateCardSlot[] = Array.from({ length: EXCHANGE_RATE_CARD_SLOT_COUNT }, () => null)
 const EXCHANGE_RATE_CARD_CLEAR_VALUE = '__clear'
@@ -1692,14 +1693,11 @@ function CreateCurrencyExchangeTransactionPage({
                                         </div>
                                         <div className="grid gap-2">
                                             <Label>{t('currencyExchange.labels.paymentMethod')}</Label>
-                                            <Select value={paymentMethod} onValueChange={(value: ExchangePaymentMethod) => setPaymentMethod(value)}>
-                                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                                <SelectContent>
-                                                    {paymentMethods.map((method) => (
-                                                        <SelectItem key={method} value={method}>{method}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                                            <PaymentMethodSelect
+                                                value={paymentMethod}
+                                                onValueChange={(value) => setPaymentMethod(value as ExchangePaymentMethod)}
+                                                methods={CASH_AND_DIGITAL_PAYMENT_METHODS}
+                                            />
                                         </div>
                                         <div className="grid gap-2">
                                             <FieldLabelWithTooltip

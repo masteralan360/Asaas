@@ -4,6 +4,7 @@ import { X } from 'lucide-react'
 
 import { type BusinessPartner, type PaymentObligation, type WorkspacePaymentMethod, useBusinessPartners } from '@/local-db'
 import { formatCurrency, formatDate, formatLocalDateTimeValue, formatNumericInput, parseFormattedNumber, parseLocalDateTimeValue, sanitizeNumericInput } from '@/lib/utils'
+import { LOAN_ADJUSTMENT_PAYMENT_METHOD, STANDARD_PAYMENT_METHODS } from '@/lib/paymentMethods'
 import {
     Button,
     DateTimePicker,
@@ -16,15 +17,11 @@ import {
     DialogTitle,
     Input,
     Label,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
     Textarea
 } from '@/ui/components'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import { useWorkspace } from '@/workspace'
+import { PaymentMethodSelect } from './PaymentMethodSelect'
 
 interface SettlementDialogProps {
     open: boolean
@@ -92,26 +89,6 @@ export function SettlementDialog({
             }
             : null)
     }, [defaultBusinessPartnerId, defaultCounterpartyName, open, obligation?.amount, obligation?.id])
-
-    const methods = useMemo(() => {
-        const baseMethods: Array<{ value: WorkspacePaymentMethod; label: string }> = [
-            { value: 'cash', label: t('directTransactions.paymentMethod.cash', { defaultValue: 'Cash' }) },
-            { value: 'fib', label: t('directTransactions.paymentMethod.fib', { defaultValue: 'FIB' }) },
-            { value: 'qicard', label: t('directTransactions.paymentMethod.qicard', { defaultValue: 'QiCard' }) },
-            { value: 'zaincash', label: t('directTransactions.paymentMethod.zaincash', { defaultValue: 'ZainCash' }) },
-            { value: 'fastpay', label: t('directTransactions.paymentMethod.fastpay', { defaultValue: 'FastPay' }) },
-            { value: 'bank_transfer', label: t('directTransactions.paymentMethod.bankTransfer', { defaultValue: 'Bank Transfer' }) }
-        ]
-
-        if (includeLoanAdjustment) {
-            baseMethods.push({ 
-                value: 'loan_adjustment' as WorkspacePaymentMethod, 
-                label: t('directTransactions.paymentMethod.loanAdjustment', { defaultValue: 'Loan Adjustment' }) 
-            })
-        }
-
-        return baseMethods
-    }, [includeLoanAdjustment, t])
 
     const selectedPaidAt = parseLocalDateTimeValue(paidAt)
 
@@ -267,16 +244,13 @@ export function SettlementDialog({
 
                                 <div className="grid gap-2">
                                     <Label>{t('settlementModal.paymentMethod', { defaultValue: 'Payment Method' })}</Label>
-                                    <Select value={paymentMethod} onValueChange={(value: WorkspacePaymentMethod) => setPaymentMethod(value)}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {methods.map((method) => (
-                                                <SelectItem key={method.value} value={method.value}>{method.label}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <PaymentMethodSelect
+                                        value={paymentMethod}
+                                        onValueChange={(value) => setPaymentMethod(value as WorkspacePaymentMethod)}
+                                        methods={includeLoanAdjustment
+                                            ? [...STANDARD_PAYMENT_METHODS, LOAN_ADJUSTMENT_PAYMENT_METHOD]
+                                            : STANDARD_PAYMENT_METHODS}
+                                    />
                                 </div>
 
                                 <div className="grid gap-2">

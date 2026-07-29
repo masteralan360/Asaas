@@ -23,6 +23,7 @@ import {
 } from '@/local-db/activities'
 import type { ActivityCatalogItem, ActivityTransaction, ActivityTransactionLine, IQDDisplayPreference, WorkspacePaymentMethod } from '@/local-db/models'
 import { isDateInDateRange } from '@/lib/dateRangeFilters'
+import { ACTIVITY_PAYMENT_METHODS } from '@/lib/paymentMethods'
 import { assetManager } from '@/lib/assetManager'
 import { isTauri } from '@/lib/platform'
 import { formatCurrency } from '@/lib/utils'
@@ -31,6 +32,7 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import type { TemplatePreview } from '@/lib/pdfPreviewStore'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
+import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
 import {
     Badge,
     Button,
@@ -102,16 +104,7 @@ type ActivityReceiptLabels = {
     madeby: string
 }
 
-const PAYMENT_METHODS: WorkspacePaymentMethod[] = [
-    'cash',
-    'fib',
-    'qicard',
-    'zaincash',
-    'fastpay',
-    'bank_transfer',
-    'credit',
-    'unknown'
-]
+const PAYMENT_METHODS = ACTIVITY_PAYMENT_METHODS
 
 function createTransactionDraft(transaction?: ActivityTransaction, lines: ActivityTransactionLine[] = []): TransactionDraft {
     return {
@@ -821,7 +814,7 @@ export function Activities() {
                                     <div className="grid gap-2"><Label htmlFor="transaction-name">{t('activities.transactionName', { defaultValue: 'Transaction name' })}</Label><Input id="transaction-name" value={transactionDraft.name} onChange={(event) => setTransactionDraft((current) => ({ ...current, name: event.target.value }))} /></div>
                                     <div className="grid gap-2"><Label htmlFor="transaction-customer">{t('activities.customerName', { defaultValue: 'Customer name (optional)' })}</Label><Input id="transaction-customer" value={transactionDraft.customerName} onChange={(event) => setTransactionDraft((current) => ({ ...current, customerName: event.target.value }))} /></div>
                                     <div className="grid gap-2"><Label>{t('activities.dateTime', { defaultValue: 'Date and time' })}</Label><DateTimePicker date={transactionDraft.occurredAt} setDate={(date) => date && setTransactionDraft((current) => ({ ...current, occurredAt: date }))} /></div>
-                                    <div className="grid gap-2"><Label>{t('activities.paymentMethod', { defaultValue: 'Payment method' })}</Label><Select value={transactionDraft.paymentMethod} onValueChange={(value) => setTransactionDraft((current) => ({ ...current, paymentMethod: value as WorkspacePaymentMethod }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{PAYMENT_METHODS.map((method) => <SelectItem key={method} value={method}>{paymentMethodLabel(method, t)}</SelectItem>)}</SelectContent></Select></div>
+                                    <div className="grid gap-2"><Label>{t('activities.paymentMethod', { defaultValue: 'Payment method' })}</Label><PaymentMethodSelect value={transactionDraft.paymentMethod} onValueChange={(value) => setTransactionDraft((current) => ({ ...current, paymentMethod: value as WorkspacePaymentMethod }))} methods={PAYMENT_METHODS} /></div>
                                 </div>
                                 <div className="space-y-3 rounded-lg border p-3">
                                     <div className="flex items-center justify-between"><div><Label>{t('activities.lines', { defaultValue: 'Activity lines' })}</Label><p className="text-xs text-muted-foreground">{t('activities.linesDescription', { defaultValue: 'Add one activity or combine several in the same transaction.' })}</p></div><Button type="button" size="sm" variant="outline" onClick={addDraftLine}><Plus className="mr-1 h-4 w-4" />{t('common.add', { defaultValue: 'Add' })}</Button></div>

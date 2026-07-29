@@ -7,6 +7,7 @@ import { useDemoTutorial } from '@/demo'
 import { useUiAccess } from '@/context/UiAccessContext'
 import { isMobile } from '@/lib/platform'
 import { getPrioritizedPaymentMethod, setPrioritizedPaymentMethod } from '@/lib/prioritizedPaymentMethod'
+import { ORDER_FINANCING_PAYMENT_METHODS, STANDARD_PAYMENT_METHODS, type PaymentMethodOption } from '@/lib/paymentMethods'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { buildOrderExchangeRatesSnapshot, convertCurrencyAmountWithLiveRates, getPrimaryExchangeDetails } from '@/lib/orderCurrency'
 import { calculateOrderTotalWithAdjustments, normalizeOrderAdjustments, repriceOrderAdjustment } from '@/lib/orderAdjustments'
@@ -67,6 +68,7 @@ import {
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import { PartnerBalanceSummary } from '@/ui/components/crm/PartnerBalanceSummary'
 import { ProductsViewModal, ProductsViewModalTrigger } from '@/ui/components/ProductsViewModal'
+import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
 import { ProductAutocompleteInput } from './ProductAutocompleteInput'
 import { LoanPartyPickerDialog } from '@/ui/components/loans/LoanPartyPickerDialog'
 import { OrderAdjustmentsDialog } from './OrderAdjustmentsDialog'
@@ -1103,22 +1105,33 @@ export function PurchaseOrderFormPage({
                                                 <CreditCard className="h-4 w-4 text-muted-foreground" />
                                                 {t('pos.paymentMethod', { defaultValue: 'Payment Method' })}
                                             </Label>
-                                            <Select value={paymentMethod} onValueChange={(value) => {
-                                                setPaymentMethod(value)
-                                                if (value === 'loan' || value === 'installments') setIsPaid(false)
-                                            }}>
-                                                <SelectTrigger id="purchase-payment"><SelectValue /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="cash" onPointerDown={(e) => { if ((e.shiftKey || isAccessKeyHeld) && !isMobile()) { if (prioritizedMethod === 'cash') { setPrioritizedPaymentMethod(null); setPrioritizedMethod(null); setPaymentMethod('cash') } else { setPrioritizedPaymentMethod('cash'); setPrioritizedMethod('cash') } } }}>{t('directTransactions.paymentMethod.cash', { defaultValue: 'Cash' })}{prioritizedMethod === 'cash' ? <Star className="ml-2 h-3 w-3 fill-yellow-400 inline" /> : null}</SelectItem>
-                                                    <SelectItem value="fib" onPointerDown={(e) => { if ((e.shiftKey || isAccessKeyHeld) && !isMobile()) { if (prioritizedMethod === 'fib') { setPrioritizedPaymentMethod(null); setPrioritizedMethod(null); setPaymentMethod('cash') } else { setPrioritizedPaymentMethod('fib'); setPrioritizedMethod('fib') } } }}>{t('directTransactions.paymentMethod.fib', { defaultValue: 'FIB' })}{prioritizedMethod === 'fib' ? <Star className="ml-2 h-3 w-3 fill-yellow-400 inline" /> : null}</SelectItem>
-                                                    <SelectItem value="qicard" onPointerDown={(e) => { if ((e.shiftKey || isAccessKeyHeld) && !isMobile()) { if (prioritizedMethod === 'qicard') { setPrioritizedPaymentMethod(null); setPrioritizedMethod(null); setPaymentMethod('cash') } else { setPrioritizedPaymentMethod('qicard'); setPrioritizedMethod('qicard') } } }}>{t('directTransactions.paymentMethod.qicard', { defaultValue: 'QiCard' })}{prioritizedMethod === 'qicard' ? <Star className="ml-2 h-3 w-3 fill-yellow-400 inline" /> : null}</SelectItem>
-                                                    <SelectItem value="zaincash" onPointerDown={(e) => { if ((e.shiftKey || isAccessKeyHeld) && !isMobile()) { if (prioritizedMethod === 'zaincash') { setPrioritizedPaymentMethod(null); setPrioritizedMethod(null); setPaymentMethod('cash') } else { setPrioritizedPaymentMethod('zaincash'); setPrioritizedMethod('zaincash') } } }}>{t('directTransactions.paymentMethod.zaincash', { defaultValue: 'ZainCash' })}{prioritizedMethod === 'zaincash' ? <Star className="ml-2 h-3 w-3 fill-yellow-400 inline" /> : null}</SelectItem>
-                                                    <SelectItem value="fastpay" onPointerDown={(e) => { if ((e.shiftKey || isAccessKeyHeld) && !isMobile()) { if (prioritizedMethod === 'fastpay') { setPrioritizedPaymentMethod(null); setPrioritizedMethod(null); setPaymentMethod('cash') } else { setPrioritizedPaymentMethod('fastpay'); setPrioritizedMethod('fastpay') } } }}>{t('directTransactions.paymentMethod.fastpay', { defaultValue: 'FastPay' })}{prioritizedMethod === 'fastpay' ? <Star className="ml-2 h-3 w-3 fill-yellow-400 inline" /> : null}</SelectItem>
-                                                    <SelectItem value="bank_transfer" onPointerDown={(e) => { if ((e.shiftKey || isAccessKeyHeld) && !isMobile()) { if (prioritizedMethod === 'bank_transfer') { setPrioritizedPaymentMethod(null); setPrioritizedMethod(null); setPaymentMethod('cash') } else { setPrioritizedPaymentMethod('bank_transfer'); setPrioritizedMethod('bank_transfer') } } }}>{t('directTransactions.paymentMethod.bankTransfer', { defaultValue: 'Bank Transfer' })}{prioritizedMethod === 'bank_transfer' ? <Star className="ml-2 h-3 w-3 fill-yellow-400 inline" /> : null}</SelectItem>
-                                                    {hasFeature('loans') ? <SelectItem value="loan" onPointerDown={(e) => { if ((e.shiftKey || isAccessKeyHeld) && !isMobile()) { if (prioritizedMethod === 'loan') { setPrioritizedPaymentMethod(null); setPrioritizedMethod(null); setPaymentMethod('cash') } else { setPrioritizedPaymentMethod('loan'); setPrioritizedMethod('loan') } } }}>{t('nav.loans', { defaultValue: 'Loans' })}{prioritizedMethod === 'loan' ? <Star className="ml-2 h-3 w-3 fill-yellow-400 inline" /> : null}</SelectItem> : null}
-                                                    {hasFeature('installments') ? <SelectItem value="installments" onPointerDown={(e) => { if ((e.shiftKey || isAccessKeyHeld) && !isMobile()) { if (prioritizedMethod === 'installments') { setPrioritizedPaymentMethod(null); setPrioritizedMethod(null); setPaymentMethod('cash') } else { setPrioritizedPaymentMethod('installments'); setPrioritizedMethod('installments') } } }}>{t('nav.installments', { defaultValue: 'Installments' })}{prioritizedMethod === 'installments' ? <Star className="ml-2 h-3 w-3 fill-yellow-400 inline" /> : null}</SelectItem> : null}
-                                                </SelectContent>
-                                            </Select>
+                                            <PaymentMethodSelect
+                                                id="purchase-payment"
+                                                value={paymentMethod as PaymentMethodOption}
+                                                onValueChange={(value) => {
+                                                    setPaymentMethod(value)
+                                                    if (value === 'loan' || value === 'installments') setIsPaid(false)
+                                                }}
+                                                methods={[
+                                                    ...STANDARD_PAYMENT_METHODS,
+                                                    ...(hasFeature('loans') ? [ORDER_FINANCING_PAYMENT_METHODS[0]] : []),
+                                                    ...(hasFeature('installments') ? [ORDER_FINANCING_PAYMENT_METHODS[1]] : [])
+                                                ]}
+                                                onOptionPointerDown={(event, method) => {
+                                                    if (!(event.shiftKey || isAccessKeyHeld) || isMobile()) return
+                                                    if (prioritizedMethod === method) {
+                                                        setPrioritizedPaymentMethod(null)
+                                                        setPrioritizedMethod(null)
+                                                        setPaymentMethod('cash')
+                                                        return
+                                                    }
+                                                    setPrioritizedPaymentMethod(method)
+                                                    setPrioritizedMethod(method)
+                                                }}
+                                                renderOptionEnd={(method) => prioritizedMethod === method
+                                                    ? <Star className="ml-2 inline h-3 w-3 fill-yellow-400" />
+                                                    : null}
+                                            />
                                         </div>
                                         {!isFinanced ? <div className="flex items-center justify-between rounded-2xl border bg-muted/20 px-4 py-3" data-tour-id="tutorial-order-paid">
                                             <div>

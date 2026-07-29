@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { useAuth } from '@/auth'
 import { formatCurrency, formatNumericInput, parseFormattedNumber, sanitizeNumericInput } from '@/lib/utils'
+import { STANDARD_PAYMENT_METHODS } from '@/lib/paymentMethods'
 import { recordRealEstatePayment, type RealEstateInstallment, type RealEstateTransaction, type WorkspacePaymentMethod } from '@/local-db'
 import {
     Button,
@@ -14,47 +15,17 @@ import {
     DialogTitle,
     Input,
     Label,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
     Textarea,
     useToast
 } from '@/ui/components'
 import { useWorkspace } from '@/workspace'
+import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
 
 interface RecordRealEstatePaymentModalProps {
     isOpen: boolean
     onOpenChange: (open: boolean) => void
     transaction: RealEstateTransaction | null
     installment?: RealEstateInstallment | null
-}
-
-const paymentMethods: WorkspacePaymentMethod[] = [
-    'cash',
-    'bank_transfer',
-    'fib',
-    'qicard',
-    'zaincash',
-    'fastpay'
-]
-
-function paymentMethodLabel(method: WorkspacePaymentMethod, t: any) {
-    switch (method) {
-        case 'bank_transfer':
-            return t('ledger.paymentMethod.bankTransfer', { defaultValue: 'Bank Transfer' })
-        case 'fib':
-            return 'FIB'
-        case 'qicard':
-            return 'QiCard'
-        case 'zaincash':
-            return 'ZainCash'
-        case 'fastpay':
-            return 'FastPay'
-        default:
-            return t(`pos.paymentMethods.${method}`, { defaultValue: method.toUpperCase() })
-    }
 }
 
 export function RecordRealEstatePaymentModal({
@@ -157,14 +128,11 @@ export function RecordRealEstatePaymentModal({
 
                         <div className="grid gap-2">
                             <Label>{t('payments.table.method', { defaultValue: 'Method' })}</Label>
-                            <Select value={paymentMethod} onValueChange={(value: WorkspacePaymentMethod) => setPaymentMethod(value)}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    {paymentMethods.map((method) => (
-                                        <SelectItem key={method} value={method}>{paymentMethodLabel(method, t)}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <PaymentMethodSelect
+                                value={paymentMethod}
+                                onValueChange={(value) => setPaymentMethod(value as WorkspacePaymentMethod)}
+                                methods={STANDARD_PAYMENT_METHODS}
+                            />
                         </div>
 
                         <div className="grid gap-2">

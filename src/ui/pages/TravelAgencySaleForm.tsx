@@ -20,10 +20,12 @@ import {
     type TravelAgencyTravelPlan,
     type TravelAgencyTripType
 } from '@/local-db'
-import { travelMethodOptions, travelPaymentMethodOptions, travelReceiverOptions, travelStatusOptions } from '@/lib/travelAgency'
+import { travelMethodOptions, travelReceiverOptions, travelStatusOptions } from '@/lib/travelAgency'
 import { fetchUSDToIQDRate } from '@/lib/exchangeRate'
+import { TRAVEL_PAYMENT_METHODS } from '@/lib/paymentMethods'
 import { cn, formatCurrency, formatNumberWithCommas, generateId, parseFormattedNumber } from '@/lib/utils'
 import { TouristMrzScanDialog, type TouristMrzScanMode, type TouristMrzScanResult } from '@/ui/components/travel/TouristMrzScanDialog'
+import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { useWorkspace } from '@/workspace'
 import {
@@ -1116,14 +1118,11 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Payment Method</Label>
-                                    <Select value={formState.paymentMethod} onValueChange={(value) => setFormState((current) => ({ ...current, paymentMethod: value as TravelAgencyPaymentMethod }))}>
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            {travelPaymentMethodOptions.map((option) => (
-                                                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <PaymentMethodSelect
+                                        value={formState.paymentMethod}
+                                        onValueChange={(value) => setFormState((current) => ({ ...current, paymentMethod: value as TravelAgencyPaymentMethod }))}
+                                        methods={TRAVEL_PAYMENT_METHODS}
+                                    />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Receiver</Label>

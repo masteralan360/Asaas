@@ -118,6 +118,17 @@ export type { AdminContact } from './modals/RegisterWorkspaceContactsModal'
 export { PatchNoteModal } from './modals/PatchNoteModal'
 export { DirectTransactionDialog } from './payments/DirectTransactionDialog'
 export { SettlementDialog } from './payments/SettlementDialog'
+export { PaymentMethodSelect } from './payments/PaymentMethodSelect'
+export {
+    ACTIVITY_PAYMENT_METHODS,
+    CASH_AND_DIGITAL_PAYMENT_METHODS,
+    LOAN_ADJUSTMENT_PAYMENT_METHOD,
+    ORDER_FINANCING_PAYMENT_METHODS,
+    STANDARD_PAYMENT_METHODS,
+    TRAVEL_PAYMENT_METHODS,
+    getPaymentMethodLabel
+} from '@/lib/paymentMethods'
+export type { PaymentMethodOption } from '@/lib/paymentMethods'
 export {
     DropdownMenu,
     DropdownMenuTrigger,
