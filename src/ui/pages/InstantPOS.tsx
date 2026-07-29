@@ -1100,7 +1100,49 @@ export function InstantPOS() {
             if (!navigator.onLine || isLocalMode) {
                 try {
                     const localSequenceId = await generateLocalSaleSequenceId(user.workspaceId)
-                    await db.sales.add({
+                    const localSaleItems = itemsWithMetadata.map((item) => ({
+                        id: generateId(),
+                        workspaceId: user.workspaceId,
+                        saleId,
+                        productId: item.product_id,
+                        storageId: item.storage_id,
+                        quantity: item.quantity,
+                        unitPrice: item.unit_price,
+                        totalPrice: item.total_price,
+                        costPrice: item.cost_price,
+                        convertedCostPrice: item.converted_cost_price,
+                        originalCurrency: item.original_currency as CurrencyCode,
+                        originalUnitPrice: item.original_unit_price,
+                        convertedUnitPrice: item.converted_unit_price,
+                        settlementCurrency: item.settlement_currency as CurrencyCode,
+                        negotiatedPrice: undefined,
+                        inventorySnapshot: item.inventory_snapshot,
+                        batchAllocations: item.batch_allocations?.map((allocation) => ({
+                            batchId: allocation.batch_id,
+                            batchNumber: allocation.batch_number,
+                            quantity: allocation.quantity,
+                            price: allocation.price ?? null,
+                            costPrice: allocation.cost_price ?? null,
+                            currency: allocation.currency ?? null,
+                            expiryDate: allocation.expiry_date ?? null,
+                            manufacturingDate: allocation.manufacturing_date ?? null
+                        })),
+                        originalBatchAllocations: item.batch_allocations?.map((allocation) => ({
+                            batchId: allocation.batch_id,
+                            batchNumber: allocation.batch_number,
+                            quantity: allocation.quantity,
+                            price: allocation.price ?? null,
+                            costPrice: allocation.cost_price ?? null,
+                            currency: allocation.currency ?? null,
+                            expiryDate: allocation.expiry_date ?? null,
+                            manufacturingDate: allocation.manufacturing_date ?? null
+                        }))
+                    }))
+
+                    // A local ticket is valid only when its header and every
+                    // line item have been committed together.
+                    await db.transaction('rw', [db.sales, db.sale_items], async () => {
+                        await db.sales.add({
                         id: saleId,
                         workspaceId: user.workspaceId,
                         cashierId: user.id,
@@ -1121,47 +1163,12 @@ export function InstantPOS() {
                         systemVerified: verificationResult.verified,
                         systemReviewStatus: verificationResult.status,
                         systemReviewReason: verificationResult.reason
-                    })
-
-                    await Promise.all(itemsWithMetadata.map(item =>
-                        db.sale_items.add({
-                            id: generateId(),
-                            saleId: saleId,
-                            productId: item.product_id,
-                            storageId: item.storage_id,
-                            quantity: item.quantity,
-                            unitPrice: item.unit_price,
-                            totalPrice: item.total_price,
-                            costPrice: item.cost_price,
-                            convertedCostPrice: item.converted_cost_price,
-                            originalCurrency: item.original_currency as CurrencyCode,
-                            originalUnitPrice: item.original_unit_price,
-                            convertedUnitPrice: item.converted_unit_price,
-                            settlementCurrency: item.settlement_currency as CurrencyCode,
-                            negotiatedPrice: undefined,
-                            inventorySnapshot: item.inventory_snapshot,
-                            batchAllocations: item.batch_allocations?.map((allocation) => ({
-                                batchId: allocation.batch_id,
-                                batchNumber: allocation.batch_number,
-                                quantity: allocation.quantity,
-                                price: allocation.price ?? null,
-                                costPrice: allocation.cost_price ?? null,
-                                currency: allocation.currency ?? null,
-                                expiryDate: allocation.expiry_date ?? null,
-                                manufacturingDate: allocation.manufacturing_date ?? null
-                            })),
-                            originalBatchAllocations: item.batch_allocations?.map((allocation) => ({
-                                batchId: allocation.batch_id,
-                                batchNumber: allocation.batch_number,
-                                quantity: allocation.quantity,
-                                price: allocation.price ?? null,
-                                costPrice: allocation.cost_price ?? null,
-                                currency: allocation.currency ?? null,
-                                expiryDate: allocation.expiry_date ?? null,
-                                manufacturingDate: allocation.manufacturing_date ?? null
-                            }))
                         })
-                    ))
+
+                        if (localSaleItems.length > 0) {
+                            await db.sale_items.bulkAdd(localSaleItems)
+                        }
+                    })
 
                     await Promise.all(activeTicket.items.map(async (item) => {
                         const resolvedStorageId = item.storageId || resolveTicketProduct(item)?.storageId

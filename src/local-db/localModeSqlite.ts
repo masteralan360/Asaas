@@ -571,6 +571,20 @@ export async function seedWorkspaceFromDexie(cacheDb: Dexie, workspaceId: string
   }
 }
 
+async function hasCachedRowsForWorkspace(cacheDb: Dexie, workspaceId: string) {
+  for (const tableName of LOCAL_MODE_SQLITE_TABLES) {
+    const rows = await readCacheRowsForWorkspace(
+      cacheDb,
+      tableName,
+      workspaceId,
+    );
+    if (rows.length > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function getStoredWorkspaceRowCount(
   connection: SqliteConnection,
   workspaceId: string,
@@ -634,6 +648,61 @@ async function seedMissingMirrorTablesFromDexie(
   }
 
   return seeded;
+}
+
+/**
+ * Older desktop versions could retain a sale item in IndexedDB without
+ * persisting it to SQLite. The parent sale is already in SQLite, so preserve
+ * such cache-only items before hydration clears the workspace cache.
+ */
+async function seedCacheOnlySaleItemsFromDexie(
+  connection: SqliteConnection,
+  cacheDb: Dexie,
+  workspaceId: string,
+  storedRows: readonly StoredEntityRow[],
+) {
+  const storedSaleIds = new Set(
+    storedRows
+      .filter((row) => row.entity_type === "sales")
+      .map((row) => row.entity_id),
+  );
+  const storedSaleItemIds = new Set(
+    storedRows
+      .filter((row) => row.entity_type === "sale_items")
+      .map((row) => row.entity_id),
+  );
+  if (storedSaleIds.size === 0) {
+    return false;
+  }
+
+  const cachedSaleItems = await readCacheRowsForWorkspace(
+    cacheDb,
+    "sale_items",
+    workspaceId,
+  ) as Record<string, unknown>[];
+  const missingSaleItems = cachedSaleItems.filter((item) => (
+    typeof item.id === "string" &&
+    typeof item.saleId === "string" &&
+    storedSaleIds.has(item.saleId) &&
+    !storedSaleItemIds.has(item.id)
+  ));
+
+  for (const item of missingSaleItems) {
+    await persistEntity(cacheDb, "sale_items", {
+      ...item,
+      workspaceId,
+    }, {
+      connection,
+      workspaceId,
+    });
+  }
+
+  if (missingSaleItems.length > 0) {
+    console.warn(
+      `[LocalModeSQLite] Preserved ${missingSaleItems.length} cache-only sale item(s) for workspace ${workspaceId}.`,
+    );
+  }
+  return missingSaleItems.length > 0;
 }
 
 async function persistEntity(
@@ -850,6 +919,15 @@ export async function hydrateLocalModeCacheFromSqlite(
       workspaceId,
     );
     if (storedRowCount === 0) {
+      if (await hasCachedRowsForWorkspace(cacheDb, workspaceId)) {
+        console.warn(
+          `[LocalModeSQLite] SQLite is empty for workspace ${workspaceId}; seeding it from the existing cache instead of clearing data.`,
+        );
+        await seedWorkspaceFromDexie(cacheDb, workspaceId);
+        hydratedWorkspaces.add(workspaceId);
+        return;
+      }
+
       console.log(`[LocalModeSQLite] SQLite is empty for workspace ${workspaceId}.`);
       await withMirroringPaused(() =>
         clearCacheRowsForWorkspace(cacheDb, workspaceId)
@@ -870,7 +948,19 @@ export async function hydrateLocalModeCacheFromSqlite(
       [workspaceId],
     );
 
-    if (await seedMissingMirrorTablesFromDexie(connection, cacheDb, workspaceId, rows)) {
+    const seededMissingTables = await seedMissingMirrorTablesFromDexie(
+      connection,
+      cacheDb,
+      workspaceId,
+      rows,
+    );
+    const seededCacheOnlySaleItems = await seedCacheOnlySaleItemsFromDexie(
+      connection,
+      cacheDb,
+      workspaceId,
+      rows,
+    );
+    if (seededMissingTables || seededCacheOnlySaleItems) {
       rows = await connection.select<StoredEntityRow[]>(
         `
                   SELECT entity_type, entity_id, workspace_id, current_workspace, payload, updated_at
@@ -900,6 +990,11 @@ export async function hydrateLocalModeCacheFromSqlite(
         const revived = deserializeValue(payload) as Record<string, unknown>;
         if (row.entity_type === "products" && typeof revived.sku === "string") {
           revived.skuKey = normalizeProductSku(revived.sku);
+        }
+        if (row.entity_type === "sale_items" &&
+            typeof revived.workspaceId !== "string" &&
+            row.workspace_id) {
+          revived.workspaceId = row.workspace_id;
         }
         if (row.entity_type === "profiles") {
           if (row.workspace_id) {

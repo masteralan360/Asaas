@@ -1765,6 +1765,7 @@ export async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
 
         const enrichedItem: Record<string, unknown> = {
             id: item.id,
+            workspace_id: item.workspaceId,
             sale_id: item.saleId,
             product_id: item.productId,
             storage_id: item.storageId,
@@ -1958,6 +1959,13 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
     if (options?.endDate && sale.createdAt > options.endDate) return false
     return true
   })
+  const relevantSaleIds = relevantLocalSales.map((sale) => sale.id)
+  const localSaleIdsWithItems = new Set(
+    relevantSaleIds.length > 0
+      ? (await db.sale_items.where('saleId').anyOf(relevantSaleIds).toArray())
+        .map((item) => item.saleId)
+      : []
+  )
 
   const staleIds: string[] = []
   const remoteMap = new Map<string, { id: string; version: number; updated_at: string }>(
@@ -1967,7 +1975,14 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
   for (const local of relevantLocalSales) {
     const remote = remoteMap.get(local.id)
     if (remote) {
-      if (remote.version !== local.version || remote.updated_at !== local.updatedAt) {
+      const hasItemSnapshot = localSaleIdsWithItems.has(local.id) || Array.isArray(
+        (local as Sale & { _enrichedItems?: unknown })._enrichedItems
+      )
+      if (
+        remote.version !== local.version ||
+        remote.updated_at !== local.updatedAt ||
+        !hasItemSnapshot
+      ) {
         staleIds.push(local.id)
       }
       remoteMap.delete(local.id)
@@ -2088,7 +2103,12 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
 
     for (const item of remoteItems || []) {
       const { product, ...itemData } = item
-      saleItemsToPut.push(toCamelCase(itemData) as unknown as SaleItem)
+      saleItemsToPut.push({
+        ...(toCamelCase(itemData) as unknown as SaleItem),
+        // Supabase rows created before the ownership migration may not carry
+        // workspace_id yet; their parent sale is the authoritative fallback.
+        workspaceId,
+      })
     }
 
     for (const remoteReturn of remoteReturns || []) {

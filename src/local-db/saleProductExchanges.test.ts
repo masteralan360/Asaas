@@ -61,7 +61,7 @@ async function seedCashSale() {
         systemVerified: true, systemReviewStatus: 'approved', systemReviewReason: null,
     })
     await db.sale_items.put({
-        id: SALE_ITEM_ID, saleId: SALE_ID, productId: RETURNED_PRODUCT_ID, storageId: STORAGE_ID,
+        id: SALE_ITEM_ID, workspaceId: WORKSPACE_ID, saleId: SALE_ID, productId: RETURNED_PRODUCT_ID, storageId: STORAGE_ID,
         quantity: 1, unitPrice: 10, totalPrice: 10, costPrice: 4, convertedCostPrice: 4,
         originalCurrency: 'usd', originalUnitPrice: 10, convertedUnitPrice: 10, settlementCurrency: 'usd', inventorySnapshot: 1,
         batchAllocations: null, originalBatchAllocations: null, returnedQuantity: 0,

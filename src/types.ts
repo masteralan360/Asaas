@@ -1,5 +1,8 @@
 export interface SaleItem {
     id: string
+    // Older local snapshots may not yet have this field. New Supabase rows
+    // always receive it from the parent sale.
+    workspace_id?: string
     sale_id: string
     product_id: string
     storage_id?: string | null

@@ -1351,6 +1351,11 @@ export interface Sale extends BaseEntity {
 
 export interface SaleItem {
   id: string;
+  /**
+   * Copied from the parent sale so line items can be scoped, synchronized,
+   * and mirrored independently without relying on process-global state.
+   */
+  workspaceId: string;
   saleId: string;
   productId: string;
   storageId?: string | null;

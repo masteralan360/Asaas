@@ -3091,6 +3091,44 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, agentId, categoryId, updatedAt, isDeleted, syncStatus, [workspaceId+agentId], [workspaceId+categoryId], [agentId+categoryId]",
     });
 
+    this.version(91)
+      .stores({
+        sale_items: "id, workspaceId, saleId, productId, [workspaceId+saleId]",
+      })
+      .upgrade(async (tx) => {
+        const sales = (await tx.table("sales").toArray()) as Array<
+          Record<string, unknown>
+        >;
+        const workspaceIdBySaleId = new Map(
+          sales
+            .filter(
+              (sale) =>
+                typeof sale.id === "string" &&
+                typeof sale.workspaceId === "string",
+            )
+            .map((sale) => [sale.id as string, sale.workspaceId as string]),
+        );
+        const saleItems = (await tx.table("sale_items").toArray()) as Array<
+          Record<string, unknown>
+        >;
+        const backfilledItems = saleItems
+          .map((item) => {
+            const workspaceId =
+              typeof item.saleId === "string"
+                ? workspaceIdBySaleId.get(item.saleId)
+                : undefined;
+            if (!workspaceId || item.workspaceId === workspaceId) {
+              return null;
+            }
+            return { ...item, workspaceId };
+          })
+          .filter((item): item is Record<string, unknown> => item !== null);
+
+        if (backfilledItems.length > 0) {
+          await tx.table("sale_items").bulkPut(backfilledItems);
+        }
+      });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }

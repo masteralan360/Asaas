@@ -2349,9 +2349,50 @@ export function POS() {
                         maxDiscountPercent: features.max_discount_percent
                     })
 
-                    // 1. Save Sale locally (with verification fields)
                     const localSequenceId = await generateLocalSaleSequenceId(user.workspaceId)
-                    await db.sales.add({
+                    const localSaleItems = itemsWithMetadata.map((item) => ({
+                        id: generateId(),
+                        workspaceId: user.workspaceId,
+                        saleId,
+                        productId: item.product_id,
+                        storageId: item.storage_id,
+                        quantity: item.quantity,
+                        unitPrice: item.unit_price,
+                        totalPrice: item.total_price,
+                        costPrice: item.cost_price,
+                        convertedCostPrice: item.converted_cost_price,
+                        originalCurrency: item.original_currency,
+                        originalUnitPrice: item.original_unit_price,
+                        convertedUnitPrice: item.converted_unit_price,
+                        settlementCurrency: item.settlement_currency,
+                        negotiatedPrice: item.negotiated_price,
+                        inventorySnapshot: item.inventory_snapshot,
+                        batchAllocations: item.batch_allocations?.map((allocation) => ({
+                            batchId: allocation.batch_id,
+                            batchNumber: allocation.batch_number,
+                            quantity: allocation.quantity,
+                            price: allocation.price ?? null,
+                            costPrice: allocation.cost_price ?? null,
+                            currency: allocation.currency ?? null,
+                            expiryDate: allocation.expiry_date ?? null,
+                            manufacturingDate: allocation.manufacturing_date ?? null
+                        })),
+                        originalBatchAllocations: item.batch_allocations?.map((allocation) => ({
+                            batchId: allocation.batch_id,
+                            batchNumber: allocation.batch_number,
+                            quantity: allocation.quantity,
+                            price: allocation.price ?? null,
+                            costPrice: allocation.cost_price ?? null,
+                            currency: allocation.currency ?? null,
+                            expiryDate: allocation.expiry_date ?? null,
+                            manufacturingDate: allocation.manufacturing_date ?? null
+                        }))
+                    }))
+
+                    // Keep the sale header and every line item inseparable.
+                    // This also commits them together to the Tauri SQLite mirror.
+                    await db.transaction('rw', [db.sales, db.sale_items, db.sales_exchange], async () => {
+                        await db.sales.add({
                         id: saleId,
                         workspaceId: user.workspaceId,
                         cashierId: user.id,
@@ -2374,68 +2415,32 @@ export function POS() {
                         systemVerified: verificationResult.verified,
                         systemReviewStatus: verificationResult.status,
                         systemReviewReason: verificationResult.reason
-                    })
-
-                    if (salesExchangePayload.length > 0) {
-                        await db.sales_exchange.bulkAdd(
-                            salesExchangePayload.map((row) => ({
-                                id: generateId(),
-                                saleId,
-                                workspaceId: user.workspaceId,
-                                baseCurrency: row.base_currency,
-                                quoteCurrency: row.quote_currency,
-                                baseAmount: row.base_amount,
-                                quoteAmount: row.quote_amount,
-                                source: row.source,
-                                capturedAt: row.captured_at,
-                                rateSide: row.rate_side,
-                                sourcePriceId: row.source_price_id,
-                                sourcePriceUpdatedAt: row.source_price_updated_at,
-                                createdAt: snapshotTimestamp
-                            }))
-                        )
-                    }
-
-                    // 2. Save Sale Items locally (with inventory snapshot)
-                    await Promise.all(itemsWithMetadata.map(item =>
-                        db.sale_items.add({
-                            id: generateId(),
-                            saleId: saleId,
-                            productId: item.product_id,
-                            storageId: item.storage_id,
-                            quantity: item.quantity,
-                            unitPrice: item.unit_price,
-                            totalPrice: item.total_price,
-                            costPrice: item.cost_price,
-                            convertedCostPrice: item.converted_cost_price,
-                            originalCurrency: item.original_currency,
-                            originalUnitPrice: item.original_unit_price,
-                            convertedUnitPrice: item.converted_unit_price,
-                            settlementCurrency: item.settlement_currency,
-                            negotiatedPrice: item.negotiated_price,
-                            inventorySnapshot: item.inventory_snapshot,
-                            batchAllocations: item.batch_allocations?.map((allocation) => ({
-                                batchId: allocation.batch_id,
-                                batchNumber: allocation.batch_number,
-                                quantity: allocation.quantity,
-                                price: allocation.price ?? null,
-                                costPrice: allocation.cost_price ?? null,
-                                currency: allocation.currency ?? null,
-                                expiryDate: allocation.expiry_date ?? null,
-                                manufacturingDate: allocation.manufacturing_date ?? null
-                            })),
-                            originalBatchAllocations: item.batch_allocations?.map((allocation) => ({
-                                batchId: allocation.batch_id,
-                                batchNumber: allocation.batch_number,
-                                quantity: allocation.quantity,
-                                price: allocation.price ?? null,
-                                costPrice: allocation.cost_price ?? null,
-                                currency: allocation.currency ?? null,
-                                expiryDate: allocation.expiry_date ?? null,
-                                manufacturingDate: allocation.manufacturing_date ?? null
-                            }))
                         })
-                    ))
+
+                        if (salesExchangePayload.length > 0) {
+                            await db.sales_exchange.bulkAdd(
+                                salesExchangePayload.map((row) => ({
+                                    id: generateId(),
+                                    saleId,
+                                    workspaceId: user.workspaceId,
+                                    baseCurrency: row.base_currency,
+                                    quoteCurrency: row.quote_currency,
+                                    baseAmount: row.base_amount,
+                                    quoteAmount: row.quote_amount,
+                                    source: row.source,
+                                    capturedAt: row.captured_at,
+                                    rateSide: row.rate_side,
+                                    sourcePriceId: row.source_price_id,
+                                    sourcePriceUpdatedAt: row.source_price_updated_at,
+                                    createdAt: snapshotTimestamp
+                                }))
+                            )
+                        }
+
+                        if (localSaleItems.length > 0) {
+                            await db.sale_items.bulkAdd(localSaleItems)
+                        }
+                    })
 
                     // 3. Update Local Inventory
                     await Promise.all(cart.map(async (item) => {
