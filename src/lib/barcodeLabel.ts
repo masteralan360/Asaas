@@ -82,6 +82,10 @@ export function getBarcodeLabelPricePerUnit(unit?: string) {
         return 'per 1 Kg'
     }
 
+    if (trimmedUnit === 'Meter') {
+        return 'per 1 Meter'
+    }
+
     return ''
 }
 

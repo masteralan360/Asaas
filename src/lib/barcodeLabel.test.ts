@@ -56,7 +56,9 @@ describe('barcode label data', () => {
     it('adds a fixed one-unit suffix for dynamic-unit products', () => {
         expect(getBarcodeLabelPricePerUnit('m²')).toBe('per 1m²')
         expect(getBarcodeLabelPricePerUnit('Kg')).toBe('per 1 Kg')
+        expect(getBarcodeLabelPricePerUnit('Meter')).toBe('per 1 Meter')
         expect(getBarcodeLabelPricePerUnit('kg')).toBe('')
         expect(formatBarcodeLabelPrice(12, 'usd', 'IQD', 'm²')).toBe('12 USD per 1m²')
+        expect(formatBarcodeLabelPrice(12, 'usd', 'IQD', 'Meter')).toBe('12 USD per 1 Meter')
     })
 })

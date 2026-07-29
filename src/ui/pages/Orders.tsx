@@ -165,7 +165,7 @@ function roundFormAmount(value: number) {
 }
 
 function isDynamicUnit(unit: string | undefined) {
-    return unit === 'm²' || unit === 'Kg'
+    return unit === 'm²' || unit === 'Kg' || unit === 'Meter'
 }
 
 function formatStatusLabel(t: (key: string) => string, status: string) {

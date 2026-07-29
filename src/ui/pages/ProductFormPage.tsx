@@ -104,8 +104,8 @@ import {
     useToast
 } from '@/ui/components'
 
-const UNITS = ['pcs', 'gram', 'liter', 'bottle', 'can', 'box', 'pack', 'carton', 'bag', 'm²', 'Kg']
-const DYNAMIC_UNITS = new Set(['m²', 'Kg'])
+const UNITS = ['pcs', 'gram', 'liter', 'bottle', 'can', 'box', 'pack', 'carton', 'bag', 'm²', 'Kg', 'Meter']
+const DYNAMIC_UNITS = new Set(['m²', 'Kg', 'Meter'])
 function isDynamicUnit(unit: string): boolean {
     return DYNAMIC_UNITS.has(unit)
 }
@@ -136,6 +136,8 @@ function ProductUnitIcon({ unit }: { unit: string }) {
             return <ShoppingBag className={className} />
         case 'm²':
             return <SquareDashed className={className} />
+        case 'Meter':
+            return <Ruler className={className} />
         default:
             return <Ruler className={className} />
     }

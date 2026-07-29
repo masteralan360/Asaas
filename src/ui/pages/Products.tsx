@@ -1441,6 +1441,20 @@ export function Products() {
                                                 </Button>
                                                 {canEdit && (
                                                     <Button
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        className="h-10 gap-2 rounded-xl px-4 font-bold text-primary"
+                                                        onClick={() => {
+                                                            setSelectedProductForStock(product.id)
+                                                            setAdjustmentDialogOpen(true)
+                                                        }}
+                                                    >
+                                                        <Boxes className="h-4 w-4" />
+                                                        {t('products.addStock', { defaultValue: 'Add Stock' })}
+                                                    </Button>
+                                                )}
+                                                {canEdit && (
+                                                    <Button
                                                         variant="ghost"
                                                         size="icon"
                                                         aria-label={t('common.clone') || 'Clone'}

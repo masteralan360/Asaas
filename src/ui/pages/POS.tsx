@@ -122,7 +122,8 @@ import { generateTemplatePdf } from '@/services/pdfGenerator'
 import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
 
 const CART_IMAGE_VISIBILITY_THRESHOLD = 450
-const DYNAMIC_UNITS = ['m²', 'Kg']
+const DYNAMIC_UNITS = ['m²', 'Kg', 'Meter'] as const
+type DynamicUnit = typeof DYNAMIC_UNITS[number]
 
 const ACTIVITIES_STORAGE_ID = '__atlas_activities__'
 const ACTIVITY_POS_QUANTITY_LIMIT = Number.MAX_SAFE_INTEGER
@@ -136,8 +137,21 @@ type CompletedActivityCheckout = {
     lines: ActivityTransactionLine[]
 }
 
-function isDynamicUnit(unit: string | undefined) {
-    return DYNAMIC_UNITS.includes(unit ?? '')
+function isDynamicUnit(unit: string | undefined): unit is DynamicUnit {
+    return DYNAMIC_UNITS.some((dynamicUnit) => dynamicUnit === unit)
+}
+
+function getDynamicUnitAdjustmentLabel(t: any, unit: DynamicUnit) {
+    if (unit === 'm²') return t('pos.adjustM2') || 'Adjust m²'
+    if (unit === 'Kg') return t('pos.adjustKg') || 'Adjust Kg'
+
+    return 'Adjust Meter'
+}
+
+function getDynamicUnitIcon(unit: DynamicUnit, className: string) {
+    return unit === 'Kg'
+        ? <Scale className={className} />
+        : <Ruler className={className} />
 }
 
 function isLoanRegistrationData(value: unknown): value is LoanRegistrationData {
@@ -415,7 +429,7 @@ export function POS() {
     } | null>(null)
     const [search, setSearch] = useState('')
     const [cart, setCart] = useState<CartItem[]>([])
-    const [dynamicUnitModal, setDynamicUnitModal] = useState<{ type: 'm²' | 'Kg'; itemKey: string } | null>(null)
+    const [dynamicUnitModal, setDynamicUnitModal] = useState<{ type: DynamicUnit; itemKey: string } | null>(null)
     const [dynamicInputBuffer, setDynamicInputBuffer] = useState<Record<string, string>>({})
     const [isSkuModalOpen, setIsSkuModalOpen] = useState(false)
     const [selectedCategory, setSelectedCategory] = useState<string>(() => {
@@ -3051,11 +3065,11 @@ export function POS() {
                                                             )}
                                                             {isDynamicUnit(item.unit) && (
                                                                 <button
-                                                                    onClick={() => setDynamicUnitModal({ type: item.unit as 'm²' | 'Kg', itemKey })}
+                                                                    onClick={() => setDynamicUnitModal({ type: item.unit, itemKey })}
                                                                     className="transition-opacity p-1 hover:bg-muted rounded bg-muted/30 border border-border/50"
-                                                                    title={item.unit === 'm²' ? (t('pos.adjustM2') || 'Adjust m²') : (t('pos.adjustKg') || 'Adjust Kg')}
+                                                                    title={getDynamicUnitAdjustmentLabel(t, item.unit)}
                                                                 >
-                                                                    {item.unit === 'm²' ? <Ruler className="w-3.5 h-3.5 text-primary" /> : <Scale className="w-3.5 h-3.5 text-primary" />}
+                                                                    {getDynamicUnitIcon(item.unit, 'w-3.5 h-3.5 text-primary')}
                                                                 </button>
                                                             )}
                                                         </div>
@@ -3682,8 +3696,7 @@ export function POS() {
                         const item = cart.find((i) => getCartItemKey(i) === dynamicUnitModal.itemKey)
                         const product = item ? findStockProduct(item.product_id, item.storageId) : undefined
                         if (!item) return null
-                        const isM2 = dynamicUnitModal.type === 'm²'
-                        const unitLabel = isM2 ? 'm²' : 'Kg'
+                        const unitLabel = dynamicUnitModal.type
                         const effectivePrice = getCartEffectivePrice(item)
                         const currency = (product?.currency || 'usd') as CurrencyCode
                         const sliderMax = item.max_stock || 1000
@@ -3693,8 +3706,8 @@ export function POS() {
                             <div className="space-y-6 py-4">
                                 <DialogHeader>
                                     <DialogTitle className="flex items-center gap-2">
-                                        {isM2 ? <Ruler className="w-5 h-5 text-primary" /> : <Scale className="w-5 h-5 text-primary" />}
-                                        {isM2 ? (t('pos.adjustM2') || 'Adjust m²') : (t('pos.adjustKg') || 'Adjust Kg')}
+                                        {getDynamicUnitIcon(dynamicUnitModal.type, 'w-5 h-5 text-primary')}
+                                        {getDynamicUnitAdjustmentLabel(t, dynamicUnitModal.type)}
                                     </DialogTitle>
                                 </DialogHeader>
 
@@ -4400,7 +4413,7 @@ interface MobileCartProps {
     hasLoadingRates: boolean
     isActivitiesStorage: boolean
     t: any
-    setDynamicUnitModal: (modal: { type: 'm²' | 'Kg'; itemKey: string } | null) => void
+    setDynamicUnitModal: (modal: { type: DynamicUnit; itemKey: string } | null) => void
     setExactQuantity: (itemKey: string, quantity: number) => void
 }
 
@@ -4564,11 +4577,11 @@ function MobileCart({
                                                     )}
                                                     {isDynamicUnit(item.unit) && (
                                                         <button
-                                                            onClick={() => setDynamicUnitModal({ type: item.unit as 'm²' | 'Kg', itemKey })}
+                                                            onClick={() => setDynamicUnitModal({ type: item.unit, itemKey })}
                                                             className="p-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 transition-colors"
-                                                            title={item.unit === 'm²' ? (t('pos.adjustM2') || 'Adjust m²') : (t('pos.adjustKg') || 'Adjust Kg')}
+                                                            title={getDynamicUnitAdjustmentLabel(t, item.unit)}
                                                         >
-                                                            {item.unit === 'm²' ? <Ruler className="w-3.5 h-3.5" /> : <Scale className="w-3.5 h-3.5" />}
+                                                            {getDynamicUnitIcon(item.unit, 'w-3.5 h-3.5')}
                                                         </button>
                                                     )}
                                                 </div>

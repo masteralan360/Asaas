@@ -129,7 +129,7 @@ function roundFormAmount(value: number) {
     return roundOrderValue(value)
 }
 
-const DYNAMIC_UNITS = ['m²', 'Kg']
+const DYNAMIC_UNITS = ['m²', 'Kg', 'Meter']
 
 function isDynamicUnit(unit: string | undefined) {
     return DYNAMIC_UNITS.includes(unit ?? '')

@@ -130,7 +130,7 @@ function getCommonStorageId(items: Array<{ storageId?: string | null }>, fallbac
     return storageIds.length === 1 ? storageIds[0] : null
 }
 
-const DYNAMIC_UNITS = ['m²', 'Kg']
+const DYNAMIC_UNITS = ['m²', 'Kg', 'Meter']
 
 function isDynamicUnit(unit: string | undefined) {
     return DYNAMIC_UNITS.includes(unit ?? '')

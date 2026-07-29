@@ -173,7 +173,7 @@ type InventoryTransferTab = "manual" | "automation";
 const INVENTORY_TRANSFER_PENDING_TAB_KEY = "inventory-transfer.pending-tab";
 const INVENTORY_TRANSFER_TAB_EVENT = "inventory-transfer:open-tab";
 
-const DYNAMIC_UNITS = ["m²", "mÂ²", "Kg"];
+const DYNAMIC_UNITS = ["m²", "mÂ²", "Kg", "Meter"];
 
 function getQuantityStep(unit?: string | null) {
   return DYNAMIC_UNITS.includes(unit ?? "") ? "0.01" : "1";
