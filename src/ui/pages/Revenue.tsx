@@ -618,6 +618,10 @@ export function Revenue() {
     const products = useProducts(user?.workspaceId)
     const categories = useCategories(user?.workspaceId)
     const workspaceUsers = useWorkspaceUsers(user?.workspaceId)
+    const userNameById = useMemo(
+        () => new Map(workspaceUsers.map((member) => [member.id, member.name || member.email || member.id] as const)),
+        [workspaceUsers]
+    )
     const salesOrders = useMemo(
         () => applySalesOrderReturnQuantities(rawSalesOrders || [], salesOrderReturnItems),
         [rawSalesOrders, salesOrderReturnItems]
@@ -638,10 +642,11 @@ export function Revenue() {
             .filter((transaction) => transaction.status === 'completed')
             .map((transaction) => toUISaleFromActivityTransaction(
                 transaction,
-                activityTransactionLines.filter((line) => line.transactionId === transaction.id)
+                activityTransactionLines.filter((line) => line.transactionId === transaction.id),
+                transaction.createdBy ? userNameById.get(transaction.createdBy) : undefined
             ))
         return [...sales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales, ...activitySales]
-    }, [rawSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines])
+    }, [rawSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines, userNameById])
     const travelSales = useMemo<Sale[]>(() =>
         (rawTravelSales || [])
             .filter(s => s.isPaid && !s.isDeleted)
@@ -680,11 +685,6 @@ export function Revenue() {
         localStorage.setItem('revenue_page_size', String(itemsPerPage))
     }, [itemsPerPage])
     const listRef = useRef<HTMLDivElement>(null)
-
-    const userNameById = useMemo(
-        () => new Map(workspaceUsers.map((member) => [member.id, member.name || member.email || member.id] as const)),
-        [workspaceUsers]
-    )
 
     const categoryNameById = useMemo(
         () => new Map(categories.map((category) => [category.id, category.name] as const)),

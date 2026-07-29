@@ -1872,7 +1872,7 @@ export function POS() {
             setCart([])
             setDiscountValue('')
             setCompletedActivityCheckout(result)
-            setCompletedSaleData(toUISaleFromActivityTransaction(result.transaction, result.lines))
+            setCompletedSaleData(toUISaleFromActivityTransaction(result.transaction, result.lines, user.name))
             setIsSuccessModalOpen(true)
             hapticTrigger('success')
             playCheckoutSound()

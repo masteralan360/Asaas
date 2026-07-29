@@ -651,7 +651,11 @@ export function useActivityTransactionLinesForWorkspace(workspaceId: string | un
     return lines ?? []
 }
 
-export function toUISaleFromActivityTransaction(transaction: ActivityTransaction, lines: ActivityTransactionLine[]): any {
+export function toUISaleFromActivityTransaction(
+    transaction: ActivityTransaction,
+    lines: ActivityTransactionLine[],
+    cashierName?: string | null
+): any {
     return {
         id: transaction.id,
         invoiceid: transaction.transactionNo,
@@ -667,7 +671,10 @@ export function toUISaleFromActivityTransaction(transaction: ActivityTransaction
         updated_at: transaction.updatedAt,
         origin: 'activities',
         payment_method: transaction.paymentMethod,
-        cashier_name: 'Activities',
+        // "Activities" is the sale source, not the person who processed it.
+        // Resolve the staff name at the caller because the activity record only
+        // stores the creator's id.
+        cashier_name: cashierName?.trim() || 'Staff',
         items: lines.map((line) => ({
             id: line.id,
             sale_id: transaction.id,

@@ -12,7 +12,7 @@ import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, applySalesOrderReturnQuantities, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
+import { adjustInventoryQuantity, applySalesOrderReturnQuantities, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
@@ -315,6 +315,11 @@ export function Sales() {
     }, { hydrateSourceTables: false })
     const activityTransactions = useActivityTransactions(user?.workspaceId)
     const activityTransactionLines = useActivityTransactionLinesForWorkspace(user?.workspaceId)
+    const workspaceUsers = useWorkspaceUsers(user?.workspaceId)
+    const cashierNameById = useMemo(
+        () => new Map(workspaceUsers.map((member) => [member.id, member.name || member.email || 'Staff'] as const)),
+        [workspaceUsers]
+    )
 
     const loans = useLoans(user?.workspaceId)
     const allSales = useMemo(() => {
@@ -338,10 +343,11 @@ export function Sales() {
             .filter((transaction) => transaction.status === 'completed')
             .map((transaction) => toUISaleFromActivityTransaction(
                 transaction,
-                activityTransactionLines.filter((line) => line.transactionId === transaction.id)
+                activityTransactionLines.filter((line) => line.transactionId === transaction.id),
+                transaction.createdBy ? cashierNameById.get(transaction.createdBy) : undefined
             ))
         return [...sales, ...orders, ...travelSales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales, ...activitySales]
-    }, [rawSales, rawOrders, salesOrderReturnItems, rawTravelSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines])
+    }, [rawSales, rawOrders, salesOrderReturnItems, rawTravelSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines, cashierNameById])
 
     const isLoading = rawSales === undefined || rawOrders === undefined || rawTravelSales === undefined || rawExchangeTransactions === undefined || realEstateCommissionTransactions === undefined || clinicalAppointments === undefined
     const [isDateLoading, setIsDateLoading] = useState(false)
