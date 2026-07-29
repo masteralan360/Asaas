@@ -275,6 +275,7 @@ async function applyLocalSaleProductExchange(input: ProcessSaleProductExchangeIn
         const nextReturnedQuantity = roundQuantity((returnItem.returnedQuantity || 0) + returnQuantity)
         const updatedReturnItem: SaleItem = {
             ...returnItem,
+            updatedAt: timestamp,
             originalBatchAllocations: returnItem.originalBatchAllocations || returnItem.batchAllocations || null,
             batchAllocations: returnSplit.remainingAllocations.length > 0 ? returnSplit.remainingAllocations : null,
             returnedQuantity: nextReturnedQuantity,

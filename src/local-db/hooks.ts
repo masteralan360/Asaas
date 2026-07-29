@@ -1767,6 +1767,8 @@ export async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
             id: item.id,
             workspace_id: item.workspaceId,
             sale_id: item.saleId,
+            created_at: item.createdAt,
+            updated_at: item.updatedAt,
             product_id: item.productId,
             storage_id: item.storageId,
             quantity: item.quantity,

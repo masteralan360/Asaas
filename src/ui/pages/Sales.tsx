@@ -1638,7 +1638,8 @@ export function Sales() {
                             returnReason: reason,
                             isReturned: newReturnedQty >= item.quantity,
                             returnedAt: returnTimestamp,
-                            returnedBy: user?.id
+                            returnedBy: user?.id,
+                            updatedAt: returnTimestamp,
                         } as any)
                     }))
                     if (selectedSale?.id === saleToReturn.id) {
@@ -1770,7 +1771,8 @@ export function Sales() {
                             returnReason: reason,
                             isReturned: true,
                             returnedAt: returnTimestamp,
-                            returnedBy: user?.id
+                            returnedBy: user?.id,
+                            updatedAt: returnTimestamp,
                         } as any)
                     ))
                     if (shouldQueueOfflineReturn) {
@@ -1909,7 +1911,8 @@ export function Sales() {
                             returnReason: reason,
                             isReturned: newReturnedQty >= item.quantity,
                             returnedAt: returnTimestamp,
-                            returnedBy: user?.id
+                            returnedBy: user?.id,
+                            updatedAt: returnTimestamp,
                         } as any)
                     }))
                     if (selectedSale?.id === saleToReturn.id) {
@@ -2035,7 +2038,8 @@ export function Sales() {
                             returnReason: reason,
                             isReturned: true,
                             returnedAt: returnTimestamp,
-                            returnedBy: user?.id
+                            returnedBy: user?.id,
+                            updatedAt: returnTimestamp,
                         } as any)
                     ))
                     if (selectedSale?.id === saleToReturn.id) {

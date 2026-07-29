@@ -2073,6 +2073,7 @@ export function POS() {
         setIsLoading(true)
 
         const saleId = generateId()
+        const checkoutTimestamp = new Date().toISOString()
 
         // Collect actually used exchange rates for this specific checkout
         const usedCurrencies = new Set(cart.map(item => findStockProduct(item.product_id, item.storageId)?.currency || 'usd' as CurrencyCode))
@@ -2153,6 +2154,8 @@ export function POS() {
                 storage_id: item.storageId || selectedStorageId || null,
                 product_name: product?.name || 'Unknown',
                 product_sku: product?.sku || '',
+                created_at: checkoutTimestamp,
+                updated_at: checkoutTimestamp,
                 quantity: item.quantity,
                 unit_price: effectivePrice, // negotiated or original
                 total_price: effectivePrice * item.quantity,
@@ -2354,6 +2357,8 @@ export function POS() {
                         id: generateId(),
                         workspaceId: user.workspaceId,
                         saleId,
+                        createdAt: item.created_at,
+                        updatedAt: item.updated_at,
                         productId: item.product_id,
                         storageId: item.storage_id,
                         quantity: item.quantity,
@@ -2405,8 +2410,8 @@ export function POS() {
                         origin: 'pos',
                         payment_method: checkoutPayload.payment_method,
                         sequenceId: localSequenceId,
-                        createdAt: snapshotTimestamp,
-                        updatedAt: snapshotTimestamp,
+                        createdAt: checkoutTimestamp,
+                        updatedAt: checkoutTimestamp,
                         syncStatus: 'pending',
                         lastSyncedAt: null,
                         version: 1,

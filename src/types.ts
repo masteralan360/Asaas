@@ -4,6 +4,10 @@ export interface SaleItem {
     // always receive it from the parent sale.
     workspace_id?: string
     sale_id: string
+    // Kept optional at the view boundary so pre-upgrade local snapshots can
+    // still render while the local cache migration backfills them.
+    created_at?: string
+    updated_at?: string
     product_id: string
     storage_id?: string | null
     quantity: number

@@ -3111,18 +3111,67 @@ export class AtlasDatabase extends Dexie {
         const saleItems = (await tx.table("sale_items").toArray()) as Array<
           Record<string, unknown>
         >;
-        const backfilledItems = saleItems
-          .map((item) => {
-            const workspaceId =
-              typeof item.saleId === "string"
-                ? workspaceIdBySaleId.get(item.saleId)
-                : undefined;
-            if (!workspaceId || item.workspaceId === workspaceId) {
-              return null;
-            }
-            return { ...item, workspaceId };
-          })
-          .filter((item): item is Record<string, unknown> => item !== null);
+        const backfilledItems: Array<Record<string, unknown>> = [];
+        for (const item of saleItems) {
+          const workspaceId =
+            typeof item.saleId === "string"
+              ? workspaceIdBySaleId.get(item.saleId)
+              : undefined;
+          if (!workspaceId || item.workspaceId === workspaceId) {
+            continue;
+          }
+          backfilledItems.push({ ...item, workspaceId });
+        }
+
+        if (backfilledItems.length > 0) {
+          await tx.table("sale_items").bulkPut(backfilledItems);
+        }
+      });
+
+    this.version(92)
+      .stores({
+        sale_items: "id, workspaceId, saleId, productId, [workspaceId+saleId]",
+      })
+      .upgrade(async (tx) => {
+        const sales = (await tx.table("sales").toArray()) as Array<
+          Record<string, unknown>
+        >;
+        const createdAtBySaleId = new Map(
+          sales
+            .filter(
+              (sale) =>
+                typeof sale.id === "string" &&
+                typeof sale.createdAt === "string",
+            )
+            .map((sale) => [sale.id as string, sale.createdAt as string]),
+        );
+        const saleItems = (await tx.table("sale_items").toArray()) as Array<
+          Record<string, unknown>
+        >;
+        const backfilledItems: Array<Record<string, unknown>> = [];
+        for (const item of saleItems) {
+          const parentCreatedAt = typeof item.saleId === "string"
+            ? createdAtBySaleId.get(item.saleId)
+            : undefined;
+          const createdAt = typeof item.createdAt === "string"
+            ? item.createdAt
+            : parentCreatedAt;
+          const updatedAt = typeof item.updatedAt === "string"
+            ? item.updatedAt
+            : typeof item.returnedAt === "string"
+              ? item.returnedAt
+              : createdAt;
+
+          // A sale always has createdAt, but leave an unexpectedly malformed
+          // record untouched rather than falsely assigning the upgrade time.
+          if (!createdAt || !updatedAt) {
+            continue;
+          }
+          if (item.createdAt === createdAt && item.updatedAt === updatedAt) {
+            continue;
+          }
+          backfilledItems.push({ ...item, createdAt, updatedAt });
+        }
 
         if (backfilledItems.length > 0) {
           await tx.table("sale_items").bulkPut(backfilledItems);

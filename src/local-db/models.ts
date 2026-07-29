@@ -1357,6 +1357,10 @@ export interface SaleItem {
    */
   workspaceId: string;
   saleId: string;
+  /** Immutable checkout time, retained when local sales later synchronize. */
+  createdAt: string;
+  /** Updated whenever a return, exchange, or other line-level change occurs. */
+  updatedAt: string;
   productId: string;
   storageId?: string | null;
   quantity: number;

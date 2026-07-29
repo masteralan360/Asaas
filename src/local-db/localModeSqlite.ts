@@ -122,6 +122,52 @@ interface StoredEntityRow {
   updated_at: string | null;
 }
 
+function firstTimestamp(...candidates: unknown[]): string | undefined {
+  return candidates.find(
+    (candidate): candidate is string =>
+      typeof candidate === "string" && candidate.trim().length > 0,
+  );
+}
+
+/**
+ * Local-mode SQLite stores entity payloads as JSON rather than a per-table
+ * schema.  Normalize legacy sale line payloads without assigning the upgrade
+ * time, so an old sale keeps the audit time of its parent sale.
+ */
+function normalizeLegacySaleItemTimestamps(
+  item: Record<string, unknown>,
+  parentSaleCreatedAt: string | undefined,
+  persistedUpdatedAt: string | null,
+) {
+  const createdAt = firstTimestamp(
+    item.createdAt,
+    item.created_at,
+    parentSaleCreatedAt,
+    persistedUpdatedAt,
+  );
+  if (!createdAt) {
+    return false;
+  }
+
+  const updatedAt = firstTimestamp(
+    item.updatedAt,
+    item.updated_at,
+    item.returnedAt,
+    item.returned_at,
+    createdAt,
+  );
+  if (!updatedAt) {
+    return false;
+  }
+
+  const changed = item.createdAt !== createdAt || item.updatedAt !== updatedAt;
+  if (changed) {
+    item.createdAt = createdAt;
+    item.updatedAt = updatedAt;
+  }
+  return changed;
+}
+
 const hydratedWorkspaces = new Set<string>();
 const hydrationTasks = new Map<string, Promise<void>>();
 
@@ -974,6 +1020,20 @@ export async function hydrateLocalModeCacheFromSqlite(
       );
     }
 
+    const saleCreatedAtById = new Map<string, string>();
+    for (const row of rows) {
+      if (row.entity_type !== "sales") {
+        continue;
+      }
+      const sale = deserializeValue(
+        JSON.parse(row.payload),
+      ) as Record<string, unknown>;
+      const createdAt = firstTimestamp(sale.createdAt, sale.created_at);
+      if (createdAt) {
+        saleCreatedAtById.set(row.entity_id, createdAt);
+      }
+    }
+
     await withMirroringPaused(async () => {
       await clearCacheRowsForWorkspace(cacheDb, workspaceId);
 
@@ -995,6 +1055,27 @@ export async function hydrateLocalModeCacheFromSqlite(
             typeof revived.workspaceId !== "string" &&
             row.workspace_id) {
           revived.workspaceId = row.workspace_id;
+        }
+        if (row.entity_type === "sale_items") {
+          const parentSaleCreatedAt = typeof revived.saleId === "string"
+            ? saleCreatedAtById.get(revived.saleId)
+            : undefined;
+          if (
+            normalizeLegacySaleItemTimestamps(
+              revived,
+              parentSaleCreatedAt,
+              row.updated_at,
+            )
+          ) {
+            await connection.execute(
+              `
+                UPDATE local_entities
+                SET payload = $1
+                WHERE entity_type = $2 AND entity_id = $3
+              `,
+              [JSON.stringify(await serializeValue(revived)), row.entity_type, row.entity_id],
+            );
+          }
         }
         if (row.entity_type === "profiles") {
           if (row.workspace_id) {
