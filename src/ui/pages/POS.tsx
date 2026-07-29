@@ -380,9 +380,10 @@ export function POS() {
     const { features, workspaceName, isLocalMode, isLoading: isWorkspaceLoading, refreshFeatures } = useWorkspace()
     const isRTL = getLanguageDirection(i18n.resolvedLanguage || i18n.language) === 'rtl'
     const { permissionKeys, hasPermission, isLoading: arePermissionsLoading } = useWorkspacePermissions()
-    const canSellActivities = features.activities
-        && hasPermission('activities.access')
-        && hasPermission('activities.createTransaction')
+    // Activities are a POS storage. Any user who may use POS can sell from it
+    // when the workspace has enabled the Activities feature; access to the
+    // standalone Activities management module remains separately permissioned.
+    const canSellActivities = features.activities && hasPermission('pos.access')
     const storages = useStorages(user?.workspaceId)
     const [selectedStorageId, setSelectedStorageId] = useState<string>(() => {
         return localStorage.getItem('pos_selected_storage') || ''
