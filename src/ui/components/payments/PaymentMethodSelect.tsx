@@ -29,12 +29,13 @@ interface PaymentMethodSelectProps {
 }
 
 function PaymentMethodVisual({ method }: { method: PaymentMethodOption }) {
-    const brandLogo = {
+    const brandLogos: Partial<Record<PaymentMethodOption, string>> = {
         fib: '/icons/payment-methods/fib.svg',
         qicard: '/icons/payment-methods/qicard.svg',
         zaincash: '/icons/payment-methods/zaincash.svg',
         fastpay: '/icons/payment-methods/fastpay.svg'
-    }[method]
+    }
+    const brandLogo = brandLogos[method]
 
     if (brandLogo) {
         return (
