@@ -1,6 +1,6 @@
 const DEPLOYMENT_REFRESH_QUERY_PARAM = '__atlas_refresh'
 
-import { requestPwaDeploymentUpdate } from './pwaUpdateControl'
+import { refreshPwaDeployment, requestPwaDeploymentUpdate } from './pwaUpdateControl'
 import { areApplicationUpdatesDisabled } from './updatePreference'
 
 /**
@@ -28,6 +28,13 @@ export function requestServiceWorkerUpdate(): void {
     requestPwaDeploymentUpdate()
 }
 
-export function refreshToLatestDeployment(): void {
-    requestServiceWorkerUpdate()
+export async function refreshToLatestDeployment(): Promise<void> {
+    if (areApplicationUpdatesDisabled()) return
+
+    // A manual hold must always behave like a refresh. The worker first
+    // completes its atomic cache swap (when a new deployment exists), then
+    // this navigation loads that updated cache. If it is already current, the
+    // reload still gives the user the expected recovery action.
+    await refreshPwaDeployment()
+    window.location.reload()
 }

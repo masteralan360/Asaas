@@ -141,17 +141,17 @@ async function stageLatestDeployment(token) {
     const shellRequest = appShellRequest()
     const current = await getCachedResponse(shellRequest)
     const latestResponse = await fetch(new Request(shellRequest, { cache: 'reload' }))
-    if (!latestResponse.ok) return
+    if (!latestResponse.ok) return 'failed'
 
     const latestHtml = await latestResponse.clone().text()
     const currentHtml = current ? await current.clone().text() : ''
-    if (latestHtml === currentHtml) return
+    if (latestHtml === currentHtml) return 'current'
 
     const deploymentAssets = await getDeploymentAssetUrls()
     if (!deploymentAssets) {
         // Do not switch an offline-capable app to a deployment whose complete
         // bundle could not be verified. It is safer to keep the current app.
-        return
+        return 'failed'
     }
 
     await caches.delete(NEXT_APP_CACHE)
@@ -165,24 +165,28 @@ async function stageLatestDeployment(token) {
     if (failedUrls.length > 0) {
         console.warn('[Atlas PWA] Update was not staged because assets are unavailable:', failedUrls)
         await caches.delete(NEXT_APP_CACHE)
-        return
+        return 'failed'
     }
 
     if (!updatesEnabled || token !== updateToken) {
         await caches.delete(NEXT_APP_CACHE)
-        return
+        return 'failed'
     }
 
-    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-    clients.forEach((client) => client.postMessage({ type: 'UPDATE_READY' }))
+    return 'staged'
 }
 
-async function applyStagedDeployment() {
-    if (!updatesEnabled) return
+async function notifyClients(message) {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    clients.forEach((client) => client.postMessage(message))
+}
+
+async function applyStagedDeployment(notify = true) {
+    if (!updatesEnabled) return false
 
     const next = await caches.open(NEXT_APP_CACHE)
     const keys = await next.keys()
-    if (keys.length === 0) return
+    if (keys.length === 0) return false
 
     await caches.delete(APP_CACHE)
     const current = await caches.open(APP_CACHE)
@@ -193,8 +197,32 @@ async function applyStagedDeployment() {
     await caches.delete(NEXT_APP_CACHE)
     await Promise.all(LEGACY_APP_CACHES.map((cacheName) => caches.delete(cacheName)))
 
-    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-    clients.forEach((client) => client.postMessage({ type: 'UPDATE_APPLIED' }))
+    if (notify) {
+        await notifyClients({ type: 'UPDATE_APPLIED' })
+    }
+    return true
+}
+
+async function refreshToLatestDeployment(port) {
+    const token = ++updateToken
+    let status = 'failed'
+
+    try {
+        const staged = await stageLatestDeployment(token)
+        if (staged === 'staged') {
+            status = await applyStagedDeployment(false) ? 'updated' : 'failed'
+        } else if (staged === 'current') {
+            status = 'current'
+        }
+    } catch (error) {
+        console.warn('[Atlas PWA] Manual refresh could not complete:', error)
+    }
+
+    try {
+        port?.postMessage({ type: 'REFRESH_COMPLETE', status })
+    } catch {
+        // The page may have closed while the deployment was being staged.
+    }
 }
 
 self.addEventListener('install', () => {
@@ -251,7 +279,18 @@ self.addEventListener('message', (event) => {
     if (message.type === 'CHECK_FOR_UPDATE') {
         if (!updatesEnabled) return
         const token = ++updateToken
-        event.waitUntil(stageLatestDeployment(token))
+        event.waitUntil((async () => {
+            const staged = await stageLatestDeployment(token)
+            if (staged === 'staged') {
+                await notifyClients({ type: 'UPDATE_READY' })
+            }
+        })())
+        return
+    }
+
+    if (message.type === 'REFRESH_TO_LATEST') {
+        if (!updatesEnabled) return
+        event.waitUntil(refreshToLatestDeployment(event.ports?.[0]))
         return
     }
 

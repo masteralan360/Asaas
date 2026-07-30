@@ -7,7 +7,10 @@ type PwaWorkerMessage =
     | { type: 'CACHE_CURRENT_VERSION'; urls: string[] }
     | { type: 'SET_UPDATE_POLICY'; disabled: boolean }
     | { type: 'CHECK_FOR_UPDATE' }
+    | { type: 'REFRESH_TO_LATEST' }
     | { type: 'APPLY_UPDATE' }
+
+type PwaRefreshResult = 'updated' | 'current' | 'failed' | 'unavailable'
 
 let messagingInitialized = false
 
@@ -27,6 +30,22 @@ function postToWorker(message: PwaWorkerMessage): void {
     void navigator.serviceWorker.ready
         .then((registration) => post(registration.active))
         .catch((error) => console.warn('Unable to reach the Atlas service worker:', error))
+}
+
+async function getActiveWorker(): Promise<ServiceWorker | null> {
+    if (!canUseServiceWorkers()) return null
+
+    if (navigator.serviceWorker.controller) {
+        return navigator.serviceWorker.controller
+    }
+
+    try {
+        const registration = await navigator.serviceWorker.ready
+        return registration.active
+    } catch (error) {
+        console.warn('Unable to reach the Atlas service worker:', error)
+        return null
+    }
 }
 
 function getCurrentAppUrls(): string[] {
@@ -65,6 +84,49 @@ export function setPwaUpdatePolicy(disabled: boolean): void {
 export function requestPwaDeploymentUpdate(): void {
     if (areApplicationUpdatesDisabled()) return
     postToWorker({ type: 'CHECK_FOR_UPDATE' })
+}
+
+/**
+ * Stages and applies the latest deployment through the active worker. Unlike
+ * a background update check, this resolves only once the worker has finished
+ * its work, so a user-initiated refresh can safely reload afterwards.
+ */
+export async function refreshPwaDeployment(): Promise<PwaRefreshResult> {
+    if (areApplicationUpdatesDisabled() || !canUseServiceWorkers()) {
+        return 'unavailable'
+    }
+
+    const worker = await getActiveWorker()
+    if (!worker || typeof MessageChannel === 'undefined') {
+        return 'unavailable'
+    }
+
+    return new Promise((resolve) => {
+        const channel = new MessageChannel()
+        let settled = false
+        const settle = (result: PwaRefreshResult) => {
+            if (settled) return
+            settled = true
+            window.clearTimeout(timeout)
+            channel.port1.close()
+            resolve(result)
+        }
+        const timeout = window.setTimeout(() => settle('failed'), 30_000)
+
+        channel.port1.onmessage = (event: MessageEvent<{ type?: string; status?: PwaRefreshResult }>) => {
+            if (event.data?.type !== 'REFRESH_COMPLETE') return
+            settle(event.data.status === 'updated' || event.data.status === 'current'
+                ? event.data.status
+                : 'failed')
+        }
+
+        try {
+            worker.postMessage({ type: 'REFRESH_TO_LATEST' } satisfies PwaWorkerMessage, [channel.port2])
+        } catch (error) {
+            console.warn('Unable to request an Atlas deployment refresh:', error)
+            settle('unavailable')
+        }
+    })
 }
 
 export function initializePwaUpdateControl(): void {
