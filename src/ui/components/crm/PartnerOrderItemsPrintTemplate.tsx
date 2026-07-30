@@ -119,7 +119,7 @@ function resolvePeriodLabel(
     return t('businessPartners.orderItemsPrint.allTime', { defaultValue: 'All Time' })
 }
 
-function isSalesOrder(order: StatementOrder, kind: StatementKind): order is SalesOrder {
+function isSalesOrder(_order: StatementOrder, kind: StatementKind): _order is SalesOrder {
     return kind === 'sales'
 }
 
