@@ -2090,7 +2090,7 @@
     "passwordChange": {
       "title": "Password",
       "description": "Verify your current password before choosing a new one.",
-      "trigger": "Forget password",
+      "trigger": "Change password",
       "dialogTitle": "Change password",
       "dialogDescription": "Enter your current password, then choose and confirm a new password.",
       "currentPassword": "Current password",

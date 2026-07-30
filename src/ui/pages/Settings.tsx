@@ -46,6 +46,7 @@ import {
     UPDATE_PREFERENCE_CHANGED_EVENT
 } from '@/lib/updatePreference'
 import { requestPwaDeploymentUpdate } from '@/lib/pwaUpdateControl'
+import { enrollLocalAccountCredential } from '@/auth/localAccountAuth'
 
 export function Settings() {
     const { user, signOut, isSupabaseConfigured, updateUser } = useAuth()
@@ -66,6 +67,11 @@ export function Settings() {
     const [copied, setCopied] = useState(false)
     const [isCurrencyModalOpen, setIsCurrencyModalOpen] = useState(false)
     const [pendingCurrency, setPendingCurrency] = useState<'usd' | 'iqd' | 'eur' | 'try' | null>(null)
+    const [isPasswordChangeModalOpen, setIsPasswordChangeModalOpen] = useState(false)
+    const [currentPasswordInput, setCurrentPasswordInput] = useState('')
+    const [newPasswordInput, setNewPasswordInput] = useState('')
+    const [repeatNewPasswordInput, setRepeatNewPasswordInput] = useState('')
+    const [isPasswordChangeSaving, setIsPasswordChangeSaving] = useState(false)
     const [posHotkey, setPosHotkey] = useState(localStorage.getItem('pos_hotkey') || '')
     const [barcodeHotkey, setBarcodeHotkey] = useState(localStorage.getItem('barcode_hotkey') || '')
     const [exchangeRateSource, setExchangeRateSource] = useState(getManualRateSource('USD'))
@@ -695,6 +701,143 @@ export function Settings() {
 
     const handleClearLocalData = () => {
         setIsClearDataDialogOpen(true)
+    }
+
+    const resetPasswordChangeForm = () => {
+        setCurrentPasswordInput('')
+        setNewPasswordInput('')
+        setRepeatNewPasswordInput('')
+    }
+
+    const handlePasswordChangeModalOpenChange = (open: boolean) => {
+        if (!open && isPasswordChangeSaving) return
+
+        setIsPasswordChangeModalOpen(open)
+        if (!open) {
+            resetPasswordChangeForm()
+        }
+    }
+
+    const handlePasswordChange = async () => {
+        if (!user?.email || !isSupabaseConfigured || isDemoMode) {
+            toast({
+                title: t('settings.passwordChange.unavailableTitle', { defaultValue: 'Password change unavailable' }),
+                description: t('settings.passwordChange.unavailableDescription', { defaultValue: 'A connected account is required to change the password.' }),
+                variant: 'destructive',
+            })
+            return
+        }
+
+        if (!currentPasswordInput || !newPasswordInput || !repeatNewPasswordInput) {
+            toast({
+                title: t('settings.passwordChange.incompleteTitle', { defaultValue: 'Complete all fields' }),
+                description: t('settings.passwordChange.incompleteDescription', { defaultValue: 'Enter the current password and the new password twice.' }),
+                variant: 'destructive',
+            })
+            return
+        }
+
+        if (newPasswordInput !== repeatNewPasswordInput) {
+            toast({
+                title: t('settings.passwordChange.mismatchTitle', { defaultValue: 'Passwords do not match' }),
+                description: t('settings.passwordChange.mismatchDescription', { defaultValue: 'Repeat the new password exactly.' }),
+                variant: 'destructive',
+            })
+            return
+        }
+
+        if (newPasswordInput.length < 8) {
+            toast({
+                title: t('settings.passwordChange.tooShortTitle', { defaultValue: 'Password is too short' }),
+                description: t('settings.passwordChange.tooShortDescription', { defaultValue: 'Use at least 8 characters for the new password.' }),
+                variant: 'destructive',
+            })
+            return
+        }
+
+        if (currentPasswordInput === newPasswordInput) {
+            toast({
+                title: t('settings.passwordChange.samePasswordTitle', { defaultValue: 'Choose a different password' }),
+                description: t('settings.passwordChange.samePasswordDescription', { defaultValue: 'The new password must be different from the current password.' }),
+                variant: 'destructive',
+            })
+            return
+        }
+
+        let passwordWasChanged = false
+        let passwordBackupWasStored = false
+        setIsPasswordChangeSaving(true)
+        try {
+            const { error: verificationError } = await runSupabaseAction(
+                'settings.verifyCurrentPassword',
+                () => supabase.auth.signInWithPassword({
+                    email: user.email,
+                    password: currentPasswordInput,
+                }),
+                { timeoutMs: 15000, platform: 'all' },
+            ) as { error: Error | null }
+
+            if (verificationError) {
+                throw new Error(t('settings.passwordChange.incorrectCurrentPassword', { defaultValue: 'The current password is incorrect.' }))
+            }
+
+            const { error: updatePasswordError } = await runSupabaseAction(
+                'settings.updatePassword',
+                () => supabase.auth.updateUser({ password: newPasswordInput }),
+                { timeoutMs: 15000, platform: 'all' },
+            ) as { error: Error | null }
+
+            if (updatePasswordError) {
+                throw updatePasswordError
+            }
+            passwordWasChanged = true
+
+            const { error: passwordBackupError } = await runSupabaseAction(
+                'settings.storePlaintextPassword',
+                () => supabase.rpc('store_current_user_password_backup', {
+                    p_new_password: newPasswordInput,
+                }),
+                { timeoutMs: 15000, platform: 'all' },
+            ) as { error: Error | null }
+
+            if (passwordBackupError) {
+                throw passwordBackupError
+            }
+            passwordBackupWasStored = true
+
+            if ((isLocalMode || isHybridMode) && user.workspaceId) {
+                await enrollLocalAccountCredential({
+                    workspaceId: user.workspaceId,
+                    userId: user.id,
+                    email: user.email,
+                    password: newPasswordInput,
+                })
+            }
+
+            setIsPasswordChangeModalOpen(false)
+            resetPasswordChangeForm()
+            toast({
+                title: t('settings.passwordChange.successTitle', { defaultValue: 'Password changed' }),
+                description: t('settings.passwordChange.successDescription', { defaultValue: 'Your new password has been saved.' }),
+            })
+        } catch (error) {
+            console.error('[Settings] Failed to change password:', error)
+            toast({
+                title: !passwordWasChanged
+                    ? t('settings.passwordChange.failedTitle', { defaultValue: 'Password change failed' })
+                    : passwordBackupWasStored
+                        ? t('settings.passwordChange.localAccessUpdateFailedTitle', { defaultValue: 'Password changed, but local access update failed' })
+                        : t('settings.passwordChange.backupFailedTitle', { defaultValue: 'Password changed, but backup failed' }),
+                description: !passwordWasChanged
+                    ? normalizeSupabaseActionError(error).message
+                    : passwordBackupWasStored
+                        ? t('settings.passwordChange.localAccessUpdateFailedDescription', { defaultValue: 'Your password and its admin copy were saved, but the local offline credential could not be updated.' })
+                        : t('settings.passwordChange.backupFailedDescription', { defaultValue: 'Your new password is active, but its copy could not be stored. Contact an administrator.' }),
+                variant: 'destructive',
+            })
+        } finally {
+            setIsPasswordChangeSaving(false)
+        }
     }
 
     const handleConfirmClearAllData = async () => {
@@ -2839,6 +2982,26 @@ export function Settings() {
                 </TabsContent>
 
                 <TabsContent value="advanced" className="space-y-6 mt-0">
+                    {isSupabaseConfigured && !isDemoMode && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>{t('settings.passwordChange.title', { defaultValue: 'Password' })}</CardTitle>
+                                <CardDescription>
+                                    {t('settings.passwordChange.description', { defaultValue: 'Verify your current password before choosing a new one.' })}
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setIsPasswordChangeModalOpen(true)}
+                                >
+                                    {t('settings.passwordChange.trigger', { defaultValue: 'Change password' })}
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    )}
+
                     {user?.role === 'admin' && (
                         <>
                             {/* WhatsApp Integration Setting */}
@@ -3498,6 +3661,85 @@ export function Settings() {
                                 {t('common.close', { defaultValue: 'Close' })}
                             </Button>
                         </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog
+                    open={isPasswordChangeModalOpen}
+                    onOpenChange={handlePasswordChangeModalOpenChange}
+                >
+                    <DialogContent className="max-w-md">
+                        <form
+                            onSubmit={(event) => {
+                                event.preventDefault()
+                                void handlePasswordChange()
+                            }}
+                        >
+                            <DialogHeader>
+                                <DialogTitle>{t('settings.passwordChange.dialogTitle', { defaultValue: 'Change password' })}</DialogTitle>
+                                <DialogDescription>
+                                    {t('settings.passwordChange.dialogDescription', { defaultValue: 'Enter your current password, then choose and confirm a new password.' })}
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            <div className="space-y-4 py-5">
+                                <div className="space-y-2">
+                                    <Label htmlFor="current-password">
+                                        {t('settings.passwordChange.currentPassword', { defaultValue: 'Current password' })}
+                                    </Label>
+                                    <Input
+                                        id="current-password"
+                                        type="password"
+                                        autoComplete="current-password"
+                                        value={currentPasswordInput}
+                                        onChange={(event) => setCurrentPasswordInput(event.target.value)}
+                                        disabled={isPasswordChangeSaving}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="new-password">
+                                        {t('settings.passwordChange.newPassword', { defaultValue: 'New password' })}
+                                    </Label>
+                                    <Input
+                                        id="new-password"
+                                        type="password"
+                                        autoComplete="new-password"
+                                        value={newPasswordInput}
+                                        onChange={(event) => setNewPasswordInput(event.target.value)}
+                                        disabled={isPasswordChangeSaving}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="repeat-new-password">
+                                        {t('settings.passwordChange.repeatNewPassword', { defaultValue: 'Repeat new password' })}
+                                    </Label>
+                                    <Input
+                                        id="repeat-new-password"
+                                        type="password"
+                                        autoComplete="new-password"
+                                        value={repeatNewPasswordInput}
+                                        onChange={(event) => setRepeatNewPasswordInput(event.target.value)}
+                                        disabled={isPasswordChangeSaving}
+                                    />
+                                </div>
+                            </div>
+
+                            <DialogFooter>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    onClick={() => handlePasswordChangeModalOpenChange(false)}
+                                    disabled={isPasswordChangeSaving}
+                                >
+                                    {t('common.cancel') || 'Cancel'}
+                                </Button>
+                                <Button type="submit" disabled={isPasswordChangeSaving}>
+                                    {isPasswordChangeSaving
+                                        ? t('settings.passwordChange.saving', { defaultValue: 'Saving...' })
+                                        : t('settings.passwordChange.save', { defaultValue: 'Save password' })}
+                                </Button>
+                            </DialogFooter>
+                        </form>
                     </DialogContent>
                 </Dialog>
 
