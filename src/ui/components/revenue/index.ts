@@ -1,4 +1,5 @@
 export { TopProductsModal } from './TopProductsModal'
+export { ProductSalesSummaryModal } from './ProductSalesSummaryModal'
 export { SalesOverviewModal } from './SalesOverviewModal'
 export { PeakTradingModal } from './PeakTradingModal'
 export { ReturnsAnalysisModal } from './ReturnsAnalysisModal'

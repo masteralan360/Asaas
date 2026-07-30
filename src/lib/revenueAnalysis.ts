@@ -44,6 +44,12 @@ export interface RevenueAnalysisTotals {
     margin: number
 }
 
+export interface RevenueProductSalesSummary {
+    totalSales: number
+    productsSold: number
+    unitsSold: number
+}
+
 export type RevenueCategoryLookup = {
     productCategoryByProductId?: ReadonlyMap<string, string | null | undefined> | Record<string, string | null | undefined>
 }
@@ -302,6 +308,30 @@ export function getRevenueAnalysisTotals(record: RevenueAnalysisRecord): Revenue
         cost,
         profit,
         margin: revenue > 0 ? (profit / revenue) * 100 : 0
+    }
+}
+
+export function getRevenueProductSalesSummary(records: RevenueAnalysisRecord[]): RevenueProductSalesSummary {
+    const soldProductKeys = new Set<string>()
+    let unitsSold = 0
+
+    for (const record of records) {
+        if (record.isReturned) continue
+
+        for (const item of record.items) {
+            const netQuantity = Math.max(0, item.quantity - item.returnedQuantity)
+            if (netQuantity <= 0) continue
+
+            const productKey = item.productId.trim() || `name:${item.productName.trim().toLowerCase()}`
+            soldProductKeys.add(productKey)
+            unitsSold += netQuantity
+        }
+    }
+
+    return {
+        totalSales: records.length,
+        productsSold: soldProductKeys.size,
+        unitsSold
     }
 }
 

@@ -45,6 +45,7 @@ import {
     SaleDetailsModal,
     MetricDetailModal,
     TopProductsModal,
+    ProductSalesSummaryModal,
     SalesOverviewModal,
     PeakTradingModal,
     ReturnsAnalysisModal,
@@ -85,6 +86,7 @@ import {
     filterRevenueAnalysisRecords,
     filterSalesByDateRange,
     getRevenueAnalysisTotals,
+    getRevenueProductSalesSummary,
     getRevenueRecordReturnSummary,
     type RevenueAnalysisRecord
 } from '@/lib/revenueAnalysis'
@@ -657,6 +659,7 @@ export function Revenue() {
     const [selectedMetric, setSelectedMetric] = useState<MetricType | null>(null)
     const [isMetricModalOpen, setIsMetricModalOpen] = useState(false)
     const [isTopProductsOpen, setIsTopProductsOpen] = useState(false)
+    const [isProductSalesOpen, setIsProductSalesOpen] = useState(false)
     const [isSalesOverviewOpen, setIsSalesOverviewOpen] = useState(false)
     const [isPeakTradingOpen, setIsPeakTradingOpen] = useState(false)
     const [isReturnsOpen, setIsReturnsOpen] = useState(false)
@@ -1046,6 +1049,16 @@ export function Revenue() {
         categoryRevenue: {},
         productPerformance: {}
     }, [stats.statsByCurrency, currencySettings.currency])
+
+    const productSalesSummary = useMemo(
+        () => getRevenueProductSalesSummary(filteredRevenueRecords),
+        [filteredRevenueRecords]
+    )
+
+    const quantityFormatter = useMemo(
+        () => new Intl.NumberFormat(i18n.language),
+        [i18n.language]
+    )
 
     const trendData = useMemo(() => {
         const dailyTrend = primaryStats.dailyTrend || {}
@@ -1488,7 +1501,7 @@ export function Revenue() {
                     </div>
 
                     {/* Preview Section - Charts & Highlights */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                         {/* Top Products */}
                         <Card className="rounded-[2.5rem] border-border/40 shadow-sm bg-card overflow-hidden">
                             <CardHeader className="pb-4">
@@ -1551,6 +1564,46 @@ export function Revenue() {
                                         <p className="text-xs font-bold uppercase tracking-widest">No Data Available</p>
                                     </div>
                                 )}
+                            </CardContent>
+                        </Card>
+
+                        {/* Product Sales Summary */}
+                        <Card
+                            className="rounded-[2.5rem] border-primary/20 shadow-sm bg-primary/5 overflow-hidden cursor-pointer hover:scale-[1.02] hover:bg-primary/10 hover:shadow-md active:scale-95 transition-all group relative"
+                            onClick={() => setIsProductSalesOpen(true)}
+                        >
+                            <div className="absolute top-4 end-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <ArrowRight className="w-4 h-4 text-primary" />
+                            </div>
+                            <CardHeader className="pb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-primary/10 rounded-xl text-primary">
+                                        <Package className="w-5 h-5" />
+                                    </div>
+                                    <CardTitle className="text-sm font-black uppercase tracking-widest text-foreground">
+                                        {t('revenue.productSales')}
+                                    </CardTitle>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="space-y-4 pt-2">
+                                <dl className="space-y-4">
+                                    <div className="flex items-end justify-between gap-3">
+                                        <dt className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{t('revenue.salesCount')}</dt>
+                                        <dd className="text-3xl font-black tracking-tighter tabular-nums text-foreground">{quantityFormatter.format(productSalesSummary.totalSales)}</dd>
+                                    </div>
+                                    <div className="flex items-end justify-between gap-3">
+                                        <dt className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{t('revenue.productsSold')}</dt>
+                                        <dd className="text-3xl font-black tracking-tighter tabular-nums text-foreground">{quantityFormatter.format(productSalesSummary.productsSold)}</dd>
+                                    </div>
+                                    <div className="flex items-end justify-between gap-3">
+                                        <dt className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{t('revenue.unitsSold')}</dt>
+                                        <dd className="text-3xl font-black tracking-tighter tabular-nums text-foreground">{quantityFormatter.format(productSalesSummary.unitsSold)}</dd>
+                                    </div>
+                                </dl>
+                                <div className="pt-3 border-t border-primary/15 text-[10px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
+                                    {t('common.viewAll')}
+                                    <ArrowRight className="w-3.5 h-3.5" />
+                                </div>
                             </CardContent>
                         </Card>
 
@@ -2199,6 +2252,12 @@ export function Revenue() {
                         onClose={() => setIsTopProductsOpen(false)}
                         data={stats.statsByCurrency}
                         iqdPreference={features.iqd_display_preference}
+                    />
+
+                    <ProductSalesSummaryModal
+                        isOpen={isProductSalesOpen}
+                        onClose={() => setIsProductSalesOpen(false)}
+                        summary={productSalesSummary}
                     />
 
                     {/* Sales Overview Modal */}
