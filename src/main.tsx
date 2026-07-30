@@ -130,7 +130,15 @@ if (!rootElement) {
 
 const root = createRoot(rootElement)
 
+const dismissShellRecovery = () => {
+    const recovery = document.getElementById('atlas-shell-recovery')
+    if (!recovery) return
+    recovery.dataset.dismissed = 'true'
+    recovery.setAttribute('hidden', '')
+}
+
 const renderRoot = (content: ReactNode) => {
+    dismissShellRecovery()
     root.render(
         <StrictMode>
             {content}
@@ -141,6 +149,7 @@ const renderRoot = (content: ReactNode) => {
 
 const renderStartupFailure = (error: unknown) => {
     console.error('[Atlas] Application startup failed:', error)
+    dismissShellRecovery()
     root.render(
         <div
             role="alert"
@@ -290,6 +299,7 @@ const init = async () => {
 
         // Phase 3: Show app, hide splash. Tree structure identical to Phase 2
         // — React preserves all state (AuthProvider, etc.)
+        dismissShellRecovery()
         root.render(
             <StrictMode>
                 <div id="atlas-splash" style={{ display: 'none' }}>
