@@ -123,6 +123,7 @@ export function Settings() {
     const [isInvoicePdfExporting, setIsInvoicePdfExporting] = useState(false)
     const [isDatabaseInjectionDialogOpen, setIsDatabaseInjectionDialogOpen] = useState(false)
     const [databaseFileToInject, setDatabaseFileToInject] = useState<File | null>(null)
+    const [databaseUrlToInject, setDatabaseUrlToInject] = useState('')
     const [databaseInjectionError, setDatabaseInjectionError] = useState<string | null>(null)
     const [isInjectingDatabase, setIsInjectingDatabase] = useState(false)
     const databaseInjectionInputRef = useRef<HTMLInputElement>(null)
@@ -1279,6 +1280,15 @@ export function Settings() {
         }
 
         setDatabaseFileToInject(selectedFile)
+        setDatabaseUrlToInject('')
+    }
+
+    const handleDatabaseInjectionUrlChange = (value: string) => {
+        setDatabaseUrlToInject(value)
+        setDatabaseInjectionError(null)
+        if (value.trim()) {
+            setDatabaseFileToInject(null)
+        }
     }
 
     const handleDatabaseInjectionDialogChange = (open: boolean) => {
@@ -1286,17 +1296,56 @@ export function Settings() {
         setIsDatabaseInjectionDialogOpen(open)
         if (!open) {
             setDatabaseFileToInject(null)
+            setDatabaseUrlToInject('')
             setDatabaseInjectionError(null)
         }
     }
 
     const handleInjectDatabase = async () => {
-        if (!databaseFileToInject) return
+        const databaseUrl = databaseUrlToInject.trim()
+        if (!databaseFileToInject && !databaseUrl) return
 
         setIsInjectingDatabase(true)
         setDatabaseInjectionError(null)
         try {
-            await injectLocalModeDatabaseFile(new Uint8Array(await databaseFileToInject.arrayBuffer()))
+            let data: Uint8Array
+            if (databaseFileToInject) {
+                data = new Uint8Array(await databaseFileToInject.arrayBuffer())
+            } else {
+                let url: URL
+                try {
+                    url = new URL(databaseUrl)
+                } catch {
+                    throw new Error('Enter a valid direct HTTPS link to atlas-local-mode.db.')
+                }
+
+                if (url.protocol !== 'https:') {
+                    throw new Error('The database link must use HTTPS.')
+                }
+                if (!url.pathname.toLowerCase().endsWith('/atlas-local-mode.db')) {
+                    throw new Error('The link must point directly to an atlas-local-mode.db file.')
+                }
+
+                let response: Response
+                try {
+                    response = await fetch(url.href, {
+                        cache: 'no-store',
+                        credentials: 'omit',
+                    })
+                } catch {
+                    throw new Error('Could not download the database. Check that the direct link is accessible from Atlas.')
+                }
+                if (!response.ok) {
+                    throw new Error(`Could not download the database (${response.status}). Check that the link is accessible.`)
+                }
+
+                data = new Uint8Array(await response.arrayBuffer())
+                if (data.byteLength === 0) {
+                    throw new Error('The database link returned an empty file.')
+                }
+            }
+
+            await injectLocalModeDatabaseFile(data)
 
             // SQLite is authoritative in Local Mode. Remove the old Dexie
             // cache before reloading so it is hydrated only from this backup.
@@ -3248,6 +3297,24 @@ export function Settings() {
                                       </span>
                                     )}
                                   </div>
+                                  <div className="space-y-2 border-t pt-4">
+                                    <Label htmlFor="database-injection-url">Or inject from a direct link</Label>
+                                    <Input
+                                      id="database-injection-url"
+                                      type="url"
+                                      inputMode="url"
+                                      autoCapitalize="none"
+                                      autoCorrect="off"
+                                      spellCheck={false}
+                                      value={databaseUrlToInject}
+                                      onChange={(event) => handleDatabaseInjectionUrlChange(event.target.value)}
+                                      placeholder="https://…/atlas-local-mode.db"
+                                      disabled={isInjectingDatabase}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                      Paste a direct HTTPS link to an atlas-local-mode.db backup, such as a local-backup link from R2.
+                                    </p>
+                                  </div>
                                   {databaseInjectionError && (
                                     <p role="alert" className="text-sm text-destructive">
                                       {databaseInjectionError}
@@ -3270,7 +3337,7 @@ export function Settings() {
                                     holdingLabel="Keep holding to replace database..."
                                     loadingLabel="Injecting database..."
                                     isLoading={isInjectingDatabase}
-                                    disabled={!databaseFileToInject}
+                                    disabled={!databaseFileToInject && !databaseUrlToInject.trim()}
                                     durationMs={3000}
                                   />
                                 </DialogFooter>
