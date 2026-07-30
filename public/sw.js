@@ -16,6 +16,7 @@ const RUNTIME_APP_ASSETS = [
 ]
 let updatesEnabled = true
 let updateToken = 0
+let missingAssetRecoveryPromise = null
 
 const appShellRequest = () => new Request(new URL('/', self.location.origin).href)
 
@@ -28,6 +29,12 @@ function isCacheableRequest(request) {
     }
 
     return /\.(?:js|mjs|css|png|svg|ico|woff2?|wasm)$/i.test(new URL(request.url).pathname)
+}
+
+function isMissingBuildAsset(request) {
+    const url = new URL(request.url)
+    return request.destination === 'script'
+        && /^\/assets\/[^/]+\.js$/i.test(url.pathname)
 }
 
 async function putResponse(cacheName, request, response) {
@@ -232,6 +239,31 @@ async function refreshToLatestDeployment(port) {
     }
 }
 
+/**
+ * A cached index can occasionally reference a hashed module that Vercel has
+ * already removed. Recover from that precise situation without clearing the
+ * current cache: only a fully verified deployment is allowed to replace it.
+ */
+function recoverFromMissingBuildAsset() {
+    if (!updatesEnabled) return Promise.resolve()
+    if (missingAssetRecoveryPromise) return missingAssetRecoveryPromise
+
+    const token = ++updateToken
+    missingAssetRecoveryPromise = (async () => {
+        try {
+            const staged = await stageLatestDeployment(token)
+            if (staged === 'staged') {
+                await applyStagedDeployment()
+            }
+        } catch (error) {
+            console.warn('[Atlas PWA] Missing build asset recovery failed:', error)
+        } finally {
+            missingAssetRecoveryPromise = null
+        }
+    })()
+    return missingAssetRecoveryPromise
+}
+
 self.addEventListener('install', () => {
     self.skipWaiting()
 })
@@ -246,7 +278,7 @@ self.addEventListener('fetch', (event) => {
         return
     }
 
-    event.respondWith((async () => {
+    const responsePromise = (async () => {
         const cached = await getCachedResponse(request)
         if (cached) return cached
 
@@ -261,7 +293,18 @@ self.addEventListener('fetch', (event) => {
             }
             throw error
         }
-    })())
+    })()
+
+    if (isMissingBuildAsset(request)) {
+        // Attach this while the fetch event is still active. The original 404
+        // is returned to the browser, while the safe recovery runs in the
+        // background and reloads clients only after its cache swap succeeds.
+        event.waitUntil(responsePromise.then((response) => (
+            response.status === 404 ? recoverFromMissingBuildAsset() : undefined
+        )).catch(() => undefined))
+    }
+
+    event.respondWith(responsePromise)
 })
 
 self.addEventListener('message', (event) => {

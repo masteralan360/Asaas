@@ -9,6 +9,7 @@ import { removeDeploymentRefreshParam } from '@/lib/deploymentRefresh'
 import {
     cacheCurrentPwaVersion,
     initializePwaUpdateControl,
+    refreshPwaDeployment,
     requestPwaDeploymentUpdate,
     setPwaUpdatePolicy
 } from '@/lib/pwaUpdateControl'
@@ -111,25 +112,34 @@ if (
     })
 }
 
-window.addEventListener('unhandledrejection', (event) => {
-    if (event.reason?.message?.includes('Failed to fetch dynamically imported module') ||
-        event.reason?.message?.includes('Importing a stopped module')) {
-        if (areApplicationUpdatesDisabled()) {
-            console.error('[Critical] Chunk load failed while updates are disabled. Keeping the installed version.', event.reason)
-            return
-        }
+const isDynamicImportFailure = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error ?? '')
+    return message.includes('Failed to fetch dynamically imported module')
+        || message.includes('Importing a stopped module')
+}
 
-        const key = '__atlas_reload_ts__'
-        const last = parseInt(sessionStorage.getItem(key) || '0', 10)
-        const now = Date.now()
-        if (now - last > 30000) {
-            sessionStorage.setItem(key, String(now))
-            console.error('[Critical] Chunk load failed. Auto-reloading...', event.reason)
-            window.location.reload()
-        } else {
-            console.error('[Critical] Chunk load failed again within 30s. Breaking reload loop.')
-        }
+const recoverFromDynamicImportFailure = async (error: unknown) => {
+    if (!isDynamicImportFailure(error) || areApplicationUpdatesDisabled()) {
+        return false
     }
+
+    const key = '__atlas_reload_ts__'
+    const last = parseInt(sessionStorage.getItem(key) || '0', 10)
+    const now = Date.now()
+    if (now - last <= 30000) {
+        console.error('[Critical] Chunk load failed again within 30s. Breaking reload loop.', error)
+        return false
+    }
+
+    sessionStorage.setItem(key, String(now))
+    console.error('[Critical] Chunk load failed. Recovering the current deployment...', error)
+    await refreshPwaDeployment()
+    window.location.reload()
+    return true
+}
+
+window.addEventListener('unhandledrejection', (event) => {
+    void recoverFromDynamicImportFailure(event.reason)
 })
 
 const rootElement = document.getElementById('root')
@@ -159,6 +169,7 @@ const renderRoot = (content: ReactNode) => {
 
 const renderStartupFailure = (error: unknown) => {
     console.error('[Atlas] Application startup failed:', error)
+    const canRecoverCurrentDeployment = isDynamicImportFailure(error) && !areApplicationUpdatesDisabled()
     dismissShellRecovery()
     root.render(
         <div
@@ -181,7 +192,15 @@ const renderStartupFailure = (error: unknown) => {
                 </p>
                 <button
                     type="button"
-                    onClick={() => window.location.reload()}
+                    onClick={() => {
+                        if (canRecoverCurrentDeployment) {
+                            void recoverFromDynamicImportFailure(error).then((recovering) => {
+                                if (!recovering) window.location.reload()
+                            })
+                            return
+                        }
+                        window.location.reload()
+                    }}
                     style={{
                         border: 0,
                         borderRadius: 10,
@@ -197,6 +216,10 @@ const renderStartupFailure = (error: unknown) => {
             </div>
         </div>,
     )
+
+    if (canRecoverCurrentDeployment) {
+        void recoverFromDynamicImportFailure(error)
+    }
 }
 
 
