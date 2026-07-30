@@ -11,8 +11,7 @@ const DEPLOYMENT_CHECK_QUERY_PARAM = '__atlas_deployment_check'
 const RUNTIME_APP_ASSETS = [
     '/sql-wasm.wasm',
     '/pwa-icon.png',
-    '/logo.png',
-    '/logo.ico'
+    '/logo.png'
 ]
 let updatesEnabled = true
 let updateToken = 0

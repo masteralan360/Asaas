@@ -41,7 +41,7 @@ export default defineConfig(({ mode }) => {
                 // Vercel deployment never replaces that update gate.
                 filename: 'workbox-sw.js',
                 registerType: 'prompt',
-                includeAssets: ['logo.ico', 'logo.png', 'pwa-icon.png', 'sql-wasm.wasm'],
+                includeAssets: ['logo.png', 'pwa-icon.png', 'sql-wasm.wasm'],
                 manifest: {
                     name: 'Atlas',
                     short_name: 'Atlas',
