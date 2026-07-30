@@ -7,6 +7,7 @@ const APP_CACHE = 'atlas-app-shell-v2'
 const NEXT_APP_CACHE = 'atlas-app-shell-v2-next'
 const LEGACY_APP_CACHES = ['atlas-app-shell-v1']
 const ASSET_MANIFEST_URL = '/atlas-assets.json'
+const DEPLOYMENT_CHECK_QUERY_PARAM = '__atlas_deployment_check'
 const RUNTIME_APP_ASSETS = [
     '/sql-wasm.wasm',
     '/pwa-icon.png',
@@ -110,12 +111,18 @@ function extractInitialAssetUrls(html) {
     return urls
 }
 
-async function getDeploymentAssetUrls() {
+function createFreshDeploymentRequest(path, token) {
+    const url = new URL(path, self.location.origin)
+    // Vercel can legitimately cache static documents at the edge. A distinct
+    // URL plus no-store makes an explicit Atlas update check reach the current
+    // deployment instead of comparing a cached document with itself.
+    url.searchParams.set(DEPLOYMENT_CHECK_QUERY_PARAM, `${Date.now()}-${token}`)
+    return new Request(url.href, { cache: 'no-store' })
+}
+
+async function getDeploymentAssetUrls(token) {
     try {
-        const manifestRequest = new Request(
-            new URL(ASSET_MANIFEST_URL, self.location.origin).href,
-            { cache: 'reload' }
-        )
+        const manifestRequest = createFreshDeploymentRequest(ASSET_MANIFEST_URL, token)
         const response = await fetch(manifestRequest)
         if (!response.ok) return null
 
@@ -140,14 +147,14 @@ async function getDeploymentAssetUrls() {
 async function stageLatestDeployment(token) {
     const shellRequest = appShellRequest()
     const current = await getCachedResponse(shellRequest)
-    const latestResponse = await fetch(new Request(shellRequest, { cache: 'reload' }))
+    const latestResponse = await fetch(createFreshDeploymentRequest('/', token))
     if (!latestResponse.ok) return 'failed'
 
     const latestHtml = await latestResponse.clone().text()
     const currentHtml = current ? await current.clone().text() : ''
     if (latestHtml === currentHtml) return 'current'
 
-    const deploymentAssets = await getDeploymentAssetUrls()
+    const deploymentAssets = await getDeploymentAssetUrls(token)
     if (!deploymentAssets) {
         // Do not switch an offline-capable app to a deployment whose complete
         // bundle could not be verified. It is safer to keep the current app.

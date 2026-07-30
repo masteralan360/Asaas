@@ -61,7 +61,17 @@ const registerAppServiceWorker = () => {
         // The worker is a stable update gate. It must not be replaced by a
         // deployment-specific Workbox worker on every Vercel build.
         updateViaCache: 'none'
-    }).then(() => navigator.serviceWorker.ready)
+    }).then(async (registration) => {
+        // Ask the browser to re-check the stable gate on every launch. This
+        // lets an already-installed PWA receive a worker recovery fix without
+        // clearing its offline cache or reinstalling the app.
+        try {
+            await registration.update()
+        } catch (error) {
+            console.warn('Failed to re-check the Atlas service worker:', error)
+        }
+        return navigator.serviceWorker.ready
+    })
         .then(() => {
             const updatesDisabled = areApplicationUpdatesDisabled()
             setPwaUpdatePolicy(updatesDisabled)

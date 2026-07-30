@@ -18,34 +18,25 @@ function canUseServiceWorkers() {
     return typeof navigator !== 'undefined' && 'serviceWorker' in navigator
 }
 
-function postToWorker(message: PwaWorkerMessage): void {
-    if (!canUseServiceWorkers()) return
-
-    const post = (worker: ServiceWorker | null | undefined) => worker?.postMessage(message)
-    if (navigator.serviceWorker.controller) {
-        post(navigator.serviceWorker.controller)
-        return
-    }
-
-    void navigator.serviceWorker.ready
-        .then((registration) => post(registration.active))
-        .catch((error) => console.warn('Unable to reach the Atlas service worker:', error))
-}
-
 async function getActiveWorker(): Promise<ServiceWorker | null> {
     if (!canUseServiceWorkers()) return null
 
-    if (navigator.serviceWorker.controller) {
-        return navigator.serviceWorker.controller
-    }
-
     try {
         const registration = await navigator.serviceWorker.ready
-        return registration.active
+        // Use the registration's active worker rather than the current page's
+        // controller. During a worker upgrade, controller can briefly still
+        // point at the old worker even though a newer one is already active.
+        return registration.active ?? navigator.serviceWorker.controller
     } catch (error) {
         console.warn('Unable to reach the Atlas service worker:', error)
         return null
     }
+}
+
+function postToWorker(message: PwaWorkerMessage): void {
+    void getActiveWorker()
+        .then((worker) => worker?.postMessage(message))
+        .catch((error) => console.warn('Unable to reach the Atlas service worker:', error))
 }
 
 function getCurrentAppUrls(): string[] {
@@ -94,6 +85,16 @@ export function requestPwaDeploymentUpdate(): void {
 export async function refreshPwaDeployment(): Promise<PwaRefreshResult> {
     if (areApplicationUpdatesDisabled() || !canUseServiceWorkers()) {
         return 'unavailable'
+    }
+
+    let registration: ServiceWorkerRegistration
+    try {
+        registration = await navigator.serviceWorker.ready
+        // This also picks up a repaired stable worker for an older installed
+        // PWA before asking it to stage the current app deployment.
+        await registration.update()
+    } catch (error) {
+        console.warn('Unable to update the Atlas service worker:', error)
     }
 
     const worker = await getActiveWorker()
