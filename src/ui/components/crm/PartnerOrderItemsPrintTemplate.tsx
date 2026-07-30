@@ -94,6 +94,8 @@ export const PARTNER_ORDER_ITEMS_MOVABLE_COMPONENT_KEYS = {
     workspaceName: 'partnerOrderItemsWorkspaceName'
 } as const
 
+export type PartnerOrderItemsPrintRowHierarchy = 'single' | 'first' | 'middle' | 'last'
+
 function isRTL(lang: string) {
     const baseLang = (lang || 'en').split('-')[0]
     return baseLang === 'ar' || baseLang === 'ku'
@@ -267,6 +269,45 @@ export function buildPartnerOrderItemsPrintSection(
     }
 }
 
+/**
+ * Describes each consecutive row's place inside its source order. Keeping this
+ * based on orderId (instead of merely the displayed code) prevents unrelated
+ * orders from being visually joined if their codes ever overlap.
+ */
+export function getPartnerOrderItemsPrintRowHierarchy(
+    rows: PartnerOrderItemsPrintRow[],
+    rowIndex: number
+): PartnerOrderItemsPrintRowHierarchy {
+    const row = rows[rowIndex]
+    if (!row) return 'single'
+
+    const hasPreviousOrderRow = rows[rowIndex - 1]?.orderId === row.orderId
+    const hasNextOrderRow = rows[rowIndex + 1]?.orderId === row.orderId
+
+    if (!hasPreviousOrderRow && !hasNextOrderRow) return 'single'
+    if (!hasPreviousOrderRow) return 'first'
+    if (!hasNextOrderRow) return 'last'
+    return 'middle'
+}
+
+function OrderHierarchyMarker({ position }: { position: PartnerOrderItemsPrintRowHierarchy }) {
+    if (position === 'single') return null
+
+    const verticalPosition = position === 'first'
+        ? 'top-1/2 bottom-0'
+        : position === 'last'
+            ? 'top-0 bottom-1/2'
+            : 'inset-y-0'
+    const turnPosition = position === 'first' ? 'top-1/2' : position === 'last' ? 'bottom-1/2' : null
+
+    return (
+        <span className="pointer-events-none absolute inset-y-0 -start-4 w-3" aria-hidden="true">
+            <span className={`absolute start-0 w-px bg-emerald-600 ${verticalPosition}`} />
+            {turnPosition ? <span className={`absolute start-0 h-px w-2.5 bg-emerald-600 ${turnPosition}`} /> : null}
+        </span>
+    )
+}
+
 function statementRowLabel(
     row: PartnerOrderItemsPrintRow,
     t: (key: string, options?: Record<string, unknown>) => string
@@ -365,29 +406,42 @@ function OrderItemsSection({
                         <tr>
                             <td colSpan={8} className="border border-slate-400 p-4 text-center">{emptyLabel}</td>
                         </tr>
-                    ) : section.rows.map((row, index) => (
-                        <tr
-                            key={row.id}
-                            className={row.kind === 'order_total'
-                                ? 'bg-slate-200 font-bold'
-                                : row.kind === 'item'
-                                    ? ''
-                                    : 'bg-slate-50'}
-                            data-pdf-keep-together
-                        >
-                            <td className="border border-slate-300 p-1 text-center">{index + 1}</td>
-                            <td className="border border-slate-300 p-1 align-top font-semibold">
-                                <div>{row.orderCode}</div>
-                                <div className="mt-0.5 text-[7px] font-normal">{formatDate(row.orderDate)}</div>
-                            </td>
-                            <td className="border border-slate-300 p-1 align-top">{statementRowLabel(row, t)}</td>
-                            <td className="border border-slate-300 p-1 align-top whitespace-pre-wrap">{statementRowNote(row, t)}</td>
-                            <td className="border border-slate-300 p-1 text-center">{row.unit?.trim() || '—'}</td>
-                            <td className="border border-slate-300 p-1 text-end">{formatQuantity(row.quantity)}</td>
-                            <td className="border border-slate-300 p-1 text-end">{row.unitPrice == null ? '—' : formatCurrency(row.unitPrice, row.currency, iqdPreference)}</td>
-                            <td className="border border-slate-300 p-1 text-end font-semibold">{row.amount == null ? '—' : formatCurrency(row.amount, row.currency, iqdPreference)}</td>
-                        </tr>
-                    ))}
+                    ) : section.rows.map((row, index) => {
+                        const hierarchyPosition = getPartnerOrderItemsPrintRowHierarchy(section.rows, index)
+
+                        return row.kind === 'order_total' ? (
+                            <tr key={row.id} className="bg-slate-200 font-bold" data-pdf-keep-together>
+                                <td className="relative overflow-visible border border-slate-300 px-1 py-0.5 text-center">
+                                    <OrderHierarchyMarker position={hierarchyPosition} />
+                                    {index + 1}
+                                </td>
+                                <td className="border border-slate-300 px-1 py-0.5 whitespace-nowrap">{row.orderCode}</td>
+                                <td colSpan={5} className="border border-slate-300 px-1 py-0.5">{statementRowLabel(row, t)}</td>
+                                <td className="border border-slate-300 px-1 py-0.5 text-end whitespace-nowrap">{row.amount == null ? '—' : formatCurrency(row.amount, row.currency, iqdPreference)}</td>
+                            </tr>
+                        ) : (
+                            <tr
+                                key={row.id}
+                                className={row.kind === 'item' ? '' : 'bg-slate-50'}
+                                data-pdf-keep-together
+                            >
+                                <td className="relative overflow-visible border border-slate-300 p-1 text-center">
+                                    <OrderHierarchyMarker position={hierarchyPosition} />
+                                    {index + 1}
+                                </td>
+                                <td className="border border-slate-300 p-1 align-top font-semibold">
+                                    <div>{row.orderCode}</div>
+                                    <div className="mt-0.5 text-[7px] font-normal">{formatDate(row.orderDate)}</div>
+                                </td>
+                                <td className="border border-slate-300 p-1 align-top">{statementRowLabel(row, t)}</td>
+                                <td className="border border-slate-300 p-1 align-top whitespace-pre-wrap">{statementRowNote(row, t)}</td>
+                                <td className="border border-slate-300 p-1 text-center">{row.unit?.trim() || '—'}</td>
+                                <td className="border border-slate-300 p-1 text-end">{formatQuantity(row.quantity)}</td>
+                                <td className="border border-slate-300 p-1 text-end">{row.unitPrice == null ? '—' : formatCurrency(row.unitPrice, row.currency, iqdPreference)}</td>
+                                <td className="border border-slate-300 p-1 text-end font-semibold">{row.amount == null ? '—' : formatCurrency(row.amount, row.currency, iqdPreference)}</td>
+                            </tr>
+                        )
+                    })}
                 </tbody>
             </table>
             <StatementSummary summaries={section.summaries} kind={kind} t={t} iqdPreference={iqdPreference} />

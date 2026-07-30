@@ -13,7 +13,10 @@ vi.mock('@/services/platformService', () => ({
 }))
 
 import type { PurchaseOrder, SalesOrder } from '@/local-db'
-import { buildPartnerOrderItemsPrintSection } from './PartnerOrderItemsPrintTemplate'
+import {
+    buildPartnerOrderItemsPrintSection,
+    getPartnerOrderItemsPrintRowHierarchy
+} from './PartnerOrderItemsPrintTemplate'
 
 const createdAt = '2026-07-01T08:00:00.000Z'
 
@@ -172,6 +175,9 @@ describe('buildPartnerOrderItemsPrintSection', () => {
         expect(section.rows.filter((row) => row.kind === 'adjustment').map((row) => row.amount)).toEqual([7, -1])
         expect(section.rows.find((row) => row.kind === 'discount')?.amount).toBe(-3)
         expect(section.rows.find((row) => row.kind === 'tax')?.amount).toBe(2)
+        expect(section.rows.map((_, index) => getPartnerOrderItemsPrintRowHierarchy(section.rows, index))).toEqual([
+            'first', 'middle', 'middle', 'middle', 'middle', 'middle', 'middle', 'last'
+        ])
         expect(section.summaries).toEqual([{
             currency: 'usd',
             orderCount: 1,
@@ -195,5 +201,8 @@ describe('buildPartnerOrderItemsPrintSection', () => {
         expect(section.rows.map((row) => row.orderCode)).toEqual(['0005', '0005'])
         expect(section.rows.map((row) => row.kind)).toEqual(['item', 'order_total'])
         expect(section.rows.some((row) => row.kind === 'tax')).toBe(false)
+        expect(section.rows.map((_, index) => getPartnerOrderItemsPrintRowHierarchy(section.rows, index))).toEqual([
+            'first', 'last'
+        ])
     })
 })
