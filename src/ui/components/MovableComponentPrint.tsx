@@ -1,4 +1,4 @@
-import { Move } from 'lucide-react'
+import { Maximize2, Move } from 'lucide-react'
 import type { KeyboardEvent, PointerEvent, ReactNode } from 'react'
 import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
 
@@ -13,6 +13,9 @@ export function MovableOrderPrintBlock({
     minY,
     pushFlow,
     previewPageBreakMode,
+    resizable = false,
+    minScale = 0.5,
+    maxScale = 2,
     children
 }: {
     componentKey: string
@@ -25,14 +28,24 @@ export function MovableOrderPrintBlock({
     minY?: number
     pushFlow?: boolean
     previewPageBreakMode?: 'transform'
+    /** Shows an editor-only handle that scales this component without changing its data. */
+    resizable?: boolean
+    minScale?: number
+    maxScale?: number
     children: ReactNode
 }) {
-    const resolvedPosition = position || { x: 0, y: 0 }
+    const resolvedScale = Math.min(maxScale, Math.max(minScale, position?.scale ?? 1))
+    const resolvedPosition = {
+        x: position?.x ?? 0,
+        y: position?.y ?? 0,
+        scale: resolvedScale
+    }
 
     const updatePosition = (nextPosition: CustomTemplateComponentPosition) => {
         onPositionChange?.(componentKey, {
             x: nextPosition.x,
-            y: minY !== undefined ? Math.max(minY, nextPosition.y) : nextPosition.y
+            y: minY !== undefined ? Math.max(minY, nextPosition.y) : nextPosition.y,
+            scale: Math.min(maxScale, Math.max(minScale, nextPosition.scale ?? resolvedScale))
         })
     }
 
@@ -83,8 +96,40 @@ export function MovableOrderPrintBlock({
         event.preventDefault()
         updatePosition({
             x: resolvedPosition.x + delta.x,
-            y: resolvedPosition.y + delta.y
+            y: resolvedPosition.y + delta.y,
+            scale: resolvedScale
         })
+    }
+
+    const handleResizePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+        if (!editable || !onPositionChange || !resizable) return
+
+        event.preventDefault()
+        event.stopPropagation()
+        const block = event.currentTarget.parentElement
+        if (!block) return
+
+        const blockRect = block.getBoundingClientRect()
+        const startX = event.clientX
+        const initialScale = resolvedScale
+
+        const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
+            const width = Math.max(blockRect.width, 1)
+            const relativeWidthChange = (moveEvent.clientX - startX) / width
+            updatePosition({
+                ...resolvedPosition,
+                scale: initialScale * (1 + relativeWidthChange)
+            })
+        }
+        const handlePointerUp = () => {
+            window.removeEventListener('pointermove', handlePointerMove)
+            window.removeEventListener('pointerup', handlePointerUp)
+            window.removeEventListener('pointercancel', handlePointerUp)
+        }
+
+        window.addEventListener('pointermove', handlePointerMove)
+        window.addEventListener('pointerup', handlePointerUp)
+        window.addEventListener('pointercancel', handlePointerUp)
     }
 
     return (
@@ -95,11 +140,13 @@ export function MovableOrderPrintBlock({
             ].filter(Boolean).join(' ')}
             style={pushFlow ? {
                 position: 'relative',
-                transform: `translate(${resolvedPosition.x}mm, 0)`,
+                transform: `translate(${resolvedPosition.x}mm, 0) scale(${resolvedScale})`,
+                transformOrigin: 'top left',
                 marginTop: `${resolvedPosition.y}mm`,
                 zIndex: 20
             } : {
-                transform: `translate(${resolvedPosition.x}mm, ${resolvedPosition.y}mm)`,
+                transform: `translate(${resolvedPosition.x}mm, ${resolvedPosition.y}mm) scale(${resolvedScale})`,
+                transformOrigin: 'top left',
                 position: 'relative',
                 zIndex: 20
             }}
@@ -111,17 +158,31 @@ export function MovableOrderPrintBlock({
         >
             {children}
             {editable ? (
-                <button
-                    type="button"
-                    className={`order-template-move-handle absolute -top-3 ${handleSide === 'left' ? 'start-1' : 'end-1'} z-50 inline-flex h-6 touch-none items-center gap-1 rounded border border-primary/30 bg-white px-1.5 text-[9px] font-semibold text-primary opacity-70 shadow-sm hover:opacity-100 focus:opacity-100`}
-                    onPointerDown={handlePointerDown}
-                    onKeyDown={handleKeyDown}
-                    aria-label={`Move ${label}`}
-                    title={`Move ${label}. Use arrow keys for 1mm steps; hold Shift for 5mm.`}
-                >
-                    <Move className="h-3 w-3" />
-                    <span>{label}</span>
-                </button>
+                <>
+                    <button
+                        type="button"
+                        className={`order-template-move-handle absolute -top-3 ${handleSide === 'left' ? 'start-1' : 'end-1'} z-50 inline-flex h-6 touch-none items-center gap-1 rounded border border-primary/30 bg-white px-1.5 text-[9px] font-semibold text-primary opacity-70 shadow-sm hover:opacity-100 focus:opacity-100`}
+                        onPointerDown={handlePointerDown}
+                        onKeyDown={handleKeyDown}
+                        aria-label={`Move ${label}`}
+                        title={`Move ${label}. Use arrow keys for 1mm steps; hold Shift for 5mm.`}
+                    >
+                        <Move className="h-3 w-3" />
+                        <span>{label}</span>
+                    </button>
+                    {resizable ? (
+                        <button
+                            type="button"
+                            className={`order-template-scale-handle absolute -bottom-3 ${handleSide === 'left' ? 'start-1' : 'end-1'} z-50 inline-flex h-6 touch-ew-resize items-center gap-1 rounded border border-primary/30 bg-white px-1.5 text-[9px] font-semibold text-primary opacity-70 shadow-sm hover:opacity-100 focus:opacity-100`}
+                            onPointerDown={handleResizePointerDown}
+                            aria-label={`Scale ${label}`}
+                            title={`Scale ${label}. Drag horizontally to resize.`}
+                        >
+                            <Maximize2 className="h-3 w-3" />
+                            <span>Scale</span>
+                        </button>
+                    ) : null}
+                </>
             ) : null}
         </div>
     )

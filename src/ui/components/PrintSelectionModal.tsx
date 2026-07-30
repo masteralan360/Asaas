@@ -16,6 +16,8 @@ export type PrintSelectionNativeOption = {
     format: PrintFormat
     label: string
     description: string
+    /** Distinguishes native layouts that use the same paper format. */
+    nativeTemplateKey?: string
 }
 
 export type PrintSelectionTemplateOption = {
@@ -31,7 +33,7 @@ export type PrintSelectionTemplateOption = {
 interface PrintSelectionModalProps {
     isOpen: boolean
     onClose: () => void
-    onSelect: (format: PrintFormat, template?: StoredCustomTemplateRow) => void
+    onSelect: (format: PrintFormat, template?: StoredCustomTemplateRow, nativeTemplateKey?: string) => void
     nativeOptions: PrintSelectionNativeOption[]
     templateOptions?: PrintSelectionTemplateOption[]
 }
@@ -87,7 +89,7 @@ export function PrintSelectionModal({
                             className={`flex h-32 min-w-0 flex-col gap-3 overflow-hidden whitespace-normal px-3 py-3 text-center transition-all hover:border-primary hover:bg-primary/5 ${
                                 visibleOptionCount === 1 ? 'sm:col-span-2' : ''
                             }`}
-                            onClick={() => onSelect(option.format)}
+                            onClick={() => onSelect(option.format, undefined, option.nativeTemplateKey)}
                         >
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
                                 <PrintOptionIcon format={option.format} />

@@ -70,7 +70,7 @@ interface PrintPreviewModalProps {
     module?: string
     printSelectionOptions?: PrintSelectionNativeOption[]
     printSelectionTemplates?: PrintSelectionTemplateOption[]
-    onPrintSelection?: (format: PrintFormat, template?: StoredCustomTemplateRow) => void
+    onPrintSelection?: (format: PrintFormat, template?: StoredCustomTemplateRow, nativeTemplateKey?: string) => void
     onPreviewPrint?: (blob: Blob) => Promise<void>
     previewPrintActionLabel?: string
 }
@@ -184,9 +184,10 @@ export function PrintPreviewModal({
     )
     const handlePrintSelection = useCallback((
         format: PrintFormat,
-        template?: StoredCustomTemplateRow
+        template?: StoredCustomTemplateRow,
+        nativeTemplateKey?: string
     ) => {
-        onPrintSelection?.(format, template)
+        onPrintSelection?.(format, template, nativeTemplateKey)
         setSelectedPrintFormat(format)
     }, [onPrintSelection])
     const printableFeatures = useMemo(

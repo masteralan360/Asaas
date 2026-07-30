@@ -101,6 +101,8 @@ export type CustomTemplateShape = PdfShape
 export type CustomTemplateComponentPosition = {
     x: number
     y: number
+    /** Visual scale for movable print components. Older saved layouts omit this and render at 1×. */
+    scale?: number
 }
 
 export type CustomTemplateLayout = {

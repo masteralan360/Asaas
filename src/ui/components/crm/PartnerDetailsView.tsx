@@ -10,6 +10,7 @@ import { buildConversionRates } from '@/lib/budget'
 import { convertToStoreBase } from '@/lib/currency'
 import {
     PARTNER_DETAILS_TEMPLATE_KEY,
+    PARTNER_ORDER_ITEMS_TEMPLATE_KEY,
     buildCustomTemplateLayoutPdf,
     createCustomTemplatePreview,
     getCustomTemplatePrintLanguageWarning,
@@ -38,6 +39,7 @@ import {
     useSalesOrders,
     useSupplierPurchaseOrders,
     useSupplierTravelAgencySales,
+    useWorkspaceContacts,
     useWorkspaceUsers,
     type BusinessPartnerRole,
     type ClinicalAppointment,
@@ -67,10 +69,12 @@ import { useWorkspace } from '@/workspace'
 import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import type { PartnerDetailsPrintData } from '@/ui/components/crm/PartnerDetailsPrintTemplate'
+import type { PartnerOrderItemsPrintData } from '@/ui/components/crm/PartnerOrderItemsPrintTemplate'
 import type { PrintFormat } from '@/services/pdfGenerator'
 import { platformService } from '@/services/platformService'
 
 type PartnerKind = 'customer' | 'supplier' | 'agent' | 'business_partner'
+type PartnerPrintTemplateKey = typeof PARTNER_DETAILS_TEMPLATE_KEY | typeof PARTNER_ORDER_ITEMS_TEMPLATE_KEY
 type RelatedProductOrder = SalesOrder | PurchaseOrder
 type ActivitySource = RelatedTransaction['source'] | 'pos_sale'
 type AgentSoldRow = {
@@ -508,6 +512,7 @@ export function PartnerDetailsView({
     const partner = useBusinessPartner(partnerId)
     const agent = useAgent(partner?.agentFacetId)
     const workspaceUsers = useWorkspaceUsers(workspaceId)
+    const workspaceContacts = useWorkspaceContacts(workspaceId)
     const customerOrders = useCustomerSalesOrders(partnerId, workspaceId)
     const allSalesOrders = useSalesOrders(workspaceId)
     const supplierOrders = useSupplierPurchaseOrders(partnerId, workspaceId)
@@ -519,6 +524,7 @@ export function PartnerDetailsView({
     const { dateRange, customDates } = useDateRange()
     const [customPrintTemplates, setCustomPrintTemplates] = useState<StoredCustomTemplateRow[]>([])
     const [selectedPrintTemplate, setSelectedPrintTemplate] = useState<StoredCustomTemplateRow | null>(null)
+    const [selectedPartnerPrintTemplateKey, setSelectedPartnerPrintTemplateKey] = useState<PartnerPrintTemplateKey>(PARTNER_DETAILS_TEMPLATE_KEY)
     const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false)
 
     useEffect(() => {
@@ -532,7 +538,7 @@ export function PartnerDetailsView({
         void (async () => {
             try {
                 const templates = await fetchCachedCustomTemplates(workspaceId, {
-                    moduleTypeKey: PARTNER_DETAILS_TEMPLATE_KEY,
+                    moduleTypePrefix: 'businessPartners.',
                     activeOnly: true
                 })
                 if (!cancelled) {
@@ -1205,6 +1211,18 @@ export function PartnerDetailsView({
         ? features.print_lang
         : i18n.language
     const currentTemplatePrintLanguage = resolveCustomTemplatePrintLanguage(printLang)
+    const workspacePrintContacts = useMemo(() => {
+        const primaryContact = (type: 'phone' | 'address' | 'email') => {
+            const contacts = workspaceContacts.filter((contact) => contact.type === type && contact.value?.trim())
+            return (contacts.find((contact) => contact.isPrimary) || contacts[0])?.value.trim()
+        }
+
+        return {
+            phone: primaryContact('phone'),
+            address: primaryContact('address'),
+            email: primaryContact('email')
+        }
+    }, [workspaceContacts])
     const partnerPrintData = useMemo<PartnerDetailsPrintData | null>(() => {
         if (!partner) return null
 
@@ -1316,13 +1334,34 @@ export function PartnerDetailsView({
         t,
         topProducts,
     ])
+    const partnerOrderItemsPrintData = useMemo<PartnerOrderItemsPrintData | null>(() => {
+        if (!partner) return null
+
+        return {
+            workspace: workspacePrintContacts,
+            partner: {
+                name: partner.name,
+                contactName: partner.contactName,
+                email: partner.email,
+                phone: partner.phone,
+                address: partner.address,
+                city: partner.city,
+                country: partner.country
+            },
+            period: printPeriod,
+            generatedAt: new Date().toISOString(),
+            salesOrders: dateFilteredCustomerOrders,
+            purchaseOrders: dateFilteredSupplierOrders
+        }
+    }, [dateFilteredCustomerOrders, dateFilteredSupplierOrders, partner, printPeriod, workspacePrintContacts])
     const partnerPrintTarget = useMemo(
-        () => getCustomTemplateTarget(PARTNER_DETAILS_TEMPLATE_KEY),
-        []
+        () => getCustomTemplateTarget(selectedPartnerPrintTemplateKey),
+        [selectedPartnerPrintTemplateKey]
     )
     const availablePrintTemplates = useMemo(
         () => customPrintTemplates.filter((template) =>
-            template.module_type_key === PARTNER_DETAILS_TEMPLATE_KEY
+            (template.module_type_key === PARTNER_DETAILS_TEMPLATE_KEY
+                || template.module_type_key === PARTNER_ORDER_ITEMS_TEMPLATE_KEY)
             && template.active
             && Boolean(readCustomTemplateLayout(template))
         ),
@@ -1330,19 +1369,22 @@ export function PartnerDetailsView({
     )
     const selectedPrintLayout = useMemo(
         () => selectedPrintTemplate
+            && selectedPrintTemplate.module_type_key === selectedPartnerPrintTemplateKey
             && isCustomTemplatePrintLanguageCompatible(selectedPrintTemplate, currentTemplatePrintLanguage)
             ? readCustomTemplateLayout(selectedPrintTemplate)
             : null,
-        [currentTemplatePrintLanguage, selectedPrintTemplate]
+        [currentTemplatePrintLanguage, selectedPartnerPrintTemplateKey, selectedPrintTemplate]
     )
     const activePrintLayout = useMemo<CustomTemplateLayout | null>(() => {
-        if (selectedPrintTemplate) return selectedPrintLayout
+        if (selectedPrintTemplate && selectedPrintLayout) return selectedPrintLayout
         if (!partnerPrintTarget) return null
 
         return {
             version: 1,
-            label: t('businessPartners.nativeA4Template', { defaultValue: 'Partner Details A4' }),
-            moduleTypeKey: PARTNER_DETAILS_TEMPLATE_KEY,
+            label: selectedPartnerPrintTemplateKey === PARTNER_ORDER_ITEMS_TEMPLATE_KEY
+                ? t('businessPartners.orderItemsA4Template', { defaultValue: 'Partner Order Items A4' })
+                : t('businessPartners.nativeA4Template', { defaultValue: 'Partner Details A4' }),
+            moduleTypeKey: selectedPartnerPrintTemplateKey,
             nativeTemplateKey: partnerPrintTarget.nativeTemplateKey,
             page: partnerPrintTarget.page,
             fields: {},
@@ -1352,25 +1394,39 @@ export function PartnerDetailsView({
             shapes: [],
             updatedAt: new Date().toISOString()
         }
-    }, [partnerPrintTarget, selectedPrintLayout, selectedPrintTemplate, t])
+    }, [partnerPrintTarget, selectedPartnerPrintTemplateKey, selectedPrintLayout, selectedPrintTemplate, t])
     const partnerPrintPreview = useMemo(
-        () => partnerPrintTarget && partnerPrintData
+        () => partnerPrintTarget && partnerPrintData && partnerOrderItemsPrintData
             ? createCustomTemplatePreview(partnerPrintTarget, {
                 workspaceId,
                 workspaceName,
                 features,
                 partnerDetailsData: partnerPrintData,
+                partnerOrderItemsData: partnerOrderItemsPrintData,
                 printLang
             })
             : undefined,
-        [features, partnerPrintData, partnerPrintTarget, printLang, workspaceId, workspaceName]
+        [features, partnerOrderItemsPrintData, partnerPrintData, partnerPrintTarget, printLang, workspaceId, workspaceName]
+    )
+    const partnerOrderItemsStatementTotal = useMemo(
+        () => [...dateFilteredCustomerOrders, ...dateFilteredSupplierOrders]
+            .filter((order) => order.status !== 'cancelled')
+            .reduce((total, order) => total + convertCurrencyAmountWithSnapshot(
+                order.total,
+                order.currency,
+                defaultCurrency,
+                order.exchangeRates
+            ), 0),
+        [dateFilteredCustomerOrders, dateFilteredSupplierOrders, defaultCurrency]
     )
     const partnerPrintInvoiceData = useMemo(() => {
         if (!partner) return undefined
 
         return {
             invoiceid: `PARTNER-${partner.id}`,
-            totalAmount: remainingReceivableLoans + remainingPayableLoans,
+            totalAmount: selectedPartnerPrintTemplateKey === PARTNER_ORDER_ITEMS_TEMPLATE_KEY
+                ? partnerOrderItemsStatementTotal
+                : remainingReceivableLoans + remainingPayableLoans,
             settlementCurrency: defaultCurrency,
             origin: 'business_partner' as const,
             createdBy: user?.id,
@@ -1381,13 +1437,15 @@ export function PartnerDetailsView({
     }, [
         defaultCurrency,
         partner,
+        partnerOrderItemsStatementTotal,
         remainingPayableLoans,
         remainingReceivableLoans,
+        selectedPartnerPrintTemplateKey,
         user?.id,
         user?.name
     ])
     const buildPartnerPrintPdf = useCallback(async ({ effectiveId }: { format: PrintFormat; effectiveId: string }) => {
-        if (!partnerPrintTarget || !partnerPrintData || !activePrintLayout) {
+        if (!partnerPrintTarget || !partnerPrintData || !partnerOrderItemsPrintData || !activePrintLayout) {
             throw new Error('Partner details print data is not available.')
         }
 
@@ -1400,18 +1458,19 @@ export function PartnerDetailsView({
                 workspaceName,
                 features,
                 partnerDetailsData: partnerPrintData,
+                partnerOrderItemsData: partnerOrderItemsPrintData,
                 printLang
             },
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [activePrintLayout, features, partnerPrintData, partnerPrintTarget, printLang, workspaceId, workspaceName])
+    }, [activePrintLayout, features, partnerOrderItemsPrintData, partnerPrintData, partnerPrintTarget, printLang, workspaceId, workspaceName])
     const buildEditablePartnerPrintPdf = useCallback(async (
         layout: CustomTemplateLayout,
         printLangOverride?: string,
         effectiveId?: string
     ) => {
-        if (!partnerPrintTarget || !partnerPrintData) {
+        if (!partnerPrintTarget || !partnerPrintData || !partnerOrderItemsPrintData) {
             throw new Error('Partner details print data is not available.')
         }
 
@@ -1424,17 +1483,26 @@ export function PartnerDetailsView({
                 workspaceName,
                 features,
                 partnerDetailsData: partnerPrintData,
+                partnerOrderItemsData: partnerOrderItemsPrintData,
                 printLang: printLangOverride || printLang
             },
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [features, partnerPrintData, partnerPrintTarget, printLang, workspaceId, workspaceName])
+    }, [features, partnerOrderItemsPrintData, partnerPrintData, partnerPrintTarget, printLang, workspaceId, workspaceName])
     const partnerPrintSelectionOptions = useMemo(() => [{
         format: 'a4' as const,
+        nativeTemplateKey: PARTNER_DETAILS_TEMPLATE_KEY,
         label: t('businessPartners.nativeA4Template', { defaultValue: 'Partner Details A4' }),
         description: t('businessPartners.nativeA4TemplateDescription', {
             defaultValue: 'Use the built-in Partner Details A4 layout.'
+        })
+    }, {
+        format: 'a4' as const,
+        nativeTemplateKey: PARTNER_ORDER_ITEMS_TEMPLATE_KEY,
+        label: t('businessPartners.orderItemsA4Template', { defaultValue: 'Partner Order Items A4' }),
+        description: t('businessPartners.orderItemsA4TemplateDescription', {
+            defaultValue: 'List every selected-period sales and purchase order item, including notes and adjustments.'
         })
     }], [t])
     const partnerCustomPrintOptions = useMemo(
@@ -1442,9 +1510,13 @@ export function PartnerDetailsView({
             format: 'a4' as const,
             template,
             label: getStoredCustomTemplateLabel(template),
-            description: t('businessPartners.customA4TemplateDescription', {
-                defaultValue: 'Use this saved custom Partner Details layout.'
-            }),
+            description: template.module_type_key === PARTNER_ORDER_ITEMS_TEMPLATE_KEY
+                ? t('businessPartners.customOrderItemsA4TemplateDescription', {
+                    defaultValue: 'Use this saved Partner Order Items layout.'
+                })
+                : t('businessPartners.customA4TemplateDescription', {
+                    defaultValue: 'Use this saved custom Partner Details layout.'
+                }),
             primary: template.primary,
             disabled: !isCustomTemplatePrintLanguageCompatible(template, currentTemplatePrintLanguage),
             warning: getCustomTemplatePrintLanguageWarning(template, currentTemplatePrintLanguage, t)
@@ -1453,14 +1525,24 @@ export function PartnerDetailsView({
     )
     const handlePrintSelection = useCallback((
         _format: PrintFormat,
-        template?: StoredCustomTemplateRow
+        template?: StoredCustomTemplateRow,
+        nativeTemplateKey?: string
     ) => {
         if (template && !isCustomTemplatePrintLanguageCompatible(template, currentTemplatePrintLanguage)) {
             return
         }
+
+        const requestedTemplateKey = template?.module_type_key || nativeTemplateKey
+        if (requestedTemplateKey !== PARTNER_DETAILS_TEMPLATE_KEY
+            && requestedTemplateKey !== PARTNER_ORDER_ITEMS_TEMPLATE_KEY) {
+            return
+        }
+
+        setSelectedPartnerPrintTemplateKey(requestedTemplateKey)
         setSelectedPrintTemplate(template || null)
     }, [currentTemplatePrintLanguage])
     const handlePrintClick = useCallback(() => {
+        setSelectedPartnerPrintTemplateKey(PARTNER_DETAILS_TEMPLATE_KEY)
         setSelectedPrintTemplate(null)
         setIsPrintPreviewOpen(true)
     }, [])
@@ -2358,25 +2440,31 @@ export function PartnerDetailsView({
                     isOpen={isPrintPreviewOpen}
                     onClose={() => {
                         setIsPrintPreviewOpen(false)
+                        setSelectedPartnerPrintTemplateKey(PARTNER_DETAILS_TEMPLATE_KEY)
                         setSelectedPrintTemplate(null)
                     }}
                     onConfirm={() => {
                         setIsPrintPreviewOpen(false)
+                        setSelectedPartnerPrintTemplateKey(PARTNER_DETAILS_TEMPLATE_KEY)
                         setSelectedPrintTemplate(null)
                     }}
-                    title={t('businessPartners.printA4', { defaultValue: 'Print A4' })}
+                    title={selectedPartnerPrintTemplateKey === PARTNER_ORDER_ITEMS_TEMPLATE_KEY
+                        ? t('businessPartners.printOrderItemsA4', { defaultValue: 'Print Partner Order Items A4' })
+                        : t('businessPartners.printA4', { defaultValue: 'Print A4' })}
                     documentId={partner.id}
                     originId={partner.id}
                     invoiceData={partnerPrintInvoiceData}
                     pdfBuilder={buildPartnerPrintPdf}
                     templatePreview={partnerPrintPreview}
                     customTemplate={{
-                        moduleTypeKey: PARTNER_DETAILS_TEMPLATE_KEY,
+                        moduleTypeKey: selectedPartnerPrintTemplateKey,
                         nativeTemplateKey: partnerPrintTarget.nativeTemplateKey,
                         templateId: selectedPrintTemplate?.id,
                         label: selectedPrintTemplate
                             ? getStoredCustomTemplateLabel(selectedPrintTemplate)
-                            : t('businessPartners.nativeA4Template', { defaultValue: 'Partner Details A4' })
+                            : selectedPartnerPrintTemplateKey === PARTNER_ORDER_ITEMS_TEMPLATE_KEY
+                                ? t('businessPartners.orderItemsA4Template', { defaultValue: 'Partner Order Items A4' })
+                                : t('businessPartners.nativeA4Template', { defaultValue: 'Partner Details A4' })
                     }}
                     initialTemplateLayout={activePrintLayout}
                     enableTemplatePreviewSave

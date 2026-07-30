@@ -46,6 +46,11 @@ import {
     type PartnerDetailsPrintData
 } from '@/ui/components/crm/PartnerDetailsPrintTemplate'
 import {
+    PartnerOrderItemsPrintTemplate,
+    PARTNER_ORDER_ITEMS_MOVABLE_COMPONENT_KEYS,
+    type PartnerOrderItemsPrintData
+} from '@/ui/components/crm/PartnerOrderItemsPrintTemplate'
+import {
     ORDER_DETAILS_MOVABLE_COMPONENT_KEYS,
     ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS,
     ORDER_RECEIPT_TEMPLATE_FIELD_KEYS,
@@ -71,6 +76,7 @@ export const SALES_HISTORY_A4_TEMPLATE_KEYS = [
     SALES_HISTORY_PROFESSIONAL_A4_TEMPLATE_KEY
 ] as const
 export const PARTNER_DETAILS_TEMPLATE_KEY = 'businessPartners.Details'
+export const PARTNER_ORDER_ITEMS_TEMPLATE_KEY = 'businessPartners.OrderItems'
 export const ORDER_ATLAS_STANDARD_TEMPLATE_KEY = 'orders.AtlasStandard'
 export const ORDER_DETAILS_TEMPLATE_KEY = 'orders.Details'
 export const ORDER_RECEIPT_TEMPLATE_KEY = 'orders.Receipt'
@@ -193,6 +199,17 @@ export const CUSTOM_TEMPLATE_TARGETS: CustomTemplateTarget[] = [
         typeLabel: 'Partner Details',
         description: 'Business partner details A4 print layout.',
         nativeTemplateKey: PARTNER_DETAILS_TEMPLATE_KEY,
+        nativeTemplateAvailable: true,
+        printFormat: 'a4',
+        page: { widthMm: 210, heightMm: 297 }
+    },
+    {
+        moduleTypeKey: PARTNER_ORDER_ITEMS_TEMPLATE_KEY,
+        workspaceModuleKey: 'crm',
+        moduleLabel: 'Business Partners',
+        typeLabel: 'Order Items Statement',
+        description: 'Date-filtered business partner sales and purchase order item statement.',
+        nativeTemplateKey: PARTNER_ORDER_ITEMS_TEMPLATE_KEY,
         nativeTemplateAvailable: true,
         printFormat: 'a4',
         page: { widthMm: 210, heightMm: 297 }
@@ -411,6 +428,7 @@ export type CustomTemplatePreviewOptions = {
     workspaceFooterContacts?: WorkspaceFooterContacts
     receiptData?: UniversalInvoice
     partnerDetailsData?: PartnerDetailsPrintData
+    partnerOrderItemsData?: PartnerOrderItemsPrintData
     order?: SalesOrder | PurchaseOrder
     orderKind?: 'sales' | 'purchase'
     orderInstallments?: OrderInstallment[]
@@ -609,6 +627,97 @@ const SAMPLE_ORDER_DATA: SalesOrder = {
     lastSyncedAt: null,
     version: 1,
     isDeleted: false
+}
+
+const SAMPLE_PURCHASE_ORDER_DATA: PurchaseOrder = {
+    id: 'sample-purchase-order',
+    workspaceId: 'sample-workspace',
+    orderNumber: 'PO-00019',
+    supplierId: 'sample-supplier',
+    supplierName: 'Sample Supplier',
+    items: [
+        {
+            id: 'sample-purchase-order-item',
+            productId: 'sample-purchase-product',
+            productName: 'Sample Supply',
+            productSku: 'SKU-0002',
+            note: 'Sample purchase item note.',
+            unit: 'box',
+            quantity: 4,
+            lineTotal: 320,
+            originalCurrency: 'usd',
+            originalUnitPrice: 80,
+            convertedUnitPrice: 80,
+            settlementCurrency: 'usd'
+        }
+    ],
+    subtotal: 320,
+    discount: 20,
+    total: 308,
+    currency: 'usd',
+    orderAdjustments: [{
+        id: 'sample-purchase-adjustment',
+        type: 'addition',
+        name: 'Freight',
+        currency: 'usd',
+        amount: 8,
+        orderCurrency: 'usd',
+        convertedAmount: 8,
+        exchangeRate: 1,
+        exchangeRateSource: 'native',
+        exchangeRateTimestamp: new Date().toISOString(),
+        exchangeRates: []
+    }],
+    exchangeRate: null,
+    exchangeRateSource: null,
+    exchangeRateTimestamp: null,
+    status: 'received',
+    isPaid: false,
+    paymentStatus: 'partial',
+    paidAmount: 100,
+    balanceAmount: 208,
+    paymentMethod: 'bank_transfer',
+    initialPaymentAmount: 0,
+    linkedLoanId: null,
+    isInstallmentBased: false,
+    installmentCount: 0,
+    notes: 'Purchase order notes appear here.',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    syncStatus: 'synced',
+    lastSyncedAt: null,
+    version: 1,
+    isDeleted: false
+}
+
+const SAMPLE_PARTNER_ORDER_ITEMS_DATA: PartnerOrderItemsPrintData = {
+    partner: {
+        name: 'Sample Business Partner',
+        contactName: 'Primary Contact',
+        phone: '+964 750 000 0000',
+        address: 'Business District',
+        city: 'Erbil',
+        country: 'Iraq'
+    },
+    period: { type: 'allTime' },
+    generatedAt: new Date().toISOString(),
+    salesOrders: [{
+        ...SAMPLE_ORDER_DATA,
+        orderAdjustments: [{
+            id: 'sample-sales-adjustment',
+            type: 'addition',
+            name: 'Delivery',
+            currency: 'usd',
+            amount: 5,
+            orderCurrency: 'usd',
+            convertedAmount: 5,
+            exchangeRate: 1,
+            exchangeRateSource: 'native',
+            exchangeRateTimestamp: new Date().toISOString(),
+            exchangeRates: []
+        }]
+    }],
+    purchaseOrders: [SAMPLE_PURCHASE_ORDER_DATA]
 }
 
 const PARTNER_DETAILS_FIELDS = [
@@ -1160,6 +1269,45 @@ function createPartnerDetailsPreview(options: CustomTemplatePreviewOptions): Tem
     }
 }
 
+function createPartnerOrderItemsPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
+    const partnerOrderItemsData = options.partnerOrderItemsData || SAMPLE_PARTNER_ORDER_ITEMS_DATA
+    const configuredPrintLang = options.features?.print_lang
+    const printLang = options.printLang
+        || (configuredPrintLang && configuredPrintLang !== 'auto' ? configuredPrintLang : 'en')
+    const fixedPrintLang: TemplatePreview['fixedPrintLang'] = printLang.startsWith('ar')
+        ? 'ar'
+        : printLang.startsWith('ku')
+            ? 'ku'
+            : 'en'
+
+    return {
+        fields: [],
+        movableComponents: [
+            { key: PARTNER_ORDER_ITEMS_MOVABLE_COMPONENT_KEYS.workspaceName, label: 'Workspace Name' }
+        ],
+        page: { widthMm: 210, heightMm: 297 },
+        fixedPrintLang,
+        createElement: (_data, _effectiveId, printLangOverride, renderOptions) => (
+            <PartnerOrderItemsPrintTemplate
+                workspaceName={options.workspaceName}
+                workspaceDescription={options.features?.store_description}
+                printLang={printLangOverride || fixedPrintLang}
+                data={partnerOrderItemsData}
+                iqdPreference={options.features?.iqd_display_preference}
+                logoUrl={options.features?.logo_url}
+                componentPositions={renderOptions?.componentPositions}
+                editableComponents={renderOptions?.editableComponents}
+                onComponentPositionChange={renderOptions?.onComponentPositionChange}
+            />
+        ),
+        buildPdf: (element, printLangOverride) => generateTemplatePdf({
+            element,
+            format: 'a4',
+            printLang: printLangOverride || fixedPrintLang
+        })
+    }
+}
+
 function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
     const order = options.order || SAMPLE_ORDER_DATA
     const kind = options.orderKind || 'sales'
@@ -1362,6 +1510,10 @@ export function createCustomTemplatePreview(
 
     if (target.moduleTypeKey === PARTNER_DETAILS_TEMPLATE_KEY) {
         return createPartnerDetailsPreview(options)
+    }
+
+    if (target.moduleTypeKey === PARTNER_ORDER_ITEMS_TEMPLATE_KEY) {
+        return createPartnerOrderItemsPreview(options)
     }
 
     if (target.moduleTypeKey === ORDER_ATLAS_STANDARD_TEMPLATE_KEY) {

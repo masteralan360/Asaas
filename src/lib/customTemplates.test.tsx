@@ -65,6 +65,7 @@ vi.mock('@/ui/components/ProfessionalA4InvoiceTemplate', () => ({
 let customTemplates: typeof import('@/lib/customTemplates')
 let ProfessionalA4InvoiceTemplate: typeof import('@/ui/components/ProfessionalA4InvoiceTemplate')['ProfessionalA4InvoiceTemplate']
 let PartnerDetailsPrintTemplate: typeof import('@/ui/components/crm/PartnerDetailsPrintTemplate')['PartnerDetailsPrintTemplate']
+let PartnerOrderItemsPrintTemplate: typeof import('@/ui/components/crm/PartnerOrderItemsPrintTemplate')['PartnerOrderItemsPrintTemplate']
 let OrderDetailsPrintTemplate: typeof import('@/ui/components/orders/OrderPrintTemplates')['OrderDetailsPrintTemplate']
 let OrderReceiptPrintTemplate: typeof import('@/ui/components/orders/OrderPrintTemplates')['OrderReceiptPrintTemplate']
 
@@ -90,6 +91,7 @@ beforeAll(async () => {
     customTemplates = await import('@/lib/customTemplates')
     ;({ ProfessionalA4InvoiceTemplate } = await import('@/ui/components/ProfessionalA4InvoiceTemplate'))
     ;({ PartnerDetailsPrintTemplate } = await import('@/ui/components/crm/PartnerDetailsPrintTemplate'))
+    ;({ PartnerOrderItemsPrintTemplate } = await import('@/ui/components/crm/PartnerOrderItemsPrintTemplate'))
     ;({ OrderDetailsPrintTemplate, OrderReceiptPrintTemplate } = await import('@/ui/components/orders/OrderPrintTemplates'))
 }, 30_000)
 
@@ -281,6 +283,41 @@ describe('Partner Details custom print template', () => {
         expect(element.props.printLang).toBe('en')
         expect(element.props.showWhoOwesWhom).toBe(true)
         expect(element.props.showOrders).toBe(false)
+    })
+
+    it('uses a high-contrast order-items layout with a movable, scalable workspace name', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.PARTNER_ORDER_ITEMS_TEMPLATE_KEY)
+        expect(target).toMatchObject({
+            workspaceModuleKey: 'crm',
+            nativeTemplateAvailable: true,
+            printFormat: 'a4'
+        })
+
+        const onComponentPositionChange = vi.fn()
+        const preview = customTemplates.createCustomTemplatePreview(target!, {
+            workspaceName: 'Atlas Test',
+            printLang: 'en'
+        })
+        const element = preview.createElement({}, undefined, undefined, {
+            editableComponents: true,
+            componentPositions: {
+                partnerOrderItemsWorkspaceName: { x: 4, y: 2, scale: 1.25 }
+            },
+            onComponentPositionChange
+        })
+        const html = renderToStaticMarkup(element)
+
+        expect(preview.movableComponents).toEqual([
+            { key: 'partnerOrderItemsWorkspaceName', label: 'Workspace Name' }
+        ])
+        expect(element.type).toBe(PartnerOrderItemsPrintTemplate)
+        expect(element.props.componentPositions.partnerOrderItemsWorkspaceName).toEqual({ x: 4, y: 2, scale: 1.25 })
+        expect(element.props.onComponentPositionChange).toBe(onComponentPositionChange)
+        expect(html).toContain('Partner Order Items Statement')
+        expect(html).toContain('order-template-scale-handle')
+        expect(html).toContain('scale(1.25)')
+        expect(html).toContain('text-black')
+        expect(html).not.toContain('text-slate-500')
     })
 
     it('renders the focused loan summary, cash flow, and two activity tables', () => {
