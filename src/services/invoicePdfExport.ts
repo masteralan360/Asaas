@@ -13,6 +13,11 @@ type ArchiveEntry = {
     data: Uint8Array
 }
 
+type LocalPdfFile = {
+    path: string
+    archiveName: string
+}
+
 export type InvoicePdfArchiveResult = {
     exportedCount: number
     unavailableCount: number
@@ -205,6 +210,52 @@ async function getPdfBytes(source: PdfSource): Promise<Uint8Array | null> {
     return null
 }
 
+function normalizeLocalPath(path: string) {
+    return path.replace(/\\/g, '/').toLowerCase()
+}
+
+/**
+ * Older desktop databases can have invoice PDFs in AppData without a matching
+ * `localPath` in the invoice record, or may have since changed workspaces.
+ * Read the complete printed-invoices folder as a recovery fallback so those
+ * existing desktop files can still be exported.
+ */
+async function getTauriInvoicePdfFiles(): Promise<LocalPdfFile[]> {
+    if (!isTauri()) return []
+
+    const { readDir, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+    const root = 'printed-invoices'
+    const files: LocalPdfFile[] = []
+
+    const visit = async (directory: string, relativeDirectory: string): Promise<void> => {
+        let directoryEntries: Awaited<ReturnType<typeof readDir>>
+        try {
+            directoryEntries = await readDir(directory, { baseDir: BaseDirectory.AppData })
+        } catch {
+            // The desktop app may simply have no invoice folder yet.
+            return
+        }
+
+        for (const entry of directoryEntries) {
+            if (!entry.name) continue
+            const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name
+            const path = `${directory}/${entry.name}`.replace(/\\/g, '/')
+
+            if (entry.isDirectory) {
+                await visit(path, relativePath)
+            } else if (entry.isFile && entry.name.toLowerCase().endsWith('.pdf')) {
+                files.push({
+                    path,
+                    archiveName: `Desktop Files/${relativePath}`,
+                })
+            }
+        }
+    }
+
+    await visit(root, '')
+    return files
+}
+
 async function saveArchive(fileName: string, content: Uint8Array) {
     if (isTauri()) {
         const [{ save }, { writeFile }] = await Promise.all([
@@ -247,6 +298,7 @@ export async function downloadInvoicePdfArchive(
     const invoiceById = new Map(invoices.map((invoice) => [invoice.id, invoice]))
     const versionedFormats = new Set(versions.map((version) => `${version.invoiceId}:${version.format}`))
     const entries: ArchiveEntry[] = []
+    const exportedLocalPaths = new Set<string>()
     let unavailableCount = 0
 
     const addEntry = async (name: string, source: PdfSource) => {
@@ -254,6 +306,7 @@ export async function downloadInvoicePdfArchive(
             const data = await getPdfBytes(source)
             if (data && data.length > 0) {
                 entries.push({ name, data })
+                if (source.localPath) exportedLocalPaths.add(normalizeLocalPath(source.localPath))
             } else {
                 unavailableCount += 1
             }
@@ -261,6 +314,11 @@ export async function downloadInvoicePdfArchive(
             unavailableCount += 1
             console.warn('[InvoicePdfExport] Failed to retrieve invoice PDF:', name, error)
         }
+    }
+
+    const addDesktopFile = async (file: LocalPdfFile) => {
+        if (exportedLocalPaths.has(normalizeLocalPath(file.path))) return
+        await addEntry(file.archiveName, { localPath: file.path })
     }
 
     const sortedVersions = [...versions].sort((a, b) => {
@@ -298,6 +356,13 @@ export async function downloadInvoicePdfArchive(
             if (!source.pdfBlob && !source.localPath && !source.r2Path) continue
             await addEntry(getLegacyFileName(invoice, format), source)
         }
+    }
+
+    // Include existing desktop files that predate invoice-version tracking or
+    // whose local database row/workspace was not restored. This only reads
+    // PDFs inside the app's own printed-invoices directory.
+    for (const file of await getTauriInvoicePdfFiles()) {
+        await addDesktopFile(file)
     }
 
     if (entries.length === 0) {

@@ -44,6 +44,15 @@
       ]
     },
     {
+      "identifier": "fs:allow-read-dir",
+      "allow": [
+        {
+          "path": "$APPDATA/**/*",
+          "baseDir": "AppData"
+        }
+      ]
+    },
+    {
       "identifier": "fs:allow-exists",
       "allow": [
         {
