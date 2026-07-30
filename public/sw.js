@@ -2,7 +2,6 @@
  * This worker is deliberately deployment-stable. Vercel can deploy a new app
  * shell without replacing this worker, so an installed Local Mode PWA keeps
  * serving its cached shell until the application explicitly stages an update.
- * 
  */
 const APP_CACHE = 'atlas-app-shell-v2'
 const NEXT_APP_CACHE = 'atlas-app-shell-v2-next'
