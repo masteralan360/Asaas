@@ -3065,7 +3065,11 @@ export function POS() {
                                                             )}
                                                             {isDynamicUnit(item.unit) && (
                                                                 <button
-                                                                    onClick={() => setDynamicUnitModal({ type: item.unit, itemKey })}
+                                                                    onClick={() => {
+                                                                        if (isDynamicUnit(item.unit)) {
+                                                                            setDynamicUnitModal({ type: item.unit, itemKey })
+                                                                        }
+                                                                    }}
                                                                     className="transition-opacity p-1 hover:bg-muted rounded bg-muted/30 border border-border/50"
                                                                     title={getDynamicUnitAdjustmentLabel(t, item.unit)}
                                                                 >
@@ -4577,7 +4581,11 @@ function MobileCart({
                                                     )}
                                                     {isDynamicUnit(item.unit) && (
                                                         <button
-                                                            onClick={() => setDynamicUnitModal({ type: item.unit, itemKey })}
+                                                            onClick={() => {
+                                                                if (isDynamicUnit(item.unit)) {
+                                                                    setDynamicUnitModal({ type: item.unit, itemKey })
+                                                                }
+                                                            }}
                                                             className="p-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 transition-colors"
                                                             title={getDynamicUnitAdjustmentLabel(t, item.unit)}
                                                         >
