@@ -3,8 +3,16 @@
  * shell without replacing this worker, so an installed Local Mode PWA keeps
  * serving its cached shell until the application explicitly stages an update.
  */
-const APP_CACHE = 'atlas-app-shell-v1'
-const NEXT_APP_CACHE = 'atlas-app-shell-v1-next'
+const APP_CACHE = 'atlas-app-shell-v2'
+const NEXT_APP_CACHE = 'atlas-app-shell-v2-next'
+const LEGACY_APP_CACHES = ['atlas-app-shell-v1']
+const ASSET_MANIFEST_URL = '/atlas-assets.json'
+const RUNTIME_APP_ASSETS = [
+    '/sql-wasm.wasm',
+    '/pwa-icon.png',
+    '/logo.png',
+    '/logo.ico'
+]
 let updatesEnabled = true
 let updateToken = 0
 
@@ -28,6 +36,7 @@ async function putResponse(cacheName, request, response) {
 }
 
 async function cacheUrls(cacheName, urls, reload) {
+    const failedUrls = []
     for (const value of urls) {
         try {
             const url = new URL(value, self.location.origin)
@@ -35,11 +44,16 @@ async function cacheUrls(cacheName, urls, reload) {
 
             const request = new Request(url.href, { cache: reload ? 'reload' : 'default' })
             const response = await fetch(request)
+            if (!response.ok && response.type !== 'opaque') {
+                failedUrls.push(url.href)
+                continue
+            }
             await putResponse(cacheName, request, response)
         } catch {
-            // A missing optional asset must not make the installed app unusable.
+            failedUrls.push(value)
         }
     }
+    return failedUrls
 }
 
 async function retainCachedUrls(urls) {
@@ -64,14 +78,18 @@ async function getCachedResponse(request) {
     })
     if (currentMatch) return currentMatch
 
-    // This also migrates users from the previous Workbox worker on their first
-    // launch after this worker is deployed.
-    const legacyMatch = await caches.match(request, {
-        ignoreSearch: request.mode === 'navigate'
-    })
-    if (legacyMatch) {
-        await current.put(request, legacyMatch.clone())
-        return legacyMatch
+    // This allows a seamless migration from the first custom Atlas worker.
+    // Never search the staged cache here: an incomplete staged deployment must
+    // never be served as the active app.
+    for (const legacyCacheName of LEGACY_APP_CACHES) {
+        const legacy = await caches.open(legacyCacheName)
+        const legacyMatch = await legacy.match(request, {
+            ignoreSearch: request.mode === 'navigate'
+        })
+        if (legacyMatch) {
+            await current.put(request, legacyMatch.clone())
+            return legacyMatch
+        }
     }
 
     return undefined
@@ -92,6 +110,33 @@ function extractInitialAssetUrls(html) {
     return urls
 }
 
+async function getDeploymentAssetUrls() {
+    try {
+        const manifestRequest = new Request(
+            new URL(ASSET_MANIFEST_URL, self.location.origin).href,
+            { cache: 'reload' }
+        )
+        const response = await fetch(manifestRequest)
+        if (!response.ok) return null
+
+        const manifest = await response.json()
+        if (!manifest || typeof manifest !== 'object') return null
+        const urls = new Set([manifestRequest.url])
+        for (const entry of Object.values(manifest)) {
+            if (!entry || typeof entry !== 'object') continue
+
+            for (const value of [entry.file, ...(entry.css || []), ...(entry.assets || [])]) {
+                if (typeof value === 'string' && value) {
+                    urls.add(new URL(value, self.location.origin).href)
+                }
+            }
+        }
+        return [...urls]
+    } catch {
+        return null
+    }
+}
+
 async function stageLatestDeployment(token) {
     const shellRequest = appShellRequest()
     const current = await getCachedResponse(shellRequest)
@@ -102,9 +147,26 @@ async function stageLatestDeployment(token) {
     const currentHtml = current ? await current.clone().text() : ''
     if (latestHtml === currentHtml) return
 
+    const deploymentAssets = await getDeploymentAssetUrls()
+    if (!deploymentAssets) {
+        // Do not switch an offline-capable app to a deployment whose complete
+        // bundle could not be verified. It is safer to keep the current app.
+        return
+    }
+
     await caches.delete(NEXT_APP_CACHE)
     await putResponse(NEXT_APP_CACHE, shellRequest, latestResponse)
-    await cacheUrls(NEXT_APP_CACHE, extractInitialAssetUrls(latestHtml), true)
+    const failedUrls = await cacheUrls(NEXT_APP_CACHE, [
+        ...deploymentAssets,
+        ...extractInitialAssetUrls(latestHtml),
+        ...RUNTIME_APP_ASSETS,
+    ], true)
+
+    if (failedUrls.length > 0) {
+        console.warn('[Atlas PWA] Update was not staged because assets are unavailable:', failedUrls)
+        await caches.delete(NEXT_APP_CACHE)
+        return
+    }
 
     if (!updatesEnabled || token !== updateToken) {
         await caches.delete(NEXT_APP_CACHE)
@@ -129,6 +191,7 @@ async function applyStagedDeployment() {
         if (response) await current.put(request, response)
     }
     await caches.delete(NEXT_APP_CACHE)
+    await Promise.all(LEGACY_APP_CACHES.map((cacheName) => caches.delete(cacheName)))
 
     const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
     clients.forEach((client) => client.postMessage({ type: 'UPDATE_APPLIED' }))

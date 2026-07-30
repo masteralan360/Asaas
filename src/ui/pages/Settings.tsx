@@ -33,6 +33,7 @@ import { registerDeviceTokenIfNeeded } from '@/services/notificationDevice'
 import { useKdsStream } from '@/hooks/useKdsStream'
 import { useUsbBackup } from '@/hooks/useUsbBackup'
 import { downloadDatabaseFile } from '@/local-db/localModeSqlite'
+import { downloadInvoicePdfArchive } from '@/services/invoicePdfExport'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { BranchManager } from '@/ui/components/workspace/BranchManager'
 import { canManageClinicalRegistryType } from '@/i18n/clinicalRegistry'
@@ -112,6 +113,7 @@ export function Settings() {
     const [selectedThermalRollWidth, setSelectedThermalRollWidth] = useState<ThermalRollWidth>(DEFAULT_THERMAL_ROLL_WIDTH)
     const [isScanningThermalPrinters, setIsScanningThermalPrinters] = useState(false)
     const [isThermalActionPending, setIsThermalActionPending] = useState(false)
+    const [isInvoicePdfExporting, setIsInvoicePdfExporting] = useState(false)
     const [thermalPrinterMessage, setThermalPrinterMessage] = useState<string | null>(null)
     const [showAllDetectedPrinters, setShowAllDetectedPrinters] = useState(false)
     const [marketplaceVisibility, setMarketplaceVisibility] = useState<'private' | 'public'>(features.visibility || 'private')
@@ -1075,6 +1077,43 @@ export function Settings() {
             }
         } finally {
             setMediaDownloadProgress(null)
+        }
+    }
+
+    const handleDownloadInvoicePdfs = async () => {
+        if (!user?.workspaceId) return
+
+        setIsInvoicePdfExporting(true)
+        try {
+            const result = await downloadInvoicePdfArchive(user.workspaceId)
+            if (result.cancelled) return
+
+            if (result.exportedCount === 0) {
+                toast({
+                    title: 'No PDF invoices found',
+                    description: result.unavailableCount > 0
+                        ? 'Invoice PDFs could not be retrieved. Connect to the internet and try again.'
+                        : 'This workspace does not have any saved invoice PDFs.',
+                    variant: 'destructive',
+                })
+                return
+            }
+
+            toast({
+                title: 'PDF invoices downloaded',
+                description: result.unavailableCount > 0
+                    ? `${result.exportedCount} PDF invoices were exported. ${result.unavailableCount} could not be retrieved.`
+                    : `${result.exportedCount} PDF invoices were exported in one ZIP file.`,
+            })
+        } catch (error) {
+            console.error('[Settings] Failed to download invoice PDFs:', error)
+            toast({
+                title: t('common.error') || 'Error',
+                description: 'Failed to download PDF invoices. Please try again.',
+                variant: 'destructive',
+            })
+        } finally {
+            setIsInvoicePdfExporting(false)
         }
     }
 
@@ -2921,10 +2960,19 @@ export function Settings() {
                                   </CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                  <div className="flex flex-wrap gap-2">
+                                  <div className="flex flex-col items-start gap-2">
                                     <Button onClick={downloadDatabaseFile} variant="default" size="sm">
                                       <Download className="mr-2 h-4 w-4" />
                                       Download Database
+                                    </Button>
+                                    <Button
+                                      onClick={handleDownloadInvoicePdfs}
+                                      disabled={isInvoicePdfExporting}
+                                      variant="outline"
+                                      size="sm"
+                                    >
+                                      <Download className="mr-2 h-4 w-4" />
+                                      {isInvoicePdfExporting ? 'Preparing PDF Invoices...' : 'Download PDF Invoices'}
                                     </Button>
                                   </div>
                                 </CardContent>

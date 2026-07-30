@@ -189,6 +189,11 @@ export default defineConfig(({ mode }) => {
             __ATLAS_GIT_COMMIT_DATE__: JSON.stringify(git.date),
         },
         build: {
+            // The custom service worker reads this at update time and caches
+            // every generated JS/CSS asset before activating a deployment.
+            // Without it, an offline PWA can receive a new index shell whose
+            // dynamic imports are not yet available locally.
+            manifest: 'atlas-assets.json',
             rollupOptions: {
                 input: {
                     main: path.resolve(__dirname, 'index.html'),

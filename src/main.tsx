@@ -139,6 +139,47 @@ const renderRoot = (content: ReactNode) => {
     )
 }
 
+const renderStartupFailure = (error: unknown) => {
+    console.error('[Atlas] Application startup failed:', error)
+    root.render(
+        <div
+            role="alert"
+            style={{
+                minHeight: '100dvh',
+                display: 'grid',
+                placeItems: 'center',
+                padding: 24,
+                background: '#f8fafc',
+                color: '#0f172a',
+                fontFamily: 'system-ui, -apple-system, sans-serif',
+                textAlign: 'center',
+            }}
+        >
+            <div style={{ maxWidth: 420 }}>
+                <h1 style={{ margin: '0 0 12px', fontSize: 24 }}>Atlas needs to finish an update</h1>
+                <p style={{ margin: '0 0 20px', lineHeight: 1.5 }}>
+                    Connect to the internet, then tap Retry. Your local business data remains on this device.
+                </p>
+                <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    style={{
+                        border: 0,
+                        borderRadius: 10,
+                        padding: '12px 20px',
+                        background: '#0cb7ae',
+                        color: '#fff',
+                        fontSize: 16,
+                        fontWeight: 600,
+                    }}
+                >
+                    Retry
+                </button>
+            </div>
+        </div>,
+    )
+}
+
 
 
 const renderMarketplace = async () => {
@@ -275,4 +316,4 @@ const init = async () => {
     )
 }
 
-init()
+void init().catch(renderStartupFailure)
