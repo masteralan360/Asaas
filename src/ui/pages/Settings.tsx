@@ -7,11 +7,11 @@ import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { Coins } from 'lucide-react'
 import type { IQDDisplayPreference, CurrencyCode } from '@/local-db/models'
-import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle, Printer, Contact, Fingerprint, Store, ExternalLink, Usb, CalendarClock } from 'lucide-react'
+import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, Upload, AlertCircle, Printer, Contact, Fingerprint, Store, ExternalLink, Usb, CalendarClock } from 'lucide-react'
 import { formatDate, formatDateTime, formatTime, cn, generateId, getHourDisplayPreference, setHourDisplayPreference, type HourDisplayPreference } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell, MonitorPlay, Wifi, Zap } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, type ChangeEvent } from 'react'
 import { isMobile, isDesktop, isTauri } from '@/lib/platform'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { getAppSettingSync, setAppSetting } from '@/local-db/settings'
@@ -32,8 +32,9 @@ import type { PrinterInfo } from 'tauri-plugin-thermal-printer'
 import { registerDeviceTokenIfNeeded } from '@/services/notificationDevice'
 import { useKdsStream } from '@/hooks/useKdsStream'
 import { useUsbBackup } from '@/hooks/useUsbBackup'
-import { downloadDatabaseFile } from '@/local-db/localModeSqlite'
+import { downloadDatabaseFile, injectLocalModeDatabaseFile } from '@/local-db/localModeSqlite'
 import { downloadInvoicePdfArchive } from '@/services/invoicePdfExport'
+import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { BranchManager } from '@/ui/components/workspace/BranchManager'
 import { canManageClinicalRegistryType } from '@/i18n/clinicalRegistry'
@@ -114,6 +115,11 @@ export function Settings() {
     const [isScanningThermalPrinters, setIsScanningThermalPrinters] = useState(false)
     const [isThermalActionPending, setIsThermalActionPending] = useState(false)
     const [isInvoicePdfExporting, setIsInvoicePdfExporting] = useState(false)
+    const [isDatabaseInjectionDialogOpen, setIsDatabaseInjectionDialogOpen] = useState(false)
+    const [databaseFileToInject, setDatabaseFileToInject] = useState<File | null>(null)
+    const [databaseInjectionError, setDatabaseInjectionError] = useState<string | null>(null)
+    const [isInjectingDatabase, setIsInjectingDatabase] = useState(false)
+    const databaseInjectionInputRef = useRef<HTMLInputElement>(null)
     const [thermalPrinterMessage, setThermalPrinterMessage] = useState<string | null>(null)
     const [showAllDetectedPrinters, setShowAllDetectedPrinters] = useState(false)
     const [marketplaceVisibility, setMarketplaceVisibility] = useState<'private' | 'public'>(features.visibility || 'private')
@@ -1114,6 +1120,60 @@ export function Settings() {
             })
         } finally {
             setIsInvoicePdfExporting(false)
+        }
+    }
+
+    const handleDatabaseInjectionFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+        const selectedFile = event.target.files?.[0] ?? null
+        event.target.value = ''
+        setDatabaseInjectionError(null)
+
+        if (!selectedFile) return
+        if (selectedFile.name.toLowerCase() !== 'atlas-local-mode.db') {
+            setDatabaseFileToInject(null)
+            setDatabaseInjectionError('Select the atlas-local-mode.db file created by Atlas.')
+            return
+        }
+
+        setDatabaseFileToInject(selectedFile)
+    }
+
+    const handleDatabaseInjectionDialogChange = (open: boolean) => {
+        if (isInjectingDatabase) return
+        setIsDatabaseInjectionDialogOpen(open)
+        if (!open) {
+            setDatabaseFileToInject(null)
+            setDatabaseInjectionError(null)
+        }
+    }
+
+    const handleInjectDatabase = async () => {
+        if (!databaseFileToInject) return
+
+        setIsInjectingDatabase(true)
+        setDatabaseInjectionError(null)
+        try {
+            await injectLocalModeDatabaseFile(new Uint8Array(await databaseFileToInject.arrayBuffer()))
+
+            // SQLite is authoritative in Local Mode. Remove the old Dexie
+            // cache before reloading so it is hydrated only from this backup.
+            try {
+                await db.delete()
+            } catch (cacheError) {
+                console.warn('[Settings] Could not clear the cache after database injection:', cacheError)
+            }
+
+            toast({
+                title: 'Database injected',
+                description: 'Atlas is reloading from the injected database.',
+            })
+            window.setTimeout(() => window.location.reload(), 250)
+        } catch (error) {
+            console.error('[Settings] Failed to inject local database:', error)
+            setDatabaseInjectionError(
+                error instanceof Error ? error.message : 'The database could not be injected. Please try again.',
+            )
+            setIsInjectingDatabase(false)
         }
     }
 
@@ -2974,9 +3034,85 @@ export function Settings() {
                                       <Download className="mr-2 h-4 w-4" />
                                       {isInvoicePdfExporting ? 'Preparing PDF Invoices...' : 'Download PDF Invoices'}
                                     </Button>
+                                    <Button
+                                      onClick={() => setIsDatabaseInjectionDialogOpen(true)}
+                                      variant="destructive"
+                                      size="sm"
+                                    >
+                                      <Upload className="mr-2 h-4 w-4" />
+                                      Inject Database
+                                    </Button>
                                   </div>
                                 </CardContent>
                               </Card>
+
+                            <Dialog
+                              open={isDatabaseInjectionDialogOpen}
+                              onOpenChange={handleDatabaseInjectionDialogChange}
+                            >
+                              <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                  <DialogTitle>Inject local database</DialogTitle>
+                                  <DialogDescription>
+                                    This permanently replaces this device&apos;s atlas-local-mode.db with the selected backup.
+                                    Atlas will reload immediately after the replacement.
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4 py-2">
+                                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                                    All current Local Mode data on this device will be replaced. Only inject a database you trust.
+                                  </div>
+                                  <input
+                                    ref={databaseInjectionInputRef}
+                                    type="file"
+                                    accept=".db,application/x-sqlite3,application/vnd.sqlite3"
+                                    className="hidden"
+                                    onChange={handleDatabaseInjectionFileChange}
+                                  />
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      onClick={() => databaseInjectionInputRef.current?.click()}
+                                      disabled={isInjectingDatabase}
+                                    >
+                                      <Upload className="mr-2 h-4 w-4" />
+                                      Select atlas-local-mode.db
+                                    </Button>
+                                    {databaseFileToInject && (
+                                      <span className="break-all text-sm text-muted-foreground">
+                                        {databaseFileToInject.name} ({Math.ceil(databaseFileToInject.size / 1024)} KB)
+                                      </span>
+                                    )}
+                                  </div>
+                                  {databaseInjectionError && (
+                                    <p role="alert" className="text-sm text-destructive">
+                                      {databaseInjectionError}
+                                    </p>
+                                  )}
+                                </div>
+                                <DialogFooter className="gap-2 sm:gap-0">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    onClick={() => handleDatabaseInjectionDialogChange(false)}
+                                    disabled={isInjectingDatabase}
+                                  >
+                                    Cancel
+                                  </Button>
+                                  <PressAndHoldButton
+                                    variant="destructive"
+                                    onComplete={() => void handleInjectDatabase()}
+                                    idleLabel="Press and hold to inject database"
+                                    holdingLabel="Keep holding to replace database..."
+                                    loadingLabel="Injecting database..."
+                                    isLoading={isInjectingDatabase}
+                                    disabled={!databaseFileToInject}
+                                    durationMs={3000}
+                                  />
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
 
                             {/* USB Backup (Desktop + Local/Hybrid mode only) */}
                             {usbBackup.isDesktopApp && (isLocalMode || isHybridMode) && (

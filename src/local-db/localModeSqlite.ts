@@ -4,7 +4,7 @@ import { isTauri } from "@/lib/platform";
 import { shouldMirrorToSqlite, isStrictLocalWorkspaceMode } from "@/workspace/workspaceMode";
 import { runUsbBackupIfNeeded } from "./usbBackup";
 import { normalizeProductSku } from "./productSku";
-import { createPwaSqliteConnection, isOpfsSupported, getPwaDbInstance, ensurePwaDatabase, DB_FILENAME as PWA_DB_FILENAME } from "./pwaSqlite";
+import { createPwaSqliteConnection, isOpfsSupported, getPwaDbInstance, ensurePwaDatabase, replacePwaDatabaseFile, validateAtlasLocalDatabase, DB_FILENAME as PWA_DB_FILENAME } from "./pwaSqlite";
 
 const LOCAL_MODE_SQLITE_PATH = "sqlite:atlas-local-mode.db";
 
@@ -1275,4 +1275,39 @@ export async function downloadDatabaseFile(): Promise<void> {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Replace the device's Local Mode SQLite file with a validated Atlas backup.
+ * Callers must clear the IndexedDB cache and reload after this resolves.
+ */
+export async function injectLocalModeDatabaseFile(data: Uint8Array): Promise<void> {
+  if (!isSupported()) {
+    throw new Error("Local database storage is unavailable on this device.");
+  }
+
+  await validateAtlasLocalDatabase(data);
+  mirroringPauseDepth += 1;
+  try {
+    // Finish any save already in progress before closing its connection and
+    // replacing the underlying file.
+    await sqliteWriteQueue.catch(() => undefined);
+    await resetSqliteConnection();
+
+    if (isTauri()) {
+      const { remove, writeFile, BaseDirectory } = await import("@tauri-apps/plugin-fs");
+      // A stale WAL journal could otherwise be replayed over the injected DB.
+      await Promise.all([
+        remove(`${PWA_DB_FILENAME}-wal`, { baseDir: BaseDirectory.AppData }).catch(() => undefined),
+        remove(`${PWA_DB_FILENAME}-shm`, { baseDir: BaseDirectory.AppData }).catch(() => undefined),
+      ]);
+      await writeFile(PWA_DB_FILENAME, data, { baseDir: BaseDirectory.AppData });
+    } else {
+      await replacePwaDatabaseFile(data);
+    }
+
+    hydratedWorkspaces.clear();
+  } finally {
+    mirroringPauseDepth -= 1;
+  }
 }

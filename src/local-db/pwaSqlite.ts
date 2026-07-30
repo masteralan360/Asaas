@@ -67,6 +67,56 @@ export function getPwaDbInstance(): SqlJsDatabase | null {
   return dbInstance;
 }
 
+/** Reject ordinary SQLite files that are not Atlas Local Mode databases. */
+export async function validateAtlasLocalDatabase(data: Uint8Array): Promise<void> {
+  if (data.byteLength < 100) {
+    throw new Error("The selected file is not a valid SQLite database.");
+  }
+
+  const SQL = await getSqlJs();
+  let candidate: SqlJsDatabase | null = null;
+  try {
+    candidate = new SQL.Database(data);
+    const integrityResult = candidate.exec("PRAGMA quick_check");
+    if (integrityResult[0]?.values[0]?.[0] !== "ok") {
+      throw new Error("The selected database failed its integrity check.");
+    }
+
+    const tableResult = candidate.exec(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'local_entities' LIMIT 1",
+    );
+    if (!tableResult[0]?.values.length) {
+      throw new Error("The selected SQLite file is not an Atlas Local Mode database.");
+    }
+
+    const columnsResult = candidate.exec("PRAGMA table_info(local_entities)");
+    const nameColumn = columnsResult[0]?.columns.indexOf("name") ?? -1;
+    const columnNames = new Set(
+      nameColumn < 0 ? [] : columnsResult[0].values.map((row) => row[nameColumn]),
+    );
+    for (const requiredColumn of ["entity_type", "entity_id", "workspace_id", "payload"]) {
+      if (!columnNames.has(requiredColumn)) {
+        throw new Error("The selected SQLite file is not an Atlas Local Mode database.");
+      }
+    }
+  } catch (error) {
+    if (error instanceof Error) throw error;
+    throw new Error("The selected file is not a valid SQLite database.");
+  } finally {
+    candidate?.close();
+  }
+}
+
+/** Replace the OPFS database after the active connection has been closed. */
+export async function replacePwaDatabaseFile(data: Uint8Array): Promise<void> {
+  await validateAtlasLocalDatabase(data);
+  await saveToOpfs(data);
+  dbInstance = null;
+  dbPromise = null;
+  transactionDepth = 0;
+  transactionDirty = false;
+}
+
 export async function ensurePwaDatabase(): Promise<SqlJsDatabase | null> {
   if (dbInstance) return dbInstance;
   if (dbPromise) return dbPromise;
