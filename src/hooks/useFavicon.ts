@@ -5,7 +5,7 @@ import { useEffect } from 'react'
  * Returns the static favicon path.
  */
 function getFaviconPath(): string {
-    return '/logo.ico'
+    return '/AtlasClear.png'
 }
 
 /**
@@ -17,7 +17,7 @@ function getLogoPath(): string {
 
 /**
  * Custom hook to update the favicon.
- * Now hardcoded to /logo.ico as per user request.
+ * Uses the shipped PNG favicon asset.
  */
 export function useFavicon() {
     useEffect(() => {
@@ -32,7 +32,7 @@ export function useFavicon() {
         }
 
         // Update the href
-        link.type = 'image/x-icon'
+        link.type = 'image/png'
         link.href = faviconPath
     }, [])
 }
