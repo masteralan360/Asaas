@@ -108,6 +108,7 @@
     "newNotificationTitle": "إشعار جديد"
   },
   "common": {
+    "and": "و",
     "loading": "جاري التحميل...",
     "save": "حفظ",
     "cancel": "إلغاء",

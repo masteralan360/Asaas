@@ -55,7 +55,7 @@ import {
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { Button } from '@/ui/components/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components/card'
-import { PartnerBalanceSummary, MultiCurrencyDisplay, type CurrencyAmountItem } from '@/ui/components/crm/PartnerBalanceSummary'
+import { PartnerBalanceSummary, MultiCurrencyDisplay, formatMultiCurrencySummarySentence, type CurrencyAmountItem } from '@/ui/components/crm/PartnerBalanceSummary'
 import { PrintPreviewModal } from '@/ui/components/PrintPreviewModal'
 import {
     Table,
@@ -2135,42 +2135,36 @@ export function PartnerDetailsView({
                                         {relationshipReceivable > 0 ? (
                                             <div className="rounded-2xl border border-emerald-200/50 bg-emerald-500/[0.06] p-4">
                                                 <div className="text-base font-semibold leading-relaxed text-emerald-800 dark:text-emerald-300">
-                                                    <div>
-                                                        {t('businessPartners.owesAmountToLabel', {
-                                                            debtor: partnerRelationshipName,
-                                                            creditor: workspaceRelationshipName,
-                                                            defaultValue: '{{debtor}} owes to {{creditor}}:'
-                                                        })}
-                                                    </div>
-                                                    <div className="mt-1 text-xl font-bold">
-                                                        <MultiCurrencyDisplay
-                                                            totals={receivableCurrencyTotals}
-                                                            fallbackAmount={relationshipReceivable}
-                                                            fallbackCurrency={defaultCurrency}
-                                                            iqdPreference={iqdPreference}
-                                                        />
-                                                    </div>
+                                                    {t('businessPartners.owesAmountTo', {
+                                                        debtor: partnerRelationshipName,
+                                                        amount: formatMultiCurrencySummarySentence(
+                                                            receivableCurrencyTotals,
+                                                            relationshipReceivable,
+                                                            defaultCurrency,
+                                                            iqdPreference,
+                                                            t('common.and', { defaultValue: i18n.language?.startsWith('ar') || i18n.language?.startsWith('ku') ? 'و' : 'and' })
+                                                        ),
+                                                        creditor: workspaceRelationshipName,
+                                                        defaultValue: '{{debtor}} owes {{amount}} to {{creditor}}'
+                                                    })}
                                                 </div>
                                             </div>
                                         ) : null}
                                         {relationshipPayable > 0 ? (
                                             <div className="rounded-2xl border border-amber-200/50 bg-amber-500/[0.06] p-4">
                                                 <div className="text-base font-semibold leading-relaxed text-amber-800 dark:text-amber-300">
-                                                    <div>
-                                                        {t('businessPartners.owesAmountToLabel', {
-                                                            debtor: workspaceRelationshipName,
-                                                            creditor: partnerRelationshipName,
-                                                            defaultValue: '{{debtor}} owes to {{creditor}}:'
-                                                        })}
-                                                    </div>
-                                                    <div className="mt-1 text-xl font-bold">
-                                                        <MultiCurrencyDisplay
-                                                            totals={payableCurrencyTotals}
-                                                            fallbackAmount={relationshipPayable}
-                                                            fallbackCurrency={defaultCurrency}
-                                                            iqdPreference={iqdPreference}
-                                                        />
-                                                    </div>
+                                                    {t('businessPartners.owesAmountTo', {
+                                                        debtor: workspaceRelationshipName,
+                                                        amount: formatMultiCurrencySummarySentence(
+                                                            payableCurrencyTotals,
+                                                            relationshipPayable,
+                                                            defaultCurrency,
+                                                            iqdPreference,
+                                                            t('common.and', { defaultValue: i18n.language?.startsWith('ar') || i18n.language?.startsWith('ku') ? 'و' : 'and' })
+                                                        ),
+                                                        creditor: partnerRelationshipName,
+                                                        defaultValue: '{{debtor}} owes {{amount}} to {{creditor}}'
+                                                    })}
                                                 </div>
                                             </div>
                                         ) : null}

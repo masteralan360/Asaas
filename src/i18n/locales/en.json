@@ -108,6 +108,7 @@
     "newNotificationTitle": "New Notification"
   },
   "common": {
+    "and": "and",
     "loading": "Loading...",
     "save": "Save",
     "cancel": "Cancel",

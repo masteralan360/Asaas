@@ -76,6 +76,38 @@ export function MultiCurrencyDisplay({
     )
 }
 
+export function formatMultiCurrencySummarySentence(
+    totals: CurrencyAmountItem[] | undefined,
+    fallbackAmount: number,
+    fallbackCurrency: string,
+    iqdPreference: Parameters<typeof formatCurrency>[2],
+    andWord: string = 'and'
+): string {
+    if (!totals || totals.length === 0) {
+        return formatCurrency(fallbackAmount || 0, fallbackCurrency, iqdPreference)
+    }
+
+    const nonZero = totals.filter((item) => Math.abs(item.amount) > 0.000001)
+
+    if (nonZero.length === 0) {
+        return formatCurrency(0, fallbackCurrency, iqdPreference)
+    }
+
+    const formattedList = nonZero
+        .sort((a, b) => a.currency.localeCompare(b.currency))
+        .map((item) => formatCurrency(item.amount, item.currency, iqdPreference))
+
+    if (formattedList.length === 1) {
+        return formattedList[0]
+    }
+
+    if (formattedList.length === 2) {
+        return `${formattedList[0]} ${andWord} ${formattedList[1]}`
+    }
+
+    return `${formattedList.slice(0, -1).join(', ')}, ${andWord} ${formattedList[formattedList.length - 1]}`
+}
+
 export function formatMultiCurrencySummary(
     totals: CurrencyAmountItem[] | undefined,
     fallbackAmount: number,
