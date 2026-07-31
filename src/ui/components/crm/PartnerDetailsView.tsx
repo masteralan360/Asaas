@@ -55,7 +55,7 @@ import {
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { Button } from '@/ui/components/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components/card'
-import { PartnerBalanceSummary, MultiCurrencyDisplay, formatMultiCurrencySummary, type CurrencyAmountItem } from '@/ui/components/crm/PartnerBalanceSummary'
+import { PartnerBalanceSummary, MultiCurrencyDisplay, type CurrencyAmountItem } from '@/ui/components/crm/PartnerBalanceSummary'
 import { PrintPreviewModal } from '@/ui/components/PrintPreviewModal'
 import {
     Table,
@@ -1133,9 +1133,9 @@ export function PartnerDetailsView({
                 map.set(curr, (map.get(curr) || 0) + remaining)
             }
         }
-        for (const loan of partnerLoans.filter((l) => (l.direction ?? 'lent') !== 'borrowed' && l.status !== 'settled' && l.status !== 'cancelled')) {
+        for (const loan of partnerLoans.filter((l) => (l.direction ?? 'lent') !== 'borrowed' && l.status !== 'completed' && l.status !== 'cancelled')) {
             if (loan.balanceAmount > 0) {
-                const curr = (loan.settlementCurrency || loan.currency || defaultCurrency).toUpperCase()
+                const curr = (loan.settlementCurrency || defaultCurrency).toUpperCase()
                 map.set(curr, (map.get(curr) || 0) + loan.balanceAmount)
             }
         }
@@ -1152,9 +1152,9 @@ export function PartnerDetailsView({
                 map.set(curr, (map.get(curr) || 0) + remaining)
             }
         }
-        for (const loan of partnerLoans.filter((l) => l.direction === 'borrowed' && l.status !== 'settled' && l.status !== 'cancelled')) {
+        for (const loan of partnerLoans.filter((l) => l.direction === 'borrowed' && l.status !== 'completed' && l.status !== 'cancelled')) {
             if (loan.balanceAmount > 0) {
-                const curr = (loan.settlementCurrency || loan.currency || defaultCurrency).toUpperCase()
+                const curr = (loan.settlementCurrency || defaultCurrency).toUpperCase()
                 map.set(curr, (map.get(curr) || 0) + loan.balanceAmount)
             }
         }
@@ -1176,7 +1176,7 @@ export function PartnerDetailsView({
         const map = new Map<string, number>()
         for (const loan of dateFilteredLoans.filter((l) => (l.direction ?? 'lent') !== 'borrowed')) {
             if (loan.totalPaidAmount > 0) {
-                const curr = (loan.settlementCurrency || loan.currency || defaultCurrency).toUpperCase()
+                const curr = (loan.settlementCurrency || defaultCurrency).toUpperCase()
                 map.set(curr, (map.get(curr) || 0) + loan.totalPaidAmount)
             }
         }
@@ -1187,7 +1187,7 @@ export function PartnerDetailsView({
         const map = new Map<string, number>()
         for (const loan of dateFilteredLoans.filter((l) => l.direction === 'borrowed')) {
             if (loan.totalPaidAmount > 0) {
-                const curr = (loan.settlementCurrency || loan.currency || defaultCurrency).toUpperCase()
+                const curr = (loan.settlementCurrency || defaultCurrency).toUpperCase()
                 map.set(curr, (map.get(curr) || 0) + loan.totalPaidAmount)
             }
         }

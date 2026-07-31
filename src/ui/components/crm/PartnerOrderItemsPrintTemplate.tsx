@@ -594,7 +594,7 @@ function formatQuantity(quantity?: number | null) {
     return new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 }).format(quantity)
 }
 
-function StatementSummary({
+export function StatementSummary({
     summaries,
     kind,
     t,
@@ -906,7 +906,7 @@ function MoneyMovementBlock({
     )
 }
 
-function MoneyMovementSummary({
+export function MoneyMovementSummary({
     title,
     summaries,
     t,
