@@ -10,6 +10,7 @@ import {
     getA4PageStarts,
     type A4KeepTogetherBlock
 } from '@/services/a4Pagination'
+import { paginateOrderItemsTables } from '@/lib/orderItemsTablePagination'
 
 /** Formats that can be stored as invoice versions. */
 export type InvoicePrintFormat = 'a4' | 'receipt'
@@ -221,6 +222,16 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     await waitForImages(container)
     await reflowTemplateTextAfterContent(container, widthMm)
     await expandContainerToRenderedBounds(container)
+
+    if (widthMm === A4_WIDTH_MM) {
+        // Cut statement tables exactly at the A4 red line and give each
+        // continuation chunk its own title and column header row.
+        paginateOrderItemsTables(container, {
+            pageHeightMm: A4_HEIGHT_MM,
+            pageWidthMm: widthMm
+        })
+        await expandContainerToRenderedBounds(container)
+    }
 
     const keepTogetherBlocks = collectA4KeepTogetherBlocks(container, widthMm)
 

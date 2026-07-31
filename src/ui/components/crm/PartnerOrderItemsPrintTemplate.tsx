@@ -32,8 +32,14 @@ export type PartnerOrderItemsPrintRow = {
     quantity?: number | null
     unitPrice?: number | null
     amount?: number | null
+    paidAmount?: number | null
+    remainingAmount?: number | null
     currency: string
     adjustmentType?: 'addition' | 'deduction'
+    /** True when the source order has posted returns (partial or full); such rows are flagged in the print. */
+    isReturned?: boolean
+    /** True when the source order is only partially paid; its hierarchy line is drawn in blue. */
+    isPartialPaid?: boolean
 }
 
 export type PartnerOrderItemsPrintCurrencySummary = {
@@ -82,6 +88,10 @@ interface PartnerOrderItemsPrintTemplateProps {
     data: PartnerOrderItemsPrintData
     iqdPreference?: IQDDisplayPreference
     logoUrl?: string | null
+    /** Shows "Paid: …" inline on each order total row (no dedicated column). */
+    showPaidAmount?: boolean
+    /** Shows "Remaining: …" inline on each order total row (no dedicated column). */
+    showRemainingAmount?: boolean
     componentPositions?: Record<string, CustomTemplateComponentPosition>
     editableComponents?: boolean
     onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
@@ -160,6 +170,9 @@ export function buildPartnerOrderItemsPrintSection(
         })
 
     for (const order of sortedOrders) {
+        const isReturned = isSalesOrder(order, kind) && (order.returnStatus === 'partial' || order.returnStatus === 'full')
+        const isPartialPaid = order.paymentStatus === 'partial'
+
         const summary = summaries.get(order.currency) || createSummary(order.currency)
         summaries.set(order.currency, summary)
         summary.orderCount += 1
@@ -186,7 +199,9 @@ export function buildPartnerOrderItemsPrintSection(
                 quantity: item.quantity,
                 unitPrice: item.convertedUnitPrice,
                 amount: item.lineTotal,
-                currency: order.currency
+                currency: order.currency,
+                isReturned,
+                isPartialPaid
             })
         }
 
@@ -199,7 +214,9 @@ export function buildPartnerOrderItemsPrintSection(
                 kind: 'discount',
                 description: 'discount',
                 amount: -order.discount,
-                currency: order.currency
+                currency: order.currency,
+                isReturned,
+                isPartialPaid
             })
         }
 
@@ -212,7 +229,9 @@ export function buildPartnerOrderItemsPrintSection(
                 kind: 'tax',
                 description: 'tax',
                 amount: order.tax,
-                currency: order.currency
+                currency: order.currency,
+                isReturned,
+                isPartialPaid
             })
         }
 
@@ -222,6 +241,7 @@ export function buildPartnerOrderItemsPrintSection(
                 : adjustment.convertedAmount
             if (!Number.isFinite(amount) || amount === 0) continue
 
+            const summary = summaries.get(order.currency)!
             if (adjustment.type === 'addition') summary.additions += adjustment.convertedAmount
             else summary.deductions += adjustment.convertedAmount
 
@@ -234,7 +254,9 @@ export function buildPartnerOrderItemsPrintSection(
                 description: adjustment.name,
                 amount,
                 currency: order.currency,
-                adjustmentType: adjustment.type
+                adjustmentType: adjustment.type,
+                isReturned,
+                isPartialPaid
             })
         }
 
@@ -247,7 +269,9 @@ export function buildPartnerOrderItemsPrintSection(
                 kind: 'order_note',
                 description: 'order_note',
                 note: order.notes.trim(),
-                currency: order.currency
+                currency: order.currency,
+                isReturned,
+                isPartialPaid
             })
         }
 
@@ -259,7 +283,11 @@ export function buildPartnerOrderItemsPrintSection(
             kind: 'order_total',
             description: 'order_total',
             amount: order.total,
-            currency: order.currency
+            paidAmount: order.paidAmount,
+            remainingAmount: order.balanceAmount,
+            currency: order.currency,
+            isReturned,
+            isPartialPaid
         })
     }
 
@@ -290,7 +318,7 @@ export function getPartnerOrderItemsPrintRowHierarchy(
     return 'middle'
 }
 
-function OrderHierarchyMarker({ position }: { position: PartnerOrderItemsPrintRowHierarchy }) {
+function OrderHierarchyMarker({ position, returned = false, partialPaid = false }: { position: PartnerOrderItemsPrintRowHierarchy; returned?: boolean; partialPaid?: boolean }) {
     if (position === 'single') return null
 
     const verticalPosition = position === 'first'
@@ -299,11 +327,12 @@ function OrderHierarchyMarker({ position }: { position: PartnerOrderItemsPrintRo
             ? 'top-0 bottom-1/2'
             : 'inset-y-0'
     const turnPosition = position === 'first' ? 'top-1/2' : position === 'last' ? 'bottom-1/2' : null
+    const lineColor = returned ? 'bg-red-600' : partialPaid ? 'bg-blue-600' : 'bg-emerald-600'
 
     return (
         <span className="pointer-events-none absolute inset-y-0 -start-4 w-3" aria-hidden="true">
-            <span className={`absolute start-0 w-px bg-emerald-600 ${verticalPosition}`} />
-            {turnPosition ? <span className={`absolute start-0 h-px w-2.5 bg-emerald-600 ${turnPosition}`} /> : null}
+            <span className={`absolute start-0 w-px ${lineColor} ${verticalPosition}`} />
+            {turnPosition ? <span className={`absolute start-0 h-px w-2.5 ${lineColor} ${turnPosition}`} /> : null}
         </span>
     )
 }
@@ -369,26 +398,36 @@ function StatementSummary({
 
 function OrderItemsSection({
     title,
-    emptyLabel,
     section,
     kind,
     t,
-    iqdPreference
+    iqdPreference,
+    showPaidAmount,
+    showRemainingAmount
 }: {
     title: string
-    emptyLabel: string
     section: PartnerOrderItemsPrintSection
     kind: StatementKind
     t: (key: string, options?: Record<string, unknown>) => string
     iqdPreference: IQDDisplayPreference
+    showPaidAmount: boolean
+    showRemainingAmount: boolean
 }) {
+    if (section.rows.length === 0) return null
+
+    const returnedLabel = t('businessPartners.orderItemsPrint.returned', { defaultValue: 'Returned' })
+
     return (
-        <section className="mt-5" data-pdf-keep-together>
-            <div className="mb-2 flex items-center justify-between border-b-2 border-slate-700 pb-1">
+        <section className="mt-5" data-pdf-keep-together data-order-items-section>
+            <div
+                className="mb-2 flex items-center justify-between border-b-2 border-slate-700 pb-1"
+                data-order-items-section-title-bar
+                data-order-items-continuation-label={`(${t('businessPartners.orderItemsPrint.continued', { defaultValue: 'Continued' })})`}
+            >
                 <h2 className="text-sm font-bold">{title}</h2>
-                <span className="text-[9px]">{section.summaries.reduce((total, summary) => total + summary.orderCount, 0)} {t('businessPartners.orderItemsPrint.orders', { defaultValue: 'Orders' })}</span>
+                <span className="text-[9px]" data-order-items-section-order-count>{section.summaries.reduce((total, summary) => total + summary.orderCount, 0)} {t('businessPartners.orderItemsPrint.orders', { defaultValue: 'Orders' })}</span>
             </div>
-            <table className="w-full border-collapse text-[8px]">
+            <table className="w-full border-collapse text-[8px]" data-order-items-paginated>
                 <thead>
                     <tr className="bg-[#dfead3]">
                         <th className="w-[4%] border border-slate-400 p-1 text-center">#</th>
@@ -402,21 +441,36 @@ function OrderItemsSection({
                     </tr>
                 </thead>
                 <tbody>
-                    {section.rows.length === 0 ? (
-                        <tr>
-                            <td colSpan={8} className="border border-slate-400 p-4 text-center">{emptyLabel}</td>
-                        </tr>
-                    ) : section.rows.map((row, index) => {
+                    {section.rows.map((row, index) => {
                         const hierarchyPosition = getPartnerOrderItemsPrintRowHierarchy(section.rows, index)
 
                         return row.kind === 'order_total' ? (
-                            <tr key={row.id} className="bg-slate-200 font-bold" data-pdf-keep-together>
+                            <tr
+                                key={row.id}
+                                className="bg-slate-200 font-bold"
+                                data-pdf-keep-together
+                            >
                                 <td className="relative overflow-visible border border-slate-300 px-1 py-0.5 text-center">
-                                    <OrderHierarchyMarker position={hierarchyPosition} />
+                                    <OrderHierarchyMarker position={hierarchyPosition} returned={row.isReturned} partialPaid={row.isPartialPaid} />
                                     {index + 1}
                                 </td>
-                                <td className="border border-slate-300 px-1 py-0.5 whitespace-nowrap">{row.orderCode}</td>
-                                <td colSpan={5} className="border border-slate-300 px-1 py-0.5">{statementRowLabel(row, t)}</td>
+                                <td className="border border-slate-300 px-1 py-0.5 whitespace-nowrap">
+                                    {row.orderCode}
+                                    {row.isReturned ? <span className="ms-1 rounded border border-red-400 px-1 text-[7px] font-bold">{returnedLabel}</span> : null}
+                                </td>
+                                <td colSpan={5} className="border border-slate-300 px-1 py-0.5 whitespace-nowrap">
+                                    {statementRowLabel(row, t)}
+                                    {showPaidAmount && row.paidAmount != null ? (
+                                        <span className="ms-2">
+                                            {t('businessPartners.orderItemsPrint.paid', { defaultValue: 'Paid' })}: {formatCurrency(row.paidAmount, row.currency, iqdPreference)}
+                                        </span>
+                                    ) : null}
+                                    {showRemainingAmount && row.remainingAmount != null ? (
+                                        <span className="ms-2">
+                                            {t('businessPartners.orderItemsPrint.remaining', { defaultValue: 'Remaining' })}: {formatCurrency(row.remainingAmount, row.currency, iqdPreference)}
+                                        </span>
+                                    ) : null}
+                                </td>
                                 <td className="border border-slate-300 px-1 py-0.5 text-end whitespace-nowrap">{row.amount == null ? '—' : formatCurrency(row.amount, row.currency, iqdPreference)}</td>
                             </tr>
                         ) : (
@@ -426,11 +480,14 @@ function OrderItemsSection({
                                 data-pdf-keep-together
                             >
                                 <td className="relative overflow-visible border border-slate-300 p-1 text-center">
-                                    <OrderHierarchyMarker position={hierarchyPosition} />
+                                    <OrderHierarchyMarker position={hierarchyPosition} returned={row.isReturned} partialPaid={row.isPartialPaid} />
                                     {index + 1}
                                 </td>
                                 <td className="border border-slate-300 p-1 align-top font-semibold">
-                                    <div>{row.orderCode}</div>
+                                    <div>
+                                        {row.orderCode}
+                                        {row.isReturned ? <span className="ms-1 rounded border border-red-400 px-1 text-[7px] font-bold">{returnedLabel}</span> : null}
+                                    </div>
                                     <div className="mt-0.5 text-[7px] font-normal">{formatDate(row.orderDate)}</div>
                                 </td>
                                 <td className="border border-slate-300 p-1 align-top">{statementRowLabel(row, t)}</td>
@@ -456,6 +513,8 @@ export function PartnerOrderItemsPrintTemplate({
     data,
     iqdPreference = 'IQD',
     logoUrl,
+    showPaidAmount = true,
+    showRemainingAmount = true,
     componentPositions,
     editableComponents,
     onComponentPositionChange
@@ -535,20 +594,22 @@ export function PartnerOrderItemsPrintTemplate({
                 </div>
 
                 <OrderItemsSection
-                    title={t('businessPartners.orderItemsPrint.salesOrders', { defaultValue: 'Sales Orders' })}
-                    emptyLabel={t('businessPartners.orderItemsPrint.noSalesOrderItemsInPeriod', { defaultValue: 'No sales order items in the selected period.' })}
+                    title={t('businessPartners.orderItemsPrint.salesOrderItems', { defaultValue: 'Sales Order Items' })}
                     section={salesSection}
                     kind="sales"
                     t={t}
                     iqdPreference={iqdPreference}
+                    showPaidAmount={showPaidAmount}
+                    showRemainingAmount={showRemainingAmount}
                 />
                 <OrderItemsSection
-                    title={t('businessPartners.orderItemsPrint.purchaseOrders', { defaultValue: 'Purchase Orders' })}
-                    emptyLabel={t('businessPartners.orderItemsPrint.noPurchaseOrderItemsInPeriod', { defaultValue: 'No purchase order items in the selected period.' })}
+                    title={t('businessPartners.orderItemsPrint.purchaseOrderItems', { defaultValue: 'Purchase Order Items' })}
                     section={purchaseSection}
                     kind="purchase"
                     t={t}
                     iqdPreference={iqdPreference}
+                    showPaidAmount={showPaidAmount}
+                    showRemainingAmount={showRemainingAmount}
                 />
             </section>
         </div>

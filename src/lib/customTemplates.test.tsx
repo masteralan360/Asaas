@@ -310,14 +310,33 @@ describe('Partner Details custom print template', () => {
         expect(preview.movableComponents).toEqual([
             { key: 'partnerOrderItemsWorkspaceName', label: 'Workspace Name' }
         ])
+        expect(preview.fields.map((field) => field.key)).toEqual(['showPaidAmount', 'showRemainingAmount'])
         expect(element.type).toBe(PartnerOrderItemsPrintTemplate)
         expect(element.props.componentPositions.partnerOrderItemsWorkspaceName).toEqual({ x: 4, y: 2, scale: 1.25 })
         expect(element.props.onComponentPositionChange).toBe(onComponentPositionChange)
+        expect(element.props.showPaidAmount).toBe(true)
+        expect(element.props.showRemainingAmount).toBe(true)
         expect(html).toContain('Partner Order Items Statement')
         expect(html).toContain('order-template-scale-handle')
         expect(html).toContain('scale(1.25)')
         expect(html).toContain('text-black')
         expect(html).not.toContain('text-slate-500')
+    })
+
+    it('passes the paid/remaining toggles to the order-items template', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.PARTNER_ORDER_ITEMS_TEMPLATE_KEY)
+        const preview = customTemplates.createCustomTemplatePreview(target!, {
+            workspaceName: 'Atlas Test',
+            printLang: 'en'
+        })
+
+        const element = preview.createElement({
+            showPaidAmount: 'false',
+            showRemainingAmount: 'true'
+        })
+
+        expect(element.props.showPaidAmount).toBe(false)
+        expect(element.props.showRemainingAmount).toBe(true)
     })
 
     it('renders the focused loan summary, cash flow, and two activity tables', () => {

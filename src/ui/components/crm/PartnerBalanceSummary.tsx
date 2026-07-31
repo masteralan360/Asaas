@@ -49,8 +49,13 @@ export function PartnerBalanceSummary({ partner, iqdPreference, className, compa
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-400">
                     <TrendingUp className="h-5 w-5" />
                     {t('businessPartners.receivable', { defaultValue: 'Receivable' })}
-                    <span className="ml-auto rounded-full border border-emerald-200/50 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                        {t('businessPartners.theyOweUs', { defaultValue: 'They owe us' })}
+                    <span className="ml-auto flex flex-col items-end gap-1">
+                        <span className="rounded-full border border-emerald-200/50 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                            {t('businessPartners.theyOweUs', { defaultValue: 'They owe us' })}
+                        </span>
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                            {t('businessPartners.allTime', { defaultValue: 'All Time' })}
+                        </span>
                     </span>
                 </div>
                 <div className="mt-3 text-4xl font-black tracking-tight text-emerald-600 dark:text-emerald-400">
@@ -61,8 +66,13 @@ export function PartnerBalanceSummary({ partner, iqdPreference, className, compa
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-amber-600 dark:text-amber-400">
                     <TrendingDown className="h-5 w-5" />
                     {t('businessPartners.payable', { defaultValue: 'Payable' })}
-                    <span className="ml-auto rounded-full border border-amber-200/50 bg-amber-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                        {t('businessPartners.weOweThem', { defaultValue: 'We owe them' })}
+                    <span className="ml-auto flex flex-col items-end gap-1">
+                        <span className="rounded-full border border-amber-200/50 bg-amber-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                            {t('businessPartners.weOweThem', { defaultValue: 'We owe them' })}
+                        </span>
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                            {t('businessPartners.allTime', { defaultValue: 'All Time' })}
+                        </span>
                     </span>
                 </div>
                 <div className="mt-3 text-4xl font-black tracking-tight text-amber-600 dark:text-amber-400">

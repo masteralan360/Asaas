@@ -17,6 +17,7 @@ import {
     type CustomTemplateText
 } from '@/lib/pdfPreviewStore'
 import { platformService } from '@/services/platformService'
+import { paginateOrderItemsTables } from '@/lib/orderItemsTablePagination'
 import { EditableField } from '@/ui/components/EditableField'
 import {
     A4InvoiceTemplate,
@@ -637,6 +638,12 @@ export function PdfPreviewPage() {
 
         const millimetersPerPixel = templatePageWidth / stageRect.width
         const pageHeightMm = templatePageHeight || A4_PAGE_HEIGHT_MM
+
+        paginateOrderItemsTables(contentLayer, {
+            pageHeightMm,
+            pageWidthMm: templatePageWidth
+        })
+
         const blocks = Array.from(contentLayer.querySelectorAll<HTMLElement>(PREVIEW_PAGE_BREAK_SELECTOR))
             .sort((left, right) => left.getBoundingClientRect().top - right.getBoundingClientRect().top)
 

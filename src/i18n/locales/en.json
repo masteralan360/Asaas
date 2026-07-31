@@ -1221,8 +1221,8 @@
       "total": "Total",
       "paid": "Paid",
       "remaining": "Remaining",
-      "noSalesOrderItemsInPeriod": "No sales order items in the selected period.",
-      "noPurchaseOrderItemsInPeriod": "No purchase order items in the selected period."
+      "returned": "Returned",
+      "continued": "Continued"
     },
     "memberSince": "Partner Since",
     "financialSummary": "Financial Summary",
@@ -1245,6 +1245,7 @@
     "moreActivities": "+{{count}} additional activities",
     "theyOweUs": "They Owe Us",
     "weOweThem": "We Owe Them",
+    "allTime": "All Time",
     "providedByYou": "Provided by you",
     "providedByPartner": "Provided by partner",
     "moneyIn": "Money In",

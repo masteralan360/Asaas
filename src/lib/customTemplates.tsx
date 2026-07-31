@@ -90,6 +90,10 @@ export const ORDER_DETAILS_TEMPLATE_FIELD_KEYS = {
     boldAllText: 'boldAllText',
     labelOpacity: 'labelOpacity'
 } as const
+export const PARTNER_ORDER_ITEMS_TEMPLATE_FIELD_KEYS = {
+    showPaidAmount: 'showPaidAmount',
+    showRemainingAmount: 'showRemainingAmount'
+} as const
 
 export type CustomTemplateTarget = {
     moduleTypeKey: string
@@ -735,6 +739,21 @@ const PARTNER_DETAILS_FIELDS = [
     }
 ]
 
+const PARTNER_ORDER_ITEMS_FIELDS = [
+    {
+        key: PARTNER_ORDER_ITEMS_TEMPLATE_FIELD_KEYS.showPaidAmount,
+        label: 'Show paid amount in the order total row',
+        value: 'true',
+        type: 'boolean' as const
+    },
+    {
+        key: PARTNER_ORDER_ITEMS_TEMPLATE_FIELD_KEYS.showRemainingAmount,
+        label: 'Show remaining amount in the order total row',
+        value: 'true',
+        type: 'boolean' as const
+    }
+]
+
 const ORDER_DETAILS_FIELDS = [
     {
         key: ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideUnit,
@@ -1281,13 +1300,13 @@ function createPartnerOrderItemsPreview(options: CustomTemplatePreviewOptions): 
             : 'en'
 
     return {
-        fields: [],
+        fields: PARTNER_ORDER_ITEMS_FIELDS,
         movableComponents: [
             { key: PARTNER_ORDER_ITEMS_MOVABLE_COMPONENT_KEYS.workspaceName, label: 'Workspace Name' }
         ],
         page: { widthMm: 210, heightMm: 297 },
         fixedPrintLang,
-        createElement: (_data, _effectiveId, printLangOverride, renderOptions) => (
+        createElement: (data, _effectiveId, printLangOverride, renderOptions) => (
             <PartnerOrderItemsPrintTemplate
                 workspaceName={options.workspaceName}
                 workspaceDescription={options.features?.store_description}
@@ -1295,6 +1314,8 @@ function createPartnerOrderItemsPreview(options: CustomTemplatePreviewOptions): 
                 data={partnerOrderItemsData}
                 iqdPreference={options.features?.iqd_display_preference}
                 logoUrl={options.features?.logo_url}
+                showPaidAmount={data[PARTNER_ORDER_ITEMS_TEMPLATE_FIELD_KEYS.showPaidAmount] !== 'false'}
+                showRemainingAmount={data[PARTNER_ORDER_ITEMS_TEMPLATE_FIELD_KEYS.showRemainingAmount] !== 'false'}
                 componentPositions={renderOptions?.componentPositions}
                 editableComponents={renderOptions?.editableComponents}
                 onComponentPositionChange={renderOptions?.onComponentPositionChange}

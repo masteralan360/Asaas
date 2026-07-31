@@ -3599,8 +3599,8 @@
       "total": "کۆ",
       "paid": "دراو",
       "remaining": "ماوە",
-      "noSalesOrderItemsInPeriod": "هیچ بڕگەیەکی داواکاریی فرۆشتن لە ماوەی دیاریکراودا نییە.",
-      "noPurchaseOrderItemsInPeriod": "هیچ بڕگەیەکی داواکاریی کڕین لە ماوەی دیاریکراودا نییە."
+      "returned": "گەڕێنراوە",
+      "continued": "درێژە"
     },
     "memberSince": "هاوبەشە لە",
     "financialSummary": "پوختەی دارایی",
@@ -3623,6 +3623,7 @@
     "moreActivities": "+{{count}} چالاکی زیاتر",
     "theyOweUs": "ئەوان قەرزاری ئێمەن",
     "weOweThem": "ئێمە قەرزاری ئەوانین",
+    "allTime": "هەموو کاتێک",
     "providedByYou": "پێشکەشکراوە لەلایەن ئێوە",
     "providedByPartner": "پێشکەشکراوە لەلایەن هاوبەش",
     "moneyIn": "پارەی هاتوو (وەرگیراو)",

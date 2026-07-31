@@ -3603,8 +3603,8 @@
       "total": "الإجمالي",
       "paid": "المدفوع",
       "remaining": "المتبقي",
-      "noSalesOrderItemsInPeriod": "لا توجد بنود لأوامر البيع في الفترة المحددة.",
-      "noPurchaseOrderItemsInPeriod": "لا توجد بنود لأوامر الشراء في الفترة المحددة."
+      "returned": "مُرجَع",
+      "continued": "متابعة"
     },
     "memberSince": "شريك منذ",
     "financialSummary": "الملخص المالي",
@@ -3625,6 +3625,7 @@
     "moreActivities": "+{{count}} أنشطة إضافية",
     "theyOweUs": "هم مدينون لنا",
     "weOweThem": "نحن مدينون لهم",
+    "allTime": "كل الأوقات",
     "providedByYou": "قدمته أنت",
     "providedByPartner": "قدمه الشريك",
     "form": {
