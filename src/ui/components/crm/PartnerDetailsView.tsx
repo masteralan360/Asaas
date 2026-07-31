@@ -55,7 +55,7 @@ import {
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { Button } from '@/ui/components/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components/card'
-import { PartnerBalanceSummary } from '@/ui/components/crm/PartnerBalanceSummary'
+import { PartnerBalanceSummary, MultiCurrencyDisplay, formatMultiCurrencySummary, type CurrencyAmountItem } from '@/ui/components/crm/PartnerBalanceSummary'
 import { PrintPreviewModal } from '@/ui/components/PrintPreviewModal'
 import {
     Table,
@@ -1123,6 +1123,76 @@ export function PartnerDetailsView({
             ) ?? 0), 0),
         [dateFilteredLoans, defaultCurrency]
     )
+    const receivableCurrencyTotals = useMemo<CurrencyAmountItem[]>(() => {
+        const map = new Map<string, number>()
+        for (const order of customerOrders.filter((o) => (o.status === 'pending' || o.status === 'completed') && !o.linkedLoanId)) {
+            const paid = Math.min(order.total, Math.max(0, order.paidAmount ?? (order.isPaid ? order.total : 0)))
+            const remaining = Math.max(0, order.balanceAmount ?? order.total - paid)
+            if (remaining > 0) {
+                const curr = (order.currency || defaultCurrency).toUpperCase()
+                map.set(curr, (map.get(curr) || 0) + remaining)
+            }
+        }
+        for (const loan of partnerLoans.filter((l) => (l.direction ?? 'lent') !== 'borrowed' && l.status !== 'settled' && l.status !== 'cancelled')) {
+            if (loan.balanceAmount > 0) {
+                const curr = (loan.settlementCurrency || loan.currency || defaultCurrency).toUpperCase()
+                map.set(curr, (map.get(curr) || 0) + loan.balanceAmount)
+            }
+        }
+        return Array.from(map.entries()).map(([currency, amount]) => ({ currency, amount }))
+    }, [customerOrders, partnerLoans, defaultCurrency])
+
+    const payableCurrencyTotals = useMemo<CurrencyAmountItem[]>(() => {
+        const map = new Map<string, number>()
+        for (const order of supplierOrders.filter((o) => (o.status === 'ordered' || o.status === 'received' || o.status === 'completed') && !o.linkedLoanId)) {
+            const paid = Math.min(order.total, Math.max(0, order.paidAmount ?? (order.isPaid ? order.total : 0)))
+            const remaining = Math.max(0, order.balanceAmount ?? order.total - paid)
+            if (remaining > 0) {
+                const curr = (order.currency || defaultCurrency).toUpperCase()
+                map.set(curr, (map.get(curr) || 0) + remaining)
+            }
+        }
+        for (const loan of partnerLoans.filter((l) => l.direction === 'borrowed' && l.status !== 'settled' && l.status !== 'cancelled')) {
+            if (loan.balanceAmount > 0) {
+                const curr = (loan.settlementCurrency || loan.currency || defaultCurrency).toUpperCase()
+                map.set(curr, (map.get(curr) || 0) + loan.balanceAmount)
+            }
+        }
+        return Array.from(map.entries()).map(([currency, amount]) => ({ currency, amount }))
+    }, [supplierOrders, partnerLoans, defaultCurrency])
+
+    const outstandingCurrencyTotals = useMemo<CurrencyAmountItem[]>(() => {
+        const map = new Map<string, number>()
+        for (const item of receivableCurrencyTotals) {
+            map.set(item.currency, (map.get(item.currency) || 0) + item.amount)
+        }
+        for (const item of payableCurrencyTotals) {
+            map.set(item.currency, (map.get(item.currency) || 0) + item.amount)
+        }
+        return Array.from(map.entries()).map(([currency, amount]) => ({ currency, amount }))
+    }, [receivableCurrencyTotals, payableCurrencyTotals])
+
+    const loanPaidByPartnerCurrencyTotals = useMemo<CurrencyAmountItem[]>(() => {
+        const map = new Map<string, number>()
+        for (const loan of dateFilteredLoans.filter((l) => (l.direction ?? 'lent') !== 'borrowed')) {
+            if (loan.totalPaidAmount > 0) {
+                const curr = (loan.settlementCurrency || loan.currency || defaultCurrency).toUpperCase()
+                map.set(curr, (map.get(curr) || 0) + loan.totalPaidAmount)
+            }
+        }
+        return Array.from(map.entries()).map(([currency, amount]) => ({ currency, amount }))
+    }, [dateFilteredLoans, defaultCurrency])
+
+    const loanPaidToPartnerCurrencyTotals = useMemo<CurrencyAmountItem[]>(() => {
+        const map = new Map<string, number>()
+        for (const loan of dateFilteredLoans.filter((l) => l.direction === 'borrowed')) {
+            if (loan.totalPaidAmount > 0) {
+                const curr = (loan.settlementCurrency || loan.currency || defaultCurrency).toUpperCase()
+                map.set(curr, (map.get(curr) || 0) + loan.totalPaidAmount)
+            }
+        }
+        return Array.from(map.entries()).map(([currency, amount]) => ({ currency, amount }))
+    }, [dateFilteredLoans, defaultCurrency])
     const remainingReceivableLoans = useMemo(
         () => partnerLoans
             .filter((loan) => (loan.direction ?? 'lent') !== 'borrowed')
@@ -2065,24 +2135,42 @@ export function PartnerDetailsView({
                                         {relationshipReceivable > 0 ? (
                                             <div className="rounded-2xl border border-emerald-200/50 bg-emerald-500/[0.06] p-4">
                                                 <div className="text-base font-semibold leading-relaxed text-emerald-800 dark:text-emerald-300">
-                                                    {t('businessPartners.owesAmountTo', {
-                                                        debtor: partnerRelationshipName,
-                                                        amount: formatCurrency(relationshipReceivable, defaultCurrency, iqdPreference),
-                                                        creditor: workspaceRelationshipName,
-                                                        defaultValue: '{{debtor}} owes {{amount}} to {{creditor}}'
-                                                    })}
+                                                    <div>
+                                                        {t('businessPartners.owesAmountToLabel', {
+                                                            debtor: partnerRelationshipName,
+                                                            creditor: workspaceRelationshipName,
+                                                            defaultValue: '{{debtor}} owes to {{creditor}}:'
+                                                        })}
+                                                    </div>
+                                                    <div className="mt-1 text-xl font-bold">
+                                                        <MultiCurrencyDisplay
+                                                            totals={receivableCurrencyTotals}
+                                                            fallbackAmount={relationshipReceivable}
+                                                            fallbackCurrency={defaultCurrency}
+                                                            iqdPreference={iqdPreference}
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
                                         ) : null}
                                         {relationshipPayable > 0 ? (
                                             <div className="rounded-2xl border border-amber-200/50 bg-amber-500/[0.06] p-4">
                                                 <div className="text-base font-semibold leading-relaxed text-amber-800 dark:text-amber-300">
-                                                    {t('businessPartners.owesAmountTo', {
-                                                        debtor: workspaceRelationshipName,
-                                                        amount: formatCurrency(relationshipPayable, defaultCurrency, iqdPreference),
-                                                        creditor: partnerRelationshipName,
-                                                        defaultValue: '{{debtor}} owes {{amount}} to {{creditor}}'
-                                                    })}
+                                                    <div>
+                                                        {t('businessPartners.owesAmountToLabel', {
+                                                            debtor: workspaceRelationshipName,
+                                                            creditor: partnerRelationshipName,
+                                                            defaultValue: '{{debtor}} owes to {{creditor}}:'
+                                                        })}
+                                                    </div>
+                                                    <div className="mt-1 text-xl font-bold">
+                                                        <MultiCurrencyDisplay
+                                                            totals={payableCurrencyTotals}
+                                                            fallbackAmount={relationshipPayable}
+                                                            fallbackCurrency={defaultCurrency}
+                                                            iqdPreference={iqdPreference}
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
                                         ) : null}
@@ -2097,7 +2185,12 @@ export function PartnerDetailsView({
                                         ) : null}
                                     </div>
                                 </div>
-                                <PartnerBalanceSummary partner={partner} iqdPreference={iqdPreference} />
+                                <PartnerBalanceSummary 
+                                    partner={partner} 
+                                    receivableTotals={receivableCurrencyTotals}
+                                    payableTotals={payableCurrencyTotals}
+                                    iqdPreference={iqdPreference} 
+                                />
                             </div>
 
                             <div className="mt-6">
@@ -2112,7 +2205,12 @@ export function PartnerDetailsView({
                                             </span>
                                         </div>
                                         <div className="mt-2 text-2xl font-black tracking-tight text-emerald-600/80 dark:text-emerald-400/80">
-                                            {formatCurrency(totalLoanPaidByPartner, defaultCurrency, iqdPreference)}
+                                            <MultiCurrencyDisplay
+                                                totals={loanPaidByPartnerCurrencyTotals}
+                                                fallbackAmount={totalLoanPaidByPartner}
+                                                fallbackCurrency={defaultCurrency}
+                                                iqdPreference={iqdPreference}
+                                            />
                                         </div>
                                     </div>
                                     <div className="rounded-2xl border border-amber-200/30 bg-amber-500/[0.02] p-5">
@@ -2125,7 +2223,12 @@ export function PartnerDetailsView({
                                             </span>
                                         </div>
                                         <div className="mt-2 text-2xl font-black tracking-tight text-amber-600/80 dark:text-amber-400/80">
-                                            {formatCurrency(totalLoanPaidToPartner, defaultCurrency, iqdPreference)}
+                                            <MultiCurrencyDisplay
+                                                totals={loanPaidToPartnerCurrencyTotals}
+                                                fallbackAmount={totalLoanPaidToPartner}
+                                                fallbackCurrency={defaultCurrency}
+                                                iqdPreference={iqdPreference}
+                                            />
                                         </div>
                                     </div>
                                 </div>
@@ -2261,7 +2364,14 @@ export function PartnerDetailsView({
                                                     {t('orders.details.due', { defaultValue: 'Due' })}
                                                 </span>
                                             </div>
-                                            <div className="mt-1 text-lg font-black">{formatCurrency(outstandingValue, defaultCurrency, iqdPreference)}</div>
+                                            <div className="mt-1 text-lg font-black">
+                                                <MultiCurrencyDisplay
+                                                    totals={outstandingCurrencyTotals}
+                                                    fallbackAmount={outstandingValue}
+                                                    fallbackCurrency={defaultCurrency}
+                                                    iqdPreference={iqdPreference}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

@@ -4,18 +4,112 @@ import { useTranslation } from 'react-i18next'
 import type { BusinessPartner } from '@/local-db'
 import { cn, formatCurrency } from '@/lib/utils'
 
+export type CurrencyAmountItem = { currency: string; amount: number }
+
 type PartnerBalanceSummaryProps = {
     partner: Pick<BusinessPartner, 'defaultCurrency' | 'receivableBalance' | 'payableBalance'>
     iqdPreference: Parameters<typeof formatCurrency>[2]
+    receivableTotals?: CurrencyAmountItem[]
+    payableTotals?: CurrencyAmountItem[]
     className?: string
     compact?: boolean
 }
 
+export function MultiCurrencyDisplay({
+    totals,
+    fallbackAmount,
+    fallbackCurrency,
+    iqdPreference,
+    className,
+    inline = false
+}: {
+    totals: CurrencyAmountItem[] | undefined
+    fallbackAmount: number
+    fallbackCurrency: string
+    iqdPreference: Parameters<typeof formatCurrency>[2]
+    className?: string
+    inline?: boolean
+}) {
+    const items = (totals || []).filter((item) => Math.abs(item.amount) > 0.000001)
+
+    if (items.length === 0) {
+        return (
+            <span className={className} dir="ltr">
+                {formatCurrency(fallbackAmount || 0, fallbackCurrency, iqdPreference)}
+            </span>
+        )
+    }
+
+    if (items.length === 1) {
+        return (
+            <span className={className} dir="ltr">
+                {formatCurrency(items[0].amount, items[0].currency, iqdPreference)}
+            </span>
+        )
+    }
+
+    if (inline) {
+        return (
+            <span className={cn('inline-flex flex-wrap items-center gap-1.5', className)}>
+                {items
+                    .sort((a, b) => a.currency.localeCompare(b.currency))
+                    .map((item, idx) => (
+                        <span key={item.currency || idx} dir="ltr" className="tabular-nums">
+                            {formatCurrency(item.amount, item.currency, iqdPreference)}
+                            {idx < items.length - 1 ? ' •' : ''}
+                        </span>
+                    ))}
+            </span>
+        )
+    }
+
+    return (
+        <div className="flex flex-col gap-1 text-left">
+            {items
+                .sort((a, b) => a.currency.localeCompare(b.currency))
+                .map((item, idx) => (
+                    <div key={item.currency || idx} className={cn('tabular-nums leading-tight', className)} dir="ltr">
+                        {formatCurrency(item.amount, item.currency, iqdPreference)}
+                    </div>
+                ))}
+        </div>
+    )
+}
+
+export function formatMultiCurrencySummary(
+    totals: CurrencyAmountItem[] | undefined,
+    fallbackAmount: number,
+    fallbackCurrency: string,
+    iqdPreference: Parameters<typeof formatCurrency>[2]
+): string {
+    if (!totals || totals.length === 0) {
+        return formatCurrency(fallbackAmount || 0, fallbackCurrency, iqdPreference)
+    }
+
+    const nonZero = totals.filter((item) => Math.abs(item.amount) > 0.000001)
+
+    if (nonZero.length === 0) {
+        return formatCurrency(0, fallbackCurrency, iqdPreference)
+    }
+
+    return nonZero
+        .sort((a, b) => a.currency.localeCompare(b.currency))
+        .map((item) => formatCurrency(item.amount, item.currency, iqdPreference))
+        .join(' • ')
+}
+
 /**
  * The receivable/payable presentation shared by partner details and linked-order forms.
- * Balances are stored in the partner's default currency, matching PartnerDetailsView.
+ * Supports per-currency totals when available, defaulting to defaultCurrency stored balances.
  */
-export function PartnerBalanceSummary({ partner, iqdPreference, className, compact = false }: PartnerBalanceSummaryProps) {
+export function PartnerBalanceSummary({
+    partner,
+    iqdPreference,
+    receivableTotals,
+    payableTotals,
+    className,
+    compact = false
+}: PartnerBalanceSummaryProps) {
     const { t } = useTranslation()
 
     if (compact) {
@@ -26,18 +120,28 @@ export function PartnerBalanceSummary({ partner, iqdPreference, className, compa
                     <span className="text-[9px] font-bold uppercase tracking-wide">
                         {t('businessPartners.receivable', { defaultValue: 'Receivable' })}
                     </span>
-                    <span className="text-xs font-black tabular-nums">
-                        {formatCurrency(partner.receivableBalance || 0, partner.defaultCurrency, iqdPreference)}
-                    </span>
+                    <MultiCurrencyDisplay
+                        totals={receivableTotals}
+                        fallbackAmount={partner.receivableBalance || 0}
+                        fallbackCurrency={partner.defaultCurrency}
+                        iqdPreference={iqdPreference}
+                        className="text-xs font-black tabular-nums"
+                        inline
+                    />
                 </div>
                 <div className="inline-flex min-h-7 items-center gap-1.5 rounded-lg border border-amber-200/50 bg-amber-500/[0.06] px-2 py-1 text-amber-600 dark:text-amber-400">
                     <TrendingDown className="h-3.5 w-3.5 shrink-0" />
                     <span className="text-[9px] font-bold uppercase tracking-wide">
                         {t('businessPartners.payable', { defaultValue: 'Payable' })}
                     </span>
-                    <span className="text-xs font-black tabular-nums">
-                        {formatCurrency(partner.payableBalance || 0, partner.defaultCurrency, iqdPreference)}
-                    </span>
+                    <MultiCurrencyDisplay
+                        totals={payableTotals}
+                        fallbackAmount={partner.payableBalance || 0}
+                        fallbackCurrency={partner.defaultCurrency}
+                        iqdPreference={iqdPreference}
+                        className="text-xs font-black tabular-nums"
+                        inline
+                    />
                 </div>
             </div>
         )
@@ -58,8 +162,13 @@ export function PartnerBalanceSummary({ partner, iqdPreference, className, compa
                         </span>
                     </span>
                 </div>
-                <div className="mt-3 text-4xl font-black tracking-tight text-emerald-600 dark:text-emerald-400">
-                    {formatCurrency(partner.receivableBalance || 0, partner.defaultCurrency, iqdPreference)}
+                <div className="mt-3 text-2xl sm:text-4xl font-black tracking-tight text-emerald-600 dark:text-emerald-400">
+                    <MultiCurrencyDisplay
+                        totals={receivableTotals}
+                        fallbackAmount={partner.receivableBalance || 0}
+                        fallbackCurrency={partner.defaultCurrency}
+                        iqdPreference={iqdPreference}
+                    />
                 </div>
             </div>
             <div className="rounded-3xl border border-amber-200/50 bg-amber-500/[0.04] p-6">
@@ -75,8 +184,13 @@ export function PartnerBalanceSummary({ partner, iqdPreference, className, compa
                         </span>
                     </span>
                 </div>
-                <div className="mt-3 text-4xl font-black tracking-tight text-amber-600 dark:text-amber-400">
-                    {formatCurrency(partner.payableBalance || 0, partner.defaultCurrency, iqdPreference)}
+                <div className="mt-3 text-2xl sm:text-4xl font-black tracking-tight text-amber-600 dark:text-amber-400">
+                    <MultiCurrencyDisplay
+                        totals={payableTotals}
+                        fallbackAmount={partner.payableBalance || 0}
+                        fallbackCurrency={partner.defaultCurrency}
+                        iqdPreference={iqdPreference}
+                    />
                 </div>
             </div>
         </div>
