@@ -627,6 +627,128 @@ function StatementSummary({
     )
 }
 
+type UnifiedCurrencySummary = {
+    currency: string
+    orderCount: number
+    itemSubtotal: number
+    discount: number
+    tax: number
+    additions: number
+    deductions: number
+    total: number
+    paidAmount: number
+    remainingAmount: number
+}
+
+function mergeAllSummaries(
+    salesSummaries: PartnerOrderItemsPrintCurrencySummary[],
+    purchaseSummaries: PartnerOrderItemsPrintCurrencySummary[],
+    loanRepaymentSummaries: PartnerOrderItemsPrintMoneyMovementSummary[],
+    directTransactionSummaries: PartnerOrderItemsPrintMoneyMovementSummary[]
+): UnifiedCurrencySummary[] {
+    const merged = new Map<string, UnifiedCurrencySummary>()
+
+    const getOrCreate = (currency: string): UnifiedCurrencySummary => {
+        const existing = merged.get(currency)
+        if (existing) return existing
+        const entry: UnifiedCurrencySummary = {
+            currency,
+            orderCount: 0,
+            itemSubtotal: 0,
+            discount: 0,
+            tax: 0,
+            additions: 0,
+            deductions: 0,
+            total: 0,
+            paidAmount: 0,
+            remainingAmount: 0
+        }
+        merged.set(currency, entry)
+        return entry
+    }
+
+    for (const s of salesSummaries) {
+        const entry = getOrCreate(s.currency)
+        entry.orderCount += s.orderCount
+        entry.itemSubtotal += s.itemSubtotal
+        entry.discount += s.discount
+        entry.tax += s.tax
+        entry.additions += s.additions
+        entry.deductions += s.deductions
+        entry.total += s.total
+        entry.paidAmount += s.paidAmount
+        entry.remainingAmount += s.remainingAmount
+    }
+
+    for (const s of purchaseSummaries) {
+        const entry = getOrCreate(s.currency)
+        entry.orderCount += s.orderCount
+        entry.itemSubtotal += s.itemSubtotal
+        entry.discount += s.discount
+        entry.tax += s.tax
+        entry.additions += s.additions
+        entry.deductions += s.deductions
+        entry.total += s.total
+        entry.paidAmount += s.paidAmount
+        entry.remainingAmount += s.remainingAmount
+    }
+
+    for (const s of loanRepaymentSummaries) {
+        const entry = getOrCreate(s.currency)
+        entry.paidAmount += s.paid
+        entry.remainingAmount -= s.paid
+    }
+
+    for (const s of directTransactionSummaries) {
+        const entry = getOrCreate(s.currency)
+        entry.paidAmount += s.paid
+        entry.remainingAmount -= s.paid
+    }
+
+    return Array.from(merged.values()).sort((a, b) => a.currency.localeCompare(b.currency))
+}
+
+function UnifiedStatementSummary({
+    salesSummaries,
+    purchaseSummaries,
+    loanRepaymentSummaries,
+    directTransactionSummaries,
+    t,
+    iqdPreference
+}: {
+    salesSummaries: PartnerOrderItemsPrintCurrencySummary[]
+    purchaseSummaries: PartnerOrderItemsPrintCurrencySummary[]
+    loanRepaymentSummaries: PartnerOrderItemsPrintMoneyMovementSummary[]
+    directTransactionSummaries: PartnerOrderItemsPrintMoneyMovementSummary[]
+    t: (key: string, options?: Record<string, unknown>) => string
+    iqdPreference: IQDDisplayPreference
+}) {
+    const unified = mergeAllSummaries(salesSummaries, purchaseSummaries, loanRepaymentSummaries, directTransactionSummaries)
+    if (unified.length === 0) return null
+
+    return (
+        <div className="mt-2 rounded border border-slate-300 bg-slate-50 px-2 py-2 text-[9px]" data-pdf-keep-together data-order-items-section-summary>
+            {unified.map((summary, index) => (
+                <div key={summary.currency}>
+                    {index > 0 ? <hr className="my-1.5 border-slate-300" /> : null}
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-5">
+                        <span>{t('businessPartners.orderItemsPrint.currency', { defaultValue: 'Currency' })}: <strong>{summary.currency.toUpperCase()}</strong></span>
+                        <span>{t('businessPartners.orderItemsPrint.orders', { defaultValue: 'Orders' })}: <strong>{summary.orderCount}</strong></span>
+                        <span>{t('businessPartners.orderItemsPrint.itemsSubtotal', { defaultValue: 'Items subtotal' })}: <strong>{formatCurrency(summary.itemSubtotal, summary.currency, iqdPreference)}</strong></span>
+                        <span>{t('businessPartners.orderItemsPrint.discount', { defaultValue: 'Discount' })}: <strong>-{formatCurrency(summary.discount, summary.currency, iqdPreference)}</strong></span>
+                        {summary.tax > 0 ? <span>{t('businessPartners.orderItemsPrint.tax', { defaultValue: 'Tax' })}: <strong>+{formatCurrency(summary.tax, summary.currency, iqdPreference)}</strong></span> : null}
+                        <span>{t('businessPartners.orderItemsPrint.additions', { defaultValue: 'Additions' })}: <strong>+{formatCurrency(summary.additions, summary.currency, iqdPreference)}</strong></span>
+                        <span>{t('businessPartners.orderItemsPrint.deductions', { defaultValue: 'Deductions' })}: <strong>-{formatCurrency(summary.deductions, summary.currency, iqdPreference)}</strong></span>
+                        <span className="font-bold">{t('businessPartners.orderItemsPrint.total', { defaultValue: 'Total' })}: <strong>{formatCurrency(summary.total, summary.currency, iqdPreference)}</strong></span>
+                        <span>{t('businessPartners.orderItemsPrint.paid', { defaultValue: 'Paid' })}: <strong>{formatCurrency(summary.paidAmount, summary.currency, iqdPreference)}</strong></span>
+                        <span>{t('businessPartners.orderItemsPrint.remaining', { defaultValue: 'Remaining' })}: <strong>{formatCurrency(summary.remainingAmount, summary.currency, iqdPreference)}</strong></span>
+                    </div>
+                </div>
+            ))}
+        </div>
+    )
+}
+
 function OrderBlock({
     block,
     kind,
@@ -859,17 +981,11 @@ function OrderItemsSection({
                     />
                 )
             ))}
-            <StatementSummary summaries={timeline.salesSummary} kind="sales" t={t} iqdPreference={iqdPreference} />
-            <StatementSummary summaries={timeline.purchaseSummary} kind="purchase" t={t} iqdPreference={iqdPreference} />
-            <MoneyMovementSummary
-                title={t('businessPartners.orderItemsPrint.loanRepayments', { defaultValue: 'Loan Repayments' })}
-                summaries={timeline.loanRepaymentSummary}
-                t={t}
-                iqdPreference={iqdPreference}
-            />
-            <MoneyMovementSummary
-                title={t('businessPartners.orderItemsPrint.directTransactions', { defaultValue: 'Direct Transactions' })}
-                summaries={timeline.directTransactionSummary}
+            <UnifiedStatementSummary
+                salesSummaries={timeline.salesSummary}
+                purchaseSummaries={timeline.purchaseSummary}
+                loanRepaymentSummaries={timeline.loanRepaymentSummary}
+                directTransactionSummaries={timeline.directTransactionSummary}
                 t={t}
                 iqdPreference={iqdPreference}
             />
