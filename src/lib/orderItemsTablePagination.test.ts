@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
     findOrderItemsSplitIndex,
     ORDER_ITEMS_CONTINUATION_ATTR,
-    ORDER_ITEMS_PAGINATED_ATTR
+    ORDER_ITEMS_PAGINATED_ATTR,
+    planOrderItemsStatementSpacers
 } from './orderItemsTablePagination'
 
 function row(topMm: number, heightMm = 8): { topMm: number; bottomMm: number } {
@@ -52,5 +53,64 @@ describe('order items pagination markers', () => {
     it('exposes the attribute names the template and paginator agree on', () => {
         expect(ORDER_ITEMS_PAGINATED_ATTR).toBe('data-order-items-paginated')
         expect(ORDER_ITEMS_CONTINUATION_ATTR).toBe('data-order-items-continuation')
+    })
+})
+
+describe('planOrderItemsStatementSpacers', () => {
+    const PAGE = 297
+    const PADDING = 10
+
+    it('packs every order that fits on a page and moves only the overflow', () => {
+        // Content area of page 1 is 10mm..287mm; blocks 1-3 are naturally at
+        // 60, 160, 260 (100mm each). The third would end at 360 > 287, so it
+        // is pushed to page 2's content top (307mm) with a 47mm spacer.
+        const tops = [60, 160, 260]
+        const heights = [100, 100, 100]
+        expect(planOrderItemsStatementSpacers(tops, heights, PAGE, PADDING)).toEqual([
+            { blockIndex: 2, spacerMm: 47 }
+        ])
+    })
+
+    it('keeps everything on one page when the total fits', () => {
+        const tops = [60, 100, 140]
+        const heights = [40, 40, 40]
+        expect(planOrderItemsStatementSpacers(tops, heights, PAGE, PADDING)).toEqual([])
+    })
+
+    it('restarts the running shift so later pages align to exact boundaries', () => {
+        // Page 1: 60-160, 160-260 (two orders). Page 2: 604-704 (block 3
+        // pushed there with a 47mm spacer, then block 4 pushed with 97mm).
+        // Block 5 lands at 704 and fits on page 3 (594-881).
+        const tops = [60, 160, 260, 460, 560]
+        const heights = [100, 100, 100, 100, 100]
+        expect(planOrderItemsStatementSpacers(tops, heights, PAGE, PADDING)).toEqual([
+            { blockIndex: 2, spacerMm: 47 },
+            { blockIndex: 3, spacerMm: 97 }
+        ])
+    })
+
+    it('lets an order taller than one page span pages alone', () => {
+        // The second block is 400mm tall: it is pushed to page 2 (top 307)
+        // and spans into page 3. The third block then starts on page 3.
+        const tops = [60, 160, 590]
+        const heights = [80, 400, 60]
+        expect(planOrderItemsStatementSpacers(tops, heights, PAGE, PADDING)).toEqual([
+            { blockIndex: 1, spacerMm: 147 }
+        ])
+    })
+
+    it('does not split the first block even when it overflows into the next page', () => {
+        // The first block runs from 60mm to 300mm, past the page 1 content
+        // bottom (287mm). Later blocks are placed by their own page lines.
+        const tops = [60, 660]
+        const heights = [240, 60]
+        expect(planOrderItemsStatementSpacers(tops, heights, PAGE, PADDING)).toEqual([])
+    })
+
+    it('returns no placements for invalid inputs', () => {
+        expect(planOrderItemsStatementSpacers([], [], PAGE, PADDING)).toEqual([])
+        expect(planOrderItemsStatementSpacers([60], [60, 60], PAGE, PADDING)).toEqual([])
+        expect(planOrderItemsStatementSpacers([60], [60], 0, PADDING)).toEqual([])
+        expect(planOrderItemsStatementSpacers([60], [60], PAGE, Number.NaN)).toEqual([])
     })
 })

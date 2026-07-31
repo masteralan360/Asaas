@@ -659,6 +659,20 @@ export function PartnerDetailsView({
         () => filterByDate(allInstallments, (inst) => inst.updatedAt || inst.createdAt),
         [filterByDate, allInstallments]
     )
+    const queriedLoanPayments = useLiveQuery(
+        () => partnerLoanIds.length > 0
+            ? db.loan_payments.where('loanId').anyOf(partnerLoanIds).toArray()
+            : [],
+        [partnerLoanIds]
+    )
+    const allLoanPayments = useMemo(
+        () => queriedLoanPayments ?? [],
+        [queriedLoanPayments]
+    )
+    const dateFilteredLoanPayments = useMemo(
+        () => filterByDate(allLoanPayments, (payment) => payment.paidAt || payment.createdAt),
+        [allLoanPayments, filterByDate]
+    )
     const allowedByRoute = useMemo(() => {
         if (!partner) {
             return false
@@ -1351,9 +1365,21 @@ export function PartnerDetailsView({
             period: printPeriod,
             generatedAt: new Date().toISOString(),
             salesOrders: dateFilteredCustomerOrders,
-            purchaseOrders: dateFilteredSupplierOrders
+            purchaseOrders: dateFilteredSupplierOrders,
+            loans: partnerLoans,
+            loanPayments: dateFilteredLoanPayments,
+            directTransactions: dateFilteredPayments
         }
-    }, [dateFilteredCustomerOrders, dateFilteredSupplierOrders, partner, printPeriod, workspacePrintContacts])
+    }, [
+        dateFilteredCustomerOrders,
+        dateFilteredLoanPayments,
+        dateFilteredPayments,
+        dateFilteredSupplierOrders,
+        partner,
+        partnerLoans,
+        printPeriod,
+        workspacePrintContacts
+    ])
     const partnerPrintTarget = useMemo(
         () => getCustomTemplateTarget(selectedPartnerPrintTemplateKey),
         [selectedPartnerPrintTemplateKey]

@@ -15,7 +15,7 @@ vi.mock('@/services/platformService', () => ({
     }
 }))
 
-import type { PurchaseOrder, SalesOrder } from '@/local-db'
+import type { Loan, LoanPayment, PaymentTransaction, PurchaseOrder, SalesOrder } from '@/local-db'
 import {
     PartnerOrderItemsPrintTemplate,
     type PartnerOrderItemsPrintData
@@ -118,7 +118,93 @@ function purchaseOrder(overrides: Partial<PurchaseOrder> = {}): PurchaseOrder {
     }
 }
 
-async function renderPrintTemplate(printLang: 'en' | 'ar', overrides: { showPaidAmount?: boolean; showRemainingAmount?: boolean; salesOrders?: SalesOrder[]; purchaseOrders?: PurchaseOrder[] } = {}) {
+function loan(overrides: Partial<Loan> = {}): Loan {
+    return {
+        id: 'loan-1',
+        workspaceId: 'workspace-1',
+        loanNo: 'LN-001',
+        source: 'manual',
+        loanCategory: 'simple',
+        direction: 'lent',
+        linkedPartyType: 'business_partner',
+        linkedPartyId: 'partner-1',
+        borrowerName: 'Business Partner',
+        borrowerPhone: '',
+        borrowerAddress: '',
+        borrowerNationalId: '',
+        principalAmount: 500,
+        totalPaidAmount: 100,
+        balanceAmount: 400,
+        settlementCurrency: 'usd',
+        exchangeRateSnapshot: null,
+        installmentCount: 5,
+        installmentFrequency: 'monthly',
+        firstDueDate: null,
+        status: 'active',
+        createdAt,
+        updatedAt: createdAt,
+        syncStatus: 'synced',
+        lastSyncedAt: null,
+        version: 1,
+        isDeleted: false,
+        ...overrides
+    }
+}
+
+function loanPayment(overrides: Partial<LoanPayment> = {}): LoanPayment {
+    return {
+        id: 'loan-payment-1',
+        loanId: 'loan-1',
+        workspaceId: 'workspace-1',
+        amount: 100,
+        paymentMethod: 'cash',
+        paidAt: '2026-07-03T10:00:00.000Z',
+        note: 'Second installment',
+        createdAt: '2026-07-03T10:00:00.000Z',
+        updatedAt: '2026-07-03T10:00:00.000Z',
+        syncStatus: 'synced',
+        lastSyncedAt: null,
+        version: 1,
+        isDeleted: false,
+        ...overrides
+    }
+}
+
+function directTransaction(overrides: Partial<PaymentTransaction> = {}): PaymentTransaction {
+    return {
+        id: 'direct-tx-1',
+        workspaceId: 'workspace-1',
+        sourceModule: 'payments',
+        sourceType: 'direct_transaction',
+        sourceRecordId: 'direct-tx-1',
+        sourceSubrecordId: 'partner-1',
+        direction: 'incoming',
+        amount: 50,
+        currency: 'usd',
+        paymentMethod: 'cash',
+        paidAt: '2026-07-02T10:00:00.000Z',
+        referenceLabel: 'Cash received',
+        note: null,
+        createdAt: '2026-07-02T10:00:00.000Z',
+        updatedAt: '2026-07-02T10:00:00.000Z',
+        syncStatus: 'synced',
+        lastSyncedAt: null,
+        version: 1,
+        isDeleted: false,
+        metadata: { reason: 'Cash received', businessPartnerId: 'partner-1' },
+        ...overrides
+    }
+}
+
+async function renderPrintTemplate(printLang: 'en' | 'ar', overrides: {
+    showPaidAmount?: boolean
+    showRemainingAmount?: boolean
+    salesOrders?: SalesOrder[]
+    purchaseOrders?: PurchaseOrder[]
+    loans?: Loan[]
+    loanPayments?: LoanPayment[]
+    directTransactions?: PaymentTransaction[]
+} = {}) {
     const i18n = i18next.createInstance()
     await i18n.use(initReactI18next).init({
         lng: printLang,
@@ -145,7 +231,10 @@ async function renderPrintTemplate(printLang: 'en' | 'ar', overrides: { showPaid
         period: { type: 'allTime' },
         generatedAt: '2026-07-06T18:51:00.000Z',
         salesOrders: overrides.salesOrders ?? [salesOrder()],
-        purchaseOrders: overrides.purchaseOrders ?? [purchaseOrder()]
+        purchaseOrders: overrides.purchaseOrders ?? [purchaseOrder()],
+        loans: overrides.loans ?? [loan()],
+        loanPayments: overrides.loanPayments ?? [],
+        directTransactions: overrides.directTransactions ?? []
     }
 
     return renderToStaticMarkup(
@@ -166,9 +255,25 @@ describe('PartnerOrderItemsPrintTemplate pagination markers', () => {
         const html = await renderPrintTemplate('en')
 
         expect(html.match(/data-order-items-paginated/g)).toHaveLength(2)
-        expect(html.match(/data-order-items-section-title-bar/g)).toHaveLength(2)
-        expect(html.match(/data-order-items-section-order-count/g)).toHaveLength(2)
-        expect(html.match(/data-order-items-section(?!-)/g)).toHaveLength(2)
+        expect(html.match(/data-order-items-section-title-bar/g)).toHaveLength(1)
+        expect(html.match(/data-order-items-section-order-count/g)).toHaveLength(1)
+        expect(html.match(/data-order-items-section(?!-)/g)).toHaveLength(1)
+        expect(html.match(/data-order-items-section-summary/g)).toHaveLength(2)
+        expect(html.match(/data-order-statement-block/g)).toHaveLength(2)
+    })
+
+    it('renders one atomic table per order so the page packer can move whole orders', async () => {
+        const html = await renderPrintTemplate('en', {
+            salesOrders: [
+                salesOrder({ id: 'sales-order-0001', orderNumber: '0001', items: [salesOrder().items[0]] }),
+                salesOrder({ id: 'sales-order-0002', orderNumber: '0002', items: [salesOrder().items[0]] })
+            ],
+            purchaseOrders: []
+        })
+
+        expect(html.match(/data-order-items-paginated/g)).toHaveLength(2)
+        expect(html.match(/data-order-statement-block/g)).toHaveLength(2)
+        expect(html).toContain('data-page-padding-mm="10"')
     })
 
     it('carries the translated continuation label on the title bars', async () => {
@@ -197,27 +302,87 @@ describe('PartnerOrderItemsPrintTemplate pagination markers', () => {
         expect(html).not.toContain('Remaining: 10 usd')
     })
 
-    it('renders no tables at all when the partner has no orders', async () => {
+    it('skips the whole timeline when the partner has no activity', async () => {
         const html = await renderPrintTemplate('en', {
             salesOrders: [],
-            purchaseOrders: []
+            purchaseOrders: [],
+            loanPayments: [],
+            directTransactions: []
         })
 
         expect(html).not.toContain('data-order-items-paginated')
         expect(html).not.toContain('data-order-items-section')
-        expect(html).not.toContain('Sales Order Items')
-        expect(html).not.toContain('Purchase Order Items')
+        expect(html).not.toContain('Account Activity')
         expect(html).not.toContain('<table')
     })
 
-    it('skips only the empty order section', async () => {
+    it('renders the merged timeline with only the orders that exist', async () => {
         const html = await renderPrintTemplate('en', {
             purchaseOrders: []
         })
 
         expect(html.match(/data-order-items-paginated/g)).toHaveLength(1)
-        expect(html).toContain('Sales Order Items')
-        expect(html).not.toContain('Purchase Order Items')
+        expect(html.match(/data-order-statement-block/g)).toHaveLength(1)
+        expect(html).toContain('Account Activity')
+    })
+
+    it('interleaves loan repayments and direct transactions into the timeline', async () => {
+        const html = await renderPrintTemplate('en', {
+            loanPayments: [loanPayment()],
+            directTransactions: [directTransaction()]
+        })
+
+        expect(html.match(/data-order-statement-block/g)).toHaveLength(4)
+        expect(html.match(/data-order-items-section-summary/g)).toHaveLength(4)
+        expect(html).toContain('Loan Repayment')
+        expect(html).toContain('>LN-001</span>')
+        expect(html).toContain('Direct Transaction')
+        expect(html).toContain('>Cash received</span>')
+        expect(html).toContain('>Received</span>')
+        expect(html).toContain('+ 100 usd')
+        expect(html).toContain('+ 50 usd')
+        expect(html).toContain('>4 Entries</span>')
+    })
+
+    it('flags outgoing movements as Paid with a negative-style amount', async () => {
+        const html = await renderPrintTemplate('en', {
+            loanPayments: [loanPayment({ id: 'loan-payment-2', amount: 30, paidAt: '2026-07-04T10:00:00.000Z' })],
+            directTransactions: [],
+            loans: [loan({ direction: 'borrowed', loanNo: 'LN-002' })]
+        })
+
+        expect(html).toContain('>Paid</span>')
+        expect(html).toContain('− 30 usd')
+        expect(html).not.toContain('>Received</span>')
+    })
+
+    it('draws direction-colored hierarchy lines on money movement rows', async () => {
+        const html = await renderPrintTemplate('en', {
+            salesOrders: [],
+            purchaseOrders: [],
+            loanPayments: [loanPayment()],
+            directTransactions: [directTransaction({ direction: 'outgoing', referenceLabel: 'Paid out' })]
+        })
+
+        expect(html).toContain('bg-emerald-600')
+        expect(html).toContain('bg-rose-600')
+        expect(html).not.toContain('bg-sky-600')
+        expect(html).not.toContain('bg-amber-600')
+        expect(html).toContain('>Received</span>')
+        expect(html).toContain('>Paid</span>')
+    })
+
+    it('shows the loan repayment and direct transaction summaries at the end', async () => {
+        const html = await renderPrintTemplate('en', {
+            loanPayments: [loanPayment()],
+            directTransactions: [directTransaction()]
+        })
+
+        expect(html).toContain('Loan Repayments')
+        expect(html).toContain('Direct Transactions')
+        expect(html).toContain('1 Entries')
+        expect(html).toContain('Received: <strong>+100 usd</strong>')
+        expect(html).toContain('Received: <strong>+50 usd</strong>')
     })
 
     it('excludes cancelled orders from the tables entirely', async () => {

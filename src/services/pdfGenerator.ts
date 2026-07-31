@@ -10,7 +10,7 @@ import {
     getA4PageStarts,
     type A4KeepTogetherBlock
 } from '@/services/a4Pagination'
-import { paginateOrderItemsTables } from '@/lib/orderItemsTablePagination'
+import { paginateOrderItemsStatementPages, paginateOrderItemsTables } from '@/lib/orderItemsTablePagination'
 import { reportPdfProgress } from '@/services/pdfProgress'
 
 /** Formats that can be stored as invoice versions. */
@@ -230,8 +230,14 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     reportPdfProgress(0.1, 'print.progressPreparing')
 
     if (widthMm === A4_WIDTH_MM) {
-        // Cut statement tables exactly at the A4 red line and give each
-        // continuation chunk its own title and column header row.
+        // Pack complete orders into whole A4 pages (statement templates only),
+        // then cut any oversized single-order table exactly at the A4 red line
+        // and give each continuation chunk its own title and column header row.
+        paginateOrderItemsStatementPages(container, {
+            pageHeightMm: A4_HEIGHT_MM,
+            pageWidthMm: widthMm
+        })
+        await expandContainerToRenderedBounds(container)
         paginateOrderItemsTables(container, {
             pageHeightMm: A4_HEIGHT_MM,
             pageWidthMm: widthMm

@@ -12,9 +12,12 @@ vi.mock('@/services/platformService', () => ({
     }
 }))
 
-import type { PurchaseOrder, SalesOrder } from '@/local-db'
+import type { Loan, LoanPayment, PaymentTransaction, PurchaseOrder, SalesOrder } from '@/local-db'
 import {
+    buildPartnerOrderItemsPrintMoneyMovements,
+    buildPartnerOrderItemsPrintOrderBlocks,
     buildPartnerOrderItemsPrintSection,
+    buildPartnerOrderItemsPrintTimeline,
     getPartnerOrderItemsPrintRowHierarchy
 } from './PartnerOrderItemsPrintTemplate'
 
@@ -160,6 +163,84 @@ function purchaseOrder(overrides: Partial<PurchaseOrder> = {}): PurchaseOrder {
     }
 }
 
+function loan(overrides: Partial<Loan> = {}): Loan {
+    return {
+        id: 'loan-1',
+        workspaceId: 'workspace-1',
+        loanNo: 'LN-001',
+        source: 'manual',
+        loanCategory: 'simple',
+        direction: 'lent',
+        linkedPartyType: 'business_partner',
+        linkedPartyId: 'partner-1',
+        borrowerName: 'Business Partner',
+        borrowerPhone: '',
+        borrowerAddress: '',
+        borrowerNationalId: '',
+        principalAmount: 500,
+        totalPaidAmount: 100,
+        balanceAmount: 400,
+        settlementCurrency: 'usd',
+        exchangeRateSnapshot: null,
+        installmentCount: 5,
+        installmentFrequency: 'monthly',
+        firstDueDate: null,
+        status: 'active',
+        createdAt,
+        updatedAt: createdAt,
+        syncStatus: 'synced',
+        lastSyncedAt: null,
+        version: 1,
+        isDeleted: false,
+        ...overrides
+    }
+}
+
+function loanPayment(overrides: Partial<LoanPayment> = {}): LoanPayment {
+    return {
+        id: 'loan-payment-1',
+        loanId: 'loan-1',
+        workspaceId: 'workspace-1',
+        amount: 100,
+        paymentMethod: 'cash',
+        paidAt: '2026-07-03T10:00:00.000Z',
+        note: 'Second installment',
+        createdAt: '2026-07-03T10:00:00.000Z',
+        updatedAt: '2026-07-03T10:00:00.000Z',
+        syncStatus: 'synced',
+        lastSyncedAt: null,
+        version: 1,
+        isDeleted: false,
+        ...overrides
+    }
+}
+
+function directTransaction(overrides: Partial<PaymentTransaction> = {}): PaymentTransaction {
+    return {
+        id: 'direct-tx-1',
+        workspaceId: 'workspace-1',
+        sourceModule: 'payments',
+        sourceType: 'direct_transaction',
+        sourceRecordId: 'direct-tx-1',
+        sourceSubrecordId: 'partner-1',
+        direction: 'incoming',
+        amount: 50,
+        currency: 'usd',
+        paymentMethod: 'cash',
+        paidAt: '2026-07-02T10:00:00.000Z',
+        referenceLabel: 'Cash received',
+        note: null,
+        createdAt: '2026-07-02T10:00:00.000Z',
+        updatedAt: '2026-07-02T10:00:00.000Z',
+        syncStatus: 'synced',
+        lastSyncedAt: null,
+        version: 1,
+        isDeleted: false,
+        metadata: { reason: 'Cash received', businessPartnerId: 'partner-1' },
+        ...overrides
+    }
+}
+
 describe('buildPartnerOrderItemsPrintSection', () => {
     it('keeps every sales item and commercial row tied to its repeated order code', () => {
         const section = buildPartnerOrderItemsPrintSection([salesOrder()], 'sales')
@@ -292,5 +373,195 @@ describe('buildPartnerOrderItemsPrintSection', () => {
 
         expect(sales.rows.filter((row) => row.orderId === 'unpaid').every((row) => row.isUnpaid)).toBe(true)
         expect(sales.rows.filter((row) => row.orderId === 'partial').every((row) => row.isUnpaid)).toBe(false)
+    })
+})
+
+describe('buildPartnerOrderItemsPrintOrderBlocks', () => {
+    it('groups each order into one atomic block with all of its rows', () => {
+        const section = buildPartnerOrderItemsPrintSection([
+            salesOrder({ id: 'first', orderNumber: '0020' }),
+            salesOrder({ id: 'second', orderNumber: '0021' })
+        ], 'sales')
+
+        const blocks = buildPartnerOrderItemsPrintOrderBlocks(section.rows)
+
+        expect(blocks).toHaveLength(2)
+        expect(blocks[0]).toMatchObject({ orderId: 'first', orderCode: '0020', isPartialPaid: true })
+        expect(blocks[0].rows.map((row) => row.kind)).toEqual([
+            'item', 'item', 'discount', 'tax', 'adjustment', 'adjustment', 'order_note', 'order_total'
+        ])
+        expect(blocks[0].rows.every((row) => row.orderId === 'first')).toBe(true)
+        expect(blocks[1]).toMatchObject({ orderId: 'second', orderCode: '0021' })
+        expect(blocks[1].rows[blocks[1].rows.length - 1].kind).toBe('order_total')
+    })
+
+    it('returns one block per order even when orders share a display code', () => {
+        const section = buildPartnerOrderItemsPrintSection([
+            salesOrder({ id: 'order-a', orderNumber: '0099' }),
+            salesOrder({ id: 'order-b', orderNumber: '0099' })
+        ], 'sales')
+
+        const blocks = buildPartnerOrderItemsPrintOrderBlocks(section.rows)
+
+        expect(blocks).toHaveLength(2)
+        expect(blocks[0].orderId).toBe('order-a')
+        expect(blocks[1].orderId).toBe('order-b')
+    })
+
+    it('returns an empty list for an empty section', () => {
+        expect(buildPartnerOrderItemsPrintOrderBlocks([])).toEqual([])
+    })
+})
+
+describe('buildPartnerOrderItemsPrintMoneyMovements', () => {
+    it('maps loan repayments with loan reference, date, direction and currency', () => {
+        const rows = buildPartnerOrderItemsPrintMoneyMovements(
+            [loan()],
+            [loanPayment()],
+            []
+        )
+
+        expect(rows).toHaveLength(1)
+        expect(rows[0]).toMatchObject({
+            kind: 'loan_repayment',
+            orderId: 'loan-payment:loan-payment-1',
+            orderCode: 'LN-001',
+            orderDate: '2026-07-03T10:00:00.000Z',
+            amount: 100,
+            currency: 'usd',
+            direction: 'incoming',
+            paymentMethod: 'cash',
+            note: 'Second installment'
+        })
+    })
+
+    it('flags repayments on borrowed loans as outgoing', () => {
+        const rows = buildPartnerOrderItemsPrintMoneyMovements(
+            [loan({ direction: 'borrowed' })],
+            [loanPayment()],
+            []
+        )
+
+        expect(rows[0].direction).toBe('outgoing')
+    })
+
+    it('maps direct transactions with their reference and direction', () => {
+        const rows = buildPartnerOrderItemsPrintMoneyMovements(
+            [],
+            [],
+            [
+                directTransaction(),
+                directTransaction({
+                    id: 'direct-tx-2',
+                    direction: 'outgoing',
+                    amount: 25,
+                    paidAt: '2026-07-04T10:00:00.000Z',
+                    referenceLabel: 'Paid out'
+                })
+            ]
+        )
+
+        expect(rows).toHaveLength(2)
+        expect(rows[0]).toMatchObject({
+            kind: 'direct_transaction',
+            orderCode: 'Cash received',
+            direction: 'incoming',
+            amount: 50,
+            currency: 'usd'
+        })
+        expect(rows[1]).toMatchObject({ orderCode: 'Paid out', direction: 'outgoing', amount: 25 })
+    })
+
+    it('skips payments without their loan, deleted payments and reversed transactions', () => {
+        const rows = buildPartnerOrderItemsPrintMoneyMovements(
+            [loan()],
+            [
+                loanPayment({ id: 'orphan', loanId: 'missing-loan' }),
+                loanPayment({ id: 'deleted', isDeleted: true })
+            ],
+            [directTransaction({ id: 'reversed', reversalOfTransactionId: 'original-1' })]
+        )
+
+        expect(rows).toEqual([])
+    })
+
+    it('sorts movements chronologically', () => {
+        const rows = buildPartnerOrderItemsPrintMoneyMovements(
+            [loan()],
+            [
+                loanPayment({ id: 'p1', paidAt: '2026-07-05T10:00:00.000Z' }),
+                loanPayment({ id: 'p2', paidAt: '2026-07-01T10:00:00.000Z' })
+            ],
+            [directTransaction({ id: 'd1', paidAt: '2026-07-03T10:00:00.000Z' })]
+        )
+
+        expect(rows.map((row) => row.id)).toEqual([
+            'loan-payment:p2',
+            'direct-transaction:d1',
+            'loan-payment:p1'
+        ])
+    })
+})
+
+describe('buildPartnerOrderItemsPrintTimeline', () => {
+    it('interleaves orders, loan repayments and direct transactions by date', () => {
+        const timeline = buildPartnerOrderItemsPrintTimeline(
+            [salesOrder({ id: 's1', orderNumber: 'S1', createdAt: '2026-07-01T08:00:00.000Z' })],
+            [purchaseOrder({ id: 'p1', orderNumber: 'P1', createdAt: '2026-07-04T08:00:00.000Z' })],
+            [loan()],
+            [loanPayment({ id: 'lp1', paidAt: '2026-07-02T10:00:00.000Z' })],
+            [directTransaction({ id: 'dt1', paidAt: '2026-07-03T10:00:00.000Z' })]
+        )
+
+        expect(timeline.rows.map((row) => row.orderId)).toEqual([
+            's1', 's1', 's1', 's1', 's1', 's1', 's1', 's1',
+            'loan-payment:lp1',
+            'direct-transaction:dt1',
+            'p1', 'p1'
+        ])
+        expect(timeline.rows.map((row) => row.kind).slice(8, 10)).toEqual(['loan_repayment', 'direct_transaction'])
+        expect(timeline.rows.find((row) => row.orderId === 's1')?.sectionKind).toBe('sales')
+        expect(timeline.rows.find((row) => row.orderId === 'p1')?.sectionKind).toBe('purchase')
+    })
+
+    it('keeps per-type summaries separate for the end of the document', () => {
+        const timeline = buildPartnerOrderItemsPrintTimeline(
+            [salesOrder({ id: 's1', orderNumber: 'S1' })],
+            [purchaseOrder({ id: 'p1', orderNumber: 'P1' })],
+            [loan()],
+            [loanPayment()],
+            [directTransaction()]
+        )
+
+        expect(timeline.salesSummary[0]).toMatchObject({ currency: 'usd', orderCount: 1, total: 25 })
+        expect(timeline.purchaseSummary[0]).toMatchObject({ currency: 'usd', orderCount: 1, total: 11 })
+        expect(timeline.loanRepaymentSummary).toEqual([{ currency: 'usd', count: 1, received: 100, paid: 0 }])
+        expect(timeline.directTransactionSummary).toEqual([{ currency: 'usd', count: 1, received: 50, paid: 0 }])
+    })
+
+    it('sums received and paid separately per currency', () => {
+        const timeline = buildPartnerOrderItemsPrintTimeline(
+            [],
+            [],
+            [loan(), loan({ id: 'loan-2', loanNo: 'LN-002', direction: 'borrowed' })],
+            [
+                loanPayment({ id: 'incoming-payment', amount: 100, paidAt: '2026-07-02T10:00:00.000Z' }),
+                loanPayment({ id: 'outgoing-payment', loanId: 'loan-2', amount: 40, paidAt: '2026-07-03T10:00:00.000Z' })
+            ],
+            []
+        )
+
+        expect(timeline.loanRepaymentSummary).toEqual([{ currency: 'usd', count: 2, received: 100, paid: 40 }])
+        expect(timeline.directTransactionSummary).toEqual([])
+    })
+
+    it('returns an empty timeline when there is no activity at all', () => {
+        const timeline = buildPartnerOrderItemsPrintTimeline([], [], [], [], [])
+
+        expect(timeline.rows).toEqual([])
+        expect(timeline.salesSummary).toEqual([])
+        expect(timeline.purchaseSummary).toEqual([])
+        expect(timeline.loanRepaymentSummary).toEqual([])
+        expect(timeline.directTransactionSummary).toEqual([])
     })
 })

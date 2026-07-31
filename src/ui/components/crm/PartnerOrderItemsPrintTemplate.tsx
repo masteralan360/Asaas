@@ -1,6 +1,13 @@
 import { useTranslation } from 'react-i18next'
 
-import type { IQDDisplayPreference, PurchaseOrder, SalesOrder } from '@/local-db'
+import type {
+    IQDDisplayPreference,
+    Loan,
+    LoanPayment,
+    PaymentTransaction,
+    PurchaseOrder,
+    SalesOrder
+} from '@/local-db'
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
 import { platformService } from '@/services/platformService'
@@ -19,6 +26,8 @@ export type PartnerOrderItemsPrintRowKind =
     | 'adjustment'
     | 'order_note'
     | 'order_total'
+    | 'loan_repayment'
+    | 'direct_transaction'
 
 export type PartnerOrderItemsPrintRow = {
     id: string
@@ -42,6 +51,11 @@ export type PartnerOrderItemsPrintRow = {
     isPartialPaid?: boolean
     /** True when the source order is unpaid; its hierarchy line is drawn in yellow. */
     isUnpaid?: boolean
+    /** 'sales' or 'purchase' when the row comes from an order section (used to tag merged-timeline blocks). */
+    sectionKind?: 'sales' | 'purchase'
+    /** Direction of a money movement row (loan repayment or direct transaction). */
+    direction?: 'incoming' | 'outgoing'
+    paymentMethod?: string | null
 }
 
 export type PartnerOrderItemsPrintCurrencySummary = {
@@ -60,6 +74,29 @@ export type PartnerOrderItemsPrintCurrencySummary = {
 export type PartnerOrderItemsPrintSection = {
     rows: PartnerOrderItemsPrintRow[]
     summaries: PartnerOrderItemsPrintCurrencySummary[]
+}
+
+export type PartnerOrderItemsPrintMoneyMovementSummary = {
+    currency: string
+    count: number
+    /** Total of incoming money movements in this currency. */
+    received: number
+    /** Total of outgoing money movements in this currency. */
+    paid: number
+}
+
+/**
+ * The whole statement rendered as one chronological timeline: sales orders,
+ * purchase orders, loan/installment repayments and direct transactions are
+ * interleaved by their own dates. The per-type summaries stay at the end of
+ * the document.
+ */
+export type PartnerOrderItemsPrintTimeline = {
+    rows: PartnerOrderItemsPrintRow[]
+    salesSummary: PartnerOrderItemsPrintCurrencySummary[]
+    purchaseSummary: PartnerOrderItemsPrintCurrencySummary[]
+    loanRepaymentSummary: PartnerOrderItemsPrintMoneyMovementSummary[]
+    directTransactionSummary: PartnerOrderItemsPrintMoneyMovementSummary[]
 }
 
 export type PartnerOrderItemsPrintData = {
@@ -81,6 +118,12 @@ export type PartnerOrderItemsPrintData = {
     generatedAt: string
     salesOrders: SalesOrder[]
     purchaseOrders: PurchaseOrder[]
+    /** Loans linked to the partner (used to resolve repayment currency, number and direction). */
+    loans?: Loan[]
+    /** Partner loan/installment repayments, already period-filtered by paidAt. */
+    loanPayments?: LoanPayment[]
+    /** Partner direct transactions, already period-filtered by paidAt. */
+    directTransactions?: PaymentTransaction[]
 }
 
 interface PartnerOrderItemsPrintTemplateProps {
@@ -107,6 +150,17 @@ export const PARTNER_ORDER_ITEMS_MOVABLE_COMPONENT_KEYS = {
 } as const
 
 export type PartnerOrderItemsPrintRowHierarchy = 'single' | 'first' | 'middle' | 'last'
+
+/** One atomic statement page block: a single order with all of its rows. */
+export type PartnerOrderItemsPrintOrderBlock = {
+    orderId: string
+    orderCode: string
+    orderDate: string
+    rows: PartnerOrderItemsPrintRow[]
+    isReturned: boolean
+    isPartialPaid: boolean
+    isUnpaid: boolean
+}
 
 function isRTL(lang: string) {
     const baseLang = (lang || 'en').split('-')[0]
@@ -203,6 +257,7 @@ export function buildPartnerOrderItemsPrintSection(
                 unitPrice: item.convertedUnitPrice,
                 amount: item.lineTotal,
                 currency: order.currency,
+                sectionKind: kind,
                 isReturned,
                 isPartialPaid,
                 isUnpaid
@@ -219,6 +274,7 @@ export function buildPartnerOrderItemsPrintSection(
                 description: 'discount',
                 amount: -order.discount,
                 currency: order.currency,
+                sectionKind: kind,
                 isReturned,
                 isPartialPaid,
                 isUnpaid
@@ -235,6 +291,7 @@ export function buildPartnerOrderItemsPrintSection(
                 description: 'tax',
                 amount: order.tax,
                 currency: order.currency,
+                sectionKind: kind,
                 isReturned,
                 isPartialPaid,
                 isUnpaid
@@ -261,6 +318,7 @@ export function buildPartnerOrderItemsPrintSection(
                 amount,
                 currency: order.currency,
                 adjustmentType: adjustment.type,
+                sectionKind: kind,
                 isReturned,
                 isPartialPaid,
                 isUnpaid
@@ -277,6 +335,7 @@ export function buildPartnerOrderItemsPrintSection(
                 description: 'order_note',
                 note: order.notes.trim(),
                 currency: order.currency,
+                sectionKind: kind,
                 isReturned,
                 isPartialPaid,
                 isUnpaid
@@ -294,6 +353,7 @@ export function buildPartnerOrderItemsPrintSection(
             paidAmount: order.paidAmount,
             remainingAmount: order.balanceAmount,
             currency: order.currency,
+            sectionKind: kind,
             isReturned,
             isPartialPaid,
             isUnpaid
@@ -304,6 +364,149 @@ export function buildPartnerOrderItemsPrintSection(
         rows,
         summaries: Array.from(summaries.values()).sort((left, right) => left.currency.localeCompare(right.currency))
     }
+}
+
+/**
+ * Groups a section's flat rows into one block per source record (rows are
+ * already emitted contiguously per order by the builders; each loan repayment
+ * and direct transaction is its own single-row block). Each block becomes its
+ * own table on the printed statement, and the page packer treats it as an
+ * atomic unit that must not be split across pages.
+ */
+export function buildPartnerOrderItemsPrintOrderBlocks(rows: PartnerOrderItemsPrintRow[]): PartnerOrderItemsPrintOrderBlock[] {
+    const blocks: PartnerOrderItemsPrintOrderBlock[] = []
+
+    for (const row of rows) {
+        const lastBlock = blocks[blocks.length - 1]
+        if (lastBlock && lastBlock.orderId === row.orderId) {
+            lastBlock.rows.push(row)
+        } else {
+            blocks.push({
+                orderId: row.orderId,
+                orderCode: row.orderCode,
+                orderDate: row.orderDate,
+                rows: [row],
+                isReturned: row.isReturned || false,
+                isPartialPaid: row.isPartialPaid || false,
+                isUnpaid: row.isUnpaid || false
+            })
+        }
+    }
+
+    return blocks
+}
+
+function compareStatementRows(left: PartnerOrderItemsPrintRow, right: PartnerOrderItemsPrintRow) {
+    const dateDifference = new Date(left.orderDate).getTime() - new Date(right.orderDate).getTime()
+    return dateDifference
+        || left.orderCode.localeCompare(right.orderCode)
+        || left.id.localeCompare(right.id)
+}
+
+/**
+ * Converts partner loan/installment repayments and direct transactions into
+ * statement rows. Each repayment keeps the loan number and its own `paidAt`;
+ * the direction comes from the loan itself (repayments on lent loans are
+ * incoming, on borrowed loans outgoing). Reversed direct transactions and
+ * payments whose loan is not provided are skipped.
+ */
+export function buildPartnerOrderItemsPrintMoneyMovements(
+    loans: Loan[],
+    loanPayments: LoanPayment[],
+    directTransactions: PaymentTransaction[]
+): PartnerOrderItemsPrintRow[] {
+    const loanById = new Map(loans.map((loan) => [loan.id, loan]))
+    const rows: PartnerOrderItemsPrintRow[] = []
+
+    for (const payment of loanPayments) {
+        if (payment.isDeleted) continue
+        const loan = loanById.get(payment.loanId)
+        if (!loan) continue
+
+        rows.push({
+            id: `loan-payment:${payment.id}`,
+            orderId: `loan-payment:${payment.id}`,
+            orderCode: loan.loanNo,
+            orderDate: payment.paidAt || payment.createdAt,
+            kind: 'loan_repayment',
+            description: 'loan_repayment',
+            note: payment.note,
+            amount: payment.amount,
+            currency: loan.settlementCurrency,
+            direction: loan.direction === 'lent' ? 'incoming' : 'outgoing',
+            paymentMethod: payment.paymentMethod
+        })
+    }
+
+    for (const transaction of directTransactions) {
+        if (transaction.isDeleted || transaction.reversalOfTransactionId) continue
+
+        rows.push({
+            id: `direct-transaction:${transaction.id}`,
+            orderId: `direct-transaction:${transaction.id}`,
+            orderCode: transaction.referenceLabel || transaction.note || '',
+            orderDate: transaction.paidAt || transaction.createdAt,
+            kind: 'direct_transaction',
+            description: 'direct_transaction',
+            note: transaction.note,
+            amount: transaction.amount,
+            currency: transaction.currency,
+            direction: transaction.direction,
+            paymentMethod: transaction.paymentMethod
+        })
+    }
+
+    return rows.sort(compareStatementRows)
+}
+
+function buildMoneyMovementSummaries(rows: PartnerOrderItemsPrintRow[]): PartnerOrderItemsPrintMoneyMovementSummary[] {
+    const summaries = new Map<string, PartnerOrderItemsPrintMoneyMovementSummary>()
+
+    for (const row of rows) {
+        const summary = summaries.get(row.currency) ?? { currency: row.currency, count: 0, received: 0, paid: 0 }
+        summaries.set(row.currency, summary)
+        summary.count += 1
+        const amount = row.amount ?? 0
+        if (row.direction === 'incoming') summary.received += amount
+        else summary.paid += amount
+    }
+
+    return Array.from(summaries.values()).sort((left, right) => left.currency.localeCompare(right.currency))
+}
+
+/**
+ * Builds the statement's single chronological timeline: sales and purchase
+ * order blocks plus loan/installment repayments and direct transactions are
+ * interleaved by their own dates, while the per-type currency summaries are
+ * kept separate so they can be printed at the end of the document.
+ */
+export function buildPartnerOrderItemsPrintTimeline(
+    salesOrders: StatementOrder[],
+    purchaseOrders: StatementOrder[],
+    loans: Loan[],
+    loanPayments: LoanPayment[],
+    directTransactions: PaymentTransaction[]
+): PartnerOrderItemsPrintTimeline {
+    const salesSection = buildPartnerOrderItemsPrintSection(salesOrders, 'sales')
+    const purchaseSection = buildPartnerOrderItemsPrintSection(purchaseOrders, 'purchase')
+    const movements = buildPartnerOrderItemsPrintMoneyMovements(loans, loanPayments, directTransactions)
+
+    return {
+        rows: [...salesSection.rows, ...purchaseSection.rows, ...movements].sort(compareStatementRows),
+        salesSummary: salesSection.summaries,
+        purchaseSummary: purchaseSection.summaries,
+        loanRepaymentSummary: buildMoneyMovementSummaries(
+            movements.filter((row) => row.kind === 'loan_repayment')
+        ),
+        directTransactionSummary: buildMoneyMovementSummaries(
+            movements.filter((row) => row.kind === 'direct_transaction')
+        )
+    }
+}
+
+function isMoneyMovementBlock(block: PartnerOrderItemsPrintOrderBlock) {
+    const firstKind = block.rows[0]?.kind
+    return firstKind === 'loan_repayment' || firstKind === 'direct_transaction'
 }
 
 /**
@@ -327,22 +530,40 @@ export function getPartnerOrderItemsPrintRowHierarchy(
     return 'middle'
 }
 
-function OrderHierarchyMarker({ position, returned = false, partialPaid = false, unpaid = false }: { position: PartnerOrderItemsPrintRowHierarchy; returned?: boolean; partialPaid?: boolean; unpaid?: boolean }) {
-    if (position === 'single') return null
+function OrderHierarchyMarker({
+    position,
+    returned = false,
+    partialPaid = false,
+    unpaid = false,
+    forceLine = false,
+    lineColor
+}: {
+    position: PartnerOrderItemsPrintRowHierarchy
+    returned?: boolean
+    partialPaid?: boolean
+    unpaid?: boolean
+    /** Draws the connector even for single-row blocks (used by money movement rows). */
+    forceLine?: boolean
+    /** Overrides the status-derived color (used to color money movements by direction). */
+    lineColor?: string
+}) {
+    if (position === 'single' && !forceLine) return null
 
-    const verticalPosition = position === 'first'
-        ? 'top-1/2 bottom-0'
-        : position === 'last'
-            ? 'top-0 bottom-1/2'
-            : 'inset-y-0'
-    const turnPosition = position === 'first' ? 'top-1/2' : position === 'last' ? 'bottom-1/2' : null
+    const verticalPosition = position === 'single' || position === 'middle'
+        ? 'inset-y-0'
+        : position === 'first'
+            ? 'top-1/2 bottom-0'
+            : 'top-0 bottom-1/2'
+    const topTurn = position === 'single' || position === 'first' ? 'top-1/2' : null
+    const bottomTurn = position === 'single' || position === 'last' ? 'bottom-1/2' : null
     // Matches the payment-status colors used in the Orders page.
-    const lineColor = returned ? 'bg-rose-600' : partialPaid ? 'bg-sky-600' : unpaid ? 'bg-amber-600' : 'bg-emerald-600'
+    const resolvedLineColor = lineColor ?? (returned ? 'bg-rose-600' : partialPaid ? 'bg-sky-600' : unpaid ? 'bg-amber-600' : 'bg-emerald-600')
 
     return (
         <span className="pointer-events-none absolute inset-y-0 -start-4 w-3" aria-hidden="true">
-            <span className={`absolute start-0 w-px ${lineColor} ${verticalPosition}`} />
-            {turnPosition ? <span className={`absolute start-0 h-px w-2.5 ${lineColor} ${turnPosition}`} /> : null}
+            <span className={`absolute start-0 w-px ${resolvedLineColor} ${verticalPosition}`} />
+            {topTurn ? <span className={`absolute start-0 h-px w-2.5 ${resolvedLineColor} ${topTurn}`} /> : null}
+            {bottomTurn ? <span className={`absolute start-0 h-px w-2.5 ${resolvedLineColor} ${bottomTurn}`} /> : null}
         </span>
     )
 }
@@ -387,7 +608,7 @@ function StatementSummary({
     if (summaries.length === 0) return null
 
     return (
-        <div className="mt-2 space-y-2" data-pdf-keep-together>
+        <div className="mt-2 space-y-2" data-pdf-keep-together data-order-items-section-summary>
             {summaries.map((summary) => (
                 <div key={summary.currency} className="grid grid-cols-2 gap-x-4 gap-y-1 rounded border border-slate-300 bg-slate-50 px-2 py-2 text-[9px] sm:grid-cols-4">
                     <span>{t('businessPartners.orderItemsPrint.currency', { defaultValue: 'Currency' })}: <strong>{summary.currency.toUpperCase()}</strong></span>
@@ -406,36 +627,35 @@ function StatementSummary({
     )
 }
 
-function OrderItemsSection({
-    title,
-    section,
+function OrderBlock({
+    block,
     kind,
     t,
     iqdPreference,
     showPaidAmount,
     showRemainingAmount
 }: {
-    title: string
-    section: PartnerOrderItemsPrintSection
-    kind: StatementKind
+    block: PartnerOrderItemsPrintOrderBlock
+    kind: 'sales' | 'purchase'
     t: (key: string, options?: Record<string, unknown>) => string
     iqdPreference: IQDDisplayPreference
     showPaidAmount: boolean
     showRemainingAmount: boolean
 }) {
-    if (section.rows.length === 0) return null
-
     const returnedLabel = t('businessPartners.orderItemsPrint.returned', { defaultValue: 'Returned' })
+    const kindLabel = kind === 'sales'
+        ? t('businessPartners.orderItemsPrint.sales', { defaultValue: 'Sales' })
+        : t('businessPartners.orderItemsPrint.purchase', { defaultValue: 'Purchases' })
 
     return (
-        <section className="mt-5" data-pdf-keep-together data-order-items-section>
-            <div
-                className="mb-2 flex items-center justify-between border-b-2 border-slate-700 pb-1"
-                data-order-items-section-title-bar
-                data-order-items-continuation-label={`(${t('businessPartners.orderItemsPrint.continued', { defaultValue: 'Continued' })})`}
-            >
-                <h2 className="text-sm font-bold">{title}</h2>
-                <span className="text-[9px]" data-order-items-section-order-count>{section.summaries.reduce((total, summary) => total + summary.orderCount, 0)} {t('businessPartners.orderItemsPrint.orders', { defaultValue: 'Orders' })}</span>
+        <div className="mt-3" data-order-statement-block>
+            <div className="mb-1 flex items-center justify-between gap-2 border-b border-slate-400 pb-0.5 text-[9px] font-bold">
+                <div className="flex items-center gap-2">
+                    <span>{block.orderCode}</span>
+                    <span className="rounded border border-slate-500 px-1 text-[7px] font-bold">{kindLabel}</span>
+                    {block.isReturned ? <span className="rounded border border-red-400 px-1 text-[7px] font-bold">{returnedLabel}</span> : null}
+                </div>
+                <span className="font-normal">{formatDate(block.orderDate)}</span>
             </div>
             <table className="w-full border-collapse text-[8px] leading-[1.2]" data-order-items-paginated>
                 <thead>
@@ -451,8 +671,8 @@ function OrderItemsSection({
                     </tr>
                 </thead>
                 <tbody>
-                    {section.rows.map((row, index) => {
-                        const hierarchyPosition = getPartnerOrderItemsPrintRowHierarchy(section.rows, index)
+                    {block.rows.map((row, index) => {
+                        const hierarchyPosition = getPartnerOrderItemsPrintRowHierarchy(block.rows, index)
 
                         return row.kind === 'order_total' ? (
                             <tr
@@ -511,7 +731,148 @@ function OrderItemsSection({
                     })}
                 </tbody>
             </table>
-            <StatementSummary summaries={section.summaries} kind={kind} t={t} iqdPreference={iqdPreference} />
+        </div>
+    )
+}
+
+function MoneyMovementBlock({
+    block,
+    t,
+    iqdPreference
+}: {
+    block: PartnerOrderItemsPrintOrderBlock
+    t: (key: string, options?: Record<string, unknown>) => string
+    iqdPreference: IQDDisplayPreference
+}) {
+    const row = block.rows[0]
+    if (!row) return null
+
+    const kindLabel = row.kind === 'loan_repayment'
+        ? t('businessPartners.orderItemsPrint.loanRepayment', { defaultValue: 'Loan Repayment' })
+        : t('businessPartners.orderItemsPrint.directTransaction', { defaultValue: 'Direct Transaction' })
+    const isIncoming = row.direction === 'incoming'
+    const directionLabel = isIncoming
+        ? t('businessPartners.orderItemsPrint.received', { defaultValue: 'Received' })
+        : t('businessPartners.orderItemsPrint.paid', { defaultValue: 'Paid' })
+    const methodLabel = row.paymentMethod
+        ? t(`pos.${row.paymentMethod}`, { defaultValue: row.paymentMethod })
+        : null
+
+    return (
+        <div className="mt-3" data-order-statement-block>
+            <div className="mb-1 flex items-center justify-between gap-2 border-b border-slate-400 pb-0.5 text-[9px] font-bold">
+                <div className="flex items-center gap-2">
+                    <span>{kindLabel}</span>
+                    {row.orderCode?.trim() ? <span className="font-normal">{row.orderCode}</span> : null}
+                    <span className={`rounded border px-1 text-[7px] font-bold ${isIncoming ? 'border-emerald-600 text-emerald-700' : 'border-rose-600 text-rose-700'}`}>{directionLabel}</span>
+                </div>
+                <span className="font-normal">{formatDate(row.orderDate)}</span>
+            </div>
+            <div className="relative flex items-center justify-between gap-2 border border-slate-400 bg-slate-50 px-1.5 py-1 text-[8px]">
+                <OrderHierarchyMarker
+                    position="single"
+                    forceLine
+                    lineColor={isIncoming ? 'bg-emerald-600' : 'bg-rose-600'}
+                />
+                <span className="flex-1">
+                    {methodLabel ? <span className="font-semibold">{methodLabel}</span> : null}
+                    {row.note?.trim() ? <span className="ms-2 text-[7px]">{row.note.trim()}</span> : null}
+                </span>
+                <span className="font-bold">{isIncoming ? '+' : '−'} {formatCurrency(row.amount ?? 0, row.currency, iqdPreference)}</span>
+            </div>
+        </div>
+    )
+}
+
+function MoneyMovementSummary({
+    title,
+    summaries,
+    t,
+    iqdPreference
+}: {
+    title: string
+    summaries: PartnerOrderItemsPrintMoneyMovementSummary[]
+    t: (key: string, options?: Record<string, unknown>) => string
+    iqdPreference: IQDDisplayPreference
+}) {
+    if (summaries.length === 0) return null
+
+    return (
+        <div className="mt-2" data-pdf-keep-together data-order-items-section-summary>
+            <div className="mb-1 text-[9px] font-bold">{title}</div>
+            {summaries.map((summary) => (
+                <div key={summary.currency} className="grid grid-cols-2 gap-x-4 gap-y-1 rounded border border-slate-300 bg-slate-50 px-2 py-2 text-[9px] sm:grid-cols-4">
+                    <span>{t('businessPartners.orderItemsPrint.currency', { defaultValue: 'Currency' })}: <strong>{summary.currency.toUpperCase()}</strong></span>
+                    <span>{summary.count} {t('businessPartners.orderItemsPrint.entries', { defaultValue: 'Entries' })}</span>
+                    <span>{t('businessPartners.orderItemsPrint.received', { defaultValue: 'Received' })}: <strong>+{formatCurrency(summary.received, summary.currency, iqdPreference)}</strong></span>
+                    <span>{t('businessPartners.orderItemsPrint.paid', { defaultValue: 'Paid' })}: <strong>-{formatCurrency(summary.paid, summary.currency, iqdPreference)}</strong></span>
+                </div>
+            ))}
+        </div>
+    )
+}
+
+function OrderItemsSection({
+    timeline,
+    t,
+    iqdPreference,
+    showPaidAmount,
+    showRemainingAmount
+}: {
+    timeline: PartnerOrderItemsPrintTimeline
+    t: (key: string, options?: Record<string, unknown>) => string
+    iqdPreference: IQDDisplayPreference
+    showPaidAmount: boolean
+    showRemainingAmount: boolean
+}) {
+    if (timeline.rows.length === 0) return null
+
+    const blocks = buildPartnerOrderItemsPrintOrderBlocks(timeline.rows)
+
+    return (
+        <section className="mt-5" data-order-items-section>
+            <div
+                className="mb-2 flex items-center justify-between border-b-2 border-slate-700 pb-1"
+                data-order-items-section-title-bar
+                data-order-items-continuation-label={`(${t('businessPartners.orderItemsPrint.continued', { defaultValue: 'Continued' })})`}
+            >
+                <h2 className="text-sm font-bold">{t('businessPartners.orderItemsPrint.accountActivity', { defaultValue: 'Account Activity' })}</h2>
+                <span className="text-[9px]" data-order-items-section-order-count>{blocks.length} {t('businessPartners.orderItemsPrint.entries', { defaultValue: 'Entries' })}</span>
+            </div>
+            {blocks.map((block) => (
+                isMoneyMovementBlock(block) ? (
+                    <MoneyMovementBlock
+                        key={block.orderId}
+                        block={block}
+                        t={t}
+                        iqdPreference={iqdPreference}
+                    />
+                ) : (
+                    <OrderBlock
+                        key={block.orderId}
+                        block={block}
+                        kind={block.rows[0]?.sectionKind === 'purchase' ? 'purchase' : 'sales'}
+                        t={t}
+                        iqdPreference={iqdPreference}
+                        showPaidAmount={showPaidAmount}
+                        showRemainingAmount={showRemainingAmount}
+                    />
+                )
+            ))}
+            <StatementSummary summaries={timeline.salesSummary} kind="sales" t={t} iqdPreference={iqdPreference} />
+            <StatementSummary summaries={timeline.purchaseSummary} kind="purchase" t={t} iqdPreference={iqdPreference} />
+            <MoneyMovementSummary
+                title={t('businessPartners.orderItemsPrint.loanRepayments', { defaultValue: 'Loan Repayments' })}
+                summaries={timeline.loanRepaymentSummary}
+                t={t}
+                iqdPreference={iqdPreference}
+            />
+            <MoneyMovementSummary
+                title={t('businessPartners.orderItemsPrint.directTransactions', { defaultValue: 'Direct Transactions' })}
+                summaries={timeline.directTransactionSummary}
+                t={t}
+                iqdPreference={iqdPreference}
+            />
         </section>
     )
 }
@@ -535,8 +896,13 @@ export function PartnerOrderItemsPrintTemplate({
     const logoSrc = resolveLogoSrc(logoUrl)
     const periodLabel = resolvePeriodLabel(data.period, t)
     const partnerLocation = [data.partner.address, data.partner.city, data.partner.country].filter(Boolean).join(', ')
-    const salesSection = buildPartnerOrderItemsPrintSection(data.salesOrders, 'sales')
-    const purchaseSection = buildPartnerOrderItemsPrintSection(data.purchaseOrders, 'purchase')
+    const timeline = buildPartnerOrderItemsPrintTimeline(
+        data.salesOrders,
+        data.purchaseOrders,
+        data.loans || [],
+        data.loanPayments || [],
+        data.directTransactions || []
+    )
 
     return (
         <div
@@ -546,6 +912,7 @@ export function PartnerOrderItemsPrintTemplate({
             data-partner-order-items-print
             data-order-print-page
             data-page-width-mm="210"
+            data-page-padding-mm="10"
         >
             <style
                 dangerouslySetInnerHTML={{
@@ -604,18 +971,7 @@ export function PartnerOrderItemsPrintTemplate({
                 </div>
 
                 <OrderItemsSection
-                    title={t('businessPartners.orderItemsPrint.salesOrderItems', { defaultValue: 'Sales Order Items' })}
-                    section={salesSection}
-                    kind="sales"
-                    t={t}
-                    iqdPreference={iqdPreference}
-                    showPaidAmount={showPaidAmount}
-                    showRemainingAmount={showRemainingAmount}
-                />
-                <OrderItemsSection
-                    title={t('businessPartners.orderItemsPrint.purchaseOrderItems', { defaultValue: 'Purchase Order Items' })}
-                    section={purchaseSection}
-                    kind="purchase"
+                    timeline={timeline}
                     t={t}
                     iqdPreference={iqdPreference}
                     showPaidAmount={showPaidAmount}

@@ -1222,7 +1222,16 @@
       "paid": "Paid",
       "remaining": "Remaining",
       "returned": "Returned",
-      "continued": "Continued"
+      "continued": "Continued",
+      "sales": "Sales",
+      "purchase": "Purchases",
+      "accountActivity": "Account Activity",
+      "entries": "Entries",
+      "loanRepayment": "Loan Repayment",
+      "loanRepayments": "Loan Repayments",
+      "directTransaction": "Direct Transaction",
+      "directTransactions": "Direct Transactions",
+      "received": "Received"
     },
     "memberSince": "Partner Since",
     "financialSummary": "Financial Summary",
@@ -1735,6 +1744,8 @@
       "lock": "Lock",
       "pay": "Pay",
       "unpay": "Unpay",
+      "reverseLastPayment": "Reverse Last Payment",
+      "payInstallment": "Pay Installment",
       "showPrintedInvoice": "Show Printed Invoice"
     },
     "return": {

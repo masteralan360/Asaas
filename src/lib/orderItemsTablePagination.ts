@@ -22,6 +22,9 @@ export const ORDER_ITEMS_CONTINUATION_ATTR = 'data-order-items-continuation'
 export const ORDER_ITEMS_CONTINUATION_TABLE_ATTR = 'data-order-items-continuation-table'
 export const ORDER_ITEMS_TITLE_TEXT_ATTR = 'data-order-items-title-text'
 export const ORDER_ITEMS_CONTINUATION_SUFFIX_ATTR = 'data-order-items-continuation-suffix'
+export const ORDER_ITEMS_STATEMENT_BLOCK_ATTR = 'data-order-statement-block'
+export const ORDER_ITEMS_SECTION_SUMMARY_ATTR = 'data-order-items-section-summary'
+export const ORDER_ITEMS_PAGE_SPACER_ATTR = 'data-order-items-page-spacer'
 
 const ORDER_ITEMS_PAGINATED_SELECTOR = `table[${ORDER_ITEMS_PAGINATED_ATTR}]`
 const ORDER_ITEMS_CONTINUATION_SELECTOR = `[${ORDER_ITEMS_CONTINUATION_ATTR}]`
@@ -261,4 +264,102 @@ function buildContinuationTitleRow(
     cell.appendChild(bar)
     row.appendChild(cell)
     return row
+}
+
+const ORDER_ITEMS_STATEMENT_PACKABLE_SELECTOR = [
+    `[${ORDER_ITEMS_STATEMENT_BLOCK_ATTR}]`,
+    `[${ORDER_ITEMS_TITLE_BAR_ATTR}]`,
+    `[${ORDER_ITEMS_SECTION_SUMMARY_ATTR}]`
+].join(', ')
+
+function resolveStatementPagePaddingMm(root: HTMLElement, fallback: number) {
+    const raw = root.querySelector<HTMLElement>('[data-page-padding-mm]')?.getAttribute('data-page-padding-mm')
+    const parsed = Number(raw)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+export type OrderItemsStatementPlacement = {
+    blockIndex: number
+    spacerMm: number
+}
+
+/**
+ * Decides where invisible page spacers must be inserted so every atomic order
+ * block stays inside one A4 page. `topsMm` and `heightsMm` are the blocks'
+ * natural (spacer-free) flow positions; the returned placements describe the
+ * spacer to insert before each moved block. Spacers shift later blocks, so the
+ * running shift is folded into each decision.
+ */
+export function planOrderItemsStatementSpacers(
+    topsMm: readonly number[],
+    heightsMm: readonly number[],
+    pageHeightMm: number,
+    pagePaddingMm: number
+): OrderItemsStatementPlacement[] {
+    if (topsMm.length === 0 || topsMm.length !== heightsMm.length) return []
+    if (!Number.isFinite(pageHeightMm) || pageHeightMm <= 0 || !Number.isFinite(pagePaddingMm)) return []
+
+    const placements: OrderItemsStatementPlacement[] = []
+    let shiftMm = 0
+
+    for (let index = 1; index < topsMm.length; index += 1) {
+        const topMm = topsMm[index] + shiftMm
+        const heightMm = heightsMm[index]
+        const pageStartMm = Math.floor(topMm / pageHeightMm) * pageHeightMm
+        const pageContentBottomMm = pageStartMm + pageHeightMm - pagePaddingMm
+
+        if (heightMm <= pageContentBottomMm - topMm + SPLIT_EPSILON_MM) continue
+
+        const nextPageContentTopMm = pageStartMm + pageHeightMm + pagePaddingMm
+        const spacerMm = nextPageContentTopMm - topMm
+        if (spacerMm > SPLIT_EPSILON_MM) {
+            placements.push({ blockIndex: index, spacerMm })
+            shiftMm += spacerMm
+        }
+    }
+
+    return placements
+}
+
+/**
+ * Packs the partner order items statement into whole A4 pages.
+ *
+ * The template renders each order as its own atomic block (all of its items
+ * and its total row in one table). This routine measures every packable block
+ * (order blocks plus the section title bars and currency summaries) and pushes
+ * any block that would not fit below the current page's content area to the
+ * next page by inserting an invisible spacer, so each printed page contains
+ * only complete orders. An order taller than one full page is left to span
+ * pages on its own; `paginateOrderItemsTables` still splits its table with
+ * "(continued)" chunks.
+ *
+ * Idempotent: previously inserted spacers and table splits are removed first.
+ */
+export function paginateOrderItemsStatementPages(
+    root: HTMLElement,
+    options: { pageHeightMm: number; pageWidthMm: number; pagePaddingMm?: number }
+): void {
+    const blocks = Array.from(root.querySelectorAll<HTMLElement>(ORDER_ITEMS_STATEMENT_PACKABLE_SELECTOR))
+    if (blocks.length === 0) return
+
+    root.querySelectorAll<HTMLElement>(`[${ORDER_ITEMS_PAGE_SPACER_ATTR}]`).forEach((spacer) => spacer.remove())
+    restoreOrderItemsTableSplits(root)
+
+    const rootRect = root.getBoundingClientRect()
+    if (rootRect.width <= 0) return
+
+    const pxToMm = options.pageWidthMm / rootRect.width
+    const pagePaddingMm = options.pagePaddingMm ?? resolveStatementPagePaddingMm(root, 10)
+
+    const topsMm = blocks.map((block) => (block.getBoundingClientRect().top - rootRect.top) * pxToMm)
+    const heightsMm = blocks.map((block) => block.getBoundingClientRect().height * pxToMm)
+
+    const placements = planOrderItemsStatementSpacers(topsMm, heightsMm, options.pageHeightMm, pagePaddingMm)
+
+    for (const placement of placements) {
+        const spacer = document.createElement('div')
+        spacer.setAttribute(ORDER_ITEMS_PAGE_SPACER_ATTR, '')
+        spacer.style.height = `${placement.spacerMm}mm`
+        blocks[placement.blockIndex].insertAdjacentElement('beforebegin', spacer)
+    }
 }

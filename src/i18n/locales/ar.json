@@ -1163,6 +1163,7 @@
       "payInstallment": "دفع القسط",
       "pay": "دفع",
       "unpay": "تراجع عن الدفع",
+      "openLoan": "فتح حساب قرض",
       "showPrintedInvoice": "عرض الفاتورة المطبوعة"
     },
     "return": {
@@ -2385,6 +2386,7 @@
     "simpleLoanSummary": "ملخص القرض البسيط",
     "installmentLoan": "قرض تقسيط",
     "installmentLoanSummary": "ملخص قرض التقسيط",
+    "openLinkedOrder": "فتح تفاصيل الطلب",
     "date": "التاريخ",
     "view": {
       "table": "تفاصيل القروض",
@@ -3610,7 +3612,16 @@
       "paid": "المدفوع",
       "remaining": "المتبقي",
       "returned": "مُرجَع",
-      "continued": "متابعة"
+      "continued": "متابعة",
+      "sales": "مبيعات",
+      "purchase": "مشتريات",
+      "accountActivity": "النشاط الحسابي",
+      "entries": "بنود",
+      "loanRepayment": "دفعة قرض",
+      "loanRepayments": "دفعات القروض",
+      "directTransaction": "عملية مباشرة",
+      "directTransactions": "عمليات مباشرة",
+      "received": "مستلم"
     },
     "memberSince": "شريك منذ",
     "financialSummary": "الملخص المالي",

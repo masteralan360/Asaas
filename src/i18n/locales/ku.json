@@ -1166,6 +1166,7 @@
       "payInstallment": "پارەدانی قیست",
       "pay": "پارەدان",
       "unpay": "پاشگەزکردنەوەی پارەدان",
+      "openLoan": "کردنەوەی هەژماری قەرز",
       "showPrintedInvoice": "پیشاندانی فاتوورای چاپکراو"
     },
     "return": {
@@ -2381,6 +2382,7 @@
     "simpleLoanSummary": "پوختەی قەرزی ئاسان",
     "installmentLoan": "قەرزی قیستی",
     "installmentLoanSummary": "پوختەی قەرزی قیستی",
+    "openLinkedOrder": "کردنەوەی وردەکاری داواکاری",
     "date": "ڕێکەوت",
     "view": {
       "table": "وردەکاری قەرزەکان",
@@ -3607,7 +3609,16 @@
       "paid": "دراو",
       "remaining": "ماوە",
       "returned": "گەڕێنراوە",
-      "continued": "درێژە"
+      "continued": "درێژە",
+      "sales": "فرۆشتن",
+      "purchase": "کڕین",
+      "accountActivity": "چالاکیی هەژمار",
+      "entries": "بڕگەکان",
+      "loanRepayment": "پارەی قەرز",
+      "loanRepayments": "پارەکانی قەرز",
+      "directTransaction": "مامەڵەی ڕاستەوخۆ",
+      "directTransactions": "مامەڵە ڕاستەوخۆکان",
+      "received": "وەرگیراو"
     },
     "memberSince": "هاوبەشە لە",
     "financialSummary": "پوختەی دارایی",
