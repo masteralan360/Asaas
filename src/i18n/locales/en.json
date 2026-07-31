@@ -2975,7 +2975,13 @@
     "saveSuccess": "Invoice Saved",
     "saveSuccessDesc": "A record of this invoice has been added to history.",
     "saveError": "Save Failed",
-    "saveErrorDesc": "Could not save invoice record."
+    "saveErrorDesc": "Could not save invoice record.",
+    "progressTitle": "Saving & Printing",
+    "progressPreparing": "Preparing document…",
+    "progressLayingOut": "Laying out pages…",
+    "progressRendering": "Rendering pages…",
+    "progressBuildingPdf": "Building PDF (page {{page}}/{{total}})…",
+    "progressSavingInvoice": "Saving invoice record…"
   },
   "pdfPreview": {
     "fitPage": "Fit",

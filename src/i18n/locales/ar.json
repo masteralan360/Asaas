@@ -2133,7 +2133,13 @@
     "saveSuccess": "تم حفظ الفاتورة",
     "saveSuccessDesc": "تم إضافة سجل لهذه الفاتورة إلى التاريخ.",
     "saveError": "فشل الحفظ",
-    "saveErrorDesc": "لم يتم حفظ سجل الفاتورة."
+    "saveErrorDesc": "لم يتم حفظ سجل الفاتورة.",
+    "progressTitle": "جارٍ الحفظ والطباعة",
+    "progressPreparing": "جارٍ تجهيز المستند…",
+    "progressLayingOut": "جارٍ تخطيط الصفحات…",
+    "progressRendering": "جارٍ عرض الصفحات…",
+    "progressBuildingPdf": "جارٍ إنشاء PDF (الصفحة {{page}}/{{total}})…",
+    "progressSavingInvoice": "جارٍ حفظ سجل الفاتورة…"
   },
   "pdfPreview": {
     "fitPage": "ملائمة",

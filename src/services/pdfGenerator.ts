@@ -11,6 +11,7 @@ import {
     type A4KeepTogetherBlock
 } from '@/services/a4Pagination'
 import { paginateOrderItemsTables } from '@/lib/orderItemsTablePagination'
+import { reportPdfProgress } from '@/services/pdfProgress'
 
 /** Formats that can be stored as invoice versions. */
 export type InvoicePrintFormat = 'a4' | 'receipt'
@@ -25,18 +26,8 @@ export function isInvoicePrintFormat(format: PrintFormat): format is InvoicePrin
     return format === 'a4' || format === 'receipt'
 }
 
-interface PDFLayer {
-    image: string | HTMLCanvasElement // dataUrl or Canvas
-    x: number    // mm
-    y: number    // mm
-    w: number    // mm
-    h: number    // mm
-    format: 'PNG' | 'JPEG'
-}
-
 interface RenderResult {
-    background: HTMLCanvasElement // Low-res canvas
-    qrs: PDFLayer[]    // High-res PNG dataUrls
+    background: HTMLCanvasElement
     widthMm: number
     heightMm: number
     keepTogetherBlocks: A4KeepTogetherBlock[]
@@ -236,6 +227,7 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     await waitForImages(container)
     await reflowTemplateTextAfterContent(container, widthMm)
     await expandContainerToRenderedBounds(container)
+    reportPdfProgress(0.1, 'print.progressPreparing')
 
     if (widthMm === A4_WIDTH_MM) {
         // Cut statement tables exactly at the A4 red line and give each
@@ -245,100 +237,33 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
             pageWidthMm: widthMm
         })
         await expandContainerToRenderedBounds(container)
+        reportPdfProgress(0.25, 'print.progressLayingOut')
     }
 
     const keepTogetherBlocks = collectA4KeepTogetherBlocks(container, widthMm)
 
-    const HIGH_SCALE = 6 // Higher scale for perfect QR pixel capture
-    const LOW_SCALE = 2.5
+    const RENDER_SCALE = 2.5
 
-    const sharpZones: { x: number, y: number, width: number, height: number }[] = []
-
-    // 1. Identify sharp zones (QRs) in the live DOM before capture
-    // This ensures we get real coordinates that aren't zeroed out
-    const containerRect = container.getBoundingClientRect()
-    const qrElements = container.querySelectorAll('[data-qr-sharp="true"]')
-    qrElements.forEach(el => {
-        const rect = (el as HTMLElement).getBoundingClientRect()
-        sharpZones.push({
-            x: rect.left - containerRect.left,
-            y: rect.top - containerRect.top,
-            width: rect.width,
-            height: rect.height
-        })
-    })
-
-    // 2. Capture High-Res for QR Extraction
     // The container is invisible (opacity 0) while it lives in the viewport;
     // restore the clone's opacity so the foreignObject paints it.
-    const captureStyle = { opacity: '1' }
-    const { highResCanvas, lowResCanvas } = await (async () => {
-        const highResCanvas = await toCanvas(container, {
-            pixelRatio: HIGH_SCALE,
-            backgroundColor: '#ffffff',
-            style: captureStyle
-        })
+    reportPdfProgress(0.4, 'print.progressRendering')
+    const background = await toCanvas(container, {
+        pixelRatio: RENDER_SCALE,
+        backgroundColor: '#ffffff',
+        style: { opacity: '1' }
+    })
+    reportPdfProgress(0.6, 'print.progressRendering')
 
-        // The low-res background must not contain the QR overlays: they are
-        // re-drawn as sharp PNGs on top afterwards. Hiding (not removing)
-        // keeps their in-flow layout intact in the clone.
-        const qrElements = container.querySelectorAll<HTMLElement>('[data-qr-sharp="true"]')
-        qrElements.forEach((el) => { el.style.visibility = 'hidden' })
-        let lowResCanvas: HTMLCanvasElement
-        try {
-            lowResCanvas = await toCanvas(container, {
-                pixelRatio: LOW_SCALE,
-                backgroundColor: '#ffffff',
-                style: captureStyle
-            })
-        } finally {
-            qrElements.forEach((el) => { el.style.visibility = '' })
-        }
-        return { highResCanvas, lowResCanvas }
-    })()
-
-    // 2. Identify sharp zones and calculate unit conversion ratio
     const containerPixelWidth = container.offsetWidth
     const pxToMm = widthMm / containerPixelWidth
-
-    const calculatedHeightMm = (lowResCanvas.height * pxToMm) / LOW_SCALE
-
-    // 3. Extract QR Layers and convert to MM units
-    const qrs: PDFLayer[] = sharpZones
-        .filter(zone => zone.width > 0 && zone.height > 0)
-        .map(zone => {
-            const qrCanvas = document.createElement('canvas')
-            qrCanvas.width = Math.round(zone.width * HIGH_SCALE)
-            qrCanvas.height = Math.round(zone.height * HIGH_SCALE)
-            const qrCtx = qrCanvas.getContext('2d')
-
-            if (qrCtx) {
-                qrCtx.drawImage(
-                    highResCanvas,
-                    Math.round(zone.x * HIGH_SCALE), Math.round(zone.y * HIGH_SCALE),
-                    Math.round(zone.width * HIGH_SCALE), Math.round(zone.height * HIGH_SCALE),
-                    0, 0, qrCanvas.width, qrCanvas.height
-                )
-            }
-
-            return {
-                image: qrCanvas.toDataURL('image/png'),
-                x: zone.x * pxToMm,
-                y: zone.y * pxToMm,
-                w: zone.width * pxToMm,
-                h: zone.height * pxToMm,
-                format: 'PNG'
-            }
-        })
 
     root.unmount()
     container.remove()
 
     return {
-        background: lowResCanvas,
-        qrs,
+        background,
         widthMm,
-        heightMm: calculatedHeightMm,
+        heightMm: (background.height * pxToMm) / RENDER_SCALE,
         keepTogetherBlocks
     }
 }
@@ -348,6 +273,12 @@ function canvasToA4Pdf(renderResult: RenderResult, PdfDocument: JsPDFConstructor
     const pageStarts = getA4PageStarts(renderResult.heightMm, renderResult.keepTogetherBlocks, A4_HEIGHT_MM)
 
     for (let pageIndex = 0; pageIndex < pageStarts.length; pageIndex += 1) {
+        reportPdfProgress(
+            0.65 + (0.3 * (pageIndex + 1)) / pageStarts.length,
+            'print.progressBuildingPdf',
+            { page: pageIndex + 1, total: pageStarts.length }
+        )
+
         if (pageIndex > 0) {
             pdf.addPage('a4', 'p')
         }
@@ -365,21 +296,6 @@ function canvasToA4Pdf(renderResult: RenderResult, PdfDocument: JsPDFConstructor
             undefined,
             'FAST'
         )
-
-        renderResult.qrs
-            .filter((qr) => qr.y + qr.h > pageOffset && qr.y < pageEnd)
-            .forEach((qr) => {
-                pdf.addImage(
-                    qr.image as string,
-                    'PNG',
-                    qr.x,
-                    qr.y - pageOffset,
-                    qr.w,
-                    qr.h,
-                    undefined,
-                    'FAST'
-                )
-            })
     }
 
     return pdf.output('blob') as Blob
@@ -392,13 +308,10 @@ function canvasToReceiptPdf(renderResult: RenderResult, PdfDocument: JsPDFConstr
         format: [renderResult.widthMm, renderResult.heightMm]
     })
 
-    // Add background JPEG (Low Res)
-    pdf.addImage(renderResult.background, 'JPEG', 0, 0, renderResult.widthMm, renderResult.heightMm, undefined, 'FAST')
+    reportPdfProgress(0.95, 'print.progressBuildingPdf', { page: 1, total: 1 })
 
-    // Overlay sharp QR codes (High Res) using lossless PNG for maximum clarity
-    renderResult.qrs.forEach(qr => {
-        pdf.addImage(qr.image as string, 'PNG', qr.x, qr.y, qr.w, qr.h, undefined, 'FAST')
-    })
+    // Add background JPEG
+    pdf.addImage(renderResult.background, 'JPEG', 0, 0, renderResult.widthMm, renderResult.heightMm, undefined, 'FAST')
 
     return pdf.output('blob') as Blob
 }

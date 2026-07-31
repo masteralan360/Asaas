@@ -48,6 +48,8 @@ import { useAuth } from '@/auth/AuthContext'
 import { UiAccessGate, useUiAccess } from '@/context/UiAccessContext'
 import { AttachedShapesOverlay } from '@/ui/components/AttachedShapesOverlay'
 import { PDF_SHAPE_OPTIONS } from '@/ui/components/PdfShapeGraphic'
+import { useToast } from '@/ui/components/use-toast'
+import { subscribePdfProgress } from '@/services/pdfProgress'
 import type { PdfShapeKind } from '@/types'
 
 const PREVIEW_PAGE_BREAK_SELECTOR = [
@@ -343,6 +345,39 @@ function EditableInvoicePreview({
     )
 }
 
+function SaveProgressBar({
+    fraction,
+    stageKey,
+    page,
+    total
+}: {
+    fraction: number
+    stageKey?: string
+    page?: number
+    total?: number
+}) {
+    const { t } = useTranslation()
+    const percent = Math.min(100, Math.max(0, Math.round(fraction * 100)))
+    const stage = stageKey
+        ? t(stageKey, { defaultValue: '', page, total })
+        : ''
+
+    return (
+        <div className="w-full space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-xs text-muted-foreground">{stage}</span>
+                <span className="text-xs font-medium tabular-nums">{percent}%</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                    className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
+                    style={{ width: `${percent}%` }}
+                />
+            </div>
+        </div>
+    )
+}
+
 export function PdfPreviewPage() {
     const { t } = useTranslation()
     const { hasRole } = useAuth()
@@ -350,6 +385,55 @@ export function PdfPreviewPage() {
     const { isAccessKeyHeld } = useUiAccess()
     const [isSaving, setIsSaving] = useState(false)
     const [tempPrintLang, setTempPrintLang] = useState<string>('auto')
+    const { toast, dismiss } = useToast()
+
+    const progressToastRef = useRef<ReturnType<typeof toast> | null>(null)
+    const unsubscribeProgressRef = useRef<(() => void) | null>(null)
+    const lastProgressPercentRef = useRef(-1)
+    const lastProgressStageRef = useRef('')
+
+    const finishProgressToast = useCallback(() => {
+        unsubscribeProgressRef.current?.()
+        unsubscribeProgressRef.current = null
+        if (progressToastRef.current) {
+            dismiss(progressToastRef.current.id)
+            progressToastRef.current = null
+        }
+    }, [dismiss])
+
+    const beginProgressToast = useCallback((toastTitle: string) => {
+        finishProgressToast()
+        lastProgressPercentRef.current = -1
+        lastProgressStageRef.current = ''
+        progressToastRef.current = toast({
+            title: toastTitle,
+            description: <SaveProgressBar fraction={0} />,
+            duration: 600000
+        })
+        const progressToast = progressToastRef.current
+        unsubscribeProgressRef.current = subscribePdfProgress((report) => {
+            const percent = Math.floor(report.fraction * 100)
+            const stageChanged = report.stageKey !== lastProgressStageRef.current
+            if (percent === lastProgressPercentRef.current && !stageChanged) return
+            lastProgressPercentRef.current = percent
+            lastProgressStageRef.current = report.stageKey
+            progressToastRef.current?.update({
+                id: progressToast.id,
+                description: (
+                    <SaveProgressBar
+                        fraction={report.fraction}
+                        stageKey={report.stageKey}
+                        page={report.page}
+                        total={report.total}
+                    />
+                )
+            })
+        })
+    }, [finishProgressToast, toast])
+
+    useEffect(() => () => {
+        unsubscribeProgressRef.current?.()
+    }, [])
 
     const sourceRef = useRef(getInvoicePreviewSource())
     const source = sourceRef.current
@@ -816,6 +900,7 @@ export function PdfPreviewPage() {
 
     const handleSave = useCallback(async () => {
         if (!source || !editableData || isSaving) return
+        beginProgressToast(title || t('print.progressTitle', { defaultValue: 'Saving & Printing' }))
         setIsSaving(true)
         try {
             if (source.generatePdfBlob) {
@@ -823,20 +908,19 @@ export function PdfPreviewPage() {
                 const blob = await source.generatePdfBlob(editableData, langOverride)
                 const invoiceId = await source.onSave?.(blob)
                 setPendingInvoiceView({ url: URL.createObjectURL(blob), title: invoiceId ? `Invoice ${invoiceId}` : title })
-                setIsSaving(false)
-                clearInvoicePreviewSource()
-                window.history.back()
                 return
             } else {
                 await source.onSave?.(new Blob())
             }
         } catch (err) {
             console.error('Failed to save:', err)
+        } finally {
+            finishProgressToast()
+            setIsSaving(false)
+            clearInvoicePreviewSource()
+            window.history.back()
         }
-        setIsSaving(false)
-        clearInvoicePreviewSource()
-        window.history.back()
-    }, [source, editableData, isSaving, tempPrintLang])
+    }, [source, editableData, isSaving, tempPrintLang, beginProgressToast, finishProgressToast, title, t])
 
     if (!source) {
         return (
@@ -914,6 +998,7 @@ export function PdfPreviewPage() {
 
     const saveTemplatePreview = useCallback(async (layout?: CustomTemplateLayout, label?: string) => {
         if (!source || !templatePreview || !fieldValues || isSaving) return
+        beginProgressToast(title || t('print.progressTitle', { defaultValue: 'Saving & Printing' }))
         let shouldCloseAfterAction = true
         setIsSaving(true)
         try {
@@ -971,6 +1056,7 @@ export function PdfPreviewPage() {
             console.error('Failed to save template preview:', err)
             shouldCloseAfterAction = false
         } finally {
+            finishProgressToast()
             setIsSaving(false)
             if (shouldCloseAfterAction) {
                 setIsTemplateLabelDialogOpen(false)
@@ -979,7 +1065,7 @@ export function PdfPreviewPage() {
                 window.history.back()
             }
         }
-    }, [source, templatePreview, fieldValues, isSaving, fixedTemplatePrintLang, tempPrintLang, buildTemplateLayout, sourceWorkspaceFooterContacts, templateHiddenFields, templateFieldOrders, templateFieldLabelOverrides])
+    }, [source, templatePreview, fieldValues, isSaving, fixedTemplatePrintLang, tempPrintLang, buildTemplateLayout, sourceWorkspaceFooterContacts, templateHiddenFields, templateFieldOrders, templateFieldLabelOverrides, beginProgressToast, finishProgressToast, title, t])
 
     const handleTemplatePreviewSave = useCallback(async () => {
         if (!source || !templatePreview || !fieldValues || isSaving) return

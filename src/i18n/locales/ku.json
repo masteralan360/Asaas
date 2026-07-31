@@ -2149,7 +2149,13 @@
     "saveSuccess": "پسوڵە پاشەکەوتکرا",
     "saveSuccessDesc": "تۆمارێکی ئەم پسوڵەیە زیادکرا بۆ مێژوو.",
     "saveError": "پاشەکەوتکردن شکستی هێنا",
-    "saveErrorDesc": "نەتوانرا تۆماری پسوڵەکە پاشەکەوت بکرێت."
+    "saveErrorDesc": "نەتوانرا تۆماری پسوڵەکە پاشەکەوت بکرێت.",
+    "progressTitle": "لە پاشەکەوتکردن و چاپکردندایە",
+    "progressPreparing": "ئامادەکردنی بەڵگەنامە…",
+    "progressLayingOut": "ڕێکخستنی پەڕەکان…",
+    "progressRendering": "نیشاندانی پەڕەکان…",
+    "progressBuildingPdf": "دروستکردنی PDF (پەڕەی {{page}}/{{total}})…",
+    "progressSavingInvoice": "پاشەکەوتکردنی تۆماری پسوڵە…"
   },
   "pdfPreview": {
     "fitPage": "لەگونج بکە",

@@ -22,6 +22,7 @@ import { saveInvoiceFromSnapshot, useWorkspaceContacts } from '@/local-db/hooks'
 import { useAuth } from '@/auth'
 import { db, type Invoice } from '@/local-db'
 import { generateInvoicePdf, isInvoicePrintFormat, type InvoicePrintFormat, type PrintFormat } from '@/services/pdfGenerator'
+import { reportPdfProgress } from '@/services/pdfProgress'
 import {
     disableInvoiceQrInLocalMode
 } from '@/services/localInvoiceStorage'
@@ -439,6 +440,7 @@ export function PrintPreviewModal({
                     })
                     : activeBlob)
 
+                reportPdfProgress(0.96, 'print.progressSavingInvoice')
                 await persistInvoiceVersion({
                     invoice: { ...savedInvoice, sourceId: savedInvoice.sourceId || effectiveId },
                     blob: finalBlob,
@@ -451,6 +453,7 @@ export function PrintPreviewModal({
                         templateLabel: customTemplate?.label || null,
                     },
                 })
+                reportPdfProgress(1, 'print.progressSavingInvoice')
             }
 
             if (savedInvoice) {
