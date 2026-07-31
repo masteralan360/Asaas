@@ -40,6 +40,8 @@ export type PartnerOrderItemsPrintRow = {
     isReturned?: boolean
     /** True when the source order is only partially paid; its hierarchy line is drawn in blue. */
     isPartialPaid?: boolean
+    /** True when the source order is unpaid; its hierarchy line is drawn in yellow. */
+    isUnpaid?: boolean
 }
 
 export type PartnerOrderItemsPrintCurrencySummary = {
@@ -172,6 +174,7 @@ export function buildPartnerOrderItemsPrintSection(
     for (const order of sortedOrders) {
         const isReturned = isSalesOrder(order, kind) && (order.returnStatus === 'partial' || order.returnStatus === 'full')
         const isPartialPaid = order.paymentStatus === 'partial'
+        const isUnpaid = order.paymentStatus === 'unpaid'
 
         const summary = summaries.get(order.currency) || createSummary(order.currency)
         summaries.set(order.currency, summary)
@@ -201,7 +204,8 @@ export function buildPartnerOrderItemsPrintSection(
                 amount: item.lineTotal,
                 currency: order.currency,
                 isReturned,
-                isPartialPaid
+                isPartialPaid,
+                isUnpaid
             })
         }
 
@@ -216,7 +220,8 @@ export function buildPartnerOrderItemsPrintSection(
                 amount: -order.discount,
                 currency: order.currency,
                 isReturned,
-                isPartialPaid
+                isPartialPaid,
+                isUnpaid
             })
         }
 
@@ -231,7 +236,8 @@ export function buildPartnerOrderItemsPrintSection(
                 amount: order.tax,
                 currency: order.currency,
                 isReturned,
-                isPartialPaid
+                isPartialPaid,
+                isUnpaid
             })
         }
 
@@ -256,7 +262,8 @@ export function buildPartnerOrderItemsPrintSection(
                 currency: order.currency,
                 adjustmentType: adjustment.type,
                 isReturned,
-                isPartialPaid
+                isPartialPaid,
+                isUnpaid
             })
         }
 
@@ -271,7 +278,8 @@ export function buildPartnerOrderItemsPrintSection(
                 note: order.notes.trim(),
                 currency: order.currency,
                 isReturned,
-                isPartialPaid
+                isPartialPaid,
+                isUnpaid
             })
         }
 
@@ -287,7 +295,8 @@ export function buildPartnerOrderItemsPrintSection(
             remainingAmount: order.balanceAmount,
             currency: order.currency,
             isReturned,
-            isPartialPaid
+            isPartialPaid,
+            isUnpaid
         })
     }
 
@@ -318,7 +327,7 @@ export function getPartnerOrderItemsPrintRowHierarchy(
     return 'middle'
 }
 
-function OrderHierarchyMarker({ position, returned = false, partialPaid = false }: { position: PartnerOrderItemsPrintRowHierarchy; returned?: boolean; partialPaid?: boolean }) {
+function OrderHierarchyMarker({ position, returned = false, partialPaid = false, unpaid = false }: { position: PartnerOrderItemsPrintRowHierarchy; returned?: boolean; partialPaid?: boolean; unpaid?: boolean }) {
     if (position === 'single') return null
 
     const verticalPosition = position === 'first'
@@ -327,7 +336,8 @@ function OrderHierarchyMarker({ position, returned = false, partialPaid = false 
             ? 'top-0 bottom-1/2'
             : 'inset-y-0'
     const turnPosition = position === 'first' ? 'top-1/2' : position === 'last' ? 'bottom-1/2' : null
-    const lineColor = returned ? 'bg-red-600' : partialPaid ? 'bg-blue-600' : 'bg-emerald-600'
+    // Matches the payment-status colors used in the Orders page.
+    const lineColor = returned ? 'bg-rose-600' : partialPaid ? 'bg-sky-600' : unpaid ? 'bg-amber-600' : 'bg-emerald-600'
 
     return (
         <span className="pointer-events-none absolute inset-y-0 -start-4 w-3" aria-hidden="true">
@@ -427,7 +437,7 @@ function OrderItemsSection({
                 <h2 className="text-sm font-bold">{title}</h2>
                 <span className="text-[9px]" data-order-items-section-order-count>{section.summaries.reduce((total, summary) => total + summary.orderCount, 0)} {t('businessPartners.orderItemsPrint.orders', { defaultValue: 'Orders' })}</span>
             </div>
-            <table className="w-full border-collapse text-[8px]" data-order-items-paginated>
+            <table className="w-full border-collapse text-[8px] leading-[1.2]" data-order-items-paginated>
                 <thead>
                     <tr className="bg-[#dfead3]">
                         <th className="w-[4%] border border-slate-400 p-1 text-center">#</th>
@@ -450,15 +460,15 @@ function OrderItemsSection({
                                 className="bg-slate-200 font-bold"
                                 data-pdf-keep-together
                             >
-                                <td className="relative overflow-visible border border-slate-300 px-1 py-0.5 text-center">
-                                    <OrderHierarchyMarker position={hierarchyPosition} returned={row.isReturned} partialPaid={row.isPartialPaid} />
+                                <td className="relative overflow-visible border border-slate-300 px-1 py-1 text-center align-top">
+                                    <OrderHierarchyMarker position={hierarchyPosition} returned={row.isReturned} partialPaid={row.isPartialPaid} unpaid={row.isUnpaid} />
                                     {index + 1}
                                 </td>
-                                <td className="border border-slate-300 px-1 py-0.5 whitespace-nowrap">
+                                <td className="border border-slate-300 px-1 py-1 whitespace-nowrap align-top">
                                     {row.orderCode}
                                     {row.isReturned ? <span className="ms-1 rounded border border-red-400 px-1 text-[7px] font-bold">{returnedLabel}</span> : null}
                                 </td>
-                                <td colSpan={5} className="border border-slate-300 px-1 py-0.5 whitespace-nowrap">
+                                <td colSpan={5} className="border border-slate-300 px-1 py-1 whitespace-nowrap align-top">
                                     {statementRowLabel(row, t)}
                                     {showPaidAmount && row.paidAmount != null ? (
                                         <span className="ms-2">
@@ -471,7 +481,7 @@ function OrderItemsSection({
                                         </span>
                                     ) : null}
                                 </td>
-                                <td className="border border-slate-300 px-1 py-0.5 text-end whitespace-nowrap">{row.amount == null ? '—' : formatCurrency(row.amount, row.currency, iqdPreference)}</td>
+                                <td className="border border-slate-300 px-1 py-1 text-end whitespace-nowrap align-top">{row.amount == null ? '—' : formatCurrency(row.amount, row.currency, iqdPreference)}</td>
                             </tr>
                         ) : (
                             <tr
@@ -480,7 +490,7 @@ function OrderItemsSection({
                                 data-pdf-keep-together
                             >
                                 <td className="relative overflow-visible border border-slate-300 p-1 text-center">
-                                    <OrderHierarchyMarker position={hierarchyPosition} returned={row.isReturned} partialPaid={row.isPartialPaid} />
+                                    <OrderHierarchyMarker position={hierarchyPosition} returned={row.isReturned} partialPaid={row.isPartialPaid} unpaid={row.isUnpaid} />
                                     {index + 1}
                                 </td>
                                 <td className="border border-slate-300 p-1 align-top font-semibold">

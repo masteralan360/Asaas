@@ -231,35 +231,49 @@ describe('PartnerOrderItemsPrintTemplate pagination markers', () => {
         expect(html).not.toContain('>Cancelled</span>')
     })
 
-    it('marks returned orders with a red hierarchy line and a returned badge', async () => {
+    it('marks returned orders with a rose hierarchy line and a returned badge', async () => {
         const html = await renderPrintTemplate('en', {
             salesOrders: [salesOrder({ returnStatus: 'full', returnedAt: createdAt })],
             purchaseOrders: []
         })
 
-        expect(html).toContain('bg-red-600')
+        expect(html).toContain('bg-rose-600')
         expect(html).not.toContain('bg-emerald-600')
         expect(html).toContain('>Returned</span>')
         expect(html).not.toContain('>Cancelled</span>')
     })
 
-    it('draws partially paid order lines in blue', async () => {
+    it('draws partially paid order lines in sky blue', async () => {
         const html = await renderPrintTemplate('en')
 
-        expect(html).toContain('bg-blue-600')
+        expect(html).toContain('bg-sky-600')
         expect(html).toContain('bg-emerald-600')
-        expect(html).not.toContain('bg-red-600')
+        expect(html).not.toContain('bg-rose-600')
+        expect(html).not.toContain('bg-amber-600')
     })
 
-    it('keeps fully paid and unpaid orders on their green hierarchy lines', async () => {
+    it('draws unpaid order lines in yellow', async () => {
+        const html = await renderPrintTemplate('en', {
+            salesOrders: [salesOrder({ paymentStatus: 'unpaid' })],
+            purchaseOrders: []
+        })
+
+        expect(html).toContain('bg-amber-600')
+        expect(html).not.toContain('bg-emerald-600')
+        expect(html).not.toContain('bg-sky-600')
+        expect(html).not.toContain('bg-rose-600')
+    })
+
+    it('keeps paid orders on their green hierarchy lines', async () => {
         const html = await renderPrintTemplate('en', {
             salesOrders: [salesOrder({ paymentStatus: 'paid' })],
-            purchaseOrders: [purchaseOrder({ paymentStatus: 'unpaid' })]
+            purchaseOrders: [purchaseOrder({ paymentStatus: 'paid' })]
         })
 
         expect(html).toContain('bg-emerald-600')
-        expect(html).not.toContain('bg-red-600')
-        expect(html).not.toContain('bg-blue-600')
+        expect(html).not.toContain('bg-rose-600')
+        expect(html).not.toContain('bg-sky-600')
+        expect(html).not.toContain('bg-amber-600')
         expect(html).not.toContain('>Cancelled</span>')
     })
 })

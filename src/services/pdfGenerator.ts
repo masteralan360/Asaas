@@ -196,6 +196,33 @@ function createCanvasSlice(
     return slice
 }
 
+/**
+ * html2canvas 1.4.1 measures font baselines with a 1x1 <img> appended to the
+ * main document body (render/font-metrics.js). Tailwind's preflight sets
+ * `img { display: block }`, which puts that img on its own line and inflates
+ * the measured baseline by ~4-6px, shifting every text glyph downward — most
+ * visibly in tight table rows where the text lands on the bottom border.
+ * Forcing the measurement img back to inline-level fixes the metric. Only
+ * images created while the capture runs are affected; the captured container
+ * and its clone keep their normal layout.
+ */
+function withInlineFontMetricImg<T>(fn: () => Promise<T>): Promise<T> {
+    const originalCreateElement = document.createElement.bind(document)
+    document.createElement = ((tagName: string, options?: ElementCreationOptions) => {
+        const element = originalCreateElement(tagName, options)
+        if (typeof tagName === 'string' && tagName.toLowerCase() === 'img') {
+            element.style.display = 'inline'
+        }
+        return element
+    }) as typeof document.createElement
+
+    try {
+        return fn()
+    } finally {
+        document.createElement = originalCreateElement
+    }
+}
+
 async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm: number): Promise<RenderResult> {
     const { default: html2canvas } = await import('html2canvas')
     const container = document.createElement('div')
@@ -255,27 +282,29 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     })
 
     // 2. Capture High-Res for QR Extraction
-    const highResCanvas = await html2canvas(container, {
-        scale: HIGH_SCALE,
-        useCORS: true,
-        backgroundColor: '#ffffff'
+    const { highResCanvas, lowResCanvas } = await withInlineFontMetricImg(async () => {
+        const highResCanvas = await html2canvas(container, {
+            scale: HIGH_SCALE,
+            useCORS: true,
+            backgroundColor: '#ffffff'
+        })
+        const lowResCanvas = await html2canvas(container, {
+            scale: LOW_SCALE,
+            useCORS: true,
+            backgroundColor: '#ffffff',
+            onclone: (clonedDoc) => {
+                const qrElements = clonedDoc.querySelectorAll('[data-qr-sharp="true"]')
+                qrElements.forEach(el => {
+                    (el as HTMLElement).style.visibility = 'hidden'
+                })
+            }
+        })
+        return { highResCanvas, lowResCanvas }
     })
 
     // 2. Identify sharp zones and calculate unit conversion ratio
     const containerPixelWidth = container.offsetWidth
     const pxToMm = widthMm / containerPixelWidth
-
-    const lowResCanvas = await html2canvas(container, {
-        scale: LOW_SCALE,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        onclone: (clonedDoc) => {
-            const qrElements = clonedDoc.querySelectorAll('[data-qr-sharp="true"]')
-            qrElements.forEach(el => {
-                (el as HTMLElement).style.visibility = 'hidden'
-            })
-        }
-    })
 
     const calculatedHeightMm = (lowResCanvas.height * pxToMm) / LOW_SCALE
 

@@ -283,4 +283,14 @@ describe('buildPartnerOrderItemsPrintSection', () => {
         expect(purchase.rows.filter((row) => row.orderId === 'partial-purchase').every((row) => row.isPartialPaid)).toBe(true)
         expect(purchase.rows.filter((row) => row.orderId === 'paid-purchase').every((row) => row.isPartialPaid)).toBe(false)
     })
+
+    it('flags rows of unpaid orders', () => {
+        const sales = buildPartnerOrderItemsPrintSection([
+            salesOrder({ id: 'unpaid', orderNumber: '0015', paymentStatus: 'unpaid' }),
+            salesOrder({ id: 'partial', orderNumber: '0016', paymentStatus: 'partial' })
+        ], 'sales')
+
+        expect(sales.rows.filter((row) => row.orderId === 'unpaid').every((row) => row.isUnpaid)).toBe(true)
+        expect(sales.rows.filter((row) => row.orderId === 'partial').every((row) => row.isUnpaid)).toBe(false)
+    })
 })

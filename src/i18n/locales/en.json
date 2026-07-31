@@ -1768,7 +1768,8 @@
       "ordered": "Ordered",
       "received": "Received",
       "paid": "Paid",
-      "unpaid": "Unpaid"
+      "unpaid": "Unpaid",
+      "partial": "Partially Paid"
     },
     "tabs": {
       "sales": "Sales Orders",
