@@ -197,44 +197,31 @@ function createCanvasSlice(
 }
 
 /**
- * html2canvas 1.4.1 measures font baselines with a 1x1 <img> appended to the
- * main document body (render/font-metrics.js). Tailwind's preflight sets
- * `img { display: block }`, which puts that img on its own line and inflates
- * the measured baseline by ~4-6px, shifting every text glyph downward — most
- * visibly in tight table rows where the text lands on the bottom border.
- * Forcing the measurement img back to inline-level fixes the metric. Only
- * images created while the capture runs are affected; the captured container
- * and its clone keep their normal layout.
+ * Captures a rendered print template to canvas. Uses html-to-image (SVG
+ * foreignObject), which lets the browser itself paint the clone — text,
+ * borders, fonts, and table-cell alignment are pixel-identical to the live
+ * preview DOM. html2canvas re-implemented rendering and mis-measured font
+ * baselines, shifting glyphs down inside tight table rows.
  */
-function withInlineFontMetricImg<T>(fn: () => Promise<T>): Promise<T> {
-    const originalCreateElement = document.createElement.bind(document)
-    document.createElement = ((tagName: string, options?: ElementCreationOptions) => {
-        const element = originalCreateElement(tagName, options)
-        if (typeof tagName === 'string' && tagName.toLowerCase() === 'img') {
-            element.style.display = 'inline'
-        }
-        return element
-    }) as typeof document.createElement
-
-    try {
-        return fn()
-    } finally {
-        document.createElement = originalCreateElement
-    }
-}
-
 async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm: number): Promise<RenderResult> {
-    const { default: html2canvas } = await import('html2canvas')
+    const { toCanvas } = await import('html-to-image')
     const container = document.createElement('div')
     container.id = 'pdf-render-container'
-    container.style.position = 'fixed'
-    container.style.left = '-10000px'
+    // Must live in the viewport: html-to-image clones the node with its
+    // computed style, and Chromium does not paint `position: fixed` (or
+    // offscreen) content inside the SVG foreignObject — the capture comes
+    // out blank. A top-left, invisible (opacity 0) absolute container is
+    // painted correctly; the clone's opacity is restored via the style
+    // override below.
+    container.style.position = 'absolute'
+    container.style.left = '0'
     container.style.top = '0'
     container.style.width = `${widthMm}mm`
     container.style.background = '#ffffff'
     container.style.zIndex = '-9999'
     container.style.pointerEvents = 'none'
-    // Rely on index.css @media print for hiding, as display:none breaks html2canvas
+    container.style.opacity = '0'
+    // Rely on index.css @media print for hiding, as display:none breaks canvas capture
     container.classList.add('no-print')
     document.body.appendChild(container)
 
@@ -282,25 +269,33 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     })
 
     // 2. Capture High-Res for QR Extraction
-    const { highResCanvas, lowResCanvas } = await withInlineFontMetricImg(async () => {
-        const highResCanvas = await html2canvas(container, {
-            scale: HIGH_SCALE,
-            useCORS: true,
-            backgroundColor: '#ffffff'
-        })
-        const lowResCanvas = await html2canvas(container, {
-            scale: LOW_SCALE,
-            useCORS: true,
+    // The container is invisible (opacity 0) while it lives in the viewport;
+    // restore the clone's opacity so the foreignObject paints it.
+    const captureStyle = { opacity: '1' }
+    const { highResCanvas, lowResCanvas } = await (async () => {
+        const highResCanvas = await toCanvas(container, {
+            pixelRatio: HIGH_SCALE,
             backgroundColor: '#ffffff',
-            onclone: (clonedDoc) => {
-                const qrElements = clonedDoc.querySelectorAll('[data-qr-sharp="true"]')
-                qrElements.forEach(el => {
-                    (el as HTMLElement).style.visibility = 'hidden'
-                })
-            }
+            style: captureStyle
         })
+
+        // The low-res background must not contain the QR overlays: they are
+        // re-drawn as sharp PNGs on top afterwards. Hiding (not removing)
+        // keeps their in-flow layout intact in the clone.
+        const qrElements = container.querySelectorAll<HTMLElement>('[data-qr-sharp="true"]')
+        qrElements.forEach((el) => { el.style.visibility = 'hidden' })
+        let lowResCanvas: HTMLCanvasElement
+        try {
+            lowResCanvas = await toCanvas(container, {
+                pixelRatio: LOW_SCALE,
+                backgroundColor: '#ffffff',
+                style: captureStyle
+            })
+        } finally {
+            qrElements.forEach((el) => { el.style.visibility = '' })
+        }
         return { highResCanvas, lowResCanvas }
-    })
+    })()
 
     // 2. Identify sharp zones and calculate unit conversion ratio
     const containerPixelWidth = container.offsetWidth
@@ -457,7 +452,7 @@ export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<
     }
 
     // Set direction explicitly for the rendering process based on current print selection
-    // though templates handle it, this helps html2canvas detect context better
+    // though templates handle it, this helps the canvas capture detect context better
     const isRTL = targetLang === 'ar' || targetLang === 'ku'
 
     if (format === 'receipt') {
