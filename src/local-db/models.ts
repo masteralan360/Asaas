@@ -1090,16 +1090,12 @@ export interface ManualEntryTemplate extends BaseEntity {
   createdBy?: string | null;
 }
 
-export interface ManualEntry {
-  id: string;
-  workspaceId: string;
+export interface ManualEntry extends BaseEntity {
   templateId: string;
   templateName: string;
   rows: ManualEntryTemplateRow[];
   data: Record<string, string[]>;
   detailValues: Record<string, string>;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface ClinicalPatient extends BaseEntity {
@@ -1797,7 +1793,9 @@ export interface OfflineMutation {
     | "clinical_appointments"
     | "clinical_patients"
     | "clinical_attachments"
-    | "clinical_presets";
+    | "clinical_presets"
+    | "manual_entry_templates"
+    | "manual_entries";
   entityId: string;
   operation: "create" | "update" | "delete";
   payload: Record<string, unknown>;

@@ -2,7 +2,7 @@ import { createElement, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, FileText, Loader2, Printer, Save } from 'lucide-react'
 import { useAuth } from '@/auth'
-import { db, saveInvoiceFromSnapshot } from '@/local-db'
+import { addToOfflineMutations, db, saveInvoiceFromSnapshot } from '@/local-db'
 import type { ManualEntryTemplate } from '@/local-db/models'
 import { Button } from '@/ui/components/button'
 import { Input } from '@/ui/components/input'
@@ -388,7 +388,7 @@ export function ManualEntry() {
     const entryId = generateId()
     const invoiceId = entryId
     try {
-      await db.manual_entries.add({
+      const entry = {
         id: entryId,
         workspaceId,
         templateId: selectedTemplate.id,
@@ -402,7 +402,19 @@ export function ManualEntry() {
         detailValues: detailValues ?? { detail1: '', detail2: '', detail3: '' },
         createdAt: now,
         updatedAt: now,
-      })
+        syncStatus: 'pending' as const,
+        lastSyncedAt: null,
+        version: 1,
+        isDeleted: false,
+      }
+      await db.manual_entries.add(entry)
+      await addToOfflineMutations(
+        'manual_entries',
+        entryId,
+        'create',
+        entry as unknown as Record<string, unknown>,
+        workspaceId,
+      )
     } catch (err) {
       console.error('Failed to save manual entry:', err)
       toast({ title: 'Error', description: 'Failed to save entry.', variant: 'destructive' })

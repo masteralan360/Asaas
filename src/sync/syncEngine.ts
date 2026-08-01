@@ -92,6 +92,8 @@ const SYNC_PULL_TABLES = [
   "loan_payments",
   "payment_transactions",
   "clinical_presets",
+  "manual_entry_templates",
+  "manual_entries",
 ] as const;
 
 const TABLES_WITHOUT_VERSION = new Set<string>([

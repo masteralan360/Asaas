@@ -1101,10 +1101,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 && planCapabilities.capabilities.includes('whatsappIntegration')
                 && planCapabilities.modules.includes('whatsapp')
         }
-        if (feature === 'manual_entry') {
-            return (features.data_mode === 'local' || features.data_mode === 'demo')
-                && planCapabilities.modules.includes('manual_entry')
-        }
         const mappedModule = WORKSPACE_FEATURE_MODULE_MAP[feature]
         if (mappedModule) {
             return planCapabilities.modules.includes(mappedModule)
