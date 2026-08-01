@@ -1001,7 +1001,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
 
     async function handleLockConfirm() {
         if (!lockConfirm.orderId || !lockConfirm.type) return
-        
+
         const action = lockConfirm.type === 'sales' ? () => lockSalesOrder(lockConfirm.orderId) : () => lockPurchaseOrder(lockConfirm.orderId)
         await runAction(action, t('orders.lockedSuccess') || 'Order locked successfully')
         setLockConfirm({ isOpen: false, orderId: '', type: null })
@@ -1009,7 +1009,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
 
     async function handleCancelConfirm() {
         if (!cancelConfirm.orderId || !cancelConfirm.type) return
-        
+
         const action = cancelConfirm.type === 'sales'
             ? () => updateSalesOrderStatus(cancelConfirm.orderId, 'cancelled')
             : () => updatePurchaseOrderStatus(cancelConfirm.orderId, 'cancelled')
@@ -1090,10 +1090,10 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                 isFullyReturnedSalesOrder
                                                     ? 'text-rose-600'
                                                     : getOrderPaymentStatus(row) === 'paid'
-                                                    ? 'text-emerald-600'
-                                                    : getOrderPaymentStatus(row) === 'partial'
-                                                        ? 'text-sky-600'
-                                                        : 'text-amber-600'
+                                                        ? 'text-emerald-600'
+                                                        : getOrderPaymentStatus(row) === 'partial'
+                                                            ? 'text-sky-600'
+                                                            : 'text-amber-600'
                                             )}>
                                                 {formatPaymentStatus(t, row)}
                                             </span>
@@ -1246,10 +1246,10 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         isFullyReturnedSalesOrder
                                             ? 'text-rose-600'
                                             : getOrderPaymentStatus(row) === 'paid'
-                                            ? "text-emerald-600"
-                                            : getOrderPaymentStatus(row) === 'partial'
-                                                ? "text-sky-600"
-                                                : "text-amber-600"
+                                                ? "text-emerald-600"
+                                                : getOrderPaymentStatus(row) === 'partial'
+                                                    ? "text-sky-600"
+                                                    : "text-amber-600"
                                     )}>
                                         {formatPaymentStatus(t, row)}
                                         {row.isLocked && <Lock className="h-2.5 w-2.5 text-muted-foreground" />}
@@ -1318,8 +1318,8 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         )
     }
 
-    const salesDisabled = customers.length === 0 || products.length === 0
-    const purchaseDisabled = suppliers.length === 0 || products.length === 0
+    const salesDisabled = products.length === 0
+    const purchaseDisabled = products.length === 0
 
     return (
         <div className="space-y-6" data-tour-id="tutorial-orders-landing">

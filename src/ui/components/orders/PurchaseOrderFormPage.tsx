@@ -1,6 +1,7 @@
 import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, CalendarDays, CreditCard, NotebookPen, PackagePlus, Plus, ShoppingCart, Star, Trash2, Users, Warehouse, X } from 'lucide-react'
+import { useLocation } from 'wouter'
 
 import { useAuth } from '@/auth'
 import { useDemoTutorial } from '@/demo'
@@ -53,6 +54,11 @@ import {
     CardHeader,
     CardTitle,
     CurrencySelector,
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
     DateTimePicker,
     Input,
     Label,
@@ -188,6 +194,7 @@ export function PurchaseOrderFormPage({
 }: PurchaseOrderFormPageProps) {
     const { t } = useTranslation()
     const { toast } = useToast()
+    const [, navigate] = useLocation()
     const { user } = useAuth()
     const { features, hasCapability, hasFeature } = useWorkspace()
     const { permissionKeys } = useWorkspacePermissions()
@@ -675,6 +682,40 @@ export function PurchaseOrderFormPage({
         } finally {
             setIsSaving(false)
         }
+    }
+
+    if (!editingOrderId && supplierPartners.length === 0) {
+        return (
+            <div className="flex h-full w-full items-center justify-center">
+                <Dialog open={true} onOpenChange={onCancel}>
+                    <DialogContent
+                        className="max-w-md rounded-2xl [&>button.absolute]:hidden"
+                        onInteractOutside={(event) => event.preventDefault()}
+                    >
+                        <DialogHeader>
+                            <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+                                <Users className="h-7 w-7 text-amber-600 dark:text-amber-400" />
+                            </div>
+                            <DialogTitle className="text-center text-xl">
+                                {t('orders.noBusinessPartner.title', { defaultValue: 'No Business Partner Found' })}
+                            </DialogTitle>
+                        </DialogHeader>
+                        <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                            {t('orders.noBusinessPartner.purchaseDescription', { defaultValue: 'You need to add a supplier business partner before creating a purchase order.' })}
+                        </div>
+                        <DialogFooter className="gap-2">
+                            <Button variant="outline" onClick={onCancel}>
+                                {t('common.goBack') || 'Go Back'}
+                            </Button>
+                            <Button onClick={() => navigate('/business-partners')}>
+                                <Users className="mr-2 h-4 w-4" />
+                                {t('orders.noBusinessPartner.goToBusinessPartners', { defaultValue: 'Go to Business Partners' })}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            </div>
+        )
     }
 
     return (
