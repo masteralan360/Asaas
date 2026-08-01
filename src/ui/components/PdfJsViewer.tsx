@@ -5,6 +5,7 @@ import { Loader2, Printer, Save } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isTauri } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
+import { printPdfBlob } from '@/services/pdfPrintService'
 
 let isPdfWorkerConfigured = false
 
@@ -94,8 +95,6 @@ export function PdfJsViewer({ url, title }: PdfJsViewerProps) {
 
                     const wrapper = document.createElement('div')
                     wrapper.className = 'mb-4 w-full bg-white p-2 shadow-sm last:mb-0'
-                    wrapper.dataset.pageWidthPt = String(baseViewport.width)
-                    wrapper.dataset.pageHeightPt = String(baseViewport.height)
                     wrapper.appendChild(canvas)
                     pagesContainerRef.current?.appendChild(wrapper)
                 }
@@ -134,59 +133,7 @@ export function PdfJsViewer({ url, title }: PdfJsViewerProps) {
         if (!pdfBytes || busy) return
         setBusy(true)
         try {
-            const canvases = Array.from(
-                pagesContainerRef.current?.querySelectorAll<HTMLCanvasElement>('canvas') ?? []
-            )
-            if (canvases.length === 0) return
-
-            const pagesHtml = canvases
-                .map((canvas) => {
-                    const wrapper = canvas.parentElement
-                    const widthPt = wrapper?.dataset.pageWidthPt || '595'
-                    const heightPt = wrapper?.dataset.pageHeightPt || '842'
-                    return `<div class="page" style="width:${widthPt}pt;height:${heightPt}pt"><img src="${canvas.toDataURL('image/png')}" /></div>`
-                })
-                .join('\n')
-
-            const iframe = document.createElement('iframe')
-            iframe.title = title || 'Invoice'
-            iframe.style.position = 'fixed'
-            iframe.style.right = '0'
-            iframe.style.bottom = '0'
-            iframe.style.width = '0'
-            iframe.style.height = '0'
-            iframe.style.border = '0'
-            iframe.style.opacity = '0'
-            iframe.srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8" /><style>
-                @page { size: auto; margin: 0; }
-                html, body { margin: 0; padding: 0; }
-                .page { margin: 0 auto; page-break-after: always; }
-                .page img { display: block; width: 100%; height: 100%; }
-                .page:last-child { page-break-after: auto; }
-            </style></head><body>${pagesHtml}</body></html>`
-
-            document.body.appendChild(iframe)
-
-            await new Promise<void>((resolve, reject) => {
-                const timeout = window.setTimeout(() => {
-                    reject(new Error('Timed out while preparing the PDF for printing.'))
-                }, 10_000)
-
-                iframe.onload = () => {
-                    window.clearTimeout(timeout)
-                    try {
-                        iframe.contentWindow?.focus()
-                        iframe.contentWindow?.print()
-                        resolve()
-                    } catch (error) {
-                        reject(error)
-                    }
-                }
-            })
-
-            window.setTimeout(() => {
-                iframe.remove()
-            }, 60_000)
+            await printPdfBlob(new Blob([pdfBytes], { type: 'application/pdf' }), { title })
         } catch (error) {
             console.error('[PdfJsViewer] Print failed:', error)
         } finally {
