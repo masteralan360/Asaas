@@ -16,6 +16,7 @@ import type { Loan, LoanPayment, PaymentTransaction, PurchaseOrder, SalesOrder }
 import {
     buildPartnerOrderItemsPrintMoneyMovements,
     buildPartnerOrderItemsPrintOrderBlocks,
+    buildPartnerOrderItemsPrintLoanPortfolio,
     buildPartnerOrderItemsPrintSection,
     buildPartnerOrderItemsPrintTimeline,
     getPartnerOrderItemsPrintRowHierarchy
@@ -563,5 +564,36 @@ describe('buildPartnerOrderItemsPrintTimeline', () => {
         expect(timeline.purchaseSummary).toEqual([])
         expect(timeline.loanRepaymentSummary).toEqual([])
         expect(timeline.directTransactionSummary).toEqual([])
+    })
+})
+
+describe('buildPartnerOrderItemsPrintLoanPortfolio', () => {
+    it('carries a June loan into July with its opening balance and July repayment', () => {
+        const rows = buildPartnerOrderItemsPrintLoanPortfolio(
+            [loan({
+                id: 'june-loan',
+                loanNo: 'LN-JUNE',
+                createdAt: '2026-06-15T08:00:00.000Z',
+                principalAmount: 75,
+                balanceAmount: 58,
+                totalPaidAmount: 17
+            })],
+            [
+                loanPayment({ id: 'july-payment', loanId: 'june-loan', amount: 12, paidAt: '2026-07-12T10:00:00.000Z' }),
+                loanPayment({ id: 'august-payment', loanId: 'june-loan', amount: 5, paidAt: '2026-08-05T10:00:00.000Z' })
+            ],
+            { type: 'custom', start: '2026-07-01T00:00:00.000Z', end: '2026-08-01T00:00:00.000Z' }
+        )
+
+        expect(rows).toHaveLength(1)
+        expect(rows[0]).toMatchObject({
+            currency: 'usd',
+            direction: 'lent',
+            openingBalance: 75,
+            newCredit: 0,
+            repayments: 12,
+            adjustments: 0,
+            closingBalance: 63
+        })
     })
 })

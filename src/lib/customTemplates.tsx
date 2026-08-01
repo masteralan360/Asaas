@@ -705,6 +705,10 @@ const SAMPLE_PARTNER_ORDER_ITEMS_DATA: PartnerOrderItemsPrintData = {
     },
     period: { type: 'allTime' },
     generatedAt: new Date().toISOString(),
+    balanceSummary: {
+        receivable: [{ currency: 'usd', amount: 450 }],
+        payable: [{ currency: 'usd', amount: 120 }]
+    },
     salesOrders: [{
         ...SAMPLE_ORDER_DATA,
         orderAdjustments: [{

@@ -85,6 +85,18 @@ export type PartnerOrderItemsPrintMoneyMovementSummary = {
     paid: number
 }
 
+export type PartnerOrderItemsPrintCurrencyBalance = {
+    currency: string
+    amount: number
+}
+
+export type PartnerOrderItemsPrintBalanceSummary = {
+    /** Canonical current amount the partner owes the workspace. */
+    receivable: PartnerOrderItemsPrintCurrencyBalance[]
+    /** Canonical current amount the workspace owes the partner. */
+    payable: PartnerOrderItemsPrintCurrencyBalance[]
+}
+
 /**
  * The whole statement rendered as one chronological timeline: sales orders,
  * purchase orders, loan/installment repayments and direct transactions are
@@ -116,12 +128,16 @@ export type PartnerOrderItemsPrintData = {
     }
     period: PartnerOrderItemsPrintPeriod
     generatedAt: string
+    /** Uses the same balance calculation as the Partner Profile, independent of the selected activity period. */
+    balanceSummary: PartnerOrderItemsPrintBalanceSummary
     salesOrders: SalesOrder[]
     purchaseOrders: PurchaseOrder[]
-    /** Loans linked to the partner (used to resolve repayment currency, number and direction). */
+    /** All loans linked to the partner, including loans originated before the selected activity period. */
     loans?: Loan[]
-    /** Partner loan/installment repayments, already period-filtered by paidAt. */
+    /** All partner loan/installment repayments, used to calculate opening and closing balances for the selected period. */
     loanPayments?: LoanPayment[]
+    /** Source order codes for linked loans, including orders that predate the selected activity period. */
+    linkedOrderCodes?: Record<string, string>
     /** Partner direct transactions, already period-filtered by paidAt. */
     directTransactions?: PaymentTransaction[]
 }
@@ -474,6 +490,87 @@ function buildMoneyMovementSummaries(rows: PartnerOrderItemsPrintRow[]): Partner
     return Array.from(summaries.values()).sort((left, right) => left.currency.localeCompare(right.currency))
 }
 
+export type PartnerOrderItemsPrintLoanPortfolioRow = {
+    loan: Loan
+    linkedOrderCode?: string
+    currency: string
+    direction: 'lent' | 'borrowed'
+    openingBalance: number
+    newCredit: number
+    repayments: number
+    adjustments: number
+    closingBalance: number
+}
+
+function isWithinStatementPeriod(value: string, period: PartnerOrderItemsPrintPeriod) {
+    if (period.start && value < period.start) return false
+    if (period.end && value >= period.end) return false
+    return true
+}
+
+/**
+ * Builds one reconciliation row per loan instead of interleaving repayments
+ * with order rows. Repayments after the selected end date are added back so a
+ * historical statement shows the balance as it stood at that period's end.
+ */
+export function buildPartnerOrderItemsPrintLoanPortfolio(
+    loans: Loan[],
+    loanPayments: LoanPayment[],
+    period: PartnerOrderItemsPrintPeriod,
+    linkedOrderCodes: Record<string, string> = {}
+): PartnerOrderItemsPrintLoanPortfolioRow[] {
+    const paymentsByLoan = new Map<string, LoanPayment[]>()
+    for (const payment of loanPayments) {
+        if (payment.isDeleted) continue
+        const payments = paymentsByLoan.get(payment.loanId) || []
+        payments.push(payment)
+        paymentsByLoan.set(payment.loanId, payments)
+    }
+
+    return loans
+        .filter((loan) => !loan.isDeleted && loan.status !== 'cancelled')
+        .map((loan) => {
+            const linkedOrderCode = loan.source === 'order' && loan.orderId
+                ? linkedOrderCodes[loan.orderId]?.trim() || undefined
+                : undefined
+            const payments = paymentsByLoan.get(loan.id) || []
+            const periodPayments = payments.filter((payment) => isWithinStatementPeriod(payment.paidAt || payment.createdAt, period))
+            const paymentsAfterPeriod = period.end
+                ? payments.filter((payment) => (payment.paidAt || payment.createdAt) >= period.end!)
+                : []
+            const paymentTotal = periodPayments.reduce((sum, payment) => sum + payment.amount, 0)
+            const repayments = periodPayments
+                .filter((payment) => payment.paymentMethod !== 'loan_adjustment')
+                .reduce((sum, payment) => sum + payment.amount, 0)
+            const adjustments = periodPayments
+                .filter((payment) => payment.paymentMethod === 'loan_adjustment')
+                .reduce((sum, payment) => sum + payment.amount, 0)
+            const closingBalance = Math.max(0, loan.balanceAmount + paymentsAfterPeriod.reduce((sum, payment) => sum + payment.amount, 0))
+            const originatedInPeriod = isWithinStatementPeriod(loan.createdAt, period)
+            const existedByPeriodEnd = !period.end || loan.createdAt < period.end
+            const openingBalance = originatedInPeriod ? 0 : Math.max(0, closingBalance + paymentTotal)
+
+            return {
+                loan,
+                linkedOrderCode,
+                currency: loan.settlementCurrency,
+                direction: loan.direction === 'borrowed' ? 'borrowed' as const : 'lent' as const,
+                openingBalance,
+                newCredit: originatedInPeriod ? loan.principalAmount : 0,
+                repayments,
+                adjustments,
+                closingBalance,
+                include: existedByPeriodEnd && (originatedInPeriod || paymentTotal > 0 || closingBalance > 0)
+            }
+        })
+        .filter((row) => row.include)
+        .sort((left, right) => {
+            const dateDifference = new Date(left.loan.createdAt).getTime() - new Date(right.loan.createdAt).getTime()
+            return dateDifference || left.loan.loanNo.localeCompare(right.loan.loanNo)
+        })
+        .map(({ include: _include, ...row }) => row)
+}
+
 /**
  * Builds the statement's single chronological timeline: sales and purchase
  * order blocks plus loan/installment repayments and direct transactions are
@@ -594,6 +691,201 @@ function formatQuantity(quantity?: number | null) {
     return new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 }).format(quantity)
 }
 
+function CurrencyBalanceList({
+    balances,
+    iqdPreference
+}: {
+    balances: PartnerOrderItemsPrintCurrencyBalance[]
+    iqdPreference: IQDDisplayPreference
+}) {
+    const visibleBalances = balances.filter((balance) => Math.abs(balance.amount) > 0.000001)
+    if (visibleBalances.length === 0) return <strong>0</strong>
+
+    return (
+        <span className="flex flex-col gap-0.5">
+            {visibleBalances
+                .slice()
+                .sort((left, right) => left.currency.localeCompare(right.currency))
+                .map((balance) => <strong key={balance.currency}>{formatCurrency(balance.amount, balance.currency, iqdPreference)}</strong>)}
+        </span>
+    )
+}
+
+type PartnerOrderItemsPrintOrderSummary = Pick<
+    PartnerOrderItemsPrintCurrencySummary,
+    'currency' | 'orderCount' | 'total' | 'paidAmount'
+>
+
+function buildPartnerOrderItemsPrintOrderSummaries(
+    salesSummaries: PartnerOrderItemsPrintCurrencySummary[],
+    purchaseSummaries: PartnerOrderItemsPrintCurrencySummary[]
+): PartnerOrderItemsPrintOrderSummary[] {
+    const summaries = new Map<string, PartnerOrderItemsPrintOrderSummary>()
+
+    for (const summary of [...salesSummaries, ...purchaseSummaries]) {
+        const existing = summaries.get(summary.currency) || {
+            currency: summary.currency,
+            orderCount: 0,
+            total: 0,
+            paidAmount: 0
+        }
+        existing.orderCount += summary.orderCount
+        existing.total += summary.total
+        existing.paidAmount += summary.paidAmount
+        summaries.set(summary.currency, existing)
+    }
+
+    return Array.from(summaries.values()).sort((left, right) => left.currency.localeCompare(right.currency))
+}
+
+function OrderActivitySummary({
+    summaries,
+    t,
+    iqdPreference
+}: {
+    summaries: PartnerOrderItemsPrintOrderSummary[]
+    t: (key: string, options?: Record<string, unknown>) => string
+    iqdPreference: IQDDisplayPreference
+}) {
+    if (summaries.length === 0) return null
+
+    return (
+        <section className="mt-3 rounded border border-slate-300 bg-slate-50 px-2 py-2 text-[9px]" data-pdf-keep-together data-order-items-order-summary>
+            <div className="mb-1 font-bold">{t('businessPartners.orderItemsPrint.orderSummary', { defaultValue: 'Order Summary' })}</div>
+            {summaries.map((summary, index) => (
+                <div key={summary.currency}>
+                    {index > 0 ? <hr className="my-1.5 border-slate-300" /> : null}
+                    <div className="flex items-center justify-between gap-2 text-[8px]">
+                        <strong>{summary.currency.toUpperCase()}</strong>
+                        <span>{t('businessPartners.orderItemsPrint.numberOfOrders', { defaultValue: 'Number of orders' })}: <strong>{summary.orderCount}</strong></span>
+                    </div>
+                    <div className="mt-1 grid grid-cols-2 gap-2 border-t border-slate-300 pt-1 text-[10px] font-bold">
+                        <span>{t('businessPartners.orderItemsPrint.totalValue', { defaultValue: 'Total value' })}: <strong>{formatCurrency(summary.total, summary.currency, iqdPreference)}</strong></span>
+                        <span>{t('businessPartners.orderItemsPrint.paidAmount', { defaultValue: 'Paid amount' })}: <strong>{formatCurrency(summary.paidAmount, summary.currency, iqdPreference)}</strong></span>
+                    </div>
+                </div>
+            ))}
+        </section>
+    )
+}
+
+function CurrentBalanceSummary({
+    summary,
+    partnerName,
+    workspaceName,
+    t,
+    iqdPreference
+}: {
+    summary: PartnerOrderItemsPrintBalanceSummary
+    partnerName: string
+    workspaceName: string
+    t: (key: string, options?: Record<string, unknown>) => string
+    iqdPreference: IQDDisplayPreference
+}) {
+    return (
+        <section className="mt-3 rounded border-2 border-slate-600 bg-slate-50 px-3 py-2 text-[9px]" data-pdf-keep-together data-order-items-balance-summary>
+            <div className="mb-2 font-bold">{t('businessPartners.orderItemsPrint.currentBalance', { defaultValue: 'Current Balance' })}</div>
+            <div className="grid grid-cols-2 gap-3">
+                <div className="border-e border-slate-300 pe-3">
+                    <div className="font-bold">{t('businessPartners.orderItemsPrint.partnerOwesWorkspace', {
+                        defaultValue: '{{partner}} owes {{workspace}}',
+                        partner: partnerName,
+                        workspace: workspaceName
+                    })}</div>
+                    <div className="text-[8px]">{t('businessPartners.receivable', { defaultValue: 'Receivable' })}</div>
+                    <div className="mt-1 text-[11px] font-bold"><CurrencyBalanceList balances={summary.receivable} iqdPreference={iqdPreference} /></div>
+                </div>
+                <div>
+                    <div className="font-bold">{t('businessPartners.orderItemsPrint.workspaceOwesPartner', {
+                        defaultValue: '{{workspace}} owes {{partner}}',
+                        partner: partnerName,
+                        workspace: workspaceName
+                    })}</div>
+                    <div className="text-[8px]">{t('businessPartners.payable', { defaultValue: 'Payable' })}</div>
+                    <div className="mt-1 text-[11px] font-bold"><CurrencyBalanceList balances={summary.payable} iqdPreference={iqdPreference} /></div>
+                </div>
+            </div>
+        </section>
+    )
+}
+
+function LoanPortfolio({
+    loans,
+    loanPayments,
+    linkedOrderCodes,
+    period,
+    partnerName,
+    workspaceName,
+    t,
+    iqdPreference
+}: {
+    loans: Loan[]
+    loanPayments: LoanPayment[]
+    linkedOrderCodes?: Record<string, string>
+    period: PartnerOrderItemsPrintPeriod
+    partnerName: string
+    workspaceName: string
+    t: (key: string, options?: Record<string, unknown>) => string
+    iqdPreference: IQDDisplayPreference
+}) {
+    const rows = buildPartnerOrderItemsPrintLoanPortfolio(loans, loanPayments, period, linkedOrderCodes)
+    if (rows.length === 0) return null
+
+    return (
+        <section className="mt-5" data-order-items-loan-portfolio>
+            <div className="mb-2 flex items-center justify-between border-b-2 border-slate-700 pb-1">
+                <h2 className="text-sm font-bold">{t('businessPartners.loans', { defaultValue: 'Loans' })}</h2>
+                <span className="text-[9px]">{rows.length} {t('businessPartners.orderItemsPrint.entries', { defaultValue: 'Entries' })}</span>
+            </div>
+            <table className="w-full border-collapse text-[8px] leading-[1.2]">
+                <thead>
+                    <tr className="bg-[#dfead3]">
+                        <th className="w-[23%] border border-slate-400 p-1 text-start">{t('loans.loanNo', { defaultValue: 'Loan No.' })}</th>
+                        <th className="w-[13%] border border-slate-400 p-1 text-start">{t('businessPartners.orderItemsPrint.direction', { defaultValue: 'Direction' })}</th>
+                        <th className="w-[13%] border border-slate-400 p-1 text-end">{t('businessPartners.orderItemsPrint.openingBalance', { defaultValue: 'Opening' })}</th>
+                        <th className="w-[13%] border border-slate-400 p-1 text-end">{t('businessPartners.orderItemsPrint.newCredit', { defaultValue: 'New credit' })}</th>
+                        <th className="w-[13%] border border-slate-400 p-1 text-end">{t('businessPartners.orderItemsPrint.periodRepayments', { defaultValue: 'Repayments' })}</th>
+                        <th className="w-[12%] border border-slate-400 p-1 text-end">{t('businessPartners.orderItemsPrint.adjustments', { defaultValue: 'Adjustments' })}</th>
+                        <th className="w-[13%] border border-slate-400 p-1 text-end">{t('businessPartners.orderItemsPrint.closingBalance', { defaultValue: 'Closing balance' })}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((row) => {
+                        const directionLabel = row.direction === 'lent'
+                            ? t('businessPartners.orderItemsPrint.partnerOwesWorkspace', {
+                                defaultValue: '{{partner}} owes {{workspace}}',
+                                partner: partnerName,
+                                workspace: workspaceName
+                            })
+                            : t('businessPartners.orderItemsPrint.workspaceOwesPartner', {
+                                defaultValue: '{{workspace}} owes {{partner}}',
+                                partner: partnerName,
+                                workspace: workspaceName
+                            })
+
+                        return (
+                            <tr key={row.loan.id} data-pdf-keep-together>
+                                <td className="border border-slate-300 p-1 align-top">
+                                    <div className="font-bold">{row.linkedOrderCode ? `${row.linkedOrderCode} · ${row.loan.loanNo}` : row.loan.loanNo}</div>
+                                    <div className="text-[7px]">{row.loan.source === 'order'
+                                        ? t('businessPartners.orderItemsPrint.orderLinkedLoan', { defaultValue: 'Order-linked loan' })
+                                        : formatDate(row.loan.createdAt)}</div>
+                                </td>
+                                <td className="border border-slate-300 p-1 align-top">{directionLabel}</td>
+                                <td className="border border-slate-300 p-1 text-end">{formatCurrency(row.openingBalance, row.currency, iqdPreference)}</td>
+                                <td className="border border-slate-300 p-1 text-end">{formatCurrency(row.newCredit, row.currency, iqdPreference)}</td>
+                                <td className="border border-slate-300 p-1 text-end">{formatCurrency(row.repayments, row.currency, iqdPreference)}</td>
+                                <td className="border border-slate-300 p-1 text-end">{formatCurrency(row.adjustments, row.currency, iqdPreference)}</td>
+                                <td className="border border-slate-300 p-1 text-end font-bold">{formatCurrency(row.closingBalance, row.currency, iqdPreference)}</td>
+                            </tr>
+                        )
+                    })}
+                </tbody>
+            </table>
+        </section>
+    )
+}
+
 export function StatementSummary({
     summaries,
     kind,
@@ -610,17 +902,19 @@ export function StatementSummary({
     return (
         <div className="mt-2 space-y-2" data-pdf-keep-together data-order-items-section-summary>
             {summaries.map((summary) => (
-                <div key={summary.currency} className="grid grid-cols-2 gap-x-4 gap-y-1 rounded border border-slate-300 bg-slate-50 px-2 py-2 text-[9px] sm:grid-cols-4">
-                    <span>{t('businessPartners.orderItemsPrint.currency', { defaultValue: 'Currency' })}: <strong>{summary.currency.toUpperCase()}</strong></span>
-                    <span>{t('businessPartners.orderItemsPrint.orders', { defaultValue: 'Orders' })}: <strong>{summary.orderCount}</strong></span>
-                    <span>{t('businessPartners.orderItemsPrint.itemsSubtotal', { defaultValue: 'Items subtotal' })}: <strong>{formatCurrency(summary.itemSubtotal, summary.currency, iqdPreference)}</strong></span>
-                    <span>{t('businessPartners.orderItemsPrint.discount', { defaultValue: 'Discount' })}: <strong>-{formatCurrency(summary.discount, summary.currency, iqdPreference)}</strong></span>
-                    {kind === 'sales' ? <span>{t('businessPartners.orderItemsPrint.tax', { defaultValue: 'Tax' })}: <strong>+{formatCurrency(summary.tax, summary.currency, iqdPreference)}</strong></span> : null}
-                    <span>{t('businessPartners.orderItemsPrint.additions', { defaultValue: 'Additions' })}: <strong>+{formatCurrency(summary.additions, summary.currency, iqdPreference)}</strong></span>
-                    <span>{t('businessPartners.orderItemsPrint.deductions', { defaultValue: 'Deductions' })}: <strong>-{formatCurrency(summary.deductions, summary.currency, iqdPreference)}</strong></span>
-                    <span className="font-bold">{t('businessPartners.orderItemsPrint.total', { defaultValue: 'Total' })}: <strong>{formatCurrency(summary.total, summary.currency, iqdPreference)}</strong></span>
-                    <span>{t('businessPartners.orderItemsPrint.paid', { defaultValue: 'Paid' })}: <strong>{formatCurrency(summary.paidAmount, summary.currency, iqdPreference)}</strong></span>
-                    <span>{t('businessPartners.orderItemsPrint.remaining', { defaultValue: 'Remaining' })}: <strong>{formatCurrency(summary.remainingAmount, summary.currency, iqdPreference)}</strong></span>
+                <div key={summary.currency} className="rounded border border-slate-300 bg-slate-50 px-2 py-2 text-[9px]">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-5">
+                        <span>{t('businessPartners.orderItemsPrint.currency', { defaultValue: 'Currency' })}: <strong>{summary.currency.toUpperCase()}</strong></span>
+                        <span>{t('businessPartners.orderItemsPrint.orders', { defaultValue: 'Orders' })}: <strong>{summary.orderCount}</strong></span>
+                        <span>{t('businessPartners.orderItemsPrint.itemsSubtotal', { defaultValue: 'Items subtotal' })}: <strong>{formatCurrency(summary.itemSubtotal, summary.currency, iqdPreference)}</strong></span>
+                        <span>{t('businessPartners.orderItemsPrint.discount', { defaultValue: 'Discount' })}: <strong>-{formatCurrency(summary.discount, summary.currency, iqdPreference)}</strong></span>
+                        {kind === 'sales' ? <span>{t('businessPartners.orderItemsPrint.tax', { defaultValue: 'Tax' })}: <strong>+{formatCurrency(summary.tax, summary.currency, iqdPreference)}</strong></span> : null}
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-2 border-t-2 border-slate-400 pt-2 text-[10px] font-bold" data-order-items-summary-balances>
+                        <span>{t('businessPartners.orderItemsPrint.total', { defaultValue: 'Total' })}: <strong>{formatCurrency(summary.total, summary.currency, iqdPreference)}</strong></span>
+                        <span>{t('businessPartners.orderItemsPrint.paid', { defaultValue: 'Paid' })}: <strong>{formatCurrency(summary.paidAmount, summary.currency, iqdPreference)}</strong></span>
+                        <span>{t('businessPartners.orderItemsPrint.remaining', { defaultValue: 'Remaining' })}: <strong>{formatCurrency(summary.remainingAmount, summary.currency, iqdPreference)}</strong></span>
+                    </div>
                 </div>
             ))}
         </div>
@@ -633,8 +927,6 @@ type UnifiedCurrencySummary = {
     itemSubtotal: number
     discount: number
     tax: number
-    additions: number
-    deductions: number
     total: number
     paidAmount: number
     remainingAmount: number
@@ -657,8 +949,6 @@ function mergeAllSummaries(
             itemSubtotal: 0,
             discount: 0,
             tax: 0,
-            additions: 0,
-            deductions: 0,
             total: 0,
             paidAmount: 0,
             remainingAmount: 0
@@ -673,8 +963,6 @@ function mergeAllSummaries(
         entry.itemSubtotal += s.itemSubtotal
         entry.discount += s.discount
         entry.tax += s.tax
-        entry.additions += s.additions
-        entry.deductions += s.deductions
         entry.total += s.total
         entry.paidAmount += s.paidAmount
         entry.remainingAmount += s.remainingAmount
@@ -686,8 +974,6 @@ function mergeAllSummaries(
         entry.itemSubtotal += s.itemSubtotal
         entry.discount += s.discount
         entry.tax += s.tax
-        entry.additions += s.additions
-        entry.deductions += s.deductions
         entry.total += s.total
         entry.paidAmount += s.paidAmount
         entry.remainingAmount += s.remainingAmount
@@ -737,9 +1023,9 @@ function UnifiedStatementSummary({
                         <span>{t('businessPartners.orderItemsPrint.itemsSubtotal', { defaultValue: 'Items subtotal' })}: <strong>{formatCurrency(summary.itemSubtotal, summary.currency, iqdPreference)}</strong></span>
                         <span>{t('businessPartners.orderItemsPrint.discount', { defaultValue: 'Discount' })}: <strong>-{formatCurrency(summary.discount, summary.currency, iqdPreference)}</strong></span>
                         {summary.tax > 0 ? <span>{t('businessPartners.orderItemsPrint.tax', { defaultValue: 'Tax' })}: <strong>+{formatCurrency(summary.tax, summary.currency, iqdPreference)}</strong></span> : null}
-                        <span>{t('businessPartners.orderItemsPrint.additions', { defaultValue: 'Additions' })}: <strong>+{formatCurrency(summary.additions, summary.currency, iqdPreference)}</strong></span>
-                        <span>{t('businessPartners.orderItemsPrint.deductions', { defaultValue: 'Deductions' })}: <strong>-{formatCurrency(summary.deductions, summary.currency, iqdPreference)}</strong></span>
-                        <span className="font-bold">{t('businessPartners.orderItemsPrint.total', { defaultValue: 'Total' })}: <strong>{formatCurrency(summary.total, summary.currency, iqdPreference)}</strong></span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-2 border-t-2 border-slate-400 pt-2 text-[10px] font-bold" data-order-items-summary-balances>
+                        <span>{t('businessPartners.orderItemsPrint.total', { defaultValue: 'Total' })}: <strong>{formatCurrency(summary.total, summary.currency, iqdPreference)}</strong></span>
                         <span>{t('businessPartners.orderItemsPrint.paid', { defaultValue: 'Paid' })}: <strong>{formatCurrency(summary.paidAmount, summary.currency, iqdPreference)}</strong></span>
                         <span>{t('businessPartners.orderItemsPrint.remaining', { defaultValue: 'Remaining' })}: <strong>{formatCurrency(summary.remainingAmount, summary.currency, iqdPreference)}</strong></span>
                     </div>
@@ -934,22 +1220,65 @@ export function MoneyMovementSummary({
     )
 }
 
+function ExcludedOrdersSection({
+    salesOrders,
+    purchaseOrders,
+    t,
+    iqdPreference
+}: {
+    salesOrders: SalesOrder[]
+    purchaseOrders: PurchaseOrder[]
+    t: (key: string, options?: Record<string, unknown>) => string
+    iqdPreference: IQDDisplayPreference
+}) {
+    const excludedOrders = [
+        ...salesOrders.map((order) => ({ order, kind: 'sales' as const })),
+        ...purchaseOrders.map((order) => ({ order, kind: 'purchase' as const }))
+    ].filter(({ order }) => !order.isDeleted && (order.status === 'draft' || order.status === 'cancelled'))
+
+    if (excludedOrders.length === 0) return null
+
+    return (
+        <section className="mt-4 rounded border border-dashed border-slate-400 px-2 py-2 text-[8px]" data-pdf-keep-together data-order-items-excluded-orders>
+            <div className="font-bold">{t('businessPartners.orderItemsPrint.referenceOnly', { defaultValue: 'Reference Only' })}</div>
+            <div className="mb-1 text-[7px]">{t('businessPartners.orderItemsPrint.notIncludedInCurrentBalance', { defaultValue: 'Draft and cancelled orders are not included in the current balance.' })}</div>
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {excludedOrders.map(({ order, kind }) => (
+                    <span key={order.id}>
+                        <strong>{kind === 'sales'
+                            ? t('businessPartners.orderItemsPrint.salesOrder', { defaultValue: 'Sales order' })
+                            : t('businessPartners.orderItemsPrint.purchaseOrder', { defaultValue: 'Purchase order' })} {order.orderNumber}</strong>
+                        {' · '}{t(`orders.status.${order.status}`, { defaultValue: order.status })}
+                        {' · '}{formatCurrency(order.total, order.currency, iqdPreference)}
+                    </span>
+                ))}
+            </div>
+        </section>
+    )
+}
+
 function OrderItemsSection({
-    timeline,
+    salesOrders,
+    purchaseOrders,
     t,
     iqdPreference,
     showPaidAmount,
     showRemainingAmount
 }: {
-    timeline: PartnerOrderItemsPrintTimeline
+    salesOrders: SalesOrder[]
+    purchaseOrders: PurchaseOrder[]
     t: (key: string, options?: Record<string, unknown>) => string
     iqdPreference: IQDDisplayPreference
     showPaidAmount: boolean
     showRemainingAmount: boolean
 }) {
-    if (timeline.rows.length === 0) return null
+    const salesSection = buildPartnerOrderItemsPrintSection(salesOrders.filter((order) => order.status !== 'draft'), 'sales')
+    const purchaseSection = buildPartnerOrderItemsPrintSection(purchaseOrders.filter((order) => order.status !== 'draft'), 'purchase')
+    const orderRows = [...salesSection.rows, ...purchaseSection.rows].sort(compareStatementRows)
+    if (orderRows.length === 0) return null
 
-    const blocks = buildPartnerOrderItemsPrintOrderBlocks(timeline.rows)
+    const blocks = buildPartnerOrderItemsPrintOrderBlocks(orderRows)
+    const orderSummaries = buildPartnerOrderItemsPrintOrderSummaries(salesSection.summaries, purchaseSection.summaries)
 
     return (
         <section className="mt-5" data-order-items-section>
@@ -962,33 +1291,17 @@ function OrderItemsSection({
                 <span className="text-[9px]" data-order-items-section-order-count>{blocks.length} {t('businessPartners.orderItemsPrint.entries', { defaultValue: 'Entries' })}</span>
             </div>
             {blocks.map((block) => (
-                isMoneyMovementBlock(block) ? (
-                    <MoneyMovementBlock
-                        key={block.orderId}
-                        block={block}
-                        t={t}
-                        iqdPreference={iqdPreference}
-                    />
-                ) : (
-                    <OrderBlock
-                        key={block.orderId}
-                        block={block}
-                        kind={block.rows[0]?.sectionKind === 'purchase' ? 'purchase' : 'sales'}
-                        t={t}
-                        iqdPreference={iqdPreference}
-                        showPaidAmount={showPaidAmount}
-                        showRemainingAmount={showRemainingAmount}
-                    />
-                )
+                <OrderBlock
+                    key={block.orderId}
+                    block={block}
+                    kind={block.rows[0]?.sectionKind === 'purchase' ? 'purchase' : 'sales'}
+                    t={t}
+                    iqdPreference={iqdPreference}
+                    showPaidAmount={showPaidAmount}
+                    showRemainingAmount={showRemainingAmount}
+                />
             ))}
-            <UnifiedStatementSummary
-                salesSummaries={timeline.salesSummary}
-                purchaseSummaries={timeline.purchaseSummary}
-                loanRepaymentSummaries={timeline.loanRepaymentSummary}
-                directTransactionSummaries={timeline.directTransactionSummary}
-                t={t}
-                iqdPreference={iqdPreference}
-            />
+            <OrderActivitySummary summaries={orderSummaries} t={t} iqdPreference={iqdPreference} />
         </section>
     )
 }
@@ -1012,12 +1325,9 @@ export function PartnerOrderItemsPrintTemplate({
     const logoSrc = resolveLogoSrc(logoUrl)
     const periodLabel = resolvePeriodLabel(data.period, t)
     const partnerLocation = [data.partner.address, data.partner.city, data.partner.country].filter(Boolean).join(', ')
-    const timeline = buildPartnerOrderItemsPrintTimeline(
-        data.salesOrders,
-        data.purchaseOrders,
-        data.loans || [],
-        data.loanPayments || [],
-        data.directTransactions || []
+    const businessName = workspaceName?.trim() || t('businessPartners.ourBusiness', { defaultValue: 'Our business' })
+    const directTransactionSummary = buildMoneyMovementSummaries(
+        buildPartnerOrderItemsPrintMoneyMovements([], [], data.directTransactions || [])
     )
 
     return (
@@ -1086,12 +1396,42 @@ export function PartnerOrderItemsPrintTemplate({
                     <div className="text-end"><span>{t('businessPartners.orderItemsPrint.printed', { defaultValue: 'Printed' })}: </span>{formatDateTime(data.generatedAt)}</div>
                 </div>
 
+                <CurrentBalanceSummary
+                    summary={data.balanceSummary}
+                    partnerName={data.partner.name}
+                    workspaceName={businessName}
+                    t={t}
+                    iqdPreference={iqdPreference}
+                />
                 <OrderItemsSection
-                    timeline={timeline}
+                    salesOrders={data.salesOrders}
+                    purchaseOrders={data.purchaseOrders}
                     t={t}
                     iqdPreference={iqdPreference}
                     showPaidAmount={showPaidAmount}
                     showRemainingAmount={showRemainingAmount}
+                />
+                <ExcludedOrdersSection
+                    salesOrders={data.salesOrders}
+                    purchaseOrders={data.purchaseOrders}
+                    t={t}
+                    iqdPreference={iqdPreference}
+                />
+                <LoanPortfolio
+                    loans={data.loans || []}
+                    loanPayments={data.loanPayments || []}
+                    linkedOrderCodes={data.linkedOrderCodes}
+                    period={data.period}
+                    partnerName={data.partner.name}
+                    workspaceName={businessName}
+                    t={t}
+                    iqdPreference={iqdPreference}
+                />
+                <MoneyMovementSummary
+                    title={t('businessPartners.orderItemsPrint.directTransactions', { defaultValue: 'Direct Transactions' })}
+                    summaries={directTransactionSummary}
+                    t={t}
+                    iqdPreference={iqdPreference}
                 />
             </section>
         </div>

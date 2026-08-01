@@ -1434,20 +1434,33 @@ export function PartnerDetailsView({
             },
             period: printPeriod,
             generatedAt: new Date().toISOString(),
+            balanceSummary: {
+                receivable: receivableCurrencyTotals,
+                payable: payableCurrencyTotals
+            },
             salesOrders: dateFilteredCustomerOrders,
             purchaseOrders: dateFilteredSupplierOrders,
             loans: partnerLoans,
-            loanPayments: dateFilteredLoanPayments,
+            loanPayments: allLoanPayments,
+            linkedOrderCodes: Object.fromEntries(
+                [...customerOrders, ...supplierOrders]
+                    .filter((order) => !order.isDeleted)
+                    .map((order) => [order.id, order.orderNumber])
+            ),
             directTransactions: dateFilteredPayments
         }
     }, [
+        allLoanPayments,
+        customerOrders,
         dateFilteredCustomerOrders,
-        dateFilteredLoanPayments,
         dateFilteredPayments,
         dateFilteredSupplierOrders,
         partner,
         partnerLoans,
+        payableCurrencyTotals,
         printPeriod,
+        receivableCurrencyTotals,
+        supplierOrders,
         workspacePrintContacts
     ])
     const partnerPrintTarget = useMemo(
