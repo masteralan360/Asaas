@@ -825,11 +825,6 @@ export function buildPartnerOrderItemsPrintTimeline(
     }
 }
 
-function isMoneyMovementBlock(block: PartnerOrderItemsPrintOrderBlock) {
-    const firstKind = block.rows[0]?.kind
-    return firstKind === 'loan_repayment' || firstKind === 'direct_transaction'
-}
-
 /**
  * Describes each consecutive row's place inside its source order. Keeping this
  * based on orderId (instead of merely the displayed code) prevents unrelated
@@ -1052,7 +1047,7 @@ function loanPeriodActivityLabel(
     return t('businessPartners.orderItemsPrint.fullyRepaid', { defaultValue: 'Fully Repaid' })
 }
 
-function LoanPortfolio({
+export function LoanPortfolio({
     loans,
     loanPayments,
     linkedOrderCodes,
@@ -1355,7 +1350,7 @@ function mergeAllSummaries(
     return Array.from(merged.values()).sort((a, b) => a.currency.localeCompare(b.currency))
 }
 
-function UnifiedStatementSummary({
+export function UnifiedStatementSummary({
     salesSummaries,
     purchaseSummaries,
     loanRepaymentSummaries,
@@ -1504,7 +1499,7 @@ function OrderBlock({
     )
 }
 
-function MoneyMovementBlock({
+export function MoneyMovementBlock({
     block,
     t,
     iqdPreference

@@ -224,6 +224,9 @@ export function SalesOrderFormPage({
         error: priceBookCatalogError
     } = usePriceBookCatalogState(priceBooksEnabled ? workspaceId : undefined, { enabled: priceBooksEnabled })
     const { isAccessKeyHeld } = useUiAccess()
+    const formOpenedAtRef = useRef(new Date().toISOString())
+    const [isOrderCreationPickerOpen, setIsOrderCreationPickerOpen] = useState(false)
+    const canEditOrderCreation = user?.role === 'admin' && (isAccessKeyHeld || isOrderCreationPickerOpen)
     const [prioritizedMethod, setPrioritizedMethod] = useState<string | null>(getPrioritizedPaymentMethod)
 
     const [isSaving, setIsSaving] = useState(false)
@@ -240,6 +243,7 @@ export function SalesOrderFormPage({
     const [isOrderAdjustmentsOpen, setIsOrderAdjustmentsOpen] = useState(false)
     const [shippingAddress, setShippingAddress] = useState(editingOrder?.shippingAddress || '')
     const [expectedDeliveryDate, setExpectedDeliveryDate] = useState(editingOrder?.expectedDeliveryDate ? formatLocalDateTimeValue(editingOrder.expectedDeliveryDate) : '')
+    const [orderCreationDate, setOrderCreationDate] = useState(editingOrder?.createdAt || formOpenedAtRef.current)
     const [discount, setDiscount] = useState(editingOrder?.discount ? String(editingOrder.discount) : '')
     const [tax, setTax] = useState(editingOrder?.tax ? String(editingOrder.tax) : '')
     const [notes, setNotes] = useState(editingOrder?.notes || '')
@@ -318,6 +322,7 @@ export function SalesOrderFormPage({
         setOrderAdjustments(normalizeOrderAdjustments(editingOrder.orderAdjustments, editingOrder.currency))
         setShippingAddress(editingOrder.shippingAddress || '')
         setExpectedDeliveryDate(editingOrder.expectedDeliveryDate ? formatLocalDateTimeValue(editingOrder.expectedDeliveryDate) : '')
+        setOrderCreationDate(editingOrder.createdAt || formOpenedAtRef.current)
         setDiscount(editingOrder.discount ? String(editingOrder.discount) : '')
         setTax(editingOrder.tax ? String(editingOrder.tax) : '')
         setNotes(editingOrder.notes || '')
@@ -807,6 +812,7 @@ export function SalesOrderFormPage({
                 exchangeRates: hasMultiCurrency ? snapshot : null,
                 status: 'draft' as SalesOrderStatus,
                 expectedDeliveryDate: expectedDeliveryDate || null,
+                createdAt: parseLocalDateTimeValue(orderCreationDate)?.toISOString() || formOpenedAtRef.current,
                 actualDeliveryDate: null,
                 isPaid: !isFinanced && balanceAmount <= 0,
                 paymentStatus: balanceAmount <= 0 ? 'paid' as const : paidAmount > 0 ? 'partial' as const : 'unpaid' as const,
@@ -1295,6 +1301,25 @@ export function SalesOrderFormPage({
                                                     placeholder={t('orders.form.expectedDelivery', { defaultValue: 'Expected Delivery' })}
                                                 />
                                             </div>
+                                            {canEditOrderCreation ? (
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="sales-order-creation" className="flex items-center gap-2">
+                                                        <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                                                        {t('orders.form.orderCreation', { defaultValue: 'Order Creation' })}
+                                                    </Label>
+                                                    <DateTimePicker
+                                                        id="sales-order-creation"
+                                                        mode="date-time"
+                                                        date={parseLocalDateTimeValue(orderCreationDate)}
+                                                        open={isOrderCreationPickerOpen}
+                                                        onOpenChange={setIsOrderCreationPickerOpen}
+                                                        setDate={(value) => {
+                                                            if (value) setOrderCreationDate(value.toISOString())
+                                                        }}
+                                                        placeholder={t('orders.form.orderCreation', { defaultValue: 'Order Creation' })}
+                                                    />
+                                                </div>
+                                            ) : null}
                                             <div className="space-y-2" data-tour-id="tutorial-order-currency">
                                                 <CurrencySelector
                                                     value={currency}

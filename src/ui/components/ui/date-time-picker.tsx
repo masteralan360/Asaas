@@ -28,6 +28,8 @@ interface DateTimePickerProps {
   mode?: "date" | "date-time"
   placeholder?: string
   disabled?: boolean
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   buttonClassName?: string
   contentClassName?: string
 }
@@ -39,6 +41,8 @@ export function DateTimePicker({
   mode = "date-time",
   placeholder = "Pick date",
   disabled = false,
+  open,
+  onOpenChange,
   buttonClassName,
   contentClassName,
 }: DateTimePickerProps) {
@@ -87,7 +91,7 @@ export function DateTimePicker({
   }
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <Button
           id={id}

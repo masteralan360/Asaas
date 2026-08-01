@@ -107,6 +107,17 @@ type BaseEntityPayload = {
     isDeleted: boolean
 }
 
+type CreateOrderInput<TOrder extends SalesOrder | PurchaseOrder> = Omit<
+    TOrder,
+    'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'orderNumber'
+> & {
+    /**
+     * The timestamp captured when the order form was opened. It is optional
+     * so all existing callers continue to default to the save timestamp.
+     */
+    createdAt?: string
+}
+
 type OrderWithApproval = Pick<
     SalesOrder | PurchaseOrder,
     'approvalStatus' | 'approvalRequestedAt' | 'approvalRequestedBy' | 'approvalReviewedAt' | 'approvalReviewedBy'
@@ -521,12 +532,16 @@ async function recalculateSupplierAndPartnerSummaries(workspaceId: string, suppl
 
 function buildBaseEntity<T extends Record<string, unknown>>(workspaceId: string, data: T): T & BaseEntityPayload {
     const now = new Date().toISOString()
+    const requestedCreatedAt = typeof data.createdAt === 'string' ? new Date(data.createdAt) : null
+    const createdAt = requestedCreatedAt && !Number.isNaN(requestedCreatedAt.valueOf())
+        ? requestedCreatedAt.toISOString()
+        : now
 
     return {
         ...data,
         id: generateId(),
         workspaceId,
-        createdAt: now,
+        createdAt,
         updatedAt: now,
         version: 1,
         isDeleted: false,
@@ -1679,7 +1694,7 @@ export async function recordOrderPayment(
 
 export async function createSalesOrder(
     workspaceId: string,
-    data: Omit<SalesOrder, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'orderNumber'>,
+    data: CreateOrderInput<SalesOrder>,
     createdBy?: string | null
 ) {
     const now = new Date().toISOString()
@@ -2762,7 +2777,7 @@ export async function deleteSalesOrder(id: string) {
 
 export async function createPurchaseOrder(
     workspaceId: string,
-    data: Omit<PurchaseOrder, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'orderNumber'>,
+    data: CreateOrderInput<PurchaseOrder>,
     createdBy?: string | null
 ) {
     const now = new Date().toISOString()

@@ -1852,6 +1852,7 @@
       "status": "Status",
       "date": "Date",
       "expectedDelivery": "Expected Delivery",
+      "orderCreation": "Order Creation",
       "currency": "Currency",
       "addProducts": "Add Products",
       "lineItems": "Line Items",
