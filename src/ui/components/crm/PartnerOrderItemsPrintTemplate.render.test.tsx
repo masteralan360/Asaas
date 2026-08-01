@@ -323,13 +323,14 @@ describe('PartnerOrderItemsPrintTemplate pagination markers', () => {
         expect(html).not.toContain('data-order-items-summary-balances')
     })
 
-    it('summarizes only order count, total value, and paid amount', async () => {
+    it('summarizes order count, total value, paid amount, and remaining', async () => {
         const html = await renderPrintTemplate('en')
 
         expect(html).toContain('data-order-items-order-summary')
         expect(html).toContain('Number of orders: <strong>2</strong>')
         expect(html).toContain('Total value: <strong>21 usd</strong>')
         expect(html).toContain('Paid amount: <strong>11 usd</strong>')
+        expect(html).toContain('Remaining: <strong>10 usd</strong>')
     })
 
     it('hides the paid and remaining amounts when their toggles are off', async () => {

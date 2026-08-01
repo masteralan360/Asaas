@@ -937,7 +937,7 @@ function CurrencyBalanceList({
 
 type PartnerOrderItemsPrintOrderSummary = Pick<
     PartnerOrderItemsPrintCurrencySummary,
-    'currency' | 'orderCount' | 'total' | 'paidAmount'
+    'currency' | 'orderCount' | 'total' | 'paidAmount' | 'remainingAmount'
 >
 
 function buildPartnerOrderItemsPrintOrderSummaries(
@@ -951,11 +951,13 @@ function buildPartnerOrderItemsPrintOrderSummaries(
             currency: summary.currency,
             orderCount: 0,
             total: 0,
-            paidAmount: 0
+            paidAmount: 0,
+            remainingAmount: 0
         }
         existing.orderCount += summary.orderCount
         existing.total += summary.total
         existing.paidAmount += summary.paidAmount
+        existing.remainingAmount += summary.remainingAmount
         summaries.set(summary.currency, existing)
     }
 
@@ -983,9 +985,10 @@ function OrderActivitySummary({
                         <strong>{summary.currency.toUpperCase()}</strong>
                         <span>{t('businessPartners.orderItemsPrint.numberOfOrders', { defaultValue: 'Number of orders' })}: <strong>{summary.orderCount}</strong></span>
                     </div>
-                    <div className="mt-1 grid grid-cols-2 gap-2 border-t border-slate-300 pt-1 text-[10px] font-bold">
+                    <div className="mt-1 grid grid-cols-3 gap-2 border-t border-slate-300 pt-1 text-[10px] font-bold">
                         <span>{t('businessPartners.orderItemsPrint.totalValue', { defaultValue: 'Total value' })}: <strong>{formatCurrency(summary.total, summary.currency, iqdPreference)}</strong></span>
                         <span>{t('businessPartners.orderItemsPrint.paidAmount', { defaultValue: 'Paid amount' })}: <strong>{formatCurrency(summary.paidAmount, summary.currency, iqdPreference)}</strong></span>
+                        <span>{t('businessPartners.orderItemsPrint.remaining', { defaultValue: 'Remaining' })}: <strong>{formatCurrency(summary.remainingAmount, summary.currency, iqdPreference)}</strong></span>
                     </div>
                 </div>
             ))}
