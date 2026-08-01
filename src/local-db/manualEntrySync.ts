@@ -96,14 +96,14 @@ async function hydrateTable(
     tableName: ManualEntryTableName,
     workspaceId: string
 ) {
-    const table: Table<Record<string, unknown>, string> = tableName === 'manual_entry_templates'
+    const table: Table<any, string> = tableName === 'manual_entry_templates'
         ? db.manual_entry_templates
         : db.manual_entries
 
     const remoteRows = await fetchRemoteRows(tableName, workspaceId)
 
     const syncedAt = new Date().toISOString()
-    const remoteItems = remoteRows.map((row) => ({
+    const remoteItems: Array<Record<string, unknown>> = remoteRows.map((row) => ({
         ...(toCamelCase(row) as Record<string, unknown>),
         syncStatus: 'synced' as const,
         lastSyncedAt: syncedAt
