@@ -310,12 +310,13 @@ describe('Partner Details custom print template', () => {
         expect(preview.movableComponents).toEqual([
             { key: 'partnerOrderItemsWorkspaceName', label: 'Workspace Name' }
         ])
-        expect(preview.fields.map((field) => field.key)).toEqual(['showPaidAmount', 'showRemainingAmount'])
+        expect(preview.fields.map((field) => field.key)).toEqual(['showPaidAmount', 'showRemainingAmount', 'showSettlementActivity'])
         expect(element.type).toBe(PartnerOrderItemsPrintTemplate)
         expect(element.props.componentPositions.partnerOrderItemsWorkspaceName).toEqual({ x: 4, y: 2, scale: 1.25 })
         expect(element.props.onComponentPositionChange).toBe(onComponentPositionChange)
         expect(element.props.showPaidAmount).toBe(true)
         expect(element.props.showRemainingAmount).toBe(true)
+        expect(element.props.showSettlementActivity).toBe(true)
         expect(html).toContain('Partner Order Items Statement')
         expect(html).toContain('order-template-scale-handle')
         expect(html).toContain('scale(1.25)')
@@ -332,11 +333,13 @@ describe('Partner Details custom print template', () => {
 
         const element = preview.createElement({
             showPaidAmount: 'false',
-            showRemainingAmount: 'true'
+            showRemainingAmount: 'true',
+            showSettlementActivity: 'false'
         })
 
         expect(element.props.showPaidAmount).toBe(false)
         expect(element.props.showRemainingAmount).toBe(true)
+        expect(element.props.showSettlementActivity).toBe(false)
     })
 
     it('renders the focused loan summary, cash flow, and two activity tables', () => {

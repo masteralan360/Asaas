@@ -17,6 +17,7 @@ import {
     buildPartnerOrderItemsPrintMoneyMovements,
     buildPartnerOrderItemsPrintOrderBlocks,
     buildPartnerOrderItemsPrintLoanPortfolio,
+    buildPartnerOrderItemsPrintSettlementActivities,
     buildPartnerOrderItemsPrintSection,
     buildPartnerOrderItemsPrintTimeline,
     getPartnerOrderItemsPrintRowHierarchy
@@ -589,11 +590,138 @@ describe('buildPartnerOrderItemsPrintLoanPortfolio', () => {
         expect(rows[0]).toMatchObject({
             currency: 'usd',
             direction: 'lent',
+            periodActivity: ['partially_repaid'],
             openingBalance: 75,
-            newCredit: 0,
             repayments: 12,
-            adjustments: 0,
             closingBalance: 63
         })
+    })
+
+    it('labels new, carried-forward, partial, and fully repaid loan activity', () => {
+        const rows = buildPartnerOrderItemsPrintLoanPortfolio(
+            [
+                loan({ id: 'new-loan', loanNo: 'LN-NEW', createdAt: '2026-07-03T08:00:00.000Z', balanceAmount: 100 }),
+                loan({ id: 'opening-loan', loanNo: 'LN-OPENING', createdAt: '2026-06-03T08:00:00.000Z', balanceAmount: 100 }),
+                loan({ id: 'partial-loan', loanNo: 'LN-PARTIAL', createdAt: '2026-06-04T08:00:00.000Z', balanceAmount: 80 }),
+                loan({ id: 'settled-loan', loanNo: 'LN-SETTLED', createdAt: '2026-06-05T08:00:00.000Z', balanceAmount: 0 })
+            ],
+            [
+                loanPayment({ id: 'partial-payment', loanId: 'partial-loan', amount: 20, paidAt: '2026-07-10T10:00:00.000Z' }),
+                loanPayment({ id: 'settled-payment', loanId: 'settled-loan', amount: 100, paidAt: '2026-07-11T10:00:00.000Z' })
+            ],
+            { type: 'custom', start: '2026-07-01T00:00:00.000Z', end: '2026-08-01T00:00:00.000Z' }
+        )
+
+        expect(Object.fromEntries(rows.map((row) => [row.loan.loanNo, row.periodActivity]))).toEqual({
+            'LN-NEW': ['new_loan'],
+            'LN-OPENING': ['opening_balance'],
+            'LN-PARTIAL': ['partially_repaid'],
+            'LN-SETTLED': ['fully_repaid']
+        })
+    })
+})
+
+describe('buildPartnerOrderItemsPrintSettlementActivities', () => {
+    it('shows normal order payments alongside carried-forward loans and their repayments', () => {
+        const order = salesOrder({ balanceAmount: 0, paidAmount: 25, paymentStatus: 'paid', isPaid: true })
+        const rows = buildPartnerOrderItemsPrintSettlementActivities(
+            [order],
+            [loan({
+                id: 'june-loan',
+                loanNo: 'LN-JUNE',
+                source: 'order',
+                orderId: order.id,
+                orderType: 'sales',
+                createdAt: '2026-06-15T08:00:00.000Z',
+                principalAmount: 50,
+                balanceAmount: 30
+            })],
+            [loanPayment({ id: 'july-loan-payment', loanId: 'june-loan', amount: 20, paidAt: '2026-07-08T10:00:00.000Z' })],
+            [
+                directTransaction({
+                    id: 'order-payment-1',
+                    sourceModule: 'orders',
+                    sourceType: 'sales_order',
+                    sourceRecordId: order.id,
+                    amount: 10,
+                    paidAt: '2026-07-02T10:00:00.000Z'
+                }),
+                directTransaction({
+                    id: 'order-payment-2',
+                    sourceModule: 'orders',
+                    sourceType: 'sales_order',
+                    sourceRecordId: order.id,
+                    amount: 15,
+                    paidAt: '2026-07-04T10:00:00.000Z'
+                })
+            ],
+            { type: 'custom', start: '2026-07-01T00:00:00.000Z', end: '2026-08-01T00:00:00.000Z' },
+            { [order.id]: 'SO-2026-00004' }
+        )
+
+        expect(rows).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                id: 'order-payment:order-payment-1',
+                kind: 'order_payment',
+                reference: '0004',
+                amount: 10,
+                balanceAfter: 15
+            }),
+            expect.objectContaining({
+                id: 'order-payment:order-payment-2',
+                kind: 'order_payment',
+                reference: '0004',
+                amount: 15,
+                balanceAfter: 0
+            }),
+            expect.objectContaining({
+                kind: 'opening_loan_balance',
+                reference: 'SO-2026-00004 · LN-JUNE',
+                balanceAfter: 50
+            }),
+            expect.objectContaining({
+                id: 'loan-payment:july-loan-payment',
+                kind: 'loan_repayment',
+                balanceAfter: 30
+            })
+        ]))
+    })
+
+    it('excludes cancelled orders and fully reversed payment transactions', () => {
+        const cancelledOrder = salesOrder({ id: 'cancelled-order', orderNumber: '0005', status: 'cancelled', balanceAmount: 10 })
+        const reversedOrder = salesOrder({ id: 'reversed-order', orderNumber: '0006', balanceAmount: 0, paidAmount: 10, isPaid: true, paymentStatus: 'paid' })
+        const rows = buildPartnerOrderItemsPrintSettlementActivities(
+            [cancelledOrder, reversedOrder],
+            [],
+            [],
+            [
+                directTransaction({
+                    id: 'cancelled-order-payment',
+                    sourceModule: 'orders',
+                    sourceType: 'sales_order',
+                    sourceRecordId: cancelledOrder.id,
+                    amount: 10
+                }),
+                directTransaction({
+                    id: 'reversed-order-payment',
+                    sourceModule: 'orders',
+                    sourceType: 'sales_order',
+                    sourceRecordId: reversedOrder.id,
+                    amount: 10
+                }),
+                directTransaction({
+                    id: 'reversal',
+                    sourceModule: 'orders',
+                    sourceType: 'sales_order',
+                    sourceRecordId: reversedOrder.id,
+                    direction: 'outgoing',
+                    amount: 10,
+                    reversalOfTransactionId: 'reversed-order-payment'
+                })
+            ],
+            { type: 'allTime' }
+        )
+
+        expect(rows).toEqual([])
     })
 })

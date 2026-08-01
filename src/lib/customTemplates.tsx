@@ -92,7 +92,8 @@ export const ORDER_DETAILS_TEMPLATE_FIELD_KEYS = {
 } as const
 export const PARTNER_ORDER_ITEMS_TEMPLATE_FIELD_KEYS = {
     showPaidAmount: 'showPaidAmount',
-    showRemainingAmount: 'showRemainingAmount'
+    showRemainingAmount: 'showRemainingAmount',
+    showSettlementActivity: 'showSettlementActivity'
 } as const
 
 export type CustomTemplateTarget = {
@@ -755,6 +756,12 @@ const PARTNER_ORDER_ITEMS_FIELDS = [
         label: 'Show remaining amount in the order total row',
         value: 'true',
         type: 'boolean' as const
+    },
+    {
+        key: PARTNER_ORDER_ITEMS_TEMPLATE_FIELD_KEYS.showSettlementActivity,
+        label: 'Show partner settlement activity',
+        value: 'true',
+        type: 'boolean' as const
     }
 ]
 
@@ -1320,6 +1327,7 @@ function createPartnerOrderItemsPreview(options: CustomTemplatePreviewOptions): 
                 logoUrl={options.features?.logo_url}
                 showPaidAmount={data[PARTNER_ORDER_ITEMS_TEMPLATE_FIELD_KEYS.showPaidAmount] !== 'false'}
                 showRemainingAmount={data[PARTNER_ORDER_ITEMS_TEMPLATE_FIELD_KEYS.showRemainingAmount] !== 'false'}
+                showSettlementActivity={data[PARTNER_ORDER_ITEMS_TEMPLATE_FIELD_KEYS.showSettlementActivity] !== 'false'}
                 componentPositions={renderOptions?.componentPositions}
                 editableComponents={renderOptions?.editableComponents}
                 onComponentPositionChange={renderOptions?.onComponentPositionChange}

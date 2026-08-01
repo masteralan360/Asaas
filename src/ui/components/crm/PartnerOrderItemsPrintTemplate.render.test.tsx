@@ -199,12 +199,15 @@ function directTransaction(overrides: Partial<PaymentTransaction> = {}): Payment
 async function renderPrintTemplate(printLang: 'en' | 'ar', overrides: {
     showPaidAmount?: boolean
     showRemainingAmount?: boolean
+    showSettlementActivity?: boolean
     balanceSummary?: PartnerOrderItemsPrintData['balanceSummary']
     salesOrders?: SalesOrder[]
     purchaseOrders?: PurchaseOrder[]
+    statementOrders?: Array<SalesOrder | PurchaseOrder>
     loans?: Loan[]
     loanPayments?: LoanPayment[]
     linkedOrderCodes?: Record<string, string>
+    settlementTransactions?: PaymentTransaction[]
     directTransactions?: PaymentTransaction[]
 } = {}) {
     const i18n = i18next.createInstance()
@@ -228,6 +231,8 @@ async function renderPrintTemplate(printLang: 'en' | 'ar', overrides: {
         }
     })
 
+    const testSalesOrders = overrides.salesOrders ?? [salesOrder()]
+    const testPurchaseOrders = overrides.purchaseOrders ?? [purchaseOrder()]
     const data: PartnerOrderItemsPrintData = {
         partner: { name: 'Business Partner' },
         period: { type: 'allTime' },
@@ -236,11 +241,13 @@ async function renderPrintTemplate(printLang: 'en' | 'ar', overrides: {
             receivable: [{ currency: 'usd', amount: 10 }],
             payable: []
         },
-        salesOrders: overrides.salesOrders ?? [salesOrder()],
-        purchaseOrders: overrides.purchaseOrders ?? [purchaseOrder()],
+        salesOrders: testSalesOrders,
+        purchaseOrders: testPurchaseOrders,
+        statementOrders: overrides.statementOrders ?? [...testSalesOrders, ...testPurchaseOrders],
         loans: overrides.loans ?? (overrides.loanPayments?.length ? [loan()] : []),
         loanPayments: overrides.loanPayments ?? [],
         linkedOrderCodes: overrides.linkedOrderCodes,
+        settlementTransactions: overrides.settlementTransactions ?? overrides.directTransactions ?? [],
         directTransactions: overrides.directTransactions ?? []
     }
 
@@ -252,6 +259,7 @@ async function renderPrintTemplate(printLang: 'en' | 'ar', overrides: {
                 data={data}
                 showPaidAmount={overrides.showPaidAmount ?? true}
                 showRemainingAmount={overrides.showRemainingAmount ?? true}
+                showSettlementActivity={overrides.showSettlementActivity ?? true}
             />
         </I18nextProvider>
     )
@@ -358,22 +366,25 @@ describe('PartnerOrderItemsPrintTemplate pagination markers', () => {
         expect(html).toContain('Account Activity')
     })
 
-    it('keeps loan repayments out of the order timeline and groups them in the loan portfolio', async () => {
+    it('keeps repayments out of order blocks and lists them in settlement activity', async () => {
         const html = await renderPrintTemplate('en', {
             loanPayments: [loanPayment()],
             directTransactions: [directTransaction()]
         })
 
         expect(html.match(/data-order-statement-block/g)).toHaveLength(2)
-        expect(html.match(/data-order-items-loan-portfolio/g)).toHaveLength(1)
+        expect(html.match(/data-order-items-settlement-activity/g)).toHaveLength(1)
         expect(html).toContain('LN-001')
         expect(html).toContain('100 usd')
-        expect(html).toContain('Direct Transactions')
+        expect(html).toContain('Partner Settlement Activity')
+        expect(html).toContain('Loan Opened')
+        expect(html).toContain('Loan Repayment')
+        expect(html).toContain('Direct Transaction')
         expect(html).toContain('+50 usd')
-        expect(html).toContain('>2 Entries</span>')
+        expect(html).toContain('>3 Entries</span>')
     })
 
-    it('places outgoing loan payments in the payable loan portfolio row', async () => {
+    it('records outgoing loan repayments in settlement activity', async () => {
         const html = await renderPrintTemplate('en', {
             loanPayments: [loanPayment({ id: 'loan-payment-2', amount: 30, paidAt: '2026-07-04T10:00:00.000Z' })],
             directTransactions: [],
@@ -381,8 +392,8 @@ describe('PartnerOrderItemsPrintTemplate pagination markers', () => {
         })
 
         expect(html).toContain('LN-002')
-        expect(html).toContain('Test Workspace owes Business Partner')
-        expect(html).toContain('30 usd')
+        expect(html).toContain('Loan Repayment')
+        expect(html).toContain('−30 usd')
         expect(html.match(/data-order-statement-block/g)).toHaveLength(2)
     })
 
@@ -399,6 +410,12 @@ describe('PartnerOrderItemsPrintTemplate pagination markers', () => {
         })
 
         expect(html).toContain('SO-2026-00004 · LN-ORDER')
+        expect(html).toContain('This order-linked loan was created on 2026-07-01T08:00:00.000Z.')
+        expect(html).toContain('>Activity</th>')
+        expect(html).toContain('Loan Opened')
+        expect(html).toContain('Loan Repayment')
+        expect(html).toContain('>Note</th>')
+        expect(html).toContain('>Balance After</th>')
     })
 
     it('does not turn loan or direct-payment activity into order blocks', async () => {
@@ -410,20 +427,53 @@ describe('PartnerOrderItemsPrintTemplate pagination markers', () => {
         })
 
         expect(html).not.toContain('data-order-statement-block')
-        expect(html).toContain('data-order-items-loan-portfolio')
-        expect(html).toContain('Direct Transactions')
+        expect(html).toContain('data-order-items-settlement-activity')
+        expect(html).toContain('Loan Repayment')
+        expect(html).toContain('Direct Transaction')
     })
 
-    it('summarizes direct transactions separately from the loan portfolio', async () => {
+    it('lists direct transactions in settlement activity', async () => {
         const html = await renderPrintTemplate('en', {
             loanPayments: [loanPayment()],
             directTransactions: [directTransaction()]
         })
 
-        expect(html).toContain('data-order-items-loan-portfolio')
-        expect(html).toContain('Direct Transactions')
-        expect(html).toContain('1 Entries')
-        expect(html).toContain('Received: <strong>+50 usd</strong>')
+        expect(html).toContain('data-order-items-settlement-activity')
+        expect(html).toContain('Direct Transaction')
+        expect(html).toContain('+50 usd')
+    })
+
+    it('lists a regular order payment in settlement activity', async () => {
+        const paidOrder = salesOrder({ balanceAmount: 0, paidAmount: 10, paymentStatus: 'paid', isPaid: true })
+        const html = await renderPrintTemplate('en', {
+            salesOrders: [paidOrder],
+            purchaseOrders: [],
+            settlementTransactions: [directTransaction({
+                id: 'sales-order-payment',
+                sourceModule: 'orders',
+                sourceType: 'sales_order',
+                sourceRecordId: paidOrder.id,
+                amount: 10,
+                paidAt: '2026-07-02T09:01:00.000Z'
+            })]
+        })
+
+        expect(html).toContain('Order Payment')
+        expect(html).toContain('0004')
+        expect(html).toContain('+10 usd')
+        expect(html).toContain('Order paid in full.')
+    })
+
+    it('hides settlement activity when the Common Edit toggle is off', async () => {
+        const html = await renderPrintTemplate('en', {
+            loanPayments: [loanPayment()],
+            directTransactions: [directTransaction()],
+            showSettlementActivity: false
+        })
+
+        expect(html).not.toContain('data-order-items-settlement-activity')
+        expect(html).not.toContain('Partner Settlement Activity')
+        expect(html).toContain('data-order-items-section')
     })
 
     it('lists cancelled orders as reference-only instead of including them in activity or balances', async () => {

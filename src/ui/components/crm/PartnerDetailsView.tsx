@@ -669,10 +669,21 @@ export function PartnerDetailsView({
         () => queriedLoanPayments ?? [],
         [queriedLoanPayments]
     )
-    const dateFilteredLoanPayments = useMemo(
-        () => filterByDate(allLoanPayments, (payment) => payment.paidAt || payment.createdAt),
-        [allLoanPayments, filterByDate]
-    )
+    const partnerSettlementTransactions = useMemo(() => {
+        const salesOrderIds = new Set(customerOrders
+            .filter((order) => !order.isDeleted && order.status !== 'cancelled')
+            .map((order) => order.id))
+        const purchaseOrderIds = new Set(supplierOrders
+            .filter((order) => !order.isDeleted && order.status !== 'cancelled')
+            .map((order) => order.id))
+
+        return paymentTransactions.filter((transaction) => {
+            if (transaction.isDeleted) return false
+            if (transaction.sourceType === 'sales_order') return salesOrderIds.has(transaction.sourceRecordId)
+            if (transaction.sourceType === 'purchase_order') return purchaseOrderIds.has(transaction.sourceRecordId)
+            return transaction.sourceType === 'direct_transaction' && transaction.metadata?.businessPartnerId === partnerId
+        })
+    }, [customerOrders, partnerId, paymentTransactions, supplierOrders])
     const allowedByRoute = useMemo(() => {
         if (!partner) {
             return false
@@ -1440,6 +1451,7 @@ export function PartnerDetailsView({
             },
             salesOrders: dateFilteredCustomerOrders,
             purchaseOrders: dateFilteredSupplierOrders,
+            statementOrders: [...customerOrders, ...supplierOrders],
             loans: partnerLoans,
             loanPayments: allLoanPayments,
             linkedOrderCodes: Object.fromEntries(
@@ -1447,16 +1459,16 @@ export function PartnerDetailsView({
                     .filter((order) => !order.isDeleted)
                     .map((order) => [order.id, order.orderNumber])
             ),
-            directTransactions: dateFilteredPayments
+            settlementTransactions: partnerSettlementTransactions
         }
     }, [
         allLoanPayments,
         customerOrders,
         dateFilteredCustomerOrders,
-        dateFilteredPayments,
         dateFilteredSupplierOrders,
         partner,
         partnerLoans,
+        partnerSettlementTransactions,
         payableCurrencyTotals,
         printPeriod,
         receivableCurrencyTotals,

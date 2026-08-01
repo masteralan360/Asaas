@@ -132,12 +132,16 @@ export type PartnerOrderItemsPrintData = {
     balanceSummary: PartnerOrderItemsPrintBalanceSummary
     salesOrders: SalesOrder[]
     purchaseOrders: PurchaseOrder[]
+    /** All partner orders, including records outside the selected activity period, used to reconcile payment transactions. */
+    statementOrders?: Array<SalesOrder | PurchaseOrder>
     /** All loans linked to the partner, including loans originated before the selected activity period. */
     loans?: Loan[]
     /** All partner loan/installment repayments, used to calculate opening and closing balances for the selected period. */
     loanPayments?: LoanPayment[]
     /** Source order codes for linked loans, including orders that predate the selected activity period. */
     linkedOrderCodes?: Record<string, string>
+    /** All order and direct-payment transactions for this partner, including reversals needed to calculate active amounts. */
+    settlementTransactions?: PaymentTransaction[]
     /** Partner direct transactions, already period-filtered by paidAt. */
     directTransactions?: PaymentTransaction[]
 }
@@ -153,6 +157,8 @@ interface PartnerOrderItemsPrintTemplateProps {
     showPaidAmount?: boolean
     /** Shows "Remaining: …" inline on each order total row (no dedicated column). */
     showRemainingAmount?: boolean
+    /** Shows the chronological order, loan, and direct settlement activity section. */
+    showSettlementActivity?: boolean
     componentPositions?: Record<string, CustomTemplateComponentPosition>
     editableComponents?: boolean
     onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
@@ -490,15 +496,20 @@ function buildMoneyMovementSummaries(rows: PartnerOrderItemsPrintRow[]): Partner
     return Array.from(summaries.values()).sort((left, right) => left.currency.localeCompare(right.currency))
 }
 
+export type PartnerOrderItemsPrintLoanPeriodActivity =
+    | 'new_loan'
+    | 'opening_balance'
+    | 'partially_repaid'
+    | 'fully_repaid'
+
 export type PartnerOrderItemsPrintLoanPortfolioRow = {
     loan: Loan
     linkedOrderCode?: string
     currency: string
     direction: 'lent' | 'borrowed'
+    periodActivity: PartnerOrderItemsPrintLoanPeriodActivity[]
     openingBalance: number
-    newCredit: number
     repayments: number
-    adjustments: number
     closingBalance: number
 }
 
@@ -539,26 +550,29 @@ export function buildPartnerOrderItemsPrintLoanPortfolio(
                 ? payments.filter((payment) => (payment.paidAt || payment.createdAt) >= period.end!)
                 : []
             const paymentTotal = periodPayments.reduce((sum, payment) => sum + payment.amount, 0)
-            const repayments = periodPayments
-                .filter((payment) => payment.paymentMethod !== 'loan_adjustment')
-                .reduce((sum, payment) => sum + payment.amount, 0)
-            const adjustments = periodPayments
-                .filter((payment) => payment.paymentMethod === 'loan_adjustment')
-                .reduce((sum, payment) => sum + payment.amount, 0)
+            // The statement intentionally presents one applied amount so the
+            // partner sees the direct Paid / Remaining relationship.
+            const repayments = paymentTotal
             const closingBalance = Math.max(0, loan.balanceAmount + paymentsAfterPeriod.reduce((sum, payment) => sum + payment.amount, 0))
             const originatedInPeriod = isWithinStatementPeriod(loan.createdAt, period)
             const existedByPeriodEnd = !period.end || loan.createdAt < period.end
             const openingBalance = originatedInPeriod ? 0 : Math.max(0, closingBalance + paymentTotal)
+            const periodActivity: PartnerOrderItemsPrintLoanPeriodActivity[] = []
+            if (originatedInPeriod) periodActivity.push('new_loan')
+            if (paymentTotal > 0) {
+                periodActivity.push(closingBalance === 0 ? 'fully_repaid' : 'partially_repaid')
+            } else if (openingBalance > 0) {
+                periodActivity.push('opening_balance')
+            }
 
             return {
                 loan,
                 linkedOrderCode,
                 currency: loan.settlementCurrency,
                 direction: loan.direction === 'borrowed' ? 'borrowed' as const : 'lent' as const,
+                periodActivity,
                 openingBalance,
-                newCredit: originatedInPeriod ? loan.principalAmount : 0,
                 repayments,
-                adjustments,
                 closingBalance,
                 include: existedByPeriodEnd && (originatedInPeriod || paymentTotal > 0 || closingBalance > 0)
             }
@@ -569,6 +583,216 @@ export function buildPartnerOrderItemsPrintLoanPortfolio(
             return dateDifference || left.loan.loanNo.localeCompare(right.loan.loanNo)
         })
         .map(({ include: _include, ...row }) => row)
+}
+
+export type PartnerOrderItemsPrintSettlementActivityKind =
+    | 'order_payment'
+    | 'direct_transaction'
+    | 'loan_opened'
+    | 'opening_loan_balance'
+    | 'loan_repayment'
+    | 'full_loan_settlement'
+
+export type PartnerOrderItemsPrintSettlementActivity = {
+    id: string
+    date: string
+    kind: PartnerOrderItemsPrintSettlementActivityKind
+    reference: string
+    direction?: 'incoming' | 'outgoing'
+    amount?: number
+    currency: string
+    balanceAfter?: number | null
+    paymentMethod?: string | null
+    loanSource?: Loan['source']
+    note?: string | null
+}
+
+function isOrderPaymentTransaction(transaction: PaymentTransaction) {
+    return transaction.sourceType === 'sales_order' || transaction.sourceType === 'purchase_order'
+}
+
+/** Mirrors the payment transaction module: reversals reduce their source
+ * transaction, while reversed rows themselves are not printed as activity. */
+function getActiveSettlementTransactions(transactions: PaymentTransaction[]) {
+    const reversalAmounts = new Map<string, number>()
+    for (const transaction of transactions) {
+        if (transaction.isDeleted || !transaction.reversalOfTransactionId) continue
+        reversalAmounts.set(
+            transaction.reversalOfTransactionId,
+            (reversalAmounts.get(transaction.reversalOfTransactionId) || 0) + Math.abs(Number(transaction.amount || 0))
+        )
+    }
+
+    return transactions
+        .filter((transaction) => !transaction.isDeleted && !transaction.reversalOfTransactionId)
+        .map((transaction) => ({
+            ...transaction,
+            amount: Math.max(0, Number(transaction.amount || 0) - (reversalAmounts.get(transaction.id) || 0))
+        }))
+        .filter((transaction) => transaction.amount > 0.000001)
+}
+
+function loanReference(loan: Loan, linkedOrderCodes: Record<string, string>) {
+    const orderCode = loan.source === 'order' && loan.orderId
+        ? linkedOrderCodes[loan.orderId]?.trim()
+        : undefined
+    return orderCode ? `${orderCode} · ${loan.loanNo}` : loan.loanNo
+}
+
+/**
+ * Creates one chronological, auditable activity stream for order payments,
+ * direct transactions, and loans. Loan balances are reconstructed at each
+ * event so the partner sees the remaining balance immediately after it.
+ */
+export function buildPartnerOrderItemsPrintSettlementActivities(
+    orders: StatementOrder[],
+    loans: Loan[],
+    loanPayments: LoanPayment[],
+    transactions: PaymentTransaction[],
+    period: PartnerOrderItemsPrintPeriod,
+    linkedOrderCodes: Record<string, string> = {}
+): PartnerOrderItemsPrintSettlementActivity[] {
+    const activities: PartnerOrderItemsPrintSettlementActivity[] = []
+    const ordersById = new Map(orders
+        .filter((order) => !order.isDeleted && order.status !== 'cancelled')
+        .map((order) => [order.id, order]))
+    const activeTransactions = getActiveSettlementTransactions(transactions)
+    const orderPaymentsByOrderId = new Map<string, PaymentTransaction[]>()
+
+    for (const transaction of activeTransactions) {
+        if (!isOrderPaymentTransaction(transaction) || !ordersById.has(transaction.sourceRecordId)) continue
+        const payments = orderPaymentsByOrderId.get(transaction.sourceRecordId) || []
+        payments.push(transaction)
+        orderPaymentsByOrderId.set(transaction.sourceRecordId, payments)
+    }
+
+    for (const [orderId, payments] of orderPaymentsByOrderId) {
+        const order = ordersById.get(orderId)
+        if (!order) continue
+        const sortedPayments = payments.slice().sort((left, right) => {
+            const dateDifference = new Date(left.paidAt || left.createdAt).getTime() - new Date(right.paidAt || right.createdAt).getTime()
+            return dateDifference || left.id.localeCompare(right.id)
+        })
+
+        for (const [index, transaction] of sortedPayments.entries()) {
+            const date = transaction.paidAt || transaction.createdAt
+            if (!isWithinStatementPeriod(date, period)) continue
+            const laterPayments = sortedPayments.slice(index + 1)
+            const balanceAfter = Math.max(0, order.balanceAmount + laterPayments.reduce((sum, payment) => sum + payment.amount, 0))
+            activities.push({
+                id: `order-payment:${transaction.id}`,
+                date,
+                kind: 'order_payment',
+                reference: order.orderNumber,
+                direction: transaction.direction,
+                amount: transaction.amount,
+                currency: transaction.currency,
+                balanceAfter,
+                paymentMethod: transaction.paymentMethod,
+                note: transaction.note
+            })
+        }
+    }
+
+    for (const transaction of activeTransactions) {
+        if (transaction.sourceType !== 'direct_transaction') continue
+        const date = transaction.paidAt || transaction.createdAt
+        if (!isWithinStatementPeriod(date, period)) continue
+        activities.push({
+            id: `direct-transaction:${transaction.id}`,
+            date,
+            kind: 'direct_transaction',
+            reference: transaction.referenceLabel || transaction.note || transaction.id,
+            direction: transaction.direction,
+            amount: transaction.amount,
+            currency: transaction.currency,
+            balanceAfter: null,
+            paymentMethod: transaction.paymentMethod,
+            note: transaction.note
+        })
+    }
+
+    const paymentsByLoan = new Map<string, LoanPayment[]>()
+    for (const payment of loanPayments) {
+        if (payment.isDeleted) continue
+        const payments = paymentsByLoan.get(payment.loanId) || []
+        payments.push(payment)
+        paymentsByLoan.set(payment.loanId, payments)
+    }
+
+    for (const loan of loans.filter((loan) => !loan.isDeleted && loan.status !== 'cancelled')) {
+        const payments = (paymentsByLoan.get(loan.id) || []).slice().sort((left, right) => {
+            const dateDifference = new Date(left.paidAt || left.createdAt).getTime() - new Date(right.paidAt || right.createdAt).getTime()
+            return dateDifference || left.id.localeCompare(right.id)
+        })
+        const periodPayments = payments.filter((payment) => isWithinStatementPeriod(payment.paidAt || payment.createdAt, period))
+        const paymentsAfterPeriod = period.end
+            ? payments.filter((payment) => (payment.paidAt || payment.createdAt) >= period.end!)
+            : []
+        const closingBalance = Math.max(0, loan.balanceAmount + paymentsAfterPeriod.reduce((sum, payment) => sum + payment.amount, 0))
+        const originatedInPeriod = isWithinStatementPeriod(loan.createdAt, period)
+        const existedByPeriodEnd = !period.end || loan.createdAt < period.end
+        const openingBalance = originatedInPeriod
+            ? 0
+            : Math.max(0, closingBalance + periodPayments.reduce((sum, payment) => sum + payment.amount, 0))
+        const reference = loanReference(loan, linkedOrderCodes)
+        const loanDirection = loan.direction === 'borrowed' ? 'borrowed' as const : 'lent' as const
+
+        if (!existedByPeriodEnd) continue
+
+        if (originatedInPeriod) {
+            activities.push({
+                id: `loan-opened:${loan.id}`,
+                date: loan.createdAt,
+                kind: 'loan_opened',
+                reference,
+                direction: loanDirection === 'lent' ? 'outgoing' : 'incoming',
+                amount: loan.principalAmount,
+                currency: loan.settlementCurrency,
+                balanceAfter: loan.principalAmount,
+                loanSource: loan.source
+            })
+        } else if (period.start && openingBalance > 0) {
+            activities.push({
+                id: `loan-opening:${loan.id}:${period.start}`,
+                date: period.start,
+                kind: 'opening_loan_balance',
+                reference,
+                currency: loan.settlementCurrency,
+                balanceAfter: openingBalance
+            })
+        }
+
+        let runningBalance = originatedInPeriod ? loan.principalAmount : openingBalance
+        for (const payment of periodPayments) {
+            runningBalance = Math.max(0, runningBalance - payment.amount)
+            activities.push({
+                id: `loan-payment:${payment.id}`,
+                date: payment.paidAt || payment.createdAt,
+                kind: runningBalance === 0 ? 'full_loan_settlement' : 'loan_repayment',
+                reference,
+                direction: loanDirection === 'lent' ? 'incoming' : 'outgoing',
+                amount: payment.amount,
+                currency: loan.settlementCurrency,
+                balanceAfter: runningBalance,
+                paymentMethod: payment.paymentMethod,
+                note: payment.note
+            })
+        }
+    }
+
+    const kindOrder: Record<PartnerOrderItemsPrintSettlementActivityKind, number> = {
+        opening_loan_balance: 0,
+        loan_opened: 1,
+        order_payment: 2,
+        loan_repayment: 3,
+        full_loan_settlement: 4,
+        direct_transaction: 5
+    }
+    return activities.sort((left, right) => {
+        const dateDifference = new Date(left.date).getTime() - new Date(right.date).getTime()
+        return dateDifference || kindOrder[left.kind] - kindOrder[right.kind] || left.id.localeCompare(right.id)
+    })
 }
 
 /**
@@ -809,6 +1033,22 @@ function CurrentBalanceSummary({
     )
 }
 
+function loanPeriodActivityLabel(
+    activity: PartnerOrderItemsPrintLoanPeriodActivity,
+    t: (key: string, options?: Record<string, unknown>) => string
+) {
+    if (activity === 'new_loan') {
+        return t('businessPartners.orderItemsPrint.newLoan', { defaultValue: 'New Loan' })
+    }
+    if (activity === 'opening_balance') {
+        return t('businessPartners.orderItemsPrint.openingBalanceActivity', { defaultValue: 'Opening Balance' })
+    }
+    if (activity === 'partially_repaid') {
+        return t('businessPartners.orderItemsPrint.partiallyRepaid', { defaultValue: 'Partially Repaid' })
+    }
+    return t('businessPartners.orderItemsPrint.fullyRepaid', { defaultValue: 'Fully Repaid' })
+}
+
 function LoanPortfolio({
     loans,
     loanPayments,
@@ -840,13 +1080,13 @@ function LoanPortfolio({
             <table className="w-full border-collapse text-[8px] leading-[1.2]">
                 <thead>
                     <tr className="bg-[#dfead3]">
-                        <th className="w-[23%] border border-slate-400 p-1 text-start">{t('loans.loanNo', { defaultValue: 'Loan No.' })}</th>
-                        <th className="w-[13%] border border-slate-400 p-1 text-start">{t('businessPartners.orderItemsPrint.direction', { defaultValue: 'Direction' })}</th>
+                        <th className="w-[17%] border border-slate-400 p-1 text-start">{t('loans.loanNo', { defaultValue: 'Loan No.' })}</th>
+                        <th className="w-[15%] border border-slate-400 p-1 text-start">{t('businessPartners.orderItemsPrint.periodActivity', { defaultValue: 'Period Activity' })}</th>
+                        <th className="w-[15%] border border-slate-400 p-1 text-start">{t('businessPartners.orderItemsPrint.direction', { defaultValue: 'Direction' })}</th>
                         <th className="w-[13%] border border-slate-400 p-1 text-end">{t('businessPartners.orderItemsPrint.openingBalance', { defaultValue: 'Opening' })}</th>
-                        <th className="w-[13%] border border-slate-400 p-1 text-end">{t('businessPartners.orderItemsPrint.newCredit', { defaultValue: 'New credit' })}</th>
-                        <th className="w-[13%] border border-slate-400 p-1 text-end">{t('businessPartners.orderItemsPrint.periodRepayments', { defaultValue: 'Repayments' })}</th>
-                        <th className="w-[12%] border border-slate-400 p-1 text-end">{t('businessPartners.orderItemsPrint.adjustments', { defaultValue: 'Adjustments' })}</th>
-                        <th className="w-[13%] border border-slate-400 p-1 text-end">{t('businessPartners.orderItemsPrint.closingBalance', { defaultValue: 'Closing balance' })}</th>
+                        <th className="w-[13%] border border-slate-400 p-1 text-end">{t('businessPartners.orderItemsPrint.paid', { defaultValue: 'Paid' })}</th>
+                        <th className="w-[13%] border border-slate-400 p-1 text-end">{t('businessPartners.orderItemsPrint.remaining', { defaultValue: 'Remaining' })}</th>
+                        <th className="w-[14%] border border-slate-400 p-1 text-start">{t('businessPartners.orderItemsPrint.note', { defaultValue: 'Note' })}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -862,6 +1102,15 @@ function LoanPortfolio({
                                 partner: partnerName,
                                 workspace: workspaceName
                             })
+                        const note = row.loan.source === 'order'
+                            ? t('businessPartners.orderItemsPrint.orderLinkedLoanCreatedAt', {
+                                defaultValue: 'This order-linked loan was created on {{date}}.',
+                                date: formatDateTime(row.loan.createdAt)
+                            })
+                            : t('businessPartners.orderItemsPrint.loanCreatedAt', {
+                                defaultValue: 'This loan was created on {{date}}.',
+                                date: formatDateTime(row.loan.createdAt)
+                            })
 
                         return (
                             <tr key={row.loan.id} data-pdf-keep-together>
@@ -871,12 +1120,121 @@ function LoanPortfolio({
                                         ? t('businessPartners.orderItemsPrint.orderLinkedLoan', { defaultValue: 'Order-linked loan' })
                                         : formatDate(row.loan.createdAt)}</div>
                                 </td>
+                                <td className="border border-slate-300 p-1 align-top text-[7px]">{row.periodActivity.map((activity) => loanPeriodActivityLabel(activity, t)).join(' · ')}</td>
                                 <td className="border border-slate-300 p-1 align-top">{directionLabel}</td>
                                 <td className="border border-slate-300 p-1 text-end">{formatCurrency(row.openingBalance, row.currency, iqdPreference)}</td>
-                                <td className="border border-slate-300 p-1 text-end">{formatCurrency(row.newCredit, row.currency, iqdPreference)}</td>
                                 <td className="border border-slate-300 p-1 text-end">{formatCurrency(row.repayments, row.currency, iqdPreference)}</td>
-                                <td className="border border-slate-300 p-1 text-end">{formatCurrency(row.adjustments, row.currency, iqdPreference)}</td>
                                 <td className="border border-slate-300 p-1 text-end font-bold">{formatCurrency(row.closingBalance, row.currency, iqdPreference)}</td>
+                                <td className="border border-slate-300 p-1 text-[7px] leading-snug">{note}</td>
+                            </tr>
+                        )
+                    })}
+                </tbody>
+            </table>
+        </section>
+    )
+}
+
+function settlementActivityLabel(
+    kind: PartnerOrderItemsPrintSettlementActivityKind,
+    t: (key: string, options?: Record<string, unknown>) => string
+) {
+    if (kind === 'order_payment') return t('businessPartners.orderItemsPrint.orderPayment', { defaultValue: 'Order Payment' })
+    if (kind === 'loan_opened') return t('businessPartners.orderItemsPrint.loanOpened', { defaultValue: 'Loan Opened' })
+    if (kind === 'opening_loan_balance') return t('businessPartners.orderItemsPrint.openingLoanBalance', { defaultValue: 'Opening Loan Balance' })
+    if (kind === 'loan_repayment') return t('businessPartners.orderItemsPrint.loanRepayment', { defaultValue: 'Loan Repayment' })
+    if (kind === 'full_loan_settlement') return t('businessPartners.orderItemsPrint.fullLoanSettlement', { defaultValue: 'Full Loan Settlement' })
+    return t('businessPartners.orderItemsPrint.directTransaction', { defaultValue: 'Direct Transaction' })
+}
+
+function SettlementActivitySection({
+    orders,
+    loans,
+    loanPayments,
+    transactions,
+    period,
+    linkedOrderCodes,
+    t,
+    iqdPreference
+}: {
+    orders: StatementOrder[]
+    loans: Loan[]
+    loanPayments: LoanPayment[]
+    transactions: PaymentTransaction[]
+    period: PartnerOrderItemsPrintPeriod
+    linkedOrderCodes?: Record<string, string>
+    t: (key: string, options?: Record<string, unknown>) => string
+    iqdPreference: IQDDisplayPreference
+}) {
+    const rows = buildPartnerOrderItemsPrintSettlementActivities(
+        orders,
+        loans,
+        loanPayments,
+        transactions,
+        period,
+        linkedOrderCodes
+    )
+    if (rows.length === 0) return null
+
+    return (
+        <section className="mt-5" data-order-items-settlement-activity>
+            <div className="mb-2 flex items-center justify-between border-b-2 border-slate-700 pb-1">
+                <h2 className="text-sm font-bold">{t('businessPartners.orderItemsPrint.settlementActivity', { defaultValue: 'Partner Settlement Activity' })}</h2>
+                <span className="text-[9px]">{rows.length} {t('businessPartners.orderItemsPrint.entries', { defaultValue: 'Entries' })}</span>
+            </div>
+            <table className="w-full border-collapse text-[8px] leading-[1.2]">
+                <thead>
+                    <tr className="bg-[#dfead3]">
+                        <th className="w-[14%] border border-slate-400 p-1 text-start">{t('businessPartners.orderItemsPrint.date', { defaultValue: 'Date' })}</th>
+                        <th className="w-[18%] border border-slate-400 p-1 text-start">{t('businessPartners.orderItemsPrint.activity', { defaultValue: 'Activity' })}</th>
+                        <th className="w-[20%] border border-slate-400 p-1 text-start">{t('businessPartners.orderItemsPrint.reference', { defaultValue: 'Reference' })}</th>
+                        <th className="w-[14%] border border-slate-400 p-1 text-end">{t('businessPartners.orderItemsPrint.amount', { defaultValue: 'Amount' })}</th>
+                        <th className="w-[17%] border border-slate-400 p-1 text-end">{t('businessPartners.orderItemsPrint.balanceAfter', { defaultValue: 'Balance After' })}</th>
+                        <th className="w-[17%] border border-slate-400 p-1 text-start">{t('businessPartners.orderItemsPrint.note', { defaultValue: 'Note' })}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((row) => {
+                        const flowLabel = row.direction === 'incoming'
+                            ? t('businessPartners.orderItemsPrint.received', { defaultValue: 'Received' })
+                            : row.direction === 'outgoing'
+                                ? t('businessPartners.orderItemsPrint.paid', { defaultValue: 'Paid' })
+                                : null
+                        const methodLabel = row.paymentMethod
+                            ? t(`pos.${row.paymentMethod}`, { defaultValue: row.paymentMethod })
+                            : null
+                        const generatedNote = row.kind === 'opening_loan_balance'
+                            ? t('businessPartners.orderItemsPrint.carriedForward', { defaultValue: 'Carried forward from the previous period.' })
+                            : row.kind === 'loan_opened'
+                                ? row.loanSource === 'order'
+                                    ? t('businessPartners.orderItemsPrint.orderLinkedLoanCreatedAt', {
+                                        defaultValue: 'This order-linked loan was created on {{date}}.',
+                                        date: formatDateTime(row.date)
+                                    })
+                                    : t('businessPartners.orderItemsPrint.loanCreatedAt', {
+                                        defaultValue: 'This loan was created on {{date}}.',
+                                        date: formatDateTime(row.date)
+                                    })
+                            : row.kind === 'full_loan_settlement'
+                                ? t('businessPartners.orderItemsPrint.loanFullyRepaid', { defaultValue: 'Loan fully repaid.' })
+                                : row.kind === 'order_payment' && row.balanceAfter === 0
+                                    ? t('businessPartners.orderItemsPrint.orderPaidInFull', { defaultValue: 'Order paid in full.' })
+                                    : null
+                        const note = [methodLabel, row.note?.trim(), generatedNote].filter(Boolean).join(' · ')
+
+                        return (
+                            <tr key={row.id} data-pdf-keep-together>
+                                <td className="border border-slate-300 p-1 align-top whitespace-nowrap">{formatDateTime(row.date)}</td>
+                                <td className="border border-slate-300 p-1 align-top">
+                                    <div className="font-semibold">{settlementActivityLabel(row.kind, t)}</div>
+                                    {flowLabel ? <div className="text-[7px]">{flowLabel}</div> : null}
+                                </td>
+                                <td className="border border-slate-300 p-1 align-top font-semibold">{row.reference}</td>
+                                <td className="border border-slate-300 p-1 text-end align-top whitespace-nowrap font-semibold">
+                                    {row.amount == null ? '—' : `${row.direction === 'incoming' ? '+' : row.direction === 'outgoing' ? '−' : ''}${formatCurrency(row.amount, row.currency, iqdPreference)}`}
+                                </td>
+                                <td className="border border-slate-300 p-1 text-end align-top whitespace-nowrap font-bold">{row.balanceAfter == null ? '—' : formatCurrency(row.balanceAfter, row.currency, iqdPreference)}</td>
+                                <td className="border border-slate-300 p-1 text-[7px] leading-snug">{note || '—'}</td>
                             </tr>
                         )
                     })}
@@ -1315,6 +1673,7 @@ export function PartnerOrderItemsPrintTemplate({
     logoUrl,
     showPaidAmount = true,
     showRemainingAmount = true,
+    showSettlementActivity = true,
     componentPositions,
     editableComponents,
     onComponentPositionChange
@@ -1326,9 +1685,6 @@ export function PartnerOrderItemsPrintTemplate({
     const periodLabel = resolvePeriodLabel(data.period, t)
     const partnerLocation = [data.partner.address, data.partner.city, data.partner.country].filter(Boolean).join(', ')
     const businessName = workspaceName?.trim() || t('businessPartners.ourBusiness', { defaultValue: 'Our business' })
-    const directTransactionSummary = buildMoneyMovementSummaries(
-        buildPartnerOrderItemsPrintMoneyMovements([], [], data.directTransactions || [])
-    )
 
     return (
         <div
@@ -1417,22 +1773,18 @@ export function PartnerOrderItemsPrintTemplate({
                     t={t}
                     iqdPreference={iqdPreference}
                 />
-                <LoanPortfolio
-                    loans={data.loans || []}
-                    loanPayments={data.loanPayments || []}
-                    linkedOrderCodes={data.linkedOrderCodes}
-                    period={data.period}
-                    partnerName={data.partner.name}
-                    workspaceName={businessName}
-                    t={t}
-                    iqdPreference={iqdPreference}
-                />
-                <MoneyMovementSummary
-                    title={t('businessPartners.orderItemsPrint.directTransactions', { defaultValue: 'Direct Transactions' })}
-                    summaries={directTransactionSummary}
-                    t={t}
-                    iqdPreference={iqdPreference}
-                />
+                {showSettlementActivity ? (
+                    <SettlementActivitySection
+                        orders={data.statementOrders || [...data.salesOrders, ...data.purchaseOrders]}
+                        loans={data.loans || []}
+                        loanPayments={data.loanPayments || []}
+                        transactions={data.settlementTransactions || data.directTransactions || []}
+                        linkedOrderCodes={data.linkedOrderCodes}
+                        period={data.period}
+                        t={t}
+                        iqdPreference={iqdPreference}
+                    />
+                ) : null}
             </section>
         </div>
     )
