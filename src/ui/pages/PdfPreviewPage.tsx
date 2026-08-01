@@ -48,6 +48,7 @@ import { useAuth } from '@/auth/AuthContext'
 import { UiAccessGate, useUiAccess } from '@/context/UiAccessContext'
 import { AttachedShapesOverlay } from '@/ui/components/AttachedShapesOverlay'
 import { PDF_SHAPE_OPTIONS } from '@/ui/components/PdfShapeGraphic'
+import { PdfJsViewer } from '@/ui/components/PdfJsViewer'
 import { useToast } from '@/ui/components/use-toast'
 import { subscribePdfProgress } from '@/services/pdfProgress'
 import type { PdfShapeKind } from '@/types'
@@ -2219,10 +2220,8 @@ export function PdfPreviewPage() {
                             </button>
                         </div>
                     </header>
-                    <div className="flex-1">
-                        <object data={source.url} type="application/pdf" className="w-full h-full">
-                            <iframe src={source.url} className="w-full h-full" title={title} />
-                        </object>
+                    <div className="min-h-0 flex-1">
+                        <PdfJsViewer url={source.url!} title={title} />
                     </div>
                 </div>
         )
