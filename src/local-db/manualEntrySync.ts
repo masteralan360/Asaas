@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { Table } from 'dexie'
 
 import { isSupabaseConfigured, supabase } from '@/auth/supabase'
 import { isOnline } from '@/lib/network'
@@ -91,11 +92,11 @@ async function fetchRemoteRows(
     return rows
 }
 
-async function hydrateTable<T extends ManualEntryTemplate | ManualEntry>(
+async function hydrateTable(
     tableName: ManualEntryTableName,
     workspaceId: string
 ) {
-    const table = tableName === 'manual_entry_templates'
+    const table: Table<Record<string, unknown>, string> = tableName === 'manual_entry_templates'
         ? db.manual_entry_templates
         : db.manual_entries
 
@@ -103,7 +104,7 @@ async function hydrateTable<T extends ManualEntryTemplate | ManualEntry>(
 
     const syncedAt = new Date().toISOString()
     const remoteItems = remoteRows.map((row) => ({
-        ...(toCamelCase(row) as unknown as T),
+        ...(toCamelCase(row) as Record<string, unknown>),
         syncStatus: 'synced' as const,
         lastSyncedAt: syncedAt
     }))
@@ -111,7 +112,7 @@ async function hydrateTable<T extends ManualEntryTemplate | ManualEntry>(
     const localItems = await table
         .where('workspaceId')
         .equals(workspaceId)
-        .toArray() as Array<T & { syncStatus?: string }>
+        .toArray()
     const pendingIds = new Set(
         localItems.filter((row) => row.syncStatus === 'pending').map((row) => row.id)
     )
@@ -126,7 +127,7 @@ async function hydrateTable<T extends ManualEntryTemplate | ManualEntry>(
             await table.bulkDelete(deletedIds)
         }
         if (applicableRemoteItems.length > 0) {
-            await table.bulkPut(applicableRemoteItems as never)
+            await table.bulkPut(applicableRemoteItems)
         }
     })
 }
@@ -137,8 +138,8 @@ export async function hydrateManualEntryTables(workspaceId: string) {
     }
 
     await Promise.all([
-        hydrateTable<ManualEntryTemplate>('manual_entry_templates', workspaceId),
-        hydrateTable<ManualEntry>('manual_entries', workspaceId)
+        hydrateTable('manual_entry_templates', workspaceId),
+        hydrateTable('manual_entries', workspaceId)
     ])
 }
 
