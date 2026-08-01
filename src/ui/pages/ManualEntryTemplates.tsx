@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowDown, ArrowUp, GripVertical, Loader2, Plus, Save, Trash2, X } from 'lucide-react'
 import { useAuth } from '@/auth'
-import { addToOfflineMutations, db } from '@/local-db'
+import { db } from '@/local-db'
+import {
+  createManualEntryTemplate,
+  deleteManualEntryTemplate,
+  updateManualEntryTemplate,
+  useManualEntryCloudData,
+} from '@/local-db/manualEntrySync'
 import type { ManualEntryTemplate, ManualEntryTemplateRow } from '@/local-db/models'
 import { Button } from '@/ui/components/button'
 import { Input } from '@/ui/components/input'
@@ -33,6 +39,7 @@ export function ManualEntryTemplates() {
 
   const [templates, setTemplates] = useState<ManualEntryTemplate[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const isCloudReady = useManualEntryCloudData(workspaceId)
 
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<ManualEntryTemplate | null>(null)
@@ -70,8 +77,9 @@ export function ManualEntryTemplates() {
   }, [workspaceId])
 
   useEffect(() => {
+    if (!isCloudReady) return
     fetchTemplates()
-  }, [fetchTemplates])
+  }, [fetchTemplates, isCloudReady])
 
   const openCreateForm = useCallback(() => {
     setEditingTemplate(null)
@@ -157,12 +165,13 @@ export function ManualEntryTemplates() {
     if (!workspaceId || !formName.trim()) return
     setIsSaving(true)
     try {
-      const now = new Date().toISOString()
       const rows = formRows
         .filter((r) => r.label.trim())
         .map((r, i) => ({ ...r, sortOrder: i + 1 }))
 
-      const headerData = {
+      const input = {
+        name: formName.trim(),
+        rows,
         headerName: formHeaderName.trim(),
         headerPhone1: formHeaderPhone1.trim(),
         headerPhone2: formHeaderPhone2.trim(),
@@ -172,52 +181,12 @@ export function ManualEntryTemplates() {
       }
 
       if (editingTemplate) {
-        const existing = await db.manual_entry_templates.get(editingTemplate.id)
-        if (!existing) {
-          throw new Error('Template not found')
-        }
-        const updated: ManualEntryTemplate = {
-          ...existing,
-          name: formName.trim(),
-          rows,
-          ...headerData,
-          updatedAt: now,
-          syncStatus: 'pending',
-          version: existing.version + 1,
-        }
-        await db.manual_entry_templates.put(updated)
-        await addToOfflineMutations(
-          'manual_entry_templates',
-          updated.id,
-          'update',
-          updated as unknown as Record<string, unknown>,
-          workspaceId,
-        )
+        await updateManualEntryTemplate(editingTemplate.id, input)
       } else {
-        const id = generateId()
-        const template: ManualEntryTemplate = {
-          id,
-          workspaceId,
-          name: formName.trim(),
-          rows,
-          ...headerData,
-          status: 'active',
+        await createManualEntryTemplate(workspaceId, {
+          ...input,
           createdBy: user?.id || null,
-          createdAt: now,
-          updatedAt: now,
-          syncStatus: 'pending',
-          lastSyncedAt: null,
-          version: 1,
-          isDeleted: false,
-        }
-        await db.manual_entry_templates.add(template)
-        await addToOfflineMutations(
-          'manual_entry_templates',
-          id,
-          'create',
-          template as unknown as Record<string, unknown>,
-          workspaceId,
-        )
+        })
       }
       toast({ title: t('manualEntry.templateSaved') })
       setIsFormOpen(false)
@@ -233,20 +202,7 @@ export function ManualEntryTemplates() {
     if (!deleteTarget) return
     setIsDeleting(true)
     try {
-      const existing = await db.manual_entry_templates.get(deleteTarget.id)
-      await db.manual_entry_templates.update(deleteTarget.id, {
-        isDeleted: true,
-        updatedAt: new Date().toISOString(),
-        syncStatus: 'pending',
-        version: (existing?.version ?? 0) + 1,
-      })
-      await addToOfflineMutations(
-        'manual_entry_templates',
-        deleteTarget.id,
-        'delete',
-        { id: deleteTarget.id },
-        deleteTarget.workspaceId,
-      )
+      await deleteManualEntryTemplate(deleteTarget.id)
       toast({ title: t('manualEntry.templateDeleted') })
       setDeleteTarget(null)
       await fetchTemplates()

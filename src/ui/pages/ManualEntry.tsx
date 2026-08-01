@@ -2,7 +2,8 @@ import { createElement, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, FileText, Loader2, Printer, Save } from 'lucide-react'
 import { useAuth } from '@/auth'
-import { addToOfflineMutations, db, saveInvoiceFromSnapshot } from '@/local-db'
+import { db, saveInvoiceFromSnapshot } from '@/local-db'
+import { saveManualEntry, useManualEntryCloudData } from '@/local-db/manualEntrySync'
 import type { ManualEntryTemplate } from '@/local-db/models'
 import { Button } from '@/ui/components/button'
 import { Input } from '@/ui/components/input'
@@ -16,12 +17,6 @@ import { persistInvoiceVersion } from '@/services/invoiceVersionService'
 const ROW_COUNT = 20
 
 type CellData = Record<string, string[]>
-
-function generateId() {
-  return typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `entry-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-}
 
 function renderTableElement(template: ManualEntryTemplate, data: CellData, detailValues?: Record<string, string>) {
   const sortedRows = [...template.rows]
@@ -346,11 +341,12 @@ export function ManualEntry() {
 
   const [templates, setTemplates] = useState<ManualEntryTemplate[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const isCloudReady = useManualEntryCloudData(workspaceId)
   const [selectedTemplate, setSelectedTemplate] = useState<ManualEntryTemplate | null>(null)
   const [isSelectionOpen, setIsSelectionOpen] = useState(false)
 
   useEffect(() => {
-    if (!workspaceId) return
+    if (!workspaceId || !isCloudReady) return
     db.manual_entry_templates
       .where('workspaceId')
       .equals(workspaceId)
@@ -361,7 +357,7 @@ export function ManualEntry() {
       })
       .catch(console.error)
       .finally(() => setIsLoading(false))
-  }, [workspaceId])
+  }, [workspaceId, isCloudReady])
 
   const activeTemplates = useMemo(
     () => templates.filter((t) => !t.isDeleted && t.status === 'active'),
@@ -384,12 +380,9 @@ export function ManualEntry() {
 
   const handleSaveAndPrint = useCallback(async (data: CellData, detailValues?: Record<string, string>): Promise<string | undefined> => {
     if (!workspaceId || !selectedTemplate) return
-    const now = new Date().toISOString()
-    const entryId = generateId()
-    const invoiceId = entryId
+    let entryId: string
     try {
-      const entry = {
-        id: entryId,
+      entryId = await saveManualEntry({
         workspaceId,
         templateId: selectedTemplate.id,
         templateName: selectedTemplate.name,
@@ -400,26 +393,13 @@ export function ManualEntry() {
         })),
         data,
         detailValues: detailValues ?? { detail1: '', detail2: '', detail3: '' },
-        createdAt: now,
-        updatedAt: now,
-        syncStatus: 'pending' as const,
-        lastSyncedAt: null,
-        version: 1,
-        isDeleted: false,
-      }
-      await db.manual_entries.add(entry)
-      await addToOfflineMutations(
-        'manual_entries',
-        entryId,
-        'create',
-        entry as unknown as Record<string, unknown>,
-        workspaceId,
-      )
+      })
     } catch (err) {
       console.error('Failed to save manual entry:', err)
       toast({ title: 'Error', description: 'Failed to save entry.', variant: 'destructive' })
       return
     }
+    const invoiceId = entryId
 
     // Create invoice record first (without PDF blob)
     try {
