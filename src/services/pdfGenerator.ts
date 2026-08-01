@@ -70,6 +70,15 @@ interface TemplatePdfOptions {
 const A4_WIDTH_MM = 210
 const A4_HEIGHT_MM = A4_PAGE_HEIGHT_MM
 const RECEIPT_WIDTH_MM = 80
+const RENDER_SCALE = 2.5
+
+function isIOSOrIPadOS() {
+    if (typeof navigator === 'undefined') return false
+
+    return /iPad|iPhone|iPod/.test(navigator.userAgent)
+        // iPadOS can identify itself as macOS when requesting desktop sites.
+        || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+}
 
 function resolvePrintLanguage(printLang: string | null | undefined) {
     return printLang && printLang !== 'auto' ? printLang : i18n.language
@@ -188,14 +197,12 @@ function createCanvasSlice(
 }
 
 /**
- * Captures a rendered print template to canvas. Uses html-to-image (SVG
- * foreignObject), which lets the browser itself paint the clone — text,
- * borders, fonts, and table-cell alignment are pixel-identical to the live
- * preview DOM. html2canvas re-implemented rendering and mis-measured font
- * baselines, shifting glyphs down inside tight table rows.
+ * Captures a rendered print template to canvas. Non-iOS platforms use
+ * html-to-image (SVG foreignObject) for browser-painted layout fidelity.
+ * iOS/iPadOS uses html2canvas because it is more reliable there for PDF
+ * generation.
  */
 async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm: number): Promise<RenderResult> {
-    const { toCanvas } = await import('html-to-image')
     const container = document.createElement('div')
     container.id = 'pdf-render-container'
     // Must live in the viewport: html-to-image clones the node with its
@@ -248,16 +255,33 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
 
     const keepTogetherBlocks = collectA4KeepTogetherBlocks(container, widthMm)
 
-    const RENDER_SCALE = 2.5
-
-    // The container is invisible (opacity 0) while it lives in the viewport;
-    // restore the clone's opacity so the foreignObject paints it.
+    // The container is invisible (opacity 0) while it lives in the viewport.
+    // Each renderer restores the cloned container's opacity before capture.
     reportPdfProgress(0.4, 'print.progressRendering')
-    const background = await toCanvas(container, {
-        pixelRatio: RENDER_SCALE,
-        backgroundColor: '#ffffff',
-        style: { opacity: '1' }
-    })
+    const background = isIOSOrIPadOS()
+        ? await (async () => {
+            const { default: html2canvas } = await import('html2canvas')
+            return html2canvas(container, {
+                backgroundColor: '#ffffff',
+                scale: RENDER_SCALE,
+                useCORS: true,
+                logging: false,
+                onclone: (clonedDocument) => {
+                    const clonedContainer = clonedDocument.getElementById(container.id)
+                    if (clonedContainer) {
+                        clonedContainer.style.opacity = '1'
+                    }
+                }
+            })
+        })()
+        : await (async () => {
+            const { toCanvas } = await import('html-to-image')
+            return toCanvas(container, {
+                pixelRatio: RENDER_SCALE,
+                backgroundColor: '#ffffff',
+                style: { opacity: '1' }
+            })
+        })()
     reportPdfProgress(0.6, 'print.progressRendering')
 
     const containerPixelWidth = container.offsetWidth
