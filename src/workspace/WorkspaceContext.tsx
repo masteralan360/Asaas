@@ -24,7 +24,6 @@ import {
     normalizeWorkspaceDataMode,
     writeWorkspaceModeSnapshot
 } from './workspaceMode'
-import { recordWorkspaceDataFetch } from './workspaceDataFreshness'
 import { runSupabaseAction, normalizeSupabaseActionError } from '@/lib/supabaseRequest'
 import {
     getWorkspacePaymentSummary,
@@ -764,7 +763,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 workspaceName: nextWorkspaceName,
                 overrides: fetchedOverrides
             })
-            recordWorkspaceDataFetch(workspaceId, 'supabase')
             await persistWorkspaceState(workspaceId, fetchedFeatures, nextWorkspaceName)
         } catch (err) {
             console.error('Error fetching workspace features:', err)

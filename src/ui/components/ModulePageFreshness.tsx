@@ -81,7 +81,7 @@ export function ModulePageFreshness({ className }: { className?: string }) {
                 }).format(new Date(lastFetchedAt))
                 : undefined}
         >
-            <span aria-hidden="true" className="mx-1 text-muted-foreground/60">•</span>
+            <span aria-hidden="true" className="mx-1 text-primary">•</span>
             {label}
         </span>
     )

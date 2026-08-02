@@ -1,6 +1,6 @@
 import type { WorkspaceDataMode } from '@/local-db/models'
 
-const WORKSPACE_DATA_FETCH_PREFIX = 'atlas_workspace_data_fetch:'
+const WORKSPACE_DATA_FETCH_PREFIX = 'atlas_workspace_data_fetch:v2:'
 
 export const WORKSPACE_DATA_FETCH_EVENT = 'atlas:workspace-data-fetch'
 
