@@ -136,7 +136,7 @@ export default function Storages() {
             if (row.storageId !== selectedStorageId) return
             const product = productById.get(row.productId)
             if (!product || product.isDeleted) return
-            byCurrency[product.currency] = (byCurrency[product.currency] || 0) + (product.costPrice * row.quantity)
+            byCurrency[product.currency] = (byCurrency[product.currency] || 0) + ((product.costPrice ?? 0) * row.quantity)
         })
         return byCurrency
     }, [inventory, productById, selectedStorageId])
@@ -157,7 +157,7 @@ export default function Storages() {
             if (row.storageId !== selectedStorageId) return sum
             const product = productById.get(row.productId)
             if (!product || product.isDeleted) return sum
-            return sum + (convertPrice(product.costPrice, product.currency, settlementCurrency) * row.quantity)
+            return sum + (convertPrice(product.costPrice ?? 0, product.currency, settlementCurrency) * row.quantity)
         }, 0)
     }, [inventory, productById, selectedStorageId, convertPrice, settlementCurrency])
 

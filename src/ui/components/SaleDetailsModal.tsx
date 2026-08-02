@@ -31,6 +31,7 @@ import { RotateCcw, ArrowRight, ArrowRightLeft, XCircle, MessageCircle, CircleDo
 import { isMobile } from '@/lib/platform'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
+import { useHideCosts } from '@/permissions'
 
 type EffectiveLoanStatus = 'pending' | 'active' | 'overdue' | 'completed'
 
@@ -77,6 +78,7 @@ interface SaleDetailsModalProps {
 export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onExchangeItem, onReturnSale, onDownloadInvoice }: SaleDetailsModalProps) {
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
+    const hideCosts = useHideCosts()
     const { features, hasCapability } = useWorkspace()
     const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
     const [partialReturnItem, setPartialReturnItem] = useState<SaleItem | null>(null)
@@ -510,7 +512,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onExchan
                                                                                                 : formatCurrency(a.price, a.currency || item.original_currency || 'usd', features.iqd_display_preference)}
                                                                                         </span>
                                                                                     </div>
-                                                                                    <div className="flex justify-between gap-2">
+                                                                                    <div className={hideCosts ? 'hidden' : 'flex justify-between gap-2'}>
                                                                                         <span className="text-muted-foreground">{t('products.form.cost') || 'Cost Price'}:</span>
                                                                                         <span className="font-medium text-foreground text-right">
                                                                                             {a.cost_price == null
@@ -765,7 +767,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onExchan
                                                                                                 : formatCurrency(a.price, a.currency || item.original_currency || 'usd', features.iqd_display_preference)}
                                                                                         </span>
                                                                                     </div>
-                                                                                    <div className="flex justify-between gap-2">
+                                                                                    <div className={hideCosts ? 'hidden' : 'flex justify-between gap-2'}>
                                                                                         <span className="text-muted-foreground">{t('products.form.cost') || 'Cost Price'}:</span>
                                                                                         <span className="font-medium text-foreground text-right">
                                                                                             {a.cost_price == null

@@ -76,7 +76,7 @@ export type SupabaseProduct = {
     description: string
     category: string
     price: number
-    cost_price: number
+    cost_price: number | null
     quantity: number
     min_stock_level: number
     unit: string

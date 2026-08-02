@@ -194,6 +194,14 @@ export function WorkspacePermissionsProvider({
 
   const hasPermission = useCallback(
     (permission: WorkspacePermissionKey) => {
+      // This is a restrictive global permission, unlike the normal allow-list
+      // permissions below. Administrators always retain financial visibility.
+      if (permission === "global.hideCosts") {
+        return userRole !== "admin"
+          && permissionsEnabled
+          && permissionSet.has("global.hideCosts");
+      }
+
       // 1. Check for global.NOprint restriction first for any print-related checks
       const isPrintAction = permission === 'global.NOprint' || (permission.split('.').length === 2 && permission.split('.')[1] === 'print')
 

@@ -705,7 +705,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         const product = products.find((entry) => entry.id === productId)
         if (!product) return ''
 
-        const sourcePrice = tab === 'sales' ? product.price : product.costPrice
+        const sourcePrice = tab === 'sales' ? product.price : (product.costPrice ?? 0)
         return String(convertCurrencyAmountWithLiveRates(sourcePrice, product.currency, partnerCurrency, liveRates))
     }
 
@@ -765,8 +765,8 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                     originalUnitPrice: convertCurrencyAmountWithLiveRates(unitPrice, orderCurrency, product.currency, liveRates),
                     convertedUnitPrice: roundFormAmount(unitPrice),
                     settlementCurrency: orderCurrency,
-                    costPrice: product.costPrice,
-                    convertedCostPrice: convertCurrencyAmountWithLiveRates(product.costPrice, product.currency, orderCurrency, liveRates)
+                    costPrice: product.costPrice ?? 0,
+                    convertedCostPrice: convertCurrencyAmountWithLiveRates(product.costPrice ?? 0, product.currency, orderCurrency, liveRates)
                 }
             })
 
@@ -2019,7 +2019,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                             product.currency,
                                                             liveRates
                                                         ),
-                                                        product.costPrice,
+                                                        product.costPrice ?? 0,
                                                         product.currency
                                                     )
                                                     : false

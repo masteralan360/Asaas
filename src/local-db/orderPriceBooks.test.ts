@@ -243,7 +243,7 @@ describe('Price Book order pricing', () => {
             fixture,
             {
                 originalCurrency: 'iqd',
-                originalUnitPrice: fixture.product.costPrice,
+                originalUnitPrice: fixture.product.costPrice ?? 0,
                 convertedUnitPrice: 10,
                 batchSalePrice: 25_000,
                 priceBookId: 'price-book-1',
@@ -270,7 +270,7 @@ describe('Price Book order pricing', () => {
             fixture,
             {
                 originalCurrency: 'iqd',
-                originalUnitPrice: fixture.product.costPrice,
+                originalUnitPrice: fixture.product.costPrice ?? 0,
                 convertedUnitPrice: 10,
                 batchSalePrice: 25_000
             },
@@ -297,7 +297,7 @@ describe('Price Book order pricing', () => {
             fixture,
             {
                 originalCurrency: 'usd',
-                originalUnitPrice: fixture.product.costPrice,
+                originalUnitPrice: fixture.product.costPrice ?? 0,
                 convertedUnitPrice: 10,
                 batchSalePrice: fixture.product.price
             },
@@ -324,7 +324,7 @@ describe('Price Book order pricing', () => {
             fixture,
             {
                 originalCurrency: 'iqd',
-                originalUnitPrice: fixture.product.costPrice,
+                originalUnitPrice: fixture.product.costPrice ?? 0,
                 convertedUnitPrice: 10,
                 batchSalePrice: 25_000,
                 priceBookId: 'price-book-1'

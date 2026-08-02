@@ -52,6 +52,7 @@ import {
     type WorkspacePaymentMethod
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
+import { useHideCosts } from '@/permissions'
 import {
     Button,
     Card,
@@ -198,6 +199,7 @@ function InstallmentAmount({
 export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string; orderId: string }) {
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
+    const hideCosts = useHideCosts()
     const { features, workspaceName, isLocalMode } = useWorkspace()
     const [, navigate] = useLocation()
     const { toast } = useToast()
@@ -304,7 +306,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const canManage = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
     const canApproveOrderRequests = user?.role === 'admin'
-    const canViewProfit = user?.role === 'admin'
+    const canViewProfit = !hideCosts
     const canReturnSalesOrder = resolved?.kind === 'sales'
         && resolved.order.status === 'completed'
         && resolved.order.returnStatus !== 'full'
@@ -1429,7 +1431,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                 {showFreeBonus && <TableHead className="text-end">{t('orders.details.freeBonus', { defaultValue: 'Free Bonus' })}</TableHead>}
                                                 {!isSales && <TableHead className="text-end">{t('orders.details.received') || 'Received'}</TableHead>}
                                                 <TableHead className="text-end">{t('orders.form.table.price') || 'Unit Price'}</TableHead>
-                                                {isSales && <TableHead className="text-end">{t('orders.details.costPerUnit') || 'Cost / Unit'}</TableHead>}
+                                                {isSales && canViewProfit && <TableHead className="text-end">{t('orders.details.costPerUnit') || 'Cost / Unit'}</TableHead>}
                                                 <TableHead className="text-end">{t('common.total') || 'Total'}</TableHead>
                                                 {isSales && canViewProfit && <TableHead className="text-end">{t('orders.details.itemProfit') || 'Item Profit'}</TableHead>}
                                                 {canReturnSalesOrder && <TableHead className="text-end">{t('common.actions') || 'Actions'}</TableHead>}
@@ -1474,7 +1476,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                         {showFreeBonus && <TableCell className="text-end">{freeBonusQuantity}</TableCell>}
                                                         {!isSales && <TableCell className="text-end">{itemReceived}</TableCell>}
                                                         <TableCell className="text-end">{formatCurrency(item.convertedUnitPrice, currency, iqd)}</TableCell>
-                                                        {isSales && <TableCell className="text-end">{formatCurrency(salesItem.convertedCostPrice, currency, iqd)}</TableCell>}
+                                                        {isSales && canViewProfit && <TableCell className="text-end">{formatCurrency(salesItem.convertedCostPrice, currency, iqd)}</TableCell>}
                                                         <TableCell className="text-end font-semibold">{formatCurrency(item.lineTotal, currency, iqd)}</TableCell>
                                                         {isSales && canViewProfit && <TableCell className={cn('text-end font-semibold', itemProfit >= 0 ? 'text-emerald-600' : 'text-rose-600')}>{formatCurrency(itemProfit, currency, iqd)}</TableCell>}
                                                         {canReturnSalesOrder && (

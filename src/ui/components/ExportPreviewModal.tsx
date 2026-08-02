@@ -8,6 +8,7 @@ import { db } from '@/local-db'
 import { Button } from '@/ui/components/button'
 import { exportToExcel, mapFinanceForExport, mapSalesForExport, mapRevenueForExport } from '@/lib/excelExport'
 import { supabase } from '@/auth/supabase'
+import { useHideCosts } from '@/permissions'
 
 const SpreadsheetPreview = lazy(() =>
     import('react-spreadsheet').then((module) => ({ default: module.default }))
@@ -64,6 +65,7 @@ export function ExportPreviewModal({
 }: ExportPreviewModalProps) {
     const { t } = useTranslation()
     const { activeWorkspace, isLocalMode } = useWorkspace()
+    const hideCosts = useHideCosts()
     const [isExporting, setIsExporting] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
     const [data, setData] = useState<any[]>([])
@@ -79,7 +81,7 @@ export function ExportPreviewModal({
         } else if (!isOpen) {
             setData([])
         }
-    }, [activeWorkspace?.id, filters, isLocalMode, isOpen, records, type])
+    }, [activeWorkspace?.id, filters, hideCosts, isLocalMode, isOpen, records, type])
 
     const fetchExportData = async () => {
         setIsLoading(true)
@@ -88,7 +90,7 @@ export function ExportPreviewModal({
                 const localSales = await db.sales.where('workspaceId').equals(activeWorkspace.id).toArray()
                 const localUsers = await db.users.where('workspaceId').equals(activeWorkspace.id).toArray()
                 const localSaleIds = localSales.map((sale) => sale.id)
-                const localSaleItems = localSaleIds.length > 0
+                const localSaleItems = !hideCosts && localSaleIds.length > 0
                     ? await db.sale_items.where('saleId').anyOf(localSaleIds).toArray()
                     : []
                 const saleItemsBySaleId = localSaleItems.reduce<Record<string, typeof localSaleItems>>((acc, item) => {
@@ -148,7 +150,7 @@ export function ExportPreviewModal({
                             const netQuantity = Math.max(0, quantity - returnedQuantity)
                             return acc + (costPrice * netQuantity)
                         }, 0)
-                        return {
+                        const exportSale = {
                             ...sale,
                             sequenceId: sale.sequenceId,
                             cashier_name: profilesMap[sale.cashierId] || 'Staff',
@@ -167,6 +169,9 @@ export function ExportPreviewModal({
                                 product_sku: item.productSku || ''
                             }))
                         }
+                        if (!hideCosts) return exportSale
+                        const { cost, profit, margin, items, ...safeSale } = exportSale
+                        return safeSale
                     })
                 setData(formattedSales)
                 return
@@ -174,13 +179,15 @@ export function ExportPreviewModal({
 
             let query = supabase
                 .from('sales')
-                .select(`
-                    *,
-                    items:sale_items(
+                .select(hideCosts
+                    ? 'id, sequence_id, cashier_id, created_at, is_returned, total_amount, settlement_currency, payment_method, notes, origin'
+                    : `
                         *,
-                        product:product_id(name, sku, can_be_returned, return_rules)
-                    )
-                `)
+                        items:sale_items(
+                            *,
+                            product:product_id(name, sku, can_be_returned, return_rules)
+                        )
+                    `)
 
             const now = new Date()
             const { dateRange, customDates, selectedCashier } = filters || {
@@ -244,7 +251,7 @@ export function ExportPreviewModal({
                         const netQuantity = Math.max(0, quantity - returnedQuantity)
                         return acc + (costPrice * netQuantity)
                     }, 0)
-                    return {
+                    const exportSale = {
                         ...sale,
                         sequenceId: sale.sequence_id,
                         cashier_name: profilesMap[sale.cashier_id] || 'Staff',
@@ -261,6 +268,9 @@ export function ExportPreviewModal({
                             product_sku: item.product?.sku || ''
                         }))
                     }
+                    if (!hideCosts) return exportSale
+                    const { cost, profit, margin, items, ...safeSale } = exportSale
+                    return safeSale
                 })
             setData(formattedSales)
         } catch (error) {
@@ -274,9 +284,9 @@ export function ExportPreviewModal({
         if (!data) return []
         if (type === 'finance') return mapFinanceForExport(data)
         if (type === 'products') return mapFinanceForExport(data)
-        if (type === 'revenue') return mapRevenueForExport(data, t)
+        if (type === 'revenue') return mapRevenueForExport(data, t, !hideCosts)
         return mapSalesForExport(data, t)
-    }, [data, t, type])
+    }, [data, hideCosts, t, type])
 
     const spreadsheetData = useMemo<PreviewMatrix>(() => {
         if (exportData.length === 0) return []

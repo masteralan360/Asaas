@@ -79,7 +79,6 @@ const REQUIRED_VALUE_FIELDS: ProductImportField[] = [
     'name',
     'storage_id',
     'price',
-    'cost_price',
     'quantity',
     'unit',
     'Currency'

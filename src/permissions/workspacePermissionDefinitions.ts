@@ -504,6 +504,16 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     section: "global",
   },
   {
+    key: "global.hideCosts",
+    module: "global",
+    labelKey: "members.permissions.globalHideCosts",
+    defaultLabel: "Hide Costs",
+    descriptionKey: "members.permissions.globalHideCostsDescription",
+    defaultDescription: "Hide product costs and order profit information for this member.",
+    icon: Wallet,
+    section: "global",
+  },
+  {
     key: "manualEntry.access",
     module: "manualEntry",
     labelKey: "members.permissions.manualEntryAccess",

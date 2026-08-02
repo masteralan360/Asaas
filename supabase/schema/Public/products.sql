@@ -6,7 +6,7 @@ CREATE TABLE public.products (
   description text NULL DEFAULT ''::text,
   category character varying NULL,
   price numeric NOT NULL DEFAULT 0,
-  cost_price numeric NOT NULL DEFAULT 0,
+  cost_price numeric NULL,
   quantity numeric NOT NULL DEFAULT 0,
   min_stock_level numeric NOT NULL DEFAULT 10,
   unit character varying NOT NULL DEFAULT 'pcs'::character varying,

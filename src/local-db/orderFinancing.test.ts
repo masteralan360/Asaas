@@ -204,7 +204,7 @@ function salesOrderWithStaleRoundedBalance(customerId: string): SalesOrder {
 
 function salesOrderInput(
     customerId: string,
-    product: { id: string; name: string; sku: string; costPrice: number },
+    product: { id: string; name: string; sku: string; costPrice: number | null },
     storageId: string,
     options: {
         method: SalesOrder['paymentMethod']
@@ -234,8 +234,8 @@ function salesOrderInput(
             originalUnitPrice: total,
             convertedUnitPrice: total,
             settlementCurrency: 'iqd',
-            costPrice: product.costPrice,
-            convertedCostPrice: product.costPrice,
+            costPrice: product.costPrice ?? 0,
+            convertedCostPrice: product.costPrice ?? 0,
             reservedQuantity: 0,
             fulfilledQuantity: 0,
             batchAllocations: null

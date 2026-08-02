@@ -58,7 +58,7 @@ export const mapSalesForExport = (sales: any[], t: any) => {
 /**
  * Maps revenue/profit analysis records to the format expected for the Excel export.
  */
-export const mapRevenueForExport = (saleStats: any[], t: any) => {
+export const mapRevenueForExport = (saleStats: any[], t: any, includeProfit = true) => {
     return saleStats.map(sale => ({
         [t('common.date') || 'Date']: new Date(sale.date).toLocaleString(),
         [t('sales.id') || 'Sale ID']: sale.referenceCode || (sale.sequenceId ? `#${String(sale.sequenceId).padStart(5, '0')}` : sale.id.slice(0, 8)),
@@ -66,9 +66,11 @@ export const mapRevenueForExport = (saleStats: any[], t: any) => {
         [t('sales.cashier') || 'Cashier']: sale.cashier || sale.partyName || 'Staff',
         [t('common.currency') || 'Currency']: sale.currency?.toUpperCase() || 'USD',
         [t('revenue.table.revenue') || 'Revenue']: sale.revenue,
-        [t('revenue.table.cost') || 'Cost']: sale.cost,
-        [t('revenue.table.profit') || 'Profit']: sale.profit,
-        [t('revenue.table.margin') || 'Margin (%)']: `${(sale.margin ?? 0).toFixed(2)}%`
+        ...(includeProfit ? {
+            [t('revenue.table.cost') || 'Cost']: sale.cost,
+            [t('revenue.table.profit') || 'Profit']: sale.profit,
+            [t('revenue.table.margin') || 'Margin (%)']: `${(sale.margin ?? 0).toFixed(2)}%`
+        } : {})
     }));
 };
 

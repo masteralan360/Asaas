@@ -46,7 +46,8 @@ import {
     type StockBatch
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
-import { useWorkspacePermissions } from '@/permissions'
+import { useHideCosts, useWorkspacePermissions } from '@/permissions'
+import { getMissingProductCostMessage, hasValidProductCost } from '@/lib/productCost'
 import {
     Button,
     Badge,
@@ -206,6 +207,7 @@ export function SalesOrderFormPage({
     const { toast } = useToast()
     const [, navigate] = useLocation()
     const { user } = useAuth()
+    const hideCosts = useHideCosts()
     const { features, hasCapability, hasFeature } = useWorkspace()
     const { permissionKeys } = useWorkspacePermissions()
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
@@ -429,7 +431,10 @@ export function SalesOrderFormPage({
 
     const getSalesProductOptions = (storageId: string, selectedProductId: string) => {
         const availableIds = availableSalesProductIdsByStorage.get(storageId) ?? new Set<string>()
-        return products.filter((product) => product.id === selectedProductId || availableIds.has(product.id))
+        return products.filter((product) => (
+            (product.id === selectedProductId || availableIds.has(product.id))
+            && hasValidProductCost(product.costPrice)
+        ))
     }
 
     const getPriceBookItemForPartner = useCallback((partner: Pick<BusinessPartner, 'priceBookId'> | null | undefined, productId: string) =>
@@ -495,11 +500,11 @@ export function SalesOrderFormPage({
             ? item.priceSourceCurrency
             : product.currency
         const priceBookCostPrice = item.priceBookCostPrice === ''
-            ? product.costPrice
+            ? (product.costPrice ?? 0)
             : Number(item.priceBookCostPrice)
         const sourceCostPrice = hasPriceBookProvenance && Number.isFinite(priceBookCostPrice)
             ? priceBookCostPrice
-            : product.costPrice
+            : (product.costPrice ?? 0)
 
         return {
             sourceCostPrice,
@@ -774,7 +779,7 @@ export function SalesOrderFormPage({
             if (orderItems.length === 0) {
                 throw new Error(t('orders.form.errors.atLeastOneItem', { defaultValue: 'Add at least one item.' }))
             }
-            if (!skipLossWarning && orderItems.some((item) =>
+            if (!hideCosts && !skipLossWarning && orderItems.some((item) =>
                 item.convertedCostPrice > 0 && item.convertedUnitPrice < item.convertedCostPrice
             )) {
                 setIsLossWarningOpen(true)
@@ -1144,7 +1149,17 @@ export function SalesOrderFormPage({
                                                                 inputClassName={canOpenProductsView ? 'rounded-s-none' : undefined}
                                                                 value={item.productSearch}
                                                                 onChange={(value) => updateItem(index, { productSearch: value, productId: '' })}
-                                                                onSelectProduct={(product) => updateItem(index, { productId: product.id, productSearch: product.name })}
+                                                                onSelectProduct={(product) => {
+                                                                    if (!hasValidProductCost(product.costPrice)) {
+                                                                        toast({
+                                                                            title: t('common.error') || 'Error',
+                                                                            description: getMissingProductCostMessage(product.name),
+                                                                            variant: 'destructive'
+                                                                        })
+                                                                        return
+                                                                    }
+                                                                    updateItem(index, { productId: product.id, productSearch: product.name })
+                                                                }}
                                                                 products={getSalesProductOptions(item.storageId, item.productId)}
                                                                 disabled={priceBooksEnabled && (!isPriceBookCatalogReady || !selectedCustomer)}
                                                                 placeholder={priceBooksEnabled && !selectedCustomer
@@ -1238,7 +1253,7 @@ export function SalesOrderFormPage({
                                                     <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-unit-price' : undefined}>
                                                         <Label>{t('common.sellingPrice', { defaultValue: 'Selling Price' })}</Label>
                                                         <Input value={formatNumericInput(item.unitPrice)} onChange={(event) => updateItem(index, { unitPrice: sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 3 }) })} placeholder={t('common.sellingPrice', { defaultValue: 'Selling Price' })} />
-                                                        {isSellingAtLoss ? (
+                                                        {!hideCosts && isSellingAtLoss ? (
                                                             <div role="alert" className="flex items-start gap-1.5 text-xs text-destructive">
                                                                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                                                                 <span>
@@ -1656,6 +1671,14 @@ export function SalesOrderFormPage({
                 }}
                 onSelectProduct={(product, storageId, batchId) => {
                     if (productsViewItemIndex === null) return
+                    if (!hasValidProductCost(product.costPrice)) {
+                        toast({
+                            title: t('common.error') || 'Error',
+                            description: getMissingProductCostMessage(product.name),
+                            variant: 'destructive'
+                        })
+                        return
+                    }
                     setHighlightedStorageIndex(null)
                     updateItem(productsViewItemIndex, {
                         productId: product.id,

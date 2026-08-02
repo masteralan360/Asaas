@@ -14,6 +14,7 @@ import { platformService } from '@/services/platformService'
 import { useKdsStream } from '@/hooks/useKdsStream'
 import { createVerificationSale, verifySale } from '@/lib/saleVerification'
 import { convertCurrencyAmountWithAvailableSnapshot } from '@/lib/orderCurrency'
+import { getMissingProductCostMessage, hasValidProductCost } from '@/lib/productCost'
 
 const TICKETS_STORAGE_KEY = 'instant_pos_tickets'
 const TICKET_COUNTER_KEY = 'instant_pos_ticket_counter'
@@ -716,6 +717,14 @@ export function InstantPOS() {
         const product = selectableProducts.find(item => item.id === productId && item.storageId === selectedStorageId)
         const activeDiscount = activeDiscountMap.get(productId)
         if (!product) return
+        if (!hasValidProductCost(product.costPrice)) {
+            toast({
+                title: t('common.error') || 'Error',
+                description: getMissingProductCostMessage(product.name),
+                variant: 'destructive'
+            })
+            return
+        }
         if (product.quantity <= 0) {
             toast({
                 title: t('common.error') || 'Error',
@@ -871,6 +880,20 @@ export function InstantPOS() {
             toast({
                 title: t('common.error') || 'Error',
                 description: t('businessPartners.agent.productCategoryExcluded', { defaultValue: 'This product category is not available to this user.' }),
+                variant: 'destructive'
+            })
+            return
+        }
+
+        const missingCostItem = activeTicket.items.find((item) => {
+            const product = products.find((candidate) => candidate.id === item.productId && candidate.storageId === item.storageId)
+            return product ? !hasValidProductCost(product.costPrice) : false
+        })
+        if (missingCostItem) {
+            const product = products.find((candidate) => candidate.id === missingCostItem.productId && candidate.storageId === missingCostItem.storageId)
+            toast({
+                title: t('common.error') || 'Error',
+                description: getMissingProductCostMessage(product?.name || missingCostItem.name),
                 variant: 'destructive'
             })
             return

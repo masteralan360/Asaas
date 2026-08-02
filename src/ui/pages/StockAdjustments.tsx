@@ -1157,7 +1157,7 @@ export function StockAdjustments() {
                         )}
                       </span>
                       <span>
-                        {t("stockAdjustments.batches.cost", "Cost {{amount}}", { amount: formatCurrency(selectedBatchProduct.costPrice, selectedBatchProduct.currency) })}
+                        {t("stockAdjustments.batches.cost", "Cost {{amount}}", { amount: formatCurrency(selectedBatchProduct.costPrice ?? 0, selectedBatchProduct.currency) })}
                       </span>
                       <span className="uppercase">
                         {selectedBatchProduct.currency}

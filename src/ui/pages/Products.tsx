@@ -3,7 +3,7 @@ import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowDown, ArrowUp, ArrowUpDown, Barcode, BookOpen, Boxes, Copy, FileSpreadsheet, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Barcode, BookOpen, Boxes, CircleAlert, Copy, FileSpreadsheet, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import {
@@ -40,6 +40,8 @@ import {
 } from '@/lib/productImport'
 import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
+import { useHideCosts } from '@/permissions'
+import { hasValidProductCost } from '@/lib/productCost'
 import { UiAccessGate, useUiAccess } from '@/context/UiAccessContext'
 import { getBarcodeLabelData } from '@/lib/barcodeLabel'
 import { type TemplatePreview } from '@/lib/pdfPreviewStore'
@@ -152,6 +154,7 @@ function countActiveProductFilters(filters: ProductFilterState) {
 
 export function Products() {
     const { user, session } = useAuth()
+    const hideCosts = useHideCosts()
     const { features, branchInfo, hasCapability } = useWorkspace()
     const { t } = useTranslation()
     const { toast } = useToast()
@@ -1041,7 +1044,7 @@ export function Products() {
                             storageId: storage.id,
                             storageName: storage.name,
                             price: Number(row.values.price),
-                            costPrice: Number(row.values.cost_price),
+                            costPrice: row.values.cost_price.trim() === '' ? null : Number(row.values.cost_price),
                             quantity: Number(row.values.quantity),
                             minStockLevel: row.values.min_stock_level === '' ? 0 : Number(row.values.min_stock_level),
                             unit: row.values.unit,
@@ -1104,7 +1107,7 @@ export function Products() {
             [t('products.table.category', { defaultValue: 'Category' })]: getCategoryName(product.categoryId),
             [t('storages.title', { defaultValue: 'Storage' })]: getProductStorageSummary(product),
             [t('products.table.price', { defaultValue: 'Price' })]: product.price,
-            [t('products.form.cost', { defaultValue: 'Cost Price' })]: product.costPrice,
+            ...(!hideCosts ? { [t('products.form.cost', { defaultValue: 'Cost Price' })]: product.costPrice } : {}),
             [t('products.form.currency', { defaultValue: 'Currency' })]: product.currency.toUpperCase(),
             [t('products.table.stock', { defaultValue: 'Stock' })]: product.quantity,
             [t('products.form.minStock', { defaultValue: 'Min Stock Level' })]: product.minStockLevel,
@@ -1386,7 +1389,8 @@ export function Products() {
                                                 <div
                                                     className={cn(
                                                         'space-y-4 rounded-[2rem] border border-border bg-card p-4 shadow-sm',
-                                                        isProductSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5'
+                                                        isProductSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5',
+                                                        !hasValidProductCost(product.costPrice) && 'border-destructive/40 bg-destructive/10'
                                                     )}
                                                 >
                                             {isProductSelectionMode && (
@@ -1402,6 +1406,16 @@ export function Products() {
                                                 </div>
                                             )}
                                             <div className="flex gap-4">
+                                                {!hasValidProductCost(product.costPrice) && (
+                                                    <TooltipProvider>
+                                                        <Tooltip delayDuration={150}>
+                                                            <TooltipTrigger asChild>
+                                                                <span className="shrink-0 cursor-help text-destructive" aria-label="Product cannot be sold without a cost"><CircleAlert className="h-5 w-5" /></span>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>This product has no cost and cannot be sold.</TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
+                                                )}
                                                 <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem] border border-border/50 bg-muted/30">
                                                     {product.imageUrl ? (
                                                         <img src={getDisplayImageUrl(product.imageUrl)} alt="" className="h-full w-full object-cover" />
@@ -1503,8 +1517,9 @@ export function Products() {
                                                     <ContextMenuTrigger asChild>
                                                         <div
                                                             className={cn(
-                                                                'group relative flex flex-col gap-4 overflow-hidden rounded-[1.5rem] border border-border/50 bg-card p-4 transition-all duration-300 hover:-translate-y-1 hover:bg-accent/5 hover:shadow-2xl hover:shadow-primary/5',
-                                                                isProductSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5 shadow-lg shadow-primary/10'
+                                                            'group relative flex flex-col gap-4 overflow-hidden rounded-[1.5rem] border border-border/50 bg-card p-4 transition-all duration-300 hover:-translate-y-1 hover:bg-accent/5 hover:shadow-2xl hover:shadow-primary/5',
+                                                                isProductSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5 shadow-lg shadow-primary/10',
+                                                                !hasValidProductCost(product.costPrice) && 'border-destructive/40 bg-destructive/10 hover:bg-destructive/15'
                                                             )}
                                                         >
                                                     {isProductSelectionMode && (
@@ -1533,6 +1548,16 @@ export function Products() {
                                                         )}>
                                                             {product.quantity <= product.minStockLevel ? (t('products.lowStock') || 'Low Stock') : (t('products.inStock') || 'In Stock')}
                                                         </div>
+                                                        {!hasValidProductCost(product.costPrice) && (
+                                                            <TooltipProvider>
+                                                                <Tooltip delayDuration={150}>
+                                                                    <TooltipTrigger asChild>
+                                                                        <span className="absolute left-2 top-2 cursor-help text-destructive"><CircleAlert className="h-5 w-5 fill-background" /></span>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent>This product has no cost and cannot be sold.</TooltipContent>
+                                                                </Tooltip>
+                                                            </TooltipProvider>
+                                                        )}
                                                     </div>
 
                                                     <div className="flex-1 space-y-1">
@@ -1605,6 +1630,7 @@ export function Products() {
                                             <TableHeader>
                                                 <TableRow>
                                                     {isProductSelectionMode && <TableHead className="w-[52px]" />}
+                                                    <TableHead className="w-[44px]" aria-label="Product status" />
                                                     <TableHead className="w-[80px]">{t('products.table.image') || 'Image'}</TableHead>
                                                     <TableHead
                                                         className="cursor-pointer select-none group/sort"
@@ -1677,7 +1703,10 @@ export function Products() {
                                                 {paginatedProducts.map((product) => (
                                                     <ContextMenu key={product.id}>
                                                         <ContextMenuTrigger asChild>
-                                                    <TableRow className={cn(isProductSelectionMode && selectedProductIds.has(product.id) && 'bg-primary/5')}>
+                                                    <TableRow className={cn(
+                                                        isProductSelectionMode && selectedProductIds.has(product.id) && 'bg-primary/5',
+                                                        !hasValidProductCost(product.costPrice) && 'bg-destructive/10 hover:bg-destructive/15'
+                                                    )}>
                                                         {isProductSelectionMode && (
                                                             <TableCell>
                                                                 <Checkbox
@@ -1687,6 +1716,22 @@ export function Products() {
                                                                 />
                                                             </TableCell>
                                                         )}
+                                                        <TableCell>
+                                                            {!hasValidProductCost(product.costPrice) && (
+                                                                <TooltipProvider>
+                                                                    <Tooltip delayDuration={150}>
+                                                                        <TooltipTrigger asChild>
+                                                                            <span className="inline-flex cursor-help text-destructive" aria-label="Product cannot be sold without a cost">
+                                                                                <CircleAlert className="h-5 w-5" />
+                                                                            </span>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent>
+                                                                            This product has no cost and cannot be sold.
+                                                                        </TooltipContent>
+                                                                    </Tooltip>
+                                                                </TooltipProvider>
+                                                            )}
+                                                        </TableCell>
                                                         <TableCell>
                                                             <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-muted">
                                                                 {product.imageUrl ? (

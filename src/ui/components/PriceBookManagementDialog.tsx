@@ -11,6 +11,7 @@ import {
     type PriceBook
 } from '@/local-db'
 import { formatCurrency } from '@/lib/utils'
+import { useHideCosts } from '@/permissions'
 import {
     Button,
     DeleteConfirmationModal,
@@ -41,6 +42,7 @@ export function PriceBookManagementDialog({
     enabled
 }: PriceBookManagementDialogProps) {
     const { t } = useTranslation()
+    const hideCosts = useHideCosts()
     const { toast } = useToast()
     const {
         priceBooks,
@@ -332,11 +334,13 @@ export function PriceBookManagementDialog({
                                                                                 <div className="truncate font-mono text-[11px] text-muted-foreground">{productSku}</div>
                                                                             </div>
                                                                         </div>
-                                                                        <div className="grid shrink-0 grid-cols-2 gap-x-5 text-end text-xs">
-                                                                            <div>
-                                                                                <div className="text-muted-foreground">{t('priceBooks.costPrice', { defaultValue: 'Unit cost' })}</div>
-                                                                                <div className="font-semibold">{formatCurrency(item.costPrice, item.currency)}</div>
-                                                                            </div>
+                                                                        <div className={`grid shrink-0 ${hideCosts ? 'grid-cols-1' : 'grid-cols-2'} gap-x-5 text-end text-xs`}>
+                                                                            {!hideCosts && (
+                                                                                <div>
+                                                                                    <div className="text-muted-foreground">{t('priceBooks.costPrice', { defaultValue: 'Unit cost' })}</div>
+                                                                                    <div className="font-semibold">{formatCurrency(item.costPrice, item.currency)}</div>
+                                                                                </div>
+                                                                            )}
                                                                             <div>
                                                                                 <div className="text-muted-foreground">{t('priceBooks.sellingPrice', { defaultValue: 'Selling price' })}</div>
                                                                                 <div className="font-semibold text-primary">{formatCurrency(item.price, item.currency)}</div>

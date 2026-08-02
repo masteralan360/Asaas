@@ -421,7 +421,7 @@ export function PurchaseOrderFormPage({
         }
 
         return {
-            unitPrice: String(convertCurrencyAmountWithLiveRates(product.costPrice, product.currency, partnerCurrency, liveRates)),
+            unitPrice: String(convertCurrencyAmountWithLiveRates(product.costPrice ?? 0, product.currency, partnerCurrency, liveRates)),
             batchSalePrice: String(product.price),
             priceBookId: '',
             priceBookItemId: '',
@@ -903,7 +903,7 @@ export function PurchaseOrderFormPage({
                                                         product.currency,
                                                         liveRates
                                                     ),
-                                                    product.costPrice,
+                                                    product.costPrice ?? 0,
                                                     product.currency
                                                 ) || (Boolean(item.priceBookId && item.priceBookItemId) && (
                                                     item.batchSalePrice !== ''

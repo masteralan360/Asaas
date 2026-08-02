@@ -10,6 +10,7 @@ import { normalizeOrderAdjustments } from '@/lib/orderAdjustments'
 import { isOnline } from '@/lib/network'
 import { getOrderLineInventoryQuantity } from '@/lib/orderLineItems'
 import { isPositiveQuantity, roundQuantity } from '@/lib/quantity'
+import { hasValidProductCost } from '@/lib/productCost'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
 import { generateId } from '@/lib/utils'
@@ -680,6 +681,9 @@ async function assertSalesStockAvailable(order: SalesOrder, excludeOrderId?: str
         if (!product || product.isDeleted) {
             throw new Error(`Product not found: ${item.productName}`)
         }
+        if (!hasValidProductCost(product.costPrice)) {
+            throw new Error(`${product.name} cannot be sold until a cost is added.`)
+        }
 
         const storageId = resolveSalesOrderItemStorageId(order, item)
         if (!storageId) {
@@ -693,6 +697,22 @@ async function assertSalesStockAvailable(order: SalesOrder, excludeOrderId?: str
         const requiredQuantity = getOrderLineInventoryQuantity(item)
         if (available < requiredQuantity) {
             throw new Error(`Insufficient stock for ${item.productName}`)
+        }
+    }
+}
+
+async function assertSalesProductsHaveCosts(order: SalesOrder) {
+    const productIds = Array.from(new Set(order.items.map((item) => item.productId)))
+    const products = await db.products.where('id').anyOf(productIds).toArray()
+    const productMap = new Map(products.map((product) => [product.id, product]))
+
+    for (const item of order.items) {
+        const product = productMap.get(item.productId)
+        if (!product || product.isDeleted) {
+            throw new Error(`Product not found: ${item.productName}`)
+        }
+        if (!hasValidProductCost(product.costPrice)) {
+            throw new Error(`${product.name} cannot be sold until a cost is added.`)
         }
     }
 }
@@ -1161,7 +1181,7 @@ async function receiveInventoryForPurchaseOrder(order: PurchaseOrder) {
                 : item.originalUnitPrice,
             product.currency
         )
-        const productUnitCost = roundAmount(product.costPrice, product.currency)
+        const productUnitCost = roundAmount(product.costPrice ?? 0, product.currency)
         const hasDifferentPurchaseCost = shouldCreatePurchaseCostBatch(
             actualUnitCost,
             productUnitCost,
@@ -1717,6 +1737,8 @@ export async function createSalesOrder(
     else delete order.orderAdjustments
     order.nextDueDate = isOrderFinancingMethod(order.paymentMethod) ? order.firstDueDate || null : null
 
+    await assertSalesProductsHaveCosts(order)
+
     if (status === 'pending' || status === 'completed') {
         if (isOrderFinancingMethod(order.paymentMethod)) {
             throw new Error('Financed orders must be activated from draft')
@@ -1813,6 +1835,7 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
     if (confirmedAdjustments.length === 0) delete updated.orderAdjustments
 
     updated.nextDueDate = isOrderFinancingMethod(updated.paymentMethod) ? updated.firstDueDate || null : null
+    await assertSalesProductsHaveCosts(updated)
     await db.sales_orders.put(updated)
     const orderForSync = hasOrderAdjustmentsUpdate && confirmedAdjustments.length === 0
         ? { ...updated, orderAdjustments: null }

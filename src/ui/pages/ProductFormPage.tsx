@@ -68,6 +68,7 @@ import { cn, formatCurrency, formatNumericInput, sanitizeNumericInput } from '@/
 import { getInventoryRowsForProduct } from '@/local-db/inventory'
 import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
+import { useHideCosts } from '@/permissions'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { BarcodeScannerToggleButton } from '@/ui/components/BarcodeScannerToggleButton'
 import { useDemoTutorial } from '@/demo'
@@ -275,14 +276,16 @@ function createInitialFormData(defaultCurrency: CurrencyCode, defaultStorageId: 
     }
 }
 
-function mapProductToFormData(product: Product): ProductFormData {
+function mapProductToFormData(product: Product, hideCosts = false): ProductFormData {
     return {
         sku: product.sku,
         name: product.name,
         description: product.description,
         categoryId: product.categoryId || undefined,
         price: String(product.price),
-        costPrice: String(product.costPrice),
+        // A restricted user must never receive an existing product cost in
+        // form state; edit saves intentionally omit the field below.
+        costPrice: hideCosts || product.costPrice == null ? '' : String(product.costPrice),
         quantity: product.quantity,
         minStockLevel: product.minStockLevel,
         unit: product.unit,
@@ -299,6 +302,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const { t } = useTranslation()
     const { user } = useAuth()
     const { features, hasCapability } = useWorkspace()
+    const hideCosts = useHideCosts()
     const [, navigate] = useLocation()
     const { toast } = useToast()
     const demoTutorial = useDemoTutorial()
@@ -459,9 +463,9 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
 
     useEffect(() => {
         const nextKey = mode === 'create'
-            ? 'create'
+            ? `create:${hideCosts ? 'hidden' : 'visible'}`
             : product
-                ? `${mode}:${product.id}:${product.updatedAt}`
+                ? `${mode}:${product.id}:${product.updatedAt}:${hideCosts ? 'hidden' : 'visible'}`
                 : null
 
         if (!nextKey || initializedKeyRef.current === nextKey) {
@@ -477,14 +481,14 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                 return
             }
 
-            nextFormData = mapProductToFormData(product)
+            nextFormData = mapProductToFormData(product, hideCosts)
         }
 
         setFormData(nextFormData)
         setImageError(false)
         initialFormSnapshotRef.current = JSON.stringify(nextFormData)
         initializedKeyRef.current = nextKey
-    }, [features.default_currency, mode, product, storages])
+    }, [features.default_currency, hideCosts, mode, product, storages])
 
     useEffect(() => {
         if (!priceBooksEnabled || !isPriceBookCatalogReady) {
@@ -862,7 +866,16 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                 ? storages.find((storage) => storage.id === formData.storageId)?.name
                 : null
 
-            const { perQuantity: _perQuantity, ...formDataToSave } = formData
+            const { perQuantity: _perQuantity, costPrice: costPriceInput, ...formDataToSave } = formData
+            const enteredCost = costPriceInput.trim() === ''
+                ? null
+                : Number(costPriceInput)
+            const normalizedCost = enteredCost == null
+                ? null
+                : isDynamicUnit(formData.unit)
+                    ? enteredCost / (Number(formData.perQuantity) || 1)
+                    : enteredCost
+            const shouldPersistCost = !isEditing || !hideCosts
             const dataToSave = {
                 ...formDataToSave,
                 sku: formData.sku.trim(),
@@ -873,9 +886,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                 price: isDynamicUnit(formData.unit)
                     ? (Number(formData.price) || 0) / (Number(formData.perQuantity) || 1)
                     : Number(formData.price) || 0,
-                costPrice: isDynamicUnit(formData.unit)
-                    ? (Number(formData.costPrice) || 0) / (Number(formData.perQuantity) || 1)
-                    : Number(formData.costPrice) || 0,
+                ...(shouldPersistCost ? { costPrice: normalizedCost } : {}),
                 quantity: roundQuantity(Number(formData.quantity) || 0),
                 minStockLevel: roundQuantity(Number(formData.minStockLevel) || 0),
                 createdBy: user?.id || null
@@ -896,13 +907,18 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                 await updateProduct(createdProductIdRef.current, dataToSave)
                 savedProductId = createdProductIdRef.current
             } else {
-                const createdProduct = await createProduct(workspaceId, dataToSave)
+                // Creation always persists the (possibly null) submitted cost;
+                // only a restricted edit is allowed to omit the property.
+                const createdProduct = await createProduct(workspaceId, {
+                    ...dataToSave,
+                    costPrice: normalizedCost
+                })
                 createdProductIdRef.current = createdProduct.id
                 savedProductId = createdProduct.id
                 demoTutorial.completeProductCreated(createdProduct)
             }
 
-            if (priceBooksEnabled) {
+            if (priceBooksEnabled && !hideCosts) {
                 const savedItems = await replaceProductPriceBookItems(
                     workspaceId,
                     savedProductId,
@@ -984,13 +1000,15 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const effectivePrice = isDynamicUnit(formData.unit)
         ? (Number(formData.price) || 0) / perQty
         : Number(formData.price) || 0
-    const effectiveCost = isDynamicUnit(formData.unit)
-        ? (Number(formData.costPrice) || 0) / perQty
-        : Number(formData.costPrice) || 0
+    const effectiveCost = formData.costPrice.trim() === ''
+        ? null
+        : isDynamicUnit(formData.unit)
+            ? Number(formData.costPrice) / perQty
+            : Number(formData.costPrice)
     const pricePreview = formatCurrency(effectivePrice, formData.currency, features.iqd_display_preference)
-    const costPreview = formatCurrency(effectiveCost, formData.currency, features.iqd_display_preference)
-    const marginValue = effectivePrice - effectiveCost
-    const marginPreview = formatCurrency(marginValue, formData.currency, features.iqd_display_preference)
+    const costPreview = effectiveCost == null ? null : formatCurrency(effectiveCost, formData.currency, features.iqd_display_preference)
+    const marginValue = effectiveCost == null ? null : effectivePrice - effectiveCost
+    const marginPreview = marginValue == null ? null : formatCurrency(marginValue, formData.currency, features.iqd_display_preference)
     const selectedCategoryLabel = formData.categoryId
         ? categories.find((category) => category.id === formData.categoryId)?.name || (t('categories.noCategory') || 'No category')
         : (t('categories.noCategory') || 'No category')
@@ -1639,61 +1657,67 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             disabled={isReadOnly}
                                         />
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="product-cost-price" className="flex items-center gap-2 font-bold">
-                                            <Wallet className="h-4 w-4 text-primary/60" />
-                                            {t('products.form.cost')}
-                                        </Label>
-                                        <div className="relative">
-                                            <Input
-                                                id="product-cost-price"
-                                                data-tour-id="tutorial-product-cost-price"
-                                                type="text"
-                                                inputMode="decimal"
-                                                value={formatNumericInput(formData.costPrice)}
-                                                onChange={(event) => setFormData((current) => {
-                                                    const raw = sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 })
-                                                    return {
-                                                        ...current,
-                                                        costPrice: raw
-                                                    }
-                                                })}
-                                                placeholder="0.000"
-                                                readOnly={isReadOnly}
-                                                required
-                                                className={cn(
-                                                    "h-12 rounded-lg border-border/40 bg-background/50 font-bold",
-                                                    isDynamicUnit(formData.unit) ? "pr-8" : "pr-16"
-                                                )}
-                                            />
-                                            <span className={cn(
-                                                "pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 font-bold uppercase tracking-wider text-muted-foreground/60",
-                                                isDynamicUnit(formData.unit) ? "text-[10px]" : "text-xs"
-                                            )}>
-                                                {getCurrencySymbol(formData.currency, features.iqd_display_preference)}
-                                            </span>
+                                    {(!isEditing || !hideCosts) && (
+                                        <div className="space-y-2">
+                                            <Label htmlFor="product-cost-price" className="flex items-center gap-2 font-bold">
+                                                <Wallet className="h-4 w-4 text-primary/60" />
+                                                {t('products.form.cost')}
+                                            </Label>
+                                            <div className="relative">
+                                                <Input
+                                                    id="product-cost-price"
+                                                    data-tour-id="tutorial-product-cost-price"
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    value={formatNumericInput(formData.costPrice)}
+                                                    onChange={(event) => setFormData((current) => {
+                                                        const raw = sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 })
+                                                        return {
+                                                            ...current,
+                                                            costPrice: raw
+                                                        }
+                                                    })}
+                                                    placeholder="0.000"
+                                                    readOnly={isReadOnly}
+                                                    required={!hideCosts}
+                                                    className={cn(
+                                                        "h-12 rounded-lg border-border/40 bg-background/50 font-bold",
+                                                        isDynamicUnit(formData.unit) ? "pr-8" : "pr-16"
+                                                    )}
+                                                />
+                                                <span className={cn(
+                                                    "pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 font-bold uppercase tracking-wider text-muted-foreground/60",
+                                                    isDynamicUnit(formData.unit) ? "text-[10px]" : "text-xs"
+                                                )}>
+                                                    {getCurrencySymbol(formData.currency, features.iqd_display_preference)}
+                                                </span>
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
                                 </div>
 
-                                <div className="grid gap-3 sm:grid-cols-3">
+                                <div className={cn('grid gap-3', hideCosts ? 'sm:grid-cols-1' : 'sm:grid-cols-3')}>
                                     <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
                                         <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('products.table.price')}</div>
                                         <div className="mt-1 text-base font-black text-primary">{pricePreview}</div>
                                     </div>
-                                    <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
-                                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('products.form.cost')}</div>
-                                        <div className="mt-1 text-base font-black text-foreground">{costPreview}</div>
-                                    </div>
-                                    <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
-                                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('products.form.margin') || 'Margin'}</div>
-                                        <div className={cn('mt-1 text-base font-black', marginValue < 0 ? 'text-destructive' : 'text-emerald-600')}>
-                                            {marginPreview}
-                                        </div>
-                                    </div>
+                                    {!hideCosts && (
+                                        <>
+                                            <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+                                                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('products.form.cost')}</div>
+                                                <div className="mt-1 text-base font-black text-foreground">{costPreview ?? '—'}</div>
+                                            </div>
+                                            <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+                                                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('products.form.margin') || 'Margin'}</div>
+                                                <div className={cn('mt-1 text-base font-black', marginValue != null && marginValue < 0 ? 'text-destructive' : 'text-emerald-600')}>
+                                                    {marginPreview ?? '—'}
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </div>
-                            {priceBooksEnabled ? (
+                            {priceBooksEnabled && !hideCosts ? (
                                 isPriceBookCatalogReady ? (
                                     <ProductPriceBookItemsEditor
                                         priceBooks={priceBooks}

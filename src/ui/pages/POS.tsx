@@ -33,7 +33,8 @@ import { db } from '@/local-db/database'
 import { formatCurrency, generateId, cn } from '@/lib/utils'
 import { CartItem } from '@/types'
 import { useWorkspace, type WorkspaceFeatures } from '@/workspace'
-import { useWorkspacePermissions } from '@/permissions'
+import { useHideCosts, useWorkspacePermissions } from '@/permissions'
+import { getMissingProductCostMessage, hasValidProductCost } from '@/lib/productCost'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import {
     BARCODE_SCANNER_ACTIVE_FAST_KEY_COUNT,
@@ -395,6 +396,7 @@ export function POS() {
     const { features, workspaceName, isLocalMode, isLoading: isWorkspaceLoading, refreshFeatures } = useWorkspace()
     const isRTL = getLanguageDirection(i18n.resolvedLanguage || i18n.language) === 'rtl'
     const { permissionKeys, hasPermission, isLoading: arePermissionsLoading } = useWorkspacePermissions()
+    const hideCosts = useHideCosts()
     // Activities are a POS storage. Any user who may use POS can sell from it
     // when the workspace has enabled the Activities feature; access to the
     // standalone Activities management module remains separately permissioned.
@@ -701,7 +703,7 @@ export function POS() {
     const [negotiatedPriceInput, setNegotiatedPriceInput] = useState('')
     const isAdmin = user?.role === 'admin'
     const isModifyPriceHidden = !isAdmin && permissionKeys.includes('pos.hideModifyPriceButton' as any)
-    const isPriceBelowCostHidden = !isAdmin && permissionKeys.includes('pos.hidePriceBelowCostIndicator' as any)
+    const isPriceBelowCostHidden = hideCosts || (!isAdmin && permissionKeys.includes('pos.hidePriceBelowCostIndicator' as any))
 
     const [paymentType, setPaymentType] = useState<'cash' | 'digital' | 'loan'>('cash')
     const isTutorialPosTask = demoTutorial.isCurrentTask('pos-sale')
@@ -1413,6 +1415,15 @@ export function POS() {
             hapticTrigger('error')
             return
         }
+        if (!isInfiniteActivity && !hasValidProductCost(product.costPrice)) {
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: getMissingProductCostMessage(product.name)
+            })
+            hapticTrigger('error')
+            return
+        }
         if (!isInfiniteActivity && product.inventoryQuantity <= 0) return // Out of stock
         const activeDiscount = activeDiscountMap.get(product.id)
 
@@ -1983,6 +1994,20 @@ export function POS() {
                 variant: 'destructive',
                 title: t('messages.error'),
                 description: t('businessPartners.agent.productCategoryExcluded', { defaultValue: 'This product category is not available to this user.' })
+            })
+            return
+        }
+
+        const missingCostCartItem = cart.find((item) => {
+            const product = findStockProduct(item.product_id, item.storageId)
+            return product ? !hasValidProductCost(product.costPrice) : false
+        })
+        if (missingCostCartItem) {
+            const product = findStockProduct(missingCostCartItem.product_id, missingCostCartItem.storageId)
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: getMissingProductCostMessage(product?.name || missingCostCartItem.name)
             })
             return
         }

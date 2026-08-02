@@ -69,7 +69,8 @@ export interface Product extends BaseEntity {
   storageId?: string | null;
   storageName?: string;
   price: number;
-  costPrice: number;
+  /** Null means no cost has been recorded. Zero remains a valid cost. */
+  costPrice: number | null;
   quantity: number;
   minStockLevel: number;
   unit: string;
