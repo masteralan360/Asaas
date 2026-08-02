@@ -304,6 +304,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const canManage = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
     const canApproveOrderRequests = user?.role === 'admin'
+    const canViewProfit = user?.role === 'admin'
     const canReturnSalesOrder = resolved?.kind === 'sales'
         && resolved.order.status === 'completed'
         && resolved.order.returnStatus !== 'full'
@@ -1272,7 +1273,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                         <div className="mt-2 text-2xl font-black">{totalFreeBonus}</div>
                                     </div>
                                 ) : null}
-                                {isSales && profit !== null ? (
+                                {isSales && canViewProfit && profit !== null ? (
                                     <>
                                         <div className="rounded-2xl border bg-background/70 p-4">
                                             <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.grossProfit') || 'Gross Profit'}</div>
@@ -1389,12 +1390,14 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                         <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.unitPrice') || 'Unit Price'}</div>
                                                         <div className="mt-1 font-medium">{formatCurrency(item.convertedUnitPrice, currency, iqd)}</div>
                                                     </div>
-                                                    <div className="rounded-2xl border bg-muted/20 p-3">
-                                                        <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{isSales ? (t('orders.details.itemProfit') || 'Item Profit') : (t('orders.details.receivedUnits') || 'Received Units')}</div>
-                                                        <div className={cn('mt-1 font-medium', isSales && itemProfit >= 0 ? 'text-emerald-600' : isSales ? 'text-rose-600' : '')}>
-                                                            {isSales ? formatCurrency(itemProfit, currency, iqd) : itemReceived}
+                                                    {(!isSales || canViewProfit) && (
+                                                        <div className="rounded-2xl border bg-muted/20 p-3">
+                                                            <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{isSales ? (t('orders.details.itemProfit') || 'Item Profit') : (t('orders.details.receivedUnits') || 'Received Units')}</div>
+                                                            <div className={cn('mt-1 font-medium', isSales && itemProfit >= 0 ? 'text-emerald-600' : isSales ? 'text-rose-600' : '')}>
+                                                                {isSales ? formatCurrency(itemProfit, currency, iqd) : itemReceived}
+                                                            </div>
                                                         </div>
-                                                    </div>
+                                                    )}
                                                 </div>
                                                  {isSales && returnedQuantity > 0 ? (
                                                      <div className={cn('mt-3 text-xs font-semibold', isItemFullyReturned ? 'text-rose-700' : 'text-orange-700')}>
@@ -1428,7 +1431,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                 <TableHead className="text-end">{t('orders.form.table.price') || 'Unit Price'}</TableHead>
                                                 {isSales && <TableHead className="text-end">{t('orders.details.costPerUnit') || 'Cost / Unit'}</TableHead>}
                                                 <TableHead className="text-end">{t('common.total') || 'Total'}</TableHead>
-                                                {isSales && <TableHead className="text-end">{t('orders.details.itemProfit') || 'Item Profit'}</TableHead>}
+                                                {isSales && canViewProfit && <TableHead className="text-end">{t('orders.details.itemProfit') || 'Item Profit'}</TableHead>}
                                                 {canReturnSalesOrder && <TableHead className="text-end">{t('common.actions') || 'Actions'}</TableHead>}
                                             </TableRow>
                                         </TableHeader>
@@ -1473,7 +1476,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                         <TableCell className="text-end">{formatCurrency(item.convertedUnitPrice, currency, iqd)}</TableCell>
                                                         {isSales && <TableCell className="text-end">{formatCurrency(salesItem.convertedCostPrice, currency, iqd)}</TableCell>}
                                                         <TableCell className="text-end font-semibold">{formatCurrency(item.lineTotal, currency, iqd)}</TableCell>
-                                                        {isSales && <TableCell className={cn('text-end font-semibold', itemProfit >= 0 ? 'text-emerald-600' : 'text-rose-600')}>{formatCurrency(itemProfit, currency, iqd)}</TableCell>}
+                                                        {isSales && canViewProfit && <TableCell className={cn('text-end font-semibold', itemProfit >= 0 ? 'text-emerald-600' : 'text-rose-600')}>{formatCurrency(itemProfit, currency, iqd)}</TableCell>}
                                                         {canReturnSalesOrder && (
                                                             <TableCell className="text-end">
                                                                 {returnableQuantity > 0 ? (
