@@ -26,6 +26,7 @@ import {
     ContextMenu,
     ContextMenuContent,
     ContextMenuItem,
+    ContextMenuSeparator,
     ContextMenuTrigger
 } from '@/ui/components/ui/context-menu'
 import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
@@ -135,6 +136,7 @@ type TableColumn = {
     label: string
     width: string
     contextMenu?: ReactNode
+    defaultLabel?: string
 }
 
 function clampProductImageColumnWidth(value: number) {
@@ -794,22 +796,59 @@ function HideableTable({
     dialogDescription,
     emptyLabel,
     columns,
+    fieldLabelOverrides = {},
     hiddenFields,
     onHiddenFieldChange,
+    onFieldLabelChange,
+    renameTitleLabel = 'Rename title',
+    resetTitleLabel = 'Reset title',
+    renameTitleDescription,
+    titleFieldLabel = 'Title',
+    saveLabel = 'Save',
+    cancelLabel = 'Cancel',
     children
 }: {
     title: string
     dialogDescription: string
     emptyLabel: string
     columns: TableColumn[]
+    fieldLabelOverrides?: Record<string, string>
     hiddenFields: Record<string, boolean>
     onHiddenFieldChange?: (key: string, hidden: boolean) => void
+    onFieldLabelChange?: (fieldKey: string, label: string) => void
+    renameTitleLabel?: string
+    resetTitleLabel?: string
+    renameTitleDescription?: string
+    titleFieldLabel?: string
+    saveLabel?: string
+    cancelLabel?: string
     children: (visibleColumns: TableColumn[]) => ReactNode
 }) {
     const [open, setOpen] = useState(false)
-    const canConfigure = Boolean(onHiddenFieldChange)
-    const visibleColumns = columns.filter((column) => !hiddenFields[column.key])
+    const [renamedColumn, setRenamedColumn] = useState<TableColumn | null>(null)
+    const [titleDraft, setTitleDraft] = useState('')
+    const canConfigure = Boolean(onHiddenFieldChange || onFieldLabelChange)
+    const titledColumns = columns.map((column) => {
+        const defaultLabel = column.defaultLabel || column.label
+        const labelOverride = fieldLabelOverrides[column.key]?.trim()
+        return {
+            ...column,
+            defaultLabel,
+            label: labelOverride || column.label
+        }
+    })
+    const visibleColumns = titledColumns.filter((column) => !hiddenFields[column.key])
     const openDialog = () => setOpen(true)
+    const openRenameTitle = (column: TableColumn) => {
+        setRenamedColumn(column)
+        setTitleDraft(column.label)
+    }
+    const saveTitle = () => {
+        if (!renamedColumn) return
+        onFieldLabelChange?.(renamedColumn.key, titleDraft.trim())
+        setRenamedColumn(null)
+        setTitleDraft('')
+    }
     const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
         if (event.key !== 'Enter' && event.key !== ' ') return
         event.preventDefault()
@@ -850,7 +889,7 @@ function HideableTable({
                     <DialogDescription>{dialogDescription}</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-1">
-                    {columns.map((column) => {
+                    {titledColumns.map((column) => {
                         const hidden = Boolean(hiddenFields[column.key])
                         const columnButton = (
                             <button
@@ -866,19 +905,67 @@ function HideableTable({
                                 <span className="font-medium">{column.label}</span>
                             </button>
                         )
-                        if (!column.contextMenu) return columnButton
+                        if (!column.contextMenu && !onFieldLabelChange) return columnButton
 
                         return (
                             <ContextMenu key={column.key}>
                                 <ContextMenuTrigger asChild>{columnButton}</ContextMenuTrigger>
                                 <ContextMenuContent className="z-[80] w-72 p-1" onCloseAutoFocus={(event) => event.preventDefault()}>
                                     {column.contextMenu}
+                                    {column.contextMenu && onFieldLabelChange ? <ContextMenuSeparator /> : null}
+                                    {onFieldLabelChange ? (
+                                        <ContextMenuItem onSelect={() => openRenameTitle(column)}>
+                                            {renameTitleLabel}
+                                        </ContextMenuItem>
+                                    ) : null}
+                                    {onFieldLabelChange && fieldLabelOverrides[column.key]?.trim() ? (
+                                        <ContextMenuItem onSelect={() => onFieldLabelChange(column.key, '')}>
+                                            {resetTitleLabel}
+                                        </ContextMenuItem>
+                                    ) : null}
                                 </ContextMenuContent>
                             </ContextMenu>
                         )
                     })}
                 </div>
             </DialogContent>
+            <Dialog open={Boolean(renamedColumn)} onOpenChange={(nextOpen) => {
+                if (!nextOpen) {
+                    setRenamedColumn(null)
+                    setTitleDraft('')
+                }
+            }}>
+                <DialogContent className="z-[90] max-w-sm" onPointerDown={(event) => event.stopPropagation()}>
+                    <form onSubmit={(event) => {
+                        event.preventDefault()
+                        saveTitle()
+                    }}>
+                        <DialogHeader>
+                            <DialogTitle>{renameTitleLabel}</DialogTitle>
+                            {renameTitleDescription ? <DialogDescription>{renameTitleDescription}</DialogDescription> : null}
+                        </DialogHeader>
+                        <div className="mt-4 grid gap-2">
+                            <label className="text-sm font-medium" htmlFor="atlas-standard-table-column-title">{titleFieldLabel}</label>
+                            <input
+                                id="atlas-standard-table-column-title"
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                                value={titleDraft}
+                                onChange={(event) => setTitleDraft(event.target.value)}
+                                autoFocus
+                            />
+                        </div>
+                        <div className="mt-5 flex justify-end gap-2">
+                            <button type="button" className="inline-flex h-10 items-center justify-center rounded-md border border-input px-4 text-sm font-medium hover:bg-accent" onClick={() => {
+                                setRenamedColumn(null)
+                                setTitleDraft('')
+                            }}>
+                                {cancelLabel}
+                            </button>
+                            <button type="submit" className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">{saveLabel}</button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </Dialog>
     )
 }
@@ -1208,8 +1295,16 @@ export function AtlasStandardOrderInvoiceTemplate({
                 dialogDescription={labels.selectColumns}
                 emptyLabel={labels.noColumns}
                 columns={tableColumns}
+                fieldLabelOverrides={fieldLabelOverrides}
                 hiddenFields={hiddenFields}
                 onHiddenFieldChange={onHiddenFieldChange}
+                onFieldLabelChange={onFieldLabelChange}
+                renameTitleLabel={labels.renameTitle}
+                resetTitleLabel={labels.resetTitle}
+                renameTitleDescription={labels.renameTitleDescription}
+                titleFieldLabel={labels.title}
+                saveLabel={labels.save}
+                cancelLabel={labels.cancel}
             >
                 {(visibleColumns) => (
                     <table className="mb-2 w-full table-fixed border-collapse border text-[10px] leading-none" style={{ borderColor: INK }}>

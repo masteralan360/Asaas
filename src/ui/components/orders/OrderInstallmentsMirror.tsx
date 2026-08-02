@@ -467,6 +467,8 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                     productImageUrls={productImageUrls}
                     hiddenFields={renderOptions?.hiddenFields}
                     onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
+                    fieldLabelOverrides={renderOptions?.fieldLabelOverrides}
+                    onFieldLabelChange={renderOptions?.onFieldLabelChange}
                     fieldDisplayModes={renderOptions?.fieldDisplayModes}
                     onFieldDisplayModeChange={renderOptions?.onFieldDisplayModeChange}
                 />

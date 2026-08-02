@@ -762,6 +762,13 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(hiddenNoteHtml).not.toContain('Sample line item note.')
         expect(hiddenNoteHtml).not.toContain('>Note</th>')
 
+        const renamedColumnHtml = renderToStaticMarkup(preview.createElement({}, undefined, undefined, {
+            fieldLabelOverrides: { 'atlasStandard.table.productImage': 'Photo' },
+            onFieldLabelChange
+        }))
+        expect(renamedColumnHtml).toContain('>Photo</th>')
+        expect(renamedColumnHtml).not.toContain('>Image</th>')
+
         const hiddenImageHtml = renderToStaticMarkup(preview.createElement({}, undefined, undefined, {
             hiddenFields: { 'atlasStandard.table.productImage': true }
         }))
