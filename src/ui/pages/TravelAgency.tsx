@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { Check, CheckCircle2, Eye, Pencil, Plane, Plus, Search, Wallet, Lock } from 'lucide-react'
 import { useLocation } from 'wouter'
 
@@ -153,7 +154,7 @@ export function TravelAgency() {
                         Travel Agency
                     </h1>
                     <p className="text-muted-foreground">
-                        Register travel sales, tourist groups, supplier cuts, and payment collection in one place.
+                        Register travel sales, tourist groups, supplier cuts, and payment collection in one place. <ModulePageFreshness className="ms-2" />
                     </p>
                 </div>
                 <Button className="gap-2 self-start rounded-xl" onClick={() => navigate('/travel-agency/new')}>

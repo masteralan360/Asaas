@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { Eye, Pencil, Plus, Search, Trash2, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
@@ -136,7 +137,9 @@ export function Customers() {
                         <Users className="h-6 w-6 text-primary" />
                         {t('customers.title') || 'Customers'}
                     </h1>
-                    <p className="text-muted-foreground">{t('customers.subtitle') || 'Manage customer accounts and balances'}</p>
+                    <p className="text-muted-foreground">
+                        {t('customers.subtitle') || 'Manage customer accounts and balances'} <ModulePageFreshness className="ms-2" />
+                    </p>
                 </div>
                 {canEdit && (
                     <Button onClick={() => { setEditingPartner(null); setDialogOpen(true) }} className="gap-2 self-start rounded-xl">

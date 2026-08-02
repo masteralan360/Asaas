@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { Eye, GitMerge, MapPin, Pencil, Plus, Search, Trash2, UsersRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
@@ -391,7 +392,7 @@ export function BusinessPartners() {
                         {t('businessPartners.title') || 'Business Partners'}
                     </h1>
                     <p className="text-muted-foreground">
-                        {t('businessPartners.subtitle') || 'Manage shared customer and supplier profiles in one place.'}
+                        {t('businessPartners.subtitle') || 'Manage shared customer and supplier profiles in one place.'} <ModulePageFreshness className="ms-2" />
                     </p>
                 </div>
                 {canEdit ? (

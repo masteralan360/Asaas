@@ -1,5 +1,6 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useTranslation } from 'react-i18next'
 import {
     CalendarDays,
@@ -1176,7 +1177,9 @@ export function Budget() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-4xl font-bold tracking-tight">{t('budget.title') || 'Accounting'}</h1>
-                    <p className="text-base font-medium text-muted-foreground">{t('budget.subtitle') || 'Track and manage your expenses'}</p>
+                    <p className="text-base font-medium text-muted-foreground">
+                        {t('budget.subtitle') || 'Track and manage your expenses'} <ModulePageFreshness className="ms-2" />
+                    </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     <Select value={selectedMonth} onValueChange={setSelectedMonth}>

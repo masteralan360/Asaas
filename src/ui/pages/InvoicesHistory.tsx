@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useLocation } from 'wouter'
 import { useInvoices, type Invoice, type InvoiceVersion } from '@/local-db'
 import { formatCurrency, formatDateTime, formatDate, formatOriginLabel } from '@/lib/utils'
@@ -397,7 +398,7 @@ export function InvoicesHistory() {
                     <p className="text-muted-foreground">
                         {activeTab === 'history'
                             ? (t('invoices.historySubtitle', { count: historyInvoices.length }) || `${historyInvoices.length} historical records`)
-                            : `${uploadedFilesCount} uploaded PDF file${uploadedFilesCount === 1 ? '' : 's'}`}
+                            : `${uploadedFilesCount} uploaded PDF file${uploadedFilesCount === 1 ? '' : 's'}`} <ModulePageFreshness className="ms-2" />
                     </p>
                 </div>
 

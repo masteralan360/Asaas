@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { Link, useLocation, useRoute } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n/config'
@@ -347,7 +348,7 @@ export function RealEstate() {
                         {t('realEstate.title', { defaultValue: 'Real Estate' })}
                     </h1>
                     <p className="text-sm text-muted-foreground">
-                        {t('realEstate.subtitle', { defaultValue: 'Manual property transactions with partner links, multi-currency totals, and installment schedules.' })}
+                        {t('realEstate.subtitle', { defaultValue: 'Manual property transactions with partner links, multi-currency totals, and installment schedules.' })} <ModulePageFreshness className="ms-2" />
                     </p>
                 </div>
                 <Button className="gap-2" onClick={() => navigate('/real-estate/new')}>

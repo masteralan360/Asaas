@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { useLocation } from 'wouter'
@@ -670,7 +671,9 @@ export function Activities() {
                         <span className="text-sm font-medium">{t('activities.workspaceModule', { defaultValue: 'Workspace module' })}</span>
                     </div>
                     <h1 className="mt-1 text-3xl font-bold tracking-tight">{t('activities.title', { defaultValue: 'Activities' })}</h1>
-                    <p className="mt-1 text-sm text-muted-foreground">{t('activities.description', { defaultValue: 'Sell configurable activities with inventory-aware availability and custom receipts.' })}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        {t('activities.description', { defaultValue: 'Sell configurable activities with inventory-aware availability and custom receipts.' })} <ModulePageFreshness className="ms-2" />
+                    </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                     {canManageCatalog ? (

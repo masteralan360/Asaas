@@ -1,4 +1,5 @@
 import { LocateFixed, MapPin, Radio, ShieldCheck } from "lucide-react";
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness';
 
 import { useFleetLocationSharing } from "@/fleet/FleetLocationSharingContext";
 import { useFleetAgentDirectory } from "@/fleet/useFleetAgentDirectory";
@@ -40,7 +41,7 @@ export function AgentLocationSharing() {
           Share My Location
         </h1>
         <p className="text-muted-foreground">
-          Explicitly enable foreground location sharing for fleet operations.
+          Explicitly enable foreground location sharing for fleet operations. <ModulePageFreshness className="ms-2" />
         </p>
       </div>
       <Card>

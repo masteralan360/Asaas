@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useAuth } from '@/auth'
 import { useTranslation } from 'react-i18next'
 import { Plus, Search, Mail, Phone, Trash2, Edit, AlertTriangle, MessageCircle } from 'lucide-react'
@@ -208,7 +209,9 @@ export default function HR() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">{t('nav.hr', 'HR')}</h1>
-                    <p className="text-muted-foreground">{t('hr.subtitle', 'Manage your team and payroll')}</p>
+                    <p className="text-muted-foreground">
+                        {t('hr.subtitle', 'Manage your team and payroll')} <ModulePageFreshness className="ms-2" />
+                    </p>
                 </div>
                 {canEdit && (
                     <Button onClick={() => setIsDialogOpen(true)} className="gap-2">

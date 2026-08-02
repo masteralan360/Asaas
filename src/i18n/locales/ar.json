@@ -451,6 +451,10 @@
     "clearSearch": "مسح البحث",
     "openDashboard": "فتح {{name}}",
     "openAction": "فتح",
+    "freshness": {
+      "updated": "تم التحديث {{time}}",
+      "unavailable": "التحديث غير متاح"
+    },
     "viewModes": {
       "detail": "تفصيلي",
       "grid": "شبكي"

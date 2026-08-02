@@ -453,6 +453,10 @@
     "clearSearch": "سڕینەوەی گەڕان",
     "openDashboard": "کردنەوەی {{name}}",
     "openAction": "بیکەرەوە",
+    "freshness": {
+      "updated": "نوێکرایەوە {{time}}",
+      "unavailable": "نوێکردنەوە بەردەست نییە"
+    },
     "viewModes": {
       "detail": "وردی",
       "grid": "تۆڕی"

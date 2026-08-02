@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { ArrowDownLeft, ArrowUpRight, Plus, RotateCcw, Search } from 'lucide-react'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
@@ -215,7 +216,7 @@ export function DirectTransactions() {
                 <div className="space-y-3">
                     <h1 className="text-3xl font-bold tracking-tight">{t('directTransactions.title', { defaultValue: 'Direct Transactions' })}</h1>
                     <p className="text-sm text-muted-foreground">
-                        {t('directTransactions.subtitle', { defaultValue: 'Manual incoming and outgoing money for activity outside the tracked modules. Payroll stays out of this page.' })}
+                        {t('directTransactions.subtitle', { defaultValue: 'Manual incoming and outgoing money for activity outside the tracked modules. Payroll stays out of this page.' })} <ModulePageFreshness className="ms-2" />
                     </p>
                     <div className="flex flex-wrap gap-3">
                         <Button type="button" variant="outline" onClick={() => setLocation('/payments')} className="w-fit">

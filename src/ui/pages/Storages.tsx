@@ -1,4 +1,5 @@
 import { useStorages, createStorage, updateStorage, deleteStorage, setMarketplaceStorage, getPrimaryStorageId, getPrimaryStorageFromList, isPrimaryStorage, useInventory, useProducts, useCategories, type Storage, type CurrencyCode } from '@/local-db'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useLocation } from 'wouter'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
@@ -295,7 +296,9 @@ export default function Storages() {
                         <Warehouse className="w-6 h-6 text-primary" />
                         {t('storages.title', 'Storages')}
                     </h1>
-                    <p className="text-muted-foreground">{t('storages.subtitle', 'Manage your storage locations.')}</p>
+                    <p className="text-muted-foreground">
+                        {t('storages.subtitle', 'Manage your storage locations.')} <ModulePageFreshness className="ms-2" />
+                    </p>
                 </div>
                 {(user?.role === 'admin' || user?.role === 'staff') && (
                     <Button onClick={openCreateDialog} className="rounded-xl shadow-lg transition-all active:scale-95" data-tour-id="tutorial-storage-new-button">

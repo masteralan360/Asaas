@@ -75,6 +75,7 @@ import { salesExchangeRowsToSnapshots } from '@/lib/salesExchange'
 import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
+import { recordWorkspaceDataFetch } from '@/workspace/workspaceDataFreshness'
 
 export { addToOfflineMutations } from './offlineMutations'
 
@@ -1338,6 +1339,8 @@ async function fetchTableFromSupabaseInternal<T extends { id: string, syncStatus
             await table.bulkPut(remoteItems)
         }
     })
+
+    recordWorkspaceDataFetch(workspaceId, 'supabase')
 }
 
 export function fetchTableFromSupabase<T extends { id: string, syncStatus: any, lastSyncedAt: any }>(

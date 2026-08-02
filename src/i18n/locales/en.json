@@ -464,6 +464,10 @@
     "clearSearch": "Clear search",
     "openDashboard": "Open {{name}}",
     "openAction": "Open",
+    "freshness": {
+      "updated": "Updated {{time}}",
+      "unavailable": "Update unavailable"
+    },
     "viewModes": {
       "detail": "Detail",
       "grid": "Grid"

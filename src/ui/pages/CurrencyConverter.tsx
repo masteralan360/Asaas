@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
@@ -142,7 +143,7 @@ export function CurrencyConverter() {
                             {t('pos.currencyConverter') || 'Currency Converter'}
                         </h1>
                         <p className="text-muted-foreground text-sm">
-                            Real-time exchange rates
+                            Real-time exchange rates <ModulePageFreshness className="ms-2" />
                         </p>
                     </div>
                 </div>

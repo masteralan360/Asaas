@@ -1,4 +1,5 @@
 import { useAuth } from '@/auth'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { isBackendConfigurationRequired, supabase } from '@/auth/supabase'
 import { useSyncStatus, clearQueue } from '@/sync'
 import { db, hasCurrencyExchangeAccountingData, listLocalCustomTemplates } from '@/local-db'
@@ -1610,7 +1611,9 @@ export function Settings() {
                     <SettingsIcon className="w-6 h-6 text-primary" />
                     {t('settings.title')}
                 </h1>
-                <p className="text-muted-foreground">{t('settings.subtitle')}</p>
+                <p className="text-muted-foreground">
+                    {t('settings.subtitle')} <ModulePageFreshness className="ms-2" />
+                </p>
             </div>
 
             <Tabs defaultValue="general" className="w-full space-y-6">

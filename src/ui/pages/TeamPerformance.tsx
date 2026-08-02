@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
@@ -500,7 +501,9 @@ export function TeamPerformance() {
                                 </div>
                             )}
                         </div>
-                        <p className="text-muted-foreground">{t('performance.subtitle')}</p>
+                        <p className="text-muted-foreground">
+                            {t('performance.subtitle')} <ModulePageFreshness className="ms-2" />
+                        </p>
                     </div>
                 </div>
 

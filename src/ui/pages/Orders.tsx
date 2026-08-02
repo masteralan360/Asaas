@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { CalendarDays, CreditCard, Eye, LayoutGrid, List, Loader2, Lock, PackagePlus, Pencil, Plus, Printer, Search, ShoppingCart, Trash2, Truck, UsersRound, Wallet, Warehouse, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedOrderError } from '@/lib/orderErrors'
@@ -1334,7 +1335,9 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                             </span>
                         )}
                     </h1>
-                    <p className="text-muted-foreground">{t('orders.subtitle') || 'Track sales and purchase orders'}</p>
+                    <p className="text-muted-foreground">
+                        {t('orders.subtitle') || 'Track sales and purchase orders'} <ModulePageFreshness className="ms-2" />
+                    </p>
                 </div>
                 <div className="flex flex-col sm:flex-row lg:items-center gap-4 self-start lg:self-auto w-full lg:w-auto">
                     <DateRangeFilters />

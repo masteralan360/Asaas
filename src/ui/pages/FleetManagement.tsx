@@ -1,4 +1,5 @@
 import { Car, History, MapPinned, Route, Users } from "lucide-react";
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness';
 
 import { useAuth } from "@/auth";
 import { useWorkspacePermissions } from "@/permissions";
@@ -40,7 +41,7 @@ export function FleetManagement() {
         </h1>
         <p className="text-muted-foreground">
           Manage vehicles and assignments, monitor consenting agents live, and
-          review sampled movement history.
+          review sampled movement history. <ModulePageFreshness className="ms-2" />
         </p>
       </div>
       {(isLocalMode || isDemoMode) && (

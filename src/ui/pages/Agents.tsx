@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { Car, Eye, Pencil, Plus, Search, Trash2, UserRound, UsersRound, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
@@ -169,7 +170,7 @@ export function Agents() {
                         {t('agents.title', { defaultValue: 'Agents' })}
                     </h1>
                     <p className="text-muted-foreground">
-                        {t('agents.subtitle', { defaultValue: 'Manage drivers and field agents, territories, vehicles, and linked workspace users.' })}
+                        {t('agents.subtitle', { defaultValue: 'Manage drivers and field agents, territories, vehicles, and linked workspace users.' })} <ModulePageFreshness className="ms-2" />
                     </p>
                 </div>
                 {canEdit ? (

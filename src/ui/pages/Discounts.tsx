@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useTranslation } from 'react-i18next'
 import { Pencil, Percent, Plus, Shapes, Trash2 } from 'lucide-react'
 
@@ -731,7 +732,7 @@ export function Discounts() {
                         {t('discounts.title')}
                     </h1>
                     <p className="text-muted-foreground">
-                        {t('discounts.subtitle')}
+                        {t('discounts.subtitle')} <ModulePageFreshness className="ms-2" />
                     </p>
                 </div>
                 {canEdit ? (

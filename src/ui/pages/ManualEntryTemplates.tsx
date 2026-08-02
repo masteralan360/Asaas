@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useTranslation } from 'react-i18next'
 import { ArrowDown, ArrowUp, GripVertical, Loader2, Plus, Save, Trash2, X } from 'lucide-react'
 import { useAuth } from '@/auth'
@@ -231,7 +232,9 @@ export function ManualEntryTemplates() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">{t('manualEntry.templates')}</h1>
-          <p className="text-sm text-muted-foreground">{t('manualEntry.description')}</p>
+          <p className="text-sm text-muted-foreground">
+            {t('manualEntry.description')} <ModulePageFreshness className="ms-2" />
+          </p>
         </div>
         <Button onClick={openCreateForm}>
           <Plus className="mr-2 h-4 w-4" />

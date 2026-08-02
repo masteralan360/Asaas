@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useClinicalPatients } from '@/local-db/clinicalAppointments'
@@ -32,7 +33,7 @@ export function ClinicalPatients() {
           {t('clinicalAppointments.patients', { defaultValue: 'Patients' })}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          {t('clinicalAppointments.patientsSubtitle', { defaultValue: 'View and manage patient records' })}
+          {t('clinicalAppointments.patientsSubtitle', { defaultValue: 'View and manage patient records' })} <ModulePageFreshness className="ms-2" />
         </p>
       </div>
 

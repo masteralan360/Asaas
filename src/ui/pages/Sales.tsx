@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 import { isSupabaseConfigured, useAuth } from '@/auth'
@@ -2253,7 +2254,7 @@ export function Sales() {
                             )}
                         </div>
                         <p className="text-muted-foreground">
-                            {t('sales.subtitle') || 'View past transactions'}
+                            {t('sales.subtitle') || 'View past transactions'} <ModulePageFreshness className="ms-2" />
                         </p>
                     </div>
 

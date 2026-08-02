@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, ArrowRight, FileText, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react'
@@ -629,7 +630,7 @@ export function CustomTemplates() {
                     <p className="text-sm text-muted-foreground">
                         {t('customTemplates.subtitle', {
                             defaultValue: 'Manage workspace print layout customizations by module and print type.'
-                        })}
+                        })} <ModulePageFreshness className="ms-2" />
                     </p>
                 </div>
 

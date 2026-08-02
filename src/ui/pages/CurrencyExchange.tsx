@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useLocation, useRoute } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -678,7 +679,7 @@ function ExchangeTransactionsPage({
                         {t('currencyExchange.serviceTitle')}
                     </h1>
                     <p className="text-sm text-muted-foreground">
-                        {t('currencyExchange.serviceDescription')}
+                        {t('currencyExchange.serviceDescription')} <ModulePageFreshness className="ms-2" />
                     </p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">

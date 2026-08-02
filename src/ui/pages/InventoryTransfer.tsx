@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness';
 import {
   db,
   fetchInventoryWorkspaceFromSupabase,
@@ -1238,7 +1239,7 @@ export default function InventoryTransfer() {
           {t(
             "inventoryTransfer.subtitle",
             "Move products between storage locations and keep key shelves automatically replenished.",
-          )}
+          )} <ModulePageFreshness className="ms-2" />
         </p>
       </div>
 

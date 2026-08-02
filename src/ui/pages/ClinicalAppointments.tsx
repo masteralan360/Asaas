@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef, Fragment } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -368,7 +369,7 @@ function Beauty2AppointmentList({ workspaceId, navigate }: { workspaceId: string
             {t('clinicalAppointments.title', { defaultValue: 'Beauty Center Appointments' })}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t('clinicalAppointments.subtitle', { defaultValue: 'Manage Beauty Center appointment records.' })}
+            {t('clinicalAppointments.subtitle', { defaultValue: 'Manage Beauty Center appointment records.' })} <ModulePageFreshness className="ms-2" />
           </p>
         </div>
         <Button onClick={() => navigate('/clinical-appointments/new')}>

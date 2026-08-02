@@ -2,6 +2,7 @@ import type Dexie from "dexie";
 
 import { isTauri } from "@/lib/platform";
 import { shouldMirrorToSqlite, isStrictLocalWorkspaceMode } from "@/workspace/workspaceMode";
+import { recordWorkspaceDataFetch } from "@/workspace/workspaceDataFreshness";
 import { runUsbBackupIfNeeded } from "./usbBackup";
 import { normalizeProductSku } from "./productSku";
 import { createPwaSqliteConnection, isOpfsSupported, getPwaDbInstance, ensurePwaDatabase, replacePwaDatabaseFile, validateAtlasLocalDatabase, DB_FILENAME as PWA_DB_FILENAME } from "./pwaSqlite";
@@ -170,6 +171,11 @@ function normalizeLegacySaleItemTimestamps(
 
 const hydratedWorkspaces = new Set<string>();
 const hydrationTasks = new Map<string, Promise<void>>();
+
+function markLocalWorkspaceFetched(workspaceId: string) {
+  hydratedWorkspaces.add(workspaceId);
+  recordWorkspaceDataFetch(workspaceId, "local");
+}
 
 let sqlitePromise: Promise<SqliteConnection | null> | null = null;
 let sqliteWriteQueue: Promise<void> = Promise.resolve();
@@ -970,7 +976,7 @@ export async function hydrateLocalModeCacheFromSqlite(
           `[LocalModeSQLite] SQLite is empty for workspace ${workspaceId}; seeding it from the existing cache instead of clearing data.`,
         );
         await seedWorkspaceFromDexie(cacheDb, workspaceId);
-        hydratedWorkspaces.add(workspaceId);
+        markLocalWorkspaceFetched(workspaceId);
         return;
       }
 
@@ -978,7 +984,7 @@ export async function hydrateLocalModeCacheFromSqlite(
       await withMirroringPaused(() =>
         clearCacheRowsForWorkspace(cacheDb, workspaceId)
       );
-      hydratedWorkspaces.add(workspaceId);
+      markLocalWorkspaceFetched(workspaceId);
       return;
     }
 
@@ -1101,7 +1107,7 @@ export async function hydrateLocalModeCacheFromSqlite(
       }
     });
 
-    hydratedWorkspaces.add(workspaceId);
+    markLocalWorkspaceFetched(workspaceId);
   })().finally(() => {
     hydrationTasks.delete(workspaceId);
   });

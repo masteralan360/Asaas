@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -1154,7 +1155,9 @@ export function Products() {
                         <Package className="h-6 w-6 text-primary" />
                         {t('products.title')}
                     </h1>
-                    <p className="text-muted-foreground">{t('products.subtitle') || 'Manage your inventory'}</p>
+                    <p className="text-muted-foreground">
+                        {t('products.subtitle') || 'Manage your inventory'} <ModulePageFreshness className="ms-2" />
+                    </p>
                 </div>
                 <div className="flex items-center gap-2">
                     {!isMobile() && (

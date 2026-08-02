@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
@@ -1303,7 +1304,9 @@ export function Revenue() {
                                 </div>
                             )}
                         </div>
-                        <p className="text-muted-foreground">{t('revenue.subtitle')}</p>
+                        <p className="text-muted-foreground">
+                            {t('revenue.subtitle')} <ModulePageFreshness className="ms-2" />
+                        </p>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">

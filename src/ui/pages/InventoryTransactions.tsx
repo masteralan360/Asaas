@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness';
 import {
   ArrowRightLeft,
   Bot,
@@ -175,7 +176,7 @@ export function InventoryTransactionsPage() {
           {t(
             "inventoryTransactions.pageSubtitle",
             "Review permanent records for inventory transfers and stock adjustments.",
-          )}
+          )} <ModulePageFreshness className="ms-2" />
         </p>
       </div>
 

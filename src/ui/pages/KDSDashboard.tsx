@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type DragEvent } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useTranslation } from 'react-i18next'
 import { useKdsStream } from '@/hooks/useKdsStream'
 import { useWorkspace } from '@/workspace'
@@ -303,7 +304,9 @@ export function KDSDashboard() {
                 <div className="flex flex-wrap items-center gap-4">
                     <div>
                         <h1 className="text-xl font-semibold tracking-tight">{t('kdsDashboard.title')}</h1>
-                        <p className="text-xs text-slate-400">{t('kdsDashboard.subtitle')}</p>
+                        <p className="text-xs text-slate-400">
+                            {t('kdsDashboard.subtitle')} <ModulePageFreshness className="ms-2" />
+                        </p>
                     </div>
                     <span className={cn(
                         'rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest shadow-lg',

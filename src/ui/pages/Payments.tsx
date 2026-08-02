@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { ArrowDownLeft, ArrowUpRight, RotateCcw, Search } from 'lucide-react'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
@@ -290,7 +291,7 @@ export function Payments() {
                 <div className="space-y-3">
                     <h1 className="text-3xl font-bold tracking-tight">{t('payments.title', { defaultValue: 'Payments' })}</h1>
                     <p className="text-sm text-muted-foreground">
-                        {t('payments.subtitle', { defaultValue: 'Unified open obligations and central transaction history across loans, orders, appointments, payroll, expenses, and Real Estate commissions.' })}
+                        {t('payments.subtitle', { defaultValue: 'Unified open obligations and central transaction history across loans, orders, appointments, payroll, expenses, and Real Estate commissions.' })} <ModulePageFreshness className="ms-2" />
                     </p>
                     {hasPermission('directTransaction.access') && (
                         <Button type="button" variant="outline" onClick={() => setLocation('/direct-transactions')} className="w-fit">

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness';
 import {
   AlertTriangle,
   ArrowDown,
@@ -504,7 +505,7 @@ export function StockAdjustments() {
           <p className="max-w-3xl text-muted-foreground">
             {canManageStockBatches
               ? t("stockAdjustments.pageSubtitle", "Record manual stock changes, manage product batches, and review the unified inventory log.")
-              : t("stockAdjustments.pageSubtitleSimple", "Record manual stock changes and review the unified inventory log.")}
+              : t("stockAdjustments.pageSubtitleSimple", "Record manual stock changes and review the unified inventory log.")} <ModulePageFreshness className="ms-2" />
           </p>
         </div>
         {canEdit && (

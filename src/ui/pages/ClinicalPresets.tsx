@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { createClinicalPreset, updateClinicalPreset, deleteClinicalPreset, useClinicalPresets } from '@/local-db/clinicalPresets'
@@ -115,7 +116,9 @@ export function ClinicalPresets() {
             <div className="flex items-center gap-2">
               <h1 className="text-3xl font-bold tracking-tight">{t('clinicalPresets.title', { defaultValue: 'Clinical Presets' })}</h1>
             </div>
-            <p className="text-sm text-muted-foreground">{t('clinicalPresets.subtitle', { defaultValue: 'Configure reusable appointment presets.' })}</p>
+            <p className="text-sm text-muted-foreground">
+              {t('clinicalPresets.subtitle', { defaultValue: 'Configure reusable appointment presets.' })} <ModulePageFreshness className="ms-2" />
+            </p>
           </div>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">

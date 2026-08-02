@@ -1,4 +1,5 @@
 import { createElement, useCallback, useEffect, useMemo, useState } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, FileText, Loader2, Printer, Save } from 'lucide-react'
 import { useAuth } from '@/auth'
@@ -474,7 +475,9 @@ export function ManualEntry() {
     <div className="container mx-auto p-4 sm:p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-bold">{t('manualEntry.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('manualEntry.description')}</p>
+        <p className="text-sm text-muted-foreground">
+          {t('manualEntry.description')} <ModulePageFreshness className="ms-2" />
+        </p>
       </div>
 
       <Card>

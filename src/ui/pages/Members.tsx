@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
 import {
@@ -516,7 +517,7 @@ export function Members() {
                         {t('members.title')}
                     </h1>
                     <p className="text-muted-foreground">
-                        {members.length} {t('members.subtitle')}
+                        {members.length} {t('members.subtitle')} <ModulePageFreshness className="ms-2" />
                     </p>
                 </div>
             </div>

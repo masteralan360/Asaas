@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useLocation, useRoute } from 'wouter'
 import { ArrowLeft, Loader2, PackageSearch, RefreshCw, Search, ShoppingBag } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -273,7 +274,7 @@ function EcommerceListView({
                         {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
                     </h1>
                     <p className="text-muted-foreground">
-                        {t('ecommerce.subtitle', { defaultValue: 'Track and manage marketplace orders' })}
+                        {t('ecommerce.subtitle', { defaultValue: 'Track and manage marketplace orders' })} <ModulePageFreshness className="ms-2" />
                     </p>
                 </div>
                 <Button variant="outline" className="gap-2 self-start rounded-xl" onClick={onRefresh}>

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { Eye, Pencil, Plus, Search, Trash2, Truck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
@@ -123,7 +124,9 @@ export function Suppliers() {
                         <Truck className="h-6 w-6 text-primary" />
                         {t('suppliers.title') || 'Suppliers'}
                     </h1>
-                    <p className="text-muted-foreground">{t('suppliers.subtitle') || 'Manage your suppliers'}</p>
+                    <p className="text-muted-foreground">
+                        {t('suppliers.subtitle') || 'Manage your suppliers'} <ModulePageFreshness className="ms-2" />
+                    </p>
                 </div>
                 {canEdit && (
                     <Button onClick={() => { setEditingPartner(null); setDialogOpen(true) }} className="gap-2 self-start rounded-xl">

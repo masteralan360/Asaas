@@ -18,6 +18,7 @@ import {
   updateSyncProgress,
 } from "@/sync/syncProgress";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
+import { recordWorkspaceDataFetch } from "@/workspace/workspaceDataFreshness";
 // import { getPendingItems, removeFromQueue, incrementRetry } from './syncQueue'
 
 export type SyncState = "idle" | "syncing" | "error" | "offline";
@@ -1129,6 +1130,9 @@ export async function fullSync(
       (completed, total) => updateSyncProgress("pulling", completed, total),
     );
     const errors = [...pushErrors, ...pullErrors];
+    if (pullErrors.length === 0) {
+      recordWorkspaceDataFetch(workspaceId, "supabase");
+    }
 
     return {
       success: failed === 0 && pullErrors.length === 0,
