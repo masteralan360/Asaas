@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
-import { Link, useRoute } from 'wouter'
+import { Link } from 'wouter'
 import { Banknote, Grid2X2, Minus, Search, Sparkles, Store } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -72,11 +72,13 @@ function getInitialSortMode(): SortMode {
     return new URLSearchParams(window.location.search).get('sort') === 'new' ? 'newest' : 'featured'
 }
 
-export function StorePage() {
+type StorePageProps = {
+    storeSlug: string
+}
+
+export function StorePage({ storeSlug }: StorePageProps) {
     const { t, i18n } = useTranslation()
     const { toast } = useToast()
-    const [, params] = useRoute('/s/:slug')
-    const storeSlug = params?.slug || ''
     const { catalog, isLoading, error } = useStoreCatalog(storeSlug)
     const cart = useCart(storeSlug)
     const [search, setSearch] = useState('')

@@ -1,4 +1,4 @@
-import { Link, useRoute } from 'wouter'
+import { Link } from 'wouter'
 import { MapPin, Phone, Store } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -86,10 +86,12 @@ function ContactRows({
     )
 }
 
-export function StoreContactPage() {
+type StoreContactPageProps = {
+    storeSlug: string
+}
+
+export function StoreContactPage({ storeSlug }: StoreContactPageProps) {
     const { t } = useTranslation()
-    const [, params] = useRoute('/s/:slug/contact')
-    const storeSlug = params?.slug || ''
     const { catalog, isLoading, error } = useStoreCatalog(storeSlug)
     const cart = useCart(storeSlug)
     const storeName = catalog?.store.name || t('marketplace.storeTitle', { defaultValue: 'Store' })
