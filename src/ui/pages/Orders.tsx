@@ -12,6 +12,7 @@ import { PurchaseOrderFormPage } from '@/ui/components/orders/PurchaseOrderFormP
 import { useAuth } from '@/auth'
 import { useDateRange } from '@/context/DateRangeContext'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
+import { getLanguageDirection } from '@/lib/i18nRouting'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getReportOriginId } from '@/lib/printIdentity'
 import { buildOrderExchangeRatesSnapshot, convertCurrencyAmountWithLiveRates, getPrimaryExchangeDetails } from '@/lib/orderCurrency'
@@ -269,6 +270,7 @@ function buildPurchaseOrderPaymentObligation(order: PurchaseOrder): PaymentOblig
 
 function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: string; initialTab?: OrderTab }) {
     const { t, i18n } = useTranslation()
+    const pageDirection = getLanguageDirection(i18n.resolvedLanguage || i18n.language)
     const { user } = useAuth()
     const { features, workspaceName } = useWorkspace()
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
@@ -1036,15 +1038,15 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                     onSelect={onSelect}
                 >
                     {isLoading
-                        ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-                        : <Icon className="mr-2 h-4 w-4" aria-hidden="true" />}
+                        ? <Loader2 className="me-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                        : <Icon className="me-2 h-4 w-4" aria-hidden="true" />}
                     {label}
                 </DropdownMenuItem>
             )
         }
 
         return (
-            <DropdownMenu>
+            <DropdownMenu dir={pageDirection}>
                 <DropdownMenuTrigger asChild>
                     <Button
                         variant="outline"
@@ -1063,7 +1065,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                             ? openSalesEdit(order as SalesOrder)
                             : openPurchaseEdit(order as PurchaseOrder)}
                         >
-                            <Pencil className="mr-2 h-4 w-4" />
+                            <Pencil className="me-2 h-4 w-4" />
                             {t('common.edit') || 'Edit'}
                         </DropdownMenuItem>
                     )}
@@ -1104,7 +1106,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                     })}
                     {!isApprovalRequested && canManageOrders && isSalesOrder && (order.status === 'draft' || order.status === 'pending') && (
                         <DropdownMenuItem onSelect={() => setCancelConfirm({ isOpen: true, orderId: order.id, type: 'sales' })}>
-                            <XCircle className="mr-2 h-4 w-4" />
+                            <XCircle className="me-2 h-4 w-4" />
                             {t('orders.actions.cancel') || 'Cancel'}
                         </DropdownMenuItem>
                     )}
@@ -1143,7 +1145,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                     })}
                     {!isApprovalRequested && canManageOrders && !isSalesOrder && (order.status === 'draft' || order.status === 'ordered') && (
                         <DropdownMenuItem onSelect={() => setCancelConfirm({ isOpen: true, orderId: order.id, type: 'purchase' })}>
-                            <XCircle className="mr-2 h-4 w-4" />
+                            <XCircle className="me-2 h-4 w-4" />
                             {t('orders.actions.cancel') || 'Cancel'}
                         </DropdownMenuItem>
                     )}
@@ -1155,14 +1157,14 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                 : buildPurchaseOrderPaymentObligation(order as PurchaseOrder))}
                         >
                             {order.isPaid
-                                ? <RotateCcw className="mr-2 h-4 w-4" />
-                                : <Wallet className="mr-2 h-4 w-4" />}
+                                ? <RotateCcw className="me-2 h-4 w-4" />
+                                : <Wallet className="me-2 h-4 w-4" />}
                             {order.isPaid ? (t('orders.actions.unpay') || 'Unpay') : (t('orders.actions.pay') || 'Pay')}
                         </DropdownMenuItem>
                     )}
                     {canLock && (
                         <DropdownMenuItem onSelect={() => setLockConfirm({ isOpen: true, orderId: order.id, type })}>
-                            <Lock className="mr-2 h-4 w-4" />
+                            <Lock className="me-2 h-4 w-4" />
                             {t('orders.actions.lock') || 'Lock'}
                         </DropdownMenuItem>
                     )}
@@ -1173,7 +1175,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                 ? { type: 'sales', order: order as SalesOrder }
                                 : { type: 'purchase', order: order as PurchaseOrder })}
                         >
-                            <Trash2 className="mr-2 h-4 w-4" />
+                            <Trash2 className="me-2 h-4 w-4" />
                             {t('common.delete') || 'Delete'}
                         </DropdownMenuItem>
                     )}
@@ -1225,7 +1227,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                             <TableHead>{t('common.total') || 'Total'}</TableHead>
                             <TableHead>{t('orders.form.date') || 'Date'}</TableHead>
                             <TableHead>{t('orders.paymentStatus', { defaultValue: 'Payment status' })}</TableHead>
-                            <TableHead className="text-right">{t('common.actions') || 'Actions'}</TableHead>
+                            <TableHead className="text-end">{t('common.actions') || 'Actions'}</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1293,10 +1295,10 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                             {row.isLocked && <Lock className="h-3.5 w-3.5 text-muted-foreground" />}
                                         </div>
                                     </TableCell>
-                                    <TableCell className="text-right">
+                                    <TableCell className="text-end">
                                         <div className="flex flex-wrap justify-end gap-2">
                                             <Button variant="outline" size="sm" allowViewer={true} onClick={() => navigate(`/orders/${row.id}`)}>
-                                                <Eye className="mr-1 h-3.5 w-3.5" />
+                                                <Eye className="me-1 h-3.5 w-3.5" />
                                                 {t('common.view') || 'View'}
                                             </Button>
                                             {renderOrderMoreOptions({
@@ -1367,7 +1369,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         {summary}
                                     </div>
                                 </div>
-                                <div className="flex flex-col items-end gap-1.5 text-right">
+                                <div className="flex flex-col items-end gap-1.5 text-end">
                                     <OrderStatusBadge
                                         status={isApprovalRequested ? 'approval_requested' : row.status}
                                         label={isApprovalRequested
@@ -1390,11 +1392,11 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                     <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('orders.table.items') || 'Items'}</div>
                                     <div className="text-[11px] font-bold">{row.items.length}</div>
                                 </div>
-                                <div className="text-center border-l border-border/50">
+                                <div className="text-center border-s border-border/50">
                                     <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('common.total') || 'Total'}</div>
                                     <div className="text-[11px] font-bold text-primary">{formatCurrency(row.total, row.currency, features.iqd_display_preference)}</div>
                                 </div>
-                                <div className="text-center border-l border-border/50">
+                                <div className="text-center border-s border-border/50">
                                     <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('orders.paymentStatus', { defaultValue: 'Payment status' })}</div>
                                     <div className={cn(
                                         "text-[11px] font-bold flex items-center justify-center gap-1",
@@ -1432,13 +1434,13 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         )
     }
 
-    const salesDisabled = products.length === 0
-    const purchaseDisabled = products.length === 0
+    const salesDisabled = customers.length === 0 || products.length === 0
+    const purchaseDisabled = suppliers.length === 0 || products.length === 0
     const StatusFilterIcon = statusFilterIcons[statusFilter]
     const PaymentFilterIcon = paymentFilterIcons[paymentFilter]
 
     return (
-        <div className="space-y-6" data-tour-id="tutorial-orders-landing">
+        <div className="space-y-6" dir={pageDirection} data-tour-id="tutorial-orders-landing">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold">
@@ -1504,7 +1506,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                         value={activeTab}
                         onValueChange={(value) => { setActiveTab(value as OrderTab); navigate(value === 'sales' ? '/orders/sales' : '/orders/purchase') }}
                         className="w-full"
-                        dir={i18n.dir()}
+                        dir={pageDirection}
                     >
                         <div className="space-y-4">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1564,7 +1566,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
 
                             <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
                                 <div className="relative min-w-0 flex-1">
-                                    <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                    <Search className="pointer-events-none absolute start-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                                     <Input
                                         value={search}
                                         onChange={(event) => setSearch(event.target.value)}
@@ -1572,12 +1574,12 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         placeholder={activeTab === 'sales'
                                             ? (t('orders.placeholder.searchSales') || 'Search sales orders...')
                                             : (t('orders.placeholder.searchPurchase') || 'Search purchase orders...')}
-                                        className="h-10 rounded-xl border-border/70 bg-background pl-10 shadow-sm transition-shadow focus-visible:shadow-md"
+                                        className="h-10 rounded-xl border-border/70 bg-background ps-10 shadow-sm transition-shadow focus-visible:shadow-md"
                                     />
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-                                    <DropdownMenu>
+                                    <DropdownMenu dir={pageDirection}>
                                         <DropdownMenuTrigger asChild>
                                             <Button
                                                 variant="outline"
@@ -1607,7 +1609,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                             statusFilter === value && 'bg-primary/10 text-primary focus:bg-primary/10 focus:text-primary'
                                                         )}
                                                     >
-                                                        <StatusOptionIcon className="mr-2 h-4 w-4" />
+                                                        <StatusOptionIcon className="me-2 h-4 w-4" />
                                                         {value === 'all' ? (t('common.all') || 'All') : t(`orders.status.${value}`) || value}
                                                     </DropdownMenuItem>
                                                 )
@@ -1615,7 +1617,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         </DropdownMenuContent>
                                     </DropdownMenu>
 
-                                    <DropdownMenu>
+                                    <DropdownMenu dir={pageDirection}>
                                         <DropdownMenuTrigger asChild>
                                             <Button
                                                 variant="outline"
@@ -1652,7 +1654,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                                 : 'bg-primary/10 text-primary focus:bg-primary/10 focus:text-primary')
                                                         )}
                                                     >
-                                                        <PaymentOptionIcon className="mr-2 h-4 w-4" />
+                                                        <PaymentOptionIcon className="me-2 h-4 w-4" />
                                                         {value === 'all'
                                                             ? (t('common.all') || 'All')
                                                             : value === 'returned'
@@ -1757,7 +1759,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                 </p>
                                             </div>
                                             <Button type="button" variant="outline" size="sm" onClick={() => setSalesForm((current) => ({ ...current, items: [...current.items, createEmptyItem(current.items[current.items.length - 1]?.storageId || current.sourceStorageId || defaultStorageId)] }))}>
-                                                <Plus className="mr-1 h-3.5 w-3.5" />
+                                                <Plus className="me-1 h-3.5 w-3.5" />
                                                 {t('orders.form.addItem') || 'Add Item'}
                                             </Button>
                                         </CardHeader>
@@ -2003,7 +2005,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                 </p>
                                             </div>
                                             <Button type="button" variant="outline" size="sm" onClick={() => setPurchaseForm((current) => ({ ...current, items: [...current.items, createEmptyItem(current.items[current.items.length - 1]?.storageId || current.destinationStorageId || defaultStorageId)] }))}>
-                                                <Plus className="mr-1 h-3.5 w-3.5" />
+                                                <Plus className="me-1 h-3.5 w-3.5" />
                                                 {t('orders.form.addItem') || 'Add Item'}
                                             </Button>
                                         </CardHeader>
