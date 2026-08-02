@@ -73,7 +73,7 @@ export interface AtlasStandardOrderInvoiceTemplateProps {
     productImageUrls?: ProductPrintImageUrls
 }
 
-const INK = '#244f87'
+const INK = '#1f2937'
 // The compact grid keeps an 8 mm A4 safety buffer for the financial section and fixed footer.
 const TABLE_DATA_AREA_MM = 145
 const TABLE_ITEM_ROW_MIN_MM = 8
@@ -698,14 +698,14 @@ function HideableSection({
                 </div>
             )
         })
-        : <div className="col-span-4 min-h-[6.5mm] border-l border-t border-[#244f87]" />
+        : <div className="col-span-4 min-h-[6.5mm] border-l border-t border-[#1f2937]" />
 
     const section = (
         <div
             role={canConfigure ? 'button' : undefined}
             tabIndex={canConfigure ? 0 : undefined}
             className={cn(
-                'grid grid-cols-4 border-b border-r border-[#244f87] bg-white text-start outline-none',
+                'grid grid-cols-4 border-b border-r border-[#1f2937] bg-white text-start outline-none',
                 canConfigure && 'cursor-pointer transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-primary/50',
                 className
             )}
@@ -1067,14 +1067,14 @@ export function AtlasStandardOrderInvoiceTemplate({
             key: detailsKeys.partner,
             label: counterpartyLabel,
             value: counterpartyName || '-',
-            className: 'col-span-2 border-l border-t border-[#244f87]',
+            className: 'col-span-2 border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{counterpartyName || '-'}</div>
         },
         {
             key: detailsKeys.invoice,
             label: labels.invoice,
             value: isSales ? labels.salesOrder : labels.purchaseOrder,
-            className: 'border-l border-t border-[#244f87]',
+            className: 'border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{isSales ? labels.salesOrder : labels.purchaseOrder}</div>
         },
         {
@@ -1082,7 +1082,7 @@ export function AtlasStandardOrderInvoiceTemplate({
             // Keep the original field key so saved Atlas Standard layouts continue to work.
             label: labels.phone,
             value: partnerPhone,
-            className: 'border-l border-t border-[#244f87]',
+            className: 'border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{partnerPhone}</div>
         },
         {
@@ -1097,42 +1097,42 @@ export function AtlasStandardOrderInvoiceTemplate({
                 deactivateLabel: labels.switchToCashier,
                 onChange: (active) => onFieldDisplayModeChange(detailsKeys.salesPerson, active ? 'invoiceOrganizer' : '')
             } : undefined,
-            className: 'col-span-2 border-l border-t border-[#244f87]',
+            className: 'col-span-2 border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{isInvoiceOrganizer ? '' : salesperson}</div>
         },
         {
             key: detailsKeys.location,
             label: labels.partnerAddress,
             value: partnerAddress,
-            className: 'border-l border-t border-[#244f87]',
+            className: 'border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{partnerAddress}</div>
         },
         {
             key: detailsKeys.status,
             label: labels.status,
             value: statusLabel,
-            className: 'border-l border-t border-[#244f87]',
+            className: 'border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{statusLabel}</div>
         },
         {
             key: detailsKeys.documentNumber,
             label: labels.documentNumber,
             value: order.orderNumber,
-            className: 'col-span-2 border-l border-t border-[#244f87]',
+            className: 'col-span-2 border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{order.orderNumber}</div>
         },
         {
             key: detailsKeys.invoiceDate,
             label: labels.invoiceDate,
             value: issuedAt.date,
-            className: 'border-l border-t border-[#244f87]',
+            className: 'border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{issuedAt.date}</div>
         },
         {
             key: detailsKeys.time,
             label: labels.time,
             value: issuedAt.time,
-            className: 'border-l border-t border-[#244f87]',
+            className: 'border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{issuedAt.time}</div>
         }
     ]
@@ -1142,7 +1142,7 @@ export function AtlasStandardOrderInvoiceTemplate({
             key: financialKeys.paidAmount,
             label: labels.paidAmount,
             value: formatCurrency(paidAmount, currency, iqdPreference),
-            className: 'col-span-4 border-l border-t border-[#244f87]',
+            className: 'col-span-4 border-l border-t border-[#1f2937]',
             dialogClassName: 'col-span-2',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{formatCurrency(paidAmount, currency, iqdPreference)}</div>
         },
@@ -1150,7 +1150,7 @@ export function AtlasStandardOrderInvoiceTemplate({
             key: financialKeys.outstanding,
             label: labels.outstanding,
             value: formatCurrency(outstanding, currency, iqdPreference),
-            className: 'col-span-4 border-l border-t border-[#244f87]',
+            className: 'col-span-4 border-l border-t border-[#1f2937]',
             dialogClassName: 'col-span-2',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{formatCurrency(outstanding, currency, iqdPreference)}</div>
         },
@@ -1158,7 +1158,7 @@ export function AtlasStandardOrderInvoiceTemplate({
             key: financialKeys.discount,
             label: labels.discount,
             value: formatCurrency(order.discount, currency, iqdPreference),
-            className: 'col-span-4 border-l border-t border-[#244f87]',
+            className: 'col-span-4 border-l border-t border-[#1f2937]',
             dialogClassName: 'col-span-2',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{formatCurrency(order.discount, currency, iqdPreference)}</div>
         },
@@ -1166,7 +1166,7 @@ export function AtlasStandardOrderInvoiceTemplate({
             key: financialKeys.currentBalance,
             label: labels.currentBalance,
             value: formatPartnerBalance(currentPartnerBalance),
-            className: 'col-span-4 border-l border-t border-[#244f87]',
+            className: 'col-span-4 border-l border-t border-[#1f2937]',
             dialogClassName: 'col-span-2',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{formatPartnerBalance(currentPartnerBalance)}</div>
         },
@@ -1174,28 +1174,28 @@ export function AtlasStandardOrderInvoiceTemplate({
             key: financialKeys.paymentMethod,
             label: labels.paymentMethod,
             value: paymentMethod,
-            className: 'col-span-2 border-l border-t border-[#244f87]',
+            className: 'col-span-2 border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{paymentMethod}</div>
         },
         {
             key: financialKeys.amountInWords,
             label: labels.amountInWords,
             value: amountInWords,
-            className: 'col-span-2 border-l border-t border-[#244f87]',
+            className: 'col-span-2 border-l border-t border-[#1f2937]',
             render: () => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs">{amountInWords}</div>
         },
         {
             key: financialKeys.printedBy,
             label: labels.printedBy,
             value: salesperson,
-            className: 'col-span-2 border-l border-t border-[#244f87]',
+            className: 'col-span-2 border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{salesperson}</div>
         },
         {
             key: financialKeys.notes,
             label: labels.notes,
             value: noteValue,
-            className: 'col-span-2 border-l border-t border-[#244f87]',
+            className: 'col-span-2 border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{noteValue}</div>
         }
     ]
@@ -1312,7 +1312,7 @@ export function AtlasStandardOrderInvoiceTemplate({
                             {visibleColumns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
                         </colgroup>
                         <thead>
-                            <tr className="h-[8mm] bg-[#e8f0fa] text-center font-bold" style={{ color: '#243b5a' }}>
+                            <tr className="h-[8mm] bg-[#e5e7eb] text-center font-bold" style={{ color: '#111827' }}>
                                 {visibleColumns.map((column) => (
                                     <th
                                         key={column.key}
@@ -1384,7 +1384,7 @@ export function AtlasStandardOrderInvoiceTemplate({
                                     ))}
                                 </tr>
                             ) : null}
-                            <tr className="h-[8mm] bg-[#f5f8fc] font-bold">
+                            <tr className="h-[8mm] bg-[#f3f4f6] font-bold">
                                 {visibleColumns.map((column) => {
                                     const value = column.key === tableKeys.quantity
                                         ? items.reduce((sum, item) => sum + getOrderLinePaidQuantity(item), 0)
@@ -1431,7 +1431,7 @@ export function AtlasStandardOrderInvoiceTemplate({
             />
             <div data-template-text-flow-anchor="" aria-hidden="true" />
 
-            <div className="flex min-h-[13mm] items-start justify-between gap-4 text-[10px]" style={{ color: '#243b5a' }}>
+            <div className="flex min-h-[13mm] items-start justify-between gap-4 text-[10px]" style={{ color: '#374151' }}>
                 <div className="pt-1 font-bold">{footerEmail.length ? `${labels.email}: ${footerEmail.join(' - ')}` : ''}</div>
                 <div className="max-w-[125mm] text-end leading-4">
                     {footerAddress.length ? <div>{footerAddress.join(' - ')}</div> : null}
@@ -1439,7 +1439,7 @@ export function AtlasStandardOrderInvoiceTemplate({
                 </div>
             </div>
 
-            <footer className="grid grid-cols-3 border-t pt-1 text-center text-[10px] font-bold" style={{ borderColor: INK, color: '#334c70' }}>
+            <footer className="grid grid-cols-3 border-t pt-1 text-center text-[10px] font-bold" style={{ borderColor: INK, color: '#374151' }}>
                 <span>{labels.madeBy}</span>
                 <span>{labels.page} 1 {labels.pageOf} 1</span>
                 <span>{labels.printDate}: {issuedAt.date}</span>

@@ -735,7 +735,7 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(html).toContain('>Note</th>')
         expect(html).toContain('>2 pcs</td>')
         expect(html).toContain('height:130.4mm')
-        expect(html).toContain('h-[8mm] bg-[#e8f0fa]')
+        expect(html).toContain('h-[8mm] bg-[#e5e7eb]')
         expect(html).toContain('text-[9px] leading-[1.2] break-words whitespace-normal')
         expect(html).toContain('Invoice : </strong>Sales Order')
         expect(html).toContain('Phone : </strong>-')
