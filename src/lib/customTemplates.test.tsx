@@ -666,7 +666,8 @@ describe('Atlas Standard order invoice custom print template', () => {
             'atlasStandard.invoiceDetails.salesPerson': 'Sales Man'
         }
         const fieldDisplayModes = {
-            'atlasStandard.invoiceDetails.salesPerson': 'invoiceOrganizer'
+            'atlasStandard.invoiceDetails.salesPerson': 'invoiceOrganizer',
+            'atlasStandard.table.productImage.width': '12'
         }
         const onHiddenFieldChange = vi.fn()
         const onFieldOrderChange = vi.fn()
@@ -674,10 +675,12 @@ describe('Atlas Standard order invoice custom print template', () => {
         const onFieldDisplayModeChange = vi.fn()
         const onComponentPositionChange = vi.fn()
         const componentPositions = { atlasStandardWorkspaceName: { x: 20, y: 10 } }
+        const productImageUrls = { 'sample-product': 'https://example.test/products/sample.png' }
         const preview = customTemplates.createCustomTemplatePreview(target!, {
             workspaceName: 'Atlas Test',
             printLang: 'en',
             printedBy: 'Order Cashier',
+            productImageUrls,
             counterpartyPhone: '+964 750 123 4567',
             counterpartyAddress: '100 Example Street, Erbil'
         })
@@ -711,15 +714,20 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(element.props.onFieldDisplayModeChange).toBe(onFieldDisplayModeChange)
         expect(element.props.componentPositions).toBe(componentPositions)
         expect(element.props.onComponentPositionChange).toBe(onComponentPositionChange)
+        expect(element.props.productImageUrls).toBe(productImageUrls)
 
         const html = renderToStaticMarkup(element)
         expect(html).toContain('Atlas Test')
         expect(html).toContain('min-h-[13mm]')
         expect(html).toContain('Sample Product')
         expect(html).toContain('Sample line item note.')
+        expect(html).toContain('>Image</th>')
+        expect(html).toContain('https://example.test/products/sample.png')
+        expect(html).toContain('width:12%')
+        expect(html).toContain('width:13.6mm;height:13.6mm')
         expect(html).toContain('>Note</th>')
         expect(html).toContain('>2 pcs</td>')
-        expect(html).toContain('height:137mm')
+        expect(html).toContain('height:130.4mm')
         expect(html).toContain('h-[8mm] bg-[#e8f0fa]')
         expect(html).toContain('text-[9px] leading-[1.2] break-words whitespace-normal')
         expect(html).toContain('Invoice : </strong>Sales Order')
@@ -746,6 +754,12 @@ describe('Atlas Standard order invoice custom print template', () => {
         }))
         expect(hiddenNoteHtml).not.toContain('Sample line item note.')
         expect(hiddenNoteHtml).not.toContain('>Note</th>')
+
+        const hiddenImageHtml = renderToStaticMarkup(preview.createElement({}, undefined, undefined, {
+            hiddenFields: { 'atlasStandard.table.productImage': true }
+        }))
+        expect(hiddenImageHtml).not.toContain('>Image</th>')
+        expect(hiddenImageHtml).not.toContain('https://example.test/products/sample.png')
     })
 
     it('writes the amount in words using the selected print language', () => {

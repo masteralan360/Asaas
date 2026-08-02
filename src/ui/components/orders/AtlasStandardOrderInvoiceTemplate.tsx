@@ -32,6 +32,8 @@ import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
 import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
 import { ReorderablePickerGrid } from '@/ui/components/ReorderablePickerGrid'
 
+import { ProductPrintImage, type ProductPrintImageUrls } from './ProductPrintImage'
+
 type OrderKind = 'sales' | 'purchase'
 
 interface WorkspaceContactPair {
@@ -67,12 +69,16 @@ export interface AtlasStandardOrderInvoiceTemplateProps {
     onFieldLabelChange?: (fieldKey: string, label: string) => void
     fieldDisplayModes?: Record<string, string>
     onFieldDisplayModeChange?: (fieldKey: string, mode: string) => void
+    productImageUrls?: ProductPrintImageUrls
 }
 
 const INK = '#244f87'
 // The compact grid keeps an 8 mm A4 safety buffer for the financial section and fixed footer.
 const TABLE_DATA_AREA_MM = 145
-const TABLE_ITEM_ROW_MM = 8
+const TABLE_ITEM_ROW_MIN_MM = 8
+const DEFAULT_PRODUCT_IMAGE_COLUMN_WIDTH = 6
+const MIN_PRODUCT_IMAGE_COLUMN_WIDTH = 6
+const MAX_PRODUCT_IMAGE_COLUMN_WIDTH = 16
 
 export const ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS = {
     logo: 'atlasStandardWorkspaceLogo',
@@ -92,6 +98,7 @@ export const ATLAS_STANDARD_ORDER_HIDDEN_FIELD_KEYS = {
         status: 'atlasStandard.invoiceDetails.status'
     },
     table: {
+        productImage: 'atlasStandard.table.productImage',
         number: 'atlasStandard.table.number',
         product: 'atlasStandard.table.product',
         expiry: 'atlasStandard.table.expiry',
@@ -119,10 +126,92 @@ export const ATLAS_STANDARD_ORDER_FIELD_ORDER_KEYS = {
     financialSummary: 'atlasStandard.financialSummary'
 } as const
 
+export const ATLAS_STANDARD_ORDER_TABLE_SETTING_KEYS = {
+    productImageWidth: 'atlasStandard.table.productImage.width'
+} as const
+
 type TableColumn = {
     key: string
     label: string
     width: string
+    contextMenu?: ReactNode
+}
+
+function clampProductImageColumnWidth(value: number) {
+    return Math.min(MAX_PRODUCT_IMAGE_COLUMN_WIDTH, Math.max(MIN_PRODUCT_IMAGE_COLUMN_WIDTH, value))
+}
+
+function getProductImageColumnWidth(value?: string) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed)
+        ? clampProductImageColumnWidth(parsed)
+        : DEFAULT_PRODUCT_IMAGE_COLUMN_WIDTH
+}
+
+function getProductImageSizeMm(columnWidth: number) {
+    return Math.min(16, Math.max(7, Number((7 + (columnWidth - DEFAULT_PRODUCT_IMAGE_COLUMN_WIDTH) * 1.1).toFixed(1))))
+}
+
+function ImageColumnWidthControl({
+    columnWidth,
+    onColumnWidthChange,
+    label
+}: {
+    columnWidth: number
+    onColumnWidthChange: (width: number) => void
+    label: string
+}) {
+    const [inputValue, setInputValue] = useState(String(columnWidth))
+    const imageSizeMm = getProductImageSizeMm(columnWidth)
+    const updateWidth = (value: number) => {
+        const nextWidth = clampProductImageColumnWidth(value)
+        setInputValue(String(nextWidth))
+        onColumnWidthChange(nextWidth)
+    }
+
+    return (
+        <div
+            className="w-64 space-y-3 p-2"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+        >
+            <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium">{label}</span>
+                <output className="text-sm tabular-nums text-muted-foreground">{columnWidth}%</output>
+            </div>
+            <input
+                aria-label={label}
+                type="range"
+                min={MIN_PRODUCT_IMAGE_COLUMN_WIDTH}
+                max={MAX_PRODUCT_IMAGE_COLUMN_WIDTH}
+                step="0.5"
+                value={columnWidth}
+                className="w-full accent-primary"
+                onChange={(event) => updateWidth(Number(event.target.value))}
+            />
+            <label className="flex items-center justify-between gap-3 text-sm" htmlFor="atlas-standard-product-image-column-width">
+                <span>Width (%)</span>
+                <input
+                    id="atlas-standard-product-image-column-width"
+                    type="number"
+                    min={MIN_PRODUCT_IMAGE_COLUMN_WIDTH}
+                    max={MAX_PRODUCT_IMAGE_COLUMN_WIDTH}
+                    step="0.5"
+                    inputMode="decimal"
+                    className="h-8 w-20 rounded-md border border-input bg-background px-2 text-end text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                    value={inputValue}
+                    onChange={(event) => {
+                        const nextValue = event.target.value
+                        setInputValue(nextValue)
+                        const nextWidth = Number(nextValue)
+                        if (Number.isFinite(nextWidth)) onColumnWidthChange(clampProductImageColumnWidth(nextWidth))
+                    }}
+                    onBlur={() => updateWidth(Number(inputValue))}
+                />
+            </label>
+            <p className="text-xs leading-4 text-muted-foreground">Photo size: {imageSizeMm} mm</p>
+        </div>
+    )
 }
 
 type HideablePrintField = {
@@ -763,7 +852,7 @@ function HideableTable({
                 <div className="space-y-1">
                     {columns.map((column) => {
                         const hidden = Boolean(hiddenFields[column.key])
-                        return (
+                        const columnButton = (
                             <button
                                 key={column.key}
                                 type="button"
@@ -776,6 +865,16 @@ function HideableTable({
                             >
                                 <span className="font-medium">{column.label}</span>
                             </button>
+                        )
+                        if (!column.contextMenu) return columnButton
+
+                        return (
+                            <ContextMenu key={column.key}>
+                                <ContextMenuTrigger asChild>{columnButton}</ContextMenuTrigger>
+                                <ContextMenuContent className="z-[80] w-72 p-1" onCloseAutoFocus={(event) => event.preventDefault()}>
+                                    {column.contextMenu}
+                                </ContextMenuContent>
+                            </ContextMenu>
                         )
                     })}
                 </div>
@@ -804,7 +903,8 @@ export function AtlasStandardOrderInvoiceTemplate({
     fieldLabelOverrides = {},
     onFieldLabelChange,
     fieldDisplayModes = {},
-    onFieldDisplayModeChange
+    onFieldDisplayModeChange,
+    productImageUrls
 }: AtlasStandardOrderInvoiceTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
@@ -824,7 +924,11 @@ export function AtlasStandardOrderInvoiceTemplate({
     const detailsKeys = ATLAS_STANDARD_ORDER_HIDDEN_FIELD_KEYS.invoiceDetails
     const tableKeys = ATLAS_STANDARD_ORDER_HIDDEN_FIELD_KEYS.table
     const fieldOrderKeys = ATLAS_STANDARD_ORDER_FIELD_ORDER_KEYS
+    const tableSettingKeys = ATLAS_STANDARD_ORDER_TABLE_SETTING_KEYS
     const isInvoiceOrganizer = fieldDisplayModes[detailsKeys.salesPerson] === 'invoiceOrganizer'
+    const productImageColumnWidth = getProductImageColumnWidth(fieldDisplayModes[tableSettingKeys.productImageWidth])
+    const productImageSizeMm = getProductImageSizeMm(productImageColumnWidth)
+    const tableItemRowMm = Math.max(TABLE_ITEM_ROW_MIN_MM, productImageSizeMm + 1)
     const currency = order.currency
     const balanceCurrency = businessPartner?.defaultCurrency || currency
     const noteValue = order.notes?.trim() || '-'
@@ -845,17 +949,30 @@ export function AtlasStandardOrderInvoiceTemplate({
         : '-'
     const amountInWords = numberToWords(order.total, printLang)
     const items = order.items || []
-    const emptyTableAreaMm = Math.max(0, TABLE_DATA_AREA_MM - (items.length * TABLE_ITEM_ROW_MM))
+    const emptyTableAreaMm = Math.max(0, TABLE_DATA_AREA_MM - (items.length * tableItemRowMm))
+    const productImageWidthDifference = productImageColumnWidth - DEFAULT_PRODUCT_IMAGE_COLUMN_WIDTH
     const tableColumns: TableColumn[] = [
+        {
+            key: tableKeys.productImage,
+            label: t('products.table.image', { defaultValue: 'Image' }),
+            width: `${productImageColumnWidth}%`,
+            contextMenu: onFieldDisplayModeChange ? (
+                <ImageColumnWidthControl
+                    label={t('orders.print.imageColumnWidth', { defaultValue: 'Image column width' })}
+                    columnWidth={productImageColumnWidth}
+                    onColumnWidthChange={(width) => onFieldDisplayModeChange(tableSettingKeys.productImageWidth, String(width))}
+                />
+            ) : undefined
+        },
         { key: tableKeys.number, label: labels.number, width: '5%' },
-        { key: tableKeys.product, label: labels.productName, width: '22%' },
+        { key: tableKeys.product, label: labels.productName, width: `${19 - productImageWidthDifference * 0.7}%` },
         { key: tableKeys.expiry, label: labels.expiry, width: '8%' },
         { key: tableKeys.batchNumber, label: labels.batchNumber, width: '9%' },
         { key: tableKeys.quantity, label: labels.quantity, width: '8%' },
         { key: tableKeys.freeQuantity, label: labels.freeQuantity, width: '8%' },
         { key: tableKeys.price, label: labels.price, width: '10%' },
         { key: tableKeys.total, label: labels.total, width: '10%' },
-        { key: tableKeys.note, label: labels.note, width: '20%' }
+        { key: tableKeys.note, label: labels.note, width: `${17 - productImageWidthDifference * 0.3}%` }
     ]
 
     const invoiceDetailFields: HideablePrintField[] = [
@@ -1118,6 +1235,13 @@ export function AtlasStandardOrderInvoiceTemplate({
                                 const paidQuantity = getOrderLinePaidQuantity(item)
                                 const unit = item.unit?.trim()
                                 const values: Record<string, ReactNode> = {
+                                    [tableKeys.productImage]: (
+                                        <ProductPrintImage
+                                            imageUrl={productImageUrls?.[item.productId]}
+                                            productName={item.productName}
+                                            sizeMm={productImageSizeMm}
+                                        />
+                                    ),
                                     [tableKeys.number]: index + 1,
                                     [tableKeys.product]: item.productName || '\u00a0',
                                     [tableKeys.expiry]: batch.expiry || '\u00a0',
@@ -1131,15 +1255,18 @@ export function AtlasStandardOrderInvoiceTemplate({
                                     [tableKeys.note]: item.note?.trim() || '\u00a0'
                                 }
                                 return (
-                                    <tr key={item.id} className="h-[8mm]">
+                                    <tr key={item.id} style={{ height: `${tableItemRowMm}mm` }}>
                                         {visibleColumns.map((column) => (
                                             <td
                                                 key={column.key}
                                                 className={cn(
-                                                    'border px-[1.2mm] py-[1mm] text-center align-middle leading-[1.15]',
+                                                    'border text-center align-middle leading-[1.15]',
+                                                    column.key === tableKeys.productImage
+                                                        ? 'px-[0.5mm] py-[0.5mm] whitespace-nowrap'
+                                                        : 'px-[1.2mm] py-[1mm]',
                                                     column.key === tableKeys.product || column.key === tableKeys.note
                                                         ? 'break-words whitespace-pre-wrap'
-                                                        : 'whitespace-nowrap'
+                                                        : column.key === tableKeys.productImage ? '' : 'whitespace-nowrap'
                                                 )}
                                                 style={{ borderColor: INK }}
                                             >

@@ -61,6 +61,7 @@ import {
     AtlasStandardOrderInvoiceTemplate,
     ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS
 } from '@/ui/components/orders/AtlasStandardOrderInvoiceTemplate'
+import type { ProductPrintImageUrls } from '@/ui/components/orders/ProductPrintImage'
 import { ModernA4InvoiceTemplate, MODERN_A4_MOVABLE_COMPONENT_KEYS } from '@/ui/components/ModernA4InvoiceTemplate'
 import {
     ProfessionalA4InvoiceTemplate,
@@ -439,6 +440,7 @@ export type CustomTemplatePreviewOptions = {
     orderInstallments?: OrderInstallment[]
     businessPartner?: BusinessPartner | null
     productUnits?: Record<string, string | null | undefined>
+    productImageUrls?: ProductPrintImageUrls
     counterpartyPhone?: string
     counterpartyAddress?: string
     printedBy?: string | null
@@ -1443,6 +1445,7 @@ function createAtlasStandardOrderInvoicePreview(options: CustomTemplatePreviewOp
                 workspaceFooterContacts={renderOptions?.workspaceFooterContacts || options.workspaceFooterContacts}
                 businessPartner={options.businessPartner}
                 printedBy={options.printedBy}
+                productImageUrls={options.productImageUrls}
                 componentPositions={renderOptions?.componentPositions}
                 editableComponents={renderOptions?.editableComponents}
                 onComponentPositionChange={renderOptions?.onComponentPositionChange}

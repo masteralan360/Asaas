@@ -23,6 +23,8 @@ import { useBusinessPartner } from '@/local-db'
 import type { PrintFormat } from '@/services/pdfGenerator'
 import type { WorkspaceFeatures } from '@/workspace'
 
+import type { ProductPrintImageUrls } from './ProductPrintImage'
+
 type OrderKind = 'sales' | 'purchase'
 type OrderNativeTemplateKey = typeof ORDER_ATLAS_STANDARD_TEMPLATE_KEY | typeof ORDER_DETAILS_TEMPLATE_KEY | typeof ORDER_RECEIPT_TEMPLATE_KEY
 
@@ -37,6 +39,7 @@ interface UseOrderCustomPrintOptions {
     orderKind?: OrderKind
     installments: OrderInstallment[]
     productUnits?: Record<string, string | null | undefined>
+    productImageUrls?: ProductPrintImageUrls
     printedBy?: string | null
     t: TFunction
 }
@@ -52,6 +55,7 @@ export function useOrderCustomPrint({
     orderKind,
     installments,
     productUnits,
+    productImageUrls,
     printedBy,
     t
 }: UseOrderCustomPrintOptions) {
@@ -132,12 +136,13 @@ export function useOrderCustomPrint({
             orderInstallments: installments,
             businessPartner: bizPartner,
             productUnits,
+            productImageUrls,
             counterpartyPhone,
             counterpartyAddress,
             printedBy,
             printLang: currentPrintLanguage
         })
-    }, [bizPartner, currentPrintLanguage, features, installments, isCustomSelected, order, orderKind, printedBy, productUnits, selectedTemplateTarget, workspaceId, workspaceName, counterpartyPhone, counterpartyAddress])
+    }, [bizPartner, currentPrintLanguage, features, installments, isCustomSelected, order, orderKind, printedBy, productImageUrls, productUnits, selectedTemplateTarget, workspaceId, workspaceName, counterpartyPhone, counterpartyAddress])
 
     const buildPdf = useCallback(async ({
         effectiveId,
@@ -164,6 +169,7 @@ export function useOrderCustomPrint({
                 orderInstallments: installments,
                 businessPartner: bizPartner,
                 productUnits,
+                productImageUrls,
                 counterpartyPhone,
                 counterpartyAddress,
                 printedBy,
@@ -172,7 +178,7 @@ export function useOrderCustomPrint({
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, printedBy, productUnits, selectedLayout, selectedTemplateTarget, workspaceId, workspaceName])
+    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, printedBy, productImageUrls, productUnits, selectedLayout, selectedTemplateTarget, workspaceId, workspaceName])
 
     const buildEditablePdf = useCallback(async (
         layout: CustomTemplateLayout,
@@ -196,6 +202,7 @@ export function useOrderCustomPrint({
                 orderInstallments: installments,
                 businessPartner: bizPartner,
                 productUnits,
+                productImageUrls,
                 counterpartyPhone,
                 counterpartyAddress,
                 printedBy,
@@ -204,7 +211,7 @@ export function useOrderCustomPrint({
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, printedBy, productUnits, selectedTemplateTarget, workspaceId, workspaceName])
+    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, printedBy, productImageUrls, productUnits, selectedTemplateTarget, workspaceId, workspaceName])
 
     const nativeOptions = useMemo(() => [
         {

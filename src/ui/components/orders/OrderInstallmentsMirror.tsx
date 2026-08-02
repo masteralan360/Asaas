@@ -133,6 +133,11 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         if (unit) units[product.id] = unit
         return units
     }, {}), [printProducts])
+    const productImageUrls = useMemo(() => printProducts.reduce<Record<string, string>>((imageUrls, product) => {
+        const imageUrl = product.imageUrl?.trim()
+        if (imageUrl) imageUrls[product.id] = imageUrl
+        return imageUrls
+    }, {}), [printProducts])
     const printPartnerId = printTarget?.order.businessPartnerId
         || (printTarget?.kind === 'sales'
             ? (printTarget.order as SalesOrder).customerId
@@ -272,6 +277,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                 logoUrl={features.logo_url}
                 businessPartner={printPartner}
                 printedBy={user?.name}
+                productImageUrls={productImageUrls}
             />
         ) : (
             <OrderDetailsPrintTemplate
@@ -295,6 +301,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         printInstallments,
         printLang,
         printTarget,
+        productImageUrls,
         productUnits,
         counterpartyAddress,
         counterpartyPhone,
@@ -457,6 +464,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                     logoUrl={features.logo_url}
                     businessPartner={printPartner}
                     printedBy={user?.name}
+                    productImageUrls={productImageUrls}
                     hiddenFields={renderOptions?.hiddenFields}
                     onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
                     fieldDisplayModes={renderOptions?.fieldDisplayModes}
@@ -476,6 +484,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         printLang,
         printPartner,
         printTarget,
+        productImageUrls,
         user?.name,
         workspaceName
     ])
@@ -490,6 +499,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         orderKind: printTarget?.kind,
         installments: printInstallments,
         productUnits,
+        productImageUrls,
         t
     })
 

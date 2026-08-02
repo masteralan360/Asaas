@@ -283,6 +283,11 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         if (unit) units[product.id] = unit
         return units
     }, {}), [orderProducts])
+    const productImageUrls = useMemo(() => orderProducts.reduce<Record<string, string>>((imageUrls, product) => {
+        const imageUrl = product.imageUrl?.trim()
+        if (imageUrl) imageUrls[product.id] = imageUrl
+        return imageUrls
+    }, {}), [orderProducts])
 
     const partnerId = resolved?.order.businessPartnerId
         || (resolved?.kind === 'sales' ? (resolved?.order as SalesOrder)?.customerId : (resolved?.order as PurchaseOrder)?.supplierId)
@@ -562,6 +567,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         workspaceFooterContacts={renderOptions?.workspaceFooterContacts || workspaceFooterContacts}
                         businessPartner={bizPartner}
                         printedBy={creatorName}
+                        productImageUrls={productImageUrls}
                         hiddenFields={renderOptions?.hiddenFields}
                         onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
                         fieldDisplayModes={renderOptions?.fieldDisplayModes}
@@ -574,7 +580,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 return generateTemplatePdf({ element, format: 'a4', printLang: printLangOverride || baseLang })
             }
         }
-    }, [resolved, features, installments, workspaceName, i18n, bizPartner, workspaceFooterContacts, creatorName])
+    }, [resolved, features, installments, workspaceName, i18n, bizPartner, workspaceFooterContacts, creatorName, productImageUrls])
 
     const customOrderPrint = useOrderCustomPrint({
         workspaceId,
@@ -587,6 +593,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         orderKind: resolved?.kind,
         installments,
         productUnits,
+        productImageUrls,
         printedBy: creatorName,
         t
     })
@@ -1723,6 +1730,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                         workspaceFooterContacts={workspaceFooterContacts}
                                         businessPartner={bizPartner}
                                         printedBy={creatorName}
+                                        productImageUrls={productImageUrls}
                                     />
                                 ) : (
                                     <OrderDetailsPrintTemplate
@@ -1773,6 +1781,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             workspaceFooterContacts={workspaceFooterContacts}
                             businessPartner={bizPartner}
                             printedBy={creatorName}
+                            productImageUrls={productImageUrls}
                         />
                     ) : (
                         <OrderDetailsPrintTemplate
