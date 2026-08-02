@@ -3,7 +3,7 @@ CREATE TABLE public.price_book_items (
   workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
   price_book_id uuid NOT NULL REFERENCES public.price_books(id) ON DELETE CASCADE,
   product_id uuid NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
-  cost_price numeric NOT NULL,
+  cost_price numeric NULL,
   price numeric NOT NULL,
   currency text NOT NULL,
   created_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,

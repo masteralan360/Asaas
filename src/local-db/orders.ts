@@ -10,7 +10,7 @@ import { normalizeOrderAdjustments } from '@/lib/orderAdjustments'
 import { isOnline } from '@/lib/network'
 import { getOrderLineInventoryQuantity } from '@/lib/orderLineItems'
 import { isPositiveQuantity, roundQuantity } from '@/lib/quantity'
-import { hasValidProductCost } from '@/lib/productCost'
+import { getMissingPriceBookCostMessage, hasValidProductCost } from '@/lib/productCost'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
 import { generateId } from '@/lib/utils'
@@ -713,6 +713,35 @@ async function assertSalesProductsHaveCosts(order: SalesOrder) {
         }
         if (!hasValidProductCost(product.costPrice)) {
             throw new Error(`${product.name} cannot be sold until a cost is added.`)
+        }
+    }
+
+    const partner = order.businessPartnerId
+        ? await db.business_partners.get(order.businessPartnerId)
+        : undefined
+    const priceBook = partner?.priceBookId
+        ? await db.price_books.get(partner.priceBookId)
+        : undefined
+
+    if (!priceBook || priceBook.isDeleted) {
+        return
+    }
+
+    const priceBookItems = await db.price_book_items
+        .where('priceBookId')
+        .equals(priceBook.id)
+        .toArray()
+    const itemsByProductId = new Map(
+        priceBookItems
+            .filter((item) => !item.isDeleted)
+            .map((item) => [item.productId, item])
+    )
+
+    for (const item of order.items) {
+        const product = productMap.get(item.productId)
+        const priceBookItem = itemsByProductId.get(item.productId)
+        if (priceBookItem && !hasValidProductCost(priceBookItem.costPrice)) {
+            throw new Error(getMissingPriceBookCostMessage(product?.name || item.productName, priceBook.name))
         }
     }
 }
@@ -1957,6 +1986,7 @@ export async function updateSalesOrderStatus(id: string, status: SalesOrderStatu
 
     let linkedLoanId = existing.linkedLoanId || null
     if (status === 'pending') {
+        await assertSalesProductsHaveCosts(existing)
         await assertSalesStockAvailable(existing, existing.id)
         linkedLoanId = await activateOrderFinancing('sales', existing)
     }
@@ -1987,6 +2017,7 @@ export async function updateSalesOrderStatus(id: string, status: SalesOrderStatu
     }
 
     if (status === 'completed') {
+        await assertSalesProductsHaveCosts(updated)
         await assertSalesStockAvailable(updated, existing.id)
         const fulfillment = await deductInventoryForSalesOrder(updated)
         updated.items = fulfillment.updatedItems

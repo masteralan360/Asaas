@@ -33,6 +33,7 @@ interface ProductPriceBookItemsEditorProps {
     allowedCurrencies: CurrencyCode[]
     iqdDisplayPreference: IQDDisplayPreference
     disabled?: boolean
+    hideCosts?: boolean
 }
 
 export function ProductPriceBookItemsEditor({
@@ -44,7 +45,8 @@ export function ProductPriceBookItemsEditor({
     defaultCurrency,
     allowedCurrencies,
     iqdDisplayPreference,
-    disabled = false
+    disabled = false,
+    hideCosts = false
 }: ProductPriceBookItemsEditorProps) {
     const { t } = useTranslation()
     const sortedPriceBooks = useMemo(
@@ -68,7 +70,7 @@ export function ProductPriceBookItemsEditor({
             ...rows,
             {
                 priceBookId: nextAvailableBook.id,
-                costPrice: defaultCostPrice.trim() || '0',
+                costPrice: hideCosts ? '' : defaultCostPrice.trim(),
                 price: defaultPrice.trim() || '0',
                 currency: defaultCurrency
             }
@@ -89,7 +91,9 @@ export function ProductPriceBookItemsEditor({
                     </div>
                     <p className="max-w-2xl text-sm text-muted-foreground">
                         {t('priceBooks.productOverridesDescription', {
-                            defaultValue: 'Set a custom unit cost and selling price for each pricing tier that uses this product.'
+                            defaultValue: hideCosts
+                                ? 'Set a custom selling price for each pricing tier that uses this product.'
+                                : 'Set a custom unit cost and selling price for each pricing tier that uses this product.'
                         })}
                     </p>
                 </div>
@@ -127,7 +131,9 @@ export function ProductPriceBookItemsEditor({
 
                         return (
                             <div key={`${row.priceBookId}-${index}`} className="rounded-2xl border border-border/60 bg-muted/10 p-4">
-                                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(180px,1.2fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(140px,0.8fr)_40px] xl:items-end">
+                                <div className={hideCosts
+                                    ? 'grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(180px,1.2fr)_minmax(150px,1fr)_minmax(140px,0.8fr)_40px] xl:items-end'
+                                    : 'grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(180px,1.2fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(140px,0.8fr)_40px] xl:items-end'}>
                                     <div className="space-y-2">
                                         <Label>{t('priceBooks.titleSingular', { defaultValue: 'Price Book' })}</Label>
                                         <Select
@@ -153,23 +159,25 @@ export function ProductPriceBookItemsEditor({
                                         </Select>
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <Label className="flex items-center gap-2">
-                                            <Wallet className="h-4 w-4 text-primary/60" />
-                                            {t('priceBooks.costPrice', { defaultValue: 'Unit cost' })}
-                                        </Label>
-                                        <Input
-                                            type="text"
-                                            inputMode="decimal"
-                                            value={formatNumericInput(row.costPrice)}
-                                            onChange={(event) => updateRow(index, {
-                                                costPrice: sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 })
-                                            })}
-                                            readOnly={disabled}
-                                            placeholder="0.000"
-                                            required
-                                        />
-                                    </div>
+                                    {!hideCosts && (
+                                        <div className="space-y-2">
+                                            <Label className="flex items-center gap-2">
+                                                <Wallet className="h-4 w-4 text-primary/60" />
+                                                {t('priceBooks.costPrice', { defaultValue: 'Unit cost' })}
+                                            </Label>
+                                            <Input
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={formatNumericInput(row.costPrice)}
+                                                onChange={(event) => updateRow(index, {
+                                                    costPrice: sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 })
+                                                })}
+                                                readOnly={disabled}
+                                                placeholder="0.000"
+                                                required
+                                            />
+                                        </div>
+                                    )}
 
                                     <div className="space-y-2">
                                         <Label className="flex items-center gap-2">

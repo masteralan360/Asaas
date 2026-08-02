@@ -240,6 +240,44 @@ export function Products() {
         return productPriceBooks
     }, [priceBookItems, priceBooks])
 
+    const missingPriceBookCostsByProduct = useMemo(() => {
+        if (!priceBooksEnabled) return new Map<string, string[]>()
+
+        const activePriceBookNames = new Map(
+            priceBooks
+                .filter((priceBook) => !priceBook.isDeleted)
+                .map((priceBook) => [priceBook.id, priceBook.name] as const)
+        )
+        const warnings = new Map<string, string[]>()
+
+        for (const item of priceBookItems) {
+            const priceBookName = activePriceBookNames.get(item.priceBookId)
+            if (item.isDeleted || !priceBookName || hasValidProductCost(item.costPrice)) continue
+
+            const priceBookNames = warnings.get(item.productId) ?? []
+            priceBookNames.push(priceBookName)
+            warnings.set(item.productId, priceBookNames)
+        }
+
+        for (const priceBookNames of warnings.values()) {
+            priceBookNames.sort((left, right) => left.localeCompare(right))
+        }
+
+        return warnings
+    }, [priceBookItems, priceBooks, priceBooksEnabled])
+
+    const hasProductCostWarning = (product: Product) =>
+        !hasValidProductCost(product.costPrice) || missingPriceBookCostsByProduct.has(product.id)
+
+    const getProductCostWarningMessage = (product: Product) => {
+        if (!hasValidProductCost(product.costPrice)) {
+            return 'This product has no cost and cannot be sold.'
+        }
+
+        const priceBookNames = missingPriceBookCostsByProduct.get(product.id) ?? []
+        return `This product has no cost in ${priceBookNames.join(', ')} and cannot be sold to partners linked to that Price Book.`
+    }
+
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
     const canCloneProducts = user?.role === 'admin'
@@ -1390,7 +1428,7 @@ export function Products() {
                                                     className={cn(
                                                         'space-y-4 rounded-[2rem] border border-border bg-card p-4 shadow-sm',
                                                         isProductSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5',
-                                                        !hasValidProductCost(product.costPrice) && 'border-destructive/40 bg-destructive/10'
+                                                        hasProductCostWarning(product) && 'border-destructive/40 bg-destructive/10'
                                                     )}
                                                 >
                                             {isProductSelectionMode && (
@@ -1406,13 +1444,13 @@ export function Products() {
                                                 </div>
                                             )}
                                             <div className="flex gap-4">
-                                                {!hasValidProductCost(product.costPrice) && (
+                                                {hasProductCostWarning(product) && (
                                                     <TooltipProvider>
                                                         <Tooltip delayDuration={150}>
                                                             <TooltipTrigger asChild>
                                                                 <span className="shrink-0 cursor-help text-destructive" aria-label="Product cannot be sold without a cost"><CircleAlert className="h-5 w-5" /></span>
                                                             </TooltipTrigger>
-                                                            <TooltipContent>This product has no cost and cannot be sold.</TooltipContent>
+                                                            <TooltipContent>{getProductCostWarningMessage(product)}</TooltipContent>
                                                         </Tooltip>
                                                     </TooltipProvider>
                                                 )}
@@ -1519,7 +1557,7 @@ export function Products() {
                                                             className={cn(
                                                             'group relative flex flex-col gap-4 overflow-hidden rounded-[1.5rem] border border-border/50 bg-card p-4 transition-all duration-300 hover:-translate-y-1 hover:bg-accent/5 hover:shadow-2xl hover:shadow-primary/5',
                                                                 isProductSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5 shadow-lg shadow-primary/10',
-                                                                !hasValidProductCost(product.costPrice) && 'border-destructive/40 bg-destructive/10 hover:bg-destructive/15'
+                                                                hasProductCostWarning(product) && 'border-destructive/40 bg-destructive/10 hover:bg-destructive/15'
                                                             )}
                                                         >
                                                     {isProductSelectionMode && (
@@ -1548,13 +1586,13 @@ export function Products() {
                                                         )}>
                                                             {product.quantity <= product.minStockLevel ? (t('products.lowStock') || 'Low Stock') : (t('products.inStock') || 'In Stock')}
                                                         </div>
-                                                        {!hasValidProductCost(product.costPrice) && (
+                                                        {hasProductCostWarning(product) && (
                                                             <TooltipProvider>
                                                                 <Tooltip delayDuration={150}>
                                                                     <TooltipTrigger asChild>
                                                                         <span className="absolute left-2 top-2 cursor-help text-destructive"><CircleAlert className="h-5 w-5 fill-background" /></span>
                                                                     </TooltipTrigger>
-                                                                    <TooltipContent>This product has no cost and cannot be sold.</TooltipContent>
+                                                                    <TooltipContent>{getProductCostWarningMessage(product)}</TooltipContent>
                                                                 </Tooltip>
                                                             </TooltipProvider>
                                                         )}
@@ -1705,7 +1743,7 @@ export function Products() {
                                                         <ContextMenuTrigger asChild>
                                                     <TableRow className={cn(
                                                         isProductSelectionMode && selectedProductIds.has(product.id) && 'bg-primary/5',
-                                                        !hasValidProductCost(product.costPrice) && 'bg-destructive/10 hover:bg-destructive/15'
+                                                        hasProductCostWarning(product) && 'bg-destructive/10 hover:bg-destructive/15'
                                                     )}>
                                                         {isProductSelectionMode && (
                                                             <TableCell>
@@ -1717,7 +1755,7 @@ export function Products() {
                                                             </TableCell>
                                                         )}
                                                         <TableCell>
-                                                            {!hasValidProductCost(product.costPrice) && (
+                                                            {hasProductCostWarning(product) && (
                                                                 <TooltipProvider>
                                                                     <Tooltip delayDuration={150}>
                                                                         <TooltipTrigger asChild>
@@ -1725,9 +1763,7 @@ export function Products() {
                                                                                 <CircleAlert className="h-5 w-5" />
                                                                             </span>
                                                                         </TooltipTrigger>
-                                                                        <TooltipContent>
-                                                                            This product has no cost and cannot be sold.
-                                                                        </TooltipContent>
+                                                                        <TooltipContent>{getProductCostWarningMessage(product)}</TooltipContent>
                                                                     </Tooltip>
                                                                 </TooltipProvider>
                                                             )}

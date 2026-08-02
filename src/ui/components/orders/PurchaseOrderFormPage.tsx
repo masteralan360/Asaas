@@ -403,7 +403,7 @@ export function PurchaseOrderFormPage({
         if (priceBookItem) {
             return {
                 unitPrice: String(convertCurrencyAmountWithLiveRates(
-                    priceBookItem.costPrice,
+                    priceBookItem.costPrice ?? product.costPrice ?? 0,
                     priceBookItem.currency,
                     partnerCurrency,
                     liveRates

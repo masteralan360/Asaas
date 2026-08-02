@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { hasValidProductCost } from './productCost'
+import { getMissingPriceBookCostMessage, hasValidProductCost } from './productCost'
 
 describe('hasValidProductCost', () => {
     it('accepts zero as a legitimate cost', () => {
@@ -12,5 +12,11 @@ describe('hasValidProductCost', () => {
         expect(hasValidProductCost(undefined)).toBe(false)
         expect(hasValidProductCost(-1)).toBe(false)
         expect(hasValidProductCost(Number.NaN)).toBe(false)
+    })
+
+    it('explains when a Price Book-specific cost is missing', () => {
+        expect(getMissingPriceBookCostMessage('Widget', 'Wholesale')).toBe(
+            'Widget cannot be sold to this business partner until a Price Book cost is added in Wholesale.'
+        )
     })
 })

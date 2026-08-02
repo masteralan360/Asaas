@@ -177,7 +177,7 @@ function mapPriceBookItemsToDrafts(items: PriceBookItem[]): ProductPriceBookDraf
         .sort((left, right) => left.priceBookId.localeCompare(right.priceBookId))
         .map((item) => ({
             priceBookId: item.priceBookId,
-            costPrice: String(item.costPrice),
+            costPrice: item.costPrice == null ? '' : String(item.costPrice),
             price: String(item.price),
             currency: item.currency
         }))
@@ -918,13 +918,13 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                 demoTutorial.completeProductCreated(createdProduct)
             }
 
-            if (priceBooksEnabled && !hideCosts) {
+            if (priceBooksEnabled) {
                 const savedItems = await replaceProductPriceBookItems(
                     workspaceId,
                     savedProductId,
                     priceBookRows.map((row) => ({
                         priceBookId: row.priceBookId,
-                        costPrice: Number(row.costPrice),
+                        costPrice: row.costPrice.trim() === '' ? null : Number(row.costPrice),
                         price: Number(row.price),
                         currency: row.currency
                     })),
@@ -1657,7 +1657,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             disabled={isReadOnly}
                                         />
                                     </div>
-                                    {(!isEditing || !hideCosts) && (
+                                    {!hideCosts && (
                                         <div className="space-y-2">
                                             <Label htmlFor="product-cost-price" className="flex items-center gap-2 font-bold">
                                                 <Wallet className="h-4 w-4 text-primary/60" />
@@ -1717,18 +1717,19 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                     )}
                                 </div>
                             </div>
-                            {priceBooksEnabled && !hideCosts ? (
+                            {priceBooksEnabled ? (
                                 isPriceBookCatalogReady ? (
                                     <ProductPriceBookItemsEditor
                                         priceBooks={priceBooks}
                                         rows={priceBookRows}
                                         onChange={setPriceBookRows}
-                                        defaultCostPrice={String(effectiveCost)}
+                                        defaultCostPrice={effectiveCost == null ? '' : String(effectiveCost)}
                                         defaultPrice={String(effectivePrice)}
                                         defaultCurrency={formData.currency}
                                         allowedCurrencies={features.allowed_currencies}
                                         iqdDisplayPreference={features.iqd_display_preference}
                                         disabled={isReadOnly}
+                                        hideCosts={hideCosts}
                                     />
                                 ) : (
                                     <div className="border-t border-border/60 pt-6">

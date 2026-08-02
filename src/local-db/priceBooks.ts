@@ -21,7 +21,7 @@ export interface PriceBookQueryOptions {
 
 export interface PriceBookItemInput {
     priceBookId: string
-    costPrice: number
+    costPrice: number | null
     price: number
     currency: CurrencyCode
 }
@@ -94,10 +94,12 @@ function normalizeItemInputs(inputs: PriceBookItemInput[]) {
             throw new Error('Select a Price Book for every custom price row')
         }
 
-        const costPrice = Number(input.costPrice)
+        const costPrice = input.costPrice == null ? null : Number(input.costPrice)
         const price = Number(input.price)
-        if (!Number.isFinite(costPrice) || costPrice < 0 || !Number.isFinite(price) || price < 0) {
-            throw new Error('Price Book cost and selling price must be zero or greater')
+        if ((costPrice != null && (!Number.isFinite(costPrice) || costPrice < 0))
+            || !Number.isFinite(price)
+            || price < 0) {
+            throw new Error('Price Book selling price must be zero or greater, and its cost must be zero or greater when provided')
         }
         if (!SUPPORTED_PRICE_BOOK_CURRENCIES.has(input.currency)) {
             throw new Error('Select a supported currency for every Price Book item')

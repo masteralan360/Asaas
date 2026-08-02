@@ -338,7 +338,7 @@ export function PriceBookManagementDialog({
                                                                             {!hideCosts && (
                                                                                 <div>
                                                                                     <div className="text-muted-foreground">{t('priceBooks.costPrice', { defaultValue: 'Unit cost' })}</div>
-                                                                                    <div className="font-semibold">{formatCurrency(item.costPrice, item.currency)}</div>
+                                                                                    <div className="font-semibold">{item.costPrice == null ? '—' : formatCurrency(item.costPrice, item.currency)}</div>
                                                                                 </div>
                                                                             )}
                                                                             <div>

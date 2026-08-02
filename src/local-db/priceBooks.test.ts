@@ -146,6 +146,18 @@ describe('Price Book local data', () => {
         expect(resurrected).toMatchObject({ costPrice: 3, price: 5, isDeleted: false })
     })
 
+    it('preserves a missing Price Book cost as null instead of converting it to zero', async () => {
+        const book = await createPriceBook(WORKSPACE_ID, { name: 'Missing Cost Tier' })
+        const [item] = await replaceProductPriceBookItems(WORKSPACE_ID, makeProduct().id, [{
+            priceBookId: book.id,
+            costPrice: null,
+            price: 15,
+            currency: 'usd'
+        }])
+
+        expect(item).toMatchObject({ costPrice: null, price: 15, isDeleted: false })
+    })
+
     it('rejects duplicate rows and cross-workspace books', async () => {
         const book = await createPriceBook(WORKSPACE_ID, { name: 'Retail' })
         await expect(replaceProductPriceBookItems(WORKSPACE_ID, makeProduct().id, [

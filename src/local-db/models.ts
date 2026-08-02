@@ -92,7 +92,8 @@ export interface PriceBook extends BaseEntity {
 export interface PriceBookItem extends BaseEntity {
   priceBookId: string;
   productId: string;
-  costPrice: number;
+  /** Null means this Price Book has no cost for the product. Zero is valid. */
+  costPrice: number | null;
   price: number;
   currency: CurrencyCode;
   createdBy?: string | null;

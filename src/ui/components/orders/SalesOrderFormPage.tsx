@@ -47,7 +47,7 @@ import {
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { useHideCosts, useWorkspacePermissions } from '@/permissions'
-import { getMissingProductCostMessage, hasValidProductCost } from '@/lib/productCost'
+import { getMissingPriceBookCostMessage, getMissingProductCostMessage, hasValidProductCost } from '@/lib/productCost'
 import {
     Button,
     Badge,
@@ -429,14 +429,6 @@ export function SalesOrderFormPage({
         ),
     [getAvailableQuantity, getBatchesForPosition])
 
-    const getSalesProductOptions = (storageId: string, selectedProductId: string) => {
-        const availableIds = availableSalesProductIdsByStorage.get(storageId) ?? new Set<string>()
-        return products.filter((product) => (
-            (product.id === selectedProductId || availableIds.has(product.id))
-            && hasValidProductCost(product.costPrice)
-        ))
-    }
-
     const getPriceBookItemForPartner = useCallback((partner: Pick<BusinessPartner, 'priceBookId'> | null | undefined, productId: string) =>
         findPartnerProductPriceBookItem(
             priceBooksEnabled,
@@ -446,6 +438,29 @@ export function SalesOrderFormPage({
             priceBookItems
         ),
     [priceBookItems, priceBooks, priceBooksEnabled])
+
+    const getPartnerPriceBookName = useCallback((partner: Pick<BusinessPartner, 'priceBookId'> | null | undefined) => {
+        if (!priceBooksEnabled || !partner?.priceBookId) return undefined
+        return priceBooks.find((priceBook) => priceBook.id === partner.priceBookId && !priceBook.isDeleted)?.name
+    }, [priceBooks, priceBooksEnabled])
+
+    const hasMissingPartnerPriceBookCost = useCallback((
+        partner: Pick<BusinessPartner, 'priceBookId'> | null | undefined,
+        productId: string
+    ) => {
+        if (!getPartnerPriceBookName(partner)) return false
+        const priceBookItem = getPriceBookItemForPartner(partner, productId)
+        return !!priceBookItem && !hasValidProductCost(priceBookItem.costPrice)
+    }, [getPartnerPriceBookName, getPriceBookItemForPartner])
+
+    const getSalesProductOptions = (storageId: string, selectedProductId: string) => {
+        const availableIds = availableSalesProductIdsByStorage.get(storageId) ?? new Set<string>()
+        return products.filter((product) => (
+            (product.id === selectedProductId || availableIds.has(product.id))
+            && hasValidProductCost(product.costPrice)
+            && !hasMissingPartnerPriceBookCost(selectedCustomer, product.id)
+        ))
+    }
 
     const resolveItemPricing = useCallback((
         productId: string,
@@ -476,7 +491,7 @@ export function SalesOrderFormPage({
                 priceBookId: priceBookItem.priceBookId,
                 priceBookItemId: priceBookItem.id,
                 priceSourceCurrency: priceBookItem.currency,
-                priceBookCostPrice: String(priceBookItem.costPrice)
+                priceBookCostPrice: priceBookItem.costPrice == null ? '' : String(priceBookItem.costPrice)
             }
         }
 
@@ -689,6 +704,9 @@ export function SalesOrderFormPage({
                     const product = products.find((entry) => entry.id === item.productId)
                     if (!product) {
                         throw new Error(t('orders.form.errors.productNotFound', { defaultValue: 'Selected product was not found.' }))
+                    }
+                    if (hasMissingPartnerPriceBookCost(customer, product.id)) {
+                        throw new Error(getMissingPriceBookCostMessage(product.name, getPartnerPriceBookName(customer)))
                     }
                     if (!item.storageId) {
                         throw new Error(t('orders.form.errors.sourceStorageRequired', {
@@ -1154,6 +1172,14 @@ export function SalesOrderFormPage({
                                                                         toast({
                                                                             title: t('common.error') || 'Error',
                                                                             description: getMissingProductCostMessage(product.name),
+                                                                            variant: 'destructive'
+                                                                        })
+                                                                        return
+                                                                    }
+                                                                    if (hasMissingPartnerPriceBookCost(selectedCustomer, product.id)) {
+                                                                        toast({
+                                                                            title: t('common.error') || 'Error',
+                                                                            description: getMissingPriceBookCostMessage(product.name, getPartnerPriceBookName(selectedCustomer)),
                                                                             variant: 'destructive'
                                                                         })
                                                                         return
@@ -1675,6 +1701,14 @@ export function SalesOrderFormPage({
                         toast({
                             title: t('common.error') || 'Error',
                             description: getMissingProductCostMessage(product.name),
+                            variant: 'destructive'
+                        })
+                        return
+                    }
+                    if (hasMissingPartnerPriceBookCost(selectedCustomer, product.id)) {
+                        toast({
+                            title: t('common.error') || 'Error',
+                            description: getMissingPriceBookCostMessage(product.name, getPartnerPriceBookName(selectedCustomer)),
                             variant: 'destructive'
                         })
                         return
