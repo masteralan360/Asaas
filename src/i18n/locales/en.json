@@ -1765,6 +1765,7 @@
   "orders": {
     "title": "Orders",
     "subtitle": "orders total",
+    "paymentStatus": "Payment status",
     "view": {
       "table": "Orders Details",
       "grid": "Orders Grid"

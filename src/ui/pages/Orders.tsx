@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
-import { CalendarDays, CreditCard, Eye, LayoutGrid, List, Loader2, Lock, PackagePlus, Pencil, Plus, Printer, Search, ShoppingCart, Trash2, Truck, UsersRound, Wallet, Warehouse, XCircle } from 'lucide-react'
+import { BadgeCheck, CalendarDays, ChevronDown, CircleCheck, CircleDashed, CreditCard, EllipsisVertical, Eye, LayoutGrid, List, ListFilter, Loader2, Lock, PackageCheck, PackagePlus, Pencil, Plus, Printer, RotateCcw, Search, ShoppingCart, Trash2, Truck, UsersRound, Wallet, Warehouse, XCircle, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedOrderError } from '@/lib/orderErrors'
 import type { PaymentMethodOption } from '@/lib/paymentMethods'
@@ -92,6 +92,10 @@ import {
     TabsList,
     TabsTrigger,
     PaymentMethodSelect,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
     SettlementDialog,
     Textarea,
     PrintPreviewModal,
@@ -104,6 +108,24 @@ import { OrderListPrintTemplate } from '@/ui/components/orders/OrderPrintTemplat
 import { OrderStatusBadge } from '@/ui/components/orders/OrderStatusBadge'
 
 type OrderTab = 'sales' | 'purchase'
+type StatusFilter = 'all' | 'draft' | 'ordered' | 'received' | 'completed'
+type PaymentFilter = 'all' | 'unpaid' | 'partial' | 'paid' | 'returned'
+
+const statusFilterIcons = {
+    all: ListFilter,
+    draft: Pencil,
+    ordered: ShoppingCart,
+    received: PackageCheck,
+    completed: CircleCheck
+} satisfies Record<StatusFilter, LucideIcon>
+
+const paymentFilterIcons = {
+    all: CreditCard,
+    unpaid: Wallet,
+    partial: CircleDashed,
+    paid: BadgeCheck,
+    returned: RotateCcw
+} satisfies Record<PaymentFilter, LucideIcon>
 
 type FormItem = {
     id: string
@@ -265,8 +287,8 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
     const [activeTab, setActiveTab] = useState<OrderTab>(initialTab)
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => (localStorage.getItem('orders_view_mode') as 'table' | 'grid') || 'table')
     const [search, setSearch] = useState('')
-    const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'ordered' | 'received' | 'completed'>('all')
-    const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>('all')
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+    const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all')
 
     useEffect(() => {
         setActiveTab(initialTab)
@@ -397,8 +419,10 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
             items = items.filter((order) => order.status === statusFilter)
         }
 
-        if (paymentFilter !== 'all') {
-            items = items.filter(order => paymentFilter === 'paid' ? order.isPaid : !order.isPaid)
+        if (paymentFilter === 'returned') {
+            items = items.filter((order) => order.returnStatus === 'full')
+        } else if (paymentFilter !== 'all') {
+            items = items.filter((order) => getOrderPaymentStatus(order) === paymentFilter)
         }
 
         const query = search.trim().toLowerCase()
@@ -445,8 +469,10 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
             items = items.filter((order) => order.status === statusFilter)
         }
 
-        if (paymentFilter !== 'all') {
-            items = items.filter(order => paymentFilter === 'paid' ? order.isPaid : !order.isPaid)
+        if (paymentFilter === 'returned') {
+            items = []
+        } else if (paymentFilter !== 'all') {
+            items = items.filter((order) => getOrderPaymentStatus(order) === paymentFilter)
         }
 
         const query = search.trim().toLowerCase()
@@ -960,33 +986,199 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         }
     }
 
-    function renderWorkflowActionButton({
-        orderId,
-        actionName,
-        label,
-        onClick,
+    function renderOrderMoreOptions({
+        order,
+        type,
+        canEdit,
+        canDelete,
         className
     }: {
-        orderId: string
-        actionName: string
-        label: string
-        onClick: () => void
+        order: SalesOrder | PurchaseOrder
+        type: 'sales' | 'purchase'
+        canEdit: boolean
+        canDelete: boolean
         className?: string
     }) {
-        const activeAction = workflowActionByOrderId[orderId]
-        const isLoading = activeAction === actionName
+        const isSalesOrder = type === 'sales'
+        const isApprovalRequested = isOrderApprovalRequested(order)
+        const isFullyReturnedSalesOrder = isSalesOrder && (order as SalesOrder).returnStatus === 'full'
+        const activeAction = workflowActionByOrderId[order.id]
+        const canPay = !isFullyReturnedSalesOrder
+            && !isApprovalRequested
+            && canManageOrders
+            && !order.isLocked
+            && order.paymentMethod !== 'loan'
+            && order.paymentMethod !== 'installments'
+            && !order.linkedLoanId
+        const canLock = !isFullyReturnedSalesOrder
+            && !isApprovalRequested
+            && canManageOrders
+            && !order.isLocked
+            && (isSalesOrder ? getOrderPaidAmount(order) > 0 : order.isPaid)
+
+        const renderWorkflowItem = ({
+            actionName,
+            icon: Icon,
+            label,
+            onSelect
+        }: {
+            actionName: string
+            icon: LucideIcon
+            label: string
+            onSelect: () => void
+        }) => {
+            const isLoading = activeAction === actionName
+
+            return (
+                <DropdownMenuItem
+                    disabled={Boolean(activeAction)}
+                    aria-busy={isLoading}
+                    onSelect={onSelect}
+                >
+                    {isLoading
+                        ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                        : <Icon className="mr-2 h-4 w-4" aria-hidden="true" />}
+                    {label}
+                </DropdownMenuItem>
+            )
+        }
 
         return (
-            <Button
-                size="sm"
-                className={className}
-                disabled={Boolean(activeAction)}
-                aria-busy={isLoading}
-                onClick={onClick}
-            >
-                {isLoading && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-                {label}
-            </Button>
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button
+                        variant="outline"
+                        size="icon"
+                        allowViewer={true}
+                        className={className}
+                        aria-label={t('common.moreOptions', { defaultValue: 'More options' })}
+                        title={t('common.moreOptions', { defaultValue: 'More options' })}
+                    >
+                        <EllipsisVertical className="h-4 w-4" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-40">
+                    {canEdit && (
+                        <DropdownMenuItem onSelect={() => isSalesOrder
+                            ? openSalesEdit(order as SalesOrder)
+                            : openPurchaseEdit(order as PurchaseOrder)}
+                        >
+                            <Pencil className="mr-2 h-4 w-4" />
+                            {t('common.edit') || 'Edit'}
+                        </DropdownMenuItem>
+                    )}
+                    {isApprovalRequested && canApproveOrderRequests && renderWorkflowItem({
+                        actionName: 'approve',
+                        icon: BadgeCheck,
+                        label: t('orders.actions.approve', { defaultValue: 'Approve' }),
+                        onSelect: () => runWorkflowAction(
+                            order.id,
+                            'approve',
+                            () => isSalesOrder
+                                ? approveSalesOrderRequest(order.id, user?.id ?? null)
+                                : approvePurchaseOrderRequest(order.id, user?.id ?? null),
+                            t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })
+                        )
+                    })}
+                    {!isApprovalRequested && canManageOrders && isSalesOrder && order.status === 'draft' && renderWorkflowItem({
+                        actionName: 'reserve',
+                        icon: PackagePlus,
+                        label: t('orders.actions.reserve') || 'Reserve',
+                        onSelect: () => runWorkflowAction(
+                            order.id,
+                            'reserve',
+                            () => updateSalesOrderStatus(order.id, 'pending'),
+                            'Sales order reserved'
+                        )
+                    })}
+                    {!isApprovalRequested && canManageOrders && isSalesOrder && order.status === 'pending' && renderWorkflowItem({
+                        actionName: 'complete',
+                        icon: CircleCheck,
+                        label: t('orders.actions.complete') || 'Complete',
+                        onSelect: () => runWorkflowAction(
+                            order.id,
+                            'complete',
+                            () => updateSalesOrderStatus(order.id, 'completed'),
+                            'Sales order completed'
+                        )
+                    })}
+                    {!isApprovalRequested && canManageOrders && isSalesOrder && (order.status === 'draft' || order.status === 'pending') && (
+                        <DropdownMenuItem onSelect={() => setCancelConfirm({ isOpen: true, orderId: order.id, type: 'sales' })}>
+                            <XCircle className="mr-2 h-4 w-4" />
+                            {t('orders.actions.cancel') || 'Cancel'}
+                        </DropdownMenuItem>
+                    )}
+                    {!isApprovalRequested && canManageOrders && !isSalesOrder && order.status === 'draft' && renderWorkflowItem({
+                        actionName: 'order',
+                        icon: ShoppingCart,
+                        label: t('orders.actions.order') || 'Order',
+                        onSelect: () => runWorkflowAction(
+                            order.id,
+                            'order',
+                            () => updatePurchaseOrderStatus(order.id, 'ordered'),
+                            'Purchase order sent'
+                        )
+                    })}
+                    {!isApprovalRequested && canManageOrders && !isSalesOrder && order.status === 'ordered' && renderWorkflowItem({
+                        actionName: 'receive',
+                        icon: PackageCheck,
+                        label: t('orders.actions.receive') || 'Receive',
+                        onSelect: () => runWorkflowAction(
+                            order.id,
+                            'receive',
+                            () => updatePurchaseOrderStatus(order.id, 'received'),
+                            'Purchase order received'
+                        )
+                    })}
+                    {!isApprovalRequested && canManageOrders && !isSalesOrder && order.status === 'received' && renderWorkflowItem({
+                        actionName: 'complete',
+                        icon: CircleCheck,
+                        label: t('orders.actions.complete') || 'Complete',
+                        onSelect: () => runWorkflowAction(
+                            order.id,
+                            'complete',
+                            () => updatePurchaseOrderStatus(order.id, 'completed'),
+                            'Purchase order completed'
+                        )
+                    })}
+                    {!isApprovalRequested && canManageOrders && !isSalesOrder && (order.status === 'draft' || order.status === 'ordered') && (
+                        <DropdownMenuItem onSelect={() => setCancelConfirm({ isOpen: true, orderId: order.id, type: 'purchase' })}>
+                            <XCircle className="mr-2 h-4 w-4" />
+                            {t('orders.actions.cancel') || 'Cancel'}
+                        </DropdownMenuItem>
+                    )}
+                    {canPay && (
+                        <DropdownMenuItem onSelect={() => order.isPaid
+                            ? handleOrderUnpay(order, type)
+                            : setSettlementTarget(isSalesOrder
+                                ? buildSalesOrderPaymentObligation(order as SalesOrder)
+                                : buildPurchaseOrderPaymentObligation(order as PurchaseOrder))}
+                        >
+                            {order.isPaid
+                                ? <RotateCcw className="mr-2 h-4 w-4" />
+                                : <Wallet className="mr-2 h-4 w-4" />}
+                            {order.isPaid ? (t('orders.actions.unpay') || 'Unpay') : (t('orders.actions.pay') || 'Pay')}
+                        </DropdownMenuItem>
+                    )}
+                    {canLock && (
+                        <DropdownMenuItem onSelect={() => setLockConfirm({ isOpen: true, orderId: order.id, type })}>
+                            <Lock className="mr-2 h-4 w-4" />
+                            {t('orders.actions.lock') || 'Lock'}
+                        </DropdownMenuItem>
+                    )}
+                    {canDelete && (
+                        <DropdownMenuItem
+                            className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                            onSelect={() => setDeleteTarget(isSalesOrder
+                                ? { type: 'sales', order: order as SalesOrder }
+                                : { type: 'purchase', order: order as PurchaseOrder })}
+                        >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            {t('common.delete') || 'Delete'}
+                        </DropdownMenuItem>
+                    )}
+                </DropdownMenuContent>
+            </DropdownMenu>
         )
     }
 
@@ -1032,7 +1224,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                             <TableHead>{t('common.status') || 'Status'}</TableHead>
                             <TableHead>{t('common.total') || 'Total'}</TableHead>
                             <TableHead>{t('orders.form.date') || 'Date'}</TableHead>
-                            <TableHead>{t('pos.paymentMethod') || 'Payment'}</TableHead>
+                            <TableHead>{t('orders.paymentStatus', { defaultValue: 'Payment status' })}</TableHead>
                             <TableHead className="text-right">{t('common.actions') || 'Actions'}</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -1103,54 +1295,16 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                     </TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex flex-wrap justify-end gap-2">
-                                            {activeTab === 'sales' ? (
-                                                <>
-                                                    <Button variant="outline" size="sm" allowViewer={true} onClick={() => navigate(`/orders/${row.id}`)}><Eye className="mr-1 h-3.5 w-3.5" />{t('common.view') || 'View'}</Button>
-                                                    {canEdit && <Button variant="outline" size="sm" onClick={() => openSalesEdit(row as SalesOrder)}><Pencil className="mr-1 h-3.5 w-3.5" />{t('common.edit') || 'Edit'}</Button>}
-                                                    {isApprovalRequested && canApproveOrderRequests && renderWorkflowActionButton({ orderId: row.id, actionName: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), onClick: () => runWorkflowAction(row.id, 'approve', () => approveSalesOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })) })}
-                                                    {!isApprovalRequested && canManageOrders && row.status === 'draft' && renderWorkflowActionButton({ orderId: row.id, actionName: 'reserve', label: t('orders.actions.reserve') || 'Reserve', onClick: () => runWorkflowAction(row.id, 'reserve', () => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved') })}
-                                                    {!isApprovalRequested && canManageOrders && row.status === 'pending' && renderWorkflowActionButton({ orderId: row.id, actionName: 'complete', label: t('orders.actions.complete') || 'Complete', onClick: () => runWorkflowAction(row.id, 'complete', () => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed') })}
-                                                    {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" onClick={() => setCancelConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
-                                                    {!isFullyReturnedSalesOrder && !isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => row.isPaid
-                                                                ? handleOrderUnpay(row as SalesOrder, 'sales')
-                                                                : setSettlementTarget(buildSalesOrderPaymentObligation(row as SalesOrder))
-                                                            }
-                                                        >
-                                                            {row.isPaid ? (t('orders.actions.unpay') || 'Unpay') : (t('orders.actions.pay') || 'Pay')}
-                                                        </Button>
-                                                    )}
-                                                    {!isFullyReturnedSalesOrder && !isApprovalRequested && canManageOrders && getOrderPaidAmount(row) > 0 && !row.isLocked && <Button variant="outline" size="sm" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}><Lock className="h-3.5 w-3.5" /></Button>}
-                                                    {canDelete && <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setDeleteTarget({ type: 'sales', order: row as SalesOrder })}><Trash2 className="h-4 w-4" /></Button>}
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Button variant="outline" size="sm" allowViewer={true} onClick={() => navigate(`/orders/${row.id}`)}><Eye className="mr-1 h-3.5 w-3.5" />{t('common.view') || 'View'}</Button>
-                                                    {canEdit && <Button variant="outline" size="sm" onClick={() => openPurchaseEdit(row as PurchaseOrder)}><Pencil className="mr-1 h-3.5 w-3.5" />{t('common.edit') || 'Edit'}</Button>}
-                                                    {isApprovalRequested && canApproveOrderRequests && renderWorkflowActionButton({ orderId: row.id, actionName: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), onClick: () => runWorkflowAction(row.id, 'approve', () => approvePurchaseOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })) })}
-                                                    {!isApprovalRequested && canManageOrders && row.status === 'draft' && renderWorkflowActionButton({ orderId: row.id, actionName: 'order', label: t('orders.actions.order') || 'Order', onClick: () => runWorkflowAction(row.id, 'order', () => updatePurchaseOrderStatus(row.id, 'ordered'), 'Purchase order sent') })}
-                                                    {!isApprovalRequested && canManageOrders && row.status === 'ordered' && renderWorkflowActionButton({ orderId: row.id, actionName: 'receive', label: t('orders.actions.receive') || 'Receive', onClick: () => runWorkflowAction(row.id, 'receive', () => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received') })}
-                                                    {!isApprovalRequested && canManageOrders && row.status === 'received' && renderWorkflowActionButton({ orderId: row.id, actionName: 'complete', label: t('orders.actions.complete') || 'Complete', onClick: () => runWorkflowAction(row.id, 'complete', () => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed') })}
-                                                    {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" onClick={() => setCancelConfirm({ isOpen: true, orderId: row.id, type: 'purchase' })}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
-                                                    {!isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => row.isPaid
-                                                                ? handleOrderUnpay(row as PurchaseOrder, 'purchase')
-                                                                : setSettlementTarget(buildPurchaseOrderPaymentObligation(row as PurchaseOrder))
-                                                            }
-                                                        >
-                                                            {row.isPaid ? (t('orders.actions.unpay') || 'Unpay') : (t('orders.actions.pay') || 'Pay')}
-                                                        </Button>
-                                                    )}
-                                                    {!isApprovalRequested && canManageOrders && row.isPaid && !row.isLocked && <Button variant="outline" size="sm" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'purchase' })}><Lock className="h-3.5 w-3.5" /></Button>}
-                                                    {canDelete && <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setDeleteTarget({ type: 'purchase', order: row as PurchaseOrder })}><Trash2 className="h-4 w-4" /></Button>}
-                                                </>
-                                            )}
+                                            <Button variant="outline" size="sm" allowViewer={true} onClick={() => navigate(`/orders/${row.id}`)}>
+                                                <Eye className="mr-1 h-3.5 w-3.5" />
+                                                {t('common.view') || 'View'}
+                                            </Button>
+                                            {renderOrderMoreOptions({
+                                                order: row,
+                                                type: activeTab,
+                                                canEdit,
+                                                canDelete
+                                            })}
                                         </div>
                                     </TableCell>
                                 </TableRow>
@@ -1241,7 +1395,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                     <div className="text-[11px] font-bold text-primary">{formatCurrency(row.total, row.currency, features.iqd_display_preference)}</div>
                                 </div>
                                 <div className="text-center border-l border-border/50">
-                                    <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('pos.paymentMethod') || 'Payment'}</div>
+                                    <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('orders.paymentStatus', { defaultValue: 'Payment status' })}</div>
                                     <div className={cn(
                                         "text-[11px] font-bold flex items-center justify-center gap-1",
                                         isFullyReturnedSalesOrder
@@ -1263,54 +1417,13 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                     <Eye className="w-3.5 h-3.5" />
                                     {t('common.view') || 'View'}
                                 </Button>
-                                {activeTab === 'sales' ? (
-                                    <>
-                                        {isApprovalRequested && canApproveOrderRequests && renderWorkflowActionButton({ orderId: row.id, actionName: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), className: 'h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20', onClick: () => runWorkflowAction(row.id, 'approve', () => approveSalesOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })) })}
-                                        {!isApprovalRequested && canManageOrders && row.status === 'draft' && renderWorkflowActionButton({ orderId: row.id, actionName: 'reserve', label: t('orders.actions.reserve') || 'Reserve', className: 'h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20', onClick: () => runWorkflowAction(row.id, 'reserve', () => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved') })}
-                                        {!isApprovalRequested && canManageOrders && row.status === 'pending' && renderWorkflowActionButton({ orderId: row.id, actionName: 'complete', label: t('orders.actions.complete') || 'Complete', className: 'h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20', onClick: () => runWorkflowAction(row.id, 'complete', () => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed') })}
-                                        {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => setCancelConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
-                                        {canEdit && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => openSalesEdit(row as SalesOrder)}><Pencil className="h-3.5 w-3.5" /></Button>}
-                                        {!isFullyReturnedSalesOrder && !isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase"
-                                                onClick={() => row.isPaid
-                                                    ? handleOrderUnpay(row as SalesOrder, 'sales')
-                                                    : setSettlementTarget(buildSalesOrderPaymentObligation(row as SalesOrder))
-                                                }
-                                            >
-                                                {row.isPaid ? (t('orders.actions.unpay') || 'Unpay') : (t('orders.actions.pay') || 'Pay')}
-                                            </Button>
-                                        )}
-                                        {!isFullyReturnedSalesOrder && !isApprovalRequested && canManageOrders && getOrderPaidAmount(row) > 0 && !row.isLocked && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}><Lock className="h-3.5 w-3.5" /></Button>}
-                                        {canDelete && <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-destructive" onClick={() => setDeleteTarget({ type: 'sales', order: row as SalesOrder })}><Trash2 className="h-4 w-4" /></Button>}
-                                    </>
-                                ) : (
-                                    <>
-                                        {isApprovalRequested && canApproveOrderRequests && renderWorkflowActionButton({ orderId: row.id, actionName: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), className: 'h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20', onClick: () => runWorkflowAction(row.id, 'approve', () => approvePurchaseOrderRequest(row.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })) })}
-                                        {!isApprovalRequested && canManageOrders && row.status === 'draft' && renderWorkflowActionButton({ orderId: row.id, actionName: 'order', label: t('orders.actions.order') || 'Order', className: 'h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20', onClick: () => runWorkflowAction(row.id, 'order', () => updatePurchaseOrderStatus(row.id, 'ordered'), 'Purchase order placed') })}
-                                        {!isApprovalRequested && canManageOrders && row.status === 'ordered' && renderWorkflowActionButton({ orderId: row.id, actionName: 'receive', label: t('orders.actions.receive') || 'Receive', className: 'h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20', onClick: () => runWorkflowAction(row.id, 'receive', () => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received') })}
-                                        {!isApprovalRequested && canManageOrders && row.status === 'received' && renderWorkflowActionButton({ orderId: row.id, actionName: 'complete', label: t('orders.actions.complete') || 'Complete', className: 'h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20', onClick: () => runWorkflowAction(row.id, 'complete', () => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed') })}
-                                        {!isApprovalRequested && canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => setCancelConfirm({ isOpen: true, orderId: row.id, type: 'purchase' })}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
-                                        {canEdit && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => openPurchaseEdit(row as PurchaseOrder)}><Pencil className="h-3.5 w-3.5" /></Button>}
-                                        {!isApprovalRequested && canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase"
-                                                onClick={() => row.isPaid
-                                                    ? handleOrderUnpay(row as PurchaseOrder, 'purchase')
-                                                    : setSettlementTarget(buildPurchaseOrderPaymentObligation(row as PurchaseOrder))
-                                                }
-                                            >
-                                                {row.isPaid ? (t('orders.actions.unpay') || 'Unpay') : (t('orders.actions.pay') || 'Pay')}
-                                            </Button>
-                                        )}
-                                        {!isApprovalRequested && canManageOrders && row.isPaid && !row.isLocked && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'purchase' })}><Lock className="h-3.5 w-3.5" /></Button>}
-                                        {canDelete && <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-destructive" onClick={() => setDeleteTarget({ type: 'purchase', order: row as PurchaseOrder })}><Trash2 className="h-4 w-4" /></Button>}
-                                    </>
-                                )}
+                                {renderOrderMoreOptions({
+                                    order: row,
+                                    type: activeTab,
+                                    canEdit,
+                                    canDelete,
+                                    className: 'h-9 w-9 rounded-xl'
+                                })}
                             </div>
                         </div>
                     )
@@ -1321,6 +1434,8 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
 
     const salesDisabled = products.length === 0
     const purchaseDisabled = products.length === 0
+    const StatusFilterIcon = statusFilterIcons[statusFilter]
+    const PaymentFilterIcon = paymentFilterIcons[paymentFilter]
 
     return (
         <div className="space-y-6" data-tour-id="tutorial-orders-landing">
@@ -1391,61 +1506,65 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                         className="w-full"
                         dir={i18n.dir()}
                     >
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                            <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
-                                <TabsList className="w-full sm:w-auto">
-                                    <TabsTrigger value="sales" className="flex-1 gap-1.5 sm:flex-none">
-                                        <ShoppingCart className="h-4 w-4" />
-                                        {t('orders.tabs.sales') || 'Sales Orders'}
-                                    </TabsTrigger>
-                                    <TabsTrigger value="purchase" className="flex-1 gap-1.5 sm:flex-none">
-                                        <Truck className="h-4 w-4" />
-                                        {t('orders.tabs.purchase') || 'Purchase Orders'}
-                                    </TabsTrigger>
-                                </TabsList>
+                        <div className="space-y-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                    <TabsList className="w-full sm:w-auto">
+                                        <TabsTrigger value="sales" className="flex-1 gap-1.5 sm:flex-none">
+                                            <ShoppingCart className="h-4 w-4" />
+                                            {t('orders.tabs.sales') || 'Sales Orders'}
+                                        </TabsTrigger>
+                                        <TabsTrigger value="purchase" className="flex-1 gap-1.5 sm:flex-none">
+                                            <Truck className="h-4 w-4" />
+                                            {t('orders.tabs.purchase') || 'Purchase Orders'}
+                                        </TabsTrigger>
+                                    </TabsList>
 
-                                <div className="flex flex-wrap items-center gap-2">
-                                    {/* Status Filter */}
-                                    <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg border border-border/40">
-                                        {(['all', 'draft', 'ordered', 'received', 'completed'] as const).map((value) => (
-                                            <button
-                                                key={value}
-                                                onClick={() => setStatusFilter(value)}
+                                    {!isMobile() && (
+                                        <div className="flex items-center self-start rounded-xl border border-border/60 bg-muted/30 p-1 sm:self-auto">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                allowViewer={true}
+                                                onClick={() => setViewMode('table')}
                                                 className={cn(
-                                                    'px-2.5 py-1 text-[10px] sm:text-xs rounded-md font-bold uppercase transition-all whitespace-nowrap',
-                                                    statusFilter === value
+                                                    'h-8 gap-1.5 rounded-lg px-3 text-[10px] font-bold uppercase tracking-wide transition-all',
+                                                    viewMode === 'table'
                                                         ? 'bg-primary text-primary-foreground shadow-sm'
-                                                        : 'text-muted-foreground hover:bg-background/80'
+                                                        : 'text-muted-foreground hover:bg-background hover:text-foreground'
                                                 )}
                                             >
-                                                {value === 'all' ? (t('common.all') || 'All') : t(`orders.status.${value}`) || value}
-                                            </button>
-                                        ))}
-                                    </div>
-
-                                    {/* Payment Filter */}
-                                    <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg border border-border/40">
-                                        {(['all', 'paid', 'unpaid'] as const).map((value) => (
-                                            <button
-                                                key={value}
-                                                onClick={() => setPaymentFilter(value)}
+                                                <List className="h-3.5 w-3.5" />
+                                                {t('orders.view.table') || 'Details'}
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                allowViewer={true}
+                                                onClick={() => setViewMode('grid')}
                                                 className={cn(
-                                                    'px-2.5 py-1 text-[10px] sm:text-xs rounded-md font-bold uppercase transition-all whitespace-nowrap',
-                                                    paymentFilter === value
+                                                    'h-8 gap-1.5 rounded-lg px-3 text-[10px] font-bold uppercase tracking-wide transition-all',
+                                                    viewMode === 'grid'
                                                         ? 'bg-primary text-primary-foreground shadow-sm'
-                                                        : 'text-muted-foreground hover:bg-background/80'
+                                                        : 'text-muted-foreground hover:bg-background hover:text-foreground'
                                                 )}
                                             >
-                                                {value === 'all' ? (t('common.all') || 'All') : t(`budget.status.${value}`) || value}
-                                            </button>
-                                        ))}
-                                    </div>
+                                                <LayoutGrid className="h-3.5 w-3.5" />
+                                                {t('orders.view.grid') || 'Grid'}
+                                            </Button>
+                                        </div>
+                                    )}
                                 </div>
+
+                                <Button variant="outline" allowViewer={true} onClick={() => setShowPrintPreview(true)} className="gap-2 self-start rounded-xl print:hidden sm:self-auto">
+                                    <Printer className="h-4 w-4" />
+                                    {t('common.print') || 'Print'}
+                                </Button>
                             </div>
 
-                            <div className="flex flex-col lg:flex-row gap-4 items-center w-full lg:w-auto">
-                                <div className="relative w-full max-w-sm">
-                                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+                                <div className="relative min-w-0 flex-1">
+                                    <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                                     <Input
                                         value={search}
                                         onChange={(event) => setSearch(event.target.value)}
@@ -1453,47 +1572,98 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         placeholder={activeTab === 'sales'
                                             ? (t('orders.placeholder.searchSales') || 'Search sales orders...')
                                             : (t('orders.placeholder.searchPurchase') || 'Search purchase orders...')}
-                                        className="pl-9"
+                                        className="h-10 rounded-xl border-border/70 bg-background pl-10 shadow-sm transition-shadow focus-visible:shadow-md"
                                     />
                                 </div>
-                                {!isMobile() && (
-                                    <div className="flex items-center bg-muted/30 p-1 rounded-lg border border-border/40 ml-auto">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            allowViewer={true}
-                                            onClick={() => setViewMode('table')}
-                                            className={cn(
-                                                "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all text-primary",
-                                                viewMode === 'table'
-                                                    ? "bg-primary text-primary-foreground shadow-sm"
-                                                    : "text-muted-foreground hover:bg-background/50"
-                                            )}
-                                        >
-                                            <List className="w-3" />
-                                            {t('orders.view.table')}
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            allowViewer={true}
-                                            onClick={() => setViewMode('grid')}
-                                            className={cn(
-                                                "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all text-primary",
-                                                viewMode === 'grid'
-                                                    ? "bg-primary text-primary-foreground shadow-sm"
-                                                    : "text-muted-foreground hover:bg-background/50"
-                                            )}
-                                        >
-                                            <LayoutGrid className="w-3" />
-                                            {t('orders.view.grid')}
-                                        </Button>
-                                    </div>
-                                )}
-                                <Button variant="outline" allowViewer={true} onClick={() => setShowPrintPreview(true)} className="gap-2 print:hidden">
-                                    <Printer className="w-4 h-4" />
-                                    {t('common.print') || 'Print'}
-                                </Button>
+
+                                <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                allowViewer={true}
+                                                className={cn(
+                                                    'h-10 justify-between gap-2 rounded-xl border-border/70 bg-background px-3 font-semibold shadow-sm hover:border-primary/30 hover:bg-primary/5',
+                                                    statusFilter !== 'all' && 'border-primary/30 bg-primary/5 text-primary'
+                                                )}
+                                            >
+                                                <span className="flex min-w-0 items-center gap-2">
+                                                    <StatusFilterIcon className="h-4 w-4 shrink-0" />
+                                                    <span className="hidden text-xs text-muted-foreground sm:inline">{t('common.status') || 'Status'}</span>
+                                                    <span className="truncate text-sm">{statusFilter === 'all' ? (t('common.all') || 'All') : t(`orders.status.${statusFilter}`) || statusFilter}</span>
+                                                </span>
+                                                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="min-w-44 rounded-xl border-border/70 p-1.5">
+                                            {(['all', 'draft', 'ordered', 'received', 'completed'] as const).map((value) => {
+                                                const StatusOptionIcon = statusFilterIcons[value]
+                                                return (
+                                                    <DropdownMenuItem
+                                                        key={value}
+                                                        onSelect={() => setStatusFilter(value)}
+                                                        className={cn(
+                                                            'rounded-lg px-3 py-2 text-sm font-medium',
+                                                            statusFilter === value && 'bg-primary/10 text-primary focus:bg-primary/10 focus:text-primary'
+                                                        )}
+                                                    >
+                                                        <StatusOptionIcon className="mr-2 h-4 w-4" />
+                                                        {value === 'all' ? (t('common.all') || 'All') : t(`orders.status.${value}`) || value}
+                                                    </DropdownMenuItem>
+                                                )
+                                            })}
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                allowViewer={true}
+                                                className={cn(
+                                                    'h-10 justify-between gap-2 rounded-xl border-border/70 bg-background px-3 font-semibold shadow-sm hover:border-primary/30 hover:bg-primary/5',
+                                                    paymentFilter !== 'all' && 'border-primary/30 bg-primary/5 text-primary'
+                                                )}
+                                            >
+                                                <span className="flex min-w-0 items-center gap-2">
+                                                    <PaymentFilterIcon className="h-4 w-4 shrink-0" />
+                                                    <span className="hidden text-xs text-muted-foreground sm:inline">{t('orders.paymentStatus', { defaultValue: 'Payment status' })}</span>
+                                                    <span className="truncate text-sm">{paymentFilter === 'all'
+                                                        ? (t('common.all') || 'All')
+                                                        : paymentFilter === 'returned'
+                                                            ? (t('sales.return.returnedStatus') || 'Returned')
+                                                            : t(`orders.status.${paymentFilter}`) || paymentFilter}</span>
+                                                </span>
+                                                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="min-w-40 rounded-xl border-border/70 p-1.5">
+                                            {(['all', 'unpaid', 'partial', 'paid', 'returned'] as const).map((value) => {
+                                                const PaymentOptionIcon = paymentFilterIcons[value]
+                                                return (
+                                                    <DropdownMenuItem
+                                                        key={value}
+                                                        onSelect={() => setPaymentFilter(value)}
+                                                        className={cn(
+                                                            'rounded-lg px-3 py-2 text-sm font-medium',
+                                                            value === 'returned' && 'text-rose-600 focus:text-rose-700 dark:text-rose-400',
+                                                            paymentFilter === value && (value === 'returned'
+                                                                ? 'bg-rose-500/10 text-rose-700 focus:bg-rose-500/10 focus:text-rose-700 dark:text-rose-300'
+                                                                : 'bg-primary/10 text-primary focus:bg-primary/10 focus:text-primary')
+                                                        )}
+                                                    >
+                                                        <PaymentOptionIcon className="mr-2 h-4 w-4" />
+                                                        {value === 'all'
+                                                            ? (t('common.all') || 'All')
+                                                            : value === 'returned'
+                                                                ? (t('sales.return.returnedStatus') || 'Returned')
+                                                                : t(`orders.status.${value}`) || value}
+                                                    </DropdownMenuItem>
+                                                )
+                                            })}
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </div>
                             </div>
                         </div>
                         <TabsContent value="sales" className="mt-0">

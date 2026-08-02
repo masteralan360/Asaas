@@ -1146,6 +1146,7 @@
   "orders": {
     "title": "داواکارییەکان",
     "subtitle": "کۆی داواکارییەکان",
+    "paymentStatus": "دۆخی پارەدان",
     "installmentStatus": "دۆخی قیست",
     "view": {
       "table": "وردەکاری داواکارییەکان",

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
-import { ArrowLeft, CalendarDays, CreditCard, Eye, LayoutGrid, List, Loader2, Lock, Package, Printer, Receipt, RotateCcw, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse, XCircle } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, CalendarDays, CircleCheck, CreditCard, Eye, LayoutGrid, List, Loader2, Lock, Package, PackageCheck, Pencil, Printer, Receipt, RotateCcw, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedOrderError } from '@/lib/orderErrors'
 import { Link, useLocation } from 'wouter'
@@ -618,6 +618,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const isSales = resolved.kind === 'sales'
     const order = resolved.order
     const isApprovalRequested = isOrderApprovalRequested(order)
+    const canEditOrder = canManage && order.status === 'draft' && (!isApprovalRequested || canApproveOrderRequests)
     const currency = order.currency
     const iqd = features.iqd_display_preference
     const orderAdjustments = normalizeOrderAdjustments(order.orderAdjustments, currency)
@@ -662,17 +663,17 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
 
     const actions = isSales
         ? [
-            isApprovalRequested && canApproveOrderRequests ? { key: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), onClick: () => runWorkflowAction('approve', () => approveSalesOrderRequest(order.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })), variant: 'default' as const } : null,
-            !isApprovalRequested && canManage && order.status === 'draft' ? { key: 'reserve', label: t('orders.actions.reserve') || 'Reserve', onClick: () => runWorkflowAction('reserve', () => updateSalesOrderStatus(order.id, 'pending'), t('orders.details.messages.reserveSuccess') || 'Sales order reserved'), variant: 'default' as const } : null,
-            !isApprovalRequested && canManage && order.status === 'pending' ? { key: 'complete', label: t('orders.actions.complete') || 'Complete', onClick: () => runWorkflowAction('complete', () => updateSalesOrderStatus(order.id, 'completed'), t('orders.details.messages.completeSuccess') || 'Sales order completed'), variant: 'default' as const } : null,
-            !isApprovalRequested && canManage && order.status === 'pending' ? { key: 'cancel', label: t('orders.actions.cancel') || 'Cancel', onClick: () => setCancelConfirm({ isOpen: true }), variant: 'outline' as const } : null
+            isApprovalRequested && canApproveOrderRequests ? { key: 'approve', icon: BadgeCheck, label: t('orders.actions.approve', { defaultValue: 'Approve' }), onClick: () => runWorkflowAction('approve', () => approveSalesOrderRequest(order.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'draft' ? { key: 'reserve', icon: PackageCheck, label: t('orders.actions.reserve') || 'Reserve', onClick: () => runWorkflowAction('reserve', () => updateSalesOrderStatus(order.id, 'pending'), t('orders.details.messages.reserveSuccess') || 'Sales order reserved'), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'pending' ? { key: 'complete', icon: CircleCheck, label: t('orders.actions.complete') || 'Complete', onClick: () => runWorkflowAction('complete', () => updateSalesOrderStatus(order.id, 'completed'), t('orders.details.messages.completeSuccess') || 'Sales order completed'), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'pending' ? { key: 'cancel', icon: XCircle, label: t('orders.actions.cancel') || 'Cancel', onClick: () => setCancelConfirm({ isOpen: true }), variant: 'outline' as const } : null
         ].filter(Boolean)
         : [
-            isApprovalRequested && canApproveOrderRequests ? { key: 'approve', label: t('orders.actions.approve', { defaultValue: 'Approve' }), onClick: () => runWorkflowAction('approve', () => approvePurchaseOrderRequest(order.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })), variant: 'default' as const } : null,
-            !isApprovalRequested && canManage && order.status === 'draft' ? { key: 'order', label: t('orders.actions.order') || 'Order', onClick: () => runWorkflowAction('order', () => updatePurchaseOrderStatus(order.id, 'ordered'), t('orders.details.messages.orderSuccess') || 'Purchase order sent'), variant: 'default' as const } : null,
-            !isApprovalRequested && canManage && order.status === 'ordered' ? { key: 'receive', label: t('orders.actions.receive') || 'Receive', onClick: () => runWorkflowAction('receive', () => updatePurchaseOrderStatus(order.id, 'received'), t('orders.details.messages.receiveSuccess') || 'Purchase order received'), variant: 'default' as const } : null,
-            !isApprovalRequested && canManage && order.status === 'received' ? { key: 'complete', label: t('orders.actions.complete') || 'Complete', onClick: () => runWorkflowAction('complete', () => updatePurchaseOrderStatus(order.id, 'completed'), t('orders.details.messages.completeSuccess') || 'Purchase order completed'), variant: 'default' as const } : null,
-            !isApprovalRequested && canManage && (order.status === 'draft' || order.status === 'ordered') ? { key: 'cancel', label: t('orders.actions.cancel') || 'Cancel', onClick: () => setCancelConfirm({ isOpen: true }), variant: 'outline' as const } : null
+            isApprovalRequested && canApproveOrderRequests ? { key: 'approve', icon: BadgeCheck, label: t('orders.actions.approve', { defaultValue: 'Approve' }), onClick: () => runWorkflowAction('approve', () => approvePurchaseOrderRequest(order.id, user?.id ?? null), t('orders.actions.approveRequestSuccess', { defaultValue: 'Order request approved' })), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'draft' ? { key: 'order', icon: ShoppingCart, label: t('orders.actions.order') || 'Order', onClick: () => runWorkflowAction('order', () => updatePurchaseOrderStatus(order.id, 'ordered'), t('orders.details.messages.orderSuccess') || 'Purchase order sent'), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'ordered' ? { key: 'receive', icon: PackageCheck, label: t('orders.actions.receive') || 'Receive', onClick: () => runWorkflowAction('receive', () => updatePurchaseOrderStatus(order.id, 'received'), t('orders.details.messages.receiveSuccess') || 'Purchase order received'), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && order.status === 'received' ? { key: 'complete', icon: CircleCheck, label: t('orders.actions.complete') || 'Complete', onClick: () => runWorkflowAction('complete', () => updatePurchaseOrderStatus(order.id, 'completed'), t('orders.details.messages.completeSuccess') || 'Purchase order completed'), variant: 'default' as const } : null,
+            !isApprovalRequested && canManage && (order.status === 'draft' || order.status === 'ordered') ? { key: 'cancel', icon: XCircle, label: t('orders.actions.cancel') || 'Cancel', onClick: () => setCancelConfirm({ isOpen: true }), variant: 'outline' as const } : null
         ].filter(Boolean)
 
     const confirmDelete = async () => {
@@ -860,18 +861,35 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                     ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                    {actions.map((action) => action && (
+                    {canEditOrder && (
                         <Button
-                            key={action.key}
-                            variant={action.variant}
-                            disabled={activeWorkflowAction !== null}
-                            aria-busy={activeWorkflowAction === action.key}
-                            onClick={action.onClick}
+                            variant="outline"
+                            onClick={() => navigate(`/orders/edit/${isSales ? 'sales' : 'purchase'}/${order.id}`)}
                         >
-                            {activeWorkflowAction === action.key && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
-                            {action.label}
+                            <Pencil className="mr-2 h-4 w-4" />
+                            {t('common.edit') || 'Edit'}
                         </Button>
-                    ))}
+                    )}
+                    {actions.map((action) => {
+                        if (!action) return null
+                        const ActionIcon = action.icon
+                        const isActionLoading = activeWorkflowAction === action.key
+
+                        return (
+                            <Button
+                                key={action.key}
+                                variant={action.variant}
+                                disabled={activeWorkflowAction !== null}
+                                aria-busy={isActionLoading}
+                                onClick={action.onClick}
+                            >
+                                {isActionLoading
+                                    ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                                    : <ActionIcon className="mr-2 h-4 w-4" aria-hidden="true" />}
+                                {action.label}
+                            </Button>
+                        )
+                    })}
                     {!isApprovalRequested && canManage && isFinanced && linkedLoanRoute ? (
                         <Button variant="outline" onClick={() => navigate(linkedLoanRoute)}>
                             <CreditCard className="mr-2 h-4 w-4" />
@@ -895,6 +913,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                     )}
                     {!isFullyReturnedSalesOrder && !isApprovalRequested && canManage && !isFinanced && paidAmount > 0 && !order.isLocked && (
                         <Button variant="outline" onClick={handleOrderUnpay}>
+                            <RotateCcw className="mr-2 h-4 w-4" />
                             {t('orders.actions.reverseLastPayment', { defaultValue: 'Reverse Last Payment' })}
                         </Button>
                     )}
