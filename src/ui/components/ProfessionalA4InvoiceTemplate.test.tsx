@@ -67,10 +67,17 @@ describe('ProfessionalA4InvoiceTemplate', () => {
                     iqd_display_preference: 'IQD'
                 }}
                 workspaceName="Atlas Test"
+                showProductImages
+                productImageSizeMm={9}
+                productImageUrls={{ 'product-1': 'https://example.test/products/first.png' }}
             />
         )
 
         expect(html.match(/data-professional-item-row=""/g)).toHaveLength(PROFESSIONAL_A4_TABLE_ROW_COUNT)
+        expect(html.indexOf('>Image</th>')).toBeLessThan(html.indexOf('>#</th>'))
+        expect(html).toContain('https://example.test/products/first.png')
+        expect(html).toContain('width:10.5mm')
+        expect(html).toContain('height:10mm')
         expect(html).toContain('First Product')
         expect(html).toContain('Second Product')
     })

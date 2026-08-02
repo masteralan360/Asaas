@@ -23,7 +23,7 @@ import { useBusinessPartner } from '@/local-db'
 import type { PrintFormat } from '@/services/pdfGenerator'
 import type { WorkspaceFeatures } from '@/workspace'
 
-import type { ProductPrintImageUrls } from './ProductPrintImage'
+import type { ProductPrintImageUrls } from '@/ui/components/print/ProductPrintImage'
 
 type OrderKind = 'sales' | 'purchase'
 type OrderNativeTemplateKey = typeof ORDER_ATLAS_STANDARD_TEMPLATE_KEY | typeof ORDER_DETAILS_TEMPLATE_KEY | typeof ORDER_RECEIPT_TEMPLATE_KEY

@@ -413,7 +413,7 @@ html[lang] pre {
 }
 
 .surface-card {
-  @apply bg-card border border-border/50 shadow-sm transition-smooth;
+  @apply bg-card border border-border shadow-sm transition-smooth;
 }
 
 .theme-modern.dark .surface-card {

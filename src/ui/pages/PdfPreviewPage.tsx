@@ -2081,6 +2081,27 @@ export function PdfPreviewPage() {
                                                 </span>
                                             </button>
                                         </div>
+                                    ) : f.type === 'range' ? (
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <label className="text-[11px] font-medium text-muted-foreground" htmlFor={`template-field-${f.key}`}>
+                                                    {f.label}
+                                                </label>
+                                                <output className="text-xs tabular-nums text-muted-foreground">
+                                                    {fieldValues[f.key] ?? f.value}{f.unit || ''}
+                                                </output>
+                                            </div>
+                                            <input
+                                                id={`template-field-${f.key}`}
+                                                type="range"
+                                                min={f.min}
+                                                max={f.max}
+                                                step={f.step}
+                                                value={fieldValues[f.key] ?? f.value}
+                                                className="w-full accent-primary"
+                                                onChange={(event) => handleFieldChange(f.key, event.target.value)}
+                                            />
+                                        </div>
                                     ) : (
                                         <>
                                             <label className="text-[11px] font-medium text-muted-foreground">{f.label}</label>

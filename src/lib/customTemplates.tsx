@@ -61,7 +61,7 @@ import {
     AtlasStandardOrderInvoiceTemplate,
     ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS
 } from '@/ui/components/orders/AtlasStandardOrderInvoiceTemplate'
-import type { ProductPrintImageUrls } from '@/ui/components/orders/ProductPrintImage'
+import type { ProductPrintImageUrls } from '@/ui/components/print/ProductPrintImage'
 import { ModernA4InvoiceTemplate, MODERN_A4_MOVABLE_COMPONENT_KEYS } from '@/ui/components/ModernA4InvoiceTemplate'
 import {
     ProfessionalA4InvoiceTemplate,
@@ -877,6 +877,22 @@ const SALES_HISTORY_MODERN_A4_FIELDS = [
 const SALES_HISTORY_PROFESSIONAL_A4_FIELDS = [
     ...SALES_HISTORY_MODERN_A4_FIELDS,
     {
+        key: 'showProductImages',
+        label: 'Show product images',
+        value: 'true',
+        type: 'boolean' as const
+    },
+    {
+        key: 'productImageSizeMm',
+        label: 'Product image size',
+        value: '5',
+        type: 'range' as const,
+        min: 5,
+        max: 16,
+        step: 0.5,
+        unit: ' mm'
+    },
+    {
         key: 'showNotes',
         label: 'Show notes',
         value: 'false',
@@ -1182,6 +1198,9 @@ function createSalesHistoryProfessionalA4Preview(options: CustomTemplatePreviewO
                 workspaceFooterContacts={renderOptions?.workspaceFooterContacts || options.workspaceFooterContacts}
                 hideUnit={data.hideUnit === 'true'}
                 hideDiscount={data.hideDiscount === 'true'}
+                showProductImages={data.showProductImages !== 'false'}
+                productImageSizeMm={Number(data.productImageSizeMm) || 5}
+                productImageUrls={options.productImageUrls}
                 showNotes={data.showNotes === 'true'}
                 tableRowCount={Number(data.tableRowCount) || PROFESSIONAL_A4_TABLE_ROW_COUNT}
                 componentPositions={renderOptions?.componentPositions}

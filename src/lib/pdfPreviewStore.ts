@@ -8,8 +8,12 @@ export type TemplatePreviewField = {
     key: string
     label: string
     value: string
-    type: 'text' | 'number' | 'date' | 'boolean'
+    type: 'text' | 'number' | 'date' | 'boolean' | 'range'
     placeholder?: string
+    min?: number
+    max?: number
+    step?: number
+    unit?: string
 }
 
 export type TemplatePreviewDataKey = {

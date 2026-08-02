@@ -132,11 +132,13 @@ describe('Sales History custom A4 templates', () => {
         const onHiddenFieldChange = vi.fn()
         const preview = customTemplates.createCustomTemplatePreview(target!, {
             workspaceName: 'Atlas Test',
-            printLang: 'en'
+            printLang: 'en',
+            productImageUrls: { 'sample-product': 'https://example.test/products/sample.png' }
         })
         const element = preview.createElement({
             hideUnit: 'true',
-            hideDiscount: 'true'
+            hideDiscount: 'true',
+            productImageSizeMm: '9'
         }, undefined, undefined, {
             editableComponents: true,
             componentPositions,
@@ -148,6 +150,8 @@ describe('Sales History custom A4 templates', () => {
         expect(preview.fields).toEqual([
             expect.objectContaining({ key: 'hideUnit', value: 'false', type: 'boolean' }),
             expect.objectContaining({ key: 'hideDiscount', value: 'false', type: 'boolean' }),
+            expect.objectContaining({ key: 'showProductImages', value: 'true', type: 'boolean' }),
+            expect.objectContaining({ key: 'productImageSizeMm', value: '5', type: 'range', min: 5, max: 16, step: 0.5, unit: ' mm' }),
             expect.objectContaining({ key: 'showNotes', value: 'false', type: 'boolean' }),
             expect.objectContaining({ key: 'tableRowCount', value: '10', type: 'number' })
         ])
@@ -174,6 +178,9 @@ describe('Sales History custom A4 templates', () => {
         expect(element.props.workspaceName).toBe('Atlas Test')
         expect(element.props.hideUnit).toBe(true)
         expect(element.props.hideDiscount).toBe(true)
+        expect(element.props.showProductImages).toBe(true)
+        expect(element.props.productImageSizeMm).toBe(9)
+        expect(element.props.productImageUrls).toEqual({ 'sample-product': 'https://example.test/products/sample.png' })
         expect(element.props.componentPositions).toBe(componentPositions)
         expect(element.props.hiddenFields).toBe(hiddenFields)
         expect(element.props.editableComponents).toBe(true)

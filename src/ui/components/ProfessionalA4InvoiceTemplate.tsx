@@ -12,6 +12,7 @@ import { EditableField } from '@/ui/components/EditableField'
 import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
 import { HideablePrintFieldCard } from '@/ui/components/print/HideablePrintFieldCard'
 import { AttachedShapesOverlay } from '@/ui/components/AttachedShapesOverlay'
+import { ProductPrintImage, type ProductPrintImageUrls } from '@/ui/components/print/ProductPrintImage'
 
 export const PROFESSIONAL_A4_TABLE_ROW_COUNT = 10
 
@@ -55,6 +56,9 @@ interface ProfessionalA4InvoiceTemplateProps {
     drawingMode?: string
     hideUnit?: boolean
     hideDiscount?: boolean
+    showProductImages?: boolean
+    productImageSizeMm?: number
+    productImageUrls?: ProductPrintImageUrls
     showNotes?: boolean
     tableRowCount?: number
     componentPositions?: Record<string, CustomTemplateComponentPosition>
@@ -93,6 +97,12 @@ function safeNumber(value: unknown, fallback = 0) {
     return Number.isFinite(parsed) ? parsed : fallback
 }
 
+function clampProductImageSizeMm(value?: number) {
+    const numericValue = Number(value)
+    if (!Number.isFinite(numericValue)) return 5
+    return Math.min(16, Math.max(5, numericValue))
+}
+
 function buildTwentyItemRows(items: UniversalInvoiceItem[], rowCount: number) {
     const overflowItems = items.slice(rowCount - 1)
     return Array.from({ length: rowCount }, (_, index) => {
@@ -124,6 +134,9 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
         drawingMode,
         hideUnit,
         hideDiscount,
+        showProductImages = false,
+        productImageSizeMm,
+        productImageUrls,
         showNotes,
         tableRowCount,
         componentPositions,
@@ -137,6 +150,9 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
         const t = i18n.getFixedT(printLang)
         const isRtl = isRTL(printLang)
         const items = data.items || []
+        const imageSizeMm = clampProductImageSizeMm(productImageSizeMm)
+        const imageColumnWidthMm = imageSizeMm + 1.5
+        const itemRowHeightMm = Math.max(5.8, imageSizeMm + 1)
         const rowCount = tableRowCount || PROFESSIONAL_A4_TABLE_ROW_COUNT
         const itemRows = buildTwentyItemRows(items, rowCount)
         const effectiveWorkspaceId = propWorkspaceId || data.workspaceId
@@ -355,6 +371,11 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
                         <table className="w-full border-collapse text-[10px] mb-5">
                             <thead>
                                 <tr className="bg-slate-100">
+                                    {showProductImages ? (
+                                        <th className="border border-slate-300 p-1 text-center" style={{ width: `${imageColumnWidthMm}mm` }}>
+                                            {t('products.table.image', { defaultValue: 'Image' })}
+                                        </th>
+                                    ) : null}
                                     <th className="border border-slate-300 p-1.5 text-center w-8">#</th>
                                     <th className="border border-slate-300 p-1.5 text-start">{t('products.title', { defaultValue: 'Product' })}</th>
                                     <th className="border border-slate-300 p-1.5 text-start w-20">SKU</th>
@@ -378,9 +399,21 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
                                     return (
                                         <tr
                                             key={`${item?.product_id || 'empty'}-${index}`}
-                                            className="h-[5.8mm]"
+                                            className={cn(!showProductImages && 'h-[5.8mm]')}
+                                            style={showProductImages ? { height: `${itemRowHeightMm}mm` } : undefined}
                                             data-professional-item-row=""
                                         >
+                                            {showProductImages ? (
+                                                <td className="border border-slate-300 p-[0.5mm] text-center align-middle">
+                                                    {item ? (
+                                                        <ProductPrintImage
+                                                            imageUrl={productImageUrls?.[item.product_id]}
+                                                            productName={item.product_name}
+                                                            sizeMm={imageSizeMm}
+                                                        />
+                                                    ) : '\u00A0'}
+                                                </td>
+                                            ) : null}
                                             <td className="border border-slate-300 p-1 text-center text-slate-500">{index + 1}</td>
                                             <td className="border border-slate-300 p-1 font-medium">
                                                 {item?.product_name || '\u00A0'}

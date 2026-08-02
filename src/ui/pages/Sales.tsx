@@ -299,6 +299,11 @@ export function Sales() {
     const rawTravelSales = useTravelAgencySales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const rawExchangeTransactions = useExchangeTransactions(user?.workspaceId)
     const products = useProducts(user?.workspaceId)
+    const productImageUrls = useMemo(() => products.reduce<Record<string, string>>((imageUrls, product) => {
+        const imageUrl = product.imageUrl?.trim()
+        if (imageUrl) imageUrls[product.id] = imageUrl
+        return imageUrls
+    }, {}), [products])
     const storages = useStorages(user?.workspaceId)
     const inventory = useInventory(user?.workspaceId)
     const realEstateCommissionTransactions = usePaymentTransactions(user?.workspaceId, {
@@ -990,10 +995,11 @@ export function Sales() {
                 workspaceId: user?.workspaceId,
                 workspaceName,
                 features,
-                receiptData: customReceiptData
+                receiptData: customReceiptData,
+                productImageUrls
             })
             : undefined,
-        [customReceiptData, customReceiptTarget, features, user?.workspaceId, workspaceName]
+        [customReceiptData, customReceiptTarget, features, productImageUrls, user?.workspaceId, workspaceName]
     )
     const buildCustomReceiptPdf = useCallback(async ({ effectiveId }: { format: PrintFormat; effectiveId: string }) => {
         if (!customReceiptTarget || !selectedCustomReceiptLayout || !customReceiptData) {
@@ -1008,11 +1014,12 @@ export function Sales() {
                 workspaceId: user?.workspaceId,
                 workspaceName,
                 features,
-                receiptData: customReceiptData
+                receiptData: customReceiptData,
+                productImageUrls
             },
             effectiveId
         })
-    }, [customReceiptData, customReceiptTarget, features, selectedCustomReceiptLayout, user?.workspaceId, workspaceName])
+    }, [customReceiptData, customReceiptTarget, features, productImageUrls, selectedCustomReceiptLayout, user?.workspaceId, workspaceName])
     const buildEditableCustomReceiptPdf = useCallback(async (
         layout: CustomTemplateLayout,
         _printLangOverride?: string,
@@ -1030,12 +1037,13 @@ export function Sales() {
                 workspaceId: user?.workspaceId,
                 workspaceName,
                 features,
-                receiptData: customReceiptData
+                receiptData: customReceiptData,
+                productImageUrls
             },
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [customReceiptData, customReceiptTarget, features, user?.workspaceId, workspaceName])
+    }, [customReceiptData, customReceiptTarget, features, productImageUrls, user?.workspaceId, workspaceName])
 
     const customA4Target = useMemo(
         () => selectedCustomA4Template
@@ -1059,10 +1067,11 @@ export function Sales() {
                 workspaceId: user?.workspaceId,
                 workspaceName,
                 features,
-                receiptData: customReceiptData
+                receiptData: customReceiptData,
+                productImageUrls
             })
             : undefined,
-        [customReceiptData, customA4Target, features, user?.workspaceId, workspaceName]
+        [customReceiptData, customA4Target, features, productImageUrls, user?.workspaceId, workspaceName]
     )
     const buildCustomA4Pdf = useCallback(async ({ effectiveId }: { format: PrintFormat; effectiveId: string }) => {
         if (!customA4Target || !selectedCustomA4Layout || !customReceiptData) {
@@ -1077,11 +1086,12 @@ export function Sales() {
                 workspaceId: user?.workspaceId,
                 workspaceName,
                 features,
-                receiptData: customReceiptData
+                receiptData: customReceiptData,
+                productImageUrls
             },
             effectiveId
         })
-    }, [customReceiptData, customA4Target, features, selectedCustomA4Layout, user?.workspaceId, workspaceName])
+    }, [customReceiptData, customA4Target, features, productImageUrls, selectedCustomA4Layout, user?.workspaceId, workspaceName])
     const buildEditableCustomA4Pdf = useCallback(async (
         layout: CustomTemplateLayout,
         _printLangOverride?: string,
@@ -1099,12 +1109,13 @@ export function Sales() {
                 workspaceId: user?.workspaceId,
                 workspaceName,
                 features,
-                receiptData: customReceiptData
+                receiptData: customReceiptData,
+                productImageUrls
             },
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [customReceiptData, customA4Target, features, user?.workspaceId, workspaceName])
+    }, [customReceiptData, customA4Target, features, productImageUrls, user?.workspaceId, workspaceName])
 
     const activeCustomTemplate = printFormat === 'a4' ? selectedCustomA4Template : selectedCustomReceiptTemplate
     const hasActiveCustomTemplate = printFormat === 'a4' ? hasCompatibleSelectedCustomA4 : hasCompatibleSelectedCustomReceipt

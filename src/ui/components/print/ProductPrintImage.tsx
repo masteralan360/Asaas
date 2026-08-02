@@ -5,8 +5,8 @@ import { platformService } from '@/services/platformService'
 
 /**
  * Product image paths are deliberately passed into print templates separately
- * from the immutable order lines. This keeps historic line data intact while
- * allowing a print layout to opt in to the product's current image.
+ * from immutable sale or order lines. This keeps historic line data intact
+ * while allowing a print layout to opt in to the product's current image.
  */
 export type ProductPrintImageUrls = Record<string, string | null | undefined>
 
@@ -26,10 +26,7 @@ interface ProductPrintImageProps {
     imageClassName?: string
 }
 
-/**
- * A compact, fixed-size product photo for tabular print layouts. It leaves a
- * blank cell when an image is unavailable so rows stay aligned on paper.
- */
+/** A compact, fixed-size product photo for tabular print layouts. */
 export function ProductPrintImage({
     imageUrl,
     productName,

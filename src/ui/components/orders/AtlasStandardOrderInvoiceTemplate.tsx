@@ -32,7 +32,7 @@ import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
 import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
 import { ReorderablePickerGrid } from '@/ui/components/ReorderablePickerGrid'
 
-import { ProductPrintImage, type ProductPrintImageUrls } from './ProductPrintImage'
+import { ProductPrintImage, type ProductPrintImageUrls } from '@/ui/components/print/ProductPrintImage'
 
 type OrderKind = 'sales' | 'purchase'
 
