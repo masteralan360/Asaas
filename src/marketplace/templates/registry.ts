@@ -32,14 +32,13 @@ export type StorefrontTemplateAssignment = {
  * 
  * 
  */
-export const storefrontTemplateAssignments = {
+export const storefrontTemplateAssignments: Readonly<Record<string, StorefrontTemplateAssignment>> = {
     'k1-paint': {
         templateId: 'generic',
         rules: { hidePrice: true, hideAddToCart: true }
     },
-
     barbados: { templateId: 'barbados' }
-} satisfies Readonly<Record<string, StorefrontTemplateAssignment>>
+}
 
 export type ResolvedStorefrontTemplate = {
     template: StorefrontTemplate
