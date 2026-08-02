@@ -76,22 +76,70 @@ function resolvePrintLanguage(printLang: string | null | undefined) {
     return printLang && printLang !== 'auto' ? printLang : i18n.language
 }
 
-async function waitForImages(container: HTMLElement) {
-    const images = Array.from(container.querySelectorAll('img'))
-    await Promise.all(images.map(img => new Promise<void>((resolve) => {
-        if (img.complete && img.naturalWidth > 0) {
+async function waitForImageReady(image: HTMLImageElement, timeoutMs = 10_000) {
+    await new Promise<void>((resolve) => {
+        if (image.complete) {
             resolve()
             return
         }
+
         const cleanup = () => {
-            img.removeEventListener('load', cleanup)
-            img.removeEventListener('error', cleanup)
+            image.removeEventListener('load', cleanup)
+            image.removeEventListener('error', cleanup)
             resolve()
         }
-        img.addEventListener('load', cleanup)
-        img.addEventListener('error', cleanup)
-        setTimeout(cleanup, 3000)
-    })))
+
+        image.addEventListener('load', cleanup)
+        image.addEventListener('error', cleanup)
+        setTimeout(cleanup, timeoutMs)
+    })
+
+    // iOS WebKit can fire `load` before the image is fully decoded. Waiting for
+    // decode prevents html-to-image from capturing an empty custom-template image.
+    if (image.naturalWidth > 0 && typeof image.decode === 'function') {
+        await Promise.race([
+            image.decode().catch(() => undefined),
+            new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))
+        ])
+    }
+}
+
+async function waitForImages(container: HTMLElement) {
+    await Promise.all(Array.from(container.querySelectorAll('img')).map((image) => waitForImageReady(image)))
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result))
+        reader.onerror = () => reject(reader.error || new Error('Failed to read image data.'))
+        reader.readAsDataURL(blob)
+    })
+}
+
+async function inlineCaptureableImages(container: HTMLElement) {
+    const images = Array.from(container.querySelectorAll('img'))
+
+    await Promise.all(images.map(async (image) => {
+        const source = image.currentSrc || image.src
+        if (!source || source.startsWith('data:') || (!source.startsWith('http:') && !source.startsWith('https:') && !source.startsWith('blob:'))) {
+            return
+        }
+
+        try {
+            const response = await fetch(source)
+            if (!response.ok) return
+
+            const blob = await response.blob()
+            if (!blob.type.startsWith('image/')) return
+
+            image.src = await blobToDataUrl(blob)
+            await waitForImageReady(image)
+        } catch {
+            // Keep the original source when it cannot be fetched (for example,
+            // a local Tauri asset URL). html-to-image can still render it there.
+        }
+    }))
 }
 
 async function expandContainerToRenderedBounds(container: HTMLElement) {
@@ -223,6 +271,7 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
         await document.fonts.ready
     }
     await waitForImages(container)
+    await inlineCaptureableImages(container)
     await reflowTemplateTextAfterContent(container, widthMm)
     await expandContainerToRenderedBounds(container)
     reportPdfProgress(0.1, 'print.progressPreparing')
