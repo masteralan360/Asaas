@@ -9,11 +9,20 @@ import { getMarketplaceAssetUrl } from '../lib/assets'
 type ProductCardProps = {
     product: MarketplaceProduct
     iqdPreference: 'IQD' | 'د.ع'
-    addToCartLabel: string
-    onAdd: (product: MarketplaceProduct) => void
+    addToCartLabel?: string
+    onAdd?: (product: MarketplaceProduct) => void
+    showPrice?: boolean
+    showAddToCart?: boolean
 }
 
-export function ProductCard({ product, iqdPreference, addToCartLabel, onAdd }: ProductCardProps) {
+export function ProductCard({
+    product,
+    iqdPreference,
+    addToCartLabel,
+    onAdd,
+    showPrice = true,
+    showAddToCart = true
+}: ProductCardProps) {
     const resolvedImageUrl = getMarketplaceAssetUrl(product.image_url)
     const [hasImageError, setHasImageError] = useState(false)
     const hasDiscount = typeof product.discount_price === 'number' && product.discount_price < product.price
@@ -66,8 +75,10 @@ export function ProductCard({ product, iqdPreference, addToCartLabel, onAdd }: P
                         {product.name}
                     </h3>
 
-                    <div className="mt-auto flex items-end justify-between gap-3 pt-8">
-                        <div>
+                    {(showPrice || (showAddToCart && onAdd && addToCartLabel)) && (
+                        <div className="mt-auto flex items-end justify-between gap-3 pt-8">
+                        {showPrice ? (
+                            <div>
                             {hasDiscount ? (
                                 <>
                                     <div className="text-xs font-semibold text-muted-foreground line-through">
@@ -82,20 +93,24 @@ export function ProductCard({ product, iqdPreference, addToCartLabel, onAdd }: P
                                     {formatCurrency(product.price, product.currency, iqdPreference)}
                                 </div>
                             )}
-                            {endsSoon && endsAt && (
-                                <div className="mt-1 text-[11px] font-medium text-amber-600">
-                                    Ends {formatDate(endsAt)}
-                                </div>
-                            )}
-                        </div>
-                        <Button
+                                {endsSoon && endsAt && (
+                                    <div className="mt-1 text-[11px] font-medium text-amber-600">
+                                        Ends {formatDate(endsAt)}
+                                    </div>
+                                )}
+                            </div>
+                        ) : <span />}
+                        {showAddToCart && onAdd && addToCartLabel && (
+                            <Button
                             className="h-9 rounded-full bg-[#d3e7e1] px-5 text-sm font-black text-[#00756f] shadow-none hover:bg-[#c4ded7]"
-                            onClick={() => onAdd(product)}
+                                onClick={() => onAdd(product)}
                         >
                             <Plus className="h-4 w-4" />
                             {addToCartLabel}
-                        </Button>
-                    </div>
+                            </Button>
+                        )}
+                        </div>
+                    )}
                 </div>
             </CardContent>
         </Card>

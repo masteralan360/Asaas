@@ -30,6 +30,7 @@ import { usePageMeta } from '../hooks/usePageMeta'
 import { useStoreCatalog } from '../hooks/useStoreCatalog'
 import { getMarketplaceAssetUrl } from '../lib/assets'
 import { placeInquiryOrder, type MarketplaceProduct } from '../lib/marketplaceApi'
+import type { StorefrontRules } from '../templates/types'
 
 type PriceFilter = 'all' | 'under-threshold'
 type SortMode = 'featured' | 'newest'
@@ -74,9 +75,10 @@ function getInitialSortMode(): SortMode {
 
 type StorePageProps = {
     storeSlug: string
+    rules?: StorefrontRules
 }
 
-export function StorePage({ storeSlug }: StorePageProps) {
+export function StorePage({ storeSlug, rules = {} }: StorePageProps) {
     const { t, i18n } = useTranslation()
     const { toast } = useToast()
     const { catalog, isLoading, error } = useStoreCatalog(storeSlug)
@@ -93,6 +95,8 @@ export function StorePage({ storeSlug }: StorePageProps) {
     const storeCurrency = catalog?.store.currency || 'usd'
     const underPriceThreshold = getUnderPriceThreshold(storeCurrency)
     const underPriceLabel = formatThresholdLabel(underPriceThreshold, storeCurrency)
+    const hidePrice = rules.hidePrice === true
+    const hideAddToCart = rules.hideAddToCart === true
 
     useEffect(() => {
         if (catalog) {
@@ -227,6 +231,7 @@ export function StorePage({ storeSlug }: StorePageProps) {
             storeSlug={storeSlug}
             activeItem={sortMode === 'newest' ? 'new-arrivals' : 'shop'}
             cartCount={cart.itemCount}
+            showCart={!hideAddToCart}
             onCartClick={() => setCartOpen(true)}
             onShopClick={handleShopClick}
             onNewArrivalsClick={handleNewArrivalsClick}
@@ -287,22 +292,24 @@ export function StorePage({ storeSlug }: StorePageProps) {
                                     {t('marketplace.allProducts', { defaultValue: 'All Products' })}
                                 </button>
 
-                                <button
-                                    type="button"
-                                    onClick={() => setPriceFilter('under-threshold')}
-                                    className={cn(
-                                        'flex h-12 w-full items-center gap-4 rounded-full px-5 text-left text-sm font-black tracking-wide transition-colors',
-                                        priceFilter === 'under-threshold'
-                                            ? 'bg-[#d9e8e2] text-[#5e6b68]'
-                                            : 'text-[#4d5856] hover:bg-[#eef4f2]'
-                                    )}
-                                >
-                                    <Banknote className="h-5 w-5" />
-                                    {t('marketplace.underAmount', {
-                                        defaultValue: 'Under {{amount}}',
-                                        amount: underPriceLabel
-                                    })}
-                                </button>
+                                {!hidePrice && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setPriceFilter('under-threshold')}
+                                        className={cn(
+                                            'flex h-12 w-full items-center gap-4 rounded-full px-5 text-left text-sm font-black tracking-wide transition-colors',
+                                            priceFilter === 'under-threshold'
+                                                ? 'bg-[#d9e8e2] text-[#5e6b68]'
+                                                : 'text-[#4d5856] hover:bg-[#eef4f2]'
+                                        )}
+                                    >
+                                        <Banknote className="h-5 w-5" />
+                                        {t('marketplace.underAmount', {
+                                            defaultValue: 'Under {{amount}}',
+                                            amount: underPriceLabel
+                                        })}
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </aside>
@@ -399,26 +406,30 @@ export function StorePage({ storeSlug }: StorePageProps) {
                                         key={product.id}
                                         product={product}
                                         iqdPreference={iqdPreference}
-                                        addToCartLabel={t('marketplace.addToCart', { defaultValue: 'Add to Cart' })}
-                                        onAdd={handleAddToCart}
+                                        showPrice={!hidePrice}
+                                        showAddToCart={!hideAddToCart}
+                                        addToCartLabel={hideAddToCart ? undefined : t('marketplace.addToCart', { defaultValue: 'Add to Cart' })}
+                                        onAdd={hideAddToCart ? undefined : handleAddToCart}
                                     />
                                 ))}
                             </div>
                         )}
 
-                        <MobileStoreCart
-                            cart={cart}
-                            items={cart.items}
-                            total={cart.total}
-                            currency={cart.currency || catalog.store.currency}
-                            iqdPreference={iqdPreference}
-                            checkoutMode={checkoutMode}
-                            submitting={submitting}
-                            setCheckoutMode={setCheckoutMode}
-                            onSubmit={handleSubmitOrder}
-                        />
+                        {!hideAddToCart && (
+                            <MobileStoreCart
+                                cart={cart}
+                                items={cart.items}
+                                total={cart.total}
+                                currency={cart.currency || catalog.store.currency}
+                                iqdPreference={iqdPreference}
+                                checkoutMode={checkoutMode}
+                                submitting={submitting}
+                                setCheckoutMode={setCheckoutMode}
+                                onSubmit={handleSubmitOrder}
+                            />
+                        )}
 
-                        <CartDrawer
+                        {!hideAddToCart && <CartDrawer
                             className="max-sm:hidden"
                             open={cartOpen || checkoutMode}
                             title={t('marketplace.cart.title', { defaultValue: 'Your Order' })}
@@ -529,7 +540,7 @@ export function StorePage({ storeSlug }: StorePageProps) {
                                     onSubmit={handleSubmitOrder}
                                 />
                             )}
-                        </CartDrawer>
+                        </CartDrawer>}
                     </section>
                 </div>
             )}

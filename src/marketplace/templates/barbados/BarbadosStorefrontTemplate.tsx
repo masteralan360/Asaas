@@ -58,9 +58,11 @@ function BarbadosLoadingState() {
 
 function BarbadosMenuCard({
     product,
-    iqdPreference
+    iqdPreference,
+    hidePrice
 }: {
     product: MarketplaceProduct
+    hidePrice: boolean
     iqdPreference: 'IQD' | 'د.ع'
 }) {
     const imageUrl = getMarketplaceAssetUrl(product.image_url)
@@ -94,7 +96,7 @@ function BarbadosMenuCard({
                     <h2 className="line-clamp-2 text-[17px] font-bold leading-6 tracking-[-0.01em] text-[#fff4e9]">
                         {product.name}
                     </h2>
-                    <div className="shrink-0 text-right">
+                    {!hidePrice && <div className="shrink-0 text-right">
                         {hasDiscount && (
                             <p className="mb-1 text-[11px] text-[#b99e89] line-through">
                                 {formatCurrency(product.price, product.currency, iqdPreference)}
@@ -103,7 +105,7 @@ function BarbadosMenuCard({
                         <p className="text-[14px] font-extrabold text-[#f5bc24]">
                             {formatCurrency(getProductPrice(product), product.currency, iqdPreference)}
                         </p>
-                    </div>
+                    </div>}
                 </div>
                 {product.description && (
                     <p className="mt-3 line-clamp-2 min-h-10 text-[13px] leading-5 text-[#cdb8a7]">
@@ -115,7 +117,7 @@ function BarbadosMenuCard({
     )
 }
 
-function BarbadosMenuPage({ slug }: StorefrontTemplatePageProps) {
+function BarbadosMenuPage({ slug, rules }: StorefrontTemplatePageProps) {
     const { t, i18n } = useTranslation()
     const { catalog, isLoading, error } = useStoreCatalog(slug)
     const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null)
@@ -124,6 +126,7 @@ function BarbadosMenuPage({ slug }: StorefrontTemplatePageProps) {
     const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase())
     const iqdPreference: 'IQD' | 'د.ع' = i18n.language === 'en' ? 'IQD' : 'د.ع'
 
+    const hidePrice = rules.hidePrice === true
     const categories = useMemo<MarketplaceCategory[]>(() => catalog?.categories ?? [], [catalog?.categories])
 
     useEffect(() => {
@@ -326,7 +329,12 @@ function BarbadosMenuPage({ slug }: StorefrontTemplatePageProps) {
                     ) : (
                         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                             {displayedProducts.map((product) => (
-                                <BarbadosMenuCard key={product.id} product={product} iqdPreference={iqdPreference} />
+                                <BarbadosMenuCard
+                                    key={product.id}
+                                    product={product}
+                                    iqdPreference={iqdPreference}
+                                    hidePrice={hidePrice}
+                                />
                             ))}
                         </div>
                     )}

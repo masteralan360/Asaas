@@ -1,6 +1,6 @@
 import { barbadosStorefrontTemplate } from './barbados/BarbadosStorefrontTemplate'
 import { genericStorefrontTemplate } from './generic/GenericStorefrontTemplate'
-import type { StorefrontTemplate, StorefrontTemplateOptions } from './types'
+import type { StorefrontRules, StorefrontTemplate, StorefrontTemplateOptions } from './types'
 
 export const DEFAULT_STOREFRONT_TEMPLATE_ID = 'generic' as const
 
@@ -18,21 +18,33 @@ export type StorefrontTemplateId = keyof typeof storefrontTemplates
 export type StorefrontTemplateAssignment = {
     templateId: StorefrontTemplateId
     options?: StorefrontTemplateOptions
+    rules?: StorefrontRules
 }
 
 /**
- * V1 assignment source of truth. Add lower-case store slugs here when a
- * code-owned template is ready, for example:
+ * V1 storefront source of truth. Add lower-case store slugs here. Each entry
+ * can choose a template plus simple presentation rules, for example:
  *
- * 'acme-baghdad': { templateId: 'acme', options: { heroImage: '/acme.jpg' } }
+ * 'acme-baghdad': {
+ *     templateId: 'generic',
+ *     rules: { hidePrice: true, hideAddToCart: true }
+ * }
+ * 
+ * 
  */
-export const storefrontTemplateAssignments: Readonly<Record<string, StorefrontTemplateAssignment>> = {
+export const storefrontTemplateAssignments = {
+    'k1-paint': {
+        templateId: 'generic',
+        rules: { hidePrice: true, hideAddToCart: true }
+    },
+
     barbados: { templateId: 'barbados' }
-}
+} satisfies Readonly<Record<string, StorefrontTemplateAssignment>>
 
 export type ResolvedStorefrontTemplate = {
     template: StorefrontTemplate
     options: StorefrontTemplateOptions
+    rules: StorefrontRules
 }
 
 function normalizeStoreSlug(slug: string) {
@@ -51,6 +63,7 @@ export function getStorefrontTemplateForSlug(slug: string): ResolvedStorefrontTe
 
     return {
         template,
-        options: assignment?.options ?? {}
+        options: assignment?.options ?? {},
+        rules: assignment?.rules ?? {}
     }
 }

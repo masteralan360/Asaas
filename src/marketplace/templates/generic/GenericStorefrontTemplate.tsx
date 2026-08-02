@@ -2,12 +2,12 @@ import { StoreContactPage } from '../../pages/StoreContactPage'
 import { StorePage } from '../../pages/StorePage'
 import type { StorefrontTemplate, StorefrontTemplatePageProps } from '../types'
 
-function GenericStorefrontShopPage({ slug }: StorefrontTemplatePageProps) {
-    return <StorePage storeSlug={slug} />
+function GenericStorefrontShopPage({ slug, rules }: StorefrontTemplatePageProps) {
+    return <StorePage storeSlug={slug} rules={rules} />
 }
 
-function GenericStorefrontContactPage({ slug }: StorefrontTemplatePageProps) {
-    return <StoreContactPage storeSlug={slug} />
+function GenericStorefrontContactPage({ slug, rules }: StorefrontTemplatePageProps) {
+    return <StoreContactPage storeSlug={slug} rules={rules} />
 }
 
 /** The existing storefront, exposed as the safe fallback template. */

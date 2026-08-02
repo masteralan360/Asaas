@@ -20,6 +20,7 @@ type StorefrontLayoutProps = {
     storeSlug: string
     activeItem: StorefrontNavItem
     cartCount?: number
+    showCart?: boolean
     onCartClick?: () => void
     onShopClick?: () => void
     onNewArrivalsClick?: () => void
@@ -40,6 +41,7 @@ export function StorefrontLayout({
     storeSlug,
     activeItem,
     cartCount = 0,
+    showCart = true,
     onCartClick,
     onShopClick,
     onNewArrivalsClick,
@@ -120,21 +122,23 @@ export function StorefrontLayout({
                                 </SelectContent>
                             </Select>
 
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                onClick={onCartClick}
-                                className="relative rounded-full text-[#3f4a48] hover:bg-[#dcebe8]"
-                                aria-label={t('marketplace.cart.title', { defaultValue: 'Your Order' })}
-                            >
-                                <ShoppingBag className="h-5 w-5" />
-                                {cartCount > 0 && (
-                                    <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#00756f] px-1 text-[10px] font-black text-white">
-                                        {cartCount}
-                                    </span>
-                                )}
-                            </Button>
+                            {showCart && (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={onCartClick}
+                                    className="relative rounded-full text-[#3f4a48] hover:bg-[#dcebe8]"
+                                    aria-label={t('marketplace.cart.title', { defaultValue: 'Your Order' })}
+                                >
+                                    <ShoppingBag className="h-5 w-5" />
+                                    {cartCount > 0 && (
+                                        <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#00756f] px-1 text-[10px] font-black text-white">
+                                            {cartCount}
+                                        </span>
+                                    )}
+                                </Button>
+                            )}
                         </div>
                     </div>
                 </header>

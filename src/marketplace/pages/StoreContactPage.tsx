@@ -10,6 +10,7 @@ import { useCart } from '../hooks/useCart'
 import { usePageMeta } from '../hooks/usePageMeta'
 import { useStoreCatalog } from '../hooks/useStoreCatalog'
 import type { MarketplaceStoreContact } from '../lib/marketplaceApi'
+import type { StorefrontRules } from '../templates/types'
 
 function getContactsOfType(contacts: MarketplaceStoreContact[], type: 'phone' | 'address') {
     return contacts
@@ -88,9 +89,10 @@ function ContactRows({
 
 type StoreContactPageProps = {
     storeSlug: string
+    rules?: StorefrontRules
 }
 
-export function StoreContactPage({ storeSlug }: StoreContactPageProps) {
+export function StoreContactPage({ storeSlug, rules = {} }: StoreContactPageProps) {
     const { t } = useTranslation()
     const { catalog, isLoading, error } = useStoreCatalog(storeSlug)
     const cart = useCart(storeSlug)
@@ -112,6 +114,7 @@ export function StoreContactPage({ storeSlug }: StoreContactPageProps) {
             storeSlug={storeSlug}
             activeItem="contact"
             cartCount={cart.itemCount}
+            showCart={!rules.hideAddToCart}
             onCartClick={() => {
                 window.location.href = `/s/${storeSlug}`
             }}
