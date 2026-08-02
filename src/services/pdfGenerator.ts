@@ -72,14 +72,6 @@ const A4_HEIGHT_MM = A4_PAGE_HEIGHT_MM
 const RECEIPT_WIDTH_MM = 80
 const RENDER_SCALE = 2.5
 
-function isIOSOrIPadOS() {
-    if (typeof navigator === 'undefined') return false
-
-    return /iPad|iPhone|iPod/.test(navigator.userAgent)
-        // iPadOS can identify itself as macOS when requesting desktop sites.
-        || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-}
-
 function resolvePrintLanguage(printLang: string | null | undefined) {
     return printLang && printLang !== 'auto' ? printLang : i18n.language
 }
@@ -197,10 +189,9 @@ function createCanvasSlice(
 }
 
 /**
- * Captures a rendered print template to canvas. Non-iOS platforms use
- * html-to-image (SVG foreignObject) for browser-painted layout fidelity.
- * iOS/iPadOS uses html2canvas because it is more reliable there for PDF
- * generation.
+ * Captures a rendered print template to canvas with html-to-image (SVG
+ * foreignObject), allowing the browser to paint the clone consistently across
+ * desktop, Android, and iOS/iPadOS.
  */
 async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm: number): Promise<RenderResult> {
     const container = document.createElement('div')
@@ -255,33 +246,15 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
 
     const keepTogetherBlocks = collectA4KeepTogetherBlocks(container, widthMm)
 
-    // The container is invisible (opacity 0) while it lives in the viewport.
-    // Each renderer restores the cloned container's opacity before capture.
+    // The container is invisible (opacity 0) while it lives in the viewport;
+    // restore the clone's opacity so the SVG foreignObject paints it.
     reportPdfProgress(0.4, 'print.progressRendering')
-    const background = isIOSOrIPadOS()
-        ? await (async () => {
-            const { default: html2canvas } = await import('html2canvas')
-            return html2canvas(container, {
-                backgroundColor: '#ffffff',
-                scale: RENDER_SCALE,
-                useCORS: true,
-                logging: false,
-                onclone: (clonedDocument) => {
-                    const clonedContainer = clonedDocument.getElementById(container.id)
-                    if (clonedContainer) {
-                        clonedContainer.style.opacity = '1'
-                    }
-                }
-            })
-        })()
-        : await (async () => {
-            const { toCanvas } = await import('html-to-image')
-            return toCanvas(container, {
-                pixelRatio: RENDER_SCALE,
-                backgroundColor: '#ffffff',
-                style: { opacity: '1' }
-            })
-        })()
+    const { toCanvas } = await import('html-to-image')
+    const background = await toCanvas(container, {
+        pixelRatio: RENDER_SCALE,
+        backgroundColor: '#ffffff',
+        style: { opacity: '1' }
+    })
     reportPdfProgress(0.6, 'print.progressRendering')
 
     const containerPixelWidth = container.offsetWidth
