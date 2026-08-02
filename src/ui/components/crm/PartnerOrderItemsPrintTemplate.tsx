@@ -971,16 +971,16 @@ function OrderActivitySummary({
     if (summaries.length === 0) return null
 
     return (
-        <section className="mt-3 rounded border border-slate-300 bg-slate-50 px-2 py-2 text-[9px]" data-pdf-keep-together data-order-items-order-summary>
+        <section className="mt-3 rounded border border-slate-300 bg-slate-50 px-2 py-2 text-[11px]" data-pdf-keep-together data-order-items-order-summary>
             <div className="mb-1 font-bold">{t('businessPartners.orderItemsPrint.orderSummary', { defaultValue: 'Order Summary' })}</div>
             {summaries.map((summary, index) => (
                 <div key={summary.currency}>
                     {index > 0 ? <hr className="my-1.5 border-slate-300" /> : null}
-                    <div className="flex items-center justify-between gap-2 text-[8px]">
+                    <div className="flex items-center justify-between gap-2 text-[10px]">
                         <strong>{summary.currency.toUpperCase()}</strong>
                         <span>{t('businessPartners.orderItemsPrint.numberOfOrders', { defaultValue: 'Number of orders' })}: <strong>{summary.orderCount}</strong></span>
                     </div>
-                    <div className="mt-1 grid grid-cols-3 gap-2 border-t border-slate-300 pt-1 text-[10px] font-bold">
+                    <div className="mt-1 grid grid-cols-3 gap-2 border-t border-slate-300 pt-1 text-[12px] font-bold">
                         <span>{t('businessPartners.orderItemsPrint.totalValue', { defaultValue: 'Total value' })}: <strong>{formatCurrency(summary.total, summary.currency, iqdPreference)}</strong></span>
                         <span>{t('businessPartners.orderItemsPrint.paidAmount', { defaultValue: 'Paid amount' })}: <strong>{formatCurrency(summary.paidAmount, summary.currency, iqdPreference)}</strong></span>
                         <span>{t('businessPartners.orderItemsPrint.remaining', { defaultValue: 'Remaining' })}: <strong>{formatCurrency(summary.remainingAmount, summary.currency, iqdPreference)}</strong></span>
@@ -1005,7 +1005,7 @@ function CurrentBalanceSummary({
     iqdPreference: IQDDisplayPreference
 }) {
     return (
-        <section className="mt-3 rounded border-2 border-slate-600 bg-slate-50 px-3 py-2 text-[9px]" data-pdf-keep-together data-order-items-balance-summary>
+        <section className="mt-3 rounded border-2 border-slate-600 bg-slate-50 px-3 py-2 text-[11px]" data-pdf-keep-together data-order-items-balance-summary>
             <div className="mb-2 font-bold">{t('businessPartners.orderItemsPrint.currentBalance', { defaultValue: 'Current Balance' })}</div>
             <div className="grid grid-cols-2 gap-3">
                 <div className="border-e border-slate-300 pe-3">
@@ -1014,8 +1014,8 @@ function CurrentBalanceSummary({
                         partner: partnerName,
                         workspace: workspaceName
                     })}</div>
-                    <div className="text-[8px]">{t('businessPartners.receivable', { defaultValue: 'Receivable' })}</div>
-                    <div className="mt-1 text-[11px] font-bold"><CurrencyBalanceList balances={summary.receivable} iqdPreference={iqdPreference} /></div>
+                    <div className="text-[10px]">{t('businessPartners.receivable', { defaultValue: 'Receivable' })}</div>
+                    <div className="mt-1 text-[13px] font-bold"><CurrencyBalanceList balances={summary.receivable} iqdPreference={iqdPreference} /></div>
                 </div>
                 <div>
                     <div className="font-bold">{t('businessPartners.orderItemsPrint.workspaceOwesPartner', {
@@ -1023,8 +1023,8 @@ function CurrentBalanceSummary({
                         partner: partnerName,
                         workspace: workspaceName
                     })}</div>
-                    <div className="text-[8px]">{t('businessPartners.payable', { defaultValue: 'Payable' })}</div>
-                    <div className="mt-1 text-[11px] font-bold"><CurrencyBalanceList balances={summary.payable} iqdPreference={iqdPreference} /></div>
+                    <div className="text-[10px]">{t('businessPartners.payable', { defaultValue: 'Payable' })}</div>
+                    <div className="mt-1 text-[13px] font-bold"><CurrencyBalanceList balances={summary.payable} iqdPreference={iqdPreference} /></div>
                 </div>
             </div>
         </section>
@@ -1073,9 +1073,9 @@ export function LoanPortfolio({
         <section className="mt-5" data-order-items-loan-portfolio>
             <div className="mb-2 flex items-center justify-between border-b-2 border-slate-700 pb-1">
                 <h2 className="text-sm font-bold">{t('businessPartners.loans', { defaultValue: 'Loans' })}</h2>
-                <span className="text-[9px]">{rows.length} {t('businessPartners.orderItemsPrint.entries', { defaultValue: 'Entries' })}</span>
+                <span className="text-[11px]">{rows.length} {t('businessPartners.orderItemsPrint.entries', { defaultValue: 'Entries' })}</span>
             </div>
-            <table className="w-full border-collapse text-[8px] leading-[1.2]">
+            <table className="w-full border-collapse text-[10px] leading-[1.2]">
                 <thead>
                     <tr className="bg-[#dfead3]">
                         <th className="w-[17%] border border-slate-400 p-1 text-start">{t('loans.loanNo', { defaultValue: 'Loan No.' })}</th>
@@ -1114,16 +1114,16 @@ export function LoanPortfolio({
                             <tr key={row.loan.id} data-pdf-keep-together>
                                 <td className="border border-slate-300 p-1 align-top">
                                     <div className="font-bold">{row.linkedOrderCode ? `${row.linkedOrderCode} · ${row.loan.loanNo}` : row.loan.loanNo}</div>
-                                    <div className="text-[7px]">{row.loan.source === 'order'
+                                    <div className="text-[9px]">{row.loan.source === 'order'
                                         ? t('businessPartners.orderItemsPrint.orderLinkedLoan', { defaultValue: 'Order-linked loan' })
                                         : formatDate(row.loan.createdAt)}</div>
                                 </td>
-                                <td className="border border-slate-300 p-1 align-top text-[7px]">{row.periodActivity.map((activity) => loanPeriodActivityLabel(activity, t)).join(' · ')}</td>
+                                <td className="border border-slate-300 p-1 align-top text-[9px]">{row.periodActivity.map((activity) => loanPeriodActivityLabel(activity, t)).join(' · ')}</td>
                                 <td className="border border-slate-300 p-1 align-top">{directionLabel}</td>
                                 <td className="border border-slate-300 p-1 text-end">{formatCurrency(row.openingBalance, row.currency, iqdPreference)}</td>
                                 <td className="border border-slate-300 p-1 text-end">{formatCurrency(row.repayments, row.currency, iqdPreference)}</td>
                                 <td className="border border-slate-300 p-1 text-end font-bold">{formatCurrency(row.closingBalance, row.currency, iqdPreference)}</td>
-                                <td className="border border-slate-300 p-1 text-[7px] leading-snug">{note}</td>
+                                <td className="border border-slate-300 p-1 text-[9px] leading-snug">{note}</td>
                             </tr>
                         )
                     })}
@@ -1178,9 +1178,9 @@ function SettlementActivitySection({
         <section className="mt-5" data-order-items-settlement-activity>
             <div className="mb-2 flex items-center justify-between border-b-2 border-slate-700 pb-1">
                 <h2 className="text-sm font-bold">{t('businessPartners.orderItemsPrint.settlementActivity', { defaultValue: 'Partner Settlement Activity' })}</h2>
-                <span className="text-[9px]">{rows.length} {t('businessPartners.orderItemsPrint.entries', { defaultValue: 'Entries' })}</span>
+                <span className="text-[11px]">{rows.length} {t('businessPartners.orderItemsPrint.entries', { defaultValue: 'Entries' })}</span>
             </div>
-            <table className="w-full border-collapse text-[8px] leading-[1.2]">
+            <table className="w-full border-collapse text-[10px] leading-[1.2]">
                 <thead>
                     <tr className="bg-[#dfead3]">
                         <th className="w-[14%] border border-slate-400 p-1 text-start">{t('businessPartners.orderItemsPrint.date', { defaultValue: 'Date' })}</th>
@@ -1225,14 +1225,14 @@ function SettlementActivitySection({
                                 <td className="border border-slate-300 p-1 align-top whitespace-nowrap">{formatDateTime(row.date)}</td>
                                 <td className="border border-slate-300 p-1 align-top">
                                     <div className="font-semibold">{settlementActivityLabel(row.kind, t)}</div>
-                                    {flowLabel ? <div className="text-[7px]">{flowLabel}</div> : null}
+                                    {flowLabel ? <div className="text-[9px]">{flowLabel}</div> : null}
                                 </td>
                                 <td className="border border-slate-300 p-1 align-top font-semibold">{row.reference}</td>
                                 <td className="border border-slate-300 p-1 text-end align-top whitespace-nowrap font-semibold">
                                     {row.amount == null ? '—' : `${row.direction === 'incoming' ? '+' : row.direction === 'outgoing' ? '−' : ''}${formatCurrency(row.amount, row.currency, iqdPreference)}`}
                                 </td>
                                 <td className="border border-slate-300 p-1 text-end align-top whitespace-nowrap font-bold">{row.balanceAfter == null ? '—' : formatCurrency(row.balanceAfter, row.currency, iqdPreference)}</td>
-                                <td className="border border-slate-300 p-1 text-[7px] leading-snug">{note || '—'}</td>
+                                <td className="border border-slate-300 p-1 text-[9px] leading-snug">{note || '—'}</td>
                             </tr>
                         )
                     })}
@@ -1258,7 +1258,7 @@ export function StatementSummary({
     return (
         <div className="mt-2 space-y-2" data-pdf-keep-together data-order-items-section-summary>
             {summaries.map((summary) => (
-                <div key={summary.currency} className="rounded border border-slate-300 bg-slate-50 px-2 py-2 text-[9px]">
+                <div key={summary.currency} className="rounded border border-slate-300 bg-slate-50 px-2 py-2 text-[11px]">
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-5">
                         <span>{t('businessPartners.orderItemsPrint.currency', { defaultValue: 'Currency' })}: <strong>{summary.currency.toUpperCase()}</strong></span>
                         <span>{t('businessPartners.orderItemsPrint.orders', { defaultValue: 'Orders' })}: <strong>{summary.orderCount}</strong></span>
@@ -1266,7 +1266,7 @@ export function StatementSummary({
                         <span>{t('businessPartners.orderItemsPrint.discount', { defaultValue: 'Discount' })}: <strong>-{formatCurrency(summary.discount, summary.currency, iqdPreference)}</strong></span>
                         {kind === 'sales' ? <span>{t('businessPartners.orderItemsPrint.tax', { defaultValue: 'Tax' })}: <strong>+{formatCurrency(summary.tax, summary.currency, iqdPreference)}</strong></span> : null}
                     </div>
-                    <div className="mt-2 grid grid-cols-3 gap-2 border-t-2 border-slate-400 pt-2 text-[10px] font-bold" data-order-items-summary-balances>
+                    <div className="mt-2 grid grid-cols-3 gap-2 border-t-2 border-slate-400 pt-2 text-[12px] font-bold" data-order-items-summary-balances>
                         <span>{t('businessPartners.orderItemsPrint.total', { defaultValue: 'Total' })}: <strong>{formatCurrency(summary.total, summary.currency, iqdPreference)}</strong></span>
                         <span>{t('businessPartners.orderItemsPrint.paid', { defaultValue: 'Paid' })}: <strong>{formatCurrency(summary.paidAmount, summary.currency, iqdPreference)}</strong></span>
                         <span>{t('businessPartners.orderItemsPrint.remaining', { defaultValue: 'Remaining' })}: <strong>{formatCurrency(summary.remainingAmount, summary.currency, iqdPreference)}</strong></span>
@@ -1369,7 +1369,7 @@ export function UnifiedStatementSummary({
     if (unified.length === 0) return null
 
     return (
-        <div className="mt-2 rounded border border-slate-300 bg-slate-50 px-2 py-2 text-[9px]" data-pdf-keep-together data-order-items-section-summary>
+        <div className="mt-2 rounded border border-slate-300 bg-slate-50 px-2 py-2 text-[11px]" data-pdf-keep-together data-order-items-section-summary>
             {unified.map((summary, index) => (
                 <div key={summary.currency}>
                     {index > 0 ? <hr className="my-1.5 border-slate-300" /> : null}
@@ -1380,7 +1380,7 @@ export function UnifiedStatementSummary({
                         <span>{t('businessPartners.orderItemsPrint.discount', { defaultValue: 'Discount' })}: <strong>-{formatCurrency(summary.discount, summary.currency, iqdPreference)}</strong></span>
                         {summary.tax > 0 ? <span>{t('businessPartners.orderItemsPrint.tax', { defaultValue: 'Tax' })}: <strong>+{formatCurrency(summary.tax, summary.currency, iqdPreference)}</strong></span> : null}
                     </div>
-                    <div className="mt-2 grid grid-cols-3 gap-2 border-t-2 border-slate-400 pt-2 text-[10px] font-bold" data-order-items-summary-balances>
+                    <div className="mt-2 grid grid-cols-3 gap-2 border-t-2 border-slate-400 pt-2 text-[12px] font-bold" data-order-items-summary-balances>
                         <span>{t('businessPartners.orderItemsPrint.total', { defaultValue: 'Total' })}: <strong>{formatCurrency(summary.total, summary.currency, iqdPreference)}</strong></span>
                         <span>{t('businessPartners.orderItemsPrint.paid', { defaultValue: 'Paid' })}: <strong>{formatCurrency(summary.paidAmount, summary.currency, iqdPreference)}</strong></span>
                         <span>{t('businessPartners.orderItemsPrint.remaining', { defaultValue: 'Remaining' })}: <strong>{formatCurrency(summary.remainingAmount, summary.currency, iqdPreference)}</strong></span>
@@ -1413,15 +1413,15 @@ function OrderBlock({
 
     return (
         <div className="mt-3" data-order-statement-block>
-            <div className="mb-1 flex items-center justify-between gap-2 border-b border-slate-400 pb-0.5 text-[9px] font-bold">
+            <div className="mb-1 flex items-center justify-between gap-2 border-b border-slate-400 pb-0.5 text-[11px] font-bold">
                 <div className="flex items-center gap-2">
                     <span>{block.orderCode}</span>
-                    <span className="rounded border border-slate-500 px-1 text-[7px] font-bold">{kindLabel}</span>
-                    {block.isReturned ? <span className="rounded border border-red-400 px-1 text-[7px] font-bold">{returnedLabel}</span> : null}
+                    <span className="rounded border border-slate-500 px-1 text-[9px] font-bold">{kindLabel}</span>
+                    {block.isReturned ? <span className="rounded border border-red-400 px-1 text-[9px] font-bold">{returnedLabel}</span> : null}
                 </div>
                 <span className="font-normal">{formatDate(block.orderDate)}</span>
             </div>
-            <table className="w-full border-collapse text-[8px] leading-[1.2]" data-order-items-paginated>
+            <table className="w-full border-collapse text-[10px] leading-[1.2]" data-order-items-paginated>
                 <thead>
                     <tr className="bg-[#dfead3]">
                         <th className="w-[4%] border border-slate-400 p-1 text-center">#</th>
@@ -1450,7 +1450,7 @@ function OrderBlock({
                                 </td>
                                 <td className="border border-slate-300 px-1 py-1 whitespace-nowrap align-top">
                                     {row.orderCode}
-                                    {row.isReturned ? <span className="ms-1 rounded border border-red-400 px-1 text-[7px] font-bold">{returnedLabel}</span> : null}
+                                    {row.isReturned ? <span className="ms-1 rounded border border-red-400 px-1 text-[9px] font-bold">{returnedLabel}</span> : null}
                                 </td>
                                 <td colSpan={5} className="border border-slate-300 px-1 py-1 whitespace-nowrap align-top">
                                     {statementRowLabel(row, t)}
@@ -1480,9 +1480,9 @@ function OrderBlock({
                                 <td className="border border-slate-300 p-1 align-top font-semibold">
                                     <div>
                                         {row.orderCode}
-                                        {row.isReturned ? <span className="ms-1 rounded border border-red-400 px-1 text-[7px] font-bold">{returnedLabel}</span> : null}
+                                        {row.isReturned ? <span className="ms-1 rounded border border-red-400 px-1 text-[9px] font-bold">{returnedLabel}</span> : null}
                                     </div>
-                                    <div className="mt-0.5 text-[7px] font-normal">{formatDate(row.orderDate)}</div>
+                                    <div className="mt-0.5 text-[9px] font-normal">{formatDate(row.orderDate)}</div>
                                 </td>
                                 <td className="border border-slate-300 p-1 align-top">{statementRowLabel(row, t)}</td>
                                 <td className="border border-slate-300 p-1 align-top whitespace-pre-wrap">{statementRowNote(row, t)}</td>
@@ -1524,15 +1524,15 @@ export function MoneyMovementBlock({
 
     return (
         <div className="mt-3" data-order-statement-block>
-            <div className="mb-1 flex items-center justify-between gap-2 border-b border-slate-400 pb-0.5 text-[9px] font-bold">
+            <div className="mb-1 flex items-center justify-between gap-2 border-b border-slate-400 pb-0.5 text-[11px] font-bold">
                 <div className="flex items-center gap-2">
                     <span>{kindLabel}</span>
                     {row.orderCode?.trim() ? <span className="font-normal">{row.orderCode}</span> : null}
-                    <span className={`rounded border px-1 text-[7px] font-bold ${isIncoming ? 'border-emerald-600 text-emerald-700' : 'border-rose-600 text-rose-700'}`}>{directionLabel}</span>
+                    <span className={`rounded border px-1 text-[9px] font-bold ${isIncoming ? 'border-emerald-600 text-emerald-700' : 'border-rose-600 text-rose-700'}`}>{directionLabel}</span>
                 </div>
                 <span className="font-normal">{formatDate(row.orderDate)}</span>
             </div>
-            <div className="relative flex items-center justify-between gap-2 border border-slate-400 bg-slate-50 px-1.5 py-1 text-[8px]">
+            <div className="relative flex items-center justify-between gap-2 border border-slate-400 bg-slate-50 px-1.5 py-1 text-[10px]">
                 <OrderHierarchyMarker
                     position="single"
                     forceLine
@@ -1540,7 +1540,7 @@ export function MoneyMovementBlock({
                 />
                 <span className="flex-1">
                     {methodLabel ? <span className="font-semibold">{methodLabel}</span> : null}
-                    {row.note?.trim() ? <span className="ms-2 text-[7px]">{row.note.trim()}</span> : null}
+                    {row.note?.trim() ? <span className="ms-2 text-[9px]">{row.note.trim()}</span> : null}
                 </span>
                 <span className="font-bold">{isIncoming ? '+' : '−'} {formatCurrency(row.amount ?? 0, row.currency, iqdPreference)}</span>
             </div>
@@ -1563,9 +1563,9 @@ export function MoneyMovementSummary({
 
     return (
         <div className="mt-2" data-pdf-keep-together data-order-items-section-summary>
-            <div className="mb-1 text-[9px] font-bold">{title}</div>
+            <div className="mb-1 text-[11px] font-bold">{title}</div>
             {summaries.map((summary) => (
-                <div key={summary.currency} className="grid grid-cols-2 gap-x-4 gap-y-1 rounded border border-slate-300 bg-slate-50 px-2 py-2 text-[9px] sm:grid-cols-4">
+                <div key={summary.currency} className="grid grid-cols-2 gap-x-4 gap-y-1 rounded border border-slate-300 bg-slate-50 px-2 py-2 text-[11px] sm:grid-cols-4">
                     <span>{t('businessPartners.orderItemsPrint.currency', { defaultValue: 'Currency' })}: <strong>{summary.currency.toUpperCase()}</strong></span>
                     <span>{summary.count} {t('businessPartners.orderItemsPrint.entries', { defaultValue: 'Entries' })}</span>
                     <span>{t('businessPartners.orderItemsPrint.received', { defaultValue: 'Received' })}: <strong>+{formatCurrency(summary.received, summary.currency, iqdPreference)}</strong></span>
@@ -1595,9 +1595,9 @@ function ExcludedOrdersSection({
     if (excludedOrders.length === 0) return null
 
     return (
-        <section className="mt-4 rounded border border-dashed border-slate-400 px-2 py-2 text-[8px]" data-pdf-keep-together data-order-items-excluded-orders>
+        <section className="mt-4 rounded border border-dashed border-slate-400 px-2 py-2 text-[10px]" data-pdf-keep-together data-order-items-excluded-orders>
             <div className="font-bold">{t('businessPartners.orderItemsPrint.referenceOnly', { defaultValue: 'Reference Only' })}</div>
-            <div className="mb-1 text-[7px]">{t('businessPartners.orderItemsPrint.notIncludedInCurrentBalance', { defaultValue: 'Draft and cancelled orders are not included in the current balance.' })}</div>
+            <div className="mb-1 text-[9px]">{t('businessPartners.orderItemsPrint.notIncludedInCurrentBalance', { defaultValue: 'Draft and cancelled orders are not included in the current balance.' })}</div>
             <div className="flex flex-wrap gap-x-3 gap-y-1">
                 {excludedOrders.map(({ order, kind }) => (
                     <span key={order.id}>
@@ -1644,7 +1644,7 @@ function OrderItemsSection({
                 data-order-items-continuation-label={`(${t('businessPartners.orderItemsPrint.continued', { defaultValue: 'Continued' })})`}
             >
                 <h2 className="text-sm font-bold">{t('businessPartners.orderItemsPrint.accountActivity', { defaultValue: 'Account Activity' })}</h2>
-                <span className="text-[9px]" data-order-items-section-order-count>{blocks.length} {t('businessPartners.orderItemsPrint.entries', { defaultValue: 'Entries' })}</span>
+                <span className="text-[11px]" data-order-items-section-order-count>{blocks.length} {t('businessPartners.orderItemsPrint.entries', { defaultValue: 'Entries' })}</span>
             </div>
             {blocks.map((block) => (
                 <OrderBlock
@@ -1711,7 +1711,7 @@ export function PartnerOrderItemsPrintTemplate({
                 }}
             />
             <section className="bg-white" style={{ minHeight: '297mm', padding: '10mm 9mm', boxSizing: 'border-box' }}>
-                <header className="grid grid-cols-3 border border-slate-500 text-[9px]" data-pdf-keep-together>
+                <header className="grid grid-cols-3 border border-slate-500 text-[11px]" data-pdf-keep-together>
                     <div className="min-h-[32mm] border-e border-slate-500 p-2 leading-relaxed">
                         <MovableOrderPrintBlock
                             componentKey={PARTNER_ORDER_ITEMS_MOVABLE_COMPONENT_KEYS.workspaceName}
@@ -1722,7 +1722,7 @@ export function PartnerOrderItemsPrintTemplate({
                             wrapperClassName="inline-block max-w-full"
                             resizable
                         >
-                            <div className="font-bold text-[11px]">{workspaceName || t('businessPartners.ourBusiness', { defaultValue: 'Our business' })}</div>
+                            <div className="font-bold text-[13px]">{workspaceName || t('businessPartners.ourBusiness', { defaultValue: 'Our business' })}</div>
                         </MovableOrderPrintBlock>
                         {workspaceDescription?.trim() ? <div className="mt-1 whitespace-pre-wrap">{workspaceDescription.trim()}</div> : null}
                         {data.workspace?.phone?.trim() ? <div>{data.workspace.phone}</div> : null}
@@ -1737,14 +1737,14 @@ export function PartnerOrderItemsPrintTemplate({
                         )}
                     </div>
                     <div className="min-h-[32mm] p-2 text-end leading-relaxed">
-                        <div className="font-bold text-[11px]">{t('businessPartners.orderItemsPrint.title', { defaultValue: 'Partner Order Items Statement' })}</div>
+                        <div className="font-bold text-[13px]">{t('businessPartners.orderItemsPrint.title', { defaultValue: 'Partner Order Items Statement' })}</div>
                         <div className="mt-1"><span>{t('businessPartners.orderItemsPrint.partner', { defaultValue: 'Partner' })}: </span><strong>{data.partner.name}</strong></div>
                         {data.partner.contactName?.trim() ? <div>{data.partner.contactName}</div> : null}
                         {data.partner.phone?.trim() ? <div>{data.partner.phone}</div> : null}
                     </div>
                 </header>
 
-                <div className="mt-2 grid grid-cols-3 gap-2 border-b border-slate-300 pb-2 text-[9px]" data-pdf-keep-together>
+                <div className="mt-2 grid grid-cols-3 gap-2 border-b border-slate-300 pb-2 text-[11px]" data-pdf-keep-together>
                     <div><span>{t('businessPartners.orderItemsPrint.period', { defaultValue: 'Period' })}: </span><strong>{periodLabel}</strong></div>
                     <div><span>{t('businessPartners.orderItemsPrint.address', { defaultValue: 'Address' })}: </span>{partnerLocation || '—'}</div>
                     <div className="text-end"><span>{t('businessPartners.orderItemsPrint.printed', { defaultValue: 'Printed' })}: </span>{formatDateTime(data.generatedAt)}</div>
