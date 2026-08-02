@@ -54,6 +54,7 @@ export interface WorkspaceFeatures {
     // Module toggles
     pos: boolean
     instant_pos: boolean
+    kds: boolean
     sales_history: boolean
     crm: boolean
     orders: boolean
@@ -89,7 +90,6 @@ export interface WorkspaceFeatures {
     coordination: string | null
     max_discount_percent: number
     allow_whatsapp: boolean
-    kds_enabled: boolean
     print_lang: 'auto' | 'en' | 'ar' | 'ku'
     print_qr: boolean
     receipt_template: 'primary' | 'modern'
@@ -143,7 +143,7 @@ interface WorkspaceContextType {
     refreshFeatures: () => Promise<void>
     refreshPaymentSummary: () => Promise<WorkspacePaymentSummary | null>
     updateSettings: (
-        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'pos_convert_to_workspace_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string },
+        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'pos_convert_to_workspace_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string },
         options?: { requireRemoteSync?: boolean }
     ) => Promise<void>
     switchDataMode: (newMode: 'cloud' | 'hybrid') => Promise<{ error: string | null }>
@@ -153,6 +153,7 @@ interface WorkspaceContextType {
 const PLAN_DERIVED_FEATURE_KEYS: ModuleFeatureKey[] = [
     'pos',
     'instant_pos',
+    'kds',
     'sales_history',
     'crm',
     'orders',
@@ -214,7 +215,7 @@ function getResolvedFeatureFlags(resolved: ResolvedWorkspacePlan) {
 const defaultPlan = normalizeWorkspacePlan('basic')
 
 const PLAN_CONTROLLED_SETTINGS = new Set<string>([
-    ...PLAN_DERIVED_FEATURE_KEYS.filter(k => k !== 'instant_pos'),
+    ...PLAN_DERIVED_FEATURE_KEYS,
     'allow_whatsapp',
     'upload_limit_mb'
 ])
@@ -239,7 +240,6 @@ const defaultFeatures: WorkspaceFeatures = {
     currency_exchange: false,
     agents: false,
     clinical_appointments: false,
-    kds_enabled: false,
     print_lang: 'auto',
     print_qr: false,
     receipt_template: 'primary',
@@ -259,7 +259,6 @@ const WORKSPACE_FEATURE_COLUMNS = [
     'name',
     'plan',
     'data_mode',
-    'instant_pos',
     'travel_agency',
     'real_estate',
     'is_configured',
@@ -271,7 +270,6 @@ const WORKSPACE_FEATURE_COLUMNS = [
     'coordination',
     'max_discount_percent',
     'allow_whatsapp',
-    'kds_enabled',
     'print_lang',
     'print_qr',
     'receipt_template',
@@ -327,13 +325,7 @@ function mergeWorkspaceFeatures(
         thermal_printing: capSet.has('thermalPrinter')
             ? features?.thermal_printing ?? defaultFeatures.thermal_printing
             : false,
-        print_quality: 'high' as const,
-        instant_pos: resolvedCapabilities.modules.includes('instant_pos')
-            ? features?.instant_pos ?? defaultFeatures.instant_pos
-            : false,
-        kds_enabled: capSet.has('kds') && features?.instant_pos !== false
-            ? features?.kds_enabled ?? defaultFeatures.kds_enabled
-            : false
+        print_quality: 'high' as const
     }
 }
 
@@ -361,7 +353,6 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
     return mergeWorkspaceFeatures({
         plan: normalizeWorkspacePlan(localWorkspace.plan),
         data_mode: localWorkspace.data_mode ?? 'cloud',
-        instant_pos: localWorkspace.instant_pos ?? true,
         travel_agency: localWorkspace.travel_agency ?? true,
         real_estate: localWorkspace.real_estate ?? true,
         activities: localWorkspace.activities ?? false,
@@ -377,7 +368,6 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
         coordination: localWorkspace.coordination ?? null,
         max_discount_percent: localWorkspace.max_discount_percent ?? 100,
         allow_whatsapp: localWorkspace.allow_whatsapp ?? false,
-        kds_enabled: localWorkspace.kds_enabled ?? false,
         print_lang: localWorkspace.print_lang ?? 'auto',
         print_qr: localWorkspace.print_qr ?? false,
         receipt_template: localWorkspace.receipt_template ?? 'primary',
@@ -514,7 +504,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             data_mode: nextFeatures.data_mode,
             is_configured: nextFeatures.is_configured,
             pos: nextFeatures.pos,
-            instant_pos: nextFeatures.instant_pos,
             sales_history: nextFeatures.sales_history,
             crm: nextFeatures.crm,
             orders: nextFeatures.orders,
@@ -543,7 +532,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             iqd_display_preference: nextFeatures.iqd_display_preference,
             locked_workspace: nextFeatures.locked_workspace,
             allow_whatsapp: nextFeatures.allow_whatsapp,
-            kds_enabled: nextFeatures.kds_enabled,
             logo_url: nextFeatures.logo_url,
             coordination: nextFeatures.coordination,
             max_discount_percent: nextFeatures.max_discount_percent,
@@ -722,7 +710,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             const fetchedFeatures = mergeWorkspaceFeatures({
                 plan: normalizeWorkspacePlan(workspaceRow.plan),
                 data_mode: workspaceRow.data_mode ?? currentFeatures.data_mode,
-                instant_pos: workspaceRow.instant_pos ?? currentFeatures.instant_pos,
                 travel_agency: workspaceRow.travel_agency ?? currentFeatures.travel_agency,
                 real_estate: workspaceRow.real_estate ?? currentFeatures.real_estate,
                 activities: currentFeatures.activities,
@@ -740,7 +727,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 coordination: workspaceRow.coordination ?? null,
                 max_discount_percent: workspaceRow.max_discount_percent ?? currentFeatures.max_discount_percent,
                 allow_whatsapp: workspaceRow.allow_whatsapp ?? currentFeatures.allow_whatsapp,
-                kds_enabled: workspaceRow.kds_enabled ?? false,
                 print_lang: workspaceRow.print_lang ?? currentFeatures.print_lang,
                 print_qr: workspaceRow.print_qr ?? currentFeatures.print_qr,
                 receipt_template: workspaceRow.receipt_template ?? currentFeatures.receipt_template,
@@ -934,7 +920,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             ...currentFeatures,
                             plan: normalizeWorkspacePlan(data.plan ?? currentFeatures.plan),
                             data_mode: data.data_mode ?? currentFeatures.data_mode,
-                            instant_pos: data.instant_pos ?? currentFeatures.instant_pos,
                             travel_agency: data.travel_agency ?? currentFeatures.travel_agency,
                             real_estate: data.real_estate ?? currentFeatures.real_estate,
                             currency_exchange: currentFeatures.currency_exchange,
@@ -949,7 +934,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             coordination: data.coordination ?? currentFeatures.coordination,
                             max_discount_percent: data.max_discount_percent ?? currentFeatures.max_discount_percent,
                             allow_whatsapp: data.allow_whatsapp ?? currentFeatures.allow_whatsapp,
-                            kds_enabled: data.kds_enabled ?? currentFeatures.kds_enabled,
                             print_lang: data.print_lang ?? currentFeatures.print_lang,
                             print_qr: data.print_qr ?? currentFeatures.print_qr,
                             receipt_template: data.receipt_template ?? currentFeatures.receipt_template,
@@ -1172,7 +1156,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
 
     const updateSettings = async (
-        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'pos_convert_to_workspace_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string },
+        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'pos_convert_to_workspace_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string },
         options?: { requireRemoteSync?: boolean }
     ) => {
         const workspaceId = user?.workspaceId
@@ -1250,7 +1234,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 data_mode: newFeatures.data_mode,
                 is_configured: newFeatures.is_configured,
                 pos: newFeatures.pos,
-                instant_pos: newFeatures.instant_pos,
                 sales_history: newFeatures.sales_history,
                 crm: newFeatures.crm,
                 orders: newFeatures.orders,
@@ -1265,7 +1248,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 iqd_display_preference: newFeatures.iqd_display_preference,
                 locked_workspace: newFeatures.locked_workspace,
                 allow_whatsapp: newFeatures.allow_whatsapp,
-                kds_enabled: newFeatures.kds_enabled,
                 logo_url: newFeatures.logo_url,
                 coordination: newFeatures.coordination,
                 max_discount_percent: newFeatures.max_discount_percent,
@@ -1295,8 +1277,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
         if (navigator.onLine) {
             let updatedRow: {
-                kds_enabled?: boolean
-                instant_pos?: boolean
                 pos_convert_to_workspace_currency?: boolean
             } | null = null
             let remoteWriteError: unknown = null
@@ -1308,13 +1288,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                         .from('workspaces')
                         .update(supabaseUpdate)
                         .eq('id', workspaceId)
-                        .select('kds_enabled, instant_pos, pos_convert_to_workspace_currency')
+                        .select('pos_convert_to_workspace_currency')
                         .maybeSingle(),
                     options?.requireRemoteSync
                         ? { timeoutMs: 20_000, platform: 'all' }
                         : undefined
                 ) as {
-                    data: { kds_enabled?: boolean; instant_pos?: boolean; pos_convert_to_workspace_currency?: boolean } | null
+                    data: { pos_convert_to_workspace_currency?: boolean } | null
                     error: unknown
                 }
                 updatedRow = data
@@ -1368,12 +1348,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
                 if (updatedRow) {
                     const patched: Record<string, unknown> = {}
-                    if ('instant_pos' in supabaseUpdate && typeof updatedRow.instant_pos === 'boolean') {
-                        patched.instant_pos = updatedRow.instant_pos
-                    }
-                    if ('kds_enabled' in supabaseUpdate && typeof updatedRow.kds_enabled === 'boolean') {
-                        patched.kds_enabled = updatedRow.kds_enabled
-                    }
                     if ('pos_convert_to_workspace_currency' in supabaseUpdate && typeof updatedRow.pos_convert_to_workspace_currency === 'boolean') {
                         patched.pos_convert_to_workspace_currency = updatedRow.pos_convert_to_workspace_currency
                     }

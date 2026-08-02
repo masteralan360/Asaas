@@ -1207,13 +1207,13 @@ function KdsStreamAutostart() {
   const { status, startStream } = useKdsStream(isHost);
 
   useEffect(() => {
-    if (isHost && features.kds_enabled && status === "idle") {
+    if (isHost && features.kds && status === "idle") {
       console.log("[KDS] Autostarting stream...");
       startStream(4004).catch((err: any) => {
         console.error("[KDS] Autostart failed:", err);
       });
     }
-  }, [isHost, features.kds_enabled, status, startStream]);
+  }, [isHost, features.kds, status, startStream]);
 
   return null;
 }
@@ -1438,7 +1438,7 @@ function App() {
                       <Route path="/kds">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
-                          requiredCapability="kds"
+                          requiredFeature="kds"
                         >
                           <Layout>
                             <KDSDashboard />

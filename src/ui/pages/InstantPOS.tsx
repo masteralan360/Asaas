@@ -481,7 +481,7 @@ export function InstantPOS() {
     const { t } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
-    const { features, isLocalMode } = useWorkspace()
+    const { features, hasFeature, isLocalMode } = useWorkspace()
     const storages = useStorages(user?.workspaceId)
     const [selectedStorageId, setSelectedStorageId] = useState<string>(() => {
         return localStorage.getItem('instant_pos_selected_storage') || ''
@@ -507,10 +507,10 @@ export function InstantPOS() {
     const { status: kdsStatus, startStream, broadcast } = useKdsStream(true)
 
     useEffect(() => {
-        if (features.kds_enabled && kdsStatus === 'idle') {
+        if (hasFeature('kds') && kdsStatus === 'idle') {
             startStream(4004).catch(console.error)
         }
-    }, [features.kds_enabled, kdsStatus, startStream])
+    }, [hasFeature, kdsStatus, startStream])
 
     const [tickets, setTickets] = useState<InstantPosTicket[]>(() => loadTickets())
     const [activeTicketId, setActiveTicketId] = useState<string | null>(null)
@@ -540,10 +540,10 @@ export function InstantPOS() {
     useEffect(() => {
         saveTickets(tickets)
         // Broadcast to KDS remote clients whenever tickets change
-        if (features.kds_enabled && kdsStatus === 'host') {
+        if (hasFeature('kds') && kdsStatus === 'host') {
             broadcast('TICKET_UPDATED', tickets)
         }
-    }, [tickets, kdsStatus, features.kds_enabled])
+    }, [tickets, kdsStatus, hasFeature])
 
     useEffect(() => {
         const timer = setInterval(() => setNow(Date.now()), 1000)
@@ -839,12 +839,12 @@ export function InstantPOS() {
             expiresAt: status === 'pending'
                 ? (ticket.expiresAt || new Date(Date.now() + PENDING_TICKET_TTL_MS).toISOString())
                 : ticket.expiresAt,
-            kitchenRoutedAt: status === 'preparing' && features.kds_enabled
+            kitchenRoutedAt: status === 'preparing' && hasFeature('kds')
                 ? (ticket.kitchenRoutedAt || new Date().toISOString())
                 : ticket.kitchenRoutedAt
         }))
 
-        if (status === 'preparing' && features.kds_enabled) {
+        if (status === 'preparing' && hasFeature('kds')) {
             toast({
                 title: t('common.success') || 'Sent to Kitchen',
                 description: t('instantPos.kdsToast') || 'Ticket routed to KDS for preparation.'

@@ -128,19 +128,21 @@ export function buildWorkspaceNavigation({
         },
       ]
       : []),
-    ...(isCoreRole && hasFeature("instant_pos") && features.instant_pos && canAccessPermission("instantPos.access")
+    ...(isCoreRole && hasFeature("instant_pos") && canAccessPermission("instantPos.access")
       ? [
         {
           name: t("nav.instantPos", { defaultValue: "Instant POS" }),
           href: "/instant-pos",
           icon: Zap,
-          children: features.kds_enabled ? [
-            {
-              name: t("nav.kdsDashboard", { defaultValue: "KDS Dashboard" }),
-              href: "/kds",
-              icon: Monitor,
-            },
-          ] : undefined,
+        },
+      ]
+      : []),
+    ...(isCoreRole && hasFeature("kds")
+      ? [
+        {
+          name: t("nav.kdsDashboard", { defaultValue: "KDS Dashboard" }),
+          href: "/kds",
+          icon: Monitor,
         },
       ]
       : []),

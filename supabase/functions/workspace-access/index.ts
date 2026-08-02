@@ -230,7 +230,6 @@ type WorkspaceMetadataRow = {
 }
 
 type BranchSourceWorkspace = WorkspaceMetadataRow & {
-    instant_pos?: boolean | null
     travel_agency?: boolean | null
     is_configured?: boolean | null
     default_currency?: string | null
@@ -240,7 +239,6 @@ type BranchSourceWorkspace = WorkspaceMetadataRow & {
     coordination?: string | null
     max_discount_percent?: number | null
     allow_whatsapp?: boolean | null
-    kds_enabled?: boolean | null
     print_lang?: string | null
     print_qr?: boolean | null
     receipt_template?: string | null
@@ -257,7 +255,6 @@ const BRANCH_SOURCE_SELECT_COLUMNS = [
     'code',
     'plan',
     'data_mode',
-    'instant_pos',
     'travel_agency',
     'is_configured',
     'default_currency',
@@ -267,7 +264,6 @@ const BRANCH_SOURCE_SELECT_COLUMNS = [
     'coordination',
     'max_discount_percent',
     'allow_whatsapp',
-    'kds_enabled',
     'print_lang',
     'print_qr',
     'receipt_template',
@@ -714,7 +710,6 @@ async function handleCreateBranch(
         name: branchName,
         plan: sourcePlan.plan,
         data_mode: sourceWorkspace.data_mode ?? 'cloud',
-        instant_pos: sourceWorkspace.instant_pos ?? true,
         travel_agency: sourceWorkspace.travel_agency ?? true,
         is_configured: true,
         default_currency: sourceWorkspace.default_currency ?? 'iqd',
@@ -724,7 +719,6 @@ async function handleCreateBranch(
         coordination: sourceWorkspace.coordination ?? null,
         max_discount_percent: sourceWorkspace.max_discount_percent ?? 100,
         allow_whatsapp: sourceWorkspace.allow_whatsapp ?? false,
-        kds_enabled: sourceWorkspace.kds_enabled ?? false,
         print_lang: sourceWorkspace.print_lang ?? 'auto',
         print_qr: sourceWorkspace.print_qr ?? false,
         receipt_template: sourceWorkspace.receipt_template ?? 'primary',

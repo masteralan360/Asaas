@@ -6,6 +6,7 @@ export type WorkspaceCurrencyCode = 'usd' | 'eur' | 'iqd' | 'try'
 export type PlanModuleKey =
     | 'pos'
     | 'instant_pos'
+    | 'kds'
     | 'sales_history'
     | 'products'
     | 'storages'
@@ -43,6 +44,7 @@ export type PlanModuleKey =
 export type WorkspaceFeatureKey =
     | 'pos'
     | 'instant_pos'
+    | 'kds'
     | 'sales_history'
     | 'crm'
     | 'orders'
@@ -98,7 +100,6 @@ export type PlanCapabilityKey =
     | 'stockBatches'
     | 'orderFreeBonus'
     | 'priceBooks'
-    | 'kds'
 
 export interface WorkspacePlanLimits {
     maxMembers: number
@@ -128,7 +129,6 @@ export const PLAN_DEFINITIONS: Record<WorkspacePlan, WorkspacePlanDefinition> = 
     basic: {
         modules: [
             'pos',
-            'instant_pos',
             'sales_history',
             'products',
             'storages',
@@ -140,10 +140,7 @@ export const PLAN_DEFINITIONS: Record<WorkspacePlan, WorkspacePlanDefinition> = 
             'direct_transactions',
             'members'
         ],
-        capabilities: [
-            'receiptPrinting',
-            'kds'
-        ],
+        capabilities: ['receiptPrinting'],
         allowedCurrencies: ['iqd'],
         limits: {
             maxMembers: 3,
@@ -231,6 +228,7 @@ export const PLAN_DEFINITIONS: Record<WorkspacePlan, WorkspacePlanDefinition> = 
 export const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModuleKey | null> = {
     pos: 'pos',
     instant_pos: 'instant_pos',
+    kds: 'kds',
     sales_history: 'sales_history',
     crm: 'customers',
     agents: 'agents',

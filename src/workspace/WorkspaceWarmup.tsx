@@ -75,7 +75,7 @@ export function WorkspaceWarmup() {
 
         if (hasFeature('pos')) tasks.push(() => import('@/ui/pages/POS'))
         if (hasFeature('instant_pos')) tasks.push(() => import('@/ui/pages/InstantPOS'))
-        if (hasCapability('kds') && features.kds_enabled) tasks.push(() => import('@/ui/pages/KDSDashboard'))
+        if (hasFeature('kds')) tasks.push(() => import('@/ui/pages/KDSDashboard'))
         if (hasFeature('sales_history')) tasks.push(() => import('@/ui/pages/Sales'))
         if (hasFeature('crm')) {
             tasks.push(
@@ -149,7 +149,7 @@ export function WorkspaceWarmup() {
         if (user?.role === 'admin') tasks.push(() => import('@/ui/pages/CustomTemplates'))
 
         await runInBatches(tasks, MODULE_PRELOAD_BATCH_SIZE)
-    }, [features.allowed_currencies.length, features.kds_enabled, hasCapability, hasFeature, user?.role])
+    }, [features.allowed_currencies.length, hasCapability, hasFeature, user?.role])
 
     useEffect(() => {
         if (

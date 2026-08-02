@@ -225,19 +225,19 @@ const renderStartupFailure = (error: unknown) => {
 
 
 const renderMarketplace = async () => {
-    const [, { ThemeProvider }, { Toaster }, { MarketplaceApp }] = await Promise.all([
+    const [, { Toaster }, { MarketplaceApp }, { MarketplaceThemeRoot }] = await Promise.all([
         import('./index.css'),
-        import('@/ui/components/theme-provider'),
         import('@/ui/components'),
         import('./marketplace/MarketplaceApp'),
+        import('./marketplace/MarketplaceThemeRoot'),
         import('./i18n/config')
     ])
 
     renderRoot(
-        <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme" defaultStyle="emerald">
+        <MarketplaceThemeRoot>
             <MarketplaceApp />
             <Toaster />
-        </ThemeProvider>,
+        </MarketplaceThemeRoot>,
     )
 }
 

@@ -10,7 +10,7 @@ import type { IQDDisplayPreference, CurrencyCode } from '@/local-db/models'
 import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, Upload, AlertCircle, Printer, Contact, Fingerprint, Store, ExternalLink, Usb, CalendarClock } from 'lucide-react'
 import { formatDate, formatDateTime, formatTime, cn, generateId, getHourDisplayPreference, setHourDisplayPreference, type HourDisplayPreference } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
-import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell, MonitorPlay, Wifi, Zap } from 'lucide-react'
+import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell, MonitorPlay, Wifi } from 'lucide-react'
 import { useState, useEffect, useRef, type ChangeEvent } from 'react'
 import { isMobile, isDesktop, isTauri } from '@/lib/platform'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
@@ -56,10 +56,10 @@ export function Settings() {
     const { streamUrl, status: kdsStatus, startStream } = useKdsStream(true)
 
     useEffect(() => {
-        if (isDesktop() && features.kds_enabled && kdsStatus === 'idle') {
+        if (isDesktop() && hasFeature('kds') && kdsStatus === 'idle') {
             startStream(4004).catch(console.error)
         }
-    }, [features.kds_enabled, kdsStatus, startStream])
+    }, [hasFeature, kdsStatus, startStream])
 
     const { toast } = useToast()
     const { t, i18n } = useTranslation()
@@ -83,7 +83,6 @@ export function Settings() {
     const [monthDisplayPreference, setMonthDisplayPreferenceState] = useState<MonthDisplayPreference>(getMonthDisplayPreference())
     const [hasFxAccountingData, setHasFxAccountingData] = useState(false)
     const [isClinicalRegistrySaving, setIsClinicalRegistrySaving] = useState(false)
-    const isKdsSaving = false
     const clinicalRegistryType = useClinicalRegistryType(user?.workspaceId)
     const canManageClinicalRegistry = canManageClinicalRegistryType(
         user?.role,
@@ -2714,64 +2713,23 @@ export function Settings() {
                         </CardContent>
                     </Card>
 
-                    {/* Instant POS & KDS */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Zap className="w-5 h-5" />
-                                {t('settings.instantPos.title') || 'Instant POS'}
-                            </CardTitle>
-                            <CardDescription>
-                                {t('settings.instantPos.desc') || 'Manage Instant POS and KDS settings'}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="flex flex-col gap-6">
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-border">
-                                        <div className="space-y-0.5 pr-4">
-                                            <Label className="text-sm font-medium">{t('settings.instantPos.enable') || 'Enable Instant POS'}</Label>
-                                            <p className="text-xs text-muted-foreground max-w-md">
-                                                {t('settings.instantPos.enableDesc') || 'Enable instant point of sale for quick transactions'}
-                                            </p>
-                                        </div>
-                                        <Switch
-                                            checked={features.instant_pos}
-                                            onCheckedChange={(val) => {
-                                                updateSettings({ instant_pos: val })
-                                            }}
-                                        />
-                                    </div>
-
-                                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-border">
-                                        <div className="space-y-0.5 pr-4">
-                                            <Label className="text-sm font-medium">
-                                                <MonitorPlay className="w-4 h-4 inline mr-1.5 -mt-0.5" />
-                                                {t('settings.kds.enable') || 'Enable KDS'}
-                                            </Label>
-                                            <p className="text-xs text-muted-foreground max-w-md">
-                                                {t('settings.kds.enableDesc') || 'Enable KDS for your workspace'}
-                                            </p>
-                                        </div>
-                                        <Switch
-                                            checked={features.kds_enabled}
-                                            disabled={isKdsSaving || !isDesktop()}
-                                            onCheckedChange={(val) => {
-                                                updateSettings({ kds_enabled: val })
-                                                if (val && kdsStatus === 'idle') {
-                                                    startStream(4004).catch(console.error)
-                                                }
-                                            }}
-                                        />
-                                    </div>
-                                    {!isDesktop() && (
-                                        <p className="text-sm font-medium text-amber-500">
-                                            {t('settings.kds.desktopOnly') || 'KDS Hosting is only available on Desktop app.'}
-                                        </p>
-                                    )}
-                                </div>
-
-                                {features.kds_enabled && (
+                    {hasFeature('kds') && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <MonitorPlay className="w-5 h-5" />
+                                    {t('settings.kds.title') || 'Kitchen Display System'}
+                                </CardTitle>
+                                <CardDescription>
+                                    {t('settings.kds.accessManaged') || 'KDS access is managed by the platform admin dashboard.'}
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                {!isDesktop() ? (
+                                    <p className="text-sm font-medium text-amber-500">
+                                        {t('settings.kds.desktopOnly') || 'KDS Hosting is only available on Desktop app.'}
+                                    </p>
+                                ) : (
                                     <div className="animate-in fade-in slide-in-from-top-2 p-4 border border-emerald-500/20 bg-emerald-500/5 rounded-xl flex flex-col md:flex-row gap-6 items-center">
                                         <div className="flex-1 space-y-4">
                                             <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium">
@@ -2812,9 +2770,9 @@ export function Settings() {
                                         )}
                                     </div>
                                 )}
-                            </div>
-                        </CardContent>
-                    </Card>
+                            </CardContent>
+                        </Card>
+                    )}
 
                     {/* Currency Settings (Admin Only) */}
                     {user?.role === 'admin' && canUseMultiCurrency && (

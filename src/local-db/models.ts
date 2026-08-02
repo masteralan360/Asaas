@@ -1672,7 +1672,6 @@ export interface Workspace extends BaseEntity {
   is_configured?: boolean;
   // Module toggles
   pos?: boolean;
-  instant_pos?: boolean;
   sales_history?: boolean;
   crm?: boolean;
   orders?: boolean;
@@ -1703,7 +1702,6 @@ export interface Workspace extends BaseEntity {
   iqd_display_preference: IQDDisplayPreference;
   locked_workspace: boolean;
   allow_whatsapp?: boolean;
-  kds_enabled?: boolean;
   logo_url?: string | null;
   coordination?: string | null;
   syncStatus: SyncStatus;

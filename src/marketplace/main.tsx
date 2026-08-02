@@ -5,14 +5,14 @@ import '../index.css'
 import '../i18n/config'
 
 import { Toaster } from '@/ui/components'
-import { ThemeProvider } from '@/ui/components/theme-provider'
 import { MarketplaceApp } from './MarketplaceApp'
+import { MarketplaceThemeRoot } from './MarketplaceThemeRoot'
 
 createRoot(document.getElementById('root')!).render(
     <StrictMode>
-        <ThemeProvider defaultTheme="light" storageKey="vite-ui-marketplace-theme" defaultStyle="emerald">
+        <MarketplaceThemeRoot>
             <MarketplaceApp />
             <Toaster />
-        </ThemeProvider>
+        </MarketplaceThemeRoot>
     </StrictMode>
 )

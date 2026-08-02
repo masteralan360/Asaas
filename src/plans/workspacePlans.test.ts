@@ -31,6 +31,40 @@ describe('Agents workspace module access', () => {
     })
 })
 
+describe('Instant POS and KDS workspace module access', () => {
+    it('is not included in any workspace subscription plan', () => {
+        for (const plan of WORKSPACE_PLANS) {
+            expect(planHasModule(plan, 'instant_pos')).toBe(false)
+            expect(planHasModule(plan, 'kds')).toBe(false)
+        }
+    })
+
+    it('is enabled only by workspace module grant overrides', () => {
+        const resolved = applyWorkspaceOverrides(getPlanCapabilities('enterprise'), [
+            {
+                id: 'override-instant-pos',
+                workspace_id: 'workspace-1',
+                type: 'module',
+                key: 'instant_pos',
+                value: 'grant',
+                created_by: null,
+                created_at: new Date(0).toISOString()
+            },
+            {
+                id: 'override-kds',
+                workspace_id: 'workspace-1',
+                type: 'module',
+                key: 'kds',
+                value: 'grant',
+                created_by: null,
+                created_at: new Date(0).toISOString()
+            }
+        ])
+
+        expect(resolved.modules).toEqual(expect.arrayContaining(['instant_pos', 'kds']))
+    })
+})
+
 describe('Orders workspace module access', () => {
     it('maps the orders feature to the revocable orders module', () => {
         expect(planHasWorkspaceFeature('enterprise', 'orders')).toBe(true)

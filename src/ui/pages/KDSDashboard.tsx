@@ -114,7 +114,7 @@ function formatClockTime(date: Date, withSeconds: boolean) {
 }
 
 export function KDSDashboard() {
-    const { features, workspaceName } = useWorkspace()
+    const { hasFeature, workspaceName } = useWorkspace()
     const { t } = useTranslation()
 
     const [tickets, setTickets] = useState<InstantPosTicket[]>(() => loadTickets())
@@ -207,9 +207,10 @@ export function KDSDashboard() {
 
     const stationLabel = workspaceName ? `${workspaceName} - ${t('kdsDashboard.kitchen')}` : t('kdsDashboard.mainKitchen')
     const isOnline = typeof navigator === 'undefined' ? true : navigator.onLine
-    const isSystemOnline = isMain ? (features.kds_enabled && isOnline) : isOnline
+    const isKdsEnabled = hasFeature('kds')
+    const isSystemOnline = isMain ? (isKdsEnabled && isOnline) : isOnline
     const systemStatusLabel = isMain 
-        ? (features.kds_enabled
+        ? (isKdsEnabled
             ? (isOnline ? t('kdsDashboard.systemOnline') : t('kdsDashboard.systemOffline'))
             : t('kdsDashboard.kdsDisabled')) 
         : (isDesktop() 
@@ -336,7 +337,7 @@ export function KDSDashboard() {
                 </div>
             </header>
 
-            {isMain && !features.kds_enabled && (
+            {isMain && !isKdsEnabled && (
                 <div className="relative z-10 border-b border-amber-500/30 bg-amber-500/10 px-6 py-2 text-xs text-amber-200">
                     {t('kdsDashboard.disabledBanner')}
                 </div>

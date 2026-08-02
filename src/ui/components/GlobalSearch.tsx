@@ -1,4 +1,4 @@
-import { Search, Command, LayoutDashboard, ShoppingCart, Package, ListOrdered, Settings as SettingsIcon, BarChart3, Users2, UserRound, Globe, MessageSquare, Moon, Sun, LogOut, ChevronRight, ArrowRightLeft, NotebookPen, Wallet, Zap, FileSpreadsheet, Building2, FileText, MapPinned, LocateFixed, CalendarClock } from 'lucide-react'
+import { Search, Command, LayoutDashboard, ShoppingCart, Package, ListOrdered, Settings as SettingsIcon, BarChart3, Users2, UserRound, Globe, MessageSquare, Moon, Sun, LogOut, ChevronRight, ArrowRightLeft, NotebookPen, Wallet, Zap, FileSpreadsheet, Building2, FileText, MapPinned, LocateFixed, CalendarClock, Monitor } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState, useEffect, useRef } from 'react'
 import { useHashLocation } from '@/hooks/useHashLocation'
@@ -43,6 +43,7 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
         { id: 'nav-dashboard', title: t('nav.dashboard'), category: 'Navigation', icon: LayoutDashboard, action: () => setLocation('/') },
         ...(features.pos ? [{ id: 'nav-pos', title: t('nav.pos'), category: 'Navigation' as const, icon: ShoppingCart, action: () => setLocation('/pos') }] : []),
         ...(features.instant_pos ? [{ id: 'nav-instant-pos', title: t('nav.instantPos') || 'Instant POS', category: 'Navigation' as const, icon: Zap, action: () => setLocation('/instant-pos') }] : []),
+        ...(features.kds ? [{ id: 'nav-kds', title: t('nav.kdsDashboard', { defaultValue: 'KDS Dashboard' }), category: 'Navigation' as const, icon: Monitor, action: () => setLocation('/kds') }] : []),
         ...(features.products ? [{ id: 'nav-products', title: t('nav.products'), category: 'Navigation' as const, icon: Package, action: () => setLocation('/products') }] : []),
         ...(features.sales_history ? [{ id: 'nav-sales', title: t('nav.sales'), category: 'Navigation' as const, icon: ListOrdered, action: () => setLocation('/sales') }] : []),
         { id: 'nav-settings', title: t('nav.settings'), category: 'Navigation', icon: SettingsIcon, action: () => setLocation('/settings') },
