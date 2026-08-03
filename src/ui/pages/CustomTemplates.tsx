@@ -44,7 +44,7 @@ import {
     resolveCustomTemplatePrintLanguage,
     stampCustomTemplatePrintLanguage
 } from '@/lib/customTemplates'
-import { setInvoicePreviewSource, type CustomTemplateLayout } from '@/lib/pdfPreviewStore'
+import { setInvoicePreviewSource, type CustomTemplateBackground, type CustomTemplateLayout } from '@/lib/pdfPreviewStore'
 import { formatDateTime } from '@/lib/utils'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { useWorkspace } from '@/workspace'
@@ -60,6 +60,20 @@ import {
     type LocalCustomTemplateRow as CustomTemplateRow
 } from '@/local-db'
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
+
+function sanitizeBackground(value: unknown): CustomTemplateBackground | undefined {
+    if (!value || typeof value !== 'object') return undefined
+    const candidate = value as Partial<CustomTemplateBackground>
+    const path = typeof candidate.path === 'string' ? candidate.path.trim() : ''
+    if (!path) return undefined
+    const opacity = Number(candidate.opacity)
+    const size = Number(candidate.size)
+    return {
+        path,
+        opacity: Number.isFinite(opacity) ? Math.min(100, Math.max(1, Math.round(opacity))) : 15,
+        size: Number.isFinite(size) ? Math.min(100, Math.max(10, Math.round(size))) : 100
+    }
+}
 
 function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout | null {
     if (!row || !row.layout_json || typeof row.layout_json !== 'object') return null
@@ -92,6 +106,7 @@ function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout 
                 .map(([key, value]) => [key, (value as string).trim()])
         )
         : {}
+    const background = sanitizeBackground(layout.background)
 
     return {
         version: 1,
@@ -110,6 +125,7 @@ function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout 
         fieldOrders,
         fieldLabelOverrides,
         fieldDisplayModes,
+        background,
         componentPositions: layout.componentPositions || {},
         annotations: layout.annotations || [],
         texts: layout.texts || [],

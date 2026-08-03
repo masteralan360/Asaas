@@ -1,5 +1,6 @@
 import { generateTemplatePdf } from '@/services/pdfGenerator'
 import type {
+    CustomTemplateBackground,
     CustomTemplateLayout,
     CustomTemplatePrintLanguage,
     TemplatePreview,
@@ -314,6 +315,22 @@ export type StoredCustomTemplateRow = {
     updated_at?: string | null
 }
 
+function sanitizeLayoutBackground(
+    value: unknown
+): CustomTemplateBackground | undefined {
+    if (!value || typeof value !== 'object') return undefined
+    const candidate = value as Partial<CustomTemplateBackground>
+    const path = typeof candidate.path === 'string' ? candidate.path.trim() : ''
+    if (!path) return undefined
+    const opacity = Number(candidate.opacity)
+    const size = Number(candidate.size)
+    return {
+        path,
+        opacity: Number.isFinite(opacity) ? Math.min(100, Math.max(1, Math.round(opacity))) : 15,
+        size: Number.isFinite(size) ? Math.min(100, Math.max(10, Math.round(size))) : 100
+    }
+}
+
 export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): CustomTemplateLayout | null {
     if (!row || !row.layout_json || typeof row.layout_json !== 'object') return null
 
@@ -345,6 +362,7 @@ export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): 
                 .map(([key, value]) => [key, (value as string).trim()])
         )
         : {}
+    const background = sanitizeLayoutBackground(layout.background)
 
     return {
         version: 1,
@@ -363,6 +381,7 @@ export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): 
         fieldOrders,
         fieldLabelOverrides,
         fieldDisplayModes,
+        background,
         componentPositions: layout.componentPositions || {},
         annotations: layout.annotations || [],
         texts: layout.texts || [],
@@ -1446,6 +1465,7 @@ function createAtlasStandardOrderInvoicePreview(options: CustomTemplatePreviewOp
     return {
         fields: [],
         reflowLowerPageText: true,
+        supportsBackgroundEdit: true,
         movableComponents: [
             { key: ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS.logo, label: 'Workspace Logo' },
             { key: ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS.workspaceName, label: 'Workspace Name' }
@@ -1476,6 +1496,7 @@ function createAtlasStandardOrderInvoicePreview(options: CustomTemplatePreviewOp
                 onFieldLabelChange={renderOptions?.onFieldLabelChange}
                 fieldDisplayModes={renderOptions?.fieldDisplayModes}
                 onFieldDisplayModeChange={renderOptions?.onFieldDisplayModeChange}
+                background={renderOptions?.background}
             />
         ),
         buildPdf: (element, printLangOverride) => generateTemplatePdf({
@@ -1786,7 +1807,8 @@ export function renderCustomTemplateLayoutElement({
                     hiddenFields: layout.hiddenFields,
                     fieldOrders: layout.fieldOrders,
                     fieldLabelOverrides: layout.fieldLabelOverrides,
-                    fieldDisplayModes: layout.fieldDisplayModes
+                    fieldDisplayModes: layout.fieldDisplayModes,
+                    background: layout.background
                 })}
             </div>
             <CustomTemplateLayoutOverlay

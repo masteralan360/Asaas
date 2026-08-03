@@ -556,6 +556,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         const { order, kind } = resolved
         return {
             fields: [],
+            supportsBackgroundEdit: true,
             createElement: (_data, _effectiveId, printLangOverride, renderOptions) => {
                 const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
                 return (
@@ -577,6 +578,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         onFieldLabelChange={renderOptions?.onFieldLabelChange}
                         fieldDisplayModes={renderOptions?.fieldDisplayModes}
                         onFieldDisplayModeChange={renderOptions?.onFieldDisplayModeChange}
+                        background={renderOptions?.background}
                     />
                 )
             },

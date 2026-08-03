@@ -10,6 +10,7 @@ import {
     getFixedPageCountForHeight,
     shouldReflowCustomTemplateText,
     type CustomTemplateAnnotation,
+    type CustomTemplateBackground,
     type CustomTemplateComponentPosition,
     type CustomTemplateImage,
     type CustomTemplateLayout,
@@ -575,6 +576,7 @@ export function PdfPreviewPage() {
     const [templateFieldOrders, setTemplateFieldOrders] = useState<Record<string, string[]>>(() => initialTemplateLayout?.fieldOrders || {})
     const [templateFieldLabelOverrides, setTemplateFieldLabelOverrides] = useState<Record<string, string>>(() => initialTemplateLayout?.fieldLabelOverrides || {})
     const [templateFieldDisplayModes, setTemplateFieldDisplayModes] = useState<Record<string, string>>(() => initialTemplateLayout?.fieldDisplayModes || {})
+    const [templateBackground, setTemplateBackground] = useState<CustomTemplateBackground | null>(() => initialTemplateLayout?.background || null)
     useEffect(() => {
         if (!selectedTemplateObjectId) return
 
@@ -994,13 +996,14 @@ export function PdfPreviewPage() {
             fieldOrders: templateFieldOrders,
             fieldLabelOverrides: templateFieldLabelOverrides,
             fieldDisplayModes: templateFieldDisplayModes,
+            background: templateBackground ?? undefined,
             annotations: templateAnnotations,
             texts: templateTexts,
             images: templateImages,
             shapes: templateShapes,
             updatedAt: new Date().toISOString()
         }
-    }, [source, templatePreview, fieldValues, initialTemplateLayout?.label, templateAnnotations, templateComponentPositions, templateHiddenFields, templateFieldOrders, templateFieldLabelOverrides, templateFieldDisplayModes, templateTexts, templateImages, templateShapes, templatePageHeight, templatePageWidth])
+    }, [source, templatePreview, fieldValues, initialTemplateLayout?.label, templateAnnotations, templateComponentPositions, templateHiddenFields, templateFieldOrders, templateFieldLabelOverrides, templateFieldDisplayModes, templateBackground, templateTexts, templateImages, templateShapes, templatePageHeight, templatePageWidth])
 
     const saveTemplatePreview = useCallback(async (layout?: CustomTemplateLayout, label?: string) => {
         if (!source || !templatePreview || !fieldValues || isSaving) return
@@ -1029,6 +1032,7 @@ export function PdfPreviewPage() {
                             fieldOrders: templateFieldOrders,
                             fieldLabelOverrides: templateFieldLabelOverrides,
                             fieldDisplayModes: templateFieldDisplayModes,
+                            background: templateBackground ?? undefined,
                             workspaceFooterContacts: sourceWorkspaceFooterContacts
                         }),
                         overrideLang,
@@ -1071,7 +1075,7 @@ export function PdfPreviewPage() {
                 window.history.back()
             }
         }
-    }, [source, templatePreview, fieldValues, isSaving, fixedTemplatePrintLang, tempPrintLang, buildTemplateLayout, sourceWorkspaceFooterContacts, templateHiddenFields, templateFieldOrders, templateFieldLabelOverrides, beginProgressToast, finishProgressToast, title, t])
+    }, [source, templatePreview, fieldValues, isSaving, fixedTemplatePrintLang, tempPrintLang, buildTemplateLayout, sourceWorkspaceFooterContacts, templateHiddenFields, templateFieldOrders, templateFieldLabelOverrides, templateBackground, beginProgressToast, finishProgressToast, title, t])
 
     const handleTemplatePreviewSave = useCallback(async () => {
         if (!source || !templatePreview || !fieldValues || isSaving) return
@@ -1202,6 +1206,18 @@ export function PdfPreviewPage() {
             error instanceof Error && console.error('Failed to add image:', error.message)
         }
     }, [source?.workspaceId, templatePageWidth])
+
+    const handleUploadTemplateBackground = useCallback(async () => {
+        if (!source?.workspaceId) return
+        try {
+            const relPath = await platformService.pickAndSaveImage(source.workspaceId, 'attached-images')
+            if (relPath) {
+                setTemplateBackground({ path: relPath, opacity: 15, size: 100 })
+            }
+        } catch (error) {
+            error instanceof Error && console.error('Failed to upload background watermark:', error.message)
+        }
+    }, [source?.workspaceId])
 
     const handleAddTemplateText = useCallback(() => {
         setTemplateTexts(prev => [...prev, {
@@ -1562,7 +1578,7 @@ export function PdfPreviewPage() {
                     </div>
 
                     <div className="order-2 flex shrink-0 items-center gap-1 md:order-none md:justify-self-end md:gap-2">
-                        {templatePreview.fields.length > 0 && canEditTemplateFields && (
+                        {(templatePreview.fields.length > 0 || templatePreview.supportsBackgroundEdit) && canEditTemplateFields && (
                             <button
                                 className="inline-flex items-center justify-center rounded-md h-8 w-8 px-0 text-xs font-medium transition-colors gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 md:w-auto md:px-3"
                                 onClick={() => setEditPanelOpen(o => !o)}
@@ -2012,6 +2028,7 @@ export function PdfPreviewPage() {
                                             fieldOrders: templateFieldOrders,
                                             fieldLabelOverrides: templateFieldLabelOverrides,
                                             fieldDisplayModes: templateFieldDisplayModes,
+                                            background: templateBackground ?? undefined,
                                             onFieldChange: handleFieldChange,
                                             onComponentPositionChange: handleTemplateComponentPositionChange,
                                             onHiddenFieldChange: drawingMode === 'none' ? handleTemplateHiddenFieldChange : undefined,
@@ -2049,6 +2066,88 @@ export function PdfPreviewPage() {
                                     <X className="h-3.5 w-3.5" />
                                 </button>
                             </div>
+                            {templatePreview.supportsBackgroundEdit ? (
+                                <div className="space-y-3 border-t pt-3">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                            {t('pdfPreview.commonEdit', { defaultValue: 'Common edit' })}
+                                        </h4>
+                                        {templateBackground ? (
+                                            <button
+                                                type="button"
+                                                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-destructive transition-colors hover:bg-destructive/10"
+                                                onClick={() => setTemplateBackground(null)}
+                                            >
+                                                <Trash2 className="h-3 w-3" />
+                                                {t('common.remove', { defaultValue: 'Remove' })}
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                    <p className="text-[11px] leading-4 text-muted-foreground">
+                                        {t('pdfPreview.backgroundWatermarkHint', {
+                                            defaultValue: 'Add a photo behind every component as a low-opacity watermark.'
+                                        })}
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={handleUploadTemplateBackground}
+                                        className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                                    >
+                                        <ImagePlus className="h-3.5 w-3.5" />
+                                        {templateBackground
+                                            ? t('pdfPreview.changeBackgroundWatermark', { defaultValue: 'Change background photo' })
+                                            : t('pdfPreview.uploadBackgroundWatermark', { defaultValue: 'Upload background photo' })}
+                                    </button>
+                                    {templateBackground ? (
+                                        <div className="space-y-3">
+                                            <div className="space-y-1.5">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <label className="text-[11px] font-medium text-muted-foreground" htmlFor="template-background-opacity">
+                                                        {t('pdfPreview.watermarkOpacity', { defaultValue: 'Opacity' })}
+                                                    </label>
+                                                    <output className="text-xs tabular-nums text-muted-foreground">
+                                                        {templateBackground.opacity}%
+                                                    </output>
+                                                </div>
+                                                <input
+                                                    id="template-background-opacity"
+                                                    type="range"
+                                                    min={1}
+                                                    max={100}
+                                                    step={1}
+                                                    value={templateBackground.opacity}
+                                                    className="w-full accent-primary"
+                                                    onChange={(event) => setTemplateBackground((current) => current
+                                                        ? { ...current, opacity: Number(event.target.value) }
+                                                        : current)}
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <label className="text-[11px] font-medium text-muted-foreground" htmlFor="template-background-size">
+                                                        {t('pdfPreview.watermarkSize', { defaultValue: 'Size' })}
+                                                    </label>
+                                                    <output className="text-xs tabular-nums text-muted-foreground">
+                                                        {templateBackground.size}%
+                                                    </output>
+                                                </div>
+                                                <input
+                                                    id="template-background-size"
+                                                    type="range"
+                                                    min={10}
+                                                    max={100}
+                                                    step={1}
+                                                    value={templateBackground.size}
+                                                    className="w-full accent-primary"
+                                                    onChange={(event) => setTemplateBackground((current) => current
+                                                        ? { ...current, size: Number(event.target.value) }
+                                                        : current)}
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : null}
+                                </div>
+                            ) : null}
                             {templatePreview.fields.map(f => (
                                 <div key={f.key} className="space-y-1">
                                     {f.type === 'boolean' ? (

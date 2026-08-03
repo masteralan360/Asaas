@@ -29,7 +29,7 @@ import {
     ContextMenuSeparator,
     ContextMenuTrigger
 } from '@/ui/components/ui/context-menu'
-import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
+import type { CustomTemplateComponentPosition, CustomTemplateBackground } from '@/lib/pdfPreviewStore'
 import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
 import { ReorderablePickerGrid } from '@/ui/components/ReorderablePickerGrid'
 
@@ -71,6 +71,7 @@ export interface AtlasStandardOrderInvoiceTemplateProps {
     fieldDisplayModes?: Record<string, string>
     onFieldDisplayModeChange?: (fieldKey: string, mode: string) => void
     productImageUrls?: ProductPrintImageUrls
+    background?: CustomTemplateBackground | null
 }
 
 const INK = '#1f2937'
@@ -991,7 +992,8 @@ export function AtlasStandardOrderInvoiceTemplate({
     onFieldLabelChange,
     fieldDisplayModes = {},
     onFieldDisplayModeChange,
-    productImageUrls
+    productImageUrls,
+    background
 }: AtlasStandardOrderInvoiceTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
@@ -1005,6 +1007,7 @@ export function AtlasStandardOrderInvoiceTemplate({
     const counterpartyName = isSales ? salesOrder?.customerName : purchaseOrder?.supplierName
     const issuedAt = formatPrintDateTime(order.createdAt, printLang)
     const logoSrc = resolveLogoSrc(logoUrl)
+    const backgroundSrc = resolveLogoSrc(background?.path)
     const workspaceNameValue = workspaceName?.trim() || 'Atlas'
     const workspaceNameDirection = hasRTLText(workspaceNameValue) ? 'rtl' : 'ltr'
     const financialKeys = ATLAS_STANDARD_ORDER_HIDDEN_FIELD_KEYS.financialSummary
@@ -1208,7 +1211,7 @@ export function AtlasStandardOrderInvoiceTemplate({
         <div
             dir={isRTL(printLang) ? 'rtl' : 'ltr'}
             className="atlas-standard-order-invoice bg-white text-slate-800"
-            style={{ width: '210mm', minHeight: '297mm', margin: '0 auto', padding: '8mm' }}
+            style={{ width: '210mm', minHeight: '297mm', margin: '0 auto', padding: '8mm', position: 'relative', isolation: 'isolate' }}
             data-order-print-page=""
             data-page-width-mm="210"
         >
@@ -1228,6 +1231,24 @@ export function AtlasStandardOrderInvoiceTemplate({
 }
 `
             }} />
+
+            {backgroundSrc && background ? (
+                <img
+                    src={backgroundSrc}
+                    alt=""
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -z-10 object-contain"
+                    data-atlas-standard-background=""
+                    style={{
+                        left: '50%',
+                        top: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        width: `${Math.min(100, Math.max(10, background.size || 100))}%`,
+                        height: 'auto',
+                        opacity: Math.min(1, Math.max(0.01, (background.opacity ?? 15) / 100))
+                    }}
+                />
+            ) : null}
 
             <header className="mb-1 flex min-h-[13mm] items-center justify-between border-b-2 px-1 pb-1" style={{ borderColor: INK }}>
                 <MovableOrderPrintBlock

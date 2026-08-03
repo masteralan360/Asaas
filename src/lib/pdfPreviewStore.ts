@@ -34,6 +34,8 @@ export type TemplatePreviewRenderOptions = {
     fieldOrders?: Record<string, string[]>
     fieldLabelOverrides?: Record<string, string>
     fieldDisplayModes?: Record<string, string>
+    /** Background watermark rendered behind every template component. */
+    background?: CustomTemplateBackground
     onFieldChange?: (key: string, value: string) => void
     onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
     onHiddenFieldChange?: (key: string, hidden: boolean) => void
@@ -53,6 +55,8 @@ export type TemplatePreview = {
     fields: TemplatePreviewField[]
     dataKeys?: TemplatePreviewDataKey[]
     movableComponents?: TemplatePreviewMovableComponent[]
+    /** Enables the common background watermark editor in the preview's edit panel. */
+    supportsBackgroundEdit?: boolean
     /** Keeps legacy lower-page notes below dynamic native content when it expands. */
     reflowLowerPageText?: boolean
     page?: {
@@ -109,6 +113,14 @@ export type CustomTemplateComponentPosition = {
     scale?: number
 }
 
+export type CustomTemplateBackground = {
+    path: string
+    /** Watermark opacity as a percentage (1-100). */
+    opacity: number
+    /** Watermark width as a percentage of the page width (10-100). */
+    size: number
+}
+
 export type CustomTemplateLayout = {
     version: 1
     label?: string
@@ -126,6 +138,10 @@ export type CustomTemplateLayout = {
     fieldOrders?: Record<string, string[]>
     fieldLabelOverrides?: Record<string, string>
     fieldDisplayModes?: Record<string, string>
+    /** Background watermark that renders behind every component of this preview. */
+    background?: CustomTemplateBackground
+    /** Enables the common background watermark editor in the preview's edit panel. */
+    supportsBackgroundEdit?: boolean
     annotations: CustomTemplateAnnotation[]
     texts: CustomTemplateText[]
     images: CustomTemplateImage[]
