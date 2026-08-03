@@ -293,7 +293,15 @@ function PartnerLocationModal({
                         zoom={hasLocation ? 14 : DEFAULT_ZOOM}
                         className="absolute inset-0 h-full w-full"
                     >
-                        <MapControls showCompass showZoom showFullscreen />
+                        <MapControls
+                            showCompass
+                            showZoom
+                            showFullscreen
+                            showLocate
+                            onLocate={(coords) =>
+                                setCoordinates({ latitude: coords.latitude, longitude: coords.longitude })
+                            }
+                        />
                         <MapClickCapture onPick={setCoordinates} />
                         <MapRecenter coordinates={coordinates} />
                         {hasLocation ? (
