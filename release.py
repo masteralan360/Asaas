@@ -95,6 +95,16 @@ def is_git_clean():
         return False
 
 
+def optimize_tip_videos():
+    """Re-encode any raw videos dropped into public/tips before they get committed."""
+    print("--- Optimizing tip videos ---")
+    try:
+        subprocess.run(['npm.cmd', 'run', 'optimize:tips'], cwd=SCRIPT_DIR, check=True, shell=True)
+        print("--- Tip video optimization done ---")
+    except subprocess.CalledProcessError as e:
+        print(f"⚠️ Tip video optimization failed: {e}")
+
+
 def run_git_commands(version, commit_msg):
     tag = f"v{version}"
     try:
@@ -538,6 +548,10 @@ class ReleaseApp(QMainWindow):
                 update_patch_notes(version, self.localized_highlights, team_messages)
             else:
                 print("Skipping patch notes (Stealth mode)")
+
+            self.status_label.setText("Optimizing tip videos...")
+            QApplication.processEvents()
+            optimize_tip_videos()
 
             self.status_label.setText("Pushing to GitHub...")
             QApplication.processEvents()

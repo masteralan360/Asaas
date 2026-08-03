@@ -89,6 +89,7 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
+    HoverHintVideo,
     Input,
     Label,
     Select,
@@ -1794,7 +1795,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-700">
                                                 {(() => {
                                                     const addStockLabel = t('products.addStock', { defaultValue: 'Add Stock' })
-                                                    return isMobile()
+                                                    const hint = isMobile()
                                                         ? t('products.form.stockAdjustmentHint.mobile', {
                                                             addStock: addStockLabel,
                                                             defaultValue: `To adjust stock, tap the "${addStockLabel}" button on the product's card in the Products list.`
@@ -1803,6 +1804,14 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                             addStock: addStockLabel,
                                                             defaultValue: `To adjust stock, right-click the product's row in the Products list and choose "${addStockLabel}" from the menu.`
                                                         })
+                                                    return (
+                                                        <HoverHintVideo
+                                                            src="/tips/export-1785734352530.mp4"
+                                                            title={t('products.form.stockAdjustmentHint.videoTitle', { defaultValue: 'Watch how to adjust stock' })}
+                                                        >
+                                                            {hint}
+                                                        </HoverHintVideo>
+                                                    )
                                                 })()}
                                             </div>
                                         )}

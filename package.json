@@ -1,7 +1,7 @@
 {
   "name": "atlas",
   "private": true,
-  "version": "0.2.95",
+  "version": "0.2.96",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -30,6 +30,8 @@
     }
   },
   "scripts": {
+    "optimize:tips": "node scripts/optimize-tips.mjs",
+    "prebuild": "npm run optimize:tips",
     "dev": "vite --host",
     "build": "npx tsc -b && vite build",
     "lint": "eslint .",

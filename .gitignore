@@ -142,3 +142,6 @@ Secrets/novu-ec341-firebase-adminsdk-fbsvc-ee588ba935.json
 /src/ui/pages/ForgetPasswordFeature.tsx
 /supabase/migrations/20260720100000_add_removable_password_change_feature.sql
 /supabase/reverts/20260720100000_remove_removable_password_change_feature.sql
+
+# Build-time tip video optimizer state
+/scripts/.optimized-tips.json
