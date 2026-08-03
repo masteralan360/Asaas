@@ -3,6 +3,7 @@ import Dexie from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { db } from './database'
+import { canReconcileCloudWorkspaceData } from './cloudReconciliation'
 import { createInventoryTransferTransactions } from './inventoryTransferTransactions'
 import { createInventoryTransaction } from './inventoryTransactions'
 import { addToOfflineMutations } from './offlineMutations'
@@ -128,22 +129,6 @@ function shouldUseOfflineMutationFallback(error: unknown): boolean {
 
 function shouldUseCloudBusinessData(workspaceId?: string | null): boolean {
     return !!workspaceId && !isLocalWorkspaceMode(workspaceId)
-}
-
-/**
- * A workspace-mode snapshot lives in browser storage and can be unavailable
- * briefly while the session is starting (or after browser storage is reset).
- * Do not let that transient "cloud" default reconcile away locally persisted
- * sales. The cached workspace record is written before Local Mode data is
- * hydrated, and is therefore the durable fallback for this decision.
- */
-async function isProtectedLocalSalesWorkspace(workspaceId: string): Promise<boolean> {
-    if (isLocalWorkspaceMode(workspaceId)) {
-        return true
-    }
-
-    const workspace = await db.workspaces.get(workspaceId)
-    return workspace?.data_mode === 'local' || workspace?.data_mode === 'demo'
 }
 
 function toSupabaseProductPayload(product: Partial<Product>) {
@@ -1299,6 +1284,10 @@ async function fetchTableFromSupabaseInternal<T extends { id: string, syncStatus
     workspaceId: string,
     options?: { includeDeleted?: boolean }
 ): Promise<void> {
+    if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+        return
+    }
+
     const includeDeleted = options?.includeDeleted ?? false
     const client = getSupabaseClientForTable(tableName)
     const remoteRows: any[] = []
@@ -1319,7 +1308,7 @@ async function fetchTableFromSupabaseInternal<T extends { id: string, syncStatus
             .range(from, from + TABLE_FETCH_PAGE_SIZE - 1)
 
         const { data, error } = await query
-        if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
+        if (!data || error || !await canReconcileCloudWorkspaceData(workspaceId)) {
             return
         }
 
@@ -1341,6 +1330,10 @@ async function fetchTableFromSupabaseInternal<T extends { id: string, syncStatus
         localItem.lastSyncedAt = syncedAt
         return localItem
     })
+
+    if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+        return
+    }
 
     await db.transaction('rw', table, async () => {
         const localItems = await table.where('workspaceId').equals(workspaceId).toArray()
@@ -1365,7 +1358,7 @@ export function fetchTableFromSupabase<T extends { id: string, syncStatus: any, 
     workspaceId: string,
     options?: { includeDeleted?: boolean }
 ): Promise<void> {
-    if (!shouldUseCloudBusinessData(workspaceId)) {
+    if (!workspaceId) {
         return Promise.resolve()
     }
 
@@ -1376,7 +1369,12 @@ export function fetchTableFromSupabase<T extends { id: string, syncStatus: any, 
         return existing
     }
 
-    const request = fetchTableFromSupabaseInternal<T>(tableName, table, workspaceId, options)
+    const request = (async () => {
+        if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+            return
+        }
+        await fetchTableFromSupabaseInternal<T>(tableName, table, workspaceId, options)
+    })()
         .finally(() => {
             if (tableFetchesInFlight.get(key) === request) {
                 tableFetchesInFlight.delete(key)
@@ -1442,18 +1440,21 @@ export function useInvoices(workspaceId: string | undefined) {
     )
 
     const syncInvoicesFromSupabase = useCallback(async () => {
-        if (isOnline && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+        if (isOnline && workspaceId && await canReconcileCloudWorkspaceData(workspaceId)) {
             const { data, error } = await supabase
                 .from('invoices')
                 .select('*')
                 .eq('workspace_id', workspaceId)
                 .eq('is_deleted', false)
 
-            if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
+            if (!data || error || !await canReconcileCloudWorkspaceData(workspaceId)) {
                 return
             }
 
             if (data && !error) {
+                if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+                    return
+                }
                 await db.transaction('rw', [db.invoices, db.offline_mutations], async () => {
                     const remoteIds = new Set(data.map(d => d.id))
                     const localItems = await db.invoices.where('workspaceId').equals(workspaceId).toArray()
@@ -1943,10 +1944,7 @@ async function fetchSalesChunks<T>(
 }
 
 async function performSalesSync(workspaceId: string, options?: SalesSyncOptions): Promise<void> {
-  // `isLocalWorkspaceMode` defaults to cloud when its browser-storage
-  // snapshot is not available. Check the persisted workspace record as well
-  // before talking to the cloud or changing the local sales cache.
-  if (await isProtectedLocalSalesWorkspace(workspaceId)) return
+  if (!await canReconcileCloudWorkspaceData(workspaceId)) return
 
   const remoteChecks: Array<{ id: string; version: number; updated_at: string }> = []
 
@@ -1975,10 +1973,7 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
     if (result.data.length < SALES_VERSION_PAGE_SIZE) break
   }
 
-  // Mode information may have arrived while the version request was in
-  // flight. Re-check immediately before reconciling records; this prevents an
-  // empty cloud response from deleting Local Mode sales during startup.
-  if (await isProtectedLocalSalesWorkspace(workspaceId)) return
+  if (!await canReconcileCloudWorkspaceData(workspaceId)) return
 
   const localSales = await db.sales
     .where('workspaceId')
@@ -2086,6 +2081,7 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
             (acc: any, p: any) => ({ ...acc, [p.id]: p.name }),
             {},
           )
+          if (!await canReconcileCloudWorkspaceData(workspaceId)) return
           await db.profiles.bulkPut(
             profiles.map((p: any) => ({
               id: p.id,
@@ -2174,9 +2170,7 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
     }
   }
 
-  // Keep the destructive operation behind the same guard. This closes the
-  // final race with workspace bootstrap/mode restoration.
-  if (await isProtectedLocalSalesWorkspace(workspaceId)) return
+  if (!await canReconcileCloudWorkspaceData(workspaceId)) return
 
   await db.transaction('rw', [db.sales, db.sales_exchange, db.sale_items, db.sale_returns, db.sale_return_items, db.sale_product_exchanges], async () => {
     if (remoteExchangeRows) {
@@ -2216,13 +2210,16 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
 }
 
 export function syncSalesFromSupabase(workspaceId: string, options?: SalesSyncOptions): Promise<void> {
-  if (!shouldUseCloudBusinessData(workspaceId)) return Promise.resolve()
+  if (!workspaceId) return Promise.resolve()
 
   const key = `${workspaceId}:${options?.startDate || ''}:${options?.endDate || ''}`
   const existing = salesSyncsInFlight.get(key)
   if (existing) return existing
 
-  const request = performSalesSync(workspaceId, options).finally(() => {
+  const request = (async () => {
+    if (!await canReconcileCloudWorkspaceData(workspaceId)) return
+    await performSalesSync(workspaceId, options)
+  })().finally(() => {
     if (salesSyncsInFlight.get(key) === request) {
       salesSyncsInFlight.delete(key)
     }
@@ -3082,7 +3079,7 @@ export function useWorkspaceUsers(workspaceId: string | undefined) {
 
     useEffect(() => {
         async function fetchFromSupabase() {
-            if (isOnline && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+            if (isOnline && workspaceId && await canReconcileCloudWorkspaceData(workspaceId)) {
                 // Fetch profiles for the workspace
                 const { data, error } = await supabase
                     .from('profiles')
@@ -3733,11 +3730,14 @@ export function useWorkspaceContacts(workspaceId: string | undefined) {
                     .select('*')
                     .eq('workspace_id', workspaceId)
 
-                if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
+                if (!data || error || !await canReconcileCloudWorkspaceData(workspaceId)) {
                     return
                 }
 
                 if (data && !error) {
+                    if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+                        return
+                    }
                     await db.transaction('rw', db.workspace_contacts, async () => {
                         const remoteIds = new Set(data.map(d => d.id))
                         const localItems = await db.workspace_contacts.where('workspaceId').equals(workspaceId).toArray()

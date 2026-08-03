@@ -11,6 +11,7 @@ import { generateId, toCamelCase, toSnakeCase } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
+import { canReconcileCloudWorkspaceData } from './cloudReconciliation'
 import { createInventoryTransferTransactions } from './inventoryTransferTransactions'
 import {
     getInventoryQuantityForProductStorage,
@@ -412,7 +413,7 @@ export function useReorderTransferRules(workspaceId: string | undefined) {
 
     useEffect(() => {
         async function fetchFromSupabase() {
-            if (!online || !workspaceId || !shouldUseCloudBusinessData(workspaceId)) {
+            if (!online || !workspaceId || !await canReconcileCloudWorkspaceData(workspaceId)) {
                 return
             }
 
@@ -422,10 +423,13 @@ export function useReorderTransferRules(workspaceId: string | undefined) {
                 .eq('workspace_id', workspaceId)
                 .eq('is_deleted', false)
 
-            if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
+            if (!data || error || !await canReconcileCloudWorkspaceData(workspaceId)) {
                 return
             }
 
+            if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+                return
+            }
             await db.transaction('rw', db.reorder_transfer_rules, async () => {
                 const remoteIds = new Set(data.map((item) => item.id))
                 const localItems = await db.reorder_transfer_rules.where('workspaceId').equals(workspaceId).toArray()

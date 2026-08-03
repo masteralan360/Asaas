@@ -8,6 +8,7 @@ import { generateId, toCamelCase, toSnakeCase } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
+import { canReconcileCloudWorkspaceData } from './cloudReconciliation'
 import type { ManualEntry, ManualEntryTemplate, ManualEntryTemplateRow } from './models'
 import { addToOfflineMutations } from './offlineMutations'
 
@@ -96,11 +97,19 @@ async function hydrateTable(
     tableName: ManualEntryTableName,
     workspaceId: string
 ) {
+    if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+        return
+    }
+
     const table: Table<any, string> = tableName === 'manual_entry_templates'
         ? db.manual_entry_templates
         : db.manual_entries
 
     const remoteRows = await fetchRemoteRows(tableName, workspaceId)
+
+    if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+        return
+    }
 
     const syncedAt = new Date().toISOString()
     const remoteItems: Array<Record<string, unknown>> = remoteRows.map((row) => ({
@@ -133,7 +142,8 @@ async function hydrateTable(
 }
 
 export async function hydrateManualEntryTables(workspaceId: string) {
-    if (!workspaceId || !shouldUseCloudData(workspaceId) || !isSupabaseConfigured || !isOnline()) {
+    if (!workspaceId || !isSupabaseConfigured || !isOnline()
+        || !await canReconcileCloudWorkspaceData(workspaceId)) {
         return
     }
 

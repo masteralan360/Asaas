@@ -10,6 +10,7 @@ import { findPartnerProductPriceBookItem } from '@/lib/priceBooks'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
+import { canReconcileCloudWorkspaceData } from './cloudReconciliation'
 import type { CurrencyCode, PriceBook, PriceBookItem } from './models'
 import { addToOfflineMutations } from './offlineMutations'
 import { rekeyPriceBookItemReferences } from './priceBookReferences'
@@ -139,7 +140,7 @@ async function hydratePriceBookTable(
     tableName: 'price_books' | 'price_book_items',
     workspaceId: string
 ) {
-    if (!shouldUseCloudData(workspaceId)) {
+    if (!await canReconcileCloudWorkspaceData(workspaceId)) {
         return
     }
 
@@ -164,6 +165,10 @@ async function hydratePriceBookTable(
         if (page.length < pageSize) {
             break
         }
+    }
+
+    if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+        return
     }
 
     const syncedAt = new Date().toISOString()
@@ -206,6 +211,10 @@ async function hydratePriceBookTable(
     const deletedIds = localItems
         .filter((row) => row.syncStatus !== 'pending' && (!remoteIds.has(row.id) || hiddenRemoteBookIds.has(row.id)))
         .map((row) => row.id)
+
+    if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+        return
+    }
 
     await db.transaction('rw', table, async () => {
         if (deletedIds.length > 0) {

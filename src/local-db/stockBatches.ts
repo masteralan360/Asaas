@@ -16,6 +16,7 @@ import { generateId, toCamelCase, toSnakeCase } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
+import { canReconcileCloudWorkspaceData } from './cloudReconciliation'
 import { getInventoryQuantityForProductStorage, useInventoryProducts, type InventoryProduct } from './inventory'
 import { addToOfflineMutations } from './offlineMutations'
 import type {
@@ -1291,6 +1292,10 @@ async function refreshStockBatchesFromSupabaseInternal(
     workspaceId: string,
     options: StockBatchFetchOptions
 ) {
+    if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+        return
+    }
+
     const storageId = options.storageId?.trim()
     const client = getSupabaseClientForTable(TABLE_NAME)
     const remoteRows: Record<string, unknown>[] = []
@@ -1311,7 +1316,7 @@ async function refreshStockBatchesFromSupabaseInternal(
             .range(from, from + STOCK_BATCH_FETCH_PAGE_SIZE - 1)
 
         const { data, error } = await runSupabaseAction(`${TABLE_NAME}.fetch.page`, () => query)
-        if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
+        if (!data || error || !await canReconcileCloudWorkspaceData(workspaceId)) {
             return
         }
 
@@ -1357,6 +1362,10 @@ async function refreshStockBatchesFromSupabaseInternal(
         return localItem
     })
 
+    if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+        return
+    }
+
     await db.transaction('rw', db.stock_batches, async () => {
         const localRows = storageId
             ? await db.stock_batches.where('[workspaceId+storageId]').equals([workspaceId, storageId]).toArray()
@@ -1379,7 +1388,7 @@ export async function refreshStockBatchesFromSupabase(
     workspaceId: string,
     options: StockBatchFetchOptions = {}
 ) {
-    if (!workspaceId || !shouldUseCloudBusinessData(workspaceId) || !isOnline()) {
+    if (!workspaceId || !isOnline()) {
         return
     }
 
@@ -1390,7 +1399,12 @@ export async function refreshStockBatchesFromSupabase(
         return existing
     }
 
-    const request = refreshStockBatchesFromSupabaseInternal(workspaceId, { storageId })
+    const request = (async () => {
+        if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+            return
+        }
+        await refreshStockBatchesFromSupabaseInternal(workspaceId, { storageId })
+    })()
         .finally(() => {
             if (stockBatchFetchesInFlight.get(key) === request) {
                 stockBatchFetchesInFlight.delete(key)

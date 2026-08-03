@@ -47,10 +47,16 @@ vi.mock('@/lib/supabaseRequest', () => ({
 }))
 
 import { db } from './database'
-import { syncSalesFromSupabase } from './hooks'
+import {
+  canReconcileCloudWorkspaceData,
+  hasConfirmedCloudReconciliationAuthority,
+} from './cloudReconciliation'
+import { fetchTableFromSupabase, syncSalesFromSupabase } from './hooks'
+import { clearWorkspaceModeSnapshot, writeWorkspaceModeSnapshot } from '@/workspace/workspaceMode'
 
 const WORKSPACE_ID = 'local-sales-reconciliation-guard'
 const SALE_ID = 'local-sale-that-must-not-be-deleted'
+const CATEGORY_ID = 'local-category-that-must-not-be-deleted'
 
 describe('sales cloud reconciliation', () => {
   beforeAll(async () => {
@@ -61,11 +67,13 @@ describe('sales cloud reconciliation', () => {
     await db.delete()
     await db.open()
     vi.clearAllMocks()
+    clearWorkspaceModeSnapshot(WORKSPACE_ID)
     browser.storage.clear()
     supabaseMocks.range.mockResolvedValue({ data: [], error: null })
   })
 
   afterEach(async () => {
+    clearWorkspaceModeSnapshot(WORKSPACE_ID)
     await db.delete()
   })
 
@@ -97,7 +105,31 @@ describe('sales cloud reconciliation', () => {
     expect(supabaseMocks.from).not.toHaveBeenCalled()
   })
 
+  it('does not run the shared destructive table reconciler for Local Mode', async () => {
+    await db.workspaces.put({
+      id: WORKSPACE_ID,
+      workspaceId: WORKSPACE_ID,
+      data_mode: 'local',
+    } as never)
+    await db.categories.put({
+      id: CATEGORY_ID,
+      workspaceId: WORKSPACE_ID,
+      name: 'Must survive',
+      syncStatus: 'synced',
+      version: 1,
+      createdAt: '2026-08-03T00:00:00.000Z',
+      updatedAt: '2026-08-03T00:00:00.000Z',
+      isDeleted: false,
+    } as never)
+
+    await fetchTableFromSupabase('categories', db.categories, WORKSPACE_ID)
+
+    expect(await db.categories.get(CATEGORY_ID)).toMatchObject({ id: CATEGORY_ID })
+    expect(supabaseMocks.from).not.toHaveBeenCalled()
+  })
+
   it('cancels reconciliation when Local Mode is restored during the cloud request', async () => {
+    writeWorkspaceModeSnapshot({ workspaceId: WORKSPACE_ID, dataMode: 'cloud' })
     await db.sales.put({
       id: SALE_ID,
       workspaceId: WORKSPACE_ID,
@@ -120,5 +152,20 @@ describe('sales cloud reconciliation', () => {
 
     expect(await db.sales.get(SALE_ID)).toMatchObject({ id: SALE_ID })
     expect(supabaseMocks.from).toHaveBeenCalledOnce()
+  })
+
+  it('requires an explicit cloud or hybrid mode before reconciliation', async () => {
+    expect(hasConfirmedCloudReconciliationAuthority(undefined, undefined)).toBe(false)
+    expect(hasConfirmedCloudReconciliationAuthority('cloud', undefined)).toBe(true)
+    expect(hasConfirmedCloudReconciliationAuthority('cloud', 'local')).toBe(false)
+    expect(await canReconcileCloudWorkspaceData(WORKSPACE_ID)).toBe(false)
+
+    await db.workspaces.put({
+      id: WORKSPACE_ID,
+      workspaceId: WORKSPACE_ID,
+      data_mode: 'hybrid',
+    } as never)
+
+    expect(await canReconcileCloudWorkspaceData(WORKSPACE_ID)).toBe(true)
   })
 })

@@ -10,6 +10,7 @@ import { generateId, toCamelCase, toSnakeCase } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
+import { canReconcileCloudWorkspaceData } from './cloudReconciliation'
 import { addToOfflineMutations } from './offlineMutations'
 import type {
     Inventory,
@@ -262,6 +263,10 @@ async function fetchPagedWorkspaceRows(
     workspaceId: string,
     applyFilters?: (query: any) => any
 ) {
+    if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+        return null
+    }
+
     const client = getSupabaseClientForTable(tableName)
     const rows: Record<string, unknown>[] = []
 
@@ -281,7 +286,7 @@ async function fetchPagedWorkspaceRows(
             .range(from, from + INVENTORY_FETCH_PAGE_SIZE - 1)
 
         const { data, error } = await runSupabaseAction(`${tableName}.fetch.page`, () => query)
-        if (error || !data || !shouldUseCloudBusinessData(workspaceId)) {
+        if (error || !data || !await canReconcileCloudWorkspaceData(workspaceId)) {
             return null
         }
 
@@ -304,6 +309,10 @@ async function fetchProductsForInventoryRows(
     remoteInventoryRows: Record<string, unknown>[],
     options: InventoryWorkspaceFetchOptions
 ) {
+    if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+        return null
+    }
+
     if (!options.storageId) {
         return fetchPagedWorkspaceRows('products', workspaceId)
     }
@@ -333,7 +342,7 @@ async function fetchProductsForInventoryRows(
                 .order('id', { ascending: true })
         )
 
-        if (error || !data || !shouldUseCloudBusinessData(workspaceId)) {
+        if (error || !data || !await canReconcileCloudWorkspaceData(workspaceId)) {
             return null
         }
 
@@ -347,6 +356,10 @@ async function fetchInventoryWorkspaceFromSupabaseInternal(
     workspaceId: string,
     options: InventoryWorkspaceFetchOptions
 ) {
+    if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+        return
+    }
+
     const storageId = options.storageId?.trim()
     const fetchedAt = new Date().toISOString()
 
@@ -376,6 +389,10 @@ async function fetchInventoryWorkspaceFromSupabaseInternal(
     }
 
     if (!remoteProducts) {
+        return
+    }
+
+    if (!await canReconcileCloudWorkspaceData(workspaceId)) {
         return
     }
 
@@ -469,7 +486,7 @@ export async function fetchInventoryWorkspaceFromSupabase(
     workspaceId: string,
     options: InventoryWorkspaceFetchOptions = {}
 ) {
-    if (!shouldUseCloudBusinessData(workspaceId)) {
+    if (!workspaceId) {
         return
     }
 
@@ -480,7 +497,12 @@ export async function fetchInventoryWorkspaceFromSupabase(
         return existing
     }
 
-    const request = fetchInventoryWorkspaceFromSupabaseInternal(workspaceId, { storageId })
+    const request = (async () => {
+        if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+            return
+        }
+        await fetchInventoryWorkspaceFromSupabaseInternal(workspaceId, { storageId })
+    })()
         .finally(() => {
             if (inventoryWorkspaceFetchesInFlight.get(key) === request) {
                 inventoryWorkspaceFetchesInFlight.delete(key)
