@@ -742,6 +742,7 @@ export async function adjustInventoryQuantity(input: {
     quantityDelta: number
     timestamp?: string
     syncSource?: InventorySyncSource
+    skipRemoteHydration?: boolean
     skipRemoteSync?: boolean
     skipReorderCheck?: boolean
 }) {
@@ -749,7 +750,7 @@ export async function adjustInventoryQuantity(input: {
     const syncSource = input.syncSource || 'local'
     let changedRow: Inventory | null = null
 
-    if (syncSource === 'local') {
+    if (syncSource === 'local' && !input.skipRemoteHydration) {
         await hydrateInventoryProductStoragesFromSupabase(input.workspaceId, input.productId, [input.storageId])
     }
 

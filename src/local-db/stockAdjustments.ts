@@ -7,6 +7,7 @@ import { db } from "./database";
 import {
   adjustInventoryQuantity,
   getInventoryQuantityForProductStorage,
+  hydrateInventoryProductStoragesFromSupabase,
 } from "./inventory";
 import { createInventoryTransaction } from "./inventoryTransactions";
 import type {
@@ -34,6 +35,11 @@ export interface StockAdjustmentInput {
   storageId: string;
   adjustmentType: StockAdjustmentType;
   quantity: number;
+  /**
+   * The desired quantity after the adjustment. When supplied, it takes
+   * precedence over quantity/adjustmentType after the position is refreshed.
+   */
+  targetQuantity?: number;
   reason: StockAdjustmentReason;
   notes?: string | null;
   createdBy?: string | null;
@@ -58,6 +64,8 @@ function normalizeAdjustmentInput(input: StockAdjustmentInput) {
   const storageId = input.storageId.trim();
   const adjustmentType = input.adjustmentType;
   const quantity = Number(input.quantity);
+  const targetQuantity =
+    input.targetQuantity === undefined ? null : Number(input.targetQuantity);
   const reason = input.reason;
 
   if (!productId) {
@@ -76,6 +84,14 @@ function normalizeAdjustmentInput(input: StockAdjustmentInput) {
     throw new Error("Quantity must be greater than zero");
   }
 
+  if (targetQuantity !== null && !Number.isFinite(targetQuantity)) {
+    throw new Error("Target quantity is invalid");
+  }
+
+  if (targetQuantity !== null && targetQuantity < 0) {
+    throw new Error("Target quantity cannot be negative");
+  }
+
   if (!ALLOWED_REASONS.includes(reason)) {
     throw new Error("Adjustment reason is invalid");
   }
@@ -85,6 +101,7 @@ function normalizeAdjustmentInput(input: StockAdjustmentInput) {
     storageId,
     adjustmentType,
     quantity: roundQuantity(quantity),
+    targetQuantity: targetQuantity === null ? null : roundQuantity(targetQuantity),
     reason,
     notes: normalizeOptionalString(input.notes),
     createdBy: normalizeOptionalString(input.createdBy),
@@ -140,17 +157,31 @@ export async function createStockAdjustment(
 ) {
   const timestamp = options?.timestamp || new Date().toISOString();
   const normalized = normalizeAdjustmentInput(input);
-  const quantityDelta = roundQuantity(
-    normalized.adjustmentType === "increase"
-      ? normalized.quantity
-      : -normalized.quantity
+  // Refresh the position before calculating the delta. This makes a final
+  // quantity entered immediately after a fresh app load apply to the real
+  // stock level, rather than to a stale local snapshot.
+  await hydrateInventoryProductStoragesFromSupabase(
+    workspaceId,
+    normalized.productId,
+    [normalized.storageId],
   );
   const previousQuantity = await getInventoryQuantityForProductStorage(
     normalized.productId,
     normalized.storageId,
   );
+  const quantityDelta = normalized.targetQuantity === null
+    ? roundQuantity(
+      normalized.adjustmentType === "increase"
+        ? normalized.quantity
+        : -normalized.quantity,
+    )
+    : roundQuantity(normalized.targetQuantity - previousQuantity);
   const newQuantity = roundQuantity(previousQuantity + quantityDelta);
   const transactionId = options?.id || generateId();
+
+  if (quantityDelta === 0) {
+    throw new Error("Stock is already at the requested quantity");
+  }
 
   if (newQuantity < 0) {
     throw new Error("Insufficient inventory");
@@ -164,6 +195,7 @@ export async function createStockAdjustment(
       storageId: normalized.storageId,
       quantityDelta,
       timestamp,
+      skipRemoteHydration: true,
     });
     inventoryAdjusted = true;
 

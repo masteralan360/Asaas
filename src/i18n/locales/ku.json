@@ -3944,7 +3944,9 @@
       "overdue": "دواکەوتوو"
     },
     "tabs": {
-      "openItems": "بڕگە کراوەکان",
+      "openItems": "بڕگە کراوەکان (هەموو)",
+      "payable": "پارەدان",
+      "collectable": "پارە وەرگرتن",
       "transactions": "مامەڵەکان"
     },
     "table": {

@@ -3940,7 +3940,9 @@
       "overdue": "متأخر"
     },
     "tabs": {
-      "openItems": "البنود المفتوحة",
+      "openItems": "البنود المفتوحة (الكل)",
+      "payable": "مستحق الدفع",
+      "collectable": "مستحق التحصيل",
       "transactions": "المعاملات"
     },
     "table": {

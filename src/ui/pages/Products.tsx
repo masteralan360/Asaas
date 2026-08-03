@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
-import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowDown, ArrowUp, ArrowUpDown, Barcode, BookOpen, Boxes, CircleAlert, Copy, FileSpreadsheet, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 
 import { useAuth } from '@/auth'
@@ -14,6 +13,7 @@ import {
     updateCategory,
     useCategories,
     usePriceBookCatalogState,
+    useInventory,
     useProducts,
     useStorages,
     type Category,
@@ -21,7 +21,6 @@ import {
     type Product
 } from '@/local-db'
 import { isMobile, isTauri } from '@/lib/platform'
-import { db } from '@/local-db/database'
 import {
     getRetriableActionToast,
     isRetriableWebRequestError,
@@ -183,16 +182,14 @@ export function Products() {
         allowedCurrencies: features.allowed_currencies
     }), [categories, features.allowed_currencies, storages])
 
-    const inventoryRows = useLiveQuery(
-        () => workspaceId
-            ? db.inventory.where('workspaceId').equals(workspaceId).and((r) => !r.isDeleted).toArray()
-            : [],
-        [workspaceId]
-    )
+    // Besides observing local changes, this hook refreshes inventory from the
+    // cloud when this page is opened. The direct query that used to live here
+    // could leave Add Stock with an empty or stale local snapshot on a fresh load.
+    const inventoryRows = useInventory(workspaceId)
 
     const productStorageMap = useMemo(() => {
         const map = new Map<string, { name: string; quantity: number }[]>()
-        const rows = inventoryRows ?? []
+        const rows = inventoryRows
         const temp = new Map<string, Map<string, number>>()
         for (const row of rows) {
             const storage = storageById.get(row.storageId)
@@ -2227,7 +2224,7 @@ export function Products() {
                 allowAnyStorage
                 products={products}
                 storages={storages}
-                inventory={inventoryRows ?? []}
+                inventory={inventoryRows}
                 workspaceId={workspaceId}
                 userId={user?.id ?? null}
             />

@@ -130,6 +130,22 @@ function shouldUseCloudBusinessData(workspaceId?: string | null): boolean {
     return !!workspaceId && !isLocalWorkspaceMode(workspaceId)
 }
 
+/**
+ * A workspace-mode snapshot lives in browser storage and can be unavailable
+ * briefly while the session is starting (or after browser storage is reset).
+ * Do not let that transient "cloud" default reconcile away locally persisted
+ * sales. The cached workspace record is written before Local Mode data is
+ * hydrated, and is therefore the durable fallback for this decision.
+ */
+async function isProtectedLocalSalesWorkspace(workspaceId: string): Promise<boolean> {
+    if (isLocalWorkspaceMode(workspaceId)) {
+        return true
+    }
+
+    const workspace = await db.workspaces.get(workspaceId)
+    return workspace?.data_mode === 'local' || workspace?.data_mode === 'demo'
+}
+
 function toSupabaseProductPayload(product: Partial<Product>) {
     const hasCategory = Object.prototype.hasOwnProperty.call(product, 'category')
     const hasCategoryId = Object.prototype.hasOwnProperty.call(product, 'categoryId')
@@ -1927,6 +1943,11 @@ async function fetchSalesChunks<T>(
 }
 
 async function performSalesSync(workspaceId: string, options?: SalesSyncOptions): Promise<void> {
+  // `isLocalWorkspaceMode` defaults to cloud when its browser-storage
+  // snapshot is not available. Check the persisted workspace record as well
+  // before talking to the cloud or changing the local sales cache.
+  if (await isProtectedLocalSalesWorkspace(workspaceId)) return
+
   const remoteChecks: Array<{ id: string; version: number; updated_at: string }> = []
 
   for (let from = 0; ; from += SALES_VERSION_PAGE_SIZE) {
@@ -1953,6 +1974,11 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
     remoteChecks.push(...result.data)
     if (result.data.length < SALES_VERSION_PAGE_SIZE) break
   }
+
+  // Mode information may have arrived while the version request was in
+  // flight. Re-check immediately before reconciling records; this prevents an
+  // empty cloud response from deleting Local Mode sales during startup.
+  if (await isProtectedLocalSalesWorkspace(workspaceId)) return
 
   const localSales = await db.sales
     .where('workspaceId')
@@ -2147,6 +2173,10 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
       })
     }
   }
+
+  // Keep the destructive operation behind the same guard. This closes the
+  // final race with workspace bootstrap/mode restoration.
+  if (await isProtectedLocalSalesWorkspace(workspaceId)) return
 
   await db.transaction('rw', [db.sales, db.sales_exchange, db.sale_items, db.sale_returns, db.sale_return_items, db.sale_product_exchanges], async () => {
     if (remoteExchangeRows) {

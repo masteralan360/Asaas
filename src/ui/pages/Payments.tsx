@@ -46,6 +46,7 @@ import { SettlementDialog } from '@/ui/components/payments/SettlementDialog'
 import { useWorkspace } from '@/workspace'
 import { useWorkspacePermissions } from '@/permissions'
 
+type PaymentsTab = 'open-items' | 'payable' | 'collectable' | 'transactions'
 type DirectionFilter = 'all' | 'incoming' | 'outgoing'
 type SourceFilter = 'all' | 'loans' | 'orders' | 'budget' | 'real_estate' | 'activities' | 'clinical_appointments' | 'payments'
 type OpenStatusFilter = 'all' | 'open' | 'overdue'
@@ -158,7 +159,7 @@ export function Payments() {
     const workspaceId = user?.workspaceId
     const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr || features.real_estate || features.activities || features.clinical_appointments
 
-    const [activeTab, setActiveTab] = useState<'open-items' | 'transactions'>('open-items')
+    const [activeTab, setActiveTab] = useState<PaymentsTab>('open-items')
     const [search, setSearch] = useState('')
     const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all')
     const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
@@ -173,6 +174,15 @@ export function Payments() {
         status: statusFilter,
         search
     })
+    const visibleObligations = useMemo(() => {
+        if (activeTab === 'payable') {
+            return obligations.filter((item) => item.direction === 'outgoing')
+        }
+        if (activeTab === 'collectable') {
+            return obligations.filter((item) => item.direction === 'incoming')
+        }
+        return obligations
+    }, [obligations, activeTab])
     const lockedSourceKeys = useLockedPaymentSourceKeys(workspaceId)
 
     const allTransactions = usePaymentTransactions(workspaceId, { includeReversals: true })
@@ -332,12 +342,12 @@ export function Payments() {
                 <CardContent className="pt-6">
                     <div className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_180px_180px_180px]">
                         <div className="relative">
-                            <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
+                            <Search className="pointer-events-none absolute start-3 top-3.5 h-4 w-4 text-muted-foreground" />
                             <Input
                                 value={search}
                                 onChange={(event) => setSearch(event.target.value)}
                                 placeholder={t('payments.searchPlaceholder', { defaultValue: 'Search payments' })}
-                                className="pl-9"
+                                className="ps-9"
                             />
                         </div>
                         <Select value={directionFilter} onValueChange={(value: DirectionFilter) => setDirectionFilter(value)}>
@@ -379,39 +389,48 @@ export function Payments() {
                 </CardContent>
             </Card>
 
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'open-items' | 'transactions')}>
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as PaymentsTab)}>
                 <TabsList>
                     <TabsTrigger value="open-items">{t('payments.tabs.openItems', { defaultValue: 'Open Items' })}</TabsTrigger>
+                    <TabsTrigger value="payable">
+                        <ArrowUpRight className="ms-1.5 h-3.5 w-3.5" />
+                        {t('payments.tabs.payable', { defaultValue: 'Payable' })}
+                    </TabsTrigger>
+                    <TabsTrigger value="collectable">
+                        <ArrowDownLeft className="ms-1.5 h-3.5 w-3.5" />
+                        {t('payments.tabs.collectable', { defaultValue: 'Collectable' })}
+                    </TabsTrigger>
                     <TabsTrigger value="transactions">{t('payments.tabs.transactions', { defaultValue: 'Transactions' })}</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="open-items">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>{t('payments.tabs.openItems', { defaultValue: 'Open Items' })}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="overflow-x-auto">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>{t('payments.table.source', { defaultValue: 'Source' })}</TableHead>
-                                        <TableHead>{t('payments.table.reference', { defaultValue: 'Reference' })}</TableHead>
-                                        <TableHead>{t('payments.table.counterparty', { defaultValue: 'Counterparty' })}</TableHead>
-                                        <TableHead>{t('payments.table.dueDate', { defaultValue: 'Due Date' })}</TableHead>
-                                        <TableHead>{t('payments.table.direction', { defaultValue: 'Direction' })}</TableHead>
-                                        <TableHead>{t('payments.table.amount', { defaultValue: 'Amount' })}</TableHead>
-                                        <TableHead>{t('payments.table.status', { defaultValue: 'Status' })}</TableHead>
-                                        <TableHead className="text-right">{t('payments.table.actions', { defaultValue: 'Actions' })}</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {obligations.length === 0 ? (
+                {(() => {
+                    const renderOpenItemsTable = (title: string) => (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>{title}</CardTitle>
+                            </CardHeader>
+                            <CardContent className="overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
                                         <TableRow>
-                                            <TableCell colSpan={8} className="py-12 text-center text-muted-foreground">
-                                                {t('payments.noOpenItems', { defaultValue: 'No open items match the current filters.' })}
-                                            </TableCell>
+                                            <TableHead>{t('payments.table.source', { defaultValue: 'Source' })}</TableHead>
+                                            <TableHead>{t('payments.table.reference', { defaultValue: 'Reference' })}</TableHead>
+                                            <TableHead>{t('payments.table.counterparty', { defaultValue: 'Counterparty' })}</TableHead>
+                                            <TableHead>{t('payments.table.dueDate', { defaultValue: 'Due Date' })}</TableHead>
+                                            <TableHead>{t('payments.table.direction', { defaultValue: 'Direction' })}</TableHead>
+                                            <TableHead>{t('payments.table.amount', { defaultValue: 'Amount' })}</TableHead>
+                                            <TableHead>{t('payments.table.status', { defaultValue: 'Status' })}</TableHead>
+                                            <TableHead className="text-end">{t('payments.table.actions', { defaultValue: 'Actions' })}</TableHead>
                                         </TableRow>
-                                    ) : obligations.map((item) => (
+                                    </TableHeader>
+                                    <TableBody>
+                                        {visibleObligations.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={8} className="py-12 text-center text-muted-foreground">
+                                                    {t('payments.noOpenItems', { defaultValue: 'No open items match the current filters.' })}
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : visibleObligations.map((item) => (
                                         <TableRow key={item.id}>
                                             {(() => {
                                                 const isLockedSource = lockedSourceKeys.has(getPaymentSourceKey(item))
@@ -453,7 +472,7 @@ export function Payments() {
                                                             : t('payments.filters.open', { defaultValue: 'Open' })}
                                                 </span>
                                             </TableCell>
-                                            <TableCell className="text-right">
+                                            <TableCell className="text-end">
                                                 <div className="flex justify-end gap-2">
                                                     <Button variant="outline" size="sm" onClick={() => setLocation(item.routePath)}>
                                                         {t('common.view', { defaultValue: 'View' })}
@@ -474,7 +493,20 @@ export function Payments() {
                             </Table>
                         </CardContent>
                     </Card>
-                </TabsContent>
+                    )
+
+                    const openItemsTitle = t('payments.tabs.openItems', { defaultValue: 'Open Items' })
+                    const payableTitle = t('payments.tabs.payable', { defaultValue: 'Payable' })
+                    const collectableTitle = t('payments.tabs.collectable', { defaultValue: 'Collectable' })
+
+                    return (
+                        <>
+                            <TabsContent value="open-items">{renderOpenItemsTable(openItemsTitle)}</TabsContent>
+                            <TabsContent value="payable">{renderOpenItemsTable(payableTitle)}</TabsContent>
+                            <TabsContent value="collectable">{renderOpenItemsTable(collectableTitle)}</TabsContent>
+                        </>
+                    )
+                })()}
 
                 <TabsContent value="transactions">
                     <Card>
@@ -494,7 +526,7 @@ export function Payments() {
                                         <TableHead>{t('payments.table.method', { defaultValue: 'Method' })}</TableHead>
                                         <TableHead>{t('payments.table.note', { defaultValue: 'Note' })}</TableHead>
                                         <TableHead>{t('payments.table.status', { defaultValue: 'Status' })}</TableHead>
-                                        <TableHead className="text-right">{t('payments.table.actions', { defaultValue: 'Actions' })}</TableHead>
+                                        <TableHead className="text-end">{t('payments.table.actions', { defaultValue: 'Actions' })}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -557,7 +589,7 @@ export function Payments() {
                                                                     : t('payments.status.posted', { defaultValue: 'Posted' })}
                                                     </span>
                                                 </TableCell>
-                                                <TableCell className="text-right">
+                                                <TableCell className="text-end">
                                                     <div className="flex justify-end gap-2">
                                                         <Button variant="outline" size="sm" onClick={() => setLocation(getPaymentTransactionRoutePath(item))}>
                                                             {t('common.view', { defaultValue: 'View' })}
@@ -569,7 +601,7 @@ export function Payments() {
                                                                 onClick={() => handleReverse(item)}
                                                                 disabled={reversingTransactionId === item.id}
                                                             >
-                                                                <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                                                                <RotateCcw className="ms-1 h-3.5 w-3.5" />
                                                                 {t('common.reverse', { defaultValue: 'Reverse' })}
                                                             </Button>
                                                         ) : null}
