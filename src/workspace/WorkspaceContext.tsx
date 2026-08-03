@@ -24,6 +24,7 @@ import {
     normalizeWorkspaceDataMode,
     writeWorkspaceModeSnapshot
 } from './workspaceMode'
+import { resolveFetchedWorkspaceLogo, resolvePersistedWorkspaceLogo } from './workspaceLogo'
 import { runSupabaseAction, normalizeSupabaseActionError } from '@/lib/supabaseRequest'
 import {
     getWorkspacePaymentSummary,
@@ -494,6 +495,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     ) => {
         const existing = await db.workspaces.get(workspaceId)
         const timestamp = new Date().toISOString()
+        const logoUrl = resolvePersistedWorkspaceLogo({
+            nextWorkspaceMode: nextFeatures.data_mode,
+            existingWorkspaceMode: existing?.data_mode,
+            nextLogoUrl: nextFeatures.logo_url,
+            existingLogoUrl: existing?.logo_url
+        })
 
         await db.workspaces.put({
             id: workspaceId,
@@ -532,7 +539,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             iqd_display_preference: nextFeatures.iqd_display_preference,
             locked_workspace: nextFeatures.locked_workspace,
             allow_whatsapp: nextFeatures.allow_whatsapp,
-            logo_url: nextFeatures.logo_url,
+            logo_url: logoUrl,
             coordination: nextFeatures.coordination,
             max_discount_percent: nextFeatures.max_discount_percent,
             print_lang: nextFeatures.print_lang,
@@ -703,8 +710,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             const renewalDueAt = paymentSummaryResult.error
                 ? cachedSnapshot?.features?.renewal_due_at ?? currentFeatures.renewal_due_at
                 : paymentSummaryResult.summary?.configuration?.renewalDueAt ?? null
+            const persistedWorkspace = await db.workspaces.get(workspaceId)
             const localThermalPrinting = cachedSnapshot?.features?.thermal_printing
-                ?? (await db.workspaces.get(workspaceId))?.thermal_printing
+                ?? persistedWorkspace?.thermal_printing
                 ?? currentFeatures.thermal_printing
                 ?? false
             const fetchedFeatures = mergeWorkspaceFeatures({
@@ -721,9 +729,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 pos_convert_to_workspace_currency: workspaceRow.pos_convert_to_workspace_currency ?? currentFeatures.pos_convert_to_workspace_currency,
                 iqd_display_preference: workspaceRow.iqd_display_preference ?? currentFeatures.iqd_display_preference,
                 locked_workspace: workspaceRow.locked_workspace ?? currentFeatures.locked_workspace,
-                logo_url: (workspaceRow.data_mode === 'local' || workspaceRow.data_mode === 'hybrid')
-                    ? (cachedSnapshot?.features?.logo_url ?? currentFeatures.logo_url ?? workspaceRow.logo_url ?? null)
-                    : (workspaceRow.logo_url ?? null),
+                logo_url: resolveFetchedWorkspaceLogo({
+                    workspaceMode: workspaceRow.data_mode,
+                    persistedWorkspaceMode: persistedWorkspace?.data_mode,
+                    persistedLogoUrl: persistedWorkspace?.logo_url,
+                    cachedLogoUrl: cachedSnapshot?.features?.logo_url,
+                    currentLogoUrl: currentFeatures.logo_url,
+                    remoteLogoUrl: workspaceRow.logo_url
+                }),
                 coordination: workspaceRow.coordination ?? null,
                 max_discount_percent: workspaceRow.max_discount_percent ?? currentFeatures.max_discount_percent,
                 allow_whatsapp: workspaceRow.allow_whatsapp ?? currentFeatures.allow_whatsapp,
