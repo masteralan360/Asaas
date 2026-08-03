@@ -1145,6 +1145,12 @@
     "title": "الطلبات",
     "subtitle": "إجمالي الطلبات",
     "paymentStatus": "حالة الدفع",
+    "dateFilters": {
+      "created": "تاريخ الإنشاء",
+      "fulfilled": "تاريخ التنفيذ",
+      "sync": "مزامنة تاريخ التنفيذ مع تاريخ الإنشاء",
+      "toggleFulfilled": "إظهار فلتر تاريخ التنفيذ"
+    },
     "summary": {
       "totalOrders": "إجمالي الطلبات",
       "orderValue": "قيمة الطلبات",

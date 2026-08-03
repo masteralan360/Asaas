@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
-import { BadgeCheck, CalendarDays, ChevronDown, CircleCheck, CircleDashed, CircleDollarSign, Clock3, CreditCard, EllipsisVertical, Eye, LayoutGrid, List, ListFilter, Loader2, Lock, Package, PackageCheck, PackagePlus, Pencil, Plus, Printer, RotateCcw, Search, ShoppingCart, Trash2, Truck, UsersRound, Wallet, Warehouse, XCircle, type LucideIcon } from 'lucide-react'
+import { BadgeCheck, CalendarDays, ChevronDown, CircleCheck, CircleDashed, CircleDollarSign, Clock3, CreditCard, EllipsisVertical, Eye, LayoutGrid, List, ListFilter, Loader2, Lock, Package, PackageCheck, PackagePlus, Pencil, Plus, Printer, RefreshCw, RotateCcw, Search, ShoppingCart, Trash2, Truck, UsersRound, Wallet, Warehouse, XCircle, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedOrderError } from '@/lib/orderErrors'
 import type { PaymentMethodOption } from '@/lib/paymentMethods'
@@ -279,25 +279,38 @@ function formatPaymentStatus(t: (key: string, options?: Record<string, unknown>)
     return t('orders.status.unpaid', { defaultValue: 'Unpaid' })
 }
 
-function filterOrdersByDate<T extends { createdAt: string }>(orders: T[], dateRange: DateRangeType, customDates: { start: string; end: string }) {
+function filterOrdersByDate<T>(
+    orders: T[],
+    dateRange: DateRangeType,
+    customDates: { start: string; end: string },
+    getDate: (order: T) => string | null | undefined
+) {
     const now = new Date()
 
     if (dateRange === 'today') {
         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-        return orders.filter((order) => new Date(order.createdAt) >= startOfDay)
+        return orders.filter((order) => {
+            const date = getDate(order)
+            return Boolean(date && new Date(date) >= startOfDay)
+        })
     }
 
     if (dateRange === 'month') {
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-        return orders.filter((order) => new Date(order.createdAt) >= startOfMonth)
+        return orders.filter((order) => {
+            const date = getDate(order)
+            return Boolean(date && new Date(date) >= startOfMonth)
+        })
     }
 
     if (dateRange === 'lastMonth') {
         const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
         return orders.filter((order) => {
-            const createdAt = new Date(order.createdAt)
-            return createdAt >= startOfLastMonth && createdAt < startOfMonth
+            const date = getDate(order)
+            if (!date) return false
+            const orderDate = new Date(date)
+            return orderDate >= startOfLastMonth && orderDate < startOfMonth
         })
     }
 
@@ -307,9 +320,11 @@ function filterOrdersByDate<T extends { createdAt: string }>(orders: T[], dateRa
         const end = customDates.end ? new Date(customDates.end) : null
         if (end) end.setHours(23, 59, 59, 999)
         return orders.filter((order) => {
-            const createdAt = new Date(order.createdAt)
-            if (start && createdAt < start) return false
-            if (end && createdAt > end) return false
+            const date = getDate(order)
+            if (!date) return false
+            const orderDate = new Date(date)
+            if (start && orderDate < start) return false
+            if (end && orderDate > end) return false
             return true
         })
     }
@@ -354,18 +369,6 @@ function getPreviousDateRange(dateRange: DateRangeType, customDates: { start: st
     }
 
     return null
-}
-
-function formatCompactCurrency(amount: number, currency: CurrencyCode, iqdPreference: 'IQD' | 'د.ع') {
-    const compactAmount = new Intl.NumberFormat('en-US', {
-        notation: 'compact',
-        maximumFractionDigits: 1
-    }).format(amount)
-
-    if (currency === 'iqd') return `${compactAmount} ${iqdPreference}`
-    if (currency === 'eur') return `€${compactAmount}`
-    if (currency === 'try') return `₺${compactAmount}`
-    return `$${compactAmount}`
 }
 
 function getOrderSummary(items: Array<{ productName: string }>) {
@@ -436,7 +439,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
     const { toast } = useToast()
     const [, navigate] = useLocation()
-    const { dateRange, customDates } = useDateRange()
+    const { dateRange, customDates, setDateRange, setCustomDates } = useDateRange()
     const products = useProducts(workspaceId)
     const productImageUrls = useMemo(() => products.reduce<Record<string, string>>((imageUrls, product) => {
         const imageUrl = product.imageUrl?.trim()
@@ -456,10 +459,19 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
     const [search, setSearch] = useState('')
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
     const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all')
+    const [fulfillmentDateRange, setFulfillmentDateRange] = useState<DateRangeType>('allTime')
+    const [fulfillmentCustomDates, setFulfillmentCustomDates] = useState({ start: '', end: '' })
+    const [isFulfilledDateFilterExpanded, setIsFulfilledDateFilterExpanded] = useState(false)
 
     useEffect(() => {
         setActiveTab(initialTab)
     }, [initialTab])
+
+    useEffect(() => {
+        setFulfillmentDateRange('allTime')
+        setFulfillmentCustomDates({ start: '', end: '' })
+        setIsFulfilledDateFilterExpanded(false)
+    }, [workspaceId])
 
     useEffect(() => {
         localStorage.setItem('orders_view_mode', viewMode)
@@ -553,14 +565,24 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
     }, [defaultStorageId])
 
     const dateFilteredSalesOrders = useMemo(
-        () => filterOrdersByDate(salesOrders, dateRange, customDates)
+        () => filterOrdersByDate(
+            filterOrdersByDate(salesOrders, dateRange, customDates, (order) => order.createdAt),
+            fulfillmentDateRange,
+            fulfillmentCustomDates,
+            (order) => order.actualDeliveryDate
+        )
             .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
-        [salesOrders, dateRange, customDates]
+        [salesOrders, dateRange, customDates, fulfillmentDateRange, fulfillmentCustomDates]
     )
 
     const dateFilteredPurchaseOrders = useMemo(
-        () => filterOrdersByDate(purchaseOrders, dateRange, customDates),
-        [purchaseOrders, dateRange, customDates]
+        () => filterOrdersByDate(
+            filterOrdersByDate(purchaseOrders, dateRange, customDates, (order) => order.createdAt),
+            fulfillmentDateRange,
+            fulfillmentCustomDates,
+            (order) => order.actualDeliveryDate
+        ),
+        [purchaseOrders, dateRange, customDates, fulfillmentDateRange, fulfillmentCustomDates]
     )
 
     const filteredSalesOrders = useMemo(() => {
@@ -1539,23 +1561,26 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                             )}
                         >
                             <div className="flex justify-between items-start">
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm font-bold text-primary">{row.orderNumber}</span>
-                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-primary/10 text-primary">
-                                            {activeTab === 'sales' ? t('orders.tabs.sales') : t('orders.tabs.purchase')}
-                                        </span>
-                                        {activeTab === 'sales' && (row as SalesOrder).sourceChannel === 'marketplace' ? (
-                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20">
-                                                {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
+                                <div className="flex min-w-0 items-start gap-3">
+                                    <OrderProductMosaic items={row.items} productImageUrls={productImageUrls} />
+                                    <div className="min-w-0 space-y-1">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="text-sm font-bold text-primary">{row.orderNumber}</span>
+                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-primary/10 text-primary">
+                                                {activeTab === 'sales' ? t('orders.tabs.sales') : t('orders.tabs.purchase')}
                                             </span>
-                                        ) : null}
-                                    </div>
-                                    <div className="text-base font-bold text-foreground">
-                                        {activeTab === 'sales' ? (row as SalesOrder).customerName : (row as PurchaseOrder).supplierName}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground truncate max-w-[200px]">
-                                        {summary}
+                                            {activeTab === 'sales' && (row as SalesOrder).sourceChannel === 'marketplace' ? (
+                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20">
+                                                    {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
+                                                </span>
+                                            ) : null}
+                                        </div>
+                                        <div className="text-base font-bold text-foreground">
+                                            {activeTab === 'sales' ? (row as SalesOrder).customerName : (row as PurchaseOrder).supplierName}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground truncate max-w-[200px]">
+                                            {summary}
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="flex flex-col items-end gap-1.5 text-end">
@@ -1570,8 +1595,15 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                     ) : returnStatus === 'partial' ? (
                                         <OrderStatusBadge status="partially_returned" label={t('sales.return.partialReturn') || 'Partially Returned'} />
                                     ) : null}
-                                    <div className="text-xs text-muted-foreground mt-2 font-medium">
-                                        {formatDate(row.createdAt)}
+                                    <div className="mt-2 grid gap-1 text-[10px] font-medium text-muted-foreground">
+                                        <div>
+                                            <span className="me-1 uppercase tracking-tight">{t('orders.dateFilters.created', { defaultValue: 'Created' })}</span>
+                                            {formatDate(row.createdAt)}
+                                        </div>
+                                        <div>
+                                            <span className="me-1 uppercase tracking-tight">{t('orders.dateFilters.fulfilled', { defaultValue: 'Fulfilled' })}</span>
+                                            {row.actualDeliveryDate ? formatDate(row.actualDeliveryDate) : '—'}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1627,6 +1659,29 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
     const purchaseDisabled = suppliers.length === 0 || products.length === 0
     const StatusFilterIcon = statusFilterIcons[statusFilter]
     const PaymentFilterIcon = paymentFilterIcons[paymentFilter]
+    const areDateFiltersSynced = dateRange === fulfillmentDateRange
+        && customDates.start === fulfillmentCustomDates.start
+        && customDates.end === fulfillmentCustomDates.end
+
+    function syncFulfillmentDateFilter() {
+        setFulfillmentDateRange(dateRange)
+        setFulfillmentCustomDates({ ...customDates })
+    }
+
+    function handleCreatedDateRangeChange(nextDateRange: DateRangeType) {
+        setDateRange(nextDateRange)
+        if (fulfillmentDateRange !== 'allTime') {
+            setFulfillmentDateRange(nextDateRange)
+            setFulfillmentCustomDates({ ...customDates })
+        }
+    }
+
+    function handleCreatedCustomDatesChange(nextCustomDates: { start: string; end: string }) {
+        setCustomDates(nextCustomDates)
+        if (fulfillmentDateRange !== 'allTime') {
+            setFulfillmentCustomDates({ ...nextCustomDates })
+        }
+    }
 
     return (
         <div className="space-y-6" dir={pageDirection} data-tour-id="tutorial-orders-landing">
@@ -1636,7 +1691,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                         <ShoppingCart className="h-6 w-6 text-primary" />
                         {t('orders.title') || 'Orders'}
                         {getDateDisplay() && (
-                            <span className="text-sm font-semibold text-muted-foreground bg-muted/40 px-2.5 py-0.5 rounded-lg border border-border/50 translate-y-[1px]">
+                            <span className="animate-pop-in rounded-lg bg-primary px-3 py-1 text-sm font-bold text-primary-foreground shadow-sm">
                                 {getDateDisplay()}
                             </span>
                         )}
@@ -1646,7 +1701,63 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                     </p>
                 </div>
                 <div className="flex flex-col sm:flex-row lg:items-center gap-4 self-start lg:self-auto w-full lg:w-auto">
-                    <DateRangeFilters />
+                    <div className="relative w-full lg:w-auto">
+                        <div className="relative flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:gap-6">
+                            <div aria-hidden="true" className="pointer-events-none absolute start-12 end-12 top-1/2 hidden h-px -translate-y-1/2 bg-border/70 2xl:block" />
+                            <div className="relative">
+                                <DateRangeFilters
+                                    label={t('orders.dateFilters.created', { defaultValue: 'Created date' })}
+                                    dateRange={dateRange}
+                                    customDates={customDates}
+                                    onDateRangeChange={handleCreatedDateRangeChange}
+                                    onCustomDatesChange={handleCreatedCustomDatesChange}
+                                />
+                                <button
+                                    type="button"
+                                    className="absolute inset-x-0 top-0 z-10 flex h-7 items-center justify-end px-2.5 text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 2xl:hidden"
+                                    onClick={() => setIsFulfilledDateFilterExpanded((expanded) => !expanded)}
+                                    aria-expanded={isFulfilledDateFilterExpanded}
+                                    aria-controls="fulfilled-date-filter"
+                                    aria-label={t('orders.dateFilters.toggleFulfilled', { defaultValue: 'Show fulfilled date filter' })}
+                                    title={t('orders.dateFilters.toggleFulfilled', { defaultValue: 'Show fulfilled date filter' })}
+                                >
+                                    <ChevronDown className={cn('h-4 w-4 transition-transform duration-200', isFulfilledDateFilterExpanded && 'rotate-180')} />
+                                </button>
+                            </div>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                className={cn(
+                                    'relative z-10 hidden h-9 w-9 self-center rounded-full bg-background shadow-sm 2xl:-mx-3 2xl:flex',
+                                    !areDateFiltersSynced && 'border-primary/40 text-primary hover:bg-primary/10 hover:text-primary'
+                                )}
+                                disabled={areDateFiltersSynced}
+                                onClick={syncFulfillmentDateFilter}
+                                title={t('orders.dateFilters.sync', { defaultValue: 'Sync fulfilled date with created date' })}
+                                aria-label={t('orders.dateFilters.sync', { defaultValue: 'Sync fulfilled date with created date' })}
+                            >
+                                <RefreshCw className="h-4 w-4" />
+                            </Button>
+                            <div
+                                id="fulfilled-date-filter"
+                                className={cn(
+                                    'relative 2xl:block',
+                                    isFulfilledDateFilterExpanded ? 'block animate-in fade-in slide-in-from-top-2 duration-200' : 'hidden'
+                                )}
+                            >
+                                <DateRangeFilters
+                                    label={t('orders.dateFilters.fulfilled', { defaultValue: 'Fulfilled date' })}
+                                    labelDotClassName="bg-sky-500"
+                                    allTimeButtonClassName="border border-sky-500/70 hover:border-sky-500"
+                                    dateRange={fulfillmentDateRange}
+                                    customDates={fulfillmentCustomDates}
+                                    onDateRangeChange={setFulfillmentDateRange}
+                                    onCustomDatesChange={setFulfillmentCustomDates}
+                                />
+                            </div>
+                        </div>
+                    </div>
                     {canManageOrders && (
                         <Button
                             className="gap-2 self-start sm:self-center w-full sm:w-auto rounded-xl"
