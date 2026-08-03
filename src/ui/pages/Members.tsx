@@ -592,7 +592,7 @@ export function Members() {
             if (isLocalMode) {
                 await copyPermissionsLocally(copyWorkspaceId, copyMemberId, permissionMember.id)
             } else {
-                const { data, error } = await invokeWorkspaceAccess<{ added?: number; removed?: number }>({
+                const { error } = await invokeWorkspaceAccess<{ added?: number; removed?: number }>({
                     label: 'members.permissions.copy.apply',
                     fallbackAccessToken: session?.access_token,
                     timeoutMs: 20000,
@@ -1063,7 +1063,7 @@ export function Members() {
                                         {permissionMutationKey === `${permissionMember.id}:${permission.key}` && (
                                             <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
                                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                 {t('members.permissions.saving', { defaultValue: 'Saving...' })}
+                                                {t('members.permissions.saving', { defaultValue: 'Saving...' })}
                                             </div>
                                         )}
                                     </div>
