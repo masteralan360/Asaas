@@ -1145,6 +1145,18 @@
     "title": "الطلبات",
     "subtitle": "إجمالي الطلبات",
     "paymentStatus": "حالة الدفع",
+    "summary": {
+      "totalOrders": "إجمالي الطلبات",
+      "orderValue": "قيمة الطلبات",
+      "pendingFulfillment": "طلبات بانتظار التنفيذ",
+      "outstandingPayments": "المدفوعات المستحقة",
+      "sales": "مبيعات",
+      "purchase": "شراء",
+      "unpaid": "غير مدفوع",
+      "partiallyPaid": "مدفوع جزئيًا",
+      "noOutstanding": "لا توجد مدفوعات مستحقة",
+      "totalIn": "الإجمالي بـ {{currency}}"
+    },
     "view": {
       "table": "تفاصيل الطلبات",
       "grid": "شبكة الطلبات"
@@ -1190,7 +1202,8 @@
       "items": "العناصر",
       "status": "الحالة",
       "total": "الإجمالي",
-      "date": "التاريخ"
+      "date": "التاريخ",
+      "fulfilledDate": "تاريخ التنفيذ"
     },
     "status": {
       "pending": "قيد الانتظار",

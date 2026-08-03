@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
-import { BadgeCheck, CalendarDays, ChevronDown, CircleCheck, CircleDashed, CreditCard, EllipsisVertical, Eye, LayoutGrid, List, ListFilter, Loader2, Lock, PackageCheck, PackagePlus, Pencil, Plus, Printer, RotateCcw, Search, ShoppingCart, Trash2, Truck, UsersRound, Wallet, Warehouse, XCircle, type LucideIcon } from 'lucide-react'
+import { BadgeCheck, CalendarDays, ChevronDown, CircleCheck, CircleDashed, CircleDollarSign, Clock3, CreditCard, EllipsisVertical, Eye, LayoutGrid, List, ListFilter, Loader2, Lock, Package, PackageCheck, PackagePlus, Pencil, Plus, Printer, RotateCcw, Search, ShoppingCart, Trash2, Truck, UsersRound, Wallet, Warehouse, XCircle, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedOrderError } from '@/lib/orderErrors'
 import type { PaymentMethodOption } from '@/lib/paymentMethods'
@@ -10,7 +10,7 @@ import { SalesOrderFormPage } from '@/ui/components/orders/SalesOrderFormPage'
 import { PurchaseOrderFormPage } from '@/ui/components/orders/PurchaseOrderFormPage'
 
 import { useAuth } from '@/auth'
-import { useDateRange } from '@/context/DateRangeContext'
+import { useDateRange, type DateRangeType } from '@/context/DateRangeContext'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { getLanguageDirection } from '@/lib/i18nRouting'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
@@ -19,6 +19,7 @@ import { buildOrderExchangeRatesSnapshot, convertCurrencyAmountWithLiveRates, ge
 import { ORDER_DECIMAL_STEP, roundOrderValue } from '@/lib/orderPrecision'
 import { formatCurrency, formatDate, formatLocalDateTimeValue, generateId, parseLocalDateTimeValue } from '@/lib/utils'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
+import { platformService } from '@/services/platformService'
 import {
     createPurchaseOrder,
     createSalesOrder,
@@ -101,6 +102,10 @@ import {
     Textarea,
     PrintPreviewModal,
     DateRangeFilters,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
     useToast
 } from '@/ui/components'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
@@ -109,15 +114,17 @@ import { OrderListPrintTemplate } from '@/ui/components/orders/OrderPrintTemplat
 import { OrderStatusBadge } from '@/ui/components/orders/OrderStatusBadge'
 
 type OrderTab = 'sales' | 'purchase'
-type StatusFilter = 'all' | 'draft' | 'ordered' | 'received' | 'completed'
+type StatusFilter = 'all' | 'draft' | 'pending' | 'ordered' | 'received' | 'completed' | 'cancelled'
 type PaymentFilter = 'all' | 'unpaid' | 'partial' | 'paid' | 'returned'
 
 const statusFilterIcons = {
     all: ListFilter,
     draft: Pencil,
+    pending: Clock3,
     ordered: ShoppingCart,
     received: PackageCheck,
-    completed: CircleCheck
+    completed: CircleCheck,
+    cancelled: XCircle
 } satisfies Record<StatusFilter, LucideIcon>
 
 const paymentFilterIcons = {
@@ -127,6 +134,70 @@ const paymentFilterIcons = {
     paid: BadgeCheck,
     returned: RotateCcw
 } satisfies Record<PaymentFilter, LucideIcon>
+
+type OrderMosaicItem = {
+    productId: string
+    productName: string
+}
+
+function getProductImageSource(imageUrl?: string) {
+    if (!imageUrl) return ''
+    return /^(https?:|data:|blob:)/i.test(imageUrl) ? imageUrl : platformService.convertFileSrc(imageUrl)
+}
+
+function OrderProductMosaic({ items, productImageUrls }: { items: OrderMosaicItem[]; productImageUrls: Record<string, string> }) {
+    const [failedProductIds, setFailedProductIds] = useState<Set<string>>(() => new Set())
+    const products = Array.from(new Map(items.map((item) => [item.productId, item])).values()).slice(0, 4)
+    const layoutClass = products.length === 1
+        ? 'grid-cols-1 grid-rows-1'
+        : products.length === 2
+            ? 'grid-cols-2 grid-rows-1'
+            : 'grid-cols-2 grid-rows-2'
+
+    return (
+        <div
+            className={cn('grid h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-border bg-muted/40', layoutClass)}
+            title={products.map((item) => item.productName).join(', ')}
+            aria-label={products.map((item) => item.productName).join(', ')}
+        >
+            {products.map((item, index) => {
+                const imageSource = getProductImageSource(productImageUrls[item.productId])
+                const hasImage = Boolean(imageSource && !failedProductIds.has(item.productId))
+                const hasStartDivider = products.length === 2
+                    ? index === 1
+                    : products.length === 3
+                        ? index > 0
+                        : index === 1 || index === 3
+                const hasTopDivider = products.length > 2 && index >= 2
+
+                return (
+                    <div
+                        key={item.productId}
+                        className={cn(
+                            'relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden bg-muted',
+                            products.length === 3 && index === 0 && 'row-span-2',
+                            hasStartDivider && 'border-s border-border',
+                            hasTopDivider && 'border-t border-border'
+                        )}
+                    >
+                        {hasImage ? (
+                            <img
+                                src={imageSource}
+                                alt={item.productName}
+                                loading="lazy"
+                                decoding="async"
+                                className="h-full w-full object-cover"
+                                onError={() => setFailedProductIds((current) => new Set(current).add(item.productId))}
+                            />
+                        ) : (
+                            <Package className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                        )}
+                    </div>
+                )
+            })}
+        </div>
+    )
+}
 
 type FormItem = {
     id: string
@@ -208,6 +279,95 @@ function formatPaymentStatus(t: (key: string, options?: Record<string, unknown>)
     return t('orders.status.unpaid', { defaultValue: 'Unpaid' })
 }
 
+function filterOrdersByDate<T extends { createdAt: string }>(orders: T[], dateRange: DateRangeType, customDates: { start: string; end: string }) {
+    const now = new Date()
+
+    if (dateRange === 'today') {
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+        return orders.filter((order) => new Date(order.createdAt) >= startOfDay)
+    }
+
+    if (dateRange === 'month') {
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+        return orders.filter((order) => new Date(order.createdAt) >= startOfMonth)
+    }
+
+    if (dateRange === 'lastMonth') {
+        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+        return orders.filter((order) => {
+            const createdAt = new Date(order.createdAt)
+            return createdAt >= startOfLastMonth && createdAt < startOfMonth
+        })
+    }
+
+    if (dateRange === 'custom' && (customDates.start || customDates.end)) {
+        const start = customDates.start ? new Date(customDates.start) : null
+        if (start) start.setHours(0, 0, 0, 0)
+        const end = customDates.end ? new Date(customDates.end) : null
+        if (end) end.setHours(23, 59, 59, 999)
+        return orders.filter((order) => {
+            const createdAt = new Date(order.createdAt)
+            if (start && createdAt < start) return false
+            if (end && createdAt > end) return false
+            return true
+        })
+    }
+
+    return orders
+}
+
+function getPreviousDateRange(dateRange: DateRangeType, customDates: { start: string; end: string }) {
+    const now = new Date()
+
+    if (dateRange === 'today') {
+        const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+        const start = new Date(end)
+        start.setDate(start.getDate() - 1)
+        return { start, end }
+    }
+
+    if (dateRange === 'month') {
+        return {
+            start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+            end: new Date(now.getFullYear(), now.getMonth(), 1)
+        }
+    }
+
+    if (dateRange === 'lastMonth') {
+        return {
+            start: new Date(now.getFullYear(), now.getMonth() - 2, 1),
+            end: new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        }
+    }
+
+    if (dateRange === 'custom' && customDates.start && customDates.end) {
+        const currentStart = new Date(customDates.start)
+        currentStart.setHours(0, 0, 0, 0)
+        const currentEnd = new Date(customDates.end)
+        currentEnd.setHours(23, 59, 59, 999)
+        const duration = currentEnd.getTime() - currentStart.getTime() + 1
+        return {
+            start: new Date(currentStart.getTime() - duration),
+            end: new Date(currentStart.getTime() - 1)
+        }
+    }
+
+    return null
+}
+
+function formatCompactCurrency(amount: number, currency: CurrencyCode, iqdPreference: 'IQD' | 'د.ع') {
+    const compactAmount = new Intl.NumberFormat('en-US', {
+        notation: 'compact',
+        maximumFractionDigits: 1
+    }).format(amount)
+
+    if (currency === 'iqd') return `${compactAmount} ${iqdPreference}`
+    if (currency === 'eur') return `€${compactAmount}`
+    if (currency === 'try') return `₺${compactAmount}`
+    return `$${compactAmount}`
+}
+
 function getOrderSummary(items: Array<{ productName: string }>) {
     const firstItems = items.slice(0, 2).map((item) => item.productName)
     if (items.length <= 2) return firstItems.join(', ')
@@ -278,6 +438,11 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
     const [, navigate] = useLocation()
     const { dateRange, customDates } = useDateRange()
     const products = useProducts(workspaceId)
+    const productImageUrls = useMemo(() => products.reduce<Record<string, string>>((imageUrls, product) => {
+        const imageUrl = product.imageUrl?.trim()
+        if (imageUrl) imageUrls[product.id] = imageUrl
+        return imageUrls
+    }, {}), [products])
     const inventory = useInventory(workspaceId)
     const storages = useStorages(workspaceId)
     const customers = useCustomers(workspaceId)
@@ -387,35 +552,19 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         }))
     }, [defaultStorageId])
 
-    const filteredSalesOrders = useMemo(() => {
-        let items = [...salesOrders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    const dateFilteredSalesOrders = useMemo(
+        () => filterOrdersByDate(salesOrders, dateRange, customDates)
+            .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
+        [salesOrders, dateRange, customDates]
+    )
 
-        const now = new Date()
-        if (dateRange === 'today') {
-            const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-            items = items.filter(s => new Date(s.createdAt) >= startOfDay)
-        } else if (dateRange === 'month') {
-            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-            items = items.filter(s => new Date(s.createdAt) >= startOfMonth)
-        } else if (dateRange === 'lastMonth') {
-            const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-            items = items.filter(s => {
-                const createdAt = new Date(s.createdAt)
-                return createdAt >= startOfLastMonth && createdAt < startOfMonth
-            })
-        } else if (dateRange === 'custom' && (customDates.start || customDates.end)) {
-            const start = customDates.start ? new Date(customDates.start) : null
-            if (start) start.setHours(0, 0, 0, 0)
-            const end = customDates.end ? new Date(customDates.end) : null
-            if (end) end.setHours(23, 59, 59, 999)
-            items = items.filter(s => {
-                const d = new Date(s.createdAt)
-                if (start && d < start) return false
-                if (end && d > end) return false
-                return true
-            })
-        }
+    const dateFilteredPurchaseOrders = useMemo(
+        () => filterOrdersByDate(purchaseOrders, dateRange, customDates),
+        [purchaseOrders, dateRange, customDates]
+    )
+
+    const filteredSalesOrders = useMemo(() => {
+        let items = [...dateFilteredSalesOrders]
 
         if (statusFilter !== 'all') {
             items = items.filter((order) => order.status === statusFilter)
@@ -435,37 +584,10 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
             || order.customerName.toLowerCase().includes(query)
             || order.items.some((item) => item.productName.toLowerCase().includes(query))
         )
-    }, [salesOrders, search, statusFilter, paymentFilter, dateRange, customDates])
+    }, [dateFilteredSalesOrders, search, statusFilter, paymentFilter])
 
     const filteredPurchaseOrders = useMemo(() => {
-        let items = purchaseOrders
-
-        const now = new Date()
-        if (dateRange === 'today') {
-            const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-            items = items.filter(s => new Date(s.createdAt) >= startOfDay)
-        } else if (dateRange === 'month') {
-            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-            items = items.filter(s => new Date(s.createdAt) >= startOfMonth)
-        } else if (dateRange === 'lastMonth') {
-            const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-            items = items.filter(s => {
-                const createdAt = new Date(s.createdAt)
-                return createdAt >= startOfLastMonth && createdAt < startOfMonth
-            })
-        } else if (dateRange === 'custom' && (customDates.start || customDates.end)) {
-            const start = customDates.start ? new Date(customDates.start) : null
-            if (start) start.setHours(0, 0, 0, 0)
-            const end = customDates.end ? new Date(customDates.end) : null
-            if (end) end.setHours(23, 59, 59, 999)
-            items = items.filter(s => {
-                const d = new Date(s.createdAt)
-                if (start && d < start) return false
-                if (end && d > end) return false
-                return true
-            })
-        }
+        let items = [...dateFilteredPurchaseOrders]
 
         if (statusFilter !== 'all') {
             items = items.filter((order) => order.status === statusFilter)
@@ -484,7 +606,67 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
             || order.supplierName.toLowerCase().includes(query)
             || order.items.some((item) => item.productName.toLowerCase().includes(query))
         )
-    }, [purchaseOrders, search, statusFilter, paymentFilter, dateRange, customDates])
+    }, [dateFilteredPurchaseOrders, search, statusFilter, paymentFilter])
+
+    const summaryOrders = useMemo(
+        () => [...dateFilteredSalesOrders, ...dateFilteredPurchaseOrders],
+        [dateFilteredSalesOrders, dateFilteredPurchaseOrders]
+    )
+    const orderValueOrders = useMemo(
+        () => summaryOrders.filter((order) => order.status !== 'cancelled'),
+        [summaryOrders]
+    )
+    const workspaceCurrency = (features.default_currency || 'usd') as CurrencyCode
+    const orderValueByCurrency = useMemo(() => orderValueOrders.reduce<Record<string, number>>((totals, order) => {
+        totals[order.currency] = (totals[order.currency] || 0) + order.total
+        return totals
+    }, {}), [orderValueOrders])
+    const orderValueEntries = useMemo(
+        () => Object.entries(orderValueByCurrency).sort(([left], [right]) => {
+            if (left === workspaceCurrency) return -1
+            if (right === workspaceCurrency) return 1
+            return left.localeCompare(right)
+        }),
+        [orderValueByCurrency, workspaceCurrency]
+    )
+    const orderValueInWorkspaceCurrency = useMemo(
+        () => orderValueOrders.reduce((total, order) => total + convertCurrencyAmountWithLiveRates(order.total, order.currency, workspaceCurrency, liveRates), 0),
+        [orderValueOrders, workspaceCurrency, liveRates]
+    )
+    const pendingFulfillmentCount = useMemo(
+        () => dateFilteredSalesOrders.filter((order) => order.status === 'pending').length,
+        [dateFilteredSalesOrders]
+    )
+    const outstandingPayments = useMemo(() => summaryOrders.reduce((summary, order) => {
+        if (order.status === 'draft' || order.status === 'cancelled' || ('returnStatus' in order && order.returnStatus === 'full')) {
+            return summary
+        }
+
+        const status = getOrderPaymentStatus(order)
+        if (status === 'paid') return summary
+
+        const balance = getOrderBalanceAmount(order)
+        if (balance <= 0) return summary
+
+        summary.total += convertCurrencyAmountWithLiveRates(balance, order.currency, workspaceCurrency, liveRates)
+        if (status === 'partial') summary.partiallyPaid += 1
+        else summary.unpaid += 1
+        return summary
+    }, { total: 0, unpaid: 0, partiallyPaid: 0 }), [summaryOrders, workspaceCurrency, liveRates])
+    const previousDateRange = useMemo(
+        () => getPreviousDateRange(dateRange, customDates),
+        [dateRange, customDates]
+    )
+    const previousOrderCount = useMemo(() => {
+        if (!previousDateRange) return null
+        return [...salesOrders, ...purchaseOrders].filter((order) => {
+            const createdAt = new Date(order.createdAt)
+            return createdAt >= previousDateRange.start && createdAt < previousDateRange.end
+        }).length
+    }, [previousDateRange, salesOrders, purchaseOrders])
+    const totalOrdersTrend = previousOrderCount && previousOrderCount > 0
+        ? ((summaryOrders.length - previousOrderCount) / previousOrderCount) * 100
+        : null
 
     const salesPreview = useMemo(() => {
         const subtotal = salesForm.items.reduce((sum, item) => sum + ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)), 0)
@@ -1226,6 +1408,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                             <TableHead>{t('common.status') || 'Status'}</TableHead>
                             <TableHead>{t('common.total') || 'Total'}</TableHead>
                             <TableHead>{t('orders.form.date') || 'Date'}</TableHead>
+                            <TableHead>{t('orders.table.fulfilledDate', { defaultValue: 'Fulfilled date' })}</TableHead>
                             <TableHead>{t('orders.paymentStatus', { defaultValue: 'Payment status' })}</TableHead>
                             <TableHead className="text-end">{t('common.actions') || 'Actions'}</TableHead>
                         </TableRow>
@@ -1233,7 +1416,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                     <TableBody>
                         {rows.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={8} className="py-12 text-center text-muted-foreground">
+                                <TableCell colSpan={9} className="py-12 text-center text-muted-foreground">
                                     {t('common.noData') || 'No data available'}
                                 </TableCell>
                             </TableRow>
@@ -1249,15 +1432,20 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                             return (
                                 <TableRow key={row.id} className={isApprovalRequested ? 'bg-violet-50/70 hover:bg-violet-50 dark:bg-violet-950/20 dark:hover:bg-violet-950/30' : undefined}>
                                     <TableCell className="font-semibold">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <span>{row.orderNumber}</span>
-                                            {activeTab === 'sales' && (row as SalesOrder).sourceChannel === 'marketplace' ? (
-                                                <span className="inline-flex rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300">
-                                                    {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
-                                                </span>
-                                            ) : null}
+                                        <div className="flex min-w-[11rem] items-center gap-3">
+                                            <OrderProductMosaic items={row.items} productImageUrls={productImageUrls} />
+                                            <div className="min-w-0">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span>{row.orderNumber}</span>
+                                                    {activeTab === 'sales' && (row as SalesOrder).sourceChannel === 'marketplace' ? (
+                                                        <span className="inline-flex rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300">
+                                                            {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
+                                                        </span>
+                                                    ) : null}
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">{summary}</div>
+                                            </div>
                                         </div>
-                                        <div className="text-xs text-muted-foreground">{summary}</div>
                                     </TableCell>
                                     <TableCell>{activeTab === 'sales' ? (row as SalesOrder).customerName : (row as PurchaseOrder).supplierName}</TableCell>
                                     <TableCell>{row.items.length}</TableCell>
@@ -1277,7 +1465,8 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         </div>
                                     </TableCell>
                                     <TableCell>{formatCurrency(row.total, row.currency, features.iqd_display_preference)}</TableCell>
-                                    <TableCell>{formatDate(row.updatedAt)}</TableCell>
+                                    <TableCell>{formatDate(row.createdAt)}</TableCell>
+                                    <TableCell>{row.actualDeliveryDate ? formatDate(row.actualDeliveryDate) : '—'}</TableCell>
                                     <TableCell>
                                         <div className="flex items-center gap-1.5">
                                             <span className={cn(
@@ -1382,7 +1571,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         <OrderStatusBadge status="partially_returned" label={t('sales.return.partialReturn') || 'Partially Returned'} />
                                     ) : null}
                                     <div className="text-xs text-muted-foreground mt-2 font-medium">
-                                        {formatDate(row.updatedAt)}
+                                        {formatDate(row.createdAt)}
                                     </div>
                                 </div>
                             </div>
@@ -1471,31 +1660,121 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                 </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm text-muted-foreground">{t('orders.tabs.sales') || 'Sales Orders'}</CardTitle>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <Card className="rounded-2xl border-border/80 shadow-none">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                        <CardTitle className="text-sm font-semibold text-muted-foreground">
+                            {t('orders.summary.totalOrders', { defaultValue: 'Total orders' })}
+                        </CardTitle>
+                        <span className="rounded-xl bg-muted/60 p-2 text-muted-foreground">
+                            <Package className="h-4 w-4" />
+                        </span>
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-black">{salesOrders.length}</div>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm text-muted-foreground">{t('orders.tabs.purchase') || 'Purchase Orders'}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-black">{purchaseOrders.length}</div>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm text-muted-foreground">{t('budget.status.pending') || 'Pending'}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-black">
-                            {salesOrders.filter((order) => order.status === 'pending').length + purchaseOrders.filter((order) => order.status === 'ordered').length}
+                    <CardContent className="pt-0">
+                        <div className="flex items-center gap-2">
+                            <div className="text-3xl font-black tracking-tight">{summaryOrders.length}</div>
+                            {totalOrdersTrend !== null ? (
+                                <span className={cn(
+                                    'rounded-full px-2 py-1 text-xs font-bold',
+                                    totalOrdersTrend >= 0
+                                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                        : 'bg-rose-500/10 text-rose-700 dark:text-rose-300'
+                                )}>
+                                    {totalOrdersTrend >= 0 ? '+' : ''}{totalOrdersTrend.toFixed(1)}%
+                                </span>
+                            ) : null}
                         </div>
+                        <p className="mt-1.5 text-xs text-muted-foreground">
+                            {dateFilteredSalesOrders.length} {t('orders.summary.sales', { defaultValue: 'sales' })}
+                            <span className="px-1.5">·</span>
+                            {dateFilteredPurchaseOrders.length} {t('orders.summary.purchase', { defaultValue: 'purchase' })}
+                        </p>
+                    </CardContent>
+                </Card>
+
+                <Card className="rounded-2xl border-border/80 shadow-none">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                        <CardTitle className="text-sm font-semibold text-muted-foreground">
+                            {t('orders.summary.orderValue', { defaultValue: 'Order value' })}
+                        </CardTitle>
+                        <span className="rounded-xl bg-muted/60 p-2 text-muted-foreground">
+                            <CircleDollarSign className="h-4 w-4" />
+                        </span>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                        <TooltipProvider delayDuration={300}>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <div className="cursor-help">
+                                        {orderValueEntries.length > 0 ? orderValueEntries.map(([currency, value], index) => (
+                                            <div
+                                                key={currency}
+                                                className={cn(
+                                                    'font-black leading-tight tracking-tight',
+                                                    index === 0 ? 'text-3xl' : 'mt-1 text-base text-muted-foreground'
+                                                )}
+                                            >
+                                                {formatCurrency(value, currency, features.iqd_display_preference)}
+                                            </div>
+                                        )) : (
+                                            <div className="text-3xl font-black tracking-tight">
+                                                {formatCurrency(0, workspaceCurrency, features.iqd_display_preference)}
+                                            </div>
+                                        )}
+                                    </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" align="start" className="space-y-1 p-3">
+                                    <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                                        {t('orders.summary.totalIn', {
+                                            defaultValue: 'Total in {{currency}}',
+                                            currency: workspaceCurrency.toUpperCase()
+                                        })}
+                                    </div>
+                                    <div className="text-base font-black">
+                                        {formatCurrency(orderValueInWorkspaceCurrency, workspaceCurrency, features.iqd_display_preference)}
+                                    </div>
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                    </CardContent>
+                </Card>
+
+                <Card className="rounded-2xl border-border/80 shadow-none">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                        <CardTitle className="text-sm font-semibold text-muted-foreground">
+                            {t('orders.summary.pendingFulfillment', { defaultValue: 'Pending fulfillment' })}
+                        </CardTitle>
+                        <span className="rounded-xl bg-muted/60 p-2 text-muted-foreground">
+                            <Clock3 className="h-4 w-4" />
+                        </span>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                        <div className="text-3xl font-black tracking-tight">{pendingFulfillmentCount}</div>
+                    </CardContent>
+                </Card>
+
+                <Card className="rounded-2xl border-border/80 shadow-none">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                        <CardTitle className="text-sm font-semibold text-muted-foreground">
+                            {t('orders.summary.outstandingPayments', { defaultValue: 'Outstanding payments' })}
+                        </CardTitle>
+                        <span className="rounded-xl bg-muted/60 p-2 text-muted-foreground">
+                            <CreditCard className="h-4 w-4" />
+                        </span>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                        <div className="text-3xl font-black tracking-tight">
+                            {formatCurrency(outstandingPayments.total, workspaceCurrency, features.iqd_display_preference)}
+                        </div>
+                        <p className="mt-1.5 text-xs text-muted-foreground">
+                            {outstandingPayments.unpaid > 0 || outstandingPayments.partiallyPaid > 0 ? (
+                                <>
+                                    {outstandingPayments.unpaid > 0 ? `${outstandingPayments.unpaid} ${t('orders.summary.unpaid', { defaultValue: 'unpaid' })}` : null}
+                                    {outstandingPayments.unpaid > 0 && outstandingPayments.partiallyPaid > 0 ? <span className="px-1.5">·</span> : null}
+                                    {outstandingPayments.partiallyPaid > 0 ? `${outstandingPayments.partiallyPaid} ${t('orders.summary.partiallyPaid', { defaultValue: 'partially paid' })}` : null}
+                                </>
+                            ) : t('orders.summary.noOutstanding', { defaultValue: 'No outstanding payments' })}
+                        </p>
                     </CardContent>
                 </Card>
             </div>
@@ -1598,7 +1877,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                             </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end" className="min-w-44 rounded-xl border-border/70 p-1.5">
-                                            {(['all', 'draft', 'ordered', 'received', 'completed'] as const).map((value) => {
+                                            {(['all', 'draft', 'pending', 'ordered', 'received', 'completed', 'cancelled'] as const).map((value) => {
                                                 const StatusOptionIcon = statusFilterIcons[value]
                                                 return (
                                                     <DropdownMenuItem

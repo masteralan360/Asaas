@@ -1148,6 +1148,18 @@
     "subtitle": "کۆی داواکارییەکان",
     "paymentStatus": "دۆخی پارەدان",
     "installmentStatus": "دۆخی قیست",
+    "summary": {
+      "totalOrders": "کۆی داواکارییەکان",
+      "orderValue": "بەهای داواکارییەکان",
+      "pendingFulfillment": "جێبەجێکردنی چاوەڕوان",
+      "outstandingPayments": "پارەدانە ماوەکان",
+      "sales": "فرۆشتن",
+      "purchase": "کڕین",
+      "unpaid": "پارە نەدراو",
+      "partiallyPaid": "بەشێک پارەدراو",
+      "noOutstanding": "هیچ پارەدانێکی ماوە نییە",
+      "totalIn": "کۆ لە {{currency}}"
+    },
     "view": {
       "table": "وردەکاری داواکارییەکان",
       "grid": "تۆڕی داواکارییەکان"
@@ -1193,7 +1205,8 @@
       "items": "کالاکان",
       "status": "دۆخ",
       "total": "کۆی گشتی",
-      "date": "بەروار"
+      "date": "بەروار",
+      "fulfilledDate": "بەرواری جێبەجێکردن"
     },
     "status": {
       "pending": "لە چاوەڕوانیدایە",
