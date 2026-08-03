@@ -1,348 +1,76 @@
 {
-  "v0.2.79": {
-    "date": "2026-07-30",
+  "v0.2.95": {
+    "date": "2026-08-03",
     "highlights": {
       "en": [
         {
-          "type": "new",
-          "title": "One-click UPC generation",
-          "content": "Generate a unique UPC code for a product with one click."
-        },
-        {
-          "type": "new",
-          "title": "Order adjustments",
-          "content": "Add shipping fees, handling charges, discounts, and other additions or deductions directly to sales and purchase orders."
-        },
-        {
-          "type": "new",
-          "title": "Business partner map",
-          "content": "View and search customer, supplier, and other business partner locations on a map."
-        },
-        {
-          "type": "new",
-          "title": "Product exchanges",
-          "content": "Exchange products directly from completed sales."
-        },
-        {
-          "type": "new",
-          "title": "Per-item order notes",
-          "content": "Add a separate note to each item in sales and purchase orders."
-        },
-        {
-          "type": "new",
-          "title": "Clearer barcode labels",
-          "content": "Print clearer barcode labels with improved product information."
-        },
-        {
-          "type": "new",
-          "title": "POS currency conversion control",
-          "content": "Choose whether the POS automatically converts currencies."
+          "type": "improved",
+          "title": "Smarter order overview",
+          "content": "Order totals, value, pending fulfillment, and outstanding payments now follow the selected date range."
         },
         {
           "type": "improved",
-          "title": "Smoother barcode scanning",
-          "content": "Camera barcode scanning is now smoother and more reliable."
+          "title": "Created and fulfilled date filters",
+          "content": "Filter orders by when they were created or fulfilled, and sync both date ranges with one click."
         },
         {
           "type": "improved",
-          "title": "Balances shown during orders",
-          "content": "Customer and supplier balances are now visible while creating orders."
+          "title": "Clearer order browsing",
+          "content": "Order rows now show product previews plus separate created and fulfilled dates."
         },
         {
           "type": "improved",
-          "title": "Below-cost sale warnings",
-          "content": "The app now warns you before selling a product below its cost price."
-        },
-        {
-          "type": "improved",
-          "title": "Simpler loan and installment forms",
-          "content": "Loan and installment forms are cleaner, easier to understand, and require fewer unnecessary details."
-        },
-        {
-          "type": "improved",
-          "title": "Improved invoices",
-          "content": "Invoices are easier to customize, read, and fit onto a page."
-        },
-        {
-          "type": "improved",
-          "title": "Clearer product units",
-          "content": "Product units now have clearer names and icons, with more unit options available."
-        },
-        {
-          "type": "improved",
-          "title": "Consistent payment methods",
-          "content": "Payment methods are easier to recognize and more consistent throughout the app."
-        },
-        {
-          "type": "improved",
-          "title": "Better Arabic and Kurdish layouts",
-          "content": "Arabic and Kurdish dropdowns, invoices, currency tools, and other layouts now display more naturally."
-        },
-        {
-          "type": "improved",
-          "title": "Flexible update handling",
-          "content": "Updates can now be postponed, reopened later, or manually refreshed when needed."
-        },
-        {
-          "type": "fixed",
-          "title": "Financed sale returns",
-          "content": "Fully returning a financed sale now correctly cancels its connected loan."
-        },
-        {
-          "type": "fixed",
-          "title": "Offline record preservation",
-          "content": "Fixed cases where offline sales, sale items, or saved activity could disappear."
-        },
-        {
-          "type": "fixed",
-          "title": "Units on older orders",
-          "content": "Fixed incorrect or missing units on older orders and printed invoices."
-        },
-        {
-          "type": "fixed",
-          "title": "Invoice layout and RTL text",
-          "content": "Fixed invoice text overlapping, overflowing, or displaying incorrectly in right-to-left languages."
-        },
-        {
-          "type": "fixed",
-          "title": "POS settings sync",
-          "content": "Fixed POS settings and currency preferences not updating correctly across devices."
-        },
-        {
-          "type": "fixed",
-          "title": "Clearer sync failures",
-          "content": "Sync warnings now clearly explain failed records instead of repeatedly retrying them."
+          "title": "More complete status filters",
+          "content": "Pending and cancelled orders are now easier to find alongside the existing status filters."
         }
       ],
       "ar": [
         {
-          "type": "new",
-          "title": "إنشاء رمز UPC بضغطة واحدة",
-          "content": "أنشئ رمز UPC فريدًا للمنتج بضغطة واحدة."
-        },
-        {
-          "type": "new",
-          "title": "تعديلات الطلبات",
-          "content": "أضف رسوم الشحن والمناولة والخصومات والإضافات أو الاستقطاعات الأخرى مباشرةً إلى طلبات البيع والشراء."
-        },
-        {
-          "type": "new",
-          "title": "خريطة شركاء الأعمال",
-          "content": "اعرض مواقع العملاء والموردين وشركاء الأعمال الآخرين وابحث عنها على الخريطة."
-        },
-        {
-          "type": "new",
-          "title": "استبدال المنتجات",
-          "content": "استبدل المنتجات مباشرةً من المبيعات المكتملة."
-        },
-        {
-          "type": "new",
-          "title": "ملاحظات منفصلة لكل عنصر",
-          "content": "أضف ملاحظة منفصلة لكل عنصر في طلبات البيع والشراء."
-        },
-        {
-          "type": "new",
-          "title": "ملصقات باركود أوضح",
-          "content": "اطبع ملصقات باركود أوضح مع معلومات محسّنة عن المنتجات."
-        },
-        {
-          "type": "new",
-          "title": "التحكم بتحويل العملات في نقاط البيع",
-          "content": "اختر ما إذا كان نظام نقاط البيع سيحوّل العملات تلقائيًا."
+          "type": "improved",
+          "title": "نظرة أوضح على الطلبات",
+          "content": "تتبع الآن إجماليات الطلبات وقيمتها والطلبات بانتظار التنفيذ والمدفوعات المستحقة نطاق التاريخ المحدد."
         },
         {
           "type": "improved",
-          "title": "مسح باركود أكثر سلاسة",
-          "content": "أصبح مسح الباركود بالكاميرا أكثر سلاسة وموثوقية."
+          "title": "فلاتر لتاريخ الإنشاء والتنفيذ",
+          "content": "صفِّ الطلبات حسب تاريخ إنشائها أو تنفيذها، وزامِن النطاقين بضغطة واحدة."
         },
         {
           "type": "improved",
-          "title": "إظهار الأرصدة أثناء إنشاء الطلب",
-          "content": "تظهر الآن أرصدة العملاء والموردين أثناء إنشاء الطلبات."
+          "title": "تصفح أسهل للطلبات",
+          "content": "تعرض صفوف الطلبات الآن معاينات للمنتجات مع تاريخي الإنشاء والتنفيذ بشكل منفصل."
         },
         {
           "type": "improved",
-          "title": "تنبيه عند البيع بأقل من التكلفة",
-          "content": "ينبهك التطبيق الآن قبل بيع أي منتج بسعر أقل من سعر تكلفته."
-        },
-        {
-          "type": "improved",
-          "title": "نماذج قروض وأقساط أبسط",
-          "content": "أصبحت نماذج القروض والأقساط أكثر ترتيبًا وأسهل في الفهم، مع تقليل التفاصيل غير الضرورية."
-        },
-        {
-          "type": "improved",
-          "title": "فواتير محسّنة",
-          "content": "أصبحت الفواتير أسهل في التخصيص والقراءة والملاءمة داخل الصفحة."
-        },
-        {
-          "type": "improved",
-          "title": "وحدات منتجات أوضح",
-          "content": "أصبحت أسماء وحدات المنتجات وأيقوناتها أوضح، مع إضافة خيارات وحدات جديدة."
-        },
-        {
-          "type": "improved",
-          "title": "طرق دفع أكثر اتساقًا",
-          "content": "أصبحت طرق الدفع أسهل في التمييز وأكثر اتساقًا في جميع أجزاء التطبيق."
-        },
-        {
-          "type": "improved",
-          "title": "عرض أفضل بالعربية والكردية",
-          "content": "أصبحت القوائم والفواتير وأدوات العملات والتخطيطات الأخرى بالعربية والكردية تظهر بصورة أكثر طبيعية."
-        },
-        {
-          "type": "improved",
-          "title": "مرونة أكبر في التحديثات",
-          "content": "أصبح بإمكانك تأجيل التحديثات أو فتحها لاحقًا أو تحديث التطبيق يدويًا عند الحاجة."
-        },
-        {
-          "type": "fixed",
-          "title": "إرجاع المبيعات الممولة",
-          "content": "عند إرجاع عملية بيع ممولة بالكامل، يتم الآن إلغاء القرض المرتبط بها بشكل صحيح."
-        },
-        {
-          "type": "fixed",
-          "title": "الحفاظ على السجلات دون اتصال",
-          "content": "تم إصلاح حالات اختفاء المبيعات أو عناصر البيع أو الأنشطة المحفوظة عند العمل دون اتصال."
-        },
-        {
-          "type": "fixed",
-          "title": "وحدات الطلبات القديمة",
-          "content": "تم إصلاح الوحدات المفقودة أو غير الصحيحة في الطلبات القديمة والفواتير المطبوعة."
-        },
-        {
-          "type": "fixed",
-          "title": "تخطيط الفواتير ونصوص RTL",
-          "content": "تم إصلاح تداخل نصوص الفواتير أو خروجها عن حدود الصفحة أو ظهورها بصورة غير صحيحة في اللغات من اليمين إلى اليسار."
-        },
-        {
-          "type": "fixed",
-          "title": "مزامنة إعدادات نقاط البيع",
-          "content": "تم إصلاح عدم تحديث إعدادات نقاط البيع وتفضيلات العملات بصورة صحيحة بين الأجهزة."
-        },
-        {
-          "type": "fixed",
-          "title": "توضيح أخطاء المزامنة",
-          "content": "أصبحت تنبيهات المزامنة توضّح سبب فشل السجلات بدلًا من إعادة المحاولة باستمرار."
+          "title": "فلاتر حالات أشمل",
+          "content": "أصبح العثور على الطلبات قيد الانتظار والملغاة أسهل إلى جانب فلاتر الحالات الحالية."
         }
       ],
       "ku": [
         {
-          "type": "new",
-          "title": "دروستکردنی UPC بە یەک کرتە",
-          "content": "بە یەک کرتە کۆدی UPCی تایبەت بۆ بەرهەمێک دروست بکە."
-        },
-        {
-          "type": "new",
-          "title": "ڕێکخستنەکانی داواکاری",
-          "content": "کرێی گەیاندن، کرێی مامەڵەکردن، داشکاندن و زیادکردن یان کەمکردنەوەکانی تر ڕاستەوخۆ زیاد بکە بۆ داواکارییەکانی فرۆشتن و کڕین."
-        },
-        {
-          "type": "new",
-          "title": "نەخشەی هاوبەشە بازرگانییەکان",
-          "content": "شوێنی کڕیار، دابینکەر و هاوبەشە بازرگانییەکانی تر لەسەر نەخشە ببینە و بەدوایاندا بگەڕێ."
-        },
-        {
-          "type": "new",
-          "title": "گۆڕینەوەی بەرهەم",
-          "content": "بەرهەمەکان ڕاستەوخۆ لە فرۆشتنە تەواوبووەکاندا بگۆڕەوە."
-        },
-        {
-          "type": "new",
-          "title": "تێبینی بۆ هەر بڕگەیەک",
-          "content": "بۆ هەر بڕگەیەک لە داواکارییەکانی فرۆشتن و کڕین تێبینییەکی جیاواز زیاد بکە."
-        },
-        {
-          "type": "new",
-          "title": "لیبڵی بارکۆدی ڕوونتر",
-          "content": "لیبڵی بارکۆد بە زانیاریی باشتر و ڕوونتری بەرهەم چاپ بکە."
-        },
-        {
-          "type": "new",
-          "title": "کۆنترۆڵی گۆڕینی دراو لە POS",
-          "content": "دیاری بکە کە POS دراوەکان بە شێوەی خۆکار بگۆڕێتەوە یان نا."
+          "type": "improved",
+          "title": "پوختەی ڕوونتری داواکارییەکان",
+          "content": "کۆی داواکارییەکان، بەها، جێبەجێکردنی چاوەڕوان و پارەدانە ماوەکان ئێستا بەپێی مەودای بەرواری هەڵبژێردراو نوێ دەبنەوە."
         },
         {
           "type": "improved",
-          "title": "سکانی بارکۆدی نەرمتر",
-          "content": "سکانی بارکۆد بە کامێرا ئێستا نەرمتر و باوەڕپێکراوترە."
+          "title": "فلتەری بەرواری دروستکردن و جێبەجێکردن",
+          "content": "داواکارییەکان بەپێی بەرواری دروستکردن یان جێبەجێکردن پاڵێوە بکە و هەردوو مەوداکە بە یەک کرتە هاوکات بکە."
         },
         {
           "type": "improved",
-          "title": "پیشاندانی باڵانس لە کاتی داواکاری",
-          "content": "لە کاتی دروستکردنی داواکاری، باڵانسی کڕیار و دابینکەر پیشان دەدرێت."
+          "title": "گەڕانێکی ئاسانتر لە داواکارییەکان",
+          "content": "ڕیزەکانی داواکاری ئێستا پێشبینینی بەرهەم و بەرواری دروستکردن و جێبەجێکردن بە جیاوازی پیشان دەدەن."
         },
         {
           "type": "improved",
-          "title": "ئاگادارکردنەوەی فرۆشتن لە ژێر تێچوو",
-          "content": "پێش فرۆشتنی بەرهەم بە نرخێکی کەمتر لە تێچوو، ئەپەکە ئاگادارت دەکاتەوە."
-        },
-        {
-          "type": "improved",
-          "title": "فۆڕمی قەرز و قیستی ئاسانتر",
-          "content": "فۆڕمەکانی قەرز و قیست ڕێکخراوتر و ئاسانتر بوون و زانیاریی ناپێویست کەم کراوەتەوە."
-        },
-        {
-          "type": "improved",
-          "title": "پسوولەی باشتر",
-          "content": "پسوولەکان ئاسانتر دەستکاری دەکرێن، خوێندنەوەیان ڕوونترە و باشتر لە پەڕەدا جێگیر دەبن."
-        },
-        {
-          "type": "improved",
-          "title": "یەکەی بەرهەمی ڕوونتر",
-          "content": "ناو و ئایکۆنی یەکەکانی بەرهەم ڕوونتر کرا و هەڵبژاردەی یەکەی زیاتر زیاد کرا."
-        },
-        {
-          "type": "improved",
-          "title": "شێوازی پارەدانی یەکسانتر",
-          "content": "شێوازەکانی پارەدان ئاسانتر دەناسرێنەوە و لە سەرانسەری ئەپەکەدا یەکسانتر کراون."
-        },
-        {
-          "type": "improved",
-          "title": "پیشاندانی باشتر بە کوردی و عەرەبی",
-          "content": "لیستەکان، پسوولەکان، ئامرازەکانی دراو و ڕێکخستنەکانی تر بە کوردی و عەرەبی بە شێوەیەکی سروشتیتر پیشان دەدرێن."
-        },
-        {
-          "type": "improved",
-          "title": "کۆنترۆڵی باشتر بۆ نوێکردنەوە",
-          "content": "ئێستا دەتوانیت نوێکردنەوە دوا بخەیت، دواتر دووبارە بیکەیتەوە، یان بە دەستی ئەپەکە نوێ بکەیتەوە."
-        },
-        {
-          "type": "fixed",
-          "title": "گەڕاندنەوەی فرۆشتنی قەرزدار",
-          "content": "کاتێک فرۆشتنێکی قەرزدار بە تەواوی دەگەڕێندرێتەوە، قەرزە پەیوەستکراوەکە بە دروستی هەڵدەوەشێتەوە."
-        },
-        {
-          "type": "fixed",
-          "title": "پاراستنی تۆمارەکانی ئۆفلاین",
-          "content": "ئەو کێشانە چاککران کە دەبوونە هۆی ونبوونی فرۆشتن، بڕگەکانی فرۆشتن یان چالاکییە پاشەکەوتکراوەکان لە دۆخی ئۆفلایندا."
-        },
-        {
-          "type": "fixed",
-          "title": "یەکەکانی داواکارییە کۆنەکان",
-          "content": "یەکە ونبوو یان هەڵەکان لە داواکارییە کۆنەکان و پسوولە چاپکراوەکاندا چاککران."
-        },
-        {
-          "type": "fixed",
-          "title": "ڕێکخستنی پسوولە و دەقی RTL",
-          "content": "تێکچوون، دەرچوونی دەق لە سنووری پەڕە و پیشاندانی هەڵەی دەقی پسوولەکان لە زمانە ڕاست بۆ چەپەکاندا چاککرا."
-        },
-        {
-          "type": "fixed",
-          "title": "هاوکاتکردنی ڕێکخستنەکانی POS",
-          "content": "کێشەی نوێنەبوونەوەی ڕێکخستنەکانی POS و هەڵبژاردەکانی دراو لە نێوان ئامێرەکاندا چاککرا."
-        },
-        {
-          "type": "fixed",
-          "title": "ڕوونکردنەوەی هەڵەکانی هاوکاتکردن",
-          "content": "ئاگادارکردنەوەکانی هاوکاتکردن ئێستا هۆکاری شکستی تۆمارەکان ڕوون دەکەنەوە، لەبری ئەوەی بەردەوام دووبارە هەوڵ بدەن."
+          "title": "فلتەری دۆخی تەواوتر",
+          "content": "دۆزینەوەی داواکارییە چاوەڕوان و هەڵوەشێنراوەکان ئاسانتر بووە لەگەڵ فلتەرەکان."
         }
       ]
     },
     "teamMessages": {
-      "en": "Thank you for using Atlas! This release brings a week of quality-of-life improvements across sales, orders, invoices, loans, barcode scanning, and offline reliability. Your feedback continues to shape Atlas.",
-      "ar": "شكرًا لاستخدامكم أطلس! يجمع هذا الإصدار أسبوعًا من تحسينات سهولة الاستخدام في المبيعات والطلبات والفواتير والقروض ومسح الباركود والعمل دون اتصال. ملاحظاتكم تواصل تطوير أطلس.",
-      "ku": "سوپاس بۆ بەکارهێنانی ئەتڵەس! ئەم وەشانە کۆمەڵێک باشترکردنی ئاسانکاری لە فرۆشتن، داواکاری، پسوولە، قەرز، سکانی بارکۆد و کارکردنی ئۆفلاین کۆدەکاتەوە. ڕەخنە و پێشنیارەکانتان بەردەوام یارمەتیدەری پەرەپێدانی ئەتڵەسە."
+      "en": "Thank you for using Atlas! This quality-of-life update makes Orders easier to review, filter, and track with clearer summaries, product previews, and separate created and fulfilled date controls."
     }
   }
 }
