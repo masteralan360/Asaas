@@ -1764,58 +1764,66 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                         <CardContent className="space-y-6 p-6 sm:p-8">
                             <div className="space-y-4">
                                 <div className="grid gap-6 md:grid-cols-2">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="product-quantity" className="flex items-center gap-2 font-bold">
-                                            <Boxes className="h-4 w-4 text-primary/60" />
-                                            {t('products.form.stock')}
-                                        </Label>
-                                        <div className="relative">
-                                            <Input
-                                                id="product-quantity"
-                                                data-tour-id="tutorial-product-initial-stock"
-                                                type="number"
-                                                inputMode="decimal"
-                                                min="0"
-                                                step={isDynamicUnit(formData.unit) ? '0.01' : '1'}
-                                                value={formData.quantity}
-                                                onChange={(event) => setFormData((current) => ({
-                                                    ...current,
-                                                    quantity: event.target.value === '' ? '' : Number(event.target.value)
-                                                }))}
-                                                placeholder="0"
-                                                readOnly={isReadOnly || isEditing}
-                                                required
-                                                className="h-12 rounded-lg border-border/40 bg-muted/10 pr-16 font-black"
-                                            />
-                                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
-                                                {t(`products.units.${formData.unit}`, formData.unit)}
-                                            </span>
-                                        </div>
-                                        {isEditing && (
-                                            <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-700">
-                                                {(() => {
-                                                    const addStockLabel = t('products.addStock', { defaultValue: 'Add Stock' })
-                                                    const hint = isMobile()
-                                                        ? t('products.form.stockAdjustmentHint.mobile', {
-                                                            addStock: addStockLabel,
-                                                            defaultValue: `To adjust stock, tap the "${addStockLabel}" button on the product's card in the Products list.`
-                                                        })
-                                                        : t('products.form.stockAdjustmentHint.desktop', {
-                                                            addStock: addStockLabel,
-                                                            defaultValue: `To adjust stock, right-click the product's row in the Products list and choose "${addStockLabel}" from the menu.`
-                                                        })
-                                                    return (
-                                                        <HoverHintVideo
-                                                            src="/tips/export-1785734352530.mp4"
-                                                            title={t('products.form.stockAdjustmentHint.videoTitle', { defaultValue: 'Watch how to adjust stock' })}
-                                                        >
-                                                            {hint}
-                                                        </HoverHintVideo>
-                                                    )
-                                                })()}
+                                    {(() => {
+                                        const addStockLabel = t('products.addStock', { defaultValue: 'Add Stock' })
+                                        const hint = isMobile()
+                                            ? t('products.form.stockAdjustmentHint.mobile', {
+                                                addStock: addStockLabel,
+                                                defaultValue: `To adjust stock, tap the "${addStockLabel}" button on the product's card in the Products list.`
+                                            })
+                                            : t('products.form.stockAdjustmentHint.desktop', {
+                                                addStock: addStockLabel,
+                                                defaultValue: `To adjust stock, right-click the product's row in the Products list and choose "${addStockLabel}" from the menu.`
+                                            })
+                                        const stockField = (
+                                            <>
+                                                <Label htmlFor="product-quantity" className="flex items-center gap-2 font-bold">
+                                                    <Boxes className="h-4 w-4 text-primary/60" />
+                                                    {t('products.form.stock')}
+                                                </Label>
+                                                <div className="relative">
+                                                    <Input
+                                                        id="product-quantity"
+                                                        data-tour-id="tutorial-product-initial-stock"
+                                                        type="number"
+                                                        inputMode="decimal"
+                                                        min="0"
+                                                        step={isDynamicUnit(formData.unit) ? '0.01' : '1'}
+                                                        value={formData.quantity}
+                                                        onChange={(event) => setFormData((current) => ({
+                                                            ...current,
+                                                            quantity: event.target.value === '' ? '' : Number(event.target.value)
+                                                        }))}
+                                                        placeholder="0"
+                                                        readOnly={isReadOnly || isEditing}
+                                                        required
+                                                        className="h-12 rounded-lg border-border/40 bg-muted/10 pr-16 font-black"
+                                                    />
+                                                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
+                                                        {t(`products.units.${formData.unit}`, formData.unit)}
+                                                    </span>
+                                                </div>
+                                            </>
+                                        )
+                                        return isEditing ? (
+                                            <HoverHintVideo
+                                                src="/tips/export-1785734352530.mp4"
+                                                title={t('products.form.stockAdjustmentHint.videoTitle', { defaultValue: 'Watch how to adjust stock' })}
+                                                triggerClassName="block"
+                                            >
+                                                <div className="space-y-2">
+                                                    {stockField}
+                                                    <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-700">
+                                                        {hint}
+                                                    </div>
+                                                </div>
+                                            </HoverHintVideo>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {stockField}
                                             </div>
-                                        )}
-                                    </div>
+                                        )
+                                    })()}
                                     <div className="space-y-2">
                                         <Label htmlFor="product-min-stock" className="flex items-center gap-2 font-bold">
                                             <Info className="h-4 w-4 text-primary/60" />
