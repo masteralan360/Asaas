@@ -90,6 +90,13 @@ type PartialSaleReturnSummary = {
     lastReason: string | null
 }
 
+type PartialOrderReturnSummary = {
+    returnedAmount: number
+    lastReturnedAt: string
+    lastReason: string | null
+    isFullReturn: boolean
+}
+
 function isPosSaleReturnCredit(payment: Pick<LoanPayment, 'paymentMethod' | 'note'>) {
     return payment.paymentMethod === 'loan_adjustment'
         && /^Return Credit\b/i.test(payment.note || '')
@@ -931,6 +938,32 @@ function LoanDetailsView({
             lastReason: latestReturn?.reason || null
         }
     }, [loan?.saleId, loan?.source, loan?.status])
+    const orderReturnSummary = useLiveQuery(async (): Promise<PartialOrderReturnSummary | null> => {
+        if (!loan?.orderId || loan.source !== 'order' || loan.orderType !== 'sales' || loan.status === 'cancelled') {
+            return null
+        }
+
+        const [order, returns] = await Promise.all([
+            db.sales_orders.get(loan.orderId),
+            db.order_returns.where('orderId').equals(loan.orderId).toArray()
+        ])
+        if (!order || order.isDeleted || order.returnStatus === 'none') {
+            return null
+        }
+
+        const postedReturns = returns
+            .filter((orderReturn) => !orderReturn.isDeleted && orderReturn.status === 'posted')
+            .sort((a, b) => new Date(b.returnedAt).getTime() - new Date(a.returnedAt).getTime())
+        const latestReturn = postedReturns[0]
+        const recordedReturnAmount = postedReturns.reduce((total, orderReturn) => total + orderReturn.refundAmount, 0)
+
+        return {
+            returnedAmount: recordedReturnAmount || order.returnedAmount || 0,
+            lastReturnedAt: latestReturn?.returnedAt || order.updatedAt,
+            lastReason: latestReturn?.reason || null,
+            isFullReturn: order.returnStatus === 'full'
+        }
+    }, [loan?.orderId, loan?.source, loan?.orderType, loan?.status])
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
         return (localStorage.getItem('loan_details_view_mode') as 'table' | 'grid') || 'table'
     })
@@ -1283,6 +1316,64 @@ function LoanDetailsView({
                                     <p className="mt-3 text-xs text-muted-foreground">
                                         <span className="font-semibold text-foreground">{t('sales.return.reason', { defaultValue: 'Reason' })}:</span>{' '}
                                         {partialSaleReturnSummary.lastReason}
+                                    </p>
+                                ) : null}
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            ) : null}
+
+            {orderReturnSummary ? (
+                <Card className={cn(
+                    'border-rose-500/30 bg-rose-500/5',
+                    !orderReturnSummary.isFullReturn && 'border-amber-500/30 bg-amber-500/5'
+                )}>
+                    <CardContent className="py-4">
+                        <div className="flex items-start gap-3">
+                            <div className={cn(
+                                'rounded-full p-2 text-rose-600 dark:text-rose-300',
+                                !orderReturnSummary.isFullReturn && 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+                                orderReturnSummary.isFullReturn && 'bg-rose-500/10'
+                            )}>
+                                <Undo2 className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <div className={cn(
+                                    'font-semibold text-rose-700 dark:text-rose-200',
+                                    !orderReturnSummary.isFullReturn && 'text-amber-800 dark:text-amber-200'
+                                )}>
+                                    {orderReturnSummary.isFullReturn
+                                        ? t('loans.fullOrderReturnTitle', { defaultValue: 'Order Fully Returned' })
+                                        : t('loans.partialOrderReturnTitle', { defaultValue: 'Partial Order Return' })}
+                                </div>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                    {orderReturnSummary.isFullReturn
+                                        ? t('loans.fullOrderReturnDescription', { defaultValue: "This loan's linked order was fully returned. The loan balance was adjusted for the returned amount." })
+                                        : t('loans.partialOrderReturnDescription', { defaultValue: 'A partial return was posted for the linked order. Its refund is reflected in this loan.' })}
+                                </p>
+                                <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                                    <div>
+                                        <div className="text-xs font-medium text-muted-foreground">
+                                            {t('loans.saleReturnAmount', { defaultValue: 'Sale Return Amount' })}
+                                        </div>
+                                        <div className="mt-0.5 font-semibold text-foreground">
+                                            {formatCurrency(orderReturnSummary.returnedAmount, loan.settlementCurrency, features.iqd_display_preference)}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="text-xs font-medium text-muted-foreground">
+                                            {t('loans.lastSaleReturn', { defaultValue: 'Last Sale Return' })}
+                                        </div>
+                                        <div className="mt-0.5 font-semibold text-foreground">
+                                            {formatDateTime(orderReturnSummary.lastReturnedAt)}
+                                        </div>
+                                    </div>
+                                </div>
+                                {orderReturnSummary.lastReason ? (
+                                    <p className="mt-3 text-xs text-muted-foreground">
+                                        <span className="font-semibold text-foreground">{t('sales.return.reason', { defaultValue: 'Reason' })}:</span>{' '}
+                                        {orderReturnSummary.lastReason}
                                     </p>
                                 ) : null}
                             </div>

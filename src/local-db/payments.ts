@@ -222,7 +222,7 @@ function getTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceMo
     }
 
     if (transaction.sourceType === 'simple_loan') {
-        return '/loans'
+        return `/loans/${transaction.sourceRecordId}`
     }
 
     if (transaction.sourceType === 'loan_installment') {
