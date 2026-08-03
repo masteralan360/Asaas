@@ -116,11 +116,25 @@ function paymentMethodLabel(value: PaymentTransaction['paymentMethod'], t: any) 
     }
 }
 
-function collapseTransactionsBySource(items: PaymentTransaction[]) {
+function collapseTransactionsBySource(
+    items: PaymentTransaction[],
+    latestUnreversedBySource: ReadonlyMap<string, PaymentTransaction>
+) {
+    const itemIds = new Set(items.map((item) => item.id))
     const seen = new Set<string>()
 
     return items.filter((item) => {
         const key = getPaymentSourceKey(item)
+        const preferred = latestUnreversedBySource.get(key)
+
+        // A reversal can have a later recorded payment time than the payment
+        // that replaced it. When there is an active payment for this source,
+        // always show that payment rather than collapsing the row to its
+        // historical reversal.
+        if (preferred && itemIds.has(preferred.id)) {
+            return item.id === preferred.id
+        }
+
         if (seen.has(key)) {
             return false
         }
@@ -192,7 +206,6 @@ export function Payments() {
         search,
         includeReversals: true
     })
-    const visibleTransactions = useMemo(() => collapseTransactionsBySource(transactions), [transactions])
 
     const reversedIds = useMemo(
         () => new Set(allTransactions.filter((item) => !!item.reversalOfTransactionId).map((item) => item.reversalOfTransactionId as string)),
@@ -214,6 +227,11 @@ export function Payments() {
 
         return map
     }, [allTransactions, reversedIds])
+
+    const visibleTransactions = useMemo(
+        () => collapseTransactionsBySource(transactions, latestUnreversedBySource),
+        [transactions, latestUnreversedBySource]
+    )
 
     const kpis = useMemo(() => ({
         totalOpen: formatAmountSummary(obligations, features.iqd_display_preference),

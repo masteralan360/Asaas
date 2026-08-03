@@ -12,7 +12,7 @@ import { getOrderLineInventoryQuantity } from '@/lib/orderLineItems'
 import { isPositiveQuantity, roundQuantity } from '@/lib/quantity'
 import { getMissingPriceBookCostMessage, hasValidProductCost } from '@/lib/productCost'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
-import { runSupabaseAction } from '@/lib/supabaseRequest'
+import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { generateId } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { supabase } from '@/auth/supabase'
@@ -195,7 +195,22 @@ async function queueOfflineUpserts(tableName: SyncableTableName, entities: Array
     ))
 }
 
-async function syncUpsertEntities(tableName: SyncableTableName, entities: Array<{ id: string; version: number } & Record<string, unknown>>, workspaceId: string) {
+type SyncUpsertOptions = {
+    /**
+     * Payment settlements must not appear successful when their linked order
+     * is rejected by the server. Non-retriable errors are surfaced to the
+     * caller so it can reverse the payment instead of silently queueing an
+     * impossible order mutation.
+     */
+    throwOnNonRetriableError?: boolean
+}
+
+async function syncUpsertEntities(
+    tableName: SyncableTableName,
+    entities: Array<{ id: string; version: number } & Record<string, unknown>>,
+    workspaceId: string,
+    options: SyncUpsertOptions = {}
+) {
     if (!entities.length || !shouldUseCloudBusinessData(workspaceId)) {
         return
     }
@@ -216,6 +231,11 @@ async function syncUpsertEntities(tableName: SyncableTableName, entities: Array<
         await markEntitiesSynced(tableName, entities.map((entity) => entity.id))
     } catch (error) {
         console.error(`[Orders] Failed to sync ${tableName}:`, error)
+
+        if (options.throwOnNonRetriableError && !isRetriableWebRequestError(error)) {
+            throw normalizeSupabaseActionError(error)
+        }
+
         await queueOfflineUpserts(tableName, entities, workspaceId)
     }
 }
@@ -1538,7 +1558,11 @@ export function useWorkspaceOrderInstallments(workspaceId: string | undefined) {
     return installments ?? []
 }
 
-export async function rebuildOrderPaymentState(orderType: OrderType, orderId: string) {
+export async function rebuildOrderPaymentState(
+    orderType: OrderType,
+    orderId: string,
+    options: { throwOnOrderSyncError?: boolean } = {}
+) {
     const orderTable = orderType === 'sales' ? db.sales_orders : db.purchase_orders
     const sourceType = orderType === 'sales' ? 'sales_order' : 'purchase_order'
     const order = await orderTable.get(orderId) as SalesOrder | PurchaseOrder | undefined
@@ -1615,7 +1639,8 @@ export async function rebuildOrderPaymentState(orderType: OrderType, orderId: st
         syncUpsertEntities(
             orderType === 'sales' ? 'sales_orders' : 'purchase_orders',
             [updated as unknown as Record<string, unknown> & { id: string; version: number }],
-            order.workspaceId
+            order.workspaceId,
+            { throwOnNonRetriableError: options.throwOnOrderSyncError }
         ),
         syncUpsertEntities(
             'order_installments',
@@ -1737,8 +1762,28 @@ export async function recordOrderPayment(
             installmentNo: installment?.installmentNo || null
         }
     })
-    const updatedOrder = await rebuildOrderPaymentState(input.orderType, order.id)
-    return { order: updatedOrder, transaction }
+    try {
+        const updatedOrder = await rebuildOrderPaymentState(input.orderType, order.id, {
+            throwOnOrderSyncError: true
+        })
+        return { order: updatedOrder, transaction }
+    } catch (error) {
+        try {
+            const { reversePaymentTransaction } = await import('./payments')
+            await reversePaymentTransaction(workspaceId, transaction.id, {
+                createdBy: input.createdBy || null,
+                note: 'Automatically reversed because the linked order could not be synced.'
+            })
+        } catch (reversalError) {
+            console.error('[Orders] Failed to reverse payment after order sync failure:', reversalError)
+            throw new Error(
+                `${error instanceof Error ? error.message : 'The order could not be synced.'} `
+                + 'The payment was posted but could not be reversed automatically; reverse it from Payments before retrying.'
+            )
+        }
+
+        throw error
+    }
 }
 
 export async function createSalesOrder(
