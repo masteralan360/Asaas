@@ -4,6 +4,10 @@ export const BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS = 700
 export const BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS = 1200
 export const BARCODE_SCANNER_STALE_RESET_MS = 4000
 export const BARCODE_SCANNER_MIN_SCAN_LENGTH = 3
+export const BARCODE_SCANNER_BLUETOOTH_FAST_KEY_THRESHOLD_MS = 350
+export const BARCODE_SCANNER_BLUETOOTH_AUTO_COMMIT_DELAY_MS = 1600
+export const BARCODE_SCANNER_BLUETOOTH_ACTIVE_KEY_GRACE_MS = 3000
+export const BARCODE_SCANNER_BLUETOOTH_STALE_RESET_MS = 9000
 
 const ARABIC_INDIC_ZERO_CODE = 0x0660
 const EASTERN_ARABIC_INDIC_ZERO_CODE = 0x06f0
@@ -76,7 +80,12 @@ export type BarcodeScannerKeyTiming = {
 export function classifyBarcodeScannerKeyTiming(
     timestamp: number,
     previousTimestamp: number,
-    options: { hasBufferedValue: boolean; isActive: boolean }
+    options: {
+        hasBufferedValue: boolean
+        isActive: boolean
+        fastKeyThresholdMs?: number
+        activeKeyGraceMs?: number
+    }
 ): BarcodeScannerKeyTiming {
     if (!options.hasBufferedValue) {
         return {
@@ -88,17 +97,19 @@ export function classifyBarcodeScannerKeyTiming(
 
     const deltaMs = timestamp - previousTimestamp
     const isValidDelta = Number.isFinite(deltaMs) && deltaMs >= 0
+    const fastKeyThresholdMs = options.fastKeyThresholdMs ?? BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS
+    const activeKeyGraceMs = options.activeKeyGraceMs ?? BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS
 
     return {
         deltaMs,
         shouldReset: !isValidDelta || deltaMs > (
             options.isActive
-                ? BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS
-                : BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS
+                ? activeKeyGraceMs
+                : fastKeyThresholdMs
         ),
         // Hardware scanners can dispatch several keydowns inside the same
         // millisecond, so a zero-length interval is still a fast interval.
-        isFast: isValidDelta && deltaMs <= BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS
+        isFast: isValidDelta && deltaMs <= fastKeyThresholdMs
     }
 }
 

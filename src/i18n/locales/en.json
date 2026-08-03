@@ -249,6 +249,7 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "help": "Help",
     "products": "Products",
     "customers": "Customers",
     "orders": "Orders",
@@ -2130,6 +2131,31 @@
     "moneyOverview": "Money Overview",
     "outstanding": "Outstanding",
     "pendingPayments": "Pending Payments"
+  },
+  "help": {
+    "title": "Help Center",
+    "subtitle": "Search for video guides and answers",
+    "placeholder": "Ask a question, e.g. \"How to add stock\"...",
+    "send": "Send",
+    "popular": "Popular",
+    "welcome": {
+      "title": "How can we help you?",
+      "text": "Ask anything about Atlas and a video guide will appear. Try a popular topic above."
+    },
+    "suggested": "No exact match — this might help",
+    "noResults": "I could not find a matching guide yet. Try a different wording, or pick a popular topic above.",
+    "watchNow": "Watch now",
+    "comingSoon": "More video guides are on the way.",
+    "topics": {
+      "adjustStock": {
+        "title": "How to adjust stock",
+        "description": "Right-click a product in the Products list and choose \"Add Stock\" to increase or adjust its quantity."
+      },
+      "editExchangeRate": {
+        "title": "How to edit the exchange rate manually",
+        "description": "Open Settings, find the Exchange rate section, set a currency source to Manual entry, then type the rate you want."
+      }
+    }
   },
   "settings": {
     "title": "Settings",

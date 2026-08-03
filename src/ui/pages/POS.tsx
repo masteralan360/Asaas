@@ -39,6 +39,12 @@ import { useExchangeRate } from '@/context/ExchangeRateContext'
 import {
     BARCODE_SCANNER_ACTIVE_FAST_KEY_COUNT,
     BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS,
+    BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS,
+    BARCODE_SCANNER_BLUETOOTH_ACTIVE_KEY_GRACE_MS,
+    BARCODE_SCANNER_BLUETOOTH_AUTO_COMMIT_DELAY_MS,
+    BARCODE_SCANNER_BLUETOOTH_FAST_KEY_THRESHOLD_MS,
+    BARCODE_SCANNER_BLUETOOTH_STALE_RESET_MS,
+    BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS,
     BARCODE_SCANNER_MIN_SCAN_LENGTH,
     BARCODE_SCANNER_STALE_RESET_MS,
     classifyBarcodeScannerKeyTiming,
@@ -447,6 +453,9 @@ export function POS() {
     const [isDeviceScannerAutoEnabled, setIsDeviceScannerAutoEnabled] = useState(() => {
         return localStorage.getItem('scanner_device_auto_enabled') === 'true'
     })
+    const [isBluetoothScannerModeEnabled, setIsBluetoothScannerModeEnabled] = useState(() => {
+        return localStorage.getItem('scanner_bluetooth_mode_enabled') === 'true'
+    })
     const [selectedCameraId, setSelectedCameraId] = useState(localStorage.getItem('scanner_camera_id') || '')
     const [cameras, setCameras] = useState<MediaDeviceInfo[]>([])
     const skuInputRef = useRef<HTMLInputElement>(null)
@@ -481,13 +490,24 @@ export function POS() {
         }
     }
 
+    const updateBluetoothScannerModeEnabled = (val: boolean) => {
+        setIsBluetoothScannerModeEnabled(val)
+        localStorage.setItem('scanner_bluetooth_mode_enabled', String(val))
+    }
+
     const [isLayoutMobile, setIsLayoutMobile] = useState(window.innerWidth < 1024)
     useEffect(() => {
         if (isCameraScannerAutoEnabled && isDeviceScannerAutoEnabled) {
-            setIsDeviceScannerAutoEnabled(false)
-            localStorage.setItem('scanner_device_auto_enabled', 'false')
+            const preferredScannerMode = localStorage.getItem('pos_barcode_scanner_mode')
+            if (preferredScannerMode === 'device') {
+                setIsCameraScannerAutoEnabled(false)
+                localStorage.setItem('scanner_auto_enabled', 'false')
+            } else {
+                setIsDeviceScannerAutoEnabled(false)
+                localStorage.setItem('scanner_device_auto_enabled', 'false')
+            }
         }
-    }, [])
+    }, [isCameraScannerAutoEnabled, isDeviceScannerAutoEnabled])
     useEffect(() => {
         if (selectedStorageId) {
             localStorage.setItem('pos_selected_storage', selectedStorageId)
@@ -1699,9 +1719,22 @@ export function POS() {
             return
         }
 
+        const deviceFastKeyThreshold = isBluetoothScannerModeEnabled
+            ? BARCODE_SCANNER_BLUETOOTH_FAST_KEY_THRESHOLD_MS
+            : BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS
+        const deviceActiveKeyGrace = isBluetoothScannerModeEnabled
+            ? BARCODE_SCANNER_BLUETOOTH_ACTIVE_KEY_GRACE_MS
+            : BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS
+        const deviceAutoCommitDelay = isBluetoothScannerModeEnabled
+            ? BARCODE_SCANNER_BLUETOOTH_AUTO_COMMIT_DELAY_MS
+            : BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS
+        const deviceStaleResetDelay = isBluetoothScannerModeEnabled
+            ? BARCODE_SCANNER_BLUETOOTH_STALE_RESET_MS
+            : BARCODE_SCANNER_STALE_RESET_MS
+
         const scheduleDeviceScanReset = () => {
             clearDeviceScanTimeout()
-            deviceScanTimeout.current = window.setTimeout(resetDeviceScanState, BARCODE_SCANNER_STALE_RESET_MS)
+            deviceScanTimeout.current = window.setTimeout(resetDeviceScanState, deviceStaleResetDelay)
         }
 
         const activateDeviceScannerCapture = () => {
@@ -1772,7 +1805,9 @@ export function POS() {
             const wasActive = deviceScanActive.current
             const timing = classifyBarcodeScannerKeyTiming(timestamp, deviceScanLastTime.current, {
                 hasBufferedValue: Boolean(deviceScanBuffer.current),
-                isActive: wasActive
+                isActive: wasActive,
+                fastKeyThresholdMs: deviceFastKeyThreshold,
+                activeKeyGraceMs: deviceActiveKeyGrace
             })
 
             if (timing.shouldReset) {
@@ -1806,7 +1841,7 @@ export function POS() {
                 clearDeviceScanTimeout()
                 deviceScanTimeout.current = window.setTimeout(() => {
                     commitDeviceScan(false)
-                }, BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS)
+                }, deviceAutoCommitDelay)
             }
         }
 
@@ -1818,6 +1853,7 @@ export function POS() {
     }, [
         editingPriceItemKey,
         handleBarcodeDetected,
+        isBluetoothScannerModeEnabled,
         isDeviceScannerAutoEnabled,
         isLoanRegistrationModalOpen,
         isSkuModalOpen,
@@ -3532,6 +3568,8 @@ export function POS() {
                 setIsCameraScannerAutoEnabled={updateCameraScannerAutoEnabled}
                 isDeviceScannerAutoEnabled={isDeviceScannerAutoEnabled}
                 setIsDeviceScannerAutoEnabled={updateDeviceScannerAutoEnabled}
+                isBluetoothScannerModeEnabled={isBluetoothScannerModeEnabled}
+                setIsBluetoothScannerModeEnabled={updateBluetoothScannerModeEnabled}
                 handleBarcodeDetected={handleBarcodeDetected}
                 selectedCameraId={selectedCameraId}
                 setSelectedCameraId={setSelectedCameraId}

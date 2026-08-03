@@ -6,6 +6,7 @@ import {
   Building2,
   Calculator,
   CalendarClock,
+  CircleHelp,
   Copy,
   CreditCard,
   FileSpreadsheet,
@@ -116,6 +117,12 @@ export function buildWorkspaceNavigation({
     name: t("nav.dashboard", { defaultValue: "Dashboard" }),
     href: "/",
     icon: LayoutDashboard,
+  };
+
+  const helpItem: WorkspaceNavigationItem = {
+    name: t("nav.help", { defaultValue: "Help" }),
+    href: "/help",
+    icon: CircleHelp,
   };
 
   const otherItems: WorkspaceNavigationItem[] = [
@@ -619,7 +626,7 @@ export function buildWorkspaceNavigation({
     {
       title: "", // Standalone Dashboard has no group title
       icon: LayoutDashboard,
-      items: [dashboardItem],
+      items: [dashboardItem, helpItem],
     },
     ...launcherGroups,
   ];

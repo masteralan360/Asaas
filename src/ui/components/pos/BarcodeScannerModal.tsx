@@ -3,6 +3,11 @@ import { useTranslation } from 'react-i18next'
 import {
     BARCODE_SCANNER_ACTIVE_FAST_KEY_COUNT,
     BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS,
+    BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS,
+    BARCODE_SCANNER_BLUETOOTH_ACTIVE_KEY_GRACE_MS,
+    BARCODE_SCANNER_BLUETOOTH_AUTO_COMMIT_DELAY_MS,
+    BARCODE_SCANNER_BLUETOOTH_FAST_KEY_THRESHOLD_MS,
+    BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS,
     classifyBarcodeScannerKeyTiming,
     getBarcodeScannerEventKey,
     isBarcodeScannerIgnoredKey,
@@ -38,6 +43,8 @@ interface BarcodeScannerModalProps {
     setIsCameraScannerAutoEnabled: (value: boolean) => void
     isDeviceScannerAutoEnabled: boolean
     setIsDeviceScannerAutoEnabled: (value: boolean) => void
+    isBluetoothScannerModeEnabled: boolean
+    setIsBluetoothScannerModeEnabled: (value: boolean) => void
     handleBarcodeDetected: (barcodes: any[], source: 'camera' | 'device') => void
     selectedCameraId: string
     setSelectedCameraId: (value: string) => void
@@ -53,6 +60,8 @@ export function BarcodeScannerModal({
     setIsCameraScannerAutoEnabled,
     isDeviceScannerAutoEnabled,
     setIsDeviceScannerAutoEnabled,
+    isBluetoothScannerModeEnabled,
+    setIsBluetoothScannerModeEnabled,
     handleBarcodeDetected,
     selectedCameraId,
     setSelectedCameraId,
@@ -79,6 +88,15 @@ export function BarcodeScannerModal({
     })
     const [isHidSupported, setIsHidSupported] = useState(true)
     const [isHidLoading, setIsHidLoading] = useState(false)
+    const deviceFastKeyThreshold = isBluetoothScannerModeEnabled
+        ? BARCODE_SCANNER_BLUETOOTH_FAST_KEY_THRESHOLD_MS
+        : BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS
+    const deviceActiveKeyGrace = isBluetoothScannerModeEnabled
+        ? BARCODE_SCANNER_BLUETOOTH_ACTIVE_KEY_GRACE_MS
+        : BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS
+    const deviceAutoCommitDelay = isBluetoothScannerModeEnabled
+        ? BARCODE_SCANNER_BLUETOOTH_AUTO_COMMIT_DELAY_MS
+        : BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS
 
     useEffect(() => {
         if (typeof localStorage === 'undefined') return
@@ -222,14 +240,16 @@ export function BarcodeScannerModal({
         clearDeviceScanTimeout()
         deviceScanTimeoutRef.current = window.setTimeout(() => {
             commitDeviceScan(value)
-        }, BARCODE_SCANNER_AUTO_COMMIT_DELAY_MS)
+        }, deviceAutoCommitDelay)
     }
 
     const registerScannerKeystroke = (timestamp: number) => {
         const wasActive = scannerActiveRef.current
         const timing = classifyBarcodeScannerKeyTiming(timestamp, lastKeyTimeRef.current, {
             hasBufferedValue: Boolean(deviceInputValueRef.current),
-            isActive: wasActive
+            isActive: wasActive,
+            fastKeyThresholdMs: deviceFastKeyThreshold,
+            activeKeyGraceMs: deviceActiveKeyGrace
         })
         lastKeyTimeRef.current = timestamp
 
@@ -522,6 +542,25 @@ export function BarcodeScannerModal({
                                             className="h-9"
                                         />
                                         <p className="text-[10px] text-muted-foreground">{t('pos.scanDelayDesc')}</p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4 p-4 rounded-xl bg-muted/30 border border-border md:col-span-2">
+                                    <div className="flex items-center justify-between gap-4">
+                                        <div className="space-y-0.5">
+                                            <Label className="text-base">
+                                                {t('pos.bluetoothScannerMode', { defaultValue: 'Bluetooth scanner mode' })}
+                                            </Label>
+                                            <p className="text-xs text-muted-foreground">
+                                                {t('pos.bluetoothScannerModeDesc', {
+                                                    defaultValue: 'Use wider timing windows for wireless scanners that pause or wake during a scan.'
+                                                })}
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={isBluetoothScannerModeEnabled}
+                                            onCheckedChange={setIsBluetoothScannerModeEnabled}
+                                        />
                                     </div>
                                 </div>
                             </div>

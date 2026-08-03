@@ -122,6 +122,9 @@ const Members = lazy(() =>
 const Settings = lazy(() =>
   import("@/ui/pages/Settings").then((m) => ({ default: m.Settings })),
 );
+const Help = lazy(() =>
+  import("@/ui/pages/Help").then((m) => ({ default: m.Help })),
+);
 const WorkspaceRegistration = lazy(() =>
   import("@/ui/pages/WorkspaceRegistration").then((m) => ({
     default: m.WorkspaceRegistration,
@@ -1410,6 +1413,15 @@ function App() {
                             <Suspense fallback={<DashboardSkeleton />}>
                               <Dashboard />
                             </Suspense>
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/help">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                        >
+                          <Layout>
+                            <Help />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

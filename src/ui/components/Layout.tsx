@@ -92,6 +92,7 @@ interface LayoutProps {
 // Route prefetch map for on-hover preloading (desktop only)
 const routePrefetchMap: Record<string, () => Promise<unknown>> = {
     '/': () => import('@/ui/pages/Dashboard'),
+    '/help': () => import('@/ui/pages/Help'),
     '/pos': () => import('@/ui/pages/POS'),
     '/instant-pos': () => import('@/ui/pages/InstantPOS'),
     '/kds': () => import('@/ui/pages/KDSDashboard'),

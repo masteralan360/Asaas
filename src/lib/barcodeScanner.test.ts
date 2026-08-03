@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
     BARCODE_SCANNER_ACTIVE_FAST_KEY_COUNT,
     BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS,
+    BARCODE_SCANNER_BLUETOOTH_ACTIVE_KEY_GRACE_MS,
+    BARCODE_SCANNER_BLUETOOTH_FAST_KEY_THRESHOLD_MS,
     BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS,
     classifyBarcodeScannerKeyTiming,
     createBarcodeScannerCodeIndex,
@@ -78,6 +80,22 @@ describe('barcode scanner utilities', () => {
             hasBufferedValue: true,
             isActive: false
         }).shouldReset).toBe(true)
+    })
+
+    it('supports a wider Bluetooth scanner timing profile', () => {
+        expect(classifyBarcodeScannerKeyTiming(BARCODE_SCANNER_FAST_KEY_THRESHOLD_MS + 50, 0, {
+            hasBufferedValue: true,
+            isActive: false,
+            fastKeyThresholdMs: BARCODE_SCANNER_BLUETOOTH_FAST_KEY_THRESHOLD_MS,
+            activeKeyGraceMs: BARCODE_SCANNER_BLUETOOTH_ACTIVE_KEY_GRACE_MS
+        })).toMatchObject({ shouldReset: false, isFast: true })
+
+        expect(classifyBarcodeScannerKeyTiming(BARCODE_SCANNER_ACTIVE_KEY_GRACE_MS + 500, 0, {
+            hasBufferedValue: true,
+            isActive: true,
+            fastKeyThresholdMs: BARCODE_SCANNER_BLUETOOTH_FAST_KEY_THRESHOLD_MS,
+            activeKeyGraceMs: BARCODE_SCANNER_BLUETOOTH_ACTIVE_KEY_GRACE_MS
+        })).toMatchObject({ shouldReset: false, isFast: false })
     })
 
     it('normalizes Arabic and Persian digits plus bidi marks', () => {
