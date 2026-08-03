@@ -46,6 +46,7 @@ let createProduct: typeof import('./hooks').createProduct
 let createStorage: typeof import('./hooks').createStorage
 let recordLoanPayment: typeof import('./hooks').recordLoanPayment
 let buildPaymentObligations: typeof import('./payments').buildPaymentObligations
+let getRemainingPaymentTransactions: typeof import('./payments').getRemainingPaymentTransactions
 let reversePaymentTransaction: typeof import('./payments').reversePaymentTransaction
 
 function installBrowserStorage() {
@@ -364,6 +365,7 @@ describe('order-linked financing', () => {
         createStorage = loans.createStorage
         recordLoanPayment = loans.recordLoanPayment
         buildPaymentObligations = payments.buildPaymentObligations
+        getRemainingPaymentTransactions = payments.getRemainingPaymentTransactions
         reversePaymentTransaction = payments.reversePaymentTransaction
     })
 
@@ -735,6 +737,9 @@ describe('order-linked financing', () => {
         })
         const payments = await db.payment_transactions.where('sourceRecordId').equals(completed.id).toArray()
         expect(payments.map((payment) => payment.amount).sort((left, right) => left - right)).toEqual([-50, 100])
+        expect(getRemainingPaymentTransactions(payments)).toEqual([
+            expect.objectContaining({ amount: 50 })
+        ])
         expect((await db.inventory.where('[productId+storageId]').equals([product.id, storage.id]).first())?.quantity).toBe(4.5)
     })
 

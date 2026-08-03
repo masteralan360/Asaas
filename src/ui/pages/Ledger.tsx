@@ -12,6 +12,7 @@ import { convertToStoreBase } from '@/lib/currency'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { setPendingSaleDetailsId } from '@/lib/saleNavigation'
 import {
+    getRemainingPaymentTransactions,
     getPaymentTransactionRoutePath,
     usePaymentTransactions,
     useLoans,
@@ -1256,18 +1257,10 @@ export function Ledger() {
     const purchaseOrders = usePurchaseOrders(workspaceId)
     const businessPartners = useBusinessPartners(workspaceId)
     const rawExchangeTransactions = useExchangeTransactions(workspaceId)
-    const activePaymentTransactions = useMemo(() => {
-        const reversedIds = new Set(
-            paymentTransactions
-                .filter((transaction) => !!transaction.reversalOfTransactionId)
-                .map((transaction) => transaction.reversalOfTransactionId as string)
-        )
-        return paymentTransactions.filter((transaction) =>
-            !transaction.isDeleted
-            && !transaction.reversalOfTransactionId
-            && !reversedIds.has(transaction.id)
-        )
-    }, [paymentTransactions])
+    const activePaymentTransactions = useMemo(
+        () => getRemainingPaymentTransactions(paymentTransactions),
+        [paymentTransactions]
+    )
     const rates = useMemo(
         () => buildConversionRates(exchangeData, eurRates, tryRates),
         [eurRates, exchangeData, tryRates]

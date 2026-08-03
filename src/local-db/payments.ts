@@ -352,7 +352,16 @@ function filterObligations(
     })
 }
 
-function getActivePaymentTransactionAmount(rows: PaymentTransaction[]) {
+const PAYMENT_AMOUNT_EPSILON = 0.000001
+
+/**
+ * Returns the total reversed amount for each original payment transaction.
+ *
+ * A reversal can be partial (for example, an order return), so callers must
+ * not use the presence of a reversal as proof that the original payment was
+ * fully cancelled.
+ */
+export function getPaymentTransactionReversalAmounts(rows: PaymentTransaction[]) {
     const reversalAmounts = new Map<string, number>()
     for (const row of rows) {
         if (row.isDeleted || !row.reversalOfTransactionId) continue
@@ -361,9 +370,38 @@ function getActivePaymentTransactionAmount(rows: PaymentTransaction[]) {
             (reversalAmounts.get(row.reversalOfTransactionId) || 0) + Math.abs(Number(row.amount || 0))
         )
     }
+    return reversalAmounts
+}
+
+/**
+ * Projects original payment transactions to their unreversed balance.
+ * Reversal rows are represented by the reduction to their source payment,
+ * keeping partial returns visible as the remaining settlement amount.
+ */
+export function getRemainingPaymentTransactions(rows: PaymentTransaction[]) {
+    const reversalAmounts = getPaymentTransactionReversalAmounts(rows)
+
     return rows
         .filter((row) => !row.isDeleted && !row.reversalOfTransactionId)
-        .reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0) - (reversalAmounts.get(row.id) || 0)), 0)
+        .map((row) => {
+            const amount = Number(row.amount || 0)
+            const remainingMagnitude = Math.max(0, Math.abs(amount) - (reversalAmounts.get(row.id) || 0))
+
+            if (remainingMagnitude <= PAYMENT_AMOUNT_EPSILON) {
+                return null
+            }
+
+            return {
+                ...row,
+                amount: amount < 0 ? -remainingMagnitude : remainingMagnitude
+            }
+        })
+        .filter((row): row is PaymentTransaction => row !== null)
+}
+
+function getActivePaymentTransactionAmount(rows: PaymentTransaction[]) {
+    return getRemainingPaymentTransactions(rows)
+        .reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0)
 }
 
 async function hydratePaymentSourceTables(workspaceId: string) {

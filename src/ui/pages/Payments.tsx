@@ -6,8 +6,10 @@ import { useTranslation } from 'react-i18next'
 
 import { useAuth } from '@/auth'
 import {
+    getPaymentTransactionReversalAmounts,
     getPaymentSourceKey,
     getPaymentTransactionRoutePath,
+    getRemainingPaymentTransactions,
     isReversiblePaymentSourceType,
     recordObligationSettlement,
     reversePaymentTransaction,
@@ -122,8 +124,9 @@ function collapseTransactionsBySource(
 ) {
     const itemIds = new Set(items.map((item) => item.id))
     const seen = new Set<string>()
+    const collapsed: PaymentTransaction[] = []
 
-    return items.filter((item) => {
+    items.forEach((item) => {
         const key = getPaymentSourceKey(item)
         const preferred = latestUnreversedBySource.get(key)
 
@@ -132,16 +135,22 @@ function collapseTransactionsBySource(
         // always show that payment rather than collapsing the row to its
         // historical reversal.
         if (preferred && itemIds.has(preferred.id)) {
-            return item.id === preferred.id
+            if (item.id === preferred.id && !seen.has(key)) {
+                collapsed.push(preferred)
+                seen.add(key)
+            }
+            return
         }
 
         if (seen.has(key)) {
-            return false
+            return
         }
 
         seen.add(key)
-        return true
+        collapsed.push(item)
     })
+
+    return collapsed
 }
 
 function formatAmountSummary(
@@ -207,15 +216,27 @@ export function Payments() {
         includeReversals: true
     })
 
-    const reversedIds = useMemo(
-        () => new Set(allTransactions.filter((item) => !!item.reversalOfTransactionId).map((item) => item.reversalOfTransactionId as string)),
+    const reversalAmountsByTransactionId = useMemo(
+        () => getPaymentTransactionReversalAmounts(allTransactions),
         [allTransactions]
+    )
+
+    const fullyReversedIds = useMemo(
+        () => new Set(
+            allTransactions
+                .filter((item) => !item.isDeleted && !item.reversalOfTransactionId)
+                .filter((item) => {
+                    const reversedAmount = reversalAmountsByTransactionId.get(item.id) || 0
+                    return reversedAmount > 0.000001 && Math.abs(Number(item.amount || 0)) - reversedAmount <= 0.000001
+                })
+                .map((item) => item.id)
+        ),
+        [allTransactions, reversalAmountsByTransactionId]
     )
 
     const latestUnreversedBySource = useMemo(() => {
         const map = new Map<string, PaymentTransaction>()
-        const sourceRows = allTransactions
-            .filter((item) => !item.isDeleted && !item.reversalOfTransactionId && !reversedIds.has(item.id))
+        const sourceRows = getRemainingPaymentTransactions(allTransactions)
             .sort((left, right) => right.paidAt.localeCompare(left.paidAt) || right.createdAt.localeCompare(left.createdAt))
 
         sourceRows.forEach((item) => {
@@ -226,7 +247,7 @@ export function Payments() {
         })
 
         return map
-    }, [allTransactions, reversedIds])
+    }, [allTransactions])
 
     const visibleTransactions = useMemo(
         () => collapseTransactionsBySource(transactions, latestUnreversedBySource),
@@ -556,10 +577,12 @@ export function Payments() {
                                         </TableRow>
                                     ) : visibleTransactions.map((item) => {
                                         const isReversal = !!item.reversalOfTransactionId
-                                        const isReversed = reversedIds.has(item.id)
+                                        const reversedAmount = reversalAmountsByTransactionId.get(item.id) || 0
+                                        const hasPartialReversal = !isReversal && reversedAmount > 0.000001 && !fullyReversedIds.has(item.id)
+                                        const isReversed = fullyReversedIds.has(item.id)
                                         const isLockedSource = lockedSourceKeys.has(getPaymentSourceKey(item))
                                         const isLatestUnreversed = latestUnreversedBySource.get(getPaymentSourceKey(item))?.id === item.id
-                                        const canReverse = !isReversal && !isReversed && !isLockedSource && isLatestUnreversed && isReversiblePaymentSourceType(item.sourceType)
+                                        const canReverse = !isReversal && !hasPartialReversal && !isReversed && !isLockedSource && isLatestUnreversed && isReversiblePaymentSourceType(item.sourceType)
                                         const displayAmount = isReversal ? 0 : item.amount
 
                                         return (
@@ -592,6 +615,8 @@ export function Payments() {
                                                         'inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
                                                         isReversal
                                                             ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                                            : hasPartialReversal
+                                                                ? 'border-amber-200 bg-amber-50 text-amber-700'
                                                             : isLockedSource
                                                                 ? 'border-slate-300 bg-slate-100 text-slate-700'
                                                             : isReversed
@@ -600,6 +625,8 @@ export function Payments() {
                                                     )}>
                                                         {isReversal 
                                                             ? t('payments.status.reversal', { defaultValue: 'Reversal' }) 
+                                                            : hasPartialReversal
+                                                                ? t('payments.status.partialReversal', { defaultValue: 'Partially reversed' })
                                                             : isLockedSource 
                                                                 ? t('payments.status.locked', { defaultValue: 'Locked' }) 
                                                                 : isReversed 
