@@ -62,7 +62,7 @@ import { assetManager } from '@/lib/assetManager'
 import { normalizeBarcodeDigits, normalizeBarcodeScannerText } from '@/lib/barcodeScanner'
 import { generateRandomUpc } from '@/lib/upc'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
-import { isTauri } from '@/lib/platform'
+import { isMobile, isTauri } from '@/lib/platform'
 import { roundQuantity } from '@/lib/quantity'
 import { cn, formatCurrency, formatNumericInput, sanitizeNumericInput } from '@/lib/utils'
 import { getInventoryRowsForProduct } from '@/local-db/inventory'
@@ -1792,7 +1792,18 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                         </div>
                                         {isEditing && (
                                             <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-700">
-                                                {t('products.form.stockAdjustmentHint') || 'Use Stock Adjustments to change stock quantities for existing products.'}
+                                                {(() => {
+                                                    const addStockLabel = t('products.addStock', { defaultValue: 'Add Stock' })
+                                                    return isMobile()
+                                                        ? t('products.form.stockAdjustmentHint.mobile', {
+                                                            addStock: addStockLabel,
+                                                            defaultValue: `To adjust stock, tap the "${addStockLabel}" button on the product's card in the Products list.`
+                                                        })
+                                                        : t('products.form.stockAdjustmentHint.desktop', {
+                                                            addStock: addStockLabel,
+                                                            defaultValue: `To adjust stock, right-click the product's row in the Products list and choose "${addStockLabel}" from the menu.`
+                                                        })
+                                                })()}
                                             </div>
                                         )}
                                     </div>

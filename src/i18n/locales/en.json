@@ -1013,6 +1013,10 @@
       "inventoryAndReturnsDesc": "Track stock levels and define whether this product can be returned.",
       "lowStockWarning": "Stock is at or below the minimum threshold of {{min}} {{unit}}.",
       "goodStockNotice": "Current stock is above the minimum threshold.",
+      "stockAdjustmentHint": {
+        "desktop": "To adjust stock, right-click the product's row in the Products list and choose \"{{addStock}}\" from the menu.",
+        "mobile": "To adjust stock, tap the \"{{addStock}}\" button on the product's card in the Products list."
+      },
       "editRules": "Edit rules",
       "visualsDesc": "Upload or link a product image and keep the preview synced with the current record.",
       "noImage": "No Preview",
