@@ -82,6 +82,23 @@ type TransferInventoryBetweenWorkspacesRequest = {
     }>
 }
 
+type ListPermissionCopyWorkspacesRequest = {
+    action: 'list-permission-copy-workspaces'
+}
+
+type ListWorkspaceMemberPermissionsRequest = {
+    action: 'list-workspace-member-permissions'
+    workspaceId?: string
+}
+
+type CopyMemberPermissionsRequest = {
+    action: 'copy-member-permissions'
+    sourceWorkspaceId?: string
+    sourceMemberId?: string
+    targetWorkspaceId?: string
+    targetMemberId?: string
+}
+
 type WorkspaceAccessRequest =
     | CreateWorkspaceRequest
     | JoinWorkspaceRequest
@@ -96,6 +113,9 @@ type WorkspaceAccessRequest =
     | ListInventoryTransferTargetsRequest
     | ListInventoryTransferSourceProductsRequest
     | TransferInventoryBetweenWorkspacesRequest
+    | ListPermissionCopyWorkspacesRequest
+    | ListWorkspaceMemberPermissionsRequest
+    | CopyMemberPermissionsRequest
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -648,6 +668,225 @@ async function handleKickMember(
     }
 
     return jsonResponse({ success: true, message: 'Member kicked successfully' })
+}
+
+async function handleListPermissionCopyWorkspaces(
+    adminClient: AdminClient,
+    user: User
+) {
+    const callerResult = await requireCallerWorkspace(adminClient, user, true)
+    if (callerResult.response || !callerResult.profile) {
+        return callerResult.response!
+    }
+
+    const currentWorkspaceId = callerResult.profile.current_workspace!
+    const relatedWorkspaces = await getProductCloneTargets(adminClient, currentWorkspaceId)
+
+    const currentWorkspace = await getWorkspaceById(adminClient, currentWorkspaceId, 'id, name, code')
+    const workspaces = [
+        ...(currentWorkspace
+            ? [{
+                workspaceId: currentWorkspace.id,
+                workspaceName: currentWorkspace.name ?? 'Workspace',
+                workspaceCode: currentWorkspace.code,
+                relationType: 'current' as const
+            }]
+            : []),
+        ...relatedWorkspaces
+    ]
+
+    return jsonResponse({ workspaces })
+}
+
+async function handleListWorkspaceMemberPermissions(
+    adminClient: AdminClient,
+    user: User,
+    body: ListWorkspaceMemberPermissionsRequest
+) {
+    const workspaceId = body.workspaceId?.trim() ?? ''
+    if (!workspaceId) {
+        return errorResponse('Workspace is required')
+    }
+
+    const callerResult = await requireCallerWorkspace(adminClient, user, true)
+    if (callerResult.response || !callerResult.profile) {
+        return callerResult.response!
+    }
+
+    const currentWorkspaceId = callerResult.profile.current_workspace!
+    const accessibleWorkspaces = await getProductCloneTargets(adminClient, currentWorkspaceId)
+    const isCurrentWorkspace = workspaceId === currentWorkspaceId
+    if (!isCurrentWorkspace && !accessibleWorkspaces.some((target) => target.workspaceId === workspaceId)) {
+        return errorResponse('Workspace not accessible from the current workspace', 403)
+    }
+
+    const { data: profileRows, error: profileError } = await adminClient
+        .from('profiles')
+        .select('id, name, role, profile_url')
+        .eq('workspace_id', workspaceId)
+        .neq('role', 'admin')
+        .order('name', { ascending: true })
+
+    if (profileError) {
+        return errorResponse(profileError.message, 500)
+    }
+
+    const { data: permissionRows, error: permissionError } = await adminClient
+        .from('workspace_permissions')
+        .select('user_uuid, key')
+        .eq('workspace_id', workspaceId)
+
+    if (permissionError) {
+        return errorResponse(permissionError.message, 500)
+    }
+
+    const keysByUser = new Map<string, string[]>()
+    for (const row of permissionRows ?? []) {
+        const keys = keysByUser.get(row.user_uuid) ?? []
+        keys.push(row.key)
+        keysByUser.set(row.user_uuid, keys)
+    }
+
+    const members = (profileRows ?? []).map((row) => ({
+        id: row.id,
+        name: row.name,
+        role: row.role,
+        profile_url: row.profile_url ?? null,
+        permissionKeys: keysByUser.get(row.id) ?? []
+    }))
+
+    return jsonResponse({ members })
+}
+
+async function handleCopyMemberPermissions(
+    adminClient: AdminClient,
+    user: User,
+    body: CopyMemberPermissionsRequest
+) {
+    const sourceWorkspaceId = body.sourceWorkspaceId?.trim() ?? ''
+    const sourceMemberId = body.sourceMemberId?.trim() ?? ''
+    const targetWorkspaceId = body.targetWorkspaceId?.trim() ?? ''
+    const targetMemberId = body.targetMemberId?.trim() ?? ''
+
+    if (!sourceWorkspaceId || !sourceMemberId || !targetWorkspaceId || !targetMemberId) {
+        return errorResponse('sourceWorkspaceId, sourceMemberId, targetWorkspaceId and targetMemberId are required')
+    }
+
+    const callerResult = await requireCallerWorkspace(adminClient, user, true)
+    if (callerResult.response || !callerResult.profile) {
+        return callerResult.response!
+    }
+
+    const currentWorkspaceId = callerResult.profile.current_workspace!
+    if (targetWorkspaceId !== currentWorkspaceId) {
+        return errorResponse('Target member must belong to your current workspace', 403)
+    }
+
+    const accessibleWorkspaces = await getProductCloneTargets(adminClient, currentWorkspaceId)
+    const isCurrentWorkspace = sourceWorkspaceId === currentWorkspaceId
+    if (!isCurrentWorkspace && !accessibleWorkspaces.some((target) => target.workspaceId === sourceWorkspaceId)) {
+        return errorResponse('Source workspace not accessible from the current workspace', 403)
+    }
+
+    const { data: sourceProfile, error: sourceProfileError } = await adminClient
+        .from('profiles')
+        .select('id, role, workspace_id')
+        .eq('id', sourceMemberId)
+        .maybeSingle()
+
+    if (sourceProfileError) {
+        return errorResponse(sourceProfileError.message, 500)
+    }
+
+    if (!sourceProfile || sourceProfile.workspace_id !== sourceWorkspaceId) {
+        return errorResponse('Source member not found in the source workspace', 404)
+    }
+
+    if (sourceProfile.role === 'admin') {
+        return errorResponse('Cannot copy permissions from an admin', 403)
+    }
+
+    const { data: targetProfile, error: targetProfileError } = await adminClient
+        .from('profiles')
+        .select('id, role, workspace_id')
+        .eq('id', targetMemberId)
+        .maybeSingle()
+
+    if (targetProfileError) {
+        return errorResponse(targetProfileError.message, 500)
+    }
+
+    if (!targetProfile || targetProfile.workspace_id !== targetWorkspaceId) {
+        return errorResponse('Target member not found in the current workspace', 404)
+    }
+
+    if (targetProfile.role === 'admin') {
+        return errorResponse('Cannot copy permissions to an admin', 403)
+    }
+
+    const { data: sourcePermissionRows, error: sourcePermissionError } = await adminClient
+        .from('workspace_permissions')
+        .select('key, module')
+        .eq('workspace_id', sourceWorkspaceId)
+        .eq('user_uuid', sourceMemberId)
+
+    if (sourcePermissionError) {
+        return errorResponse(sourcePermissionError.message, 500)
+    }
+
+    const sourceKeys = new Map<string, string>()
+    for (const row of sourcePermissionRows ?? []) {
+        sourceKeys.set(String(row.key), String(row.module ?? ''))
+    }
+
+    const { data: targetPermissionRows, error: targetPermissionError } = await adminClient
+        .from('workspace_permissions')
+        .select('key')
+        .eq('workspace_id', targetWorkspaceId)
+        .eq('user_uuid', targetMemberId)
+
+    if (targetPermissionError) {
+        return errorResponse(targetPermissionError.message, 500)
+    }
+
+    const targetKeys = new Set((targetPermissionRows ?? []).map((row) => String(row.key)))
+
+    const keysToAdd = [...sourceKeys.keys()].filter((key) => !targetKeys.has(key))
+    const keysToRemove = [...targetKeys].filter((key) => !sourceKeys.has(key))
+
+    if (keysToRemove.length > 0) {
+        const { error: deleteError } = await adminClient
+            .from('workspace_permissions')
+            .delete()
+            .eq('workspace_id', targetWorkspaceId)
+            .eq('user_uuid', targetMemberId)
+            .in('key', keysToRemove)
+
+        if (deleteError) {
+            return errorResponse(deleteError.message, 500)
+        }
+    }
+
+    if (keysToAdd.length > 0) {
+        const { error: insertError } = await adminClient
+            .from('workspace_permissions')
+            .insert(keysToAdd.map((key) => ({
+                workspace_id: targetWorkspaceId,
+                user_uuid: targetMemberId,
+                key,
+                module: sourceKeys.get(key) ?? ''
+            })))
+
+        if (insertError) {
+            return errorResponse(insertError.message, 500)
+        }
+    }
+
+    return jsonResponse({
+        success: true,
+        added: keysToAdd.length,
+        removed: keysToRemove.length
+    })
 }
 
 async function handleCreateBranch(
@@ -2821,6 +3060,18 @@ Deno.serve(async (req) => {
 
         if (body.action === 'clone-products-to-branch') {
             return await handleCloneProductsToBranch(adminClient, user, body)
+        }
+
+        if (body.action === 'list-permission-copy-workspaces') {
+            return await handleListPermissionCopyWorkspaces(adminClient, user)
+        }
+
+        if (body.action === 'list-workspace-member-permissions') {
+            return await handleListWorkspaceMemberPermissions(adminClient, user, body)
+        }
+
+        if (body.action === 'copy-member-permissions') {
+            return await handleCopyMemberPermissions(adminClient, user, body)
         }
 
         return errorResponse('Unsupported action', 400)

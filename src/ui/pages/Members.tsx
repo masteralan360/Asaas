@@ -29,13 +29,14 @@ import {
     SelectValue,
     Switch
 } from '@/ui/components'
-import { UsersRound, UserMinus, Loader2, Shield, Eye, Briefcase, UserRound, KeyRound, ShieldCheck } from 'lucide-react'
+import { UsersRound, UserMinus, Loader2, Shield, Eye, Briefcase, UserRound, KeyRound, ShieldCheck, Copy, CopyCheck } from 'lucide-react'
 import { ProfileCardModal } from '@/ui/components/ProfileCardModal'
 import { useTranslation } from 'react-i18next'
 import { formatDate } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { invokeWorkspaceAccess } from '@/lib/workspaceAccess'
+import { useToast } from '@/ui/components'
 import { useWorkspace } from '@/workspace'
 import {
     WORKSPACE_PERMISSION_DEFINITIONS,
@@ -62,6 +63,21 @@ interface WorkspacePermission {
     user_uuid: string
     key: string
     module: string
+}
+
+interface PermissionCopyWorkspace {
+    workspaceId: string
+    workspaceName: string
+    workspaceCode?: string
+    relationType: 'current' | 'source' | 'branch'
+}
+
+interface PermissionCopyMember {
+    id: string
+    name: string
+    role: string
+    profile_url?: string | null
+    permissionKeys: string[]
 }
 
 const roleIcons: Record<string, typeof Shield> = {
@@ -158,6 +174,7 @@ export function Members() {
     const { user, session } = useAuth()
     const { hasCapability, isDemoMode, isLocalMode, planCapabilities } = useWorkspace()
     const { t } = useTranslation()
+    const { toast } = useToast()
     const [members, setMembers] = useState<Member[]>([])
     const [permissions, setPermissions] = useState<WorkspacePermission[]>([])
     const [isLoading, setIsLoading] = useState(true)
@@ -169,6 +186,15 @@ export function Members() {
     const [selectedPermissionModule, setSelectedPermissionModule] = useState<string>('global')
     const [profileUserId, setProfileUserId] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
+    const [copyDialogOpen, setCopyDialogOpen] = useState(false)
+    const [copyWorkspaces, setCopyWorkspaces] = useState<PermissionCopyWorkspace[]>([])
+    const [copyWorkspacesLoading, setCopyWorkspacesLoading] = useState(false)
+    const [copyWorkspaceId, setCopyWorkspaceId] = useState<string>('')
+    const [copyMembers, setCopyMembers] = useState<PermissionCopyMember[]>([])
+    const [copyMembersLoading, setCopyMembersLoading] = useState(false)
+    const [copyMemberId, setCopyMemberId] = useState<string>('')
+    const [copyingPermissions, setCopyingPermissions] = useState(false)
+    const [copyError, setCopyError] = useState<string | null>(null)
     const canManageWorkspacePermissions = !isDemoMode
         && hasCapability('workspaceManagementPermissions')
 
@@ -497,6 +523,91 @@ export function Members() {
         }
     }
 
+    const openCopyPermissionsDialog = async () => {
+        setCopyDialogOpen(true)
+        setCopyError(null)
+        setCopyWorkspaceId('')
+        setCopyMemberId('')
+        setCopyMembers([])
+        setCopyWorkspacesLoading(true)
+        try {
+            const { data, error } = await invokeWorkspaceAccess<{ workspaces: PermissionCopyWorkspace[] }>({
+                label: 'members.permissions.copy.listWorkspaces',
+                fallbackAccessToken: session?.access_token,
+                timeoutMs: 15000,
+                body: { action: 'list-permission-copy-workspaces' }
+            })
+            if (error) throw error
+            setCopyWorkspaces(data?.workspaces ?? [])
+        } catch (err) {
+            console.error('Error listing permission copy workspaces:', err)
+            setCopyError(getErrorMessage(err))
+        } finally {
+            setCopyWorkspacesLoading(false)
+        }
+    }
+
+    const loadCopyWorkspaceMembers = async (workspaceId: string) => {
+        setCopyWorkspaceId(workspaceId)
+        setCopyMemberId('')
+        setCopyMembers([])
+        if (!workspaceId) return
+        setCopyMembersLoading(true)
+        setCopyError(null)
+        try {
+            const { data, error } = await invokeWorkspaceAccess<{ members: PermissionCopyMember[] }>({
+                label: 'members.permissions.copy.listMembers',
+                fallbackAccessToken: session?.access_token,
+                timeoutMs: 15000,
+                body: { action: 'list-workspace-member-permissions', workspaceId }
+            })
+            if (error) throw error
+            setCopyMembers((data?.members ?? []).filter((member) => member.id !== permissionMember?.id))
+        } catch (err) {
+            console.error('Error listing workspace members for permission copy:', err)
+            setCopyError(getErrorMessage(err))
+            setCopyMembers([])
+        } finally {
+            setCopyMembersLoading(false)
+        }
+    }
+
+    const handleCopyPermissions = async () => {
+        if (!permissionMember || !copyWorkspaceId || !copyMemberId) return
+        setCopyingPermissions(true)
+        setCopyError(null)
+        try {
+            const { data, error } = await invokeWorkspaceAccess<{ added?: number; removed?: number }>({
+                label: 'members.permissions.copy.apply',
+                fallbackAccessToken: session?.access_token,
+                timeoutMs: 20000,
+                body: {
+                    action: 'copy-member-permissions',
+                    sourceWorkspaceId: copyWorkspaceId,
+                    sourceMemberId: copyMemberId,
+                    targetWorkspaceId: user?.workspaceId,
+                    targetMemberId: permissionMember.id
+                }
+            })
+            if (error) throw error
+            await fetchPermissions()
+            window.dispatchEvent(new CustomEvent('workspace-permissions:changed'))
+            toast({
+                title: t('members.permissions.copySuccess', { defaultValue: 'Permissions copied successfully' }),
+                description: t('members.permissions.copySuccessDescription', {
+                    name: permissionMember.name,
+                    defaultValue: '{{name}} now has the same permissions as the selected member.'
+                })
+            })
+            setCopyDialogOpen(false)
+        } catch (err) {
+            console.error('Error copying member permissions:', err)
+            setCopyError(getErrorMessage(err))
+        } finally {
+            setCopyingPermissions(false)
+        }
+    }
+
     const canKick = (member: Member) => {
         if (isDemoMode || isLocalMode) return false
         // Can't kick yourself
@@ -667,6 +778,20 @@ export function Members() {
                     </DialogHeader>
 
                     <div className="space-y-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={openCopyPermissionsDialog}
+                                disabled={isLocalMode || isDemoMode}
+                                title={isLocalMode || isDemoMode
+                                    ? t('members.permissions.copyUnavailable', { defaultValue: 'Copying permissions requires a cloud workspace' })
+                                    : undefined}
+                            >
+                                <Copy className="h-4 w-4 mr-1.5" />
+                                {t('members.permissions.copyButton', { defaultValue: 'Copy from another member' })}
+                            </Button>
+                        </div>
                         <div className="w-full max-w-[260px]">
                             <Select value={selectedPermissionModule} onValueChange={setSelectedPermissionModule}>
                                 <SelectTrigger>
@@ -775,6 +900,129 @@ export function Members() {
                             })}
                         </div>
                     </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Copy Permissions Dialog */}
+            <Dialog open={copyDialogOpen} onOpenChange={(open) => { if (!open) setCopyDialogOpen(false) }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Copy className="h-5 w-5 text-primary" />
+                            {t('members.permissions.copyTitle', { defaultValue: 'Copy Permissions from Another Member' })}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {t('members.permissions.copyDescription', {
+                                name: permissionMember?.name,
+                                defaultValue: 'Select a member from another workspace to copy their permissions into {{name}}.'
+                            })}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4">
+                        {copyError && (
+                            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+                                {copyError}
+                            </div>
+                        )}
+
+                        <div className="space-y-1.5">
+                            <p className="text-sm font-medium">
+                                {t('members.permissions.copyWorkspaceLabel', { defaultValue: 'Workspace' })}
+                            </p>
+                            {copyWorkspacesLoading ? (
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    {t('members.permissions.copyLoading', { defaultValue: 'Loading...' })}
+                                </div>
+                            ) : copyWorkspaces.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">
+                                    {t('members.permissions.copyNoWorkspaces', { defaultValue: 'No other workspaces are available.' })}
+                                </p>
+                            ) : (
+                                <Select value={copyWorkspaceId} onValueChange={loadCopyWorkspaceMembers}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder={t('members.permissions.copyWorkspacePlaceholder', { defaultValue: 'Select workspace' })} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {copyWorkspaces.map((workspace) => (
+                                            <SelectItem key={workspace.workspaceId} value={workspace.workspaceId}>
+                                                <div className="flex items-center gap-2">
+                                                    {workspace.relationType === 'source' ? (
+                                                        <Briefcase className="h-4 w-4 text-muted-foreground" />
+                                                    ) : workspace.relationType === 'current' ? (
+                                                        <Shield className="h-4 w-4 text-primary" />
+                                                    ) : (
+                                                        <Shield className="h-4 w-4 text-muted-foreground" />
+                                                    )}
+                                                    <span className="font-medium">{workspace.workspaceName}</span>
+                                                    {workspace.relationType === 'current' && (
+                                                        <span className="text-xs text-muted-foreground">
+                                                            ({t('members.permissions.copyCurrent', { defaultValue: 'current' })})
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <p className="text-sm font-medium">
+                                {t('members.permissions.copyMemberLabel', { defaultValue: 'Member' })}
+                            </p>
+                            {copyMembersLoading ? (
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    {t('members.permissions.copyLoading', { defaultValue: 'Loading...' })}
+                                </div>
+                            ) : copyWorkspaceId && copyMembers.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">
+                                    {t('members.permissions.copyNoMembers', { defaultValue: 'No members available in this workspace.' })}
+                                </p>
+                            ) : (
+                                <Select value={copyMemberId} onValueChange={setCopyMemberId} disabled={!copyWorkspaceId}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder={t('members.permissions.copyMemberPlaceholder', { defaultValue: 'Select member' })} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {copyMembers.map((member) => (
+                                            <SelectItem key={member.id} value={member.id}>
+                                                <div className="flex items-center gap-2">
+                                                    <UserRound className="h-4 w-4 text-muted-foreground" />
+                                                    <span className="font-medium">{member.name}</span>
+                                                    <span className="text-xs text-muted-foreground">
+                                                        ({member.permissionKeys.length})
+                                                    </span>
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setCopyDialogOpen(false)}>
+                            {t('common.cancel')}
+                        </Button>
+                        <Button
+                            onClick={handleCopyPermissions}
+                            disabled={!copyWorkspaceId || !copyMemberId || copyingPermissions}
+                        >
+                            {copyingPermissions ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                                <>
+                                    <CopyCheck className="w-4 h-4 mr-1" />
+                                    {t('members.permissions.copyAction', { defaultValue: 'Copy Permissions' })}
+                                </>
+                            )}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
