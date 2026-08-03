@@ -1802,7 +1802,6 @@
       "global": "عام",
       "saving": "جارٍ الحفظ...",
       "copyButton": "نسخ من عضو آخر",
-      "copyUnavailable": "نسخ الصلاحيات يتطلب مساحة عمل سحابية",
       "copyTitle": "نسخ الصلاحيات من عضو آخر",
       "copyDescription": "اختر عضواً من مساحة عمل أخرى لنسخ صلاحياته إلى {{name}}.",
       "copyWorkspaceLabel": "مساحة العمل",

@@ -531,14 +531,20 @@ export function Members() {
         setCopyMembers([])
         setCopyWorkspacesLoading(true)
         try {
-            const { data, error } = await invokeWorkspaceAccess<{ workspaces: PermissionCopyWorkspace[] }>({
-                label: 'members.permissions.copy.listWorkspaces',
-                fallbackAccessToken: session?.access_token,
-                timeoutMs: 15000,
-                body: { action: 'list-permission-copy-workspaces' }
-            })
-            if (error) throw error
-            setCopyWorkspaces(data?.workspaces ?? [])
+            let workspaces: PermissionCopyWorkspace[]
+            if (isLocalMode) {
+                workspaces = await getLocalCopyWorkspaces()
+            } else {
+                const { data, error } = await invokeWorkspaceAccess<{ workspaces: PermissionCopyWorkspace[] }>({
+                    label: 'members.permissions.copy.listWorkspaces',
+                    fallbackAccessToken: session?.access_token,
+                    timeoutMs: 15000,
+                    body: { action: 'list-permission-copy-workspaces' }
+                })
+                if (error) throw error
+                workspaces = data?.workspaces ?? []
+            }
+            setCopyWorkspaces(workspaces)
         } catch (err) {
             console.error('Error listing permission copy workspaces:', err)
             setCopyError(getErrorMessage(err))
@@ -555,14 +561,20 @@ export function Members() {
         setCopyMembersLoading(true)
         setCopyError(null)
         try {
-            const { data, error } = await invokeWorkspaceAccess<{ members: PermissionCopyMember[] }>({
-                label: 'members.permissions.copy.listMembers',
-                fallbackAccessToken: session?.access_token,
-                timeoutMs: 15000,
-                body: { action: 'list-workspace-member-permissions', workspaceId }
-            })
-            if (error) throw error
-            setCopyMembers((data?.members ?? []).filter((member) => member.id !== permissionMember?.id))
+            let members: PermissionCopyMember[]
+            if (isLocalMode) {
+                members = await getLocalCopyMembers(workspaceId)
+            } else {
+                const { data, error } = await invokeWorkspaceAccess<{ members: PermissionCopyMember[] }>({
+                    label: 'members.permissions.copy.listMembers',
+                    fallbackAccessToken: session?.access_token,
+                    timeoutMs: 15000,
+                    body: { action: 'list-workspace-member-permissions', workspaceId }
+                })
+                if (error) throw error
+                members = data?.members ?? []
+            }
+            setCopyMembers(members.filter((member) => member.id !== permissionMember?.id))
         } catch (err) {
             console.error('Error listing workspace members for permission copy:', err)
             setCopyError(getErrorMessage(err))
@@ -577,19 +589,23 @@ export function Members() {
         setCopyingPermissions(true)
         setCopyError(null)
         try {
-            const { data, error } = await invokeWorkspaceAccess<{ added?: number; removed?: number }>({
-                label: 'members.permissions.copy.apply',
-                fallbackAccessToken: session?.access_token,
-                timeoutMs: 20000,
-                body: {
-                    action: 'copy-member-permissions',
-                    sourceWorkspaceId: copyWorkspaceId,
-                    sourceMemberId: copyMemberId,
-                    targetWorkspaceId: user?.workspaceId,
-                    targetMemberId: permissionMember.id
-                }
-            })
-            if (error) throw error
+            if (isLocalMode) {
+                await copyPermissionsLocally(copyWorkspaceId, copyMemberId, permissionMember.id)
+            } else {
+                const { data, error } = await invokeWorkspaceAccess<{ added?: number; removed?: number }>({
+                    label: 'members.permissions.copy.apply',
+                    fallbackAccessToken: session?.access_token,
+                    timeoutMs: 20000,
+                    body: {
+                        action: 'copy-member-permissions',
+                        sourceWorkspaceId: copyWorkspaceId,
+                        sourceMemberId: copyMemberId,
+                        targetWorkspaceId: user?.workspaceId,
+                        targetMemberId: permissionMember.id
+                    }
+                })
+                if (error) throw error
+            }
             await fetchPermissions()
             window.dispatchEvent(new CustomEvent('workspace-permissions:changed'))
             toast({
@@ -605,6 +621,164 @@ export function Members() {
             setCopyError(getErrorMessage(err))
         } finally {
             setCopyingPermissions(false)
+        }
+    }
+
+    const getLocalCopyWorkspaces = async (): Promise<PermissionCopyWorkspace[]> => {
+        const currentId = user?.workspaceId ?? ''
+        const workspaceMap = new Map<string, PermissionCopyWorkspace>()
+        const addWorkspace = (id: string, name: string, code?: string) => {
+            if (!id || workspaceMap.has(id)) return
+            workspaceMap.set(id, {
+                workspaceId: id,
+                workspaceName: name || 'Workspace',
+                workspaceCode: code,
+                relationType: id === currentId ? 'current' : 'source'
+            })
+        }
+
+        const connection = await getLocalModeSqliteConnection()
+        if (connection) {
+            const entities = await connection.select<Array<{ entity_id: string; payload: string }>>(
+                `SELECT entity_id, payload
+                 FROM local_entities
+                 WHERE entity_type = 'workspaces'`
+            )
+            for (const entity of entities ?? []) {
+                const data = JSON.parse(entity.payload) as Record<string, unknown>
+                if (data.isDeleted === true) continue
+                addWorkspace(
+                    String(data.id ?? entity.entity_id),
+                    typeof data.name === 'string' ? data.name : '',
+                    typeof data.code === 'string' ? data.code : undefined
+                )
+            }
+        }
+
+        const dexieWorkspaces = await db.workspaces.toArray()
+        for (const workspace of dexieWorkspaces ?? []) {
+            if (workspace.isDeleted) continue
+            addWorkspace(workspace.id, workspace.name ?? '', workspace.code ?? undefined)
+        }
+
+        if (!workspaceMap.has(currentId)) {
+            const currentWorkspace = await db.workspaces.get(currentId)
+            addWorkspace(currentId, currentWorkspace?.name ?? 'My Workspace', currentWorkspace?.code ?? undefined)
+        }
+
+        return [...workspaceMap.values()].sort((a, b) => {
+            if (a.relationType === 'current' && b.relationType !== 'current') return -1
+            if (b.relationType === 'current' && a.relationType !== 'current') return 1
+            return a.workspaceName.localeCompare(b.workspaceName)
+        })
+    }
+
+    const getLocalWorkspacePermissionData = async (workspaceId: string) => {
+        const connection = await getLocalModeSqliteConnection()
+        const profiles: Array<Record<string, unknown>> = []
+        const permissionRows: Array<{ userUuid: string; key: string; module: string }> = []
+
+        if (connection) {
+            const [profileEntities, permissionEntities] = await Promise.all([
+                connection.select<Array<{ entity_id: string; payload: string }>>(
+                    `SELECT entity_id, payload
+                     FROM local_entities
+                     WHERE entity_type = 'profiles'
+                       AND workspace_id = $1`,
+                    [workspaceId]
+                ),
+                connection.select<Array<{ entity_id: string; payload: string }>>(
+                    `SELECT entity_id, payload
+                     FROM local_entities
+                     WHERE entity_type = 'workspace_permissions'
+                       AND workspace_id = $1`,
+                    [workspaceId]
+                )
+            ])
+            for (const entity of profileEntities ?? []) {
+                profiles.push(JSON.parse(entity.payload) as Record<string, unknown>)
+            }
+            for (const entity of permissionEntities ?? []) {
+                const data = JSON.parse(entity.payload) as Record<string, unknown>
+                if (typeof data.userUuid !== 'string' || typeof data.key !== 'string') continue
+                permissionRows.push({
+                    userUuid: data.userUuid,
+                    key: data.key,
+                    module: typeof data.module === 'string' ? data.module : ''
+                })
+            }
+        } else {
+            const dexieProfiles = await db.profiles.where('workspaceId').equals(workspaceId).toArray()
+            for (const profile of dexieProfiles) {
+                profiles.push(profile as unknown as Record<string, unknown>)
+            }
+            const dexiePermissions = await db.workspace_permissions.where('workspaceId').equals(workspaceId).toArray()
+            for (const permission of dexiePermissions) {
+                permissionRows.push({ userUuid: permission.userUuid, key: permission.key, module: permission.module })
+            }
+        }
+
+        return { profiles, permissionRows }
+    }
+
+    const getLocalCopyMembers = async (workspaceId: string): Promise<PermissionCopyMember[]> => {
+        const { profiles, permissionRows } = await getLocalWorkspacePermissionData(workspaceId)
+        const keysByUser = new Map<string, string[]>()
+        for (const row of permissionRows) {
+            const keys = keysByUser.get(row.userUuid) ?? []
+            keys.push(row.key)
+            keysByUser.set(row.userUuid, keys)
+        }
+
+        return profiles
+            .filter((profile) => typeof profile.id === 'string' && profile.role !== 'admin')
+            .map((profile) => ({
+                id: String(profile.id),
+                name: typeof profile.name === 'string' ? profile.name : 'Member',
+                role: typeof profile.role === 'string' ? profile.role : 'staff',
+                profile_url: typeof profile.profile_url === 'string' ? profile.profile_url : null,
+                permissionKeys: keysByUser.get(String(profile.id)) ?? []
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name))
+    }
+
+    const copyPermissionsLocally = async (sourceWorkspaceId: string, sourceMemberId: string, targetMemberId: string) => {
+        const targetWorkspaceId = user?.workspaceId
+        if (!targetWorkspaceId) throw new Error('Workspace not found')
+
+        const targetProfile = await db.profiles.get(targetMemberId)
+        if (!targetProfile || targetProfile.role === 'admin') {
+            throw new Error('Target member not found')
+        }
+
+        const { profiles, permissionRows } = await getLocalWorkspacePermissionData(sourceWorkspaceId)
+        const sourceProfile = profiles.find((profile) => profile.id === sourceMemberId)
+        if (!sourceProfile) {
+            throw new Error('Source member not found')
+        }
+
+        const sourceKeys = new Map<string, string>()
+        for (const row of permissionRows) {
+            if (row.userUuid === sourceMemberId) {
+                sourceKeys.set(row.key, row.module)
+            }
+        }
+
+        const { generateId } = await import('@/lib/utils')
+
+        await db.workspace_permissions
+            .where('[workspaceId+userUuid]')
+            .equals([targetWorkspaceId, targetMemberId])
+            .delete()
+
+        for (const [key, module] of sourceKeys) {
+            await db.workspace_permissions.put({
+                id: generateId(),
+                workspaceId: targetWorkspaceId,
+                userUuid: targetMemberId,
+                key,
+                module
+            })
         }
     }
 
@@ -783,10 +957,7 @@ export function Members() {
                                 variant="outline"
                                 size="sm"
                                 onClick={openCopyPermissionsDialog}
-                                disabled={isLocalMode || isDemoMode}
-                                title={isLocalMode || isDemoMode
-                                    ? t('members.permissions.copyUnavailable', { defaultValue: 'Copying permissions requires a cloud workspace' })
-                                    : undefined}
+                                disabled={isDemoMode}
                             >
                                 <Copy className="h-4 w-4 mr-1.5" />
                                 {t('members.permissions.copyButton', { defaultValue: 'Copy from another member' })}
