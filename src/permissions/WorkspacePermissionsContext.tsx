@@ -1,5 +1,4 @@
 import {
-  createContext,
   useCallback,
   useContext,
   useEffect,
@@ -25,16 +24,9 @@ import {
   writeCachedPermissions,
 } from "./workspacePermissionCache";
 import { getLocalModeSqliteConnection } from "@/local-db/localModeSqlite";
-
-interface WorkspacePermissionsContextType {
-  permissionKeys: WorkspacePermissionKey[];
-  isLoading: boolean;
-  hasPermission: (permission: WorkspacePermissionKey) => boolean;
-  refreshPermissions: () => Promise<void>;
-}
-
-const WorkspacePermissionsContext =
-  createContext<WorkspacePermissionsContextType | undefined>(undefined);
+import {
+  WorkspacePermissionsContext,
+} from "./workspacePermissionsState";
 
 export function WorkspacePermissionsProvider({
   children,
@@ -289,3 +281,5 @@ export function useWorkspacePermissions() {
   }
   return context;
 }
+
+export { useOptionalWorkspacePermissions } from "./workspacePermissionsState";

@@ -16,6 +16,7 @@ import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAc
 import { generateId } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { supabase } from '@/auth/supabase'
+import { useViewOwnRecordScope } from '@/permissions/useViewOwnRecordScope'
 
 import { db } from './database'
 import {
@@ -1351,12 +1352,16 @@ async function syncPurchaseReceiptResult(workspaceId: string, result: PurchaseRe
 
 export function useSalesOrders(workspaceId: string | undefined, startDate?: string, endDate?: string) {
     const online = useNetworkStatus()
+    const viewOwnScope = useViewOwnRecordScope('orders.view_own')
 
     const orders = useLiveQuery(
         async () => {
             if (!workspaceId) return []
 
-            let query = db.sales_orders.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted)
+            let query = db.sales_orders.where('workspaceId').equals(workspaceId).and((order) => (
+                !order.isDeleted
+                && (!viewOwnScope.isRestricted || order.createdBy === viewOwnScope.userId)
+            ))
 
             if (startDate && endDate) {
                 query = query.filter(order => order.createdAt >= startDate && order.createdAt <= endDate)
@@ -1369,41 +1374,55 @@ export function useSalesOrders(workspaceId: string | undefined, startDate?: stri
             const rows = await query.toArray()
             return rows.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
         },
-        [workspaceId, startDate, endDate]
+        [workspaceId, startDate, endDate, viewOwnScope.isRestricted, viewOwnScope.userId]
     )
 
     useEffect(() => {
         if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
             fetchTableFromSupabase('sales_orders', db.sales_orders, workspaceId)
         }
-    }, [online, workspaceId])
+    }, [online, workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId])
 
     return orders ?? []
 }
 
 export function usePurchaseOrders(workspaceId: string | undefined) {
     const online = useNetworkStatus()
+    const viewOwnScope = useViewOwnRecordScope('orders.view_own')
 
     const orders = useLiveQuery(
         async () => {
             if (!workspaceId) return []
-            const rows = await db.purchase_orders.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).toArray()
+            const rows = await db.purchase_orders
+                .where('workspaceId')
+                .equals(workspaceId)
+                .and((order) => !order.isDeleted && (
+                    !viewOwnScope.isRestricted || order.createdBy === viewOwnScope.userId
+                ))
+                .toArray()
             return rows.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
         },
-        [workspaceId]
+        [workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId]
     )
 
     useEffect(() => {
         if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
             fetchTableFromSupabase('purchase_orders', db.purchase_orders, workspaceId)
         }
-    }, [online, workspaceId])
+    }, [online, workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId])
 
     return orders ?? []
 }
 
 export function useSalesOrder(orderId: string | undefined) {
-    return useLiveQuery(() => orderId ? db.sales_orders.get(orderId) : undefined, [orderId])
+    const viewOwnScope = useViewOwnRecordScope('orders.view_own')
+    return useLiveQuery(async () => {
+        if (!orderId) return undefined
+        const order = await db.sales_orders.get(orderId)
+        return order && (!viewOwnScope.isRestricted || order.createdBy === viewOwnScope.userId)
+            ? order
+            : undefined
+    }, [orderId, viewOwnScope.isRestricted, viewOwnScope.userId])
 }
 
 export function useSalesOrderReturns(orderId: string | undefined, workspaceId?: string) {
@@ -1509,7 +1528,14 @@ export function applySalesOrderReturnQuantities(
 }
 
 export function usePurchaseOrder(orderId: string | undefined) {
-    return useLiveQuery(() => orderId ? db.purchase_orders.get(orderId) : undefined, [orderId])
+    const viewOwnScope = useViewOwnRecordScope('orders.view_own')
+    return useLiveQuery(async () => {
+        if (!orderId) return undefined
+        const order = await db.purchase_orders.get(orderId)
+        return order && (!viewOwnScope.isRestricted || order.createdBy === viewOwnScope.userId)
+            ? order
+            : undefined
+    }, [orderId, viewOwnScope.isRestricted, viewOwnScope.userId])
 }
 
 export function useOrderInstallments(orderId: string | undefined, workspaceId?: string) {

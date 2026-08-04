@@ -52,7 +52,7 @@ import {
     type WorkspacePaymentMethod
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
-import { useHideCosts } from '@/permissions'
+import { useHideCosts, useViewOwnRecordScope } from '@/permissions'
 import {
     Button,
     Card,
@@ -200,6 +200,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
     const hideCosts = useHideCosts()
+    const invoiceViewOwnScope = useViewOwnRecordScope('invoice_history.view_own')
     const { features, workspaceName, isLocalMode } = useWorkspace()
     const [, navigate] = useLocation()
     const { toast } = useToast()
@@ -360,12 +361,21 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
             const invoices = await db.invoices
                 .where('orderId')
                 .equals(orderId)
-                .and(invoice => invoice.workspaceId === workspaceId && !invoice.isDeleted)
+                .and((invoice) => invoice.workspaceId === workspaceId && !invoice.isDeleted && (
+                    !invoiceViewOwnScope.isRestricted
+                    || invoice.createdBy === invoiceViewOwnScope.userId
+                    || invoice.userId === invoiceViewOwnScope.userId
+                ))
                 .toArray()
 
             return invoices.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
         },
-        [orderId, workspaceId]
+        [
+            orderId,
+            workspaceId,
+            invoiceViewOwnScope.isRestricted,
+            invoiceViewOwnScope.userId,
+        ]
     )
 
     const handleShowInvoice = useCallback(async () => {

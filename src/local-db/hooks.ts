@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Dexie from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { useViewOwnRecordScope, type ViewOwnRecordScope } from '@/permissions/useViewOwnRecordScope'
 
 import { db } from './database'
 import { canReconcileCloudWorkspaceData } from './cloudReconciliation'
@@ -1433,10 +1434,21 @@ async function updateEntity<T extends { id: string, workspaceId: string, version
 
 export function useInvoices(workspaceId: string | undefined) {
     const isOnline = useNetworkStatus()
+    const viewOwnScope = useViewOwnRecordScope('invoice_history.view_own')
 
     const invoices = useLiveQuery(
-        () => workspaceId ? db.invoices.where('workspaceId').equals(workspaceId).and(i => !i.isDeleted).toArray() : [],
-        [workspaceId]
+        () => workspaceId
+            ? db.invoices
+                .where('workspaceId')
+                .equals(workspaceId)
+                .and((invoice) => !invoice.isDeleted && (
+                    !viewOwnScope.isRestricted
+                    || invoice.createdBy === viewOwnScope.userId
+                    || invoice.userId === viewOwnScope.userId
+                ))
+                .toArray()
+            : [],
+        [workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId]
     )
 
     const syncInvoicesFromSupabase = useCallback(async () => {
@@ -1493,7 +1505,11 @@ export function useInvoices(workspaceId: string | undefined) {
 
     useEffect(() => {
         syncInvoicesFromSupabase()
-    }, [syncInvoicesFromSupabase])
+    }, [
+        syncInvoicesFromSupabase,
+        viewOwnScope.isRestricted,
+        viewOwnScope.userId,
+    ])
 
     // Re-sync on window focus/visibility so deletions from another tab/client are reflected
     useEffect(() => {
@@ -1517,9 +1533,24 @@ export function useInvoices(workspaceId: string | undefined) {
 }
 
 export function useInvoice(id: string | undefined) {
+    const viewOwnScope = useViewOwnRecordScope('invoice_history.view_own')
     const invoice = useLiveQuery(
-        () => id ? db.invoices.get(id) : undefined,
-        [id]
+        async () => {
+            if (!id) return undefined
+            const row = await db.invoices.get(id)
+            if (
+                !row
+                || (
+                    viewOwnScope.isRestricted
+                    && row.createdBy !== viewOwnScope.userId
+                    && row.userId !== viewOwnScope.userId
+                )
+            ) {
+                return undefined
+            }
+            return row
+        },
+        [id, viewOwnScope.isRestricted, viewOwnScope.userId]
     )
     return invoice
 }
@@ -2238,6 +2269,7 @@ export function useSales(
 ) {
     const isOnline = useNetworkStatus()
     const syncRemote = options.syncRemote ?? true
+    const viewOwnScope = useViewOwnRecordScope('sales.view_own')
 
     const sales = useLiveQuery(
         async () => {
@@ -2257,9 +2289,12 @@ export function useSales(
               : db.sales.where('workspaceId').equals(workspaceId)
 
             const rows = await query.toArray()
-            return enrichSalesForUiRows(workspaceId, rows)
+            const visibleRows = viewOwnScope.isRestricted
+                ? rows.filter((sale) => sale.cashierId === viewOwnScope.userId)
+                : rows
+            return enrichSalesForUiRows(workspaceId, visibleRows)
         },
-        [workspaceId, startDate, endDate]
+        [workspaceId, startDate, endDate, viewOwnScope.isRestricted, viewOwnScope.userId]
     )
 
     useEffect(() => {
@@ -2268,7 +2303,15 @@ export function useSales(
               console.error('[Sales] Failed to synchronize sales', error)
             })
         }
-    }, [syncRemote, isOnline, workspaceId, startDate, endDate])
+    }, [
+        syncRemote,
+        isOnline,
+        workspaceId,
+        startDate,
+        endDate,
+        viewOwnScope.isRestricted,
+        viewOwnScope.userId,
+    ])
 
     return sales ?? []
 }
@@ -2392,6 +2435,8 @@ export async function clearOfflineMutations(): Promise<void> {
 // ===================
 
 export function useDashboardStats(workspaceId: string | undefined) {
+    const salesViewOwnScope = useViewOwnRecordScope('sales.view_own')
+    const invoicesViewOwnScope = useViewOwnRecordScope('invoice_history.view_own')
     const stats = useLiveQuery(async () => {
         if (!workspaceId) return null
 
@@ -2410,11 +2455,23 @@ export function useDashboardStats(workspaceId: string | undefined) {
         ] = await Promise.all([
             db.products.where('workspaceId').equals(workspaceId).and(p => !p.isDeleted).count(),
             db.categories.where('workspaceId').equals(workspaceId).and(c => !c.isDeleted).count(),
-            db.invoices.where('workspaceId').equals(workspaceId).and(i => !i.isDeleted && i.origin !== 'upload').count(),
-            db.sales.where('workspaceId').equals(workspaceId).and(s => !s.isDeleted).reverse().sortBy('createdAt').then(sales => sales.slice(0, 3)),
-            db.invoices.where('workspaceId').equals(workspaceId).and(inv => !inv.isDeleted && inv.origin !== 'upload').reverse().sortBy('createdAt').then(inv => inv.slice(0, 4)),
+            db.invoices.where('workspaceId').equals(workspaceId).and((invoice) => !invoice.isDeleted && invoice.origin !== 'upload' && (
+                !invoicesViewOwnScope.isRestricted
+                || invoice.createdBy === invoicesViewOwnScope.userId
+                || invoice.userId === invoicesViewOwnScope.userId
+            )).count(),
+            db.sales.where('workspaceId').equals(workspaceId).and((sale) => !sale.isDeleted && (
+                !salesViewOwnScope.isRestricted || sale.cashierId === salesViewOwnScope.userId
+            )).reverse().sortBy('createdAt').then(sales => sales.slice(0, 3)),
+            db.invoices.where('workspaceId').equals(workspaceId).and((invoice) => !invoice.isDeleted && invoice.origin !== 'upload' && (
+                !invoicesViewOwnScope.isRestricted
+                || invoice.createdBy === invoicesViewOwnScope.userId
+                || invoice.userId === invoicesViewOwnScope.userId
+            )).reverse().sortBy('createdAt').then(invoices => invoices.slice(0, 4)),
             db.products.where('workspaceId').equals(workspaceId).and(p => !p.isDeleted && p.quantity <= p.minStockLevel).toArray(),
-            db.sales.where('workspaceId').equals(workspaceId).and(s => !s.isDeleted && s.createdAt >= thirtyDaysAgoStr).toArray()
+            db.sales.where('workspaceId').equals(workspaceId).and((sale) => !sale.isDeleted && sale.createdAt >= thirtyDaysAgoStr && (
+                !salesViewOwnScope.isRestricted || sale.cashierId === salesViewOwnScope.userId
+            )).toArray()
         ])
 
         // Fetch items for recent sales and trend sales to calculate cost
@@ -2474,7 +2531,13 @@ export function useDashboardStats(workspaceId: string | undefined) {
             statsByCurrency,
             grossRevenueByCurrency: Object.fromEntries(Object.entries(statsByCurrency).map(([c, s]) => [c, s.revenue]))
         }
-    }, [workspaceId])
+    }, [
+        workspaceId,
+        invoicesViewOwnScope.isRestricted,
+        invoicesViewOwnScope.userId,
+        salesViewOwnScope.isRestricted,
+        salesViewOwnScope.userId,
+    ])
 
     return stats ?? {
         productCount: 0,
@@ -4480,87 +4543,204 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
     }
 }
 
+function isLoanVisibleInLocalCache(
+    loan: Loan,
+    loansViewOwnScope: ViewOwnRecordScope,
+    installmentsViewOwnScope: ViewOwnRecordScope,
+) {
+    const scope = loan.loanCategory === 'simple'
+        ? loansViewOwnScope
+        : installmentsViewOwnScope
+
+    return !scope.isRestricted || loan.createdBy === scope.userId
+}
+
 export function useLoans(workspaceId: string | undefined) {
     const online = useNetworkStatus()
+    const loansViewOwnScope = useViewOwnRecordScope('loans.view_own')
+    const installmentsViewOwnScope = useViewOwnRecordScope('installments.view_own')
 
     const loans = useLiveQuery(
         () => workspaceId
-            ? db.loans.where('workspaceId').equals(workspaceId).and(item => !item.isDeleted).reverse().sortBy('createdAt')
+            ? db.loans
+                .where('workspaceId')
+                .equals(workspaceId)
+                .and((loan) => !loan.isDeleted && isLoanVisibleInLocalCache(
+                    loan,
+                    loansViewOwnScope,
+                    installmentsViewOwnScope,
+                ))
+                .reverse()
+                .sortBy('createdAt')
             : [],
-        [workspaceId]
+        [
+            workspaceId,
+            loansViewOwnScope.isRestricted,
+            loansViewOwnScope.userId,
+            installmentsViewOwnScope.isRestricted,
+            installmentsViewOwnScope.userId,
+        ]
     )
 
     useEffect(() => {
             if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
             fetchTableFromSupabase('loans', db.loans, workspaceId)
         }
-    }, [online, workspaceId])
+    }, [
+        online,
+        workspaceId,
+        loansViewOwnScope.isRestricted,
+        loansViewOwnScope.userId,
+        installmentsViewOwnScope.isRestricted,
+        installmentsViewOwnScope.userId,
+    ])
 
     return loans ?? []
 }
 
 export function useLoan(loanId: string | undefined) {
-    return useLiveQuery(() => loanId ? db.loans.get(loanId) : undefined, [loanId])
+    const loansViewOwnScope = useViewOwnRecordScope('loans.view_own')
+    const installmentsViewOwnScope = useViewOwnRecordScope('installments.view_own')
+
+    return useLiveQuery(async () => {
+        if (!loanId) return undefined
+        const loan = await db.loans.get(loanId)
+        return loan && isLoanVisibleInLocalCache(loan, loansViewOwnScope, installmentsViewOwnScope)
+            ? loan
+            : undefined
+    }, [
+        loanId,
+        loansViewOwnScope.isRestricted,
+        loansViewOwnScope.userId,
+        installmentsViewOwnScope.isRestricted,
+        installmentsViewOwnScope.userId,
+    ])
 }
 
 export function useLoanBySaleId(saleId: string | undefined, workspaceId?: string) {
     const online = useNetworkStatus()
+    const loansViewOwnScope = useViewOwnRecordScope('loans.view_own')
+    const installmentsViewOwnScope = useViewOwnRecordScope('installments.view_own')
 
     const loan = useLiveQuery(
         async () => {
             if (!saleId) return undefined
-            const rows = await db.loans.where('saleId').equals(saleId).and(item => !item.isDeleted).toArray()
+            const rows = await db.loans
+                .where('saleId')
+                .equals(saleId)
+                .and((loan) => !loan.isDeleted && isLoanVisibleInLocalCache(
+                    loan,
+                    loansViewOwnScope,
+                    installmentsViewOwnScope,
+                ))
+                .toArray()
             if (rows.length === 0) return undefined
             return rows.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0]
         },
-        [saleId]
+        [
+            saleId,
+            loansViewOwnScope.isRestricted,
+            loansViewOwnScope.userId,
+            installmentsViewOwnScope.isRestricted,
+            installmentsViewOwnScope.userId,
+        ]
     )
 
     useEffect(() => {
             if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
             fetchTableFromSupabase('loans', db.loans, workspaceId)
         }
-    }, [online, workspaceId])
+    }, [
+        online,
+        workspaceId,
+        loansViewOwnScope.isRestricted,
+        loansViewOwnScope.userId,
+        installmentsViewOwnScope.isRestricted,
+        installmentsViewOwnScope.userId,
+    ])
 
     return loan
 }
 
 export function useLoanInstallments(loanId: string | undefined, workspaceId?: string) {
     const online = useNetworkStatus()
+    const loansViewOwnScope = useViewOwnRecordScope('loans.view_own')
+    const installmentsViewOwnScope = useViewOwnRecordScope('installments.view_own')
 
     const installments = useLiveQuery(
-        () => loanId
-            ? db.loan_installments.where('loanId').equals(loanId).and(item => !item.isDeleted).sortBy('installmentNo')
-            : [],
-        [loanId]
+        async () => {
+            if (!loanId) return []
+            const loan = await db.loans.get(loanId)
+            if (!loan || !isLoanVisibleInLocalCache(loan, loansViewOwnScope, installmentsViewOwnScope)) {
+                return []
+            }
+            return db.loan_installments
+                .where('loanId')
+                .equals(loanId)
+                .and((item) => !item.isDeleted)
+                .sortBy('installmentNo')
+        },
+        [
+            loanId,
+            loansViewOwnScope.isRestricted,
+            loansViewOwnScope.userId,
+            installmentsViewOwnScope.isRestricted,
+            installmentsViewOwnScope.userId,
+        ]
     )
 
     useEffect(() => {
         if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
             fetchTableFromSupabase('loan_installments', db.loan_installments, workspaceId)
         }
-    }, [online, workspaceId])
+    }, [
+        online,
+        workspaceId,
+        loansViewOwnScope.isRestricted,
+        loansViewOwnScope.userId,
+        installmentsViewOwnScope.isRestricted,
+        installmentsViewOwnScope.userId,
+    ])
 
     return installments ?? []
 }
 
 export function useLoanPayments(loanId: string | undefined, workspaceId?: string) {
     const online = useNetworkStatus()
+    const loansViewOwnScope = useViewOwnRecordScope('loans.view_own')
+    const installmentsViewOwnScope = useViewOwnRecordScope('installments.view_own')
 
     const payments = useLiveQuery(
         async () => {
             if (!loanId) return []
+            const loan = await db.loans.get(loanId)
+            if (!loan || !isLoanVisibleInLocalCache(loan, loansViewOwnScope, installmentsViewOwnScope)) {
+                return []
+            }
             const rows = await db.loan_payments.where('loanId').equals(loanId).and(item => !item.isDeleted).toArray()
             return rows.sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime())
         },
-        [loanId]
+        [
+            loanId,
+            loansViewOwnScope.isRestricted,
+            loansViewOwnScope.userId,
+            installmentsViewOwnScope.isRestricted,
+            installmentsViewOwnScope.userId,
+        ]
     )
 
     useEffect(() => {
         if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
             fetchTableFromSupabase('loan_payments', db.loan_payments, workspaceId)
         }
-    }, [online, workspaceId])
+    }, [
+        online,
+        workspaceId,
+        loansViewOwnScope.isRestricted,
+        loansViewOwnScope.userId,
+        installmentsViewOwnScope.isRestricted,
+        installmentsViewOwnScope.userId,
+    ])
 
     return payments ?? []
 }

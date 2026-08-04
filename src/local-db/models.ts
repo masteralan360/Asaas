@@ -1283,6 +1283,8 @@ export interface Invoice extends BaseEntity {
   origin?: InvoiceOrigin;
   /** @deprecated Use cashierName for the name string. createdBy might map to system UUID. */
   createdBy?: string;
+  /** Auth user that owns legacy and uploaded invoice records. */
+  userId?: string;
   cashierName?: string;
   createdByName?: string;
   sequenceId?: number;

@@ -95,6 +95,17 @@ const roleColors: Record<string, string> = {
 type WorkspacePermissionDefinition = typeof WORKSPACE_PERMISSION_DEFINITIONS[number]
 type WorkspacePermissionModule = WorkspacePermissionDefinition['module']
 
+// These permission keys use database-facing module names, while the existing
+// permission picker already presents their corresponding user-facing modules.
+const PERMISSION_MODULE_DISPLAY_GROUP: Partial<Record<WorkspacePermissionModule, WorkspacePermissionModule>> = {
+    sales: 'salesHistory',
+    invoice_history: 'invoiceHistory',
+}
+
+function getPermissionDisplayModule(module: WorkspacePermissionModule) {
+    return PERMISSION_MODULE_DISPLAY_GROUP[module] ?? module
+}
+
 const PERMISSION_MODULE_DEFAULT_LABELS: Record<string, string> = {
     global: 'Global',
     payment: 'Payments',
@@ -143,9 +154,11 @@ const PERMISSION_MODULE_PLAN_MODULES: Partial<Record<WorkspacePermissionModule, 
     customers: 'customers',
     suppliers: 'suppliers',
     orders: 'orders',
+    sales: 'sales_history',
     ecommerce: 'ecommerce',
     accounting: 'accounting',
     invoiceHistory: 'invoice_history',
+    invoice_history: 'invoice_history',
     loans: 'loans',
     realEstate: 'real_estate',
     currencyExchange: 'currency_exchange',
@@ -433,7 +446,9 @@ export function Members() {
     }, [planCapabilities.modules])
 
     const selectedModulePermissions = useMemo(() => (
-        visiblePermissionDefinitions.filter((permission) => permission.module === selectedPermissionModule)
+        visiblePermissionDefinitions.filter((permission) => (
+            getPermissionDisplayModule(permission.module) === selectedPermissionModule
+        ))
     ), [selectedPermissionModule, visiblePermissionDefinitions])
 
     const selectedMemberPermissionKeys = permissionMember
@@ -450,14 +465,15 @@ export function Members() {
         }>> = {}
         visiblePermissionDefinitions.forEach((permission) => {
             const section = permission.section || 'other'
+            const displayModule = getPermissionDisplayModule(permission.module)
             if (!groups[section]) groups[section] = []
-            if (groups[section].some((entry) => entry.module === permission.module)) return
+            if (groups[section].some((entry) => entry.module === displayModule)) return
             groups[section].push({
-                module: permission.module,
+                module: displayModule,
                 section,
                 icon: permission.icon,
-                labelKey: `members.permissions.modules.${permission.module}`,
-                defaultLabel: PERMISSION_MODULE_DEFAULT_LABELS[permission.module] ?? permission.defaultLabel
+                labelKey: `members.permissions.modules.${displayModule}`,
+                defaultLabel: PERMISSION_MODULE_DEFAULT_LABELS[displayModule] ?? permission.defaultLabel
             })
         })
         return groups
@@ -483,7 +499,9 @@ export function Members() {
 
     useEffect(() => {
         if (!permissionMember) return
-        if (visiblePermissionDefinitions.some((permission) => permission.module === selectedPermissionModule)) return
+        if (visiblePermissionDefinitions.some((permission) => (
+            getPermissionDisplayModule(permission.module) === selectedPermissionModule
+        ))) return
         setSelectedPermissionModule('global')
     }, [permissionMember, selectedPermissionModule, visiblePermissionDefinitions])
 

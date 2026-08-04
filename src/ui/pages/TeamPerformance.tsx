@@ -12,6 +12,7 @@ import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { salesExchangeRowsToSnapshots } from '@/lib/salesExchange'
 import { useWorkspace } from '@/workspace'
+import { useViewOwnRecordScope } from '@/permissions'
 import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import {
@@ -74,6 +75,7 @@ export function TeamPerformance() {
     const { user } = useAuth()
     const { t, i18n } = useTranslation()
     const { features, workspaceName, isLocalMode } = useWorkspace()
+    const salesViewOwnScope = useViewOwnRecordScope('sales.view_own')
     const [sales, setSales] = useState<Sale[]>([])
     const [members, setMembers] = useState<User[]>([])
     const [isLoading, setIsLoading] = useState(true)
@@ -118,6 +120,9 @@ export function TeamPerformance() {
 
                 const localSales = await db.sales.where('workspaceId').equals(workspaceId).toArray()
                 const filteredLocalSales = localSales.filter((sale) => {
+                    if (salesViewOwnScope.isRestricted && sale.cashierId !== salesViewOwnScope.userId) {
+                        return false
+                    }
                     const saleDate = new Date(sale.createdAt)
                     const now = new Date()
 
@@ -259,7 +264,14 @@ export function TeamPerformance() {
         if (user?.workspaceId) {
             fetchData()
         }
-    }, [customDates, dateRange, isLocalMode, user?.workspaceId])
+    }, [
+        customDates,
+        dateRange,
+        isLocalMode,
+        salesViewOwnScope.isRestricted,
+        salesViewOwnScope.userId,
+        user?.workspaceId,
+    ])
 
     const calculatePerformance = () => {
         const perfMap: Record<string, StaffPerformance> = {}

@@ -8,7 +8,7 @@ import { db } from '@/local-db'
 import { Button } from '@/ui/components/button'
 import { exportToExcel, mapFinanceForExport, mapSalesForExport, mapRevenueForExport } from '@/lib/excelExport'
 import { supabase } from '@/auth/supabase'
-import { useHideCosts } from '@/permissions'
+import { useHideCosts, useViewOwnRecordScope } from '@/permissions'
 
 const SpreadsheetPreview = lazy(() =>
     import('react-spreadsheet').then((module) => ({ default: module.default }))
@@ -66,6 +66,7 @@ export function ExportPreviewModal({
     const { t } = useTranslation()
     const { activeWorkspace, isLocalMode } = useWorkspace()
     const hideCosts = useHideCosts()
+    const salesViewOwnScope = useViewOwnRecordScope('sales.view_own')
     const [isExporting, setIsExporting] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
     const [data, setData] = useState<any[]>([])
@@ -81,7 +82,17 @@ export function ExportPreviewModal({
         } else if (!isOpen) {
             setData([])
         }
-    }, [activeWorkspace?.id, filters, hideCosts, isLocalMode, isOpen, records, type])
+    }, [
+        activeWorkspace?.id,
+        filters,
+        hideCosts,
+        isLocalMode,
+        isOpen,
+        records,
+        salesViewOwnScope.isRestricted,
+        salesViewOwnScope.userId,
+        type,
+    ])
 
     const fetchExportData = async () => {
         setIsLoading(true)
@@ -113,6 +124,9 @@ export function ExportPreviewModal({
                 }
 
                 const filteredSales = localSales.filter((sale) => {
+                    if (salesViewOwnScope.isRestricted && sale.cashierId !== salesViewOwnScope.userId) {
+                        return false
+                    }
                     const saleDate = new Date(sale.createdAt)
                     if (dateRange === 'today') {
                         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)

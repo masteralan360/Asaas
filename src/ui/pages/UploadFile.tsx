@@ -7,6 +7,7 @@ import { createInvoice, deleteInvoice, db, type Invoice } from '@/local-db'
 import { generateId, formatDateTime } from '@/lib/utils'
 import { r2Service } from '@/services/r2Service'
 import { useWorkspace } from '@/workspace'
+import { useViewOwnRecordScope } from '@/permissions'
 import {
     Card,
     CardContent,
@@ -78,6 +79,7 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
     const { toast } = useToast()
     const { user } = useAuth()
     const { activeWorkspace, features, branchInfo, planCapabilities, isDemoMode } = useWorkspace()
+    const invoiceViewOwnScope = useViewOwnRecordScope('invoice_history.view_own')
     const [documentName, setDocumentName] = useState('')
     const [selectedFile, setSelectedFile] = useState<File | null>(null)
     const [uploadProgress, setUploadProgress] = useState(0)
@@ -116,12 +118,23 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
         db.invoices
             .where('workspaceId')
             .anyOf(workspaceIds)
-            .filter(i => i.origin === 'upload' && !i.isDeleted)
+            .filter((invoice) => invoice.origin === 'upload' && !invoice.isDeleted && (
+                !invoiceViewOwnScope.isRestricted
+                || invoice.createdBy === invoiceViewOwnScope.userId
+                || invoice.userId === invoiceViewOwnScope.userId
+            ))
             .toArray()
             .then(results => {
                 setBranchTotalUsedBytes(results.reduce((sum, inv) => sum + (inv.fileSize ?? 0), 0))
             })
-    }, [useBranchTotal, activeWorkspace?.id, branchInfo, invoices])
+    }, [
+        useBranchTotal,
+        activeWorkspace?.id,
+        branchInfo,
+        invoices,
+        invoiceViewOwnScope.isRestricted,
+        invoiceViewOwnScope.userId,
+    ])
 
     const displayUsedBytes = useBranchTotal ? branchTotalUsedBytes : totalUsedBytes
 
