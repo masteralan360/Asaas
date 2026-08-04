@@ -88,7 +88,7 @@ const supabaseMock = vi.hoisted(() => {
     const upsert = vi.fn(async (): Promise<{ data: null; error: Error | null }> => ({ data: null, error: mutationError }))
     const rpc = vi.fn(async () => ({ data: null as any, error: null as any }))
     const orderUpsert = vi.fn(() => ({
-        select: vi.fn(async () => ({ data: [], error: null as any }))
+        select: vi.fn(async () => ({ data: [] as any[], error: null as any }))
     }))
     let saleLookup: Record<string, any> | null = null
     let pullError: Error | null = null
