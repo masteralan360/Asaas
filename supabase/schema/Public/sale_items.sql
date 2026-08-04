@@ -21,5 +21,6 @@ CREATE TABLE public.sale_items (
   inventory_snapshot numeric NULL DEFAULT 0,
   batch_allocations jsonb NULL,
   original_batch_allocations jsonb NULL,
+  price_book_id uuid NULL,
   PRIMARY KEY (id)
 );

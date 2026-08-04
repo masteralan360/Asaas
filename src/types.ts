@@ -58,6 +58,7 @@ export interface SaleItem {
         is_deleted?: boolean
     }
     product_category?: string
+    price_book_id?: string | null
 }
 
 export interface Sale {
@@ -167,6 +168,8 @@ export interface CartItem {
     negotiated_price?: number
     imageUrl?: string
     unit?: string
+    price_book_id?: string
+    price_book_name?: string
 }
 
 export interface UniversalInvoiceItem {

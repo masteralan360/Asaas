@@ -13,7 +13,7 @@ import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, applySalesOrderReturnQuantities, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
+import { adjustInventoryQuantity, applySalesOrderReturnQuantities, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, usePriceBookCatalogState, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
@@ -404,6 +404,7 @@ export function Sales() {
                 unit: item.product?.unit || null,
                 returnableQuantity,
                 unitPrice: Number(item.converted_unit_price ?? item.unit_price ?? 0),
+                priceBookId: item.price_book_id ?? null,
             }]
         })
     }, [saleForProductExchange, t])
@@ -440,6 +441,32 @@ export function Sales() {
             }]
         })
     }, [inventory, products, saleForProductExchange?.settlement_currency])
+
+    const priceBookCatalog = usePriceBookCatalogState(user?.workspaceId, { enabled: !!user?.workspaceId })
+    const priceBookReplacementAmountByKey = useMemo(() => {
+        const map = new Map<string, { price: number; currency: string }>()
+        for (const priceBookItem of priceBookCatalog.priceBookItems) {
+            if (priceBookItem.isDeleted) {
+                continue
+            }
+            map.set(`${priceBookItem.priceBookId}:${priceBookItem.productId}`, {
+                price: priceBookItem.price,
+                currency: priceBookItem.currency
+            })
+        }
+        return map
+    }, [priceBookCatalog.priceBookItems])
+    const resolvePriceBookReplacementAmount = useCallback((priceBookId: string, productId: string) => {
+        const entry = priceBookReplacementAmountByKey.get(`${priceBookId}:${productId}`)
+        if (!entry) {
+            return null
+        }
+        const settlementCurrency = saleForProductExchange?.settlement_currency?.toLowerCase()
+        if (!settlementCurrency || entry.currency.toLowerCase() !== settlementCurrency) {
+            return null
+        }
+        return entry.price
+    }, [priceBookReplacementAmountByKey, saleForProductExchange?.settlement_currency])
 
     useEffect(() => {
         localStorage.setItem('sales_page_size', String(pageSize))
@@ -3080,6 +3107,7 @@ export function Sales() {
                     replacementProducts={productExchangeReplacementProducts}
                     settlementCurrency={saleForProductExchange?.settlement_currency || 'usd'}
                     lockedSaleItemId={lockedProductExchangeSaleItemId}
+                    resolvePriceBookReplacementAmount={resolvePriceBookReplacementAmount}
                     isSubmitting={isSubmittingProductExchange}
                     onSubmit={handleProductExchangeSubmit}
                 />

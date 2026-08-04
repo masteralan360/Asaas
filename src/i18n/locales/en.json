@@ -2923,6 +2923,9 @@
   "pos": {
     "currencyError": "Currency Error",
     "currencyErrorDesc": "Please set a default currency in the settings.",
+    "priceBookSelect": "Price Book",
+    "priceBookNone": "Default pricing",
+    "switchPriceBookBlocked": "Finish or clear the current cart before changing the Price Book.",
     "title": "Point of Sale",
     "saleSuccessful": "Sale Successful",
     "newSale": "Continue",

@@ -1,3 +1,7 @@
+-- POS sale items now capture the Price Book that priced each line
+-- (price_book_id). Recreate complete_sale so the deployed function writes
+-- that column; older versions silently omitted it, losing the reference
+-- needed by exchanges.
 CREATE OR REPLACE FUNCTION public.complete_sale(payload jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -415,3 +419,4 @@ BEGIN
     );
 END;
 $function$;
+

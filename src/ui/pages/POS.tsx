@@ -21,11 +21,13 @@ import {
     createActivityTransaction,
     updateActivityTransactionNotes,
     useActivityCatalog,
+    usePriceBookCatalogState,
     toUISaleFromActivityTransaction,
     type BatchAwareInventoryProduct,
     type Category,
     type CurrencyCode,
     type InventoryProduct,
+    type PriceBook,
     type ActivityTransaction,
     type ActivityTransactionLine
 } from '@/local-db'
@@ -106,6 +108,7 @@ import {
     ChevronUp,
     ChevronDown,
     Warehouse,
+    BookOpen,
     Check,
     Banknote
 } from 'lucide-react'
@@ -115,6 +118,7 @@ import { ExchangeRateList } from '@/ui/components'
 import { CheckoutSuccessModal, HeldSalesModal, type HeldSale, StorageSelector, CrossStorageWarningModal } from '@/ui/components'
 import { BarcodeScannerModal } from '@/ui/components/pos/BarcodeScannerModal'
 import type { StorageSelectorOption } from '@/ui/components/pos/StorageSelector'
+import { PosPriceBookSelector } from '@/ui/components/pos/PosPriceBookSelector'
 import { CameraBarcodeScanner } from '@/ui/components/pos/CameraBarcodeScanner'
 import { mapSaleToUniversal } from '@/lib/mappings'
 import { LoanRegistrationModal, type LoanRegistrationData } from '@/ui/components/pos/LoanRegistrationModal'
@@ -399,7 +403,7 @@ export function POS() {
     const { user } = useAuth()
     const demoTutorial = useDemoTutorial()
     const { t, i18n } = useTranslation()
-    const { features, workspaceName, isLocalMode, isLoading: isWorkspaceLoading, refreshFeatures } = useWorkspace()
+    const { features, hasCapability, workspaceName, isLocalMode, isLoading: isWorkspaceLoading, refreshFeatures } = useWorkspace()
     const isRTL = getLanguageDirection(i18n.resolvedLanguage || i18n.language) === 'rtl'
     const { permissionKeys, hasPermission, isLoading: arePermissionsLoading } = useWorkspacePermissions()
     const hideCosts = useHideCosts()
@@ -412,6 +416,43 @@ export function POS() {
         return localStorage.getItem('pos_selected_storage') || ''
     })
     const isActivitiesStorage = selectedStorageId === ACTIVITIES_STORAGE_ID
+    const priceBooksEnabled = hasCapability('priceBooks')
+    const priceBookCatalog = usePriceBookCatalogState(user?.workspaceId, {
+        enabled: priceBooksEnabled && !!selectedStorageId && !isActivitiesStorage && !isLocalMode
+    })
+    const [selectedPriceBookId, setSelectedPriceBookId] = useState<string>(() => {
+        return localStorage.getItem('pos_selected_price_book') || ''
+    })
+    const posPriceBooks = useMemo(() => {
+        const sorted = [...priceBookCatalog.priceBooks].sort((left, right) => left.name.localeCompare(right.name))
+        return sorted
+    }, [priceBookCatalog.priceBooks])
+    const priceBookById = useMemo(
+        () => new Map(posPriceBooks.map((priceBook) => [priceBook.id, priceBook] as const)),
+        [posPriceBooks]
+    )
+    const priceBookItemByProductId = useMemo(() => {
+        const map = new Map<string, { price: number; costPrice: number | null; currency: CurrencyCode; priceBook: PriceBook }>()
+        if (!selectedPriceBookId) {
+            return map
+        }
+        for (const priceBookItem of priceBookCatalog.priceBookItems) {
+            if (priceBookItem.isDeleted || priceBookItem.priceBookId !== selectedPriceBookId) {
+                continue
+            }
+            const priceBook = priceBookById.get(priceBookItem.priceBookId)
+            if (!priceBook || priceBook.isDeleted) {
+                continue
+            }
+            map.set(priceBookItem.productId, {
+                price: priceBookItem.price,
+                costPrice: priceBookItem.costPrice,
+                currency: priceBookItem.currency,
+                priceBook
+            })
+        }
+        return map
+    }, [priceBookCatalog.priceBookItems, priceBookById, selectedPriceBookId])
     const products = useBatchAwareInventoryProducts(user?.workspaceId, {
         enabled: !!selectedStorageId && !isActivitiesStorage,
         storageId: !isActivitiesStorage ? selectedStorageId || undefined : undefined
@@ -513,6 +554,16 @@ export function POS() {
             localStorage.setItem('pos_selected_storage', selectedStorageId)
         }
     }, [selectedStorageId])
+    useEffect(() => {
+        if (selectedPriceBookId) {
+            localStorage.setItem('pos_selected_price_book', selectedPriceBookId)
+        }
+    }, [selectedPriceBookId])
+    useEffect(() => {
+        if (selectedPriceBookId && priceBookById.size > 0 && !priceBookById.has(selectedPriceBookId)) {
+            setSelectedPriceBookId('')
+        }
+    }, [priceBookById, selectedPriceBookId])
 
     const posStorages = useMemo<StorageSelectorOption[]>(() => {
         if (!canSellActivities) return storages
@@ -634,6 +685,41 @@ export function POS() {
 
         setSelectedStorageId(storageId)
     }, [cart.length, selectedStorageId, t, toast])
+
+    const handlePriceBookSelect = useCallback((priceBookId: string) => {
+        if (cart.length > 0 && priceBookId !== selectedPriceBookId) {
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: t('pos.switchPriceBookBlocked') || 'Finish or clear the current cart before changing the Price Book.'
+            })
+            return
+        }
+
+        setSelectedPriceBookId(priceBookId)
+    }, [cart.length, selectedPriceBookId, t, toast])
+
+    const getPriceBookPricing = useCallback((product: Pick<PosCatalogProduct, 'id'>) => {
+        const priceBookItem = priceBookItemByProductId.get(product.id)
+        if (!priceBookItem) {
+            return null
+        }
+
+        return {
+            price: priceBookItem.price,
+            costPrice: priceBookItem.costPrice,
+            currency: priceBookItem.currency,
+            priceBookId: priceBookItem.priceBook.id,
+            priceBookName: priceBookItem.priceBook.name
+        }
+    }, [priceBookItemByProductId])
+
+    const getEffectiveProductCurrency = useCallback((product: PosCatalogProduct | undefined) => {
+        if (!product) {
+            return 'usd' as CurrencyCode
+        }
+        return (getPriceBookPricing(product)?.currency ?? product.currency) as CurrencyCode
+    }, [getPriceBookPricing])
 
     const findStockProduct = useCallback((productId: string, storageId?: string) => {
         const resolvedStorageId = storageId || selectedStorageId
@@ -999,8 +1085,8 @@ export function POS() {
 
     const currencyConversionEnabled = features.pos_convert_to_workspace_currency
     const cartCurrencies = useMemo(() => Array.from(new Set(
-        cart.map((item) => (findStockProduct(item.product_id, item.storageId)?.currency || 'usd') as CurrencyCode)
-    )), [cart, findStockProduct])
+        cart.map((item) => getEffectiveProductCurrency(findStockProduct(item.product_id, item.storageId)))
+    )), [cart, findStockProduct, getEffectiveProductCurrency])
     const hasMixedCartCurrencies = cartCurrencies.length > 1
     const settlementCurrency = (currencyConversionEnabled || cartCurrencies.length === 0
         ? features.default_currency || 'usd'
@@ -1426,6 +1512,10 @@ export function POS() {
 
     const addToCart = useCallback((product: PosCatalogProduct) => {
         const isInfiniteActivity = product.isInfiniteActivity === true
+        const priceBookPricing = isInfiniteActivity ? null : getPriceBookPricing(product)
+        const effectivePrice = priceBookPricing?.price ?? product.price
+        const effectiveCurrency = (priceBookPricing?.currency ?? product.currency) as CurrencyCode
+        const effectiveCostPrice = priceBookPricing?.costPrice ?? product.costPrice
         if (!canSelectProduct(product)) {
             toast({
                 variant: 'destructive',
@@ -1435,7 +1525,7 @@ export function POS() {
             hapticTrigger('error')
             return
         }
-        if (!isInfiniteActivity && !hasValidProductCost(product.costPrice)) {
+        if (!isInfiniteActivity && !hasValidProductCost(effectiveCostPrice)) {
             toast({
                 variant: 'destructive',
                 title: t('messages.error'),
@@ -1449,7 +1539,7 @@ export function POS() {
 
         if (!currencyConversionEnabled && !isInfiniteActivity) {
             const cartCurrency = cartCurrencies[0]
-            if (cartCurrency && cartCurrency !== product.currency) {
+            if (cartCurrency && cartCurrency !== effectiveCurrency) {
                 toast({
                     variant: 'destructive',
                     title: t('messages.error'),
@@ -1460,7 +1550,7 @@ export function POS() {
         }
 
         // Check EUR support
-        if (product.currency === 'eur' && !features.allowed_currencies.includes('eur')) {
+        if (effectiveCurrency === 'eur' && !features.allowed_currencies.includes('eur')) {
             toast({
                 variant: 'destructive',
                 title: t('messages.error'),
@@ -1469,7 +1559,7 @@ export function POS() {
             return
         }
 
-        if (product.currency === 'try' && !features.allowed_currencies.includes('try')) {
+        if (effectiveCurrency === 'try' && !features.allowed_currencies.includes('try')) {
             toast({
                 variant: 'destructive',
                 title: t('messages.error'),
@@ -1502,7 +1592,7 @@ export function POS() {
                     storageId: product.storageId,
                     sku: product.sku,
                     name: product.name,
-                    price: product.price,
+                    price: effectivePrice,
                     discounted_price: activeDiscount?.discountPrice,
                     discount_type: activeDiscount?.discountType,
                     discount_value: activeDiscount?.discountValue,
@@ -1511,12 +1601,14 @@ export function POS() {
                     quantity: 1,
                     max_stock: isInfiniteActivity ? ACTIVITY_POS_QUANTITY_LIMIT : product.inventoryQuantity,
                     imageUrl: product.imageUrl,
-                    unit: product.unit
+                    unit: product.unit,
+                    price_book_id: priceBookPricing?.priceBookId,
+                    price_book_name: priceBookPricing?.priceBookName
                 }
             ]
         })
         hapticTrigger('selection')
-    }, [activeDiscountMap, canSelectProduct, cartCurrencies, currencyConversionEnabled, features, t, toast, hapticTrigger])
+    }, [activeDiscountMap, canSelectProduct, cartCurrencies, currencyConversionEnabled, features, getPriceBookPricing, t, toast, hapticTrigger])
 
     const removeFromCart = (itemKey: string) => {
         setCart((prev) => prev.filter((item) => getCartItemKey(item) !== itemKey))
@@ -1920,6 +2012,10 @@ export function POS() {
         if (restoredStorageIds.length === 1) {
             setSelectedStorageId(restoredStorageIds[0])
         }
+        const restoredPriceBookId = normalizedItems.find((item) => item.price_book_id)?.price_book_id || ''
+        if (restoredPriceBookId) {
+            setSelectedPriceBookId(restoredPriceBookId)
+        }
 
         setCart(normalizedItems)
         setRestoredSale(sale)
@@ -2151,7 +2247,7 @@ export function POS() {
         const checkoutTimestamp = new Date().toISOString()
 
         // Collect actually used exchange rates for this specific checkout
-        const usedCurrencies = new Set(cart.map(item => findStockProduct(item.product_id, item.storageId)?.currency || 'usd' as CurrencyCode))
+        const usedCurrencies = new Set(cart.map(item => getEffectiveProductCurrency(findStockProduct(item.product_id, item.storageId))))
 
         const knownRates = {
             usdIqd: exchangeData ? { rate: exchangeData.rate, source: exchangeData.source, timestamp: exchangeData.timestamp || new Date().toISOString() } : null,
@@ -2205,20 +2301,22 @@ export function POS() {
 
         const itemsWithMetadata = cart.map((item, index) => {
             const product = findStockProduct(item.product_id, item.storageId)
-            const originalCurrency = product?.currency || 'usd'
+            const originalCurrency = getEffectiveProductCurrency(product)
+            const priceBookPricing = product ? getPriceBookPricing(product) : null
+            const fallbackCostPrice = priceBookPricing?.costPrice ?? product?.costPrice ?? 0
             const effectivePrice = getCartEffectivePrice(item)
             const convertedUnitPrice = convertPrice(effectivePrice, originalCurrency, settlementCurrency)
             const batchPlan = batchSalePlans[index]
             const costPrice = calculateStockBatchUnitCost(
                 batchPlan.allocations,
-                product?.costPrice || 0,
+                fallbackCostPrice,
                 originalCurrency,
                 convertPrice,
                 batchPlan.requestedQuantity
             )
             const convertedCostPrice = calculateStockBatchUnitCost(
                 batchPlan.allocations,
-                convertPrice(product?.costPrice || 0, originalCurrency, settlementCurrency),
+                convertPrice(fallbackCostPrice, originalCurrency, settlementCurrency),
                 settlementCurrency,
                 convertPrice,
                 batchPlan.requestedQuantity
@@ -2241,6 +2339,7 @@ export function POS() {
                 converted_unit_price: convertedUnitPrice,
                 settlement_currency: settlementCurrency,
                 negotiated_price: item.negotiated_price, // store if negotiated
+                price_book_id: item.price_book_id ?? null,
                 total: convertedUnitPrice * item.quantity,
                 // Immutable inventory snapshot at checkout time
                 inventory_snapshot: product?.inventoryQuantity ?? 0,
@@ -2446,6 +2545,7 @@ export function POS() {
                         convertedUnitPrice: item.converted_unit_price,
                         settlementCurrency: item.settlement_currency,
                         negotiatedPrice: item.negotiated_price,
+                        priceBookId: item.price_book_id ?? null,
                         inventorySnapshot: item.inventory_snapshot,
                         batchAllocations: item.batch_allocations?.map((allocation) => ({
                             batchId: allocation.batch_id,
@@ -2672,6 +2772,9 @@ export function POS() {
                         storages={posStorages}
                         selectedStorageId={selectedStorageId}
                         setSelectedStorageId={handleStorageSelect}
+                        priceBooks={isActivitiesStorage ? [] : posPriceBooks}
+                        selectedPriceBookId={selectedPriceBookId}
+                        setSelectedPriceBookId={handlePriceBookSelect}
                         refreshExchangeRate={refreshExchangeRate}
                         exchangeData={exchangeData}
                         heldSalesCount={heldSales.length}
@@ -2720,6 +2823,7 @@ export function POS() {
                                 selectedCategory={selectedCategory}
                                 setSelectedCategory={setSelectedCategory}
                                 activeDiscountMap={activeDiscountMap}
+                                getPriceBookPricing={getPriceBookPricing}
                                 tutorialProductId={demoTutorial.state?.productId}
                             />
                         ) : (
@@ -2770,6 +2874,14 @@ export function POS() {
                                 selectedStorageId={selectedStorageId}
                                 onSelect={handleStorageSelect}
                             />
+
+                            {priceBooksEnabled && !isActivitiesStorage && posPriceBooks.length > 0 && (
+                                <PosPriceBookSelector
+                                    priceBooks={posPriceBooks}
+                                    selectedPriceBookId={selectedPriceBookId}
+                                    onSelect={handlePriceBookSelect}
+                                />
+                            )}
 
                             <UiAccessGate>
                                 <div className="flex items-center gap-2 animate-in fade-in zoom-in duration-300">
@@ -2851,7 +2963,9 @@ export function POS() {
                                     const isLowStock = remainingQuantity <= minStock
                                     const isCriticalStock = remainingQuantity <= (minStock / 2)
                                     const activeDiscount = activeDiscountMap.get(product.id)
-                                    const displayPrice = activeDiscount?.discountPrice ?? product.price
+                                    const priceBookPricing = isInfiniteActivity ? null : getPriceBookPricing(product)
+                                    const basePrice = priceBookPricing?.price ?? product.price
+                                    const displayPrice = activeDiscount?.discountPrice ?? basePrice
 
                                     return (
                                         <button
@@ -2947,15 +3061,22 @@ export function POS() {
                                                 {activeDiscount ? (
                                                     <div className="space-y-0.5">
                                                         <div className="text-xs font-semibold text-muted-foreground line-through">
-                                                            {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
+                                                            {formatCurrency(basePrice, priceBookPricing?.currency ?? product.currency, features.iqd_display_preference)}
                                                         </div>
-                                                        <div className="text-lg font-black text-emerald-600">
-                                                            {formatCurrency(displayPrice, product.currency, features.iqd_display_preference)}
+                                                        <div className={cn('text-lg font-black text-emerald-600', priceBookPricing && 'flex items-center justify-between gap-2')}>
+                                                            {formatCurrency(displayPrice, priceBookPricing?.currency ?? product.currency, features.iqd_display_preference)}
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="text-lg font-black text-primary">
-                                                        {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
+                                                    <div className={cn('text-lg font-black text-primary', priceBookPricing && 'flex items-center justify-between gap-2')}>
+                                                        <span className={cn(priceBookPricing && 'text-amber-500')}>
+                                                            {formatCurrency(displayPrice, priceBookPricing?.currency ?? product.currency, features.iqd_display_preference)}
+                                                        </span>
+                                                        {priceBookPricing && (
+                                                            <span className="truncate text-[10px] font-bold uppercase tracking-wide text-amber-600/90">
+                                                                {priceBookPricing.priceBookName}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
@@ -4037,6 +4158,9 @@ interface MobileHeaderProps {
     storages: StorageSelectorOption[]
     selectedStorageId: string
     setSelectedStorageId: (storageId: string) => void
+    priceBooks: PriceBook[]
+    selectedPriceBookId: string
+    setSelectedPriceBookId: (priceBookId: string) => void
     refreshExchangeRate: () => void
     exchangeData: ExchangeRateResult | null
     heldSalesCount: number
@@ -4055,6 +4179,9 @@ function MobileHeader({
     storages,
     selectedStorageId,
     setSelectedStorageId,
+    priceBooks,
+    selectedPriceBookId,
+    setSelectedPriceBookId,
     refreshExchangeRate,
     exchangeData,
     heldSalesCount,
@@ -4122,6 +4249,75 @@ function MobileHeader({
                                 </div>
                             </DialogContent>
                         </Dialog>
+
+                        {priceBooks.length > 0 && (
+                            <Dialog>
+                                <DialogTrigger asChild>
+                                    <button
+                                        className={cn(
+                                            "p-2 rounded-xl hover:bg-secondary transition-colors cursor-pointer relative",
+                                            selectedPriceBookId ? "text-amber-500" : "text-muted-foreground"
+                                        )}
+                                        title={t('pos.priceBookSelect') || "Price Book"}
+                                    >
+                                        <BookOpen className="w-6 h-6" />
+                                        {selectedPriceBookId && (
+                                            <span className="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full border border-background shadow-sm" />
+                                        )}
+                                    </button>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-[calc(100vw-2rem)] rounded-2xl p-0 overflow-hidden border-border z-[60]">
+                                    <DialogHeader className="p-6 border-b bg-muted/5 items-start rtl:items-start text-start rtl:text-start">
+                                        <DialogTitle className="flex items-center gap-2">
+                                            <BookOpen className="w-5 h-5 text-amber-500" />
+                                            {t('priceBooks.title', { defaultValue: 'Price Books' })}
+                                        </DialogTitle>
+                                    </DialogHeader>
+                                    <div className="p-4 space-y-2 max-h-[60vh] overflow-y-auto">
+                                        <DialogClose asChild>
+                                            <button
+                                                onClick={() => setSelectedPriceBookId('')}
+                                                className={cn(
+                                                    "w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left",
+                                                    selectedPriceBookId === ''
+                                                        ? "bg-primary/10 border-primary/30 text-primary"
+                                                        : "bg-card border-border hover:bg-secondary/50"
+                                                )}
+                                            >
+                                                <BookOpen className={cn("w-5 h-5", selectedPriceBookId === '' ? "text-primary" : "text-muted-foreground")} />
+                                                <span className="font-medium flex-1 truncate">
+                                                    {t('pos.priceBookNone', { defaultValue: 'Default pricing' })}
+                                                </span>
+                                                {selectedPriceBookId === '' && (
+                                                    <Check className="w-4 h-4 text-primary shrink-0" />
+                                                )}
+                                            </button>
+                                        </DialogClose>
+                                        {priceBooks.map(priceBook => (
+                                            <DialogClose asChild key={priceBook.id}>
+                                                <button
+                                                    onClick={() => setSelectedPriceBookId(priceBook.id)}
+                                                    className={cn(
+                                                        "w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left",
+                                                        selectedPriceBookId === priceBook.id
+                                                            ? "bg-amber-500/10 border-amber-500/30 text-amber-600"
+                                                            : "bg-card border-border hover:bg-secondary/50"
+                                                    )}
+                                                >
+                                                    <BookOpen className={cn("w-5 h-5", selectedPriceBookId === priceBook.id ? "text-amber-500" : "text-muted-foreground")} />
+                                                    <span className="font-medium flex-1 truncate">
+                                                        {priceBook.name}
+                                                    </span>
+                                                    {selectedPriceBookId === priceBook.id && (
+                                                        <Check className="w-4 h-4 text-amber-500 shrink-0" />
+                                                    )}
+                                                </button>
+                                            </DialogClose>
+                                        ))}
+                                    </div>
+                                </DialogContent>
+                            </Dialog>
+                        )}
                     </div>
 
                     <button
@@ -4225,10 +4421,17 @@ interface MobileGridProps {
     selectedCategory: string
     setSelectedCategory: (id: string) => void
     activeDiscountMap: Map<string, ResolvedActiveDiscount>
+    getPriceBookPricing: (product: Pick<PosCatalogProduct, 'id'>) => {
+        price: number
+        costPrice: number | null
+        currency: CurrencyCode
+        priceBookId: string
+        priceBookName: string
+    } | null
     tutorialProductId?: string
 }
 
-function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModalOpen, isDeviceScannerAutoEnabled, filteredProducts, cart, addToCart, updateQuantity, features, getDisplayImageUrl, categories, selectedCategory, setSelectedCategory, activeDiscountMap, tutorialProductId }: MobileGridProps) {
+function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModalOpen, isDeviceScannerAutoEnabled, filteredProducts, cart, addToCart, updateQuantity, features, getDisplayImageUrl, categories, selectedCategory, setSelectedCategory, activeDiscountMap, getPriceBookPricing, tutorialProductId }: MobileGridProps) {
     return (
         <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300">
             {/* Search & Tool Bar */}
@@ -4312,7 +4515,9 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                     const isLowStock = remainingQuantity <= minStock
                     const isCriticalStock = remainingQuantity <= (minStock / 2)
                     const activeDiscount = activeDiscountMap.get(product.id)
-                    const displayPrice = activeDiscount?.discountPrice ?? product.price
+                    const priceBookPricing = isInfiniteActivity ? null : getPriceBookPricing(product)
+                    const basePrice = priceBookPricing?.price ?? product.price
+                    const displayPrice = activeDiscount?.discountPrice ?? basePrice
 
                     return (
                         <div
@@ -4400,15 +4605,22 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                                 {activeDiscount ? (
                                     <div className="space-y-0.5">
                                         <div className="text-[11px] font-semibold text-muted-foreground line-through">
-                                            {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
+                                            {formatCurrency(basePrice, priceBookPricing?.currency ?? product.currency, features.iqd_display_preference)}
                                         </div>
-                                        <div className="font-black text-sm text-emerald-600">
-                                            {formatCurrency(displayPrice, product.currency, features.iqd_display_preference)}
+                                        <div className={cn('font-black text-sm text-emerald-600', priceBookPricing && 'flex items-center justify-between gap-2')}>
+                                            {formatCurrency(displayPrice, priceBookPricing?.currency ?? product.currency, features.iqd_display_preference)}
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="text-primary font-black text-sm">
-                                        {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
+                                    <div className={cn('text-primary font-black text-sm', priceBookPricing && 'flex items-center justify-between gap-2')}>
+                                        <span className={cn(priceBookPricing && 'text-amber-500')}>
+                                            {formatCurrency(displayPrice, priceBookPricing?.currency ?? product.currency, features.iqd_display_preference)}
+                                        </span>
+                                        {priceBookPricing && (
+                                            <span className="truncate text-[9px] font-bold uppercase tracking-wide text-amber-600/90">
+                                                {priceBookPricing.priceBookName}
+                                            </span>
+                                        )}
                                     </div>
                                 )}
                             </div>

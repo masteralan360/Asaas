@@ -2032,6 +2032,9 @@
   "pos": {
     "currencyError": "خطأ في العملة",
     "currencyErrorDesc": "يرجى تعيين عملة افتراضية في الإعدادات.",
+    "priceBookSelect": "كتاب الأسعار",
+    "priceBookNone": "التسعير الافتراضي",
+    "switchPriceBookBlocked": "أكمل أو امسح السلة الحالية قبل تغيير كتاب الأسعار.",
     "title": "نقطة البيع",
     "saleSuccessful": "تمت عملية البيع بنجاح",
     "newSale": "متابعة",

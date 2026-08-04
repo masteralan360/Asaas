@@ -1375,6 +1375,8 @@ export interface SaleItem {
   convertedUnitPrice: number;
   settlementCurrency: CurrencyCode;
   negotiatedPrice?: number;
+  /** Price Book that priced this line at checkout, when one was selected in POS. */
+  priceBookId?: string | null;
   // Immutable inventory snapshot at checkout
   inventorySnapshot: number;
   batchAllocations?: StockBatchAllocation[] | null;

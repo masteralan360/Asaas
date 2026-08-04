@@ -2047,6 +2047,9 @@
   "pos": {
     "currencyError": "هەڵەی دراو",
     "currencyErrorDesc": "تکایە دراوێکی بنەڕەتی لە ڕێکخستنەکان دیاری بکە.",
+    "priceBookSelect": "کتێبی نرخ",
+    "priceBookNone": "نرخدانی بنەڕەتی",
+    "switchPriceBookBlocked": "پێش گۆڕینی کتێبی نرخ، سەبەتەی ئێستا تەواو بکە یان پاکی بکەرەوە.",
     "title": "خاڵی فرۆشتن",
     "saleSuccessful": "فرۆشتنەکە سەرکەوتوو بوو",
     "newSale": "بەردەوامبوون",

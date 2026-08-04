@@ -183,7 +183,20 @@ async function applyLocalSaleProductExchange(input: ProcessSaleProductExchangeIn
     if (replacementProduct.currency.toLowerCase() !== sale.settlementCurrency.toLowerCase()) {
         throw new Error('Replacement product currency must match the sale settlement currency')
     }
-    if (Math.abs(replacementUnitAmount - replacementProduct.price) > 0.000001) {
+    let replacementUnitPrice = replacementProduct.price
+    if (returnItem.priceBookId) {
+        const priceBook = await db.price_books.get(returnItem.priceBookId)
+        const priceBookItem = priceBook && !priceBook.isDeleted
+            ? await db.price_book_items.where('priceBookId').equals(returnItem.priceBookId)
+                .and((row) => row.productId === input.replacementProductId && !row.isDeleted)
+                .first()
+            : undefined
+        if (priceBookItem
+            && priceBookItem.currency.toLowerCase() === sale.settlementCurrency.toLowerCase()) {
+            replacementUnitPrice = priceBookItem.price
+        }
+    }
+    if (Math.abs(replacementUnitAmount - replacementUnitPrice) > 0.000001) {
         throw new Error('Replacement unit amount must match the current product price')
     }
     if ((returnItem.returnedQuantity || 0) + returnQuantity - returnItem.quantity > QUANTITY_EPSILON) {
@@ -208,7 +221,7 @@ async function applyLocalSaleProductExchange(input: ProcessSaleProductExchangeIn
     const returnSplit = splitStockBatchAllocationsForReturn(returnItem.batchAllocations || [], returnQuantity)
     const returnUnitAmount = Number(returnItem.convertedUnitPrice ?? returnItem.unitPrice ?? 0)
     const returnAmount = returnUnitAmount * returnQuantity
-    const replacementAmount = replacementProduct.price * replacementQuantity
+    const replacementAmount = replacementUnitPrice * replacementQuantity
     const differenceAmount = replacementAmount - returnAmount
     const sync = getSyncMetadata(input.workspaceId, timestamp)
     const reason = input.returnReason?.trim() || 'Product exchange'

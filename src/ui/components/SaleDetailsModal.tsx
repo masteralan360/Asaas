@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { Sale, SaleItem } from '@/types'
@@ -9,7 +9,7 @@ import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
 import { PartialReturnInfoModal } from '@/ui/components/PartialReturnInfoModal'
 import { useTheme } from '@/ui/components/theme-provider'
-import { type Loan, useLoanBySaleId } from '@/local-db'
+import { type Loan, useLoanBySaleId, usePriceBookCatalogState } from '@/local-db'
 import {
     Table,
     TableBody,
@@ -27,7 +27,7 @@ import {
     TooltipTrigger,
     TooltipProvider
 } from '@/ui/components'
-import { RotateCcw, ArrowRight, ArrowRightLeft, XCircle, MessageCircle, CircleDollarSign, TrendingUp, Download, CircleAlert } from 'lucide-react'
+import { RotateCcw, ArrowRight, ArrowRightLeft, XCircle, MessageCircle, CircleDollarSign, TrendingUp, Download, CircleAlert, BookOpen } from 'lucide-react'
 import { isMobile } from '@/lib/platform'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -85,6 +85,16 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onExchan
     const [, setLocation] = useLocation()
     const { style } = useTheme()
     const linkedLoan = useLoanBySaleId(sale?.id, user?.workspaceId)
+    const priceBookCatalog = usePriceBookCatalogState(user?.workspaceId, { enabled: !!user?.workspaceId })
+    const priceBookNameById = useMemo(() => {
+        const map = new Map<string, string>()
+        for (const priceBook of priceBookCatalog.priceBooks) {
+            if (!priceBook.isDeleted) {
+                map.set(priceBook.id, priceBook.name)
+            }
+        }
+        return map
+    }, [priceBookCatalog.priceBooks])
     const canUseMultiCurrency = hasCapability('multiCurrency')
     const canUseWhatsApp = hasCapability('whatsappSharing')
     const canDownloadInvoice = hasCapability('pdfInvoiceGeneration')
@@ -114,6 +124,8 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onExchan
         i18n.language,
         t('invoice.refund.notProvided') || 'Not provided'
     )
+
+    const hasPriceBookItems = sale.items?.some((item) => Boolean(item.price_book_id)) ?? false
 
     const netTotal = (() => {
         if (sale.is_returned) return 0
@@ -163,7 +175,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onExchan
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className={cn(
-                "w-[95vw] sm:w-full max-w-2xl md:max-w-3xl lg:max-w-4xl max-h-[90vh] overflow-y-auto",
+                "w-[95vw] sm:w-full max-w-3xl md:max-w-4xl lg:max-w-5xl max-h-[90vh] overflow-y-auto",
                 "p-0 gap-0 rounded-lg border border-border shadow-xl bg-card",
                 style === 'neo-orange' && "neo-border rounded-none"
             )}>
@@ -479,6 +491,12 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onExchan
                                                         <div className={cn("font-bold text-sm", isItemReturned && "line-through opacity-50")}>
                                                             {item.product_name}
                                                         </div>
+                                                        {item.price_book_id && (
+                                                            <span className="inline-flex items-center gap-1 text-[8px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded leading-none whitespace-nowrap">
+                                                                <BookOpen className="w-2.5 h-2.5 shrink-0" />
+                                                                {priceBookNameById.get(item.price_book_id) || t('priceBooks.unavailable', { defaultValue: 'Unavailable Price Book' })}
+                                                            </span>
+                                                        )}
                                                         {item.batch_allocations && item.batch_allocations.length > 0 && (
                                                             <TooltipProvider>
                                                                 <Tooltip delayDuration={200}>
@@ -696,6 +714,9 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onExchan
                                         style === 'neo-orange' && "table-header-neo"
                                     )}>
                                         <TableHead className="text-start text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{t('products.table.name') || 'Product'}</TableHead>
+                                        {hasPriceBookItems && (
+                                            <TableHead className="text-start text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{t('priceBooks.titleSingular') || 'Price Book'}</TableHead>
+                                        )}
                                         <TableHead className="text-start text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{t('products.table.sku') || 'SKU'}</TableHead>
                                         <TableHead className="text-center text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{t('common.quantity') || 'QTY'}</TableHead>
                                         <TableHead className="text-end text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{t('common.price') || 'Unit Price'}</TableHead>
@@ -856,6 +877,19 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onExchan
                                                         )}
                                                     </div>
                                                 </TableCell>
+
+                                                {hasPriceBookItems && (
+                                                    <TableCell className="text-start">
+                                                        {item.price_book_id ? (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded leading-none whitespace-nowrap">
+                                                                <BookOpen className="w-3 h-3 shrink-0" />
+                                                                {priceBookNameById.get(item.price_book_id) || t('priceBooks.unavailable', { defaultValue: 'Unavailable Price Book' })}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-xs text-muted-foreground">—</span>
+                                                        )}
+                                                    </TableCell>
+                                                )}
 
                                                 {/* SKU */}
                                                 <TableCell className="text-start">

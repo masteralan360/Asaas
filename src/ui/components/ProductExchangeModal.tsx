@@ -37,6 +37,8 @@ export interface ProductExchangeSaleItem {
     returnableQuantity: number
     /** The original unit price in the sale's settlement currency. */
     unitPrice: number
+    /** Price Book that priced this sale item, when POS had one selected. */
+    priceBookId?: string | null
 }
 
 export type ProductExchangeStorage = Storage
@@ -89,6 +91,12 @@ interface ProductExchangeModalProps {
     /** A preselected sale item is used when exchange begins from Sale Details. */
     lockedSaleItemId?: string | null
     settlementCurrency: string
+    /**
+     * Returns the replacement unit amount for a product under a Price Book, in
+     * the sale settlement currency, or null when the book has no override or
+     * its currency does not match the sale.
+     */
+    resolvePriceBookReplacementAmount?: (priceBookId: string, productId: string) => number | null
     isSubmitting?: boolean
     onSubmit: (draft: ProductExchangeDraft) => Promise<void> | void
 }
@@ -130,6 +138,7 @@ export function ProductExchangeModal({
     replacementProducts,
     lockedSaleItemId,
     settlementCurrency,
+    resolvePriceBookReplacementAmount,
     isSubmitting = false,
     onSubmit,
 }: ProductExchangeModalProps) {
@@ -164,8 +173,12 @@ export function ProductExchangeModal({
     const returnedQuantityValue = parseQuantity(returnQuantity)
     const replacementQuantityValue = parseQuantity(replacementQuantity)
     const returnedTotal = selectedSaleItem ? roundQuantity(selectedSaleItem.unitPrice * returnedQuantityValue) : 0
+    const effectiveReplacementUnitAmount = selectedSaleItem?.priceBookId && selectedReplacementProduct
+        ? (resolvePriceBookReplacementAmount?.(selectedSaleItem.priceBookId, selectedReplacementProduct.id)
+            ?? selectedReplacementProduct.replacementUnitAmount)
+        : (selectedReplacementProduct?.replacementUnitAmount ?? 0)
     const replacementTotal = selectedReplacementProduct
-        ? roundQuantity(selectedReplacementProduct.replacementUnitAmount * replacementQuantityValue)
+        ? roundQuantity(effectiveReplacementUnitAmount * replacementQuantityValue)
         : 0
     const difference = roundQuantity(replacementTotal - returnedTotal)
 
@@ -280,7 +293,7 @@ export function ProductExchangeModal({
                 replacementStorageId: storageId,
                 replacementProductId: selectedReplacementProduct.id,
                 replacementQuantity: replacementQuantityValue,
-                replacementUnitAmount: selectedReplacementProduct.replacementUnitAmount,
+                replacementUnitAmount: effectiveReplacementUnitAmount,
                 returnedTotal,
                 replacementTotal,
                 difference,
@@ -436,7 +449,7 @@ export function ProductExchangeModal({
                                                     })}
                                                 </p>
                                                 <p>
-                                                    {t('sales.exchange.unitPrice', { defaultValue: 'Unit price' })}: {formatCurrency(selectedReplacementProduct.unitPrice, selectedReplacementProduct.currency)}
+                                                    {t('sales.exchange.unitPrice', { defaultValue: 'Unit price' })}: {formatCurrency(effectiveReplacementUnitAmount, currency)}
                                                 </p>
                                             </div>
                                         )}
