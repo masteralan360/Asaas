@@ -1365,7 +1365,11 @@ export function AtlasStandardOrderInvoiceTemplate({
                                     [tableKeys.quantity]: unit
                                         ? `${paidQuantity} ${t(`products.units.${unit}`, { defaultValue: unit })}`
                                         : paidQuantity,
-                                    [tableKeys.freeQuantity]: getOrderLineFreeBonusQuantity(item) || '\u00a0',
+                                    [tableKeys.freeQuantity]: getOrderLineFreeBonusQuantity(item)
+                                        ? unit
+                                            ? `${getOrderLineFreeBonusQuantity(item)} ${t(`products.units.${unit}`, { defaultValue: unit })}`
+                                            : getOrderLineFreeBonusQuantity(item)
+                                        : '\u00a0',
                                     [tableKeys.price]: formatCurrency(item.convertedUnitPrice, currency, iqdPreference),
                                     [tableKeys.total]: formatCurrency(item.lineTotal, currency, iqdPreference),
                                     [tableKeys.note]: item.note?.trim() || '\u00a0'
