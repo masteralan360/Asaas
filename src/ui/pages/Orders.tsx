@@ -805,6 +805,8 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                 return 'Loans'
             case 'installments':
                 return 'Installments'
+            case 'ecommerce':
+                return 'E-Commerce'
             default:
                 return paymentMethod
         }

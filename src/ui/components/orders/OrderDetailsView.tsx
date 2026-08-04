@@ -106,6 +106,7 @@ function paymentLabel(t: (key: string) => string, method?: string | null) {
         case 'loan': return t('pos.loan') || 'Loan'
         case 'bank_transfer': return 'Bank Transfer'
         case 'installments': return t('nav.installments') || 'Installments'
+        case 'ecommerce': return 'E-Commerce'
         default: return method || '-'
     }
 }

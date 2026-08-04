@@ -20,6 +20,8 @@ export const ORDER_FINANCING_PAYMENT_METHODS = [
 
 export const LOAN_ADJUSTMENT_PAYMENT_METHOD = 'loan_adjustment' as const
 
+export const ECOMMERCE_PAYMENT_METHOD = 'ecommerce' as const
+
 export const TRAVEL_PAYMENT_METHODS = [
     'cash',
     'fib',
@@ -38,6 +40,7 @@ export type PaymentMethodOption =
     | (typeof STANDARD_PAYMENT_METHODS)[number]
     | (typeof ORDER_FINANCING_PAYMENT_METHODS)[number]
     | typeof LOAN_ADJUSTMENT_PAYMENT_METHOD
+    | typeof ECOMMERCE_PAYMENT_METHOD
     | (typeof TRAVEL_PAYMENT_METHODS)[number]
     | (typeof ACTIVITY_PAYMENT_METHODS)[number]
 
@@ -61,6 +64,8 @@ export function getPaymentMethodLabel(method: PaymentMethodOption, t: TFunction)
             return t('nav.installments', { defaultValue: 'Installments' })
         case 'loan_adjustment':
             return t('directTransactions.paymentMethod.loanAdjustment', { defaultValue: 'Loan Adjustment' })
+        case 'ecommerce':
+            return t('directTransactions.paymentMethod.ecommerce', { defaultValue: 'E-Commerce' })
         case 'hawala':
             return t('travelAgency.paymentMethod.hawala', { defaultValue: 'Money Transfer (Hawala)' })
         case 'credit':

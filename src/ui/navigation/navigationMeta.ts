@@ -406,6 +406,11 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     description: "Manage supplier relationships and procurement context.",
     badge: "Supply",
   },
+  "/online-customers": {
+    section: "partners-and-demand",
+    description: "Customers who ordered through your marketplace storefronts.",
+    badge: "Online",
+  },
   "/orders/sales": {
     section: "partners-and-demand",
     description: "Create, manage, and track sales orders from customers.",

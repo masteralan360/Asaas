@@ -118,6 +118,8 @@ export function PartnerAutocompleteInput({
                                                 ? t('businessPartners.roles.seller', { defaultValue: 'Seller' })
                                                 : partner.role === 'agent'
                                                     ? t('businessPartners.roles.agent', { defaultValue: 'Agent' })
+                                                    : partner.role === 'online_customer'
+                                                        ? t('businessPartners.roles.onlineCustomer', { defaultValue: 'Online Customer' })
                                                 : t('customers.title', { defaultValue: 'Customer' })}
                             </span>
                         </button>

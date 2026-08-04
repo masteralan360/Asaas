@@ -59,7 +59,7 @@ CREATE TABLE crm.sales_orders (
 
 ALTER TABLE crm.sales_orders
   ADD CONSTRAINT sales_orders_payment_method_check
-  CHECK (payment_method IS NULL OR payment_method IN ('cash', 'fib', 'qicard', 'zaincash', 'fastpay', 'bank_transfer', 'loan', 'installments'));
+  CHECK (payment_method IS NULL OR payment_method IN ('cash', 'fib', 'qicard', 'zaincash', 'fastpay', 'bank_transfer', 'loan', 'installments', 'credit'));
 
 ALTER TABLE crm.sales_orders
   ADD CONSTRAINT crm_sales_orders_approval_status_check

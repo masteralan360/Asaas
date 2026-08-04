@@ -173,6 +173,8 @@ function resolveRoleLabel(role: BusinessPartnerRole, t: (key: string, options?: 
             return t('businessPartners.roles.seller', { defaultValue: 'Seller' })
         case 'agent':
             return t('businessPartners.roles.agent', { defaultValue: 'Agent' })
+        case 'online_customer':
+            return t('businessPartners.roles.onlineCustomer', { defaultValue: 'Online Customer' })
         default:
             return t('businessPartners.roles.both', { defaultValue: 'Both' })
     }

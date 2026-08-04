@@ -233,8 +233,15 @@ export function BusinessPartnerFormDialog({
             })
         }
 
+        if (partner?.role === 'online_customer') {
+            options.push({
+                value: 'online_customer',
+                label: t('businessPartners.roles.onlineCustomer', { defaultValue: 'Online Customer' })
+            })
+        }
+
         return options
-    }, [enableAgentRole, enableRealEstateRoles, t])
+    }, [enableAgentRole, enableRealEstateRoles, partner?.role, t])
 
     useEffect(() => {
         if (!isOpen) {

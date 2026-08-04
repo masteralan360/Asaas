@@ -36,7 +36,6 @@ import {
     MapMarker,
     MarkerContent,
     MarkerPopup,
-    Switch,
     Table,
     TableBody,
     TableCell,
@@ -53,8 +52,6 @@ import {
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
 import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
-import { UiAccessGate } from '@/context/UiAccessContext'
-
 function roleLabel(role: BusinessPartnerRole, t: (key: string, options?: Record<string, unknown>) => string) {
     switch (role) {
         case 'customer':
@@ -209,7 +206,6 @@ export function BusinessPartners() {
     const [deleteTarget, setDeleteTarget] = useState<BusinessPartner | null>(null)
     const [isSaving, setIsSaving] = useState(false)
     const [isMerging, setIsMerging] = useState<string | null>(null)
-    const [showEcommercePartners, setShowEcommercePartners] = useState(true)
 
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
@@ -219,13 +215,10 @@ export function BusinessPartners() {
         return Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]
     }, [features.allowed_currencies, features.default_currency])
 
-    const visiblePartners = useMemo(() => {
-        if (showEcommercePartners) {
-            return partners
-        }
-
-        return partners.filter((partner) => !partner.isEcommerce)
-    }, [partners, showEcommercePartners])
+    const visiblePartners = useMemo(
+        () => partners.filter((partner) => !partner.isEcommerce),
+        [partners]
+    )
     const agentMap = useMemo(
         () => new Map(agents.map((agent) => [agent.id, agent])),
         [agents]
@@ -483,25 +476,6 @@ export function BusinessPartners() {
 
                     {activeTab === 'partners' ? (
                     <div className="flex w-full flex-col gap-3 lg:max-w-2xl lg:flex-row lg:items-center lg:justify-end">
-                        <UiAccessGate>
-                            <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/60 px-4 py-3">
-                                <div className="space-y-0.5">
-                                    <div className="text-sm font-medium">
-                                        {t('businessPartners.showEcommerce', { defaultValue: 'Show E-Commerce profiles' })}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground">
-                                        {showEcommercePartners
-                                            ? t('businessPartners.showEcommerceVisible', { defaultValue: 'E-Commerce profiles are visible in this module.' })
-                                            : t('businessPartners.showEcommerceHidden', { defaultValue: 'E-Commerce profiles are hidden from this module.' })}
-                                    </div>
-                                </div>
-                                <Switch
-                                    checked={showEcommercePartners}
-                                    onCheckedChange={setShowEcommercePartners}
-                                    allowViewer={true}
-                                />
-                            </div>
-                        </UiAccessGate>
                         <div className="relative w-full max-w-sm">
                             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <Input

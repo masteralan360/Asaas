@@ -2,8 +2,10 @@ import { createAdminClient } from '../_shared/supabase.ts'
 import { computeDiscountPrice, type ResolvedWorkspaceDiscountRow } from '../_shared/discounts.ts'
 import { corsHeaders, errorResponse, jsonResponse } from '../_shared/http.ts'
 import {
+    fetchStorefrontPriceOverride,
     listMarketplaceAssetUrls,
     resolvePublicAssetUrl,
+    resolveStorefrontVisibleProductIds,
     sanitizeMarketplaceText
 } from '../_shared/marketplace.ts'
 
@@ -47,11 +49,11 @@ type InventoryRow = {
     created_at: string | null
 }
 
-function buildStorePayload(workspace: WorkspaceRow, logoUrl: string | null, contacts: ContactRow[]) {
+function buildStorePayload(workspace: WorkspaceRow, description: string | null, logoUrl: string | null, contacts: ContactRow[]) {
     return {
         name: workspace.name,
         slug: workspace.store_slug,
-        description: workspace.store_description,
+        description,
         logo_url: logoUrl,
         currency: workspace.default_currency ?? 'iqd',
         contacts: contacts.map((contact) => ({
@@ -60,6 +62,77 @@ function buildStorePayload(workspace: WorkspaceRow, logoUrl: string | null, cont
             label: contact.label,
             is_primary: Boolean(contact.is_primary)
         }))
+    }
+}
+
+type StorefrontRow = {
+    id: string
+    workspace_id: string
+    slug: string
+    description: string | null
+    visibility: string
+}
+
+async function resolveStorefront(
+    adminClient: ReturnType<typeof createAdminClient>,
+    slug: string
+): Promise<{ workspace: WorkspaceRow; storefrontId: string | null; description: string | null } | { error: string; status: number }> {
+    const { data: primaryWorkspace, error: workspaceError } = await adminClient
+        .from('workspaces')
+        .select('id, name, store_slug, store_description, logo_url, default_currency')
+        .eq('store_slug', slug)
+        .in('visibility', ['public', 'link_only'])
+        .is('deleted_at', null)
+        .maybeSingle()
+
+    if (workspaceError) {
+        return { error: workspaceError.message, status: 500 }
+    }
+
+    if (primaryWorkspace) {
+        const workspace = primaryWorkspace as WorkspaceRow
+        return {
+            workspace,
+            storefrontId: null,
+            description: workspace.store_description
+        }
+    }
+
+    const { data: storefront, error: storefrontError } = await adminClient
+        .from('workspace_storefronts')
+        .select('id, workspace_id, slug, description, visibility')
+        .eq('slug', slug)
+        .in('visibility', ['public', 'link_only'])
+        .maybeSingle()
+
+    if (storefrontError) {
+        return { error: storefrontError.message, status: 500 }
+    }
+
+    if (!storefront) {
+        return { error: 'Store not found', status: 404 }
+    }
+
+    const resolvedStorefront = storefront as StorefrontRow
+    const { data: workspace, error: storefrontWorkspaceError } = await adminClient
+        .from('workspaces')
+        .select('id, name, store_slug, store_description, logo_url, default_currency')
+        .eq('id', resolvedStorefront.workspace_id)
+        .is('deleted_at', null)
+        .maybeSingle()
+
+    if (storefrontWorkspaceError) {
+        return { error: storefrontWorkspaceError.message, status: 500 }
+    }
+
+    if (!workspace) {
+        return { error: 'Store not found', status: 404 }
+    }
+
+    return {
+        workspace: workspace as WorkspaceRow,
+        storefrontId: resolvedStorefront.id,
+        description: resolvedStorefront.description
     }
 }
 
@@ -81,23 +154,14 @@ Deno.serve(async (req) => {
 
         const adminClient = createAdminClient()
 
-        const { data: workspace, error: workspaceError } = await adminClient
-            .from('workspaces')
-            .select('id, name, store_slug, store_description, logo_url, default_currency')
-            .eq('store_slug', slug)
-            .in('visibility', ['public', 'link_only'])
-            .is('deleted_at', null)
-            .maybeSingle()
-
-        if (workspaceError) {
-            return errorResponse(workspaceError.message, 500)
+        const resolved = await resolveStorefront(adminClient, slug)
+        if ('error' in resolved) {
+            return errorResponse(resolved.error, resolved.status)
         }
 
-        if (!workspace) {
-            return errorResponse('Store not found', 404)
-        }
-
-        const resolvedWorkspace = workspace as WorkspaceRow
+        const resolvedWorkspace = resolved.workspace
+        const storefrontId = resolved.storefrontId
+        const storeDescription = resolved.description
 
         const [
             { data: contacts, error: contactsError },
@@ -133,7 +197,7 @@ Deno.serve(async (req) => {
         if (!marketplaceStorageId) {
             return jsonResponse(
                 {
-                    store: buildStorePayload(resolvedWorkspace, resolvedLogoUrl, storeContacts),
+                    store: buildStorePayload(resolvedWorkspace, storeDescription, resolvedLogoUrl, storeContacts),
                     categories: [],
                     products: []
                 },
@@ -169,16 +233,26 @@ Deno.serve(async (req) => {
             return errorResponse(discountsError.message, 500)
         }
 
-        const visibleProductIds = Array.from(new Set(
+        let visibleProductIds = Array.from(new Set(
             ((inventoryRows ?? []) as InventoryRow[])
                 .map((row) => row.product_id)
                 .filter(Boolean)
         ))
 
+        const storefrontVisibility = await resolveStorefrontVisibleProductIds(
+            adminClient,
+            resolvedWorkspace.id,
+            visibleProductIds,
+            { storefrontId }
+        )
+        if (storefrontVisibility) {
+            visibleProductIds = visibleProductIds.filter((productId) => storefrontVisibility.has(productId))
+        }
+
         if (visibleProductIds.length === 0) {
             return jsonResponse(
                 {
-                    store: buildStorePayload(resolvedWorkspace, resolvedLogoUrl, storeContacts),
+                    store: buildStorePayload(resolvedWorkspace, storeDescription, resolvedLogoUrl, storeContacts),
                     categories: [],
                     products: []
                 },
@@ -220,6 +294,8 @@ Deno.serve(async (req) => {
         const categoryIds = Array.from(new Set(productRows.map((product) => product.category_id).filter((value): value is string => Boolean(value))))
         const categoryNameById = new Map<string, string>()
 
+        const priceOverride = await fetchStorefrontPriceOverride(adminClient, resolvedWorkspace.id, storefrontId)
+
         if (categoryIds.length > 0) {
             const { data: categories, error: categoryError } = await adminClient
                 .from('categories')
@@ -246,7 +322,7 @@ Deno.serve(async (req) => {
 
         return jsonResponse(
             {
-                store: buildStorePayload(resolvedWorkspace, resolvedLogoUrl, storeContacts),
+                store: buildStorePayload(resolvedWorkspace, storeDescription, resolvedLogoUrl, storeContacts),
                 categories: categoryIds
                     .map((categoryId) => ({
                         id: categoryId,
@@ -254,7 +330,8 @@ Deno.serve(async (req) => {
                     }))
                     .filter((category): category is { id: string; name: string } => Boolean(category.name)),
                 products: productRows.map((product, index) => {
-                    const basePrice = Number(product.price ?? 0)
+                    const overrideItem = priceOverride?.items.get(product.id)
+                    const basePrice = overrideItem?.price ?? Number(product.price ?? 0)
                     const resolvedDiscount = discountByProductId.get(product.id)
 
                     return {
@@ -263,7 +340,10 @@ Deno.serve(async (req) => {
                         sku: product.sku,
                         description: product.description ?? '',
                         price: basePrice,
-                        currency: product.currency ?? resolvedWorkspace.default_currency ?? 'iqd',
+                        currency: overrideItem?.currency
+                            ?? product.currency
+                            ?? resolvedWorkspace.default_currency
+                            ?? 'iqd',
                         unit: product.unit ?? 'pcs',
                         category_id: product.category_id,
                         category_name: product.category_id ? (categoryNameById.get(product.category_id) ?? null) : null,

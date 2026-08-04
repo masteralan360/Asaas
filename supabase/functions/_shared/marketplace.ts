@@ -1,3 +1,5 @@
+import { createAdminClient } from './supabase.ts'
+
 const PUBLIC_ASSET_FOLDERS = new Set([
     'product-images',
     'workspace-logos',
@@ -275,4 +277,224 @@ export function isMarketplaceOriginAllowed(origin: string | null) {
     }
 
     return allowlist.includes(origin)
+}
+
+export type StorefrontCatalogRule = {
+    rule_type: 'inclusion' | 'exclusion'
+    price_book_id: string | null
+    override_prices: boolean
+}
+
+export async function fetchStorefrontCatalogRules(
+    adminClient: ReturnType<typeof createAdminClient>,
+    workspaceId: string,
+    storefrontId?: string | null
+): Promise<StorefrontCatalogRule[]> {
+    let query = adminClient
+        .from('workspace_storefront_catalog_rules')
+        .select('rule_type, price_book_id, override_prices')
+        .eq('workspace_id', workspaceId)
+
+    query = storefrontId
+        ? query.eq('storefront_id', storefrontId)
+        : query.is('storefront_id', null)
+
+    const { data, error } = await query
+
+    if (error) {
+        throw error
+    }
+
+    return ((data ?? []) as { rule_type: string; price_book_id: string | null; override_prices: boolean | null }[]).map((row) => ({
+        rule_type: row.rule_type === 'exclusion' ? 'exclusion' : 'inclusion',
+        price_book_id: row.price_book_id,
+        override_prices: Boolean(row.override_prices)
+    }))
+}
+
+export type StorefrontPriceOverrideItem = {
+    price: number
+    currency: string | null
+    cost_price: number | null
+}
+
+/**
+ * Returns the price book that overrides storefront prices for the workspace
+ * storefront (the single rule with override_prices enabled), along with its
+ * item prices keyed by product id. Null when no override rule exists.
+ */
+export async function fetchStorefrontPriceOverride(
+    adminClient: ReturnType<typeof createAdminClient>,
+    workspaceId: string,
+    storefrontId?: string | null
+): Promise<{ priceBookId: string; items: Map<string, StorefrontPriceOverrideItem> } | null> {
+    const rules = await fetchStorefrontCatalogRules(adminClient, workspaceId, storefrontId)
+    const overrideRule = rules.find((rule) => rule.override_prices && rule.price_book_id)
+    if (!overrideRule?.price_book_id) {
+        return null
+    }
+
+    const { data, error } = await adminClient
+        .from('price_book_items')
+        .select('product_id, price, cost_price, currency')
+        .eq('workspace_id', workspaceId)
+        .eq('price_book_id', overrideRule.price_book_id)
+        .eq('is_deleted', false)
+
+    if (error) {
+        throw error
+    }
+
+    const items = new Map<string, StorefrontPriceOverrideItem>()
+    for (const row of (data ?? []) as {
+        product_id: string
+        price: number | string
+        cost_price: number | string | null
+        currency: string | null
+    }[]) {
+        items.set(row.product_id, {
+            price: Number(row.price ?? 0),
+            currency: row.currency,
+            cost_price: row.cost_price == null ? null : Number(row.cost_price)
+        })
+    }
+
+    return { priceBookId: overrideRule.price_book_id, items }
+}
+
+/**
+ * Resolves which of the candidate products are visible on a storefront given
+ * its catalog rules. Returns null when no rules exist (all visible).
+ *
+ * A rule targets a price book (products listed in that book) or native products
+ * (products not listed in any price book). Inclusion rules restrict the
+ * storefront to their targets; exclusion rules always remove their targets.
+ * When storefrontId is omitted, the primary storefront rules apply.
+ */
+export async function resolveStorefrontVisibleProductIds(
+    adminClient: ReturnType<typeof createAdminClient>,
+    workspaceId: string,
+    candidateProductIds: string[],
+    options?: {
+        storefrontId?: string | null
+        rules?: StorefrontCatalogRule[]
+    }
+): Promise<Set<string> | null> {
+    const resolvedRules = options?.rules ?? await fetchStorefrontCatalogRules(adminClient, workspaceId, options?.storefrontId)
+    if (resolvedRules.length === 0) {
+        return null
+    }
+
+    const includedBookIds = new Set<string>()
+    const excludedBookIds = new Set<string>()
+    let includeNative = false
+    let excludeNative = false
+    for (const rule of resolvedRules) {
+        if (rule.rule_type === 'inclusion') {
+            if (rule.price_book_id) {
+                includedBookIds.add(rule.price_book_id)
+            } else {
+                includeNative = true
+            }
+        } else if (rule.price_book_id) {
+            excludedBookIds.add(rule.price_book_id)
+        } else {
+            excludeNative = true
+        }
+    }
+
+    const hasInclusionRules = includeNative || includedBookIds.size > 0
+    if (!hasInclusionRules && !excludeNative && excludedBookIds.size === 0) {
+        return null
+    }
+
+    if (candidateProductIds.length === 0) {
+        return new Set<string>()
+    }
+
+    const bookProductIds = new Map<string, Set<string>>()
+    const referencedBookIds = Array.from(new Set([...includedBookIds, ...excludedBookIds]))
+    if (referencedBookIds.length > 0) {
+        const { data: items, error: itemsError } = await adminClient
+            .from('price_book_items')
+            .select('price_book_id, product_id')
+            .eq('workspace_id', workspaceId)
+            .eq('is_deleted', false)
+            .in('price_book_id', referencedBookIds)
+            .in('product_id', candidateProductIds)
+
+        if (itemsError) {
+            throw itemsError
+        }
+
+        for (const item of (items ?? []) as { price_book_id: string; product_id: string }[]) {
+            let productSet = bookProductIds.get(item.price_book_id)
+            if (!productSet) {
+                productSet = new Set<string>()
+                bookProductIds.set(item.price_book_id, productSet)
+            }
+            productSet.add(item.product_id)
+        }
+    }
+
+    let bookedProductIds = new Set<string>()
+    if (includeNative || excludeNative) {
+        const { data: bookedItems, error: bookedError } = await adminClient
+            .from('price_book_items')
+            .select('product_id')
+            .eq('workspace_id', workspaceId)
+            .eq('is_deleted', false)
+            .in('product_id', candidateProductIds)
+
+        if (bookedError) {
+            throw bookedError
+        }
+
+        bookedProductIds = new Set(
+            ((bookedItems ?? []) as { product_id: string }[]).map((row) => row.product_id)
+        )
+    }
+
+    const includedProductIds = new Set<string>()
+    for (const bookId of includedBookIds) {
+        const productSet = bookProductIds.get(bookId)
+        if (productSet) {
+            for (const productId of productSet) {
+                includedProductIds.add(productId)
+            }
+        }
+    }
+
+    const excludedProductIds = new Set<string>()
+    for (const bookId of excludedBookIds) {
+        const productSet = bookProductIds.get(bookId)
+        if (productSet) {
+            for (const productId of productSet) {
+                excludedProductIds.add(productId)
+            }
+        }
+    }
+
+    const visible = new Set<string>()
+    for (const productId of candidateProductIds) {
+        if (hasInclusionRules) {
+            const isIncludedByBook = includedProductIds.has(productId)
+            const isIncludedNative = includeNative && !bookedProductIds.has(productId)
+            if (!isIncludedByBook && !isIncludedNative) {
+                continue
+            }
+        }
+
+        if (excludedProductIds.has(productId)) {
+            continue
+        }
+
+        if (excludeNative && !bookedProductIds.has(productId)) {
+            continue
+        }
+
+        visible.add(productId)
+    }
+
+    return visible
 }

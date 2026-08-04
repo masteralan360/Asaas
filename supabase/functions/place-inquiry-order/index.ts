@@ -2,12 +2,14 @@ import { createAdminClient } from '../_shared/supabase.ts'
 import { computeDiscountPrice, type ResolvedWorkspaceDiscountRow } from '../_shared/discounts.ts'
 import { corsHeaders, errorResponse, jsonResponse, readJson } from '../_shared/http.ts'
 import {
+    fetchStorefrontPriceOverride,
     getLocalizedMarketplaceOrderMessage,
     getRequesterIp,
     hashMarketplaceValue,
     isMarketplaceOriginAllowed,
     normalizeMarketplaceLanguage,
     resolvePublicAssetUrl,
+    resolveStorefrontVisibleProductIds,
     sanitizeMarketplaceText,
     sanitizeNullableMarketplaceText
 } from '../_shared/marketplace.ts'
@@ -40,6 +42,7 @@ type ProductRow = {
     name: string
     sku: string
     price: number
+    cost_price: number | null
     currency: string | null
     image_url: string | null
 }
@@ -164,6 +167,9 @@ Deno.serve(async (req) => {
 
         const adminClient = createAdminClient()
 
+        let resolvedWorkspace: WorkspaceRow
+        let storefrontId: string | null = null
+
         const { data: workspace, error: workspaceError } = await adminClient
             .from('workspaces')
             .select('id, name, default_currency')
@@ -176,8 +182,41 @@ Deno.serve(async (req) => {
             return errorResponse(workspaceError.message, 500)
         }
 
-        if (!workspace) {
-            return errorResponse('Store not found', 404)
+        if (workspace) {
+            resolvedWorkspace = workspace as WorkspaceRow
+        } else {
+            const { data: storefront, error: storefrontError } = await adminClient
+                .from('workspace_storefronts')
+                .select('id, workspace_id')
+                .eq('slug', storeSlug)
+                .in('visibility', ['public', 'link_only'])
+                .maybeSingle()
+
+            if (storefrontError) {
+                return errorResponse(storefrontError.message, 500)
+            }
+
+            if (!storefront) {
+                return errorResponse('Store not found', 404)
+            }
+
+            const { data: storefrontWorkspace, error: storefrontWorkspaceError } = await adminClient
+                .from('workspaces')
+                .select('id, name, default_currency')
+                .eq('id', (storefront as { workspace_id: string }).workspace_id)
+                .is('deleted_at', null)
+                .maybeSingle()
+
+            if (storefrontWorkspaceError) {
+                return errorResponse(storefrontWorkspaceError.message, 500)
+            }
+
+            if (!storefrontWorkspace) {
+                return errorResponse('Store not found', 404)
+            }
+
+            resolvedWorkspace = storefrontWorkspace as WorkspaceRow
+            storefrontId = (storefront as { id: string }).id
         }
 
         const requestFingerprintSource = getRequesterIp(req) ?? `unknown:${storeSlug}:${req.headers.get('Origin') ?? 'no-origin'}`
@@ -199,7 +238,7 @@ Deno.serve(async (req) => {
         }
 
         const { data: marketplaceStorageId, error: marketplaceStorageError } = await adminClient.rpc('ensure_marketplace_storage', {
-            p_workspace_id: (workspace as WorkspaceRow).id
+            p_workspace_id: resolvedWorkspace.id
         })
 
         if (marketplaceStorageError) {
@@ -219,18 +258,18 @@ Deno.serve(async (req) => {
             adminClient
                 .from('inventory')
                 .select('product_id, quantity')
-                .eq('workspace_id', (workspace as WorkspaceRow).id)
+                .eq('workspace_id', resolvedWorkspace.id)
                 .eq('storage_id', marketplaceStorageId)
                 .eq('is_deleted', false)
                 .in('product_id', productIds),
             adminClient
                 .from('products')
-                .select('id, name, sku, price, currency, image_url')
-                .eq('workspace_id', (workspace as WorkspaceRow).id)
+                .select('id, name, sku, price, cost_price, currency, image_url')
+                .eq('workspace_id', resolvedWorkspace.id)
                 .eq('is_deleted', false)
                 .in('id', productIds),
             adminClient.rpc('get_active_discounts_for_marketplace_storage', {
-                p_workspace_id: (workspace as WorkspaceRow).id,
+                p_workspace_id: resolvedWorkspace.id,
                 p_storage_id: marketplaceStorageId
             })
         ])
@@ -267,6 +306,19 @@ Deno.serve(async (req) => {
             return errorResponse('Some products could not be found for this store')
         }
 
+        const storefrontVisibility = await resolveStorefrontVisibleProductIds(
+            adminClient,
+            resolvedWorkspace.id,
+            productIds,
+            { storefrontId }
+        )
+        if (storefrontVisibility) {
+            const hiddenProductIds = productIds.filter((productId) => !storefrontVisibility.has(productId))
+            if (hiddenProductIds.length > 0) {
+                return errorResponse('Some products are no longer available in this store')
+            }
+        }
+
         const discountByProductId = new Map<string, ResolvedWorkspaceDiscountRow>()
         for (const discount of (activeDiscounts ?? []) as ResolvedWorkspaceDiscountRow[]) {
             if (discount.is_stock_ok) {
@@ -278,18 +330,28 @@ Deno.serve(async (req) => {
         }
 
         const currencies = new Set(
-            Array.from(productsById.values()).map((product) => (product.currency ?? (workspace as WorkspaceRow).default_currency ?? 'iqd').toLowerCase())
+            Array.from(productsById.values()).map((product) => (product.currency ?? resolvedWorkspace.default_currency ?? 'iqd').toLowerCase())
         )
 
         if (currencies.size > 1) {
             return errorResponse('Marketplace orders currently require all products in the cart to use the same currency.')
         }
 
+        const priceOverride = await fetchStorefrontPriceOverride(adminClient, resolvedWorkspace.id, storefrontId)
+
         let subtotal = 0
         const orderItems = productIds.map((productId) => {
             const product = productsById.get(productId)!
             const quantity = normalizedItems.get(productId) ?? 0
-            const originalUnitPrice = Number(product.price ?? 0)
+            const overrideItem = priceOverride?.items.get(product.id)
+            const originalUnitPrice = overrideItem?.price ?? Number(product.price ?? 0)
+            const orderCurrency = (overrideItem?.currency
+                ?? product.currency
+                ?? resolvedWorkspace.default_currency
+                ?? 'iqd').toLowerCase()
+            const resolvedCostPrice = overrideItem?.cost_price != null
+                ? overrideItem.cost_price
+                : (product.cost_price != null ? Number(product.cost_price) : null)
             const resolvedDiscount = discountByProductId.get(product.id)
             const unitPrice = resolvedDiscount
                 ? computeDiscountPrice(originalUnitPrice, resolvedDiscount.discount_type, resolvedDiscount.discount_value)
@@ -303,9 +365,10 @@ Deno.serve(async (req) => {
                 sku: product.sku,
                 unit_price: unitPrice,
                 original_unit_price: originalUnitPrice,
-                currency: (product.currency ?? (workspace as WorkspaceRow).default_currency ?? 'iqd').toLowerCase(),
+                currency: orderCurrency,
                 quantity,
                 line_total: lineTotal,
+                cost_price: resolvedCostPrice,
                 image_url: resolvePublicAssetUrl(product.image_url),
                 storage_id: marketplaceStorageId,
                 discount_type: resolvedDiscount?.discount_type ?? null,
@@ -315,12 +378,12 @@ Deno.serve(async (req) => {
             }
         })
 
-        const orderCurrency = orderItems[0]?.currency ?? ((workspace as WorkspaceRow).default_currency ?? 'iqd').toLowerCase()
+        const orderCurrency = orderItems[0]?.currency ?? (resolvedWorkspace.default_currency ?? 'iqd').toLowerCase()
 
         const { data: insertedOrder, error: insertError } = await adminClient
             .from('marketplace_orders')
             .insert({
-                workspace_id: (workspace as WorkspaceRow).id,
+                workspace_id: resolvedWorkspace.id,
                 customer_name: customerName,
                 customer_phone: customerPhone,
                 customer_email: customerEmail,

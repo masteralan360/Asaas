@@ -193,6 +193,15 @@ export function buildWorkspaceNavigation({
                     },
                   ]
                   : []),
+                ...(canUseEcommerce && canAccessPermission("ecommerce.access")
+                  ? [
+                    {
+                      name: t("nav.onlineCustomers", { defaultValue: "Online Customers" }),
+                      href: "/online-customers",
+                      icon: Users,
+                    },
+                  ]
+                  : []),
               ],
             },
           ]

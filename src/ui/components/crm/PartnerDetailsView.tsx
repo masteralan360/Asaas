@@ -129,7 +129,7 @@ type TranslationFn = (key: string, options?: Record<string, unknown>) => string
 const LOAN_REPAYMENT_SOURCE_TYPES = new Set(['loan_payment', 'simple_loan', 'loan_installment'])
 
 function roleIncludesCustomer(role: BusinessPartnerRole) {
-    return role === 'customer' || role === 'both'
+    return role === 'customer' || role === 'both' || role === 'online_customer'
 }
 
 function roleIncludesSupplier(role: BusinessPartnerRole) {
@@ -148,6 +148,8 @@ function roleBadgeLabel(role: BusinessPartnerRole, t: TranslationFn) {
             return t('businessPartners.roles.seller', { defaultValue: 'Seller' })
         case 'agent':
             return t('businessPartners.roles.agent', { defaultValue: 'Agent' })
+        case 'online_customer':
+            return t('businessPartners.roles.onlineCustomer', { defaultValue: 'Online Customer' })
         default:
             return t('businessPartners.roles.both', { defaultValue: 'Both' })
     }

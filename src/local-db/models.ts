@@ -324,6 +324,7 @@ export type BusinessPartnerRole =
   | "supplier"
   | "both"
   | "agent"
+  | "online_customer"
   | RealEstateBusinessPartnerRole;
 export type AgentType = "driver" | "field_agent";
 export type AgentStatus = "active" | "inactive" | "blocked";

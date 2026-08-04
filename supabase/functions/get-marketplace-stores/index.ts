@@ -1,14 +1,37 @@
 import { createAdminClient } from '../_shared/supabase.ts'
 import { errorResponse, jsonResponse, corsHeaders } from '../_shared/http.ts'
-import { listMarketplaceAssetUrls, resolvePublicAssetUrl } from '../_shared/marketplace.ts'
+import {
+    listMarketplaceAssetUrls,
+    resolvePublicAssetUrl,
+    resolveStorefrontVisibleProductIds,
+    type StorefrontCatalogRule
+} from '../_shared/marketplace.ts'
 
 type WorkspaceRow = {
     id: string
     name: string
+    visibility: string | null
     store_slug: string | null
     store_description: string | null
     logo_url: string | null
     default_currency: string | null
+}
+
+type StorefrontRow = {
+    id: string
+    workspace_id: string
+    slug: string
+    description: string | null
+}
+
+type StorefrontEntry = {
+    workspaceId: string
+    name: string
+    slug: string
+    description: string | null
+    logo_url: string | null
+    default_currency: string | null
+    storefrontId: string | null
 }
 
 type MarketplaceStorageRow = {
@@ -43,8 +66,7 @@ Deno.serve(async (req) => {
 
         const { data: workspaces, error: workspaceError } = await adminClient
             .from('workspaces')
-            .select('id, name, store_slug, store_description, logo_url, default_currency')
-            .eq('visibility', 'public')
+            .select('id, name, visibility, store_slug, store_description, logo_url, default_currency')
             .is('deleted_at', null)
             .order('name', { ascending: true })
 
@@ -52,9 +74,57 @@ Deno.serve(async (req) => {
             return errorResponse(workspaceError.message, 500)
         }
 
-        const publicWorkspaces = ((workspaces ?? []) as WorkspaceRow[]).filter((workspace) => Boolean(workspace.store_slug))
-        const workspaceIds = publicWorkspaces.map((workspace) => workspace.id)
+        const workspaceRows = ((workspaces ?? []) as WorkspaceRow[])
+        const workspaceById = new Map(workspaceRows.map((workspace) => [workspace.id, workspace] as const))
+
+        const entries: StorefrontEntry[] = []
+        const entryWorkspaceIds = new Set<string>()
+
+        for (const workspace of workspaceRows) {
+            if (workspace.visibility === 'public' && Boolean(workspace.store_slug)) {
+                entries.push({
+                    workspaceId: workspace.id,
+                    name: workspace.name,
+                    slug: workspace.store_slug!,
+                    description: workspace.store_description,
+                    logo_url: workspace.logo_url,
+                    default_currency: workspace.default_currency,
+                    storefrontId: null
+                })
+                entryWorkspaceIds.add(workspace.id)
+            }
+        }
+
+        const { data: storefronts, error: storefrontsError } = await adminClient
+            .from('workspace_storefronts')
+            .select('id, workspace_id, slug, description')
+            .eq('visibility', 'public')
+
+        if (storefrontsError) {
+            return errorResponse(storefrontsError.message, 500)
+        }
+
+        for (const storefront of (storefronts ?? []) as StorefrontRow[]) {
+            const workspace = workspaceById.get(storefront.workspace_id)
+            if (!workspace || !storefront.slug) {
+                continue
+            }
+
+            entries.push({
+                workspaceId: workspace.id,
+                name: workspace.name,
+                slug: storefront.slug,
+                description: storefront.description,
+                logo_url: workspace.logo_url,
+                default_currency: workspace.default_currency,
+                storefrontId: storefront.id
+            })
+            entryWorkspaceIds.add(workspace.id)
+        }
+
+        const workspaceIds = Array.from(entryWorkspaceIds)
         const countsByWorkspace = new Map<string, { productIds: Set<string>; categoryIds: Set<string> }>()
+        const productById = new Map<string, ProductSummaryRow>()
 
         if (workspaceIds.length > 0) {
             const [
@@ -89,7 +159,6 @@ Deno.serve(async (req) => {
                 }
             }
 
-            const productById = new Map<string, ProductSummaryRow>()
             for (const row of (products ?? []) as ProductSummaryRow[]) {
                 productById.set(row.id, row)
             }
@@ -133,26 +202,90 @@ Deno.serve(async (req) => {
             }
         }
 
-        const stores = await Promise.all(publicWorkspaces.map(async (workspace) => {
-            const counts = countsByWorkspace.get(workspace.id) ?? {
+        const rulesByKey = new Map<string, StorefrontCatalogRule[]>()
+        if (workspaceIds.length > 0) {
+            const { data: ruleRows, error: rulesError } = await adminClient
+                .from('workspace_storefront_catalog_rules')
+                .select('workspace_id, storefront_id, rule_type, price_book_id, override_prices')
+                .in('workspace_id', workspaceIds)
+
+            if (rulesError) {
+                return errorResponse(rulesError.message, 500)
+            }
+
+            for (const row of (ruleRows ?? []) as {
+                workspace_id: string
+                storefront_id: string | null
+                rule_type: string
+                price_book_id: string | null
+                override_prices: boolean | null
+            }[]) {
+                const key = `${row.workspace_id}:${row.storefront_id ?? ''}`
+                const rules = rulesByKey.get(key) ?? []
+                rules.push({
+                    rule_type: row.rule_type === 'exclusion' ? 'exclusion' : 'inclusion',
+                    price_book_id: row.price_book_id,
+                    override_prices: Boolean(row.override_prices)
+                })
+                rulesByKey.set(key, rules)
+            }
+        }
+
+        const logoUrlByWorkspace = new Map<string, string | null>()
+        const getLogoUrl = async (workspaceId: string, rawLogoUrl: string | null) => {
+            if (logoUrlByWorkspace.has(workspaceId)) {
+                return logoUrlByWorkspace.get(workspaceId) ?? null
+            }
+
+            const logoUrl = resolvePublicAssetUrl(rawLogoUrl)
+                ?? (await listMarketplaceAssetUrls([
+                    `${workspaceId}/workspace-logos/`,
+                    `${workspaceId}/workspaces/`
+                ], 1))[0]
+                ?? null
+            logoUrlByWorkspace.set(workspaceId, logoUrl)
+            return logoUrl
+        }
+
+        const stores = await Promise.all(entries.map(async (entry) => {
+            const counts = countsByWorkspace.get(entry.workspaceId) ?? {
                 productIds: new Set<string>(),
                 categoryIds: new Set<string>()
             }
-            const logoUrl = resolvePublicAssetUrl(workspace.logo_url)
-                ?? (await listMarketplaceAssetUrls([
-                    `${workspace.id}/workspace-logos/`,
-                    `${workspace.id}/workspaces/`
-                ], 1))[0]
-                ?? null
+            const rules = rulesByKey.get(`${entry.workspaceId}:${entry.storefrontId ?? ''}`)
+
+            let productCount = counts.productIds.size
+            let categoryCount = counts.categoryIds.size
+
+            if (rules && rules.length > 0 && counts.productIds.size > 0) {
+                const visibleProductIds = await resolveStorefrontVisibleProductIds(
+                    adminClient,
+                    entry.workspaceId,
+                    Array.from(counts.productIds),
+                    { storefrontId: entry.storefrontId, rules }
+                )
+
+                if (visibleProductIds) {
+                    const visibleProductIdSet = new Set(
+                        Array.from(counts.productIds).filter((productId) => visibleProductIds.has(productId))
+                    )
+                    productCount = visibleProductIdSet.size
+                    categoryCount = new Set(
+                        Array.from(visibleProductIdSet)
+                            .map((productId) => productById.get(productId)?.category_id)
+                            .filter((value): value is string => Boolean(value))
+                    ).size
+                }
+            }
 
             return {
-                name: workspace.name,
-                slug: workspace.store_slug,
-                description: workspace.store_description,
-                logo_url: logoUrl,
-                default_currency: workspace.default_currency ?? 'iqd',
-                product_count: counts.productIds.size,
-                category_count: counts.categoryIds.size
+                name: entry.name,
+                slug: entry.slug,
+                description: entry.description,
+                logo_url: await getLogoUrl(entry.workspaceId, entry.logo_url),
+                default_currency: entry.default_currency ?? 'iqd',
+                product_count: productCount,
+                category_count: categoryCount
             }
         }))
 

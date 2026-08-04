@@ -221,6 +221,16 @@ const BusinessPartnerDetails = lazy(() =>
     default: m.BusinessPartnerDetails,
   })),
 );
+const OnlineCustomers = lazy(() =>
+  import("@/ui/pages/OnlineCustomers").then((m) => ({
+    default: m.OnlineCustomers,
+  })),
+);
+const OnlineCustomerDetails = lazy(() =>
+  import("@/ui/pages/OnlineCustomerDetails").then((m) => ({
+    default: m.OnlineCustomerDetails,
+  })),
+);
 const Agents = lazy(() =>
   import("@/ui/pages/Agents").then((m) => ({ default: m.Agents })),
 );
@@ -1488,6 +1498,28 @@ function App() {
                         >
                           <Layout>
                             <BusinessPartnerDetails />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/online-customers">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="ecommerce"
+                          requiredPermission="ecommerce.access"
+                        >
+                          <Layout>
+                            <OnlineCustomers />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/online-customers/:partnerId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="ecommerce"
+                          requiredPermission="ecommerce.access"
+                        >
+                          <Layout>
+                            <OnlineCustomerDetails />
                           </Layout>
                         </ProtectedRoute>
                       </Route>
