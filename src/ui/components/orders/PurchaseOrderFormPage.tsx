@@ -857,6 +857,7 @@ export function PurchaseOrderFormPage({
                                     <CardContent className="space-y-3">
                                         {items.map((item, index) => {
                                             const product = products.find((entry) => entry.id === item.productId)
+                                            const freeBonusDisplayUnit = item.freeBonusUnit || product?.unit || ''
                                             const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))
                                             const freeBonusQuantity = Math.max(0, Number(item.freeBonusQuantity || 0))
                                             const inventoryQuantity = (Number(item.quantity) || 0) + (canUseFreeBonus ? freeBonusQuantity : 0)
@@ -969,7 +970,7 @@ export function PurchaseOrderFormPage({
                                                                     onChange={(event) => updateItem(index, { freeBonusQuantity: event.target.value })}
                                                                     placeholder={t('orders.form.freeBonus', { defaultValue: 'Free Bonus' })}
                                                                 />
-                                                                {(item.freeBonusUnit || product?.unit) && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${item.freeBonusUnit || product.unit}`, item.freeBonusUnit || product.unit)}</span>}
+                                                                {(item.freeBonusUnit || product?.unit) && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${freeBonusDisplayUnit}`, freeBonusDisplayUnit)}</span>}
                                                             </div>
                                                             {isAccessKeyHeld ? (
                                                                 <FreeBonusUnitSelect

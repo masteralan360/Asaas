@@ -1064,6 +1064,7 @@ export function SalesOrderFormPage({
                                 <CardContent className="space-y-3">
                                     {items.map((item, index) => {
                                         const product = products.find((entry) => entry.id === item.productId)
+                                        const freeBonusDisplayUnit = item.freeBonusUnit || product?.unit || ''
                                         const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))
                                         const costPrice = product ? getItemCostDetails(item, product).convertedCostPrice : 0
                                         const isSellingAtLoss = isItemSellingAtLoss(item, product)
@@ -1242,7 +1243,7 @@ export function SalesOrderFormPage({
                                                                 onChange={(event) => updateItem(index, { freeBonusQuantity: event.target.value })}
                                                                 placeholder={t('orders.form.freeBonus', { defaultValue: 'Free Bonus' })}
                                                             />
-                                                            {(item.freeBonusUnit || product?.unit) && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${item.freeBonusUnit || product.unit}`, item.freeBonusUnit || product.unit)}</span>}
+                                                            {freeBonusDisplayUnit && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${freeBonusDisplayUnit}`, freeBonusDisplayUnit)}</span>}
                                                         </div>
                                                         {isAccessKeyHeld ? (
                                                             <FreeBonusUnitSelect
