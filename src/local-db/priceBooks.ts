@@ -469,7 +469,7 @@ export function useProductPriceBookItemsState(
 
 export async function createPriceBook(
     workspaceId: string,
-    data: { name: string; createdBy?: string | null }
+    data: { name: string; createdBy?: string | null; saveWarn?: boolean }
 ) {
     const now = new Date().toISOString()
     const name = normalizeName(data.name)
@@ -478,6 +478,7 @@ export async function createPriceBook(
         id: generateId(),
         workspaceId,
         name,
+        saveWarn: data.saveWarn ?? true,
         createdBy: data.createdBy ?? null,
         createdAt: now,
         updatedAt: now,
@@ -510,7 +511,7 @@ export async function createPriceBook(
     return priceBook
 }
 
-export async function updatePriceBook(id: string, data: { name: string }) {
+export async function updatePriceBook(id: string, data: { name: string; saveWarn?: boolean }) {
     const existing = await db.price_books.get(id)
     if (!existing || existing.isDeleted) {
         throw new Error('Price Book not found')
@@ -522,6 +523,7 @@ export async function updatePriceBook(id: string, data: { name: string }) {
     let updated: PriceBook = {
         ...existing,
         name,
+        saveWarn: data.saveWarn ?? existing.saveWarn ?? true,
         updatedAt: now,
         version: existing.version + 1,
         ...getSyncMetadata(existing.workspaceId, now)

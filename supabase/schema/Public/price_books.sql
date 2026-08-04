@@ -2,6 +2,7 @@ CREATE TABLE public.price_books (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
   name text NOT NULL,
+  save_warn boolean NOT NULL DEFAULT true,
   created_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at timestamp with time zone NOT NULL DEFAULT timezone('utc', now()),
   updated_at timestamp with time zone NOT NULL DEFAULT timezone('utc', now()),

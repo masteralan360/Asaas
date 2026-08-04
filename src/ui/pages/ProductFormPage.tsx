@@ -365,6 +365,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     )
     const [priceBookRows, setPriceBookRows] = useState<ProductPriceBookDraft[]>([])
     const [isSaving, setIsSaving] = useState(false)
+    const [overrideAttention, setOverrideAttention] = useState(false)
     const [imageError, setImageError] = useState(false)
     const [storageError, setStorageError] = useState(false)
     const [returnRulesModalOpen, setReturnRulesModalOpen] = useState(false)
@@ -379,6 +380,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const skuInputRef = useRef<HTMLInputElement>(null)
     const isGeneratingSkuRef = useRef(false)
     const storageTriggerRef = useRef<HTMLButtonElement>(null)
+    const overrideSectionRef = useRef<HTMLDivElement>(null)
     const newBarcodeInputRef = useRef<HTMLInputElement>(null)
     const cameraInputRef = useRef<HTMLInputElement>(null)
     const imageUploadInputRef = useRef<HTMLInputElement>(null)
@@ -533,6 +535,12 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
         product,
         sourcePriceBookItems
     ])
+
+    useEffect(() => {
+        if (overrideAttention && priceBookRows.length > 0) {
+            setOverrideAttention(false)
+        }
+    }, [overrideAttention, priceBookRows.length])
 
     if (!canEdit && mode !== 'edit') {
         return null
@@ -971,6 +979,19 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                 description: 'Enter initial stock greater than 0 to continue the tutorial.',
                 variant: 'destructive'
             })
+            return
+        }
+
+        if (
+            mode === 'create'
+            && priceBooksEnabled
+            && priceBooks.length > 0
+            && priceBooks.some((priceBook) => priceBook.saveWarn !== false)
+            && priceBookRows.length === 0
+            && !overrideAttention
+        ) {
+            setOverrideAttention(true)
+            overrideSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
             return
         }
 
@@ -1582,7 +1603,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                     <div className="space-y-2">
                                         <Label htmlFor="product-price" className="flex items-center gap-2 font-bold">
                                             <DollarSign className="h-4 w-4 text-primary/60" />
-                                            {t('products.table.price')}
+                                            {t('products.form.price')}
                                         </Label>
                                         {isDynamicUnit(formData.unit) ? (
                                             <div className="flex items-start gap-1.5">
@@ -1718,20 +1739,23 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                     )}
                                 </div>
                             </div>
-                            {priceBooksEnabled ? (
+{priceBooksEnabled ? (
                                 isPriceBookCatalogReady ? (
-                                    <ProductPriceBookItemsEditor
-                                        priceBooks={priceBooks}
-                                        rows={priceBookRows}
-                                        onChange={setPriceBookRows}
-                                        defaultCostPrice={effectiveCost == null ? '' : String(effectiveCost)}
-                                        defaultPrice={String(effectivePrice)}
-                                        defaultCurrency={formData.currency}
-                                        allowedCurrencies={features.allowed_currencies}
-                                        iqdDisplayPreference={features.iqd_display_preference}
-                                        disabled={isReadOnly}
-                                        hideCosts={hideCosts}
-                                    />
+                                    <div ref={overrideSectionRef}>
+                                        <ProductPriceBookItemsEditor
+                                            priceBooks={priceBooks}
+                                            rows={priceBookRows}
+                                            onChange={setPriceBookRows}
+                                            defaultCostPrice={effectiveCost == null ? '' : String(effectiveCost)}
+                                            defaultPrice={String(effectivePrice)}
+                                            defaultCurrency={formData.currency}
+                                            allowedCurrencies={features.allowed_currencies}
+                                            iqdDisplayPreference={features.iqd_display_preference}
+                                            disabled={isReadOnly}
+                                            hideCosts={hideCosts}
+                                            attention={overrideAttention}
+                                        />
+                                    </div>
                                 ) : (
                                     <div className="border-t border-border/60 pt-6">
                                         <div className={cn(

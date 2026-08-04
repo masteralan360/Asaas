@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { cn } from '@/lib/utils'
 
 import { useAuth } from '@/auth'
 import {
@@ -186,6 +187,8 @@ export function BusinessPartnerFormDialog({
     const effectiveWorkspaceId = workspaceId || user?.workspaceId
     const priceBooks = usePriceBooks(effectiveWorkspaceId, { enabled: priceBooksEnabled && isOpen })
     const [formState, setFormState] = useState<BusinessPartnerFormState>(() => createEmptyState(defaultCurrency, lockedRole ?? initialRole))
+    const [priceBookAttention, setPriceBookAttention] = useState(false)
+    const priceBookFieldRef = useRef<HTMLDivElement>(null)
     const agent = useAgent(partner?.agentFacetId)
     const agents = useAgents(workspaceId)
     const workspaceUsers = useWorkspaceUsers(workspaceId)
@@ -251,8 +254,31 @@ export function BusinessPartnerFormDialog({
         })
     }, [agent, defaultCurrency, enableAgentRole, enableRealEstateRoles, initialRole, isOpen, lockedRole, partner])
 
+    useEffect(() => {
+        if (!isOpen) {
+            setPriceBookAttention(false)
+        }
+    }, [isOpen])
+
+    useEffect(() => {
+        if (priceBookAttention) {
+            priceBookFieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+    }, [priceBookAttention])
+
     async function handleSubmit(event: FormEvent) {
         event.preventDefault()
+        if (
+            !partner
+            && priceBooksEnabled
+            && sortedPriceBooks.length > 0
+            && priceBooks.some((priceBook) => priceBook.saveWarn !== false)
+            && formState.priceBookId === ''
+            && !priceBookAttention
+        ) {
+            setPriceBookAttention(true)
+            return
+        }
         const effectiveRole = lockedRole ?? formState.role
         const isAgent = isAgentBusinessPartnerRole(effectiveRole)
         const receivableCreditLimit = formState.receivableCreditLimit.trim() === ''
@@ -373,16 +399,27 @@ export function BusinessPartnerFormDialog({
                                 </div>
                             )}
                             {priceBooksEnabled ? (
-                                <div className="space-y-2">
-                                    <Label>{t('priceBooks.partnerField', { defaultValue: 'Price Book' })}</Label>
+                                <div ref={priceBookFieldRef} className="space-y-2">
+                                    <Label className={cn(priceBookAttention && 'text-yellow-600 dark:text-yellow-400')}>
+                                        {t('priceBooks.partnerField', { defaultValue: 'Price Book' })}
+                                    </Label>
                                     <Select
                                         value={formState.priceBookId || 'none'}
-                                        onValueChange={(value) => setFormState((current) => ({
-                                            ...current,
-                                            priceBookId: value === 'none' ? '' : value
-                                        }))}
+                                        onValueChange={(value) => {
+                                            setFormState((current) => ({
+                                                ...current,
+                                                priceBookId: value === 'none' ? '' : value
+                                            }))
+                                            if (value !== 'none') {
+                                                setPriceBookAttention(false)
+                                            }
+                                        }}
                                     >
-                                        <SelectTrigger>
+                                        <SelectTrigger
+                                            className={cn(
+                                                priceBookAttention && 'border-yellow-400 bg-yellow-500/10 ring-2 ring-yellow-400 animate-pulse'
+                                            )}
+                                        >
                                             <SelectValue placeholder={t('priceBooks.partnerPlaceholder', { defaultValue: 'No Price Book' })} />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -410,6 +447,13 @@ export function BusinessPartnerFormDialog({
                                                 defaultValue: 'No Price Books are available yet. Create one from Products.'
                                             })}
                                     </p>
+                                    {priceBookAttention ? (
+                                        <p className="animate-pulse text-xs font-bold text-yellow-600 dark:text-yellow-400">
+                                            {t('priceBooks.partnerAttention', {
+                                                defaultValue: 'A Price Book is available. Select one, or click Create again to confirm "No Price Book".'
+                                            })}
+                                        </p>
+                                    ) : null}
                                 </div>
                             ) : null}
                             {isAgentRole ? (

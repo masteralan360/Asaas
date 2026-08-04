@@ -14,6 +14,7 @@ import { formatCurrency } from '@/lib/utils'
 import { useHideCosts } from '@/permissions'
 import {
     Button,
+    Checkbox,
     DeleteConfirmationModal,
     Dialog,
     DialogContent,
@@ -157,6 +158,29 @@ export function PriceBookManagementDialog({
         }
     }
 
+    const handleToggleSaveWarn = async (priceBook: PriceBook, saveWarn: boolean) => {
+        if (!workspaceId || !enabled || !isCatalogReady || isSaving || isDeleting) {
+            return
+        }
+
+        try {
+            await updatePriceBook(priceBook.id, { name: priceBook.name, saveWarn })
+            toast({
+                title: t('priceBooks.messages.updateSuccess', {
+                    defaultValue: 'Price Book updated successfully'
+                })
+            })
+        } catch (error: any) {
+            toast({
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: error?.message || t('priceBooks.messages.saveError', {
+                    defaultValue: 'Failed to save the Price Book'
+                }),
+                variant: 'destructive'
+            })
+        }
+    }
+
     const handleConfirmDelete = async () => {
         const priceBook = priceBookToDelete
         if (!priceBook || !enabled || isDeleting) {
@@ -287,6 +311,19 @@ export function PriceBookManagementDialog({
                                                         </div>
                                                     </div>
                                                 </button>
+                                                <label
+                                                    className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground"
+                                                    title={t('priceBooks.saveWarnHint', {
+                                                        defaultValue: 'Warn when saving a product or business partner without selecting a Price Book.'
+                                                    })}
+                                                >
+                                                    <Checkbox
+                                                        checked={priceBook.saveWarn !== false}
+                                                        onCheckedChange={(checked) => void handleToggleSaveWarn(priceBook, Boolean(checked))}
+                                                        disabled={!workspaceId || !isCatalogReady || isSaving || isDeleting}
+                                                    />
+                                                    {t('priceBooks.saveWarnLabel', { defaultValue: 'Warn on save' })}
+                                                </label>
                                                 <div className="flex shrink-0 gap-1">
                                                     <Button
                                                         type="button"

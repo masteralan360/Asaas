@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { CurrencyCode, IQDDisplayPreference, PriceBook } from '@/local-db'
-import { formatNumericInput, sanitizeNumericInput } from '@/lib/utils'
+import { cn, formatNumericInput, sanitizeNumericInput } from '@/lib/utils'
 import {
     Button,
     CurrencySelector,
@@ -34,6 +34,7 @@ interface ProductPriceBookItemsEditorProps {
     iqdDisplayPreference: IQDDisplayPreference
     disabled?: boolean
     hideCosts?: boolean
+    attention?: boolean
 }
 
 export function ProductPriceBookItemsEditor({
@@ -46,7 +47,8 @@ export function ProductPriceBookItemsEditor({
     allowedCurrencies,
     iqdDisplayPreference,
     disabled = false,
-    hideCosts = false
+    hideCosts = false,
+    attention = false
 }: ProductPriceBookItemsEditorProps) {
     const { t } = useTranslation()
     const sortedPriceBooks = useMemo(
@@ -101,7 +103,10 @@ export function ProductPriceBookItemsEditor({
                     <Button
                         type="button"
                         variant="outline"
-                        className="shrink-0 gap-2"
+                        className={cn(
+                            'shrink-0 gap-2',
+                            attention && 'border-yellow-400 bg-yellow-500/10 ring-2 ring-yellow-400 animate-pulse'
+                        )}
                         onClick={addRow}
                         disabled={!nextAvailableBook}
                     >
@@ -110,6 +115,14 @@ export function ProductPriceBookItemsEditor({
                     </Button>
                 )}
             </div>
+
+            {attention ? (
+                <p className="animate-pulse text-xs font-bold text-yellow-600 dark:text-yellow-400">
+                    {t('priceBooks.overrideAttention', {
+                        defaultValue: 'A Price Book is available. Add an override, or click Save again to confirm "No Price Book".'
+                    })}
+                </p>
+            ) : null}
 
             {sortedPriceBooks.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
@@ -159,6 +172,24 @@ export function ProductPriceBookItemsEditor({
                                         </Select>
                                     </div>
 
+                                    <div className="space-y-2">
+                                        <Label className="flex items-center gap-2">
+                                            <DollarSign className="h-4 w-4 text-primary/60" />
+                                            {t('priceBooks.sellingPrice', { defaultValue: 'Selling price' })}
+                                        </Label>
+                                        <Input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={formatNumericInput(row.price)}
+                                            onChange={(event) => updateRow(index, {
+                                                price: sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 })
+                                            })}
+                                            readOnly={disabled}
+                                            placeholder="0.000"
+                                            required
+                                        />
+                                    </div>
+
                                     {!hideCosts && (
                                         <div className="space-y-2">
                                             <Label className="flex items-center gap-2">
@@ -178,24 +209,6 @@ export function ProductPriceBookItemsEditor({
                                             />
                                         </div>
                                     )}
-
-                                    <div className="space-y-2">
-                                        <Label className="flex items-center gap-2">
-                                            <DollarSign className="h-4 w-4 text-primary/60" />
-                                            {t('priceBooks.sellingPrice', { defaultValue: 'Selling price' })}
-                                        </Label>
-                                        <Input
-                                            type="text"
-                                            inputMode="decimal"
-                                            value={formatNumericInput(row.price)}
-                                            onChange={(event) => updateRow(index, {
-                                                price: sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 })
-                                            })}
-                                            readOnly={disabled}
-                                            placeholder="0.000"
-                                            required
-                                        />
-                                    </div>
 
                                     <CurrencySelector
                                         label={t('priceBooks.currency', { defaultValue: 'Currency' })}

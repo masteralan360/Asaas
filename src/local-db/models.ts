@@ -87,6 +87,8 @@ export interface Product extends BaseEntity {
 export interface PriceBook extends BaseEntity {
   name: string;
   createdBy?: string | null;
+  /** When true, saving without selecting this (or any) Price Book shows a confirmation warning. Absent/true by default. */
+  saveWarn?: boolean;
 }
 
 export interface PriceBookItem extends BaseEntity {
