@@ -32,7 +32,7 @@ import {
 import { UsersRound, UserMinus, Loader2, Shield, Eye, Briefcase, UserRound, KeyRound, ShieldCheck, Copy, CopyCheck } from 'lucide-react'
 import { ProfileCardModal } from '@/ui/components/ProfileCardModal'
 import { useTranslation } from 'react-i18next'
-import { formatDate } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { invokeWorkspaceAccess } from '@/lib/workspaceAccess'
@@ -41,7 +41,9 @@ import { useWorkspace } from '@/workspace'
 import {
     WORKSPACE_PERMISSION_DEFINITIONS,
     getWorkspacePermissionModule,
+    getViewOwnRecordPermissionState,
     isSupportedWorkspacePermissionKey,
+    VIEW_OWN_RECORD_PERMISSION_KEYS,
     type WorkspacePermissionKey
 } from '@/permissions'
 import { launcherSections, launcherSectionOrder } from '@/ui/navigation/navigationMeta'
@@ -435,6 +437,84 @@ export function Members() {
         }
     }
 
+    const handleGlobalViewOwnToggle = async (member: Member, shouldGrant: boolean) => {
+        if (user?.role !== 'admin' || !user.workspaceId || member.role === 'admin' || !canManageWorkspacePermissions) {
+            return
+        }
+
+        const mutationKey = `${member.id}:global.view_own`
+        setPermissionMutationKey(mutationKey)
+        setError(null)
+
+        try {
+            if (isLocalMode) {
+                await db.transaction('rw', db.workspace_permissions, async () => {
+                    if (shouldGrant) {
+                        const { generateId } = await import('@/lib/utils')
+                        for (const permissionKey of VIEW_OWN_RECORD_PERMISSION_KEYS) {
+                            const existing = await db.workspace_permissions
+                                .where('[workspaceId+userUuid+key]')
+                                .equals([user.workspaceId, member.id, permissionKey])
+                                .first()
+
+                            if (!existing) {
+                                await db.workspace_permissions.put({
+                                    id: generateId(),
+                                    workspaceId: user.workspaceId,
+                                    userUuid: member.id,
+                                    key: permissionKey,
+                                    module: getWorkspacePermissionModule(permissionKey),
+                                })
+                            }
+                        }
+                        return
+                    }
+
+                    for (const permissionKey of VIEW_OWN_RECORD_PERMISSION_KEYS) {
+                        await db.workspace_permissions
+                            .where('[workspaceId+userUuid+key]')
+                            .equals([user.workspaceId, member.id, permissionKey])
+                            .delete()
+                    }
+                })
+            } else if (shouldGrant) {
+                const payload = VIEW_OWN_RECORD_PERMISSION_KEYS.map((permissionKey) => ({
+                    workspace_id: user.workspaceId,
+                    user_uuid: member.id,
+                    key: permissionKey,
+                    module: getWorkspacePermissionModule(permissionKey)
+                }))
+
+                const { error } = await runSupabaseAction('members.permissions.grantAllViewOwn', () =>
+                    supabase
+                        .from('workspace_permissions')
+                        .upsert(payload, { onConflict: 'workspace_id,user_uuid,key' })
+                )
+
+                if (error) throw normalizeSupabaseActionError(error)
+            } else {
+                const { error } = await runSupabaseAction('members.permissions.revokeAllViewOwn', () =>
+                    supabase
+                        .from('workspace_permissions')
+                        .delete()
+                        .eq('workspace_id', user.workspaceId)
+                        .eq('user_uuid', member.id)
+                        .in('key', [...VIEW_OWN_RECORD_PERMISSION_KEYS])
+                )
+
+                if (error) throw normalizeSupabaseActionError(error)
+            }
+
+            await fetchPermissions()
+            window.dispatchEvent(new CustomEvent('workspace-permissions:changed'))
+        } catch (err) {
+            console.error('Error updating global view-own permissions:', err)
+            setError(getErrorMessage(err))
+        } finally {
+            setPermissionMutationKey(null)
+        }
+    }
+
     const visiblePermissionDefinitions = useMemo(() => {
         const availableModules = new Set(planCapabilities.modules)
         return WORKSPACE_PERMISSION_DEFINITIONS.filter((permission) => {
@@ -451,9 +531,16 @@ export function Members() {
         ))
     ), [selectedPermissionModule, visiblePermissionDefinitions])
 
-    const selectedMemberPermissionKeys = permissionMember
-        ? permissionsByUserId.get(permissionMember.id) || new Set<WorkspacePermissionKey>()
-        : new Set<WorkspacePermissionKey>()
+    const selectedMemberPermissionKeys = useMemo(() => (
+        permissionMember
+            ? permissionsByUserId.get(permissionMember.id) || new Set<WorkspacePermissionKey>()
+            : new Set<WorkspacePermissionKey>()
+    ), [permissionMember, permissionsByUserId])
+
+    const globalViewOwnState = useMemo(
+        () => getViewOwnRecordPermissionState(selectedMemberPermissionKeys),
+        [selectedMemberPermissionKeys]
+    )
 
     const modulesBySection = useMemo(() => {
         const groups: Record<string, Array<{
@@ -1042,6 +1129,51 @@ export function Members() {
                         </div>
 
                         <div className="space-y-4">
+                            {permissionMember && selectedPermissionModule === 'global' && (
+                                <div className="rounded-lg border border-border/60 bg-background/60 p-4">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <ShieldCheck className="h-4 w-4 text-primary" />
+                                                <p className="font-medium">
+                                                    {t('members.permissions.globalViewOwn', { defaultValue: 'Global View Own Records' })}
+                                                </p>
+                                            </div>
+                                            <p className="mt-1 text-sm text-muted-foreground">
+                                                {t('members.permissions.globalViewOwnDescription', {
+                                                    defaultValue: 'Grant or remove View Own Records for orders, sales, loans, installments, and invoice history together.'
+                                                })}
+                                            </p>
+                                        </div>
+                                        <div className="flex shrink-0 items-center gap-2">
+                                            {globalViewOwnState === 'custom' && (
+                                                <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                                                    {t('members.permissions.custom', { defaultValue: 'Custom' })}
+                                                </span>
+                                            )}
+                                            <Switch
+                                                checked={globalViewOwnState === 'all'}
+                                                disabled={Boolean(permissionMutationKey) || permissionsLoading}
+                                                className={cn(
+                                                    globalViewOwnState === 'custom' && (
+                                                        '!bg-amber-500/70 [&>span]:!translate-x-[9px]'
+                                                    )
+                                                )}
+                                                onCheckedChange={(value) => {
+                                                    handleGlobalViewOwnToggle(permissionMember, value)
+                                                }}
+                                                aria-label={t('members.permissions.globalViewOwn', { defaultValue: 'Global View Own Records' })}
+                                            />
+                                        </div>
+                                    </div>
+                                    {permissionMutationKey === `${permissionMember.id}:global.view_own` && (
+                                        <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            {t('members.permissions.saving', { defaultValue: 'Saving...' })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             {permissionMember && selectedModulePermissions.map((permission) => {
                                 const PermissionIcon = permission.icon
                                 return (
