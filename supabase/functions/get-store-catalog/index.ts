@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
             .from('workspaces')
             .select('id, name, store_slug, store_description, logo_url, default_currency')
             .eq('store_slug', slug)
-            .eq('visibility', 'public')
+            .in('visibility', ['public', 'link_only'])
             .is('deleted_at', null)
             .maybeSingle()
 

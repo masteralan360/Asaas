@@ -61,9 +61,9 @@ export default function Storages() {
 
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
     const settlementCurrency = (features.default_currency || 'usd') as CurrencyCode
-    const isMarketplacePublic = features.visibility === 'public'
-    const canManageMarketplaceStorage = user?.role === 'admin' && isMarketplacePublic
-    const showMarketplaceStorageState = isMarketplacePublic
+    const isMarketplaceStoreActive = features.visibility === 'public' || features.visibility === 'link_only'
+    const canManageMarketplaceStorage = user?.role === 'admin' && isMarketplaceStoreActive
+    const showMarketplaceStorageState = isMarketplaceStoreActive
 
     const getStorageDisplayName = useCallback((storage: Storage) => {
         return storage.isSystem

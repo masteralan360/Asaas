@@ -2324,6 +2324,7 @@
       "visibilityDesc": "When set to Public, your products will appear in the Atlas Marketplace.",
       "private": "Private",
       "public": "Public",
+      "linkOnly": "Public (By link)",
       "slug": "Store URL Slug",
       "slugDesc": "Your store will be available at /s/your-slug",
       "slugChecking": "Checking availability...",

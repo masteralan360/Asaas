@@ -486,7 +486,7 @@ export type OrderPaymentMethod =
   | "loan"
   | "installments";
 export type OrderAdjustmentType = "addition" | "deduction";
-export type WorkspaceVisibility = "private" | "public";
+export type WorkspaceVisibility = "private" | "public" | "link_only";
 export type MarketplaceOrderStatus =
   | "pending"
   | "confirmed"

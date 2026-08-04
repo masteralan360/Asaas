@@ -129,7 +129,7 @@ export function Settings() {
     const databaseInjectionInputRef = useRef<HTMLInputElement>(null)
     const [thermalPrinterMessage, setThermalPrinterMessage] = useState<string | null>(null)
     const [showAllDetectedPrinters, setShowAllDetectedPrinters] = useState(false)
-    const [marketplaceVisibility, setMarketplaceVisibility] = useState<'private' | 'public'>(features.visibility || 'private')
+    const [marketplaceVisibility, setMarketplaceVisibility] = useState<'private' | 'public' | 'link_only'>(features.visibility || 'private')
     const [marketplaceSlug, setMarketplaceSlug] = useState(features.store_slug || '')
     const [marketplaceDescription, setMarketplaceDescription] = useState(features.store_description || '')
     const [marketplaceSlugStatus, setMarketplaceSlugStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle')
@@ -1528,7 +1528,7 @@ export function Settings() {
             return
         }
 
-        if (marketplaceVisibility === 'public' && !normalizedMarketplaceSlug) {
+        if ((marketplaceVisibility === 'public' || marketplaceVisibility === 'link_only') && !normalizedMarketplaceSlug) {
             toast({
                 title: t('common.error') || 'Error',
                 description: t('settings.marketplace.slugRequired', {
@@ -2354,7 +2354,7 @@ export function Settings() {
                                                 <Label>{t('settings.marketplace.visibility', { defaultValue: 'Store Visibility' })}</Label>
                                                 <Select
                                                     value={marketplaceVisibility}
-                                                    onValueChange={(value: 'private' | 'public') => setMarketplaceVisibility(value)}
+                                                    onValueChange={(value: 'private' | 'public' | 'link_only') => setMarketplaceVisibility(value)}
                                                     disabled={isLocalMode}
                                                 >
                                                     <SelectTrigger>
@@ -2366,6 +2366,9 @@ export function Settings() {
                                                         </SelectItem>
                                                         <SelectItem value="public">
                                                             {t('settings.marketplace.public', { defaultValue: 'Public' })}
+                                                        </SelectItem>
+                                                        <SelectItem value="link_only">
+                                                            {t('settings.marketplace.linkOnly', { defaultValue: 'Public (By link)' })}
                                                         </SelectItem>
                                                     </SelectContent>
                                                 </Select>

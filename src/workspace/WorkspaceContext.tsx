@@ -101,7 +101,7 @@ export interface WorkspaceFeatures {
     renewal_due_at: string | null
     has_usage_limits: boolean
     upload_limit_mb: number | null
-    visibility: 'private' | 'public'
+    visibility: 'private' | 'public' | 'link_only'
     store_slug: string | null
     store_description: string | null
 }
