@@ -21,6 +21,12 @@ const dbMock = vi.hoisted(() => {
     const products = {
         update: vi.fn(async () => 1)
     }
+    const salesOrders = {
+        update: vi.fn(async () => 1)
+    }
+    const purchaseOrders = {
+        update: vi.fn(async () => 1)
+    }
 
     const offlineMutations = {
         where: vi.fn((indexName: string) => ({
@@ -60,6 +66,8 @@ const dbMock = vi.hoisted(() => {
         saleReturns,
         saleReturnItems,
         products,
+        salesOrders,
+        purchaseOrders,
         reset() {
             rows.splice(0)
             offlineMutations.where.mockClear()
@@ -69,6 +77,8 @@ const dbMock = vi.hoisted(() => {
             saleReturns.update.mockClear()
             saleReturnItems.where.mockClear()
             products.update.mockClear()
+            salesOrders.update.mockClear()
+            purchaseOrders.update.mockClear()
         }
     }
 })
@@ -77,6 +87,9 @@ const supabaseMock = vi.hoisted(() => {
     const mutationError = new Error('permission denied')
     const upsert = vi.fn(async (): Promise<{ data: null; error: Error | null }> => ({ data: null, error: mutationError }))
     const rpc = vi.fn(async () => ({ data: null as any, error: null as any }))
+    const orderUpsert = vi.fn(() => ({
+        select: vi.fn(async () => ({ data: [], error: null as any }))
+    }))
     let saleLookup: Record<string, any> | null = null
     let pullError: Error | null = null
 
@@ -96,7 +109,9 @@ const supabaseMock = vi.hoisted(() => {
             range: vi.fn(async () => ({ data: [], error: pullError })),
             in: vi.fn(() => builder),
             maybeSingle: vi.fn(async () => ({ data: tableName === 'sales' ? saleLookup : null, error: null })),
-            upsert,
+            upsert: tableName === 'sales_orders' || tableName === 'purchase_orders'
+                ? orderUpsert
+                : upsert,
             update: vi.fn(() => ({
                 eq: vi.fn(async () => ({ data: null, error: null }))
             })),
@@ -116,6 +131,7 @@ const supabaseMock = vi.hoisted(() => {
         mutationError,
         rpc,
         upsert,
+        orderUpsert,
         setSaleLookup(row: Record<string, any> | null) {
             saleLookup = row
         },
@@ -126,6 +142,7 @@ const supabaseMock = vi.hoisted(() => {
             from.mockClear()
             rpc.mockClear()
             upsert.mockClear()
+            orderUpsert.mockClear()
             saleLookup = null
             pullError = null
         }
@@ -151,7 +168,9 @@ vi.mock('@/local-db', () => ({
         invoices: dbMock.invoices,
         sale_returns: dbMock.saleReturns,
         sale_return_items: dbMock.saleReturnItems,
-        products: dbMock.products
+        products: dbMock.products,
+        sales_orders: dbMock.salesOrders,
+        purchase_orders: dbMock.purchaseOrders
     }
 }))
 
@@ -525,6 +544,42 @@ describe('fullSync error reporting', () => {
             expect.objectContaining({
                 sequenceId: 7,
                 invoiceid: '#00007',
+                syncStatus: 'synced'
+            })
+        )
+        expect(dbMock.rows[0]).toMatchObject({ status: 'synced' })
+    })
+
+    it('replaces an offline order placeholder with the server-assigned workspace number', async () => {
+        supabaseMock.orderUpsert.mockReturnValueOnce({
+            select: vi.fn(async () => ({
+                data: [{ id: 'sales-order-1', order_number: 'SO-2026-00051' }],
+                error: null
+            }))
+        })
+        dbMock.rows.push({
+            id: 'sales-order-mutation',
+            workspaceId: 'workspace-1',
+            entityType: 'sales_orders',
+            entityId: 'sales-order-1',
+            operation: 'create',
+            payload: {
+                id: 'sales-order-1',
+                workspaceId: 'workspace-1',
+                orderNumber: 'SO-PENDING-LOCAL',
+                version: 1
+            },
+            createdAt: '2026-08-04T00:00:00.000Z',
+            status: 'pending'
+        })
+
+        const result = await fullSync('user-1', 'workspace-1', null)
+
+        expect(result.success).toBe(true)
+        expect(dbMock.salesOrders.update).toHaveBeenCalledWith(
+            'sales-order-1',
+            expect.objectContaining({
+                orderNumber: 'SO-2026-00051',
                 syncStatus: 'synced'
             })
         )

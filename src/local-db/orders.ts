@@ -224,12 +224,41 @@ async function syncUpsertEntities(
     try {
         const client = getSupabaseClientForTable(tableName)
         const payload = entities.map((entity) => sanitizeSyncPayload(tableName, entity))
-        const { error } = await runMutation(`${tableName}.sync`, () => client.from(tableName).upsert(payload))
+        const shouldReceiveOrderNumber = tableName === 'sales_orders' || tableName === 'purchase_orders'
+        const result = shouldReceiveOrderNumber
+            ? await runMutation(`${tableName}.sync`, () =>
+                client.from(tableName).upsert(payload).select('id, order_number')
+            )
+            : await runMutation(`${tableName}.sync`, () => client.from(tableName).upsert(payload))
+        const { error } = result
         if (error) {
             throw error
         }
 
-        await markEntitiesSynced(tableName, entities.map((entity) => entity.id))
+        if (!shouldReceiveOrderNumber) {
+            await markEntitiesSynced(tableName, entities.map((entity) => entity.id))
+            return
+        }
+
+        const orderNumbers = new Map<string, string>()
+        const rows = Array.isArray(result.data) ? result.data : []
+        for (const row of rows) {
+            if (!row || typeof row !== 'object') continue
+            const remoteOrder = row as { id?: unknown; order_number?: unknown }
+            if (typeof remoteOrder.id === 'string' && typeof remoteOrder.order_number === 'string') {
+                orderNumbers.set(remoteOrder.id, remoteOrder.order_number)
+            }
+        }
+
+        const syncedAt = new Date().toISOString()
+        const table = (db as unknown as Record<OrderTableName, {
+            update: (id: string, changes: Record<string, unknown>) => Promise<number>
+        }>)[tableName as OrderTableName]
+        await Promise.all(entities.map((entity) => table.update(entity.id, {
+            ...(orderNumbers.has(entity.id) ? { orderNumber: orderNumbers.get(entity.id) } : {}),
+            syncStatus: 'synced',
+            lastSyncedAt: syncedAt
+        })))
     } catch (error) {
         console.error(`[Orders] Failed to sync ${tableName}:`, error)
 
@@ -289,7 +318,7 @@ function buildApprovalReviewPatch<T extends SalesOrder | PurchaseOrder>(
     } as Pick<T, 'approvalStatus' | 'approvalReviewedBy' | 'approvalReviewedAt' | 'updatedAt' | 'version' | 'syncStatus' | 'lastSyncedAt'>
 }
 
-async function generateDocumentNumber(tableName: OrderTableName, workspaceId: string) {
+async function generateLocalDocumentNumber(tableName: OrderTableName, workspaceId: string) {
     const prefix = tableName === 'sales_orders' ? 'SO' : 'PO'
     const year = new Date().getFullYear()
     const rows = await (db as unknown as Record<OrderTableName, { where: (index: string) => { equals: (value: string) => { toArray: () => Promise<Array<{ createdAt: string }>> } } }>)[tableName]
@@ -298,6 +327,18 @@ async function generateDocumentNumber(tableName: OrderTableName, workspaceId: st
         .toArray()
     const sequence = rows.filter((row) => row.createdAt.startsWith(`${year}-`)).length + 1
     return `${prefix}-${year}-${String(sequence).padStart(5, '0')}`
+}
+
+async function getInitialOrderNumber(tableName: OrderTableName, workspaceId: string) {
+    if (!shouldUseCloudBusinessData(workspaceId)) {
+        return generateLocalDocumentNumber(tableName, workspaceId)
+    }
+
+    const prefix = tableName === 'sales_orders' ? 'SO' : 'PO'
+    // The database replaces this on insert with the atomic, workspace-wide
+    // number. A non-numeric placeholder prevents offline caches from posing as
+    // an authoritative sequence before they can sync.
+    return `${prefix}-PENDING-${generateId().toUpperCase()}`
 }
 
 async function recalculateCustomerSummary(workspaceId: string, customerId: string) {
@@ -1818,7 +1859,7 @@ export async function createSalesOrder(
     createdBy?: string | null
 ) {
     const now = new Date().toISOString()
-    const orderNumber = await generateDocumentNumber('sales_orders', workspaceId)
+    const orderNumber = await getInitialOrderNumber('sales_orders', workspaceId)
     const status = data.status || 'draft'
     const counterparty = await normalizeSalesOrderCounterparty(data)
     const paymentState = normalizeOrderPaymentState(data, now)
@@ -2035,6 +2076,79 @@ async function activateOrderFinancing(orderType: OrderType, order: SalesOrder | 
     return result.loan.id
 }
 
+function getUnreversedPaymentTransactions(rows: PaymentTransaction[]) {
+    const reversedTransactionIds = new Set(
+        rows
+            .filter((row) => !row.isDeleted && !!row.reversalOfTransactionId)
+            .map((row) => row.reversalOfTransactionId as string)
+    )
+
+    return rows
+        .filter((row) =>
+            !row.isDeleted
+            && !row.reversalOfTransactionId
+            && !reversedTransactionIds.has(row.id)
+            && Number(row.amount || 0) > ORDER_AMOUNT_EPSILON
+        )
+        .sort((left, right) =>
+            right.paidAt.localeCompare(left.paidAt)
+            || right.createdAt.localeCompare(left.createdAt)
+            || right.id.localeCompare(left.id)
+        )
+}
+
+async function reverseOrderPaymentsForCancellation(orderType: OrderType, order: SalesOrder | PurchaseOrder) {
+    const sourceType = orderType === 'sales' ? 'sales_order' : 'purchase_order'
+    const payments = await db.payment_transactions
+        .where('[workspaceId+sourceType+sourceRecordId]')
+        .equals([order.workspaceId, sourceType, order.id])
+        .toArray()
+    const { reversePaymentTransaction } = await import('./payments')
+
+    for (const payment of getUnreversedPaymentTransactions(payments)) {
+        await reversePaymentTransaction(order.workspaceId, payment.id, {
+            note: `Order ${order.orderNumber} cancelled`
+        })
+    }
+}
+
+async function reverseLinkedLoanPaymentsForCancellation(order: SalesOrder | PurchaseOrder) {
+    if (!order.linkedLoanId) {
+        return
+    }
+
+    const loanPaymentSourceTypes = new Set<PaymentTransaction['sourceType']>([
+        'loan_payment',
+        'simple_loan',
+        'loan_installment'
+    ])
+    const payments = (await db.payment_transactions
+        .where('workspaceId')
+        .equals(order.workspaceId)
+        .toArray()
+    ).filter((payment) =>
+        payment.sourceRecordId === order.linkedLoanId
+        && loanPaymentSourceTypes.has(payment.sourceType)
+    )
+    const { reversePaymentTransaction } = await import('./payments')
+
+    for (const payment of getUnreversedPaymentTransactions(payments)) {
+        await reversePaymentTransaction(order.workspaceId, payment.id, {
+            note: `Order ${order.orderNumber} cancelled`
+        })
+    }
+}
+
+async function cancelOrderFinancialRecords(orderType: OrderType, order: SalesOrder | PurchaseOrder) {
+    await reverseOrderPaymentsForCancellation(orderType, order)
+
+    if (order.linkedLoanId) {
+        await reverseLinkedLoanPaymentsForCancellation(order)
+        const { cancelOrderLinkedLoan } = await import('./hooks')
+        await cancelOrderLinkedLoan(order.linkedLoanId)
+    }
+}
+
 export async function updateSalesOrderStatus(id: string, status: SalesOrderStatus) {
     const existing = await db.sales_orders.get(id)
     if (!existing || existing.isDeleted) {
@@ -2055,41 +2169,53 @@ export async function updateSalesOrderStatus(id: string, status: SalesOrderStatu
         throw new Error('invalid_order_transition')
     }
 
+    let workingOrder = existing
     let linkedLoanId = existing.linkedLoanId || null
     if (status === 'pending') {
         await assertSalesProductsHaveCosts(existing)
         await assertSalesStockAvailable(existing, existing.id)
         linkedLoanId = await activateOrderFinancing('sales', existing)
     }
-    if (status === 'cancelled' && existing.linkedLoanId) {
-        if ((existing.initialPaymentAmount || 0) > 0) {
-            throw new Error('financed_order_has_payment_history')
+    if (status === 'cancelled') {
+        await cancelOrderFinancialRecords('sales', existing)
+        const currentOrder = await db.sales_orders.get(id)
+        if (!currentOrder || currentOrder.isDeleted) {
+            throw new Error('Sales order not found')
         }
-        const { cancelOrderLinkedLoan } = await import('./hooks')
-        await cancelOrderLinkedLoan(existing.linkedLoanId)
+        workingOrder = currentOrder
+        linkedLoanId = null
     }
 
     const now = new Date().toISOString()
     const counterparty = await normalizeSalesOrderCounterparty({
-        businessPartnerId: existing.businessPartnerId ?? null,
-        customerId: existing.businessPartnerId ?? existing.customerId,
-        customerName: existing.customerName
+        businessPartnerId: workingOrder.businessPartnerId ?? null,
+        customerId: workingOrder.businessPartnerId ?? workingOrder.customerId,
+        customerName: workingOrder.customerName
     })
     const updated: SalesOrder = {
-        ...existing,
+        ...workingOrder,
         ...counterparty,
         status,
         linkedLoanId,
         updatedAt: now,
-        version: existing.version + 1,
-        reservedAt: status === 'pending' ? (existing.reservedAt || now) : existing.reservedAt,
-        actualDeliveryDate: status === 'completed' ? now : existing.actualDeliveryDate,
+        version: workingOrder.version + 1,
+        reservedAt: status === 'pending' ? (workingOrder.reservedAt || now) : workingOrder.reservedAt,
+        actualDeliveryDate: status === 'completed' ? now : workingOrder.actualDeliveryDate,
+        ...(status === 'cancelled' ? {
+            isPaid: false,
+            paymentStatus: 'unpaid' as const,
+            paidAmount: 0,
+            balanceAmount: roundOrderAmount(Math.max(0, Number(workingOrder.total || 0)), workingOrder.currency),
+            paidAt: null,
+            initialPaymentAmount: 0,
+            nextDueDate: null
+        } : {}),
         ...getSyncMetadata(existing.workspaceId, now)
     }
 
     if (status === 'completed') {
         await assertSalesProductsHaveCosts(updated)
-        await assertSalesStockAvailable(updated, existing.id)
+        await assertSalesStockAvailable(updated, workingOrder.id)
         const fulfillment = await deductInventoryForSalesOrder(updated)
         updated.items = fulfillment.updatedItems
     }
@@ -2099,7 +2225,7 @@ export async function updateSalesOrderStatus(id: string, status: SalesOrderStatu
     await syncUpsertEntities('sales_orders', [updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
     await Promise.all(
         Array.from(new Set([
-            `${existing.customerId}::${existing.businessPartnerId || ''}`,
+            `${workingOrder.customerId}::${workingOrder.businessPartnerId || ''}`,
             `${updated.customerId}::${updated.businessPartnerId || ''}`
         ])).map((key) => {
             const [customerId, businessPartnerId] = key.split('::')
@@ -2906,7 +3032,7 @@ export async function createPurchaseOrder(
     createdBy?: string | null
 ) {
     const now = new Date().toISOString()
-    const orderNumber = await generateDocumentNumber('purchase_orders', workspaceId)
+    const orderNumber = await getInitialOrderNumber('purchase_orders', workspaceId)
     const status = data.status || 'draft'
     const counterparty = await normalizePurchaseOrderCounterparty(data)
     const paymentState = normalizeOrderPaymentState(data, now)
@@ -3064,32 +3190,44 @@ export async function updatePurchaseOrderStatus(id: string, status: PurchaseOrde
         throw new Error('invalid_order_transition')
     }
 
+    let workingOrder = existing
     let linkedLoanId = existing.linkedLoanId || null
     if (status === 'ordered') {
         linkedLoanId = await activateOrderFinancing('purchase', existing)
     }
-    if (status === 'cancelled' && existing.linkedLoanId) {
-        if ((existing.initialPaymentAmount || 0) > 0) {
-            throw new Error('financed_order_has_payment_history')
+    if (status === 'cancelled') {
+        await cancelOrderFinancialRecords('purchase', existing)
+        const currentOrder = await db.purchase_orders.get(id)
+        if (!currentOrder || currentOrder.isDeleted) {
+            throw new Error('Purchase order not found')
         }
-        const { cancelOrderLinkedLoan } = await import('./hooks')
-        await cancelOrderLinkedLoan(existing.linkedLoanId)
+        workingOrder = currentOrder
+        linkedLoanId = null
     }
 
     const now = new Date().toISOString()
     const counterparty = await normalizePurchaseOrderCounterparty({
-        businessPartnerId: existing.businessPartnerId ?? null,
-        supplierId: existing.businessPartnerId ?? existing.supplierId,
-        supplierName: existing.supplierName
+        businessPartnerId: workingOrder.businessPartnerId ?? null,
+        supplierId: workingOrder.businessPartnerId ?? workingOrder.supplierId,
+        supplierName: workingOrder.supplierName
     })
     const updated: PurchaseOrder = {
-        ...existing,
+        ...workingOrder,
         ...counterparty,
         status,
         linkedLoanId,
         updatedAt: now,
-        version: existing.version + 1,
-        actualDeliveryDate: status === 'received' || status === 'completed' ? (existing.actualDeliveryDate || now) : existing.actualDeliveryDate,
+        version: workingOrder.version + 1,
+        actualDeliveryDate: status === 'received' || status === 'completed' ? (workingOrder.actualDeliveryDate || now) : workingOrder.actualDeliveryDate,
+        ...(status === 'cancelled' ? {
+            isPaid: false,
+            paymentStatus: 'unpaid' as const,
+            paidAmount: 0,
+            balanceAmount: roundOrderAmount(Math.max(0, Number(workingOrder.total || 0)), workingOrder.currency),
+            paidAt: null,
+            initialPaymentAmount: 0,
+            nextDueDate: null
+        } : {}),
         ...getSyncMetadata(existing.workspaceId, now)
     }
 

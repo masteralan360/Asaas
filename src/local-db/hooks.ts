@@ -4111,7 +4111,17 @@ export async function hasLoanTransactionHistory(workspaceId: string, loanId: str
         return true
     }
 
-    return settlementTransactions.some((transaction) => !transaction.isDeleted && !transaction.reversalOfTransactionId)
+    const reversedTransactionIds = new Set(
+        settlementTransactions
+            .filter((transaction) => !transaction.isDeleted && !!transaction.reversalOfTransactionId)
+            .map((transaction) => transaction.reversalOfTransactionId as string)
+    )
+
+    return settlementTransactions.some((transaction) =>
+        !transaction.isDeleted
+        && !transaction.reversalOfTransactionId
+        && !reversedTransactionIds.has(transaction.id)
+    )
 }
 
 function rebuildLoanStateFromPayments(

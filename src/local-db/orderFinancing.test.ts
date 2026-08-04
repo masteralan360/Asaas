@@ -475,6 +475,75 @@ describe('order-linked financing', () => {
         })
     })
 
+    it('reverses a standard order payment when cancelling the order', async () => {
+        const supplier = await createSupplier(200)
+        const draft = await createPurchaseOrder(
+            WORKSPACE_ID,
+            purchaseOrderInput(supplier.id, { method: 'cash', total: 100 })
+        )
+
+        await recordOrderPayment(WORKSPACE_ID, {
+            orderType: 'purchase',
+            orderId: draft.id,
+            amount: 100,
+            paymentMethod: 'cash',
+            paidAt: '2026-07-12T10:00:00.000Z'
+        })
+
+        await updatePurchaseOrderStatus(draft.id, 'ordered')
+        const cancelled = await updatePurchaseOrderStatus(draft.id, 'cancelled')
+        const payments = await db.payment_transactions.where('sourceRecordId').equals(draft.id).toArray()
+
+        expect(cancelled).toMatchObject({
+            status: 'cancelled',
+            isPaid: false,
+            paidAmount: 0,
+            balanceAmount: 100,
+            paymentStatus: 'unpaid'
+        })
+        expect(payments.map((payment) => payment.amount).sort((left, right) => left - right)).toEqual([-100, 100])
+        expect(payments.find((payment) => !!payment.reversalOfTransactionId)?.note).toBe(`Order ${draft.orderNumber} cancelled`)
+    })
+
+    it('reverses down payments and installment payments before cancelling a financed order', async () => {
+        const supplier = await createSupplier(200)
+        const draft = await createPurchaseOrder(
+            WORKSPACE_ID,
+            purchaseOrderInput(supplier.id, {
+                method: 'installments',
+                total: 100,
+                initialPayment: 20,
+                firstDueDate: '2026-07-15',
+                installmentCount: 2
+            })
+        )
+        const ordered = await updatePurchaseOrderStatus(draft.id, 'ordered')
+        const loanId = ordered.linkedLoanId!
+
+        await recordLoanPayment(WORKSPACE_ID, {
+            loanId,
+            amount: 30,
+            paymentMethod: 'cash',
+            paidAt: '2026-07-15T12:00:00.000Z'
+        })
+
+        const cancelled = await updatePurchaseOrderStatus(draft.id, 'cancelled')
+        const payments = await db.payment_transactions.where('workspaceId').equals(WORKSPACE_ID).toArray()
+
+        expect(cancelled).toMatchObject({
+            status: 'cancelled',
+            linkedLoanId: null,
+            isPaid: false,
+            initialPaymentAmount: 0,
+            paidAmount: 0,
+            balanceAmount: 100,
+            paymentStatus: 'unpaid'
+        })
+        expect(await db.loans.get(loanId)).toMatchObject({ isDeleted: true })
+        expect(await db.loan_payments.where('loanId').equals(loanId).and((payment) => !payment.isDeleted).count()).toBe(0)
+        expect(payments.filter((payment) => !payment.isDeleted && payment.reversalOfTransactionId).map((payment) => payment.amount).sort((left, right) => left - right)).toEqual([-30, -20])
+    })
+
     it('creates and accepts payments for a simple loan with a blank due-date entry', async () => {
         const supplier = await createSupplier(null)
         const draft = await createPurchaseOrder(

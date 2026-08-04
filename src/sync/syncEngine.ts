@@ -783,6 +783,37 @@ export async function processMutationQueue(
 
           await db.price_book_items.put(localPriceBookItem as never);
           entityHandledInline = true;
+        } else if (
+          entityType === "sales_orders" ||
+          entityType === "purchase_orders"
+        ) {
+          const { data: remoteOrders, error } = await client
+            .from(tableName)
+            .upsert(dbPayload)
+            .select("id, order_number");
+
+          if (error) throw error;
+
+          const remoteOrder = Array.isArray(remoteOrders)
+            ? remoteOrders.find(
+              (row) =>
+                row &&
+                typeof row === "object" &&
+                (row as { id?: unknown }).id === entityId,
+            ) as { order_number?: unknown } | undefined
+            : undefined;
+          const orderNumber = remoteOrder?.order_number;
+
+          if (typeof orderNumber === "string" && orderNumber.length > 0) {
+            const syncedAt = new Date().toISOString();
+            const localOrderTable = (db as any)[entityType];
+            await localOrderTable.update(entityId, {
+              orderNumber,
+              syncStatus: "synced",
+              lastSyncedAt: syncedAt,
+            });
+            entityHandledInline = true;
+          }
         } else {
           const { error } = await client.from(tableName).upsert(dbPayload);
           if (error) throw error;
