@@ -73,6 +73,7 @@ import { ProductAutocompleteInput } from './ProductAutocompleteInput'
 import { LoanPartyPickerDialog } from '@/ui/components/loans/LoanPartyPickerDialog'
 import { OrderAdjustmentsDialog } from './OrderAdjustmentsDialog'
 import { OrderLineItemNoteDialog } from './OrderLineItemNoteDialog'
+import { FreeBonusUnitSelect } from './FreeBonusUnitSelect'
 
 interface PurchaseOrderFormPageProps {
     workspaceId: string
@@ -89,6 +90,7 @@ type FormItem = {
     storageId: string
     quantity: string
     freeBonusQuantity: string
+    freeBonusUnit: string
     unitPrice: string
     batchNumber: string
     batchSalePrice: string
@@ -109,6 +111,7 @@ function createEmptyItem(storageId = '', seq = 1): FormItem {
         storageId,
         quantity: '1',
         freeBonusQuantity: '0',
+        freeBonusUnit: '',
         unitPrice: '',
         batchNumber: '',
         batchSalePrice: '',
@@ -263,6 +266,7 @@ export function PurchaseOrderFormPage({
                     storageId: item.storageId || editingOrder.destinationStorageId || defaultStorageId,
                     quantity: String(item.quantity),
                     freeBonusQuantity: String(getOrderLineFreeBonusQuantity(item)),
+                    freeBonusUnit: item.freeBonusUnit || '',
                     unitPrice: String(item.convertedUnitPrice),
                     batchNumber: item.batchNumber || '',
                     batchSalePrice: item.batchSalePrice == null ? '' : String(item.batchSalePrice),
@@ -323,6 +327,7 @@ export function PurchaseOrderFormPage({
                 storageId: item.storageId || editingOrder.destinationStorageId || defaultStorageId,
                 quantity: String(item.quantity),
                 freeBonusQuantity: String(getOrderLineFreeBonusQuantity(item)),
+                freeBonusUnit: item.freeBonusUnit || '',
                 unitPrice: String(item.convertedUnitPrice),
                 batchNumber: item.batchNumber || '',
                 batchSalePrice: item.batchSalePrice == null ? '' : String(item.batchSalePrice),
@@ -576,6 +581,7 @@ export function PurchaseOrderFormPage({
                         unit: product.unit,
                         quantity,
                         ...(freeBonusQuantity > 0 ? { freeBonusQuantity } : {}),
+                        ...(item.freeBonusUnit && item.freeBonusUnit !== product.unit ? { freeBonusUnit: item.freeBonusUnit } : {}),
                         lineTotal: roundFormAmount(quantity * unitPrice),
                         originalCurrency: sourceCurrency,
                         originalUnitPrice: convertCurrencyAmountWithLiveRates(
@@ -703,7 +709,7 @@ export function PurchaseOrderFormPage({
                     </div>
                 </div>
 
-                <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.95fr)]">
+                <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,2.5fr)_minmax(380px,0.8fr)]">
                             <div className="space-y-5">
                                 <Card
                                     ref={supplierInformationRef}
@@ -882,8 +888,8 @@ export function PurchaseOrderFormPage({
                                                     className={cn(
                                                         'relative grid gap-3 rounded-2xl border bg-background p-4 transition-all duration-700',
                                                         canUseFreeBonus
-                                                            ? 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_110px_140px_88px]'
-                                                            : 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_88px]',
+                                                            ? 'md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(80px,0.55fr)_minmax(80px,0.55fr)_minmax(108px,0.8fr)_minmax(72px,0.18fr)]'
+                                                            : 'md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(80px,0.55fr)_minmax(108px,0.8fr)_minmax(72px,0.18fr)]',
                                                         item.seq === highlightedNewSeq && 'border-primary ring-2 ring-primary/60 bg-primary/5'
                                                     )}
                                                 >
@@ -963,8 +969,15 @@ export function PurchaseOrderFormPage({
                                                                     onChange={(event) => updateItem(index, { freeBonusQuantity: event.target.value })}
                                                                     placeholder={t('orders.form.freeBonus', { defaultValue: 'Free Bonus' })}
                                                                 />
-                                                                {product?.unit && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${product.unit}`, product.unit)}</span>}
+                                                                {(item.freeBonusUnit || product?.unit) && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${item.freeBonusUnit || product.unit}`, item.freeBonusUnit || product.unit)}</span>}
                                                             </div>
+                                                            {isAccessKeyHeld ? (
+                                                                <FreeBonusUnitSelect
+                                                                    value={item.freeBonusUnit}
+                                                                    productUnit={product?.unit}
+                                                                    onValueChange={(value) => updateItem(index, { freeBonusUnit: value })}
+                                                                />
+                                                            ) : null}
                                                         </div>
                                                     ) : null}
                                                     <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-unit-price' : undefined}>

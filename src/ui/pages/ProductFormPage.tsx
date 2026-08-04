@@ -3,17 +3,12 @@ import { useLocation, useRoute } from 'wouter'
 import {
     ArrowLeft,
     Barcode,
-    Box,
-    BottleWine,
     Boxes,
     Camera,
-    Cylinder,
     ChevronRight,
-    CircleDot,
     Copy,
     Shuffle,
     DollarSign,
-    Droplets,
     FileText,
     ImagePlus,
     Info,
@@ -21,16 +16,12 @@ import {
     Pencil,
     Plus,
     Ruler,
-    Scale,
     Settings,
-    ShoppingBag,
-    SquareDashed,
     Tag,
     Trash2,
     Type,
     Wallet,
-    Warehouse,
-    Weight
+    Warehouse
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -71,6 +62,8 @@ import { useWorkspace } from '@/workspace'
 import { useHideCosts } from '@/permissions'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { BarcodeScannerToggleButton } from '@/ui/components/BarcodeScannerToggleButton'
+import { PRODUCT_UNITS as UNITS } from '@/ui/components/units'
+import { ProductUnitIcon } from '@/ui/components/ProductUnitIcon'
 import { useDemoTutorial } from '@/demo'
 import {
     ProductPriceBookItemsEditor,
@@ -106,43 +99,9 @@ import {
     useToast
 } from '@/ui/components'
 
-const UNITS = ['pcs', 'gram', 'liter', 'bottle', 'can', 'box', 'pack', 'carton', 'bag', 'm²', 'Kg', 'Meter']
 const DYNAMIC_UNITS = new Set(['m²', 'Kg', 'Meter'])
 function isDynamicUnit(unit: string): boolean {
     return DYNAMIC_UNITS.has(unit)
-}
-
-function ProductUnitIcon({ unit }: { unit: string }) {
-    const className = 'h-4 w-4 text-primary/70'
-
-    switch (unit) {
-        case 'pcs':
-            return <CircleDot className={className} />
-        case 'Kg':
-            return <Weight className={className} />
-        case 'gram':
-            return <Scale className={className} />
-        case 'liter':
-            return <Droplets className={className} />
-        case 'bottle':
-            return <BottleWine className={className} />
-        case 'can':
-            return <Cylinder className={className} />
-        case 'box':
-            return <Box className={className} />
-        case 'pack':
-            return <Package className={className} />
-        case 'carton':
-            return <Boxes className={className} />
-        case 'bag':
-            return <ShoppingBag className={className} />
-        case 'm²':
-            return <SquareDashed className={className} />
-        case 'Meter':
-            return <Ruler className={className} />
-        default:
-            return <Ruler className={className} />
-    }
 }
 type ProductScannerTarget = 'none' | 'sku' | 'barcode'
 

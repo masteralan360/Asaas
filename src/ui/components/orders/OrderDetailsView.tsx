@@ -1355,6 +1355,10 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                          const itemProfit = isSales ? item.lineTotal - (salesItem.convertedCostPrice * remainingInventoryQuantity) : 0
                                          const itemReceived = !isSales ? purchaseItem.receivedQuantity ?? ((order.status === 'received' || order.status === 'completed') ? inventoryQuantity : 0) : 0
                                          const returnableQuantity = isSales ? getReturnableQuantity(salesItem) : 0
+                                         const itemUnit = item.unit?.trim() || productUnits[item.productId]?.trim() || ''
+                                         const itemUnitLabel = itemUnit ? t(`products.units.${itemUnit}`, itemUnit) : ''
+                                         const freeBonusItemUnit = item.freeBonusUnit?.trim() || itemUnit
+                                         const freeBonusItemUnitLabel = freeBonusItemUnit ? t(`products.units.${freeBonusItemUnit}`, freeBonusItemUnit) : ''
 
                                          return (
                                              <div key={item.id} className={cn(
@@ -1386,15 +1390,15 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                     <div className="rounded-2xl border bg-muted/20 p-3">
                                                         <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.form.table.qty') || 'Qty'}</div>
                                                         <div className="mt-1 flex items-baseline gap-1.5 font-medium">
-                                                            <span className={cn(isItemFullyReturned && 'line-through opacity-50')}>{isSales ? remainingQuantity : paidQuantity}</span>
-                                                            {isSales && returnedQuantity > 0 ? <span className="text-xs text-muted-foreground line-through">{paidQuantity}</span> : null}
+                                                            <span className={cn(isItemFullyReturned && 'line-through opacity-50')}>{isSales ? remainingQuantity : paidQuantity}{itemUnitLabel ? ` ${itemUnitLabel}` : ''}</span>
+                                                            {isSales && returnedQuantity > 0 ? <span className="text-xs text-muted-foreground line-through">{paidQuantity}{itemUnitLabel ? ` ${itemUnitLabel}` : ''}</span> : null}
                                                         </div>
                                                         {hasItemPartialReturn ? <div className="mt-1 text-[10px] font-bold text-orange-600">-{returnedQuantity} {t('sales.return.returnedLabel') || 'returned'}</div> : null}
                                                     </div>
                                                     {showFreeBonus ? (
                                                         <div className="rounded-2xl border bg-muted/20 p-3">
                                                             <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.freeBonus', { defaultValue: 'Free Bonus' })}</div>
-                                                            <div className="mt-1 font-medium">{freeBonusQuantity}</div>
+                                                            <div className="mt-1 font-medium">{freeBonusQuantity}{freeBonusItemUnitLabel ? ` ${freeBonusItemUnitLabel}` : ''}</div>
                                                         </div>
                                                     ) : null}
                                                     <div className="rounded-2xl border bg-muted/20 p-3">
@@ -1465,6 +1469,10 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                  const itemReceived = purchaseItem.receivedQuantity ?? ((order.status === 'received' || order.status === 'completed') ? inventoryQuantity : 0)
                                                  const itemProfit = item.lineTotal - (salesItem.convertedCostPrice * remainingInventoryQuantity)
                                                  const returnableQuantity = isSales ? getReturnableQuantity(salesItem) : 0
+                                                 const itemUnit = item.unit?.trim() || productUnits[item.productId]?.trim() || ''
+                                                 const itemUnitLabel = itemUnit ? t(`products.units.${itemUnit}`, itemUnit) : ''
+                                                 const freeBonusItemUnit = item.freeBonusUnit?.trim() || itemUnit
+                                                 const freeBonusItemUnitLabel = freeBonusItemUnit ? t(`products.units.${freeBonusItemUnit}`, freeBonusItemUnit) : ''
 
                                                  return (
                                                      <TableRow key={item.id} className={cn(
@@ -1482,11 +1490,11 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                         <TableCell>{storageName(item.storageId || mainStorageId)}</TableCell>
                                                          <TableCell className="text-end">
                                                              <div className="flex flex-col items-end">
-                                                                 <span className={cn(isItemFullyReturned && 'line-through opacity-50')}>{isSales ? remainingQuantity : paidQuantity}</span>
+                                                                 <span className={cn(isItemFullyReturned && 'line-through opacity-50')}>{isSales ? remainingQuantity : paidQuantity}{itemUnitLabel ? ` ${itemUnitLabel}` : ''}</span>
                                                                  {hasItemPartialReturn ? <span className="text-[10px] font-medium text-orange-600">-{returnedQuantity} {t('sales.return.returnedLabel') || 'returned'}</span> : null}
                                                              </div>
                                                          </TableCell>
-                                                        {showFreeBonus && <TableCell className="text-end">{freeBonusQuantity}</TableCell>}
+                                                        {showFreeBonus && <TableCell className="text-end">{freeBonusQuantity}{freeBonusItemUnitLabel ? ` ${freeBonusItemUnitLabel}` : ''}</TableCell>}
                                                         {!isSales && <TableCell className="text-end">{itemReceived}</TableCell>}
                                                         <TableCell className="text-end">{formatCurrency(item.convertedUnitPrice, currency, iqd)}</TableCell>
                                                         {isSales && canViewProfit && <TableCell className="text-end">{formatCurrency(salesItem.convertedCostPrice, currency, iqd)}</TableCell>}

@@ -910,6 +910,7 @@
       "m²": "م²",
       "Kg": "Kg",
       "Meter": "مەتر",
+      "ton": "تۆن",
       "activity": "چالاکی"
     },
     "view": {
@@ -1305,6 +1306,8 @@
       "chooseTargetStorageForLine": "کۆگای مەبەست بۆ ئەم بڕگەیە هەڵبژێرە.",
       "completionHint": "تەواوکردنی ئەم داواکارییە کۆگا بۆ {{storageName}} زیاد دەکات.",
       "freeBonus": "بۆنەسی خۆڕایی",
+      "freeBonusDisplayUnit": "یەکەی نیشاندانی بۆنەسی خۆڕایی",
+      "freeBonusDisplayUnitHint": "تەنها بۆ نیشاندان - بۆنەسی خۆڕایی لەم داواکارییەدا چۆن دیارە. یەکەی تۆمارکراو یەکەی بەرهەمە.",
       "inventoryQuantity": "بڕی کۆگا",
       "stockSource": "سەرچاوەی کۆگا",
       "productStock": "کۆگای بەرهەم",

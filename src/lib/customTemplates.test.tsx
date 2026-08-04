@@ -802,6 +802,72 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(kurdish).toContain('بڕی دراو : </strong>')
         expect(kurdish).toContain('شێوازی پارەدان : </strong>کاش')
     })
+
+    it('totals kilogram-quantity products in the product-name column when enabled, converting to tons above 1000 kg', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const baseOrder = customTemplates
+            .createCustomTemplatePreview(target!, { printLang: 'en' })
+            .createElement({})
+            .props.order
+        const weightedOrder = {
+            ...baseOrder,
+            items: [
+                { ...baseOrder.items[0], id: 'weighted-1', productName: 'Sugar 50 KG', quantity: 1200, unit: 'pcs' },
+                { ...baseOrder.items[0], id: 'weighted-2', productName: 'Rice 300kg', quantity: 10, unit: 'pcs' },
+                { ...baseOrder.items[0], id: 'weighted-3', productName: 'Non Weight Item', quantity: 2000, unit: 'pcs' }
+            ]
+        }
+
+        const offHtml = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'en',
+            order: weightedOrder
+        }).createElement({}, undefined, undefined, { fieldDisplayModes: {} }))
+        expect(offHtml).not.toContain(' kg')
+        expect(offHtml).not.toContain(' ton')
+
+        const enabledHtml = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'en',
+            order: weightedOrder
+        }).createElement({}, undefined, undefined, {
+            fieldDisplayModes: { 'atlasStandard.table.productKgTotal': 'enabled' }
+        }))
+
+        expect(enabledHtml).toContain('350 kg')
+        expect(enabledHtml).not.toContain('35000 kg')
+        expect(enabledHtml).not.toContain('0.35 ton')
+
+        const concatenatedKgHtml = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'en',
+            order: {
+                ...weightedOrder,
+                items: [
+                    { ...baseOrder.items[0], id: 'concat-1', productName: 'ProductIQD 600KG', quantity: 5, unit: 'pcs' },
+                    { ...baseOrder.items[0], id: 'concat-2', productName: 'ProductUSD 600KG', quantity: 3, unit: 'pcs' }
+                ]
+            }
+        }).createElement({}, undefined, undefined, {
+            fieldDisplayModes: { 'atlasStandard.table.productKgTotal': 'enabled' }
+        }))
+        expect(concatenatedKgHtml).toContain('1.2 ton')
+        expect(concatenatedKgHtml).not.toContain('1200 kg')
+
+        const belowThousandHtml = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'en',
+            order: {
+                ...weightedOrder,
+                items: [
+                    { ...baseOrder.items[0], productName: 'Sugar 400KG', id: 'below-1' },
+                    { ...baseOrder.items[0], productName: 'Rice 500KG', id: 'below-2' }
+                ]
+            }
+        }).createElement({}, undefined, undefined, {
+            fieldDisplayModes: { 'atlasStandard.table.productKgTotal': 'enabled' }
+        }))
+        expect(belowThousandHtml).toContain('900 kg')
+        expect(belowThousandHtml).not.toContain(' ton')
+    })
 })
 
 describe('Order Receipt custom print template', () => {

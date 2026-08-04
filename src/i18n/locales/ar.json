@@ -908,6 +908,7 @@
       "m²": "م²",
       "Kg": "كجم",
       "Meter": "متر",
+      "ton": "طن",
       "activity": "فعالية"
     },
     "view": {
@@ -1302,6 +1303,8 @@
       "chooseTargetStorageForLine": "اختر المخزن المستهدف لهذا البند.",
       "completionHint": "سيؤدي إكمال هذا الطلب إلى إضافة المخزون إلى {{storageName}}.",
       "freeBonus": "بونص مجاني",
+      "freeBonusDisplayUnit": "وحدة عرض البونص المجاني",
+      "freeBonusDisplayUnitHint": "للعرض فقط - كيف يظهر البونص المجاني في هذا الطلب. الوحدة المحفوظة تبقى وحدة المنتج.",
       "inventoryQuantity": "كمية المخزون",
       "stockSource": "مصدر المخزون",
       "productStock": "مخزون المنتج",

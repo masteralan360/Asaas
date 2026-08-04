@@ -85,6 +85,7 @@ import { ProductAutocompleteInput } from './ProductAutocompleteInput'
 import { LoanPartyPickerDialog } from '@/ui/components/loans/LoanPartyPickerDialog'
 import { OrderAdjustmentsDialog } from './OrderAdjustmentsDialog'
 import { OrderLineItemNoteDialog } from './OrderLineItemNoteDialog'
+import { FreeBonusUnitSelect } from './FreeBonusUnitSelect'
 
 interface SalesOrderFormPageProps {
     workspaceId: string
@@ -99,6 +100,7 @@ type FormItem = {
     storageId: string
     quantity: string
     freeBonusQuantity: string
+    freeBonusUnit: string
     unitPrice: string
     batchId: string
     priceBookId: string
@@ -116,6 +118,7 @@ function createEmptyItem(storageId = '', seq = 1): FormItem {
         storageId,
         quantity: '1',
         freeBonusQuantity: '0',
+        freeBonusUnit: '',
         unitPrice: '',
         batchId: '',
         priceBookId: '',
@@ -284,6 +287,7 @@ export function SalesOrderFormPage({
                     storageId: item.storageId || editingOrder.sourceStorageId || defaultStorageId,
                     quantity: String(item.quantity),
                     freeBonusQuantity: String(getOrderLineFreeBonusQuantity(item)),
+                    freeBonusUnit: item.freeBonusUnit || '',
                     unitPrice: String(item.convertedUnitPrice),
                     batchId: item.batchAllocations?.[0]?.batchId || '',
                     priceBookId: item.priceBookId || '',
@@ -343,6 +347,7 @@ export function SalesOrderFormPage({
                 storageId: item.storageId || editingOrder.sourceStorageId || defaultStorageId,
                 quantity: String(item.quantity),
                 freeBonusQuantity: String(getOrderLineFreeBonusQuantity(item)),
+                freeBonusUnit: item.freeBonusUnit || '',
                 unitPrice: String(item.convertedUnitPrice),
                 batchId: item.batchAllocations?.[0]?.batchId || '',
                 priceBookId: item.priceBookId || '',
@@ -417,7 +422,7 @@ export function SalesOrderFormPage({
 
     const getBatchesForPosition = useCallback((productId: string, storageId: string) =>
         stockBatchesByPosition.get(`${storageId}:${productId}`) ?? [],
-    [stockBatchesByPosition])
+        [stockBatchesByPosition])
 
     const getRegularStockQuantity = useCallback((productId: string, storageId: string) =>
         Math.max(
@@ -425,7 +430,7 @@ export function SalesOrderFormPage({
             - getBatchesForPosition(productId, storageId).reduce((sum, batch) => sum + batch.quantity, 0),
             0
         ),
-    [getAvailableQuantity, getBatchesForPosition])
+        [getAvailableQuantity, getBatchesForPosition])
 
     const getPriceBookItemForPartner = useCallback((partner: Pick<BusinessPartner, 'priceBookId'> | null | undefined, productId: string) =>
         findPartnerProductPriceBookItem(
@@ -435,7 +440,7 @@ export function SalesOrderFormPage({
             priceBooks,
             priceBookItems
         ),
-    [priceBookItems, priceBooks, priceBooksEnabled])
+        [priceBookItems, priceBooks, priceBooksEnabled])
 
     const getPartnerPriceBookName = useCallback((partner: Pick<BusinessPartner, 'priceBookId'> | null | undefined) => {
         if (!priceBooksEnabled || !partner?.priceBookId) return undefined
@@ -761,6 +766,7 @@ export function SalesOrderFormPage({
                         unit: product.unit,
                         quantity,
                         ...(freeBonusQuantity > 0 ? { freeBonusQuantity } : {}),
+                        ...(item.freeBonusUnit && item.freeBonusUnit !== product.unit ? { freeBonusUnit: item.freeBonusUnit } : {}),
                         lineTotal: roundFormAmount(quantity * unitPrice),
                         originalCurrency: sourceCurrency,
                         originalUnitPrice: convertCurrencyAmountWithLiveRates(
@@ -917,648 +923,655 @@ export function SalesOrderFormPage({
                     </div>
                 </div>
 
-                <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.95fr)]">
-                            <div className="space-y-5">
-                                <Card
-                                    ref={customerInformationRef}
-                                    tabIndex={-1}
-                                    className={cn(
-                                        'transition-[border-color,box-shadow] duration-200',
-                                        isCustomerInformationHighlighted && 'border-destructive ring-2 ring-destructive/70 ring-offset-2 ring-offset-background motion-safe:animate-pulse'
-                                    )}
-                                >
-                                    <CardHeader>
-                                        <CardTitle>{t('orders.form.customerInformation', { defaultValue: 'Customer Information' })}</CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="grid gap-4">
-                                            <div className="grid gap-2">
-                                                <Label>{t('orders.form.customer', { defaultValue: 'Customer' })} <span className="text-destructive">*</span></Label>
-                                                <div className="flex flex-col gap-2 md:flex-row md:items-center" data-tour-id="tutorial-order-partner-picker">
-                                                    <PartnerAutocompleteInput
-                                                        value={customerSearch}
-                                                        onChange={(value) => {
-                                                            setCustomerSearch(value)
-                                                            setCustomerId('')
-                                                        }}
-                                                        onSelectPartner={(partner: BusinessPartner) => {
-                                                            selectCustomerPartner(partner)
-                                                        }}
-                                                        workspaceId={workspaceId}
-                                                        roles={['customer']}
-                                                        placeholder={t('orders.form.selectCustomer', { defaultValue: 'Select Customer' })}
-                                                    />
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        className="w-full shrink-0 gap-2 md:w-auto"
-                                                        onClick={() => setIsCustomerPickerOpen(true)}
-                                                    >
-                                                        <Users className="h-4 w-4" />
-                                                        {t('loans.selectParty', { defaultValue: 'Business Partner' })}
-                                                    </Button>
-                                                </div>
-                                                {customerId && selectedCustomer ? (
-                                                    <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
-                                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                                            <div className="min-w-0">
-                                                                <div className="text-[11px] font-bold uppercase tracking-wide text-primary">
-                                                                    {t('customers.title', { defaultValue: 'Customer' })}
-                                                                </div>
-                                                                <div className="flex flex-wrap items-center gap-2">
-                                                                    <div className="text-sm font-semibold">{selectedCustomer.name}</div>
-                                                                    <PartnerBalanceSummary
-                                                                        compact
-                                                                        partner={selectedCustomer}
-                                                                        iqdPreference={features.iqd_display_preference}
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                            <Button
-                                                                type="button"
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                className="h-8 shrink-0 px-2 text-muted-foreground"
-                                                                onClick={() => {
-                                                                    setCustomerId('')
-                                                                    setCustomerSearch('')
-                                                                }}
-                                                            >
-                                                                <X className="h-4 w-4" />
-                                                                {t('loans.clearParty', { defaultValue: 'Clear Link' })}
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                ) : null}
-                                            </div>
-                                            <div className="grid gap-2">
-                                                <Label className="flex items-center gap-2">
-                                                    <Truck className="h-4 w-4 text-muted-foreground" />
-                                                    {t('orders.form.shippingAddress', { defaultValue: 'Shipping Address' })}
-                                                </Label>
-                                                <Textarea
-                                                    rows={3}
-                                                    value={shippingAddress}
-                                                    onChange={(event) => setShippingAddress(event.target.value)}
-                                                    placeholder={t('orders.form.shippingPlaceholder', { defaultValue: 'Enter shipping address...' })}
-                                                />
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                                <LoanPartyPickerDialog
-                                    isOpen={isCustomerPickerOpen}
-                                    onOpenChange={setIsCustomerPickerOpen}
-                                    workspaceId={workspaceId}
-                                    roles={['customer']}
-                                    selectedPartyId={customerId}
-                                    onSelect={(selection) => {
-                                        if (selection.linkedPartyId) {
-                                            const partner = customerPartners.find((entry) => entry.id === selection.linkedPartyId)
-                                            if (partner) {
-                                                selectCustomerPartner(partner)
-                                            } else {
-                                                selectCustomerPartner({
-                                                    id: selection.linkedPartyId,
-                                                    name: selection.linkedPartyName || '',
-                                                    defaultCurrency: selection.defaultCurrency,
-                                                    priceBookId: null
-                                                })
-                                            }
-                                        }
-                                        setIsCustomerPickerOpen(false)
-                                    }}
-                                />
-
-                                <PartnerRequiredSection
-                                    locked={isCustomerSelectionRequired}
-                                    unlockLabel={t('orders.form.selectBusinessPartnerToUnlock', { defaultValue: 'Select a business partner to unlock this section.' })}
-                                    onLockedInteraction={highlightCustomerInformation}
-                                >
-                                <Card className={cn(
-                                    'transition-[border-color,background-color] duration-200',
-                                    isCustomerSelectionRequired && 'border-destructive/70 bg-destructive/5'
-                                )}>
-                                    <CardHeader className="flex flex-col items-start justify-between gap-4 space-y-0 sm:flex-row">
-                                        <div className="space-y-1">
-                                            <CardTitle>{t('orders.form.lineItems', { defaultValue: 'Line Items' })}</CardTitle>
-                                            <p className="text-sm text-muted-foreground">
-                                                {t('orders.form.lineItemsDescription', { defaultValue: 'Add products with quantities and prices.' })}
-                                            </p>
-                                        </div>
-                                        <Button type="button" variant="outline" size="sm" onClick={() => setItems((current) => {
-                                            const nextSeq = current.reduce((max, it) => Math.max(max, it.seq), 0) + 1
-                                            setHighlightedNewSeq(nextSeq)
-                                            return [createEmptyItem(current[current.length - 1]?.storageId || sourceStorageId || defaultStorageId, nextSeq), ...current]
-                                        })}>
-                                            <Plus className="mr-1 h-3.5 w-3.5" />
-                                            {t('orders.form.addItem', { defaultValue: 'Add Item' })}
-                                        </Button>
-                                    </CardHeader>
-                                    <CardContent className="space-y-3">
-                                        {items.map((item, index) => {
-                                            const product = products.find((entry) => entry.id === item.productId)
-                                            const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))
-                                            const costPrice = product ? getItemCostDetails(item, product).convertedCostPrice : 0
-                                            const isSellingAtLoss = isItemSellingAtLoss(item, product)
-                                            const freeBonusQuantity = Math.max(0, Number(item.freeBonusQuantity || 0))
-                                            const inventoryQuantity = (Number(item.quantity) || 0) + (canUseFreeBonus ? freeBonusQuantity : 0)
-                                            const lineBatches = getBatchesForPosition(item.productId, item.storageId)
-                                            const selectedBatch = item.batchId && item.batchId !== PRODUCT_STOCK_SELECTION
-                                                ? stockBatchesById.get(item.batchId)
-                                                : null
-                                            const batchSelectionValue = item.batchId || PRODUCT_STOCK_SELECTION
-                                            const regularStockQuantity = getRegularStockQuantity(item.productId, item.storageId)
-                                            const selectedSourceQuantity = selectedBatch?.quantity ?? regularStockQuantity
-                                            const selectedSourceExceeded = Boolean(item.productId && item.storageId && inventoryQuantity > selectedSourceQuantity)
-                                            const canOpenProductsView = Boolean(item.storageId)
-                                                && !(priceBooksEnabled && (!isPriceBookCatalogReady || !selectedCustomer))
-
-                                            return (
-                                                <div
-                                                    key={`sales-item-${index}`}
-                                                    className={cn(
-                                                        'relative grid gap-3 rounded-2xl border bg-background p-4 transition-all duration-700',
-                                                        canUseFreeBonus
-                                                            ? 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_110px_140px_88px]'
-                                                            : 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_88px]',
-                                                        isSellingAtLoss && 'border-destructive bg-destructive/5',
-                                                        item.seq === highlightedNewSeq && 'border-primary ring-2 ring-primary/60 bg-primary/5'
-                                                    )}
-                                                >
-                                                    <span className="absolute -top-2 start-3 z-10 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground">
-                                                        {item.seq}
-                                                    </span>
-                                                    <div
-                                                        className="space-y-2"
-                                                        data-tour-id={index === 0 ? 'tutorial-order-product-picker' : undefined}
-                                                        data-demo-product-linked={item.productId ? 'true' : 'false'}
-                                                    >
-                                                        <Label className="flex min-w-0 items-center gap-2">
-                                                            <span className="truncate">{t('orders.form.selectProduct', { defaultValue: 'Select Product' })}</span>
-                                                            {item.productId ? (
-                                                                selectedBatch ? (
-                                                                    <TooltipProvider delayDuration={150}>
-                                                                        <Tooltip>
-                                                                            <TooltipTrigger asChild>
-                                                                                <span tabIndex={0} className="inline-flex max-w-40 cursor-help items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] font-medium text-green-600 outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-green-400">
-                                                                                    <Check className="h-3 w-3 shrink-0" />
-                                                                                    <span className="truncate">{selectedBatch.batchNumber}</span>
-                                                                                </span>
-                                                                            </TooltipTrigger>
-                                                                            <TooltipContent side="top" align="start" className="max-w-xs break-words text-xs">
-                                                                                {t('orders.form.batch', { defaultValue: 'Batch' })}: {selectedBatch.batchNumber}
-                                                                            </TooltipContent>
-                                                                        </Tooltip>
-                                                                    </TooltipProvider>
-                                                                ) : (
-                                                                    <span className="inline-flex max-w-28 items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] font-medium text-green-600 dark:text-green-400">
-                                                                        <Check className="h-3 w-3 shrink-0" />
-                                                                        <span className="truncate">{t('orders.form.productStock', { defaultValue: 'Product stock' })}</span>
-                                                                    </span>
-                                                                )
-                                                            ) : null}
-                                                        </Label>
-                                                        <div className="flex items-center">
-                                                            {canOpenProductsView ? (
-                                                                <ProductsViewModalTrigger
-                                                                    label={t('products.title', { defaultValue: 'Browse products' })}
-                                                                    onClick={() => setProductsViewItemIndex(index)}
-                                                                />
-                                                            ) : null}
-                                                            <ProductAutocompleteInput
-                                                                className="min-w-0 flex-1"
-                                                                inputClassName={canOpenProductsView ? 'rounded-s-none' : undefined}
-                                                                value={item.productSearch}
-                                                                onChange={(value) => updateItem(index, { productSearch: value, productId: '' })}
-                                                                onSelectProduct={(product) => {
-                                                                    if (!hasValidProductCost(product.costPrice)) {
-                                                                        toast({
-                                                                            title: t('common.error') || 'Error',
-                                                                            description: getMissingProductCostMessage(product.name),
-                                                                            variant: 'destructive'
-                                                                        })
-                                                                        return
-                                                                    }
-                                                                    if (hasMissingPartnerPriceBookCost(selectedCustomer, product.id)) {
-                                                                        toast({
-                                                                            title: t('common.error') || 'Error',
-                                                                            description: getMissingPriceBookCostMessage(product.name, getPartnerPriceBookName(selectedCustomer)),
-                                                                            variant: 'destructive'
-                                                                        })
-                                                                        return
-                                                                    }
-                                                                    updateItem(index, { productId: product.id, productSearch: product.name })
-                                                                }}
-                                                                products={getSalesProductOptions(item.storageId, item.productId)}
-                                                                disabled={priceBooksEnabled && (!isPriceBookCatalogReady || !selectedCustomer)}
-                                                                placeholder={priceBooksEnabled && !selectedCustomer
-                                                                    ? t('priceBooks.selectPartnerFirst', { defaultValue: 'Select a business partner first' })
-                                                                    : priceBooksEnabled && priceBookCatalogError
-                                                                        ? t('priceBooks.loadingErrorShort', { defaultValue: 'Price Books unavailable - retrying...' })
-                                                                        : t('orders.form.selectProduct', { defaultValue: 'Select Product' })}
-                                                                hasSelection={!!item.productId}
-                                                                showLinkedIndicator={false}
-                                                                storageMissing={!item.storageId}
-                                                                storageMissingLabel={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}
-                                                                onStorageMissingClick={() => handleStorageMissing(index)}
-                                                            />
-                                                        </div>
-                                                        {item.productId && item.storageId ? (
-                                                            <div className="space-y-1.5 pt-1">
-                                                                <Label className="text-xs">{t('orders.form.stockSource', { defaultValue: 'Stock source' })}</Label>
-                                                                <Select value={batchSelectionValue} onValueChange={(value) => updateItem(index, { batchId: value })}>
-                                                                    <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
-                                                                    <SelectContent>
-                                                                        <SelectItem value={PRODUCT_STOCK_SELECTION} disabled={regularStockQuantity <= 0 && lineBatches.length > 0}>
-                                                                            {t('orders.form.productStock', { defaultValue: 'Product stock' })} · {regularStockQuantity} {t('orders.form.available', { defaultValue: 'available' })}
-                                                                        </SelectItem>
-                                                                        {lineBatches.map((batch) => (
-                                                                            <SelectItem key={batch.id} value={batch.id}>
-                                                                                {t('orders.form.batch', { defaultValue: 'Batch' })} {batch.batchNumber} · {batch.quantity} · {formatCurrency(
-                                                                                    convertCurrencyAmountWithLiveRates(batch.price, batch.currency, currency, liveRates),
-                                                                                    currency,
-                                                                                    features.iqd_display_preference
-                                                                                )}
-                                                                            </SelectItem>
-                                                                        ))}
-                                                                    </SelectContent>
-                                                                </Select>
-                                                                <p className={cn('text-xs', selectedSourceExceeded ? 'text-destructive' : 'text-muted-foreground')}>
-                                                                    {selectedBatch
-                                                                        ? `${t('orders.form.batch', { defaultValue: 'Batch' })} ${selectedBatch.batchNumber}: ${selectedBatch.quantity} ${t('orders.form.available', { defaultValue: 'available' })}`
-                                                                        : `${t('orders.form.productStock', { defaultValue: 'Product stock' })}: ${regularStockQuantity} ${t('orders.form.available', { defaultValue: 'available' })}`}
-                                                                    {selectedSourceExceeded ? ` — ${t('orders.form.errors.batchQuantityExceeded', {
-                                                                        productName: product?.name || '',
-                                                                        defaultValue: 'Selected source does not have enough stock.'
-                                                                    })}` : ''}
-                                                                </p>
-                                                            </div>
-                                                        ) : null}
-                                                    </div>
-                                                    <div id={`sales-storage-${index}`} className={cn('space-y-2', highlightedStorageIndex === index && 'animate-pulse')} data-tour-id={index === 0 ? 'tutorial-order-storage' : undefined}>
-                                                        <Label className={cn(highlightedStorageIndex === index && 'text-destructive font-bold')}>{t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}</Label>
-                                                        <Select value={item.storageId} onValueChange={(value) => { setHighlightedStorageIndex(null); updateItem(index, { storageId: value }) }}>
-                                                            <SelectTrigger className={cn(highlightedStorageIndex === index && 'ring-2 ring-destructive')}><SelectValue placeholder={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })} /></SelectTrigger>
-                                                            <SelectContent>
-                                                                {storages.map((storage) => (
-                                                                    <SelectItem key={storage.id} value={storage.id}>
-                                                                        {storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name}
-                                                                    </SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                        <p className="text-xs text-muted-foreground">
-                                                            {item.storageId && item.productId
-                                                                ? t('orders.form.availableQuantity', {
-                                                                    quantity: getAvailableQuantity(item.productId, item.storageId),
-                                                                    defaultValue: `Available: ${getAvailableQuantity(item.productId, item.storageId)}`
-                                                                })
-                                                                : t('orders.form.chooseSourceStorageForLine', { defaultValue: 'Choose a source storage for this line.' })}
-                                                        </p>
-                                                    </div>
-                                                    <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-quantity' : undefined}>
-                                                        <Label>{t('common.quantity', { defaultValue: 'Quantity' })}</Label>
-                                                        <div className="flex items-center gap-1">
-                                                            <Input type="number" min={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : "1"} step={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : "1"} value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} placeholder={t('common.quantity', { defaultValue: 'Quantity' })} />
-                                                            {product?.unit && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${product.unit}`, product.unit)}</span>}
-                                                        </div>
-                                                    </div>
-                                                    {canUseFreeBonus ? (
-                                                        <div className="space-y-2">
-                                                            <Label>{t('orders.form.freeBonus', { defaultValue: 'Free Bonus' })}</Label>
-                                                            <div className="flex items-center gap-1">
-                                                                <Input
-                                                                    type="number"
-                                                                    min="0"
-                                                                    step={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : '1'}
-                                                                    value={item.freeBonusQuantity}
-                                                                    onChange={(event) => updateItem(index, { freeBonusQuantity: event.target.value })}
-                                                                    placeholder={t('orders.form.freeBonus', { defaultValue: 'Free Bonus' })}
-                                                                />
-                                                                {product?.unit && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${product.unit}`, product.unit)}</span>}
-                                                            </div>
-                                                        </div>
-                                                    ) : null}
-                                                    <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-unit-price' : undefined}>
-                                                        <Label>{t('common.sellingPrice', { defaultValue: 'Selling Price' })}</Label>
-                                                        <Input value={formatNumericInput(item.unitPrice)} onChange={(event) => updateItem(index, { unitPrice: sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 3 }) })} placeholder={t('common.sellingPrice', { defaultValue: 'Selling Price' })} />
-                                                        {!hideCosts && isSellingAtLoss ? (
-                                                            <div role="alert" className="flex items-start gap-1.5 text-xs text-destructive">
-                                                                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                                                                <span>
-                                                                    {t('orders.form.sellingBelowCost', { defaultValue: 'Selling below cost' })}
-                                                                    <br />
-                                                                    {t('orders.form.costPrice', { defaultValue: 'Cost Price' })}: {formatCurrency(costPrice, currency, features.iqd_display_preference)}
-                                                                </span>
-                                                            </div>
-                                                        ) : null}
-                                                    </div>
-                                                    <div className="flex items-start justify-end gap-1" data-tour-id={index === 0 ? 'tutorial-order-line-actions' : undefined}>
-                                                        <OrderLineItemNoteDialog
-                                                            note={item.note}
-                                                            onSave={(note) => updateItem(index, { note })}
-                                                            labels={{
-                                                                trigger: t('orders.form.lineItemNote', { defaultValue: 'Line item note' }),
-                                                                title: t('orders.form.lineItemNote', { defaultValue: 'Line item note' }),
-                                                                description: t('orders.form.lineItemNoteDescription', { defaultValue: 'Add a note that will be saved with this line item.' }),
-                                                                field: t('common.note', { defaultValue: 'Note' }),
-                                                                save: t('common.save', { defaultValue: 'Save' }),
-                                                                cancel: t('common.cancel', { defaultValue: 'Cancel' })
-                                                            }}
-                                                        />
-                                                        <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </Button>
-                                                    </div>
-                                                    <div className={cn('flex items-center justify-between text-xs text-muted-foreground', canUseFreeBonus ? 'md:col-span-6' : 'md:col-span-5')}>
-                                                        <span>{product?.sku ? `SKU: ${product.sku}` : '\u00A0'}</span>
-                                                        <span>
-                                                            {canUseFreeBonus && freeBonusQuantity > 0
-                                                                ? `${t('orders.form.inventoryQuantity', { defaultValue: 'Inventory Qty' })}: ${inventoryQuantity} - `
-                                                                : ''}
-                                                            {(t('orders.form.table.total', { defaultValue: 'Total' }))}: {formatCurrency(lineTotal, currency, features.iqd_display_preference)}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            )
-                                        })}
-                                    </CardContent>
-                                </Card>
-                                </PartnerRequiredSection>
-
-                                <PartnerRequiredSection
-                                    locked={isCustomerSelectionRequired}
-                                    unlockLabel={t('orders.form.selectBusinessPartnerToUnlock', { defaultValue: 'Select a business partner to unlock this section.' })}
-                                    onLockedInteraction={highlightCustomerInformation}
-                                >
-                                <Card
-                                    data-tour-id="tutorial-order-notes"
-                                    className={cn(
-                                        'transition-[border-color,background-color] duration-200',
-                                        isCustomerSelectionRequired && 'border-destructive/70 bg-destructive/5'
-                                    )}
-                                >
-                                    <CardHeader>
-                                        <CardTitle>{t('orders.form.notes', { defaultValue: 'Notes' })}</CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <Textarea
-                                            rows={4}
-                                            value={notes}
-                                            onChange={(event) => setNotes(event.target.value)}
-                                            placeholder={t('orders.form.notesPlaceholder', { defaultValue: 'Order notes, special instructions...' })}
-                                        />
-                                    </CardContent>
-                                </Card>
-                                </PartnerRequiredSection>
-                            </div>
-
-                            <div className="space-y-5">
-                                <PartnerRequiredSection
-                                    locked={isCustomerSelectionRequired}
-                                    unlockLabel={t('orders.form.selectBusinessPartnerToUnlock', { defaultValue: 'Select a business partner to unlock this section.' })}
-                                    onLockedInteraction={highlightCustomerInformation}
-                                >
-                                <Card className={cn(
-                                    'transition-[border-color,background-color] duration-200',
-                                    isCustomerSelectionRequired && 'border-destructive/70 bg-destructive/5'
-                                )}>
-                                    <CardHeader>
-                                        <CardTitle>{t('orders.form.orderDetails', { defaultValue: 'Order Details' })}</CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-4">
-                                        <div className="grid gap-4 sm:grid-cols-2">
-                                            <div className="space-y-2" data-tour-id="tutorial-order-date">
-                                                <Label htmlFor="sales-delivery" className="flex items-center gap-2">
-                                                    <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                                                    {t('orders.form.expectedDelivery', { defaultValue: 'Expected Delivery' })}
-                                                </Label>
-                                                <DateTimePicker
-                                                    id="sales-delivery"
-                                                    mode="date-time"
-                                                    date={parseLocalDateTimeValue(expectedDeliveryDate)}
-                                                    setDate={(value) => setExpectedDeliveryDate(value ? formatLocalDateTimeValue(value) : '')}
-                                                    placeholder={t('orders.form.expectedDelivery', { defaultValue: 'Expected Delivery' })}
-                                                />
-                                            </div>
-                                            {canEditOrderCreation ? (
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="sales-order-creation" className="flex items-center gap-2">
-                                                        <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                                                        {t('orders.form.orderCreation', { defaultValue: 'Order Creation' })}
-                                                    </Label>
-                                                    <DateTimePicker
-                                                        id="sales-order-creation"
-                                                        mode="date-time"
-                                                        date={parseLocalDateTimeValue(orderCreationDate)}
-                                                        open={isOrderCreationPickerOpen}
-                                                        onOpenChange={setIsOrderCreationPickerOpen}
-                                                        setDate={(value) => {
-                                                            if (value) setOrderCreationDate(value.toISOString())
-                                                        }}
-                                                        placeholder={t('orders.form.orderCreation', { defaultValue: 'Order Creation' })}
-                                                    />
-                                                </div>
-                                            ) : null}
-                                            <div className="space-y-2" data-tour-id="tutorial-order-currency">
-                                                <CurrencySelector
-                                                    value={currency}
-                                                    onChange={changeOrderCurrency}
-                                                    label={t('orders.form.currency', { defaultValue: 'Currency' })}
-                                                    iqdDisplayPreference={features.iqd_display_preference}
-                                                    allowedCurrencies={Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]}
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="space-y-2" data-tour-id="tutorial-order-payment">
-                                            <Label htmlFor="sales-payment" className="flex items-center gap-2">
-                                                <CreditCard className="h-4 w-4 text-muted-foreground" />
-                                                {t('pos.paymentMethod', { defaultValue: 'Payment Method' })}
-                                            </Label>
-                                            <PaymentMethodSelect
-                                                id="sales-payment"
-                                                value={paymentMethod as PaymentMethodOption}
-                                                onValueChange={(value) => {
-                                                    setPaymentMethod(value)
-                                                    if (value === 'loan' || value === 'installments') setIsPaid(false)
+                <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,2.5fr)_minmax(400px,0.9fr)]">
+                    <div className="space-y-5">
+                        <Card
+                            ref={customerInformationRef}
+                            tabIndex={-1}
+                            className={cn(
+                                'transition-[border-color,box-shadow] duration-200',
+                                isCustomerInformationHighlighted && 'border-destructive ring-2 ring-destructive/70 ring-offset-2 ring-offset-background motion-safe:animate-pulse'
+                            )}
+                        >
+                            <CardHeader>
+                                <CardTitle>{t('orders.form.customerInformation', { defaultValue: 'Customer Information' })}</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="grid gap-4">
+                                    <div className="grid gap-2">
+                                        <Label>{t('orders.form.customer', { defaultValue: 'Customer' })} <span className="text-destructive">*</span></Label>
+                                        <div className="flex flex-col gap-2 md:flex-row md:items-center" data-tour-id="tutorial-order-partner-picker">
+                                            <PartnerAutocompleteInput
+                                                value={customerSearch}
+                                                onChange={(value) => {
+                                                    setCustomerSearch(value)
+                                                    setCustomerId('')
                                                 }}
-                                                methods={[
-                                                    ...STANDARD_PAYMENT_METHODS,
-                                                    ...(hasFeature('loans') ? [ORDER_FINANCING_PAYMENT_METHODS[0]] : []),
-                                                    ...(hasFeature('installments') ? [ORDER_FINANCING_PAYMENT_METHODS[1]] : [])
-                                                ]}
-                                                onOptionPointerDown={(event, method) => {
-                                                    if (!(event.shiftKey || isAccessKeyHeld) || isMobile()) return
-                                                    if (prioritizedMethod === method) {
-                                                        setPrioritizedPaymentMethod(null)
-                                                        setPrioritizedMethod(null)
-                                                        setPaymentMethod('cash')
-                                                        return
-                                                    }
-                                                    setPrioritizedPaymentMethod(method)
-                                                    setPrioritizedMethod(method)
+                                                onSelectPartner={(partner: BusinessPartner) => {
+                                                    selectCustomerPartner(partner)
                                                 }}
-                                                renderOptionEnd={(method) => prioritizedMethod === method
-                                                    ? <Star className="ml-2 inline h-3 w-3 fill-yellow-400" />
-                                                    : null}
+                                                workspaceId={workspaceId}
+                                                roles={['customer']}
+                                                placeholder={t('orders.form.selectCustomer', { defaultValue: 'Select Customer' })}
                                             />
-                                        </div>
-                                        {!isFinanced ? <div className="flex items-center justify-between rounded-2xl border bg-muted/20 px-4 py-3" data-tour-id="tutorial-order-paid">
-                                            <div>
-                                                <div className="text-sm font-medium">{t('orders.form.paidOnSave', { defaultValue: 'Paid on save' })}</div>
-                                                <div className="text-xs text-muted-foreground">{t('orders.form.paidOnSaveDescription', { defaultValue: 'Mark the order as already settled.' })}</div>
-                                            </div>
-                                            <Switch
-                                                checked={isPaid}
-                                                onCheckedChange={setIsPaid}
-                                            />
-                                        </div> : null}
-                                        {isFinanced ? (
-                                            <div className="grid gap-4 rounded-2xl border p-4 sm:grid-cols-2">
-                                                {isInstallmentBased ? <><div className="space-y-2">
-                                                    <Label htmlFor="sales-installment-count">{t('orders.form.installmentCount', { defaultValue: 'Number of installments' })}</Label>
-                                                    <Input
-                                                        id="sales-installment-count"
-                                                        type="number"
-                                                        min="1"
-                                                        max="120"
-                                                        value={installmentCount}
-                                                        onChange={(event) => setInstallmentCount(event.target.value)}
-                                                    />
-                                                </div>
-                                                    <div className="space-y-2">
-                                                        <Label>{t('orders.form.installmentFrequency', { defaultValue: 'Frequency' })}</Label>
-                                                        <Select value={installmentFrequency} onValueChange={(value) => setInstallmentFrequency(value as InstallmentFrequency)}>
-                                                            <SelectTrigger><SelectValue /></SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="weekly">{t('orders.form.weekly', { defaultValue: 'Weekly' })}</SelectItem>
-                                                                <SelectItem value="biweekly">{t('orders.form.biweekly', { defaultValue: 'Every two weeks' })}</SelectItem>
-                                                                <SelectItem value="monthly">{t('orders.form.monthly', { defaultValue: 'Monthly' })}</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div></> : null}
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="sales-first-due">{isInstallmentBased
-                                                        ? t('orders.form.firstDueDate', { defaultValue: 'First due date' })
-                                                        : t('orders.form.dueDate', { defaultValue: 'Due date (optional)' })}</Label>
-                                                    <DateTimePicker
-                                                        id="sales-first-due"
-                                                        mode="date"
-                                                        date={parseLocalDateValue(firstDueDate)}
-                                                        setDate={(value) => setFirstDueDate(formatLocalDateValue(value))}
-                                                        placeholder={t('orders.form.firstDueDate', { defaultValue: 'First due date' })}
-                                                    />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="sales-initial-payment">{t('orders.form.initialPayment', { defaultValue: 'Initial payment' })}</Label>
-                                                    <Input
-                                                        id="sales-initial-payment"
-                                                        type="number"
-                                                        min="0"
-                                                        max={preview}
-                                                        step={ORDER_DECIMAL_STEP}
-                                                        value={initialPaymentAmount}
-                                                        onChange={(event) => setInitialPaymentAmount(event.target.value)}
-                                                    />
-                                                </div>
-                                                <div className="flex items-center justify-between text-sm sm:col-span-2">
-                                                    <span className="text-muted-foreground">{t('orders.form.financedBalance', { defaultValue: 'Financed balance' })}</span>
-                                                    <span className="font-semibold">
-                                                        {formatCurrency(Math.max(preview - initialPayment, 0), currency, features.iqd_display_preference)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        ) : null}
-                                    </CardContent>
-                                </Card>
-                                </PartnerRequiredSection>
-
-                                <PartnerRequiredSection
-                                    locked={isCustomerSelectionRequired}
-                                    unlockLabel={t('orders.form.selectBusinessPartnerToUnlock', { defaultValue: 'Select a business partner to unlock this section.' })}
-                                    onLockedInteraction={highlightCustomerInformation}
-                                >
-                                <Card
-                                    data-tour-id="tutorial-order-commercials"
-                                    className={cn(
-                                        'transition-[border-color,background-color] duration-200',
-                                        isCustomerSelectionRequired && 'border-destructive/70 bg-destructive/5'
-                                    )}
-                                >
-                                    <CardHeader className="flex-row items-center justify-between space-y-0">
-                                        <CardTitle>{t('orders.form.commercials', { defaultValue: 'Commercials' })}</CardTitle>
-                                        <div className="relative">
                                             <Button
                                                 type="button"
                                                 variant="outline"
-                                                size="icon"
-                                                className="h-10 w-10"
-                                                onClick={() => setIsOrderAdjustmentsOpen(true)}
-                                                aria-label={t('orders.adjustments.title', { defaultValue: 'Order Adjustments' })}
+                                                className="w-full shrink-0 gap-2 md:w-auto"
+                                                onClick={() => setIsCustomerPickerOpen(true)}
                                             >
-                                                <NotebookPen className="h-4.5 w-4.5" />
+                                                <Users className="h-4 w-4" />
+                                                {t('loans.selectParty', { defaultValue: 'Business Partner' })}
                                             </Button>
-                                            {orderAdjustments.length > 0 ? (
-                                                <Badge className="absolute -right-2 -top-2 h-5 min-w-5 justify-center px-1 text-[10px]">
-                                                    {orderAdjustments.length}
-                                                </Badge>
-                                            ) : null}
                                         </div>
-                                    </CardHeader>
-                                    <CardContent className="space-y-4">
-                                        <div className="grid gap-4 sm:grid-cols-2">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="sales-discount">- {t('orders.form.discount', { defaultValue: 'Discount' })}</Label>
-                                                <Input id="sales-discount" value={formatNumericInput(discount)} onChange={(event) => setDiscount(sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 3 }))} />
+                                        {customerId && selectedCustomer ? (
+                                            <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
+                                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                                    <div className="min-w-0">
+                                                        <div className="text-[11px] font-bold uppercase tracking-wide text-primary">
+                                                            {t('customers.title', { defaultValue: 'Customer' })}
+                                                        </div>
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <div className="text-sm font-semibold">{selectedCustomer.name}</div>
+                                                            <PartnerBalanceSummary
+                                                                compact
+                                                                partner={selectedCustomer}
+                                                                iqdPreference={features.iqd_display_preference}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 shrink-0 px-2 text-muted-foreground"
+                                                        onClick={() => {
+                                                            setCustomerId('')
+                                                            setCustomerSearch('')
+                                                        }}
+                                                    >
+                                                        <X className="h-4 w-4" />
+                                                        {t('loans.clearParty', { defaultValue: 'Clear Link' })}
+                                                    </Button>
+                                                </div>
                                             </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="sales-tax">+ {t('orders.form.tax', { defaultValue: 'Tax' })}</Label>
-                                                <Input id="sales-tax" value={formatNumericInput(tax)} onChange={(event) => setTax(sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 3 }))} />
-                                            </div>
-                                        </div>
-                                        <div className="rounded-2xl border bg-muted/30 p-4">
-                                            <div className="flex items-center justify-between text-sm">
-                                                <span>{t('orders.form.itemsConfigured', { defaultValue: 'Items configured' })}</span>
-                                                <span className="font-semibold">{configuredItemsCount}</span>
-                                            </div>
-                                            <div className="mt-2 flex items-center justify-between text-sm">
-                                                <span>{t('pos.paymentMethod', { defaultValue: 'Payment Method' })}</span>
-                                                <span className="font-medium capitalize">{paymentMethod}</span>
-                                            </div>
-                                            <div className="mt-2 flex items-center justify-between text-sm">
-                                                <span>{t('common.total', { defaultValue: 'Total' })}</span>
-                                                <span className="text-xl font-black">{formatCurrency(preview, currency, features.iqd_display_preference)}</span>
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                                </PartnerRequiredSection>
-                                <Card className="border-border/60 shadow-sm">
-                                    <CardHeader className="space-y-1">
-                                        <CardTitle className="text-xl">{t('common.actions') || 'Actions'}</CardTitle>
+                                        ) : null}
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label className="flex items-center gap-2">
+                                            <Truck className="h-4 w-4 text-muted-foreground" />
+                                            {t('orders.form.shippingAddress', { defaultValue: 'Shipping Address' })}
+                                        </Label>
+                                        <Textarea
+                                            rows={3}
+                                            value={shippingAddress}
+                                            onChange={(event) => setShippingAddress(event.target.value)}
+                                            placeholder={t('orders.form.shippingPlaceholder', { defaultValue: 'Enter shipping address...' })}
+                                        />
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                        <LoanPartyPickerDialog
+                            isOpen={isCustomerPickerOpen}
+                            onOpenChange={setIsCustomerPickerOpen}
+                            workspaceId={workspaceId}
+                            roles={['customer']}
+                            selectedPartyId={customerId}
+                            onSelect={(selection) => {
+                                if (selection.linkedPartyId) {
+                                    const partner = customerPartners.find((entry) => entry.id === selection.linkedPartyId)
+                                    if (partner) {
+                                        selectCustomerPartner(partner)
+                                    } else {
+                                        selectCustomerPartner({
+                                            id: selection.linkedPartyId,
+                                            name: selection.linkedPartyName || '',
+                                            defaultCurrency: selection.defaultCurrency,
+                                            priceBookId: null
+                                        })
+                                    }
+                                }
+                                setIsCustomerPickerOpen(false)
+                            }}
+                        />
+
+                        <PartnerRequiredSection
+                            locked={isCustomerSelectionRequired}
+                            unlockLabel={t('orders.form.selectBusinessPartnerToUnlock', { defaultValue: 'Select a business partner to unlock this section.' })}
+                            onLockedInteraction={highlightCustomerInformation}
+                        >
+                            <Card className={cn(
+                                'transition-[border-color,background-color] duration-200',
+                                isCustomerSelectionRequired && 'border-destructive/70 bg-destructive/5'
+                            )}>
+                                <CardHeader className="flex flex-col items-start justify-between gap-4 space-y-0 sm:flex-row">
+                                    <div className="space-y-1">
+                                        <CardTitle>{t('orders.form.lineItems', { defaultValue: 'Line Items' })}</CardTitle>
                                         <p className="text-sm text-muted-foreground">
-                                            {t('orders.form.saveHint', { defaultValue: 'Review the order details, then save or cancel.' })}
+                                            {t('orders.form.lineItemsDescription', { defaultValue: 'Add products with quantities and prices.' })}
                                         </p>
-                                    </CardHeader>
-                                    <CardContent className="space-y-3">
-                                        <Button type="submit" className="h-12 w-full rounded-xl font-black" disabled={!canSubmit || isSaving} data-tour-id="tutorial-order-save">
-                                            {isSaving
-                                                ? (t('common.loading') || 'Loading...')
-                                                : requiresApprovalRequest
-                                                    ? (editingOrderId
-                                                        ? t('orders.form.sendUpdateRequest', { defaultValue: 'Send Update Request' })
-                                                        : t('orders.form.sendRequest', { defaultValue: 'Send Request' }))
-                                                    : (editingOrderId ? (t('common.save') || 'Save') : (t('orders.form.saveOrder', { defaultValue: 'Save Order' })))}
+                                    </div>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => setItems((current) => {
+                                        const nextSeq = current.reduce((max, it) => Math.max(max, it.seq), 0) + 1
+                                        setHighlightedNewSeq(nextSeq)
+                                        return [createEmptyItem(current[current.length - 1]?.storageId || sourceStorageId || defaultStorageId, nextSeq), ...current]
+                                    })}>
+                                        <Plus className="mr-1 h-3.5 w-3.5" />
+                                        {t('orders.form.addItem', { defaultValue: 'Add Item' })}
+                                    </Button>
+                                </CardHeader>
+                                <CardContent className="space-y-3">
+                                    {items.map((item, index) => {
+                                        const product = products.find((entry) => entry.id === item.productId)
+                                        const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))
+                                        const costPrice = product ? getItemCostDetails(item, product).convertedCostPrice : 0
+                                        const isSellingAtLoss = isItemSellingAtLoss(item, product)
+                                        const freeBonusQuantity = Math.max(0, Number(item.freeBonusQuantity || 0))
+                                        const inventoryQuantity = (Number(item.quantity) || 0) + (canUseFreeBonus ? freeBonusQuantity : 0)
+                                        const lineBatches = getBatchesForPosition(item.productId, item.storageId)
+                                        const selectedBatch = item.batchId && item.batchId !== PRODUCT_STOCK_SELECTION
+                                            ? stockBatchesById.get(item.batchId)
+                                            : null
+                                        const batchSelectionValue = item.batchId || PRODUCT_STOCK_SELECTION
+                                        const regularStockQuantity = getRegularStockQuantity(item.productId, item.storageId)
+                                        const selectedSourceQuantity = selectedBatch?.quantity ?? regularStockQuantity
+                                        const selectedSourceExceeded = Boolean(item.productId && item.storageId && inventoryQuantity > selectedSourceQuantity)
+                                        const canOpenProductsView = Boolean(item.storageId)
+                                            && !(priceBooksEnabled && (!isPriceBookCatalogReady || !selectedCustomer))
+
+                                        return (
+                                            <div
+                                                key={`sales-item-${index}`}
+                                                className={cn(
+                                                    'relative grid gap-3 rounded-2xl border bg-background p-4 transition-all duration-700',
+                                                    canUseFreeBonus
+                                                        ? 'md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(80px,0.55fr)_minmax(80px,0.55fr)_minmax(108px,0.8fr)_minmax(72px,0.18fr)]'
+                                                        : 'md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(80px,0.55fr)_minmax(108px,0.8fr)_minmax(72px,0.18fr)]',
+                                                    isSellingAtLoss && 'border-destructive bg-destructive/5',
+                                                    item.seq === highlightedNewSeq && 'border-primary ring-2 ring-primary/60 bg-primary/5'
+                                                )}
+                                            >
+                                                <span className="absolute -top-2 start-3 z-10 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground">
+                                                    {item.seq}
+                                                </span>
+                                                <div
+                                                    className="space-y-2"
+                                                    data-tour-id={index === 0 ? 'tutorial-order-product-picker' : undefined}
+                                                    data-demo-product-linked={item.productId ? 'true' : 'false'}
+                                                >
+                                                    <Label className="flex min-w-0 items-center gap-2">
+                                                        <span className="truncate">{t('orders.form.selectProduct', { defaultValue: 'Select Product' })}</span>
+                                                        {item.productId ? (
+                                                            selectedBatch ? (
+                                                                <TooltipProvider delayDuration={150}>
+                                                                    <Tooltip>
+                                                                        <TooltipTrigger asChild>
+                                                                            <span tabIndex={0} className="inline-flex max-w-40 cursor-help items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] font-medium text-green-600 outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-green-400">
+                                                                                <Check className="h-3 w-3 shrink-0" />
+                                                                                <span className="truncate">{selectedBatch.batchNumber}</span>
+                                                                            </span>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent side="top" align="start" className="max-w-xs break-words text-xs">
+                                                                            {t('orders.form.batch', { defaultValue: 'Batch' })}: {selectedBatch.batchNumber}
+                                                                        </TooltipContent>
+                                                                    </Tooltip>
+                                                                </TooltipProvider>
+                                                            ) : (
+                                                                <span className="inline-flex max-w-28 items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] font-medium text-green-600 dark:text-green-400">
+                                                                    <Check className="h-3 w-3 shrink-0" />
+                                                                    <span className="truncate">{t('orders.form.productStock', { defaultValue: 'Product stock' })}</span>
+                                                                </span>
+                                                            )
+                                                        ) : null}
+                                                    </Label>
+                                                    <div className="flex items-center">
+                                                        {canOpenProductsView ? (
+                                                            <ProductsViewModalTrigger
+                                                                label={t('products.title', { defaultValue: 'Browse products' })}
+                                                                onClick={() => setProductsViewItemIndex(index)}
+                                                            />
+                                                        ) : null}
+                                                        <ProductAutocompleteInput
+                                                            className="min-w-0 flex-1"
+                                                            inputClassName={canOpenProductsView ? 'rounded-s-none' : undefined}
+                                                            value={item.productSearch}
+                                                            onChange={(value) => updateItem(index, { productSearch: value, productId: '' })}
+                                                            onSelectProduct={(product) => {
+                                                                if (!hasValidProductCost(product.costPrice)) {
+                                                                    toast({
+                                                                        title: t('common.error') || 'Error',
+                                                                        description: getMissingProductCostMessage(product.name),
+                                                                        variant: 'destructive'
+                                                                    })
+                                                                    return
+                                                                }
+                                                                if (hasMissingPartnerPriceBookCost(selectedCustomer, product.id)) {
+                                                                    toast({
+                                                                        title: t('common.error') || 'Error',
+                                                                        description: getMissingPriceBookCostMessage(product.name, getPartnerPriceBookName(selectedCustomer)),
+                                                                        variant: 'destructive'
+                                                                    })
+                                                                    return
+                                                                }
+                                                                updateItem(index, { productId: product.id, productSearch: product.name })
+                                                            }}
+                                                            products={getSalesProductOptions(item.storageId, item.productId)}
+                                                            disabled={priceBooksEnabled && (!isPriceBookCatalogReady || !selectedCustomer)}
+                                                            placeholder={priceBooksEnabled && !selectedCustomer
+                                                                ? t('priceBooks.selectPartnerFirst', { defaultValue: 'Select a business partner first' })
+                                                                : priceBooksEnabled && priceBookCatalogError
+                                                                    ? t('priceBooks.loadingErrorShort', { defaultValue: 'Price Books unavailable - retrying...' })
+                                                                    : t('orders.form.selectProduct', { defaultValue: 'Select Product' })}
+                                                            hasSelection={!!item.productId}
+                                                            showLinkedIndicator={false}
+                                                            storageMissing={!item.storageId}
+                                                            storageMissingLabel={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}
+                                                            onStorageMissingClick={() => handleStorageMissing(index)}
+                                                        />
+                                                    </div>
+                                                    {item.productId && item.storageId ? (
+                                                        <div className="space-y-1.5 pt-1">
+                                                            <Label className="text-xs">{t('orders.form.stockSource', { defaultValue: 'Stock source' })}</Label>
+                                                            <Select value={batchSelectionValue} onValueChange={(value) => updateItem(index, { batchId: value })}>
+                                                                <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value={PRODUCT_STOCK_SELECTION} disabled={regularStockQuantity <= 0 && lineBatches.length > 0}>
+                                                                        {t('orders.form.productStock', { defaultValue: 'Product stock' })} · {regularStockQuantity} {t('orders.form.available', { defaultValue: 'available' })}
+                                                                    </SelectItem>
+                                                                    {lineBatches.map((batch) => (
+                                                                        <SelectItem key={batch.id} value={batch.id}>
+                                                                            {t('orders.form.batch', { defaultValue: 'Batch' })} {batch.batchNumber} · {batch.quantity} · {formatCurrency(
+                                                                                convertCurrencyAmountWithLiveRates(batch.price, batch.currency, currency, liveRates),
+                                                                                currency,
+                                                                                features.iqd_display_preference
+                                                                            )}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                            <p className={cn('text-xs', selectedSourceExceeded ? 'text-destructive' : 'text-muted-foreground')}>
+                                                                {selectedBatch
+                                                                    ? `${t('orders.form.batch', { defaultValue: 'Batch' })} ${selectedBatch.batchNumber}: ${selectedBatch.quantity} ${t('orders.form.available', { defaultValue: 'available' })}`
+                                                                    : `${t('orders.form.productStock', { defaultValue: 'Product stock' })}: ${regularStockQuantity} ${t('orders.form.available', { defaultValue: 'available' })}`}
+                                                                {selectedSourceExceeded ? ` — ${t('orders.form.errors.batchQuantityExceeded', {
+                                                                    productName: product?.name || '',
+                                                                    defaultValue: 'Selected source does not have enough stock.'
+                                                                })}` : ''}
+                                                            </p>
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                                <div id={`sales-storage-${index}`} className={cn('space-y-2', highlightedStorageIndex === index && 'animate-pulse')} data-tour-id={index === 0 ? 'tutorial-order-storage' : undefined}>
+                                                    <Label className={cn(highlightedStorageIndex === index && 'text-destructive font-bold')}>{t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}</Label>
+                                                    <Select value={item.storageId} onValueChange={(value) => { setHighlightedStorageIndex(null); updateItem(index, { storageId: value }) }}>
+                                                        <SelectTrigger className={cn(highlightedStorageIndex === index && 'ring-2 ring-destructive')}><SelectValue placeholder={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })} /></SelectTrigger>
+                                                        <SelectContent>
+                                                            {storages.map((storage) => (
+                                                                <SelectItem key={storage.id} value={storage.id}>
+                                                                    {storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {item.storageId && item.productId
+                                                            ? t('orders.form.availableQuantity', {
+                                                                quantity: getAvailableQuantity(item.productId, item.storageId),
+                                                                defaultValue: `Available: ${getAvailableQuantity(item.productId, item.storageId)}`
+                                                            })
+                                                            : t('orders.form.chooseSourceStorageForLine', { defaultValue: 'Choose a source storage for this line.' })}
+                                                    </p>
+                                                </div>
+                                                <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-quantity' : undefined}>
+                                                    <Label>{t('common.quantity', { defaultValue: 'Quantity' })}</Label>
+                                                    <div className="flex items-center gap-1">
+                                                        <Input type="number" min={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : "1"} step={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : "1"} value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} placeholder={t('common.quantity', { defaultValue: 'Quantity' })} />
+                                                        {product?.unit && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${product.unit}`, product.unit)}</span>}
+                                                    </div>
+                                                </div>
+                                                {canUseFreeBonus ? (
+                                                    <div className="space-y-2">
+                                                        <Label>{t('orders.form.freeBonus', { defaultValue: 'Free Bonus' })}</Label>
+                                                        <div className="flex items-center gap-1">
+                                                            <Input
+                                                                type="number"
+                                                                min="0"
+                                                                step={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : '1'}
+                                                                value={item.freeBonusQuantity}
+                                                                onChange={(event) => updateItem(index, { freeBonusQuantity: event.target.value })}
+                                                                placeholder={t('orders.form.freeBonus', { defaultValue: 'Free Bonus' })}
+                                                            />
+                                                            {(item.freeBonusUnit || product?.unit) && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${item.freeBonusUnit || product.unit}`, item.freeBonusUnit || product.unit)}</span>}
+                                                        </div>
+                                                        {isAccessKeyHeld ? (
+                                                            <FreeBonusUnitSelect
+                                                                value={item.freeBonusUnit}
+                                                                productUnit={product?.unit}
+                                                                onValueChange={(value) => updateItem(index, { freeBonusUnit: value })}
+                                                            />
+                                                        ) : null}
+                                                    </div>
+                                                ) : null}
+                                                <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-unit-price' : undefined}>
+                                                    <Label>{t('common.sellingPrice', { defaultValue: 'Selling Price' })}</Label>
+                                                    <Input value={formatNumericInput(item.unitPrice)} onChange={(event) => updateItem(index, { unitPrice: sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 3 }) })} placeholder={t('common.sellingPrice', { defaultValue: 'Selling Price' })} />
+                                                    {!hideCosts && isSellingAtLoss ? (
+                                                        <div role="alert" className="flex items-start gap-1.5 text-xs text-destructive">
+                                                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                                            <span>
+                                                                {t('orders.form.sellingBelowCost', { defaultValue: 'Selling below cost' })}
+                                                                <br />
+                                                                {t('orders.form.costPrice', { defaultValue: 'Cost Price' })}: {formatCurrency(costPrice, currency, features.iqd_display_preference)}
+                                                            </span>
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                                <div className="flex items-start justify-end gap-1" data-tour-id={index === 0 ? 'tutorial-order-line-actions' : undefined}>
+                                                    <OrderLineItemNoteDialog
+                                                        note={item.note}
+                                                        onSave={(note) => updateItem(index, { note })}
+                                                        labels={{
+                                                            trigger: t('orders.form.lineItemNote', { defaultValue: 'Line item note' }),
+                                                            title: t('orders.form.lineItemNote', { defaultValue: 'Line item note' }),
+                                                            description: t('orders.form.lineItemNoteDescription', { defaultValue: 'Add a note that will be saved with this line item.' }),
+                                                            field: t('common.note', { defaultValue: 'Note' }),
+                                                            save: t('common.save', { defaultValue: 'Save' }),
+                                                            cancel: t('common.cancel', { defaultValue: 'Cancel' })
+                                                        }}
+                                                    />
+                                                    <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                                <div className={cn('flex items-center justify-between text-xs text-muted-foreground', canUseFreeBonus ? 'md:col-span-6' : 'md:col-span-5')}>
+                                                    <span>{product?.sku ? `SKU: ${product.sku}` : '\u00A0'}</span>
+                                                    <span>
+                                                        {canUseFreeBonus && freeBonusQuantity > 0
+                                                            ? `${t('orders.form.inventoryQuantity', { defaultValue: 'Inventory Qty' })}: ${inventoryQuantity} - `
+                                                            : ''}
+                                                        {(t('orders.form.table.total', { defaultValue: 'Total' }))}: {formatCurrency(lineTotal, currency, features.iqd_display_preference)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </CardContent>
+                            </Card>
+                        </PartnerRequiredSection>
+
+                        <PartnerRequiredSection
+                            locked={isCustomerSelectionRequired}
+                            unlockLabel={t('orders.form.selectBusinessPartnerToUnlock', { defaultValue: 'Select a business partner to unlock this section.' })}
+                            onLockedInteraction={highlightCustomerInformation}
+                        >
+                            <Card
+                                data-tour-id="tutorial-order-notes"
+                                className={cn(
+                                    'transition-[border-color,background-color] duration-200',
+                                    isCustomerSelectionRequired && 'border-destructive/70 bg-destructive/5'
+                                )}
+                            >
+                                <CardHeader>
+                                    <CardTitle>{t('orders.form.notes', { defaultValue: 'Notes' })}</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <Textarea
+                                        rows={4}
+                                        value={notes}
+                                        onChange={(event) => setNotes(event.target.value)}
+                                        placeholder={t('orders.form.notesPlaceholder', { defaultValue: 'Order notes, special instructions...' })}
+                                    />
+                                </CardContent>
+                            </Card>
+                        </PartnerRequiredSection>
+                    </div>
+
+                    <div className="space-y-5">
+                        <PartnerRequiredSection
+                            locked={isCustomerSelectionRequired}
+                            unlockLabel={t('orders.form.selectBusinessPartnerToUnlock', { defaultValue: 'Select a business partner to unlock this section.' })}
+                            onLockedInteraction={highlightCustomerInformation}
+                        >
+                            <Card className={cn(
+                                'transition-[border-color,background-color] duration-200',
+                                isCustomerSelectionRequired && 'border-destructive/70 bg-destructive/5'
+                            )}>
+                                <CardHeader>
+                                    <CardTitle>{t('orders.form.orderDetails', { defaultValue: 'Order Details' })}</CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <div className="space-y-2" data-tour-id="tutorial-order-date">
+                                            <Label htmlFor="sales-delivery" className="flex items-center gap-2">
+                                                <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                                                {t('orders.form.expectedDelivery', { defaultValue: 'Expected Delivery' })}
+                                            </Label>
+                                            <DateTimePicker
+                                                id="sales-delivery"
+                                                mode="date-time"
+                                                date={parseLocalDateTimeValue(expectedDeliveryDate)}
+                                                setDate={(value) => setExpectedDeliveryDate(value ? formatLocalDateTimeValue(value) : '')}
+                                                placeholder={t('orders.form.expectedDelivery', { defaultValue: 'Expected Delivery' })}
+                                            />
+                                        </div>
+                                        {canEditOrderCreation ? (
+                                            <div className="space-y-2">
+                                                <Label htmlFor="sales-order-creation" className="flex items-center gap-2">
+                                                    <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                                                    {t('orders.form.orderCreation', { defaultValue: 'Order Creation' })}
+                                                </Label>
+                                                <DateTimePicker
+                                                    id="sales-order-creation"
+                                                    mode="date-time"
+                                                    date={parseLocalDateTimeValue(orderCreationDate)}
+                                                    open={isOrderCreationPickerOpen}
+                                                    onOpenChange={setIsOrderCreationPickerOpen}
+                                                    setDate={(value) => {
+                                                        if (value) setOrderCreationDate(value.toISOString())
+                                                    }}
+                                                    placeholder={t('orders.form.orderCreation', { defaultValue: 'Order Creation' })}
+                                                />
+                                            </div>
+                                        ) : null}
+                                        <div className="space-y-2" data-tour-id="tutorial-order-currency">
+                                            <CurrencySelector
+                                                value={currency}
+                                                onChange={changeOrderCurrency}
+                                                label={t('orders.form.currency', { defaultValue: 'Currency' })}
+                                                iqdDisplayPreference={features.iqd_display_preference}
+                                                allowedCurrencies={Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2" data-tour-id="tutorial-order-payment">
+                                        <Label htmlFor="sales-payment" className="flex items-center gap-2">
+                                            <CreditCard className="h-4 w-4 text-muted-foreground" />
+                                            {t('pos.paymentMethod', { defaultValue: 'Payment Method' })}
+                                        </Label>
+                                        <PaymentMethodSelect
+                                            id="sales-payment"
+                                            value={paymentMethod as PaymentMethodOption}
+                                            onValueChange={(value) => {
+                                                setPaymentMethod(value)
+                                                if (value === 'loan' || value === 'installments') setIsPaid(false)
+                                            }}
+                                            methods={[
+                                                ...STANDARD_PAYMENT_METHODS,
+                                                ...(hasFeature('loans') ? [ORDER_FINANCING_PAYMENT_METHODS[0]] : []),
+                                                ...(hasFeature('installments') ? [ORDER_FINANCING_PAYMENT_METHODS[1]] : [])
+                                            ]}
+                                            onOptionPointerDown={(event, method) => {
+                                                if (!(event.shiftKey || isAccessKeyHeld) || isMobile()) return
+                                                if (prioritizedMethod === method) {
+                                                    setPrioritizedPaymentMethod(null)
+                                                    setPrioritizedMethod(null)
+                                                    setPaymentMethod('cash')
+                                                    return
+                                                }
+                                                setPrioritizedPaymentMethod(method)
+                                                setPrioritizedMethod(method)
+                                            }}
+                                            renderOptionEnd={(method) => prioritizedMethod === method
+                                                ? <Star className="ml-2 inline h-3 w-3 fill-yellow-400" />
+                                                : null}
+                                        />
+                                    </div>
+                                    {!isFinanced ? <div className="flex items-center justify-between rounded-2xl border bg-muted/20 px-4 py-3" data-tour-id="tutorial-order-paid">
+                                        <div>
+                                            <div className="text-sm font-medium">{t('orders.form.paidOnSave', { defaultValue: 'Paid on save' })}</div>
+                                            <div className="text-xs text-muted-foreground">{t('orders.form.paidOnSaveDescription', { defaultValue: 'Mark the order as already settled.' })}</div>
+                                        </div>
+                                        <Switch
+                                            checked={isPaid}
+                                            onCheckedChange={setIsPaid}
+                                        />
+                                    </div> : null}
+                                    {isFinanced ? (
+                                        <div className="grid gap-4 rounded-2xl border p-4 sm:grid-cols-2">
+                                            {isInstallmentBased ? <><div className="space-y-2">
+                                                <Label htmlFor="sales-installment-count">{t('orders.form.installmentCount', { defaultValue: 'Number of installments' })}</Label>
+                                                <Input
+                                                    id="sales-installment-count"
+                                                    type="number"
+                                                    min="1"
+                                                    max="120"
+                                                    value={installmentCount}
+                                                    onChange={(event) => setInstallmentCount(event.target.value)}
+                                                />
+                                            </div>
+                                                <div className="space-y-2">
+                                                    <Label>{t('orders.form.installmentFrequency', { defaultValue: 'Frequency' })}</Label>
+                                                    <Select value={installmentFrequency} onValueChange={(value) => setInstallmentFrequency(value as InstallmentFrequency)}>
+                                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="weekly">{t('orders.form.weekly', { defaultValue: 'Weekly' })}</SelectItem>
+                                                            <SelectItem value="biweekly">{t('orders.form.biweekly', { defaultValue: 'Every two weeks' })}</SelectItem>
+                                                            <SelectItem value="monthly">{t('orders.form.monthly', { defaultValue: 'Monthly' })}</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div></> : null}
+                                            <div className="space-y-2">
+                                                <Label htmlFor="sales-first-due">{isInstallmentBased
+                                                    ? t('orders.form.firstDueDate', { defaultValue: 'First due date' })
+                                                    : t('orders.form.dueDate', { defaultValue: 'Due date (optional)' })}</Label>
+                                                <DateTimePicker
+                                                    id="sales-first-due"
+                                                    mode="date"
+                                                    date={parseLocalDateValue(firstDueDate)}
+                                                    setDate={(value) => setFirstDueDate(formatLocalDateValue(value))}
+                                                    placeholder={t('orders.form.firstDueDate', { defaultValue: 'First due date' })}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="sales-initial-payment">{t('orders.form.initialPayment', { defaultValue: 'Initial payment' })}</Label>
+                                                <Input
+                                                    id="sales-initial-payment"
+                                                    type="number"
+                                                    min="0"
+                                                    max={preview}
+                                                    step={ORDER_DECIMAL_STEP}
+                                                    value={initialPaymentAmount}
+                                                    onChange={(event) => setInitialPaymentAmount(event.target.value)}
+                                                />
+                                            </div>
+                                            <div className="flex items-center justify-between text-sm sm:col-span-2">
+                                                <span className="text-muted-foreground">{t('orders.form.financedBalance', { defaultValue: 'Financed balance' })}</span>
+                                                <span className="font-semibold">
+                                                    {formatCurrency(Math.max(preview - initialPayment, 0), currency, features.iqd_display_preference)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ) : null}
+                                </CardContent>
+                            </Card>
+                        </PartnerRequiredSection>
+
+                        <PartnerRequiredSection
+                            locked={isCustomerSelectionRequired}
+                            unlockLabel={t('orders.form.selectBusinessPartnerToUnlock', { defaultValue: 'Select a business partner to unlock this section.' })}
+                            onLockedInteraction={highlightCustomerInformation}
+                        >
+                            <Card
+                                data-tour-id="tutorial-order-commercials"
+                                className={cn(
+                                    'transition-[border-color,background-color] duration-200',
+                                    isCustomerSelectionRequired && 'border-destructive/70 bg-destructive/5'
+                                )}
+                            >
+                                <CardHeader className="flex-row items-center justify-between space-y-0">
+                                    <CardTitle>{t('orders.form.commercials', { defaultValue: 'Commercials' })}</CardTitle>
+                                    <div className="relative">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="icon"
+                                            className="h-10 w-10"
+                                            onClick={() => setIsOrderAdjustmentsOpen(true)}
+                                            aria-label={t('orders.adjustments.title', { defaultValue: 'Order Adjustments' })}
+                                        >
+                                            <NotebookPen className="h-4.5 w-4.5" />
                                         </Button>
-                                        <Button type="button" variant="outline" className="h-12 w-full rounded-xl" onClick={onCancel} disabled={isSaving}>
-                                            {t('common.cancel') || 'Cancel'}
-                                        </Button>
-                                    </CardContent>
-                                </Card>
-                            </div>
-                        </div>
-                    </form>
+                                        {orderAdjustments.length > 0 ? (
+                                            <Badge className="absolute -right-2 -top-2 h-5 min-w-5 justify-center px-1 text-[10px]">
+                                                {orderAdjustments.length}
+                                            </Badge>
+                                        ) : null}
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="sales-discount">- {t('orders.form.discount', { defaultValue: 'Discount' })}</Label>
+                                            <Input id="sales-discount" value={formatNumericInput(discount)} onChange={(event) => setDiscount(sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 3 }))} />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="sales-tax">+ {t('orders.form.tax', { defaultValue: 'Tax' })}</Label>
+                                            <Input id="sales-tax" value={formatNumericInput(tax)} onChange={(event) => setTax(sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 3 }))} />
+                                        </div>
+                                    </div>
+                                    <div className="rounded-2xl border bg-muted/30 p-4">
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span>{t('orders.form.itemsConfigured', { defaultValue: 'Items configured' })}</span>
+                                            <span className="font-semibold">{configuredItemsCount}</span>
+                                        </div>
+                                        <div className="mt-2 flex items-center justify-between text-sm">
+                                            <span>{t('pos.paymentMethod', { defaultValue: 'Payment Method' })}</span>
+                                            <span className="font-medium capitalize">{paymentMethod}</span>
+                                        </div>
+                                        <div className="mt-2 flex items-center justify-between text-sm">
+                                            <span>{t('common.total', { defaultValue: 'Total' })}</span>
+                                            <span className="text-xl font-black">{formatCurrency(preview, currency, features.iqd_display_preference)}</span>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </PartnerRequiredSection>
+                        <Card className="border-border/60 shadow-sm">
+                            <CardHeader className="space-y-1">
+                                <CardTitle className="text-xl">{t('common.actions') || 'Actions'}</CardTitle>
+                                <p className="text-sm text-muted-foreground">
+                                    {t('orders.form.saveHint', { defaultValue: 'Review the order details, then save or cancel.' })}
+                                </p>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                <Button type="submit" className="h-12 w-full rounded-xl font-black" disabled={!canSubmit || isSaving} data-tour-id="tutorial-order-save">
+                                    {isSaving
+                                        ? (t('common.loading') || 'Loading...')
+                                        : requiresApprovalRequest
+                                            ? (editingOrderId
+                                                ? t('orders.form.sendUpdateRequest', { defaultValue: 'Send Update Request' })
+                                                : t('orders.form.sendRequest', { defaultValue: 'Send Request' }))
+                                            : (editingOrderId ? (t('common.save') || 'Save') : (t('orders.form.saveOrder', { defaultValue: 'Save Order' })))}
+                                </Button>
+                                <Button type="button" variant="outline" className="h-12 w-full rounded-xl" onClick={onCancel} disabled={isSaving}>
+                                    {t('common.cancel') || 'Cancel'}
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    </div>
+                </div>
+            </form>
             <OrderAdjustmentsDialog
                 open={isOrderAdjustmentsOpen}
                 onOpenChange={setIsOrderAdjustmentsOpen}
@@ -1687,6 +1700,6 @@ export function SalesOrderFormPage({
                     setProductsViewItemIndex(null)
                 }}
             />
-                </div>
-            )
+        </div>
+    )
 }

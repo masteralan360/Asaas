@@ -168,7 +168,23 @@ function formatOrderLineUnit(
     return unit ? t(`products.units.${unit}`, { defaultValue: unit }) : ''
 }
 
-function buildOrderItemRows(items: Array<{ id: string; productId: string; productName: string; productSku?: string | null; quantity: number; freeBonusQuantity?: number | null; convertedUnitPrice: number; lineTotal: number; unit?: string | null }>, rowCount: number) {
+function getOrderLineFreeBonusUnit(
+    item: { productId: string; unit?: string | null; freeBonusUnit?: string | null },
+    productUnits?: Record<string, string | null | undefined>
+) {
+    return item.freeBonusUnit?.trim() || getOrderLineUnit(item, productUnits)
+}
+
+function formatOrderLineFreeBonusUnit(
+    t: TFunction<'translation', undefined>,
+    item: { productId: string; unit?: string | null; freeBonusUnit?: string | null },
+    productUnits?: Record<string, string | null | undefined>
+) {
+    const unit = getOrderLineFreeBonusUnit(item, productUnits)
+    return unit ? t(`products.units.${unit}`, { defaultValue: unit }) : ''
+}
+
+function buildOrderItemRows(items: Array<{ id: string; productId: string; productName: string; productSku?: string | null; quantity: number; freeBonusQuantity?: number | null; freeBonusUnit?: string | null; convertedUnitPrice: number; lineTotal: number; unit?: string | null }>, rowCount: number) {
     const overflowItems = items.slice(rowCount - 1)
     return Array.from({ length: rowCount }, (_, index) => {
         if (index < rowCount - 1) return items[index] || null
@@ -721,6 +737,7 @@ export function OrderReceiptPrintTemplate({
                                 const quantity = getOrderLinePaidQuantity(item)
                                 const freeBonus = getOrderLineFreeBonusQuantity(item)
                                 const unit = formatOrderLineUnit(t, item, productUnits)
+                                const freeBonusUnit = formatOrderLineFreeBonusUnit(t, item, productUnits)
                                 return (
                                     <tr key={item.id}>
                                         <td className="py-3 align-top text-start">
@@ -728,7 +745,7 @@ export function OrderReceiptPrintTemplate({
                                             {item.productSku ? <div className="mt-0.5 break-all font-mono text-[10px] text-black" style={{ opacity: labelOpacity / 100 }}>{item.productSku}</div> : null}
                                             {showFreeBonus && freeBonus > 0 ? (
                                                 <div className="mt-0.5 text-[10px] text-black" style={{ opacity: labelOpacity / 100 }}>
-                                                    {t('orders.details.freeBonus', { defaultValue: 'Free bonus' })}: {freeBonus}{!hideUnit && unit ? ` ${unit}` : ''}
+                                                    {t('orders.details.freeBonus', { defaultValue: 'Free bonus' })}: {freeBonus}{!hideUnit && freeBonusUnit ? ` ${freeBonusUnit}` : ''}
                                                 </div>
                                             ) : null}
                                         </td>
@@ -1094,6 +1111,7 @@ export function OrderDetailsPrintTemplate({
                         </tr>
                     ) : itemRows.map((item, index) => {
                         const unit = item ? formatOrderLineUnit(t, item, productUnits) : ''
+                        const freeBonusUnit = item ? formatOrderLineFreeBonusUnit(t, item, productUnits) : ''
                         return (
                             <tr key={item?.id || `empty-${index}`} className="h-9">
                                 <td className="border border-slate-300 p-2 font-medium">{item?.productName || '\u00A0'}</td>
@@ -1105,7 +1123,7 @@ export function OrderDetailsPrintTemplate({
                                 </td>
                                 {showFreeBonus ? (
                                     <td className="border border-slate-300 p-2 text-end">
-                                        {item ? `${getOrderLineFreeBonusQuantity(item)}${!hideUnit && unit ? ` ${unit}` : ''}` : '\u00A0'}
+                                        {item ? `${getOrderLineFreeBonusQuantity(item)}${!hideUnit && freeBonusUnit ? ` ${freeBonusUnit}` : ''}` : '\u00A0'}
                                     </td>
                                 ) : null}
                                 <td className="border border-slate-300 p-2 text-end">{item ? formatCurrency(item.convertedUnitPrice, currency, iqdPreference) : '\u00A0'}</td>

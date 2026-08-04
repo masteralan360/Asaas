@@ -900,6 +900,7 @@
       "m²": "m²",
       "Kg": "Kg",
       "Meter": "Meter",
+      "ton": "ton",
       "activity": "activity"
     },
     "view": {
@@ -1935,6 +1936,8 @@
       "chooseTargetStorageForLine": "Choose a target storage for this line.",
       "completionHint": "Completing this order will add stock to {{storageName}}.",
       "freeBonus": "Free Bonus",
+      "freeBonusDisplayUnit": "Free bonus display unit",
+      "freeBonusDisplayUnitHint": "Display only - how the free bonus appears in this order. The saved unit stays the product unit.",
       "inventoryQuantity": "Inventory Qty",
       "stockSource": "Stock source",
       "productStock": "Product stock",

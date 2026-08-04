@@ -129,7 +129,8 @@ export const ATLAS_STANDARD_ORDER_FIELD_ORDER_KEYS = {
 } as const
 
 export const ATLAS_STANDARD_ORDER_TABLE_SETTING_KEYS = {
-    productImageWidth: 'atlasStandard.table.productImage.width'
+    productImageWidth: 'atlasStandard.table.productImage.width',
+    productKgTotal: 'atlasStandard.table.productKgTotal'
 } as const
 
 type TableColumn = {
@@ -153,6 +154,11 @@ function getProductImageColumnWidth(value?: string) {
 
 function getProductImageSizeMm(columnWidth: number) {
     return Math.min(16, Math.max(7, Number((7 + (columnWidth - DEFAULT_PRODUCT_IMAGE_COLUMN_WIDTH) * 1.1).toFixed(1))))
+}
+
+function getProductNameWeightKg(productName?: string | null) {
+    const match = (productName || '').trim().match(/(\d+(?:\.\d+)?)\s*kg/i)
+    return match ? Number(match[1]) : 0
 }
 
 function ImageColumnWidthControl({
@@ -305,7 +311,7 @@ const ATLAS_STANDARD_LABELS = {
         customer: 'Customer', supplier: 'Supplier', invoice: 'Invoice', salesOrder: 'Sales Order', purchaseOrder: 'Purchase Order', number: 'No.', phone: 'Phone', salesPerson: 'Cashier', partnerAddress: "Partner's Address", status: 'Status', documentNumber: 'Document No.', invoiceDate: 'Inv. date', time: 'Time',
         productName: 'Product Name', expiry: 'EXP', batchNumber: 'Batch No.', quantity: 'Qty', freeQuantity: 'Free Qty', price: 'Price', total: 'Total', note: 'Note',
         paidAmount: 'Paid Amount', discount: 'Discount', amountInWords: 'Amount in words', paymentMethod: 'Payment Method', outstanding: 'Order Outstanding', currentBalance: "Partner's Current Balance", printedBy: 'Printed by', notes: 'Notes',
-        invoiceDetails: 'Invoice details', orderItemsTable: 'Order items table', financialSummary: 'Financial summary', selectValues: 'Select the values to include in this print.', selectColumns: 'Select the table columns to include in this print.', noColumns: 'No item columns selected', dragToSwap: 'Drag to swap position', renameTitle: 'Rename title', renameTitleDescription: 'Use a custom title for this value in the print.', title: 'Title', save: 'Save', cancel: 'Cancel', resetTitle: 'Reset title', invoiceOrganizer: 'Invoice Organizer', switchToInvoiceOrganizer: 'Switch to Invoice Organizer', switchToCashier: 'Switch to Cashier', logo: 'LOGO', workspaceLogo: 'Workspace logo', workspaceName: 'Workspace Name', email: 'Email', madeBy: 'Made By AtlasERP', page: 'Page', pageOf: 'from', printDate: 'Print date',
+        invoiceDetails: 'Invoice details', orderItemsTable: 'Order items table', financialSummary: 'Financial summary', selectValues: 'Select the values to include in this print.', selectColumns: 'Select the table columns to include in this print.', noColumns: 'No item columns selected', dragToSwap: 'Drag to swap position', renameTitle: 'Rename title', renameTitleDescription: 'Use a custom title for this value in the print.', title: 'Title', save: 'Save', cancel: 'Cancel', resetTitle: 'Reset title', invoiceOrganizer: 'Invoice Organizer', switchToInvoiceOrganizer: 'Switch to Invoice Organizer', switchToCashier: 'Switch to Cashier', logo: 'LOGO', workspaceLogo: 'Workspace logo', workspaceName: 'Workspace Name', email: 'Email', madeBy: 'Made By AtlasERP', page: 'Page', pageOf: 'from', printDate: 'Print date', enableKgTotal: 'Show weight total (Kg/Ton)', disableKgTotal: 'Hide weight total',
         statuses: { draft: 'Draft', pending: 'Pending', completed: 'Completed', cancelled: 'Cancelled', ordered: 'Ordered', received: 'Received' },
         paymentMethods: { cash: 'Cash', fib: 'FIB', qicard: 'Qi Card', zaincash: 'Zain Cash', fastpay: 'FastPay', bank_transfer: 'Bank Transfer', loan: 'Loan', installments: 'Installments' }
     },
@@ -313,7 +319,7 @@ const ATLAS_STANDARD_LABELS = {
         customer: 'العميل', supplier: 'المورد', invoice: 'الفاتورة', salesOrder: 'طلب مبيعات', purchaseOrder: 'طلب شراء', number: 'الرقم', phone: 'الهاتف', salesPerson: 'أمين الصندوق', partnerAddress: 'عنوان الشريك', status: 'الحالة', documentNumber: 'رقم المستند', invoiceDate: 'تاريخ الفاتورة', time: 'الوقت',
         productName: 'اسم المنتج', expiry: 'الصلاحية', batchNumber: 'رقم التشغيلة', quantity: 'الكمية', freeQuantity: 'كمية مجانية', price: 'السعر', total: 'الإجمالي', note: 'ملاحظة',
         paidAmount: 'المبلغ المدفوع', discount: 'الخصم', amountInWords: 'المبلغ كتابة', paymentMethod: 'طريقة الدفع', outstanding: 'المبلغ المتبقي للطلب', currentBalance: 'الرصيد الحالي للشريك', printedBy: 'طبع بواسطة', notes: 'ملاحظات',
-        invoiceDetails: 'تفاصيل الفاتورة', orderItemsTable: 'جدول أصناف الطلب', financialSummary: 'الملخص المالي', selectValues: 'اختر القيم التي تريد تضمينها في هذه الطباعة.', selectColumns: 'اختر أعمدة الجدول التي تريد تضمينها في هذه الطباعة.', noColumns: 'لم يتم اختيار أي أعمدة للأصناف', dragToSwap: 'اسحب لتبديل الموضع', renameTitle: 'إعادة تسمية العنوان', renameTitleDescription: 'استخدم عنواناً مخصصاً لهذه القيمة في الطباعة.', title: 'العنوان', save: 'حفظ', cancel: 'إلغاء', resetTitle: 'استعادة العنوان', invoiceOrganizer: 'منظم الفاتورة', switchToInvoiceOrganizer: 'التبديل إلى منظم الفاتورة', switchToCashier: 'التبديل إلى أمين الصندوق', logo: 'الشعار', workspaceLogo: 'شعار مساحة العمل', workspaceName: 'اسم مساحة العمل', email: 'البريد الإلكتروني', madeBy: 'تم الإنشاء بواسطة AtlasERP', page: 'الصفحة', pageOf: 'من', printDate: 'تاريخ الطباعة',
+        invoiceDetails: 'تفاصيل الفاتورة', orderItemsTable: 'جدول أصناف الطلب', financialSummary: 'الملخص المالي', selectValues: 'اختر القيم التي تريد تضمينها في هذه الطباعة.', selectColumns: 'اختر أعمدة الجدول التي تريد تضمينها في هذه الطباعة.', noColumns: 'لم يتم اختيار أي أعمدة للأصناف', dragToSwap: 'اسحب لتبديل الموضع', renameTitle: 'إعادة تسمية العنوان', renameTitleDescription: 'استخدم عنواناً مخصصاً لهذه القيمة في الطباعة.', title: 'العنوان', save: 'حفظ', cancel: 'إلغاء', resetTitle: 'استعادة العنوان', invoiceOrganizer: 'منظم الفاتورة', switchToInvoiceOrganizer: 'التبديل إلى منظم الفاتورة', switchToCashier: 'التبديل إلى أمين الصندوق', logo: 'الشعار', workspaceLogo: 'شعار مساحة العمل', workspaceName: 'اسم مساحة العمل', email: 'البريد الإلكتروني', madeBy: 'تم الإنشاء بواسطة AtlasERP', page: 'الصفحة', pageOf: 'من', printDate: 'تاريخ الطباعة', enableKgTotal: 'إظهار إجمالي الوزن (كجم/طن)', disableKgTotal: 'إخفاء إجمالي الوزن',
         statuses: { draft: 'مسودة', pending: 'قيد الانتظار', completed: 'مكتمل', cancelled: 'ملغى', ordered: 'تم الطلب', received: 'تم الاستلام' },
         paymentMethods: { cash: 'نقدي', fib: 'FIB', qicard: 'كي كارد', zaincash: 'زين كاش', fastpay: 'فاست باي', bank_transfer: 'تحويل بنكي', loan: 'قرض', installments: 'أقساط' }
     },
@@ -321,7 +327,7 @@ const ATLAS_STANDARD_LABELS = {
         customer: 'کڕیار', supplier: 'دابینکەر', invoice: 'پسوڵە', salesOrder: 'داواکاری فرۆشتن', purchaseOrder: 'داواکاری کڕین', number: 'ژمارە', phone: 'تەلەفۆن', salesPerson: 'کاشێر', partnerAddress: 'ناونیشانی هاوبەش', status: 'دۆخ', documentNumber: 'ژمارەی بەڵگە', invoiceDate: 'بەرواری پسوڵە', time: 'کات',
         productName: 'ناوی کاڵا', expiry: 'بەسەرچوون', batchNumber: 'ژمارەی بچ', quantity: 'بڕ', freeQuantity: 'بڕی بەخۆڕایی', price: 'نرخ', total: 'کۆی گشتی', note: 'تێبینی',
         paidAmount: 'بڕی دراو', discount: 'داشکاندن', amountInWords: 'بڕ بە نووسین', paymentMethod: 'شێوازی پارەدان', outstanding: 'بڕی ماوەی داواکاری', currentBalance: 'باڵانسی ئێستای هاوبەش', printedBy: 'چاپکراوە لەلایەن', notes: 'تێبینی',
-        invoiceDetails: 'وردەکارییەکانی پسوڵە', orderItemsTable: 'خشتەی کاڵاکانی داواکاری', financialSummary: 'پوختەی دارایی', selectValues: 'ئەو بەهایانە هەڵبژێرە کە دەتهەوێت لەم چاپەدا دەربکەون.', selectColumns: 'ستوونەکانی خشتە هەڵبژێرە کە دەتهەوێت لەم چاپەدا دەربکەون.', noColumns: 'هیچ ستوونی کاڵا هەڵنەبژێردراوە', dragToSwap: 'ڕابکێشە بۆ گۆڕینی شوێن', renameTitle: 'ناونیشان بگۆڕە', renameTitleDescription: 'ناونیشانێکی تایبەت بۆ ئەم بەهایە لە چاپەکەدا بەکاربهێنە.', title: 'ناونیشان', save: 'پاشەکەوتکردن', cancel: 'هەڵوەشاندنەوە', resetTitle: 'ناونیشان بگەڕێنەوە', invoiceOrganizer: 'ڕێکخەری پسوڵە', switchToInvoiceOrganizer: 'بگۆڕە بۆ ڕێکخەری پسوڵە', switchToCashier: 'بگۆڕە بۆ کاشێر', logo: 'لۆگۆ', workspaceLogo: 'لۆگۆی شوێنی کار', workspaceName: 'ناوی شوێنی کار', email: 'ئیمەیڵ', madeBy: 'دروستکراوە لەلایەن AtlasERP', page: 'لاپەڕە', pageOf: 'لە', printDate: 'بەرواری چاپ',
+        invoiceDetails: 'وردەکارییەکانی پسوڵە', orderItemsTable: 'خشتەی کاڵاکانی داواکاری', financialSummary: 'پوختەی دارایی', selectValues: 'ئەو بەهایانە هەڵبژێرە کە دەتهەوێت لەم چاپەدا دەربکەون.', selectColumns: 'ستوونەکانی خشتە هەڵبژێرە کە دەتهەوێت لەم چاپەدا دەربکەون.', noColumns: 'هیچ ستوونی کاڵا هەڵنەبژێردراوە', dragToSwap: 'ڕابکێشە بۆ گۆڕینی شوێن', renameTitle: 'ناونیشان بگۆڕە', renameTitleDescription: 'ناونیشانێکی تایبەت بۆ ئەم بەهایە لە چاپەکەدا بەکاربهێنە.', title: 'ناونیشان', save: 'پاشەکەوتکردن', cancel: 'هەڵوەشاندنەوە', resetTitle: 'ناونیشان بگەڕێنەوە', invoiceOrganizer: 'ڕێکخەری پسوڵە', switchToInvoiceOrganizer: 'بگۆڕە بۆ ڕێکخەری پسوڵە', switchToCashier: 'بگۆڕە بۆ کاشێر', logo: 'لۆگۆ', workspaceLogo: 'لۆگۆی شوێنی کار', workspaceName: 'ناوی شوێنی کار', email: 'ئیمەیڵ', madeBy: 'دروستکراوە لەلایەن AtlasERP', page: 'لاپەڕە', pageOf: 'لە', printDate: 'بەرواری چاپ', enableKgTotal: 'کۆی کێش نیشان بدە (کگ/تۆن)', disableKgTotal: 'کۆی کێش بشارەوە',
         statuses: { draft: 'ڕەشنووس', pending: 'چاوەڕوان', completed: 'تەواوبوو', cancelled: 'هەڵوەشاوە', ordered: 'داواکراو', received: 'وەرگیراو' },
         paymentMethods: { cash: 'کاش', fib: 'FIB', qicard: 'کیو کارد', zaincash: 'زین کاش', fastpay: 'فاست پەی', bank_transfer: 'گواستنەوەی بانکی', loan: 'قەرز', installments: 'قسط' }
     }
@@ -1039,8 +1045,34 @@ export function AtlasStandardOrderInvoiceTemplate({
         : '-'
     const amountInWords = numberToWords(order.total, printLang)
     const items = order.items || []
+    const paidQuantityTotal = items.reduce((sum, item) => sum + getOrderLinePaidQuantity(item), 0)
+    const freeQuantityTotal = items.reduce((sum, item) => sum + getOrderLineFreeBonusQuantity(item), 0)
+    const paidQuantityUnits = Array.from(new Set(
+        items
+            .filter((item) => getOrderLinePaidQuantity(item) > 0)
+            .map((item) => item.unit?.trim())
+            .filter((unit): unit is string => Boolean(unit))
+    ))
+    const paidQuantityUnit = paidQuantityUnits.length === 1 ? paidQuantityUnits[0] : ''
+    const freeQuantityUnits = Array.from(new Set(
+        items
+            .filter((item) => getOrderLineFreeBonusQuantity(item) > 0)
+            .map((item) => (item.freeBonusUnit || item.unit)?.trim())
+            .filter((unit): unit is string => Boolean(unit))
+    ))
+    const freeQuantityUnit = freeQuantityUnits.length === 1 ? freeQuantityUnits[0] : ''
     const emptyTableAreaMm = Math.max(0, TABLE_DATA_AREA_MM - (items.length * tableItemRowMm))
     const productImageWidthDifference = productImageColumnWidth - DEFAULT_PRODUCT_IMAGE_COLUMN_WIDTH
+    const productKgTotalEnabled = fieldDisplayModes[tableSettingKeys.productKgTotal] === 'enabled'
+    const weightGroupedKgTotal = items.reduce(
+        (sum, item) => sum + getProductNameWeightKg(item.productName),
+        0
+    )
+    const productKgTotalLabel = productKgTotalEnabled && weightGroupedKgTotal > 0
+        ? weightGroupedKgTotal > 1000
+            ? `${Number((weightGroupedKgTotal / 1000).toFixed(2))} ${t('products.units.ton', { defaultValue: 'ton' })}`
+            : `${weightGroupedKgTotal} ${t('products.units.kg', { defaultValue: 'kg' })}`
+        : ''
     const tableColumns: TableColumn[] = [
         {
             key: tableKeys.productImage,
@@ -1055,7 +1087,21 @@ export function AtlasStandardOrderInvoiceTemplate({
             ) : undefined
         },
         { key: tableKeys.number, label: labels.number, width: '5%' },
-        { key: tableKeys.product, label: labels.productName, width: `${19 - productImageWidthDifference * 0.7}%` },
+        {
+            key: tableKeys.product,
+            label: labels.productName,
+            width: `${19 - productImageWidthDifference * 0.7}%`,
+            contextMenu: onFieldDisplayModeChange ? (
+                <ContextMenuItem
+                    onSelect={() => onFieldDisplayModeChange(
+                        tableSettingKeys.productKgTotal,
+                        productKgTotalEnabled ? '' : 'enabled'
+                    )}
+                >
+                    {productKgTotalEnabled ? labels.disableKgTotal : labels.enableKgTotal}
+                </ContextMenuItem>
+            ) : undefined
+        },
         { key: tableKeys.expiry, label: labels.expiry, width: '8%' },
         { key: tableKeys.batchNumber, label: labels.batchNumber, width: '9%' },
         { key: tableKeys.quantity, label: labels.quantity, width: '8%' },
@@ -1350,6 +1396,7 @@ export function AtlasStandardOrderInvoiceTemplate({
                                 const batch = getBatchDetails(item, kind)
                                 const paidQuantity = getOrderLinePaidQuantity(item)
                                 const unit = item.unit?.trim()
+                                const freeBonusUnit = (item.freeBonusUnit || item.unit)?.trim()
                                 const values: Record<string, ReactNode> = {
                                     [tableKeys.productImage]: (
                                         <ProductPrintImage
@@ -1366,8 +1413,8 @@ export function AtlasStandardOrderInvoiceTemplate({
                                         ? `${paidQuantity} ${t(`products.units.${unit}`, { defaultValue: unit })}`
                                         : paidQuantity,
                                     [tableKeys.freeQuantity]: getOrderLineFreeBonusQuantity(item)
-                                        ? unit
-                                            ? `${getOrderLineFreeBonusQuantity(item)} ${t(`products.units.${unit}`, { defaultValue: unit })}`
+                                        ? freeBonusUnit
+                                            ? `${getOrderLineFreeBonusQuantity(item)} ${t(`products.units.${freeBonusUnit}`, { defaultValue: freeBonusUnit })}`
                                             : getOrderLineFreeBonusQuantity(item)
                                         : '\u00a0',
                                     [tableKeys.price]: formatCurrency(item.convertedUnitPrice, currency, iqdPreference),
@@ -1411,13 +1458,17 @@ export function AtlasStandardOrderInvoiceTemplate({
                             ) : null}
                             <tr className="h-[8mm] bg-[#f3f4f6] font-bold">
                                 {visibleColumns.map((column) => {
-                                    const value = column.key === tableKeys.quantity
-                                        ? items.reduce((sum, item) => sum + getOrderLinePaidQuantity(item), 0)
-                                        : column.key === tableKeys.freeQuantity
-                                            ? items.reduce((sum, item) => sum + getOrderLineFreeBonusQuantity(item), 0) || '\u00a0'
-                                            : column.key === tableKeys.total
-                                                ? formatCurrency(order.total, currency, iqdPreference)
-                                                : '\u00a0'
+                                    const value = column.key === tableKeys.product
+                                        ? productKgTotalLabel || '\u00a0'
+                                        : column.key === tableKeys.quantity
+                                            ? paidQuantityTotal + (paidQuantityUnit ? ` ${t(`products.units.${paidQuantityUnit}`, { defaultValue: paidQuantityUnit })}` : '')
+                                            : column.key === tableKeys.freeQuantity
+                                                ? freeQuantityTotal > 0
+                                                    ? freeQuantityTotal + (freeQuantityUnit ? ` ${t(`products.units.${freeQuantityUnit}`, { defaultValue: freeQuantityUnit })}` : '')
+                                                    : '\u00a0'
+                                                : column.key === tableKeys.total
+                                                    ? formatCurrency(order.total, currency, iqdPreference)
+                                                    : '\u00a0'
                                     return (
                                         <td key={column.key} className="border px-[1.2mm] py-[1mm] text-center align-middle leading-[1.15] whitespace-nowrap" style={{ borderColor: INK }}>
                                             {value}

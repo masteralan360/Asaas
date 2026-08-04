@@ -535,6 +535,8 @@ export interface OrderLineItem {
   productSku: string;
   /** Product unit at the time this line was added, retained for accurate historical prints. */
   unit?: string | null;
+  /** Display-only unit override for the free bonus quantity. Never affects logic, which always uses `unit`. */
+  freeBonusUnit?: string | null;
   quantity: number;
   freeBonusQuantity?: number | null;
   lineTotal: number;
