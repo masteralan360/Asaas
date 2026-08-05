@@ -12,6 +12,8 @@ import {
 } from '@/services/a4Pagination'
 import { paginateOrderItemsStatementPages, paginateOrderItemsTables } from '@/lib/orderItemsTablePagination'
 import { reportPdfProgress } from '@/services/pdfProgress'
+import { isTauri } from '@/lib/platform'
+import { platformService } from '@/services/platformService'
 
 /** Formats that can be stored as invoice versions. */
 export type InvoicePrintFormat = 'a4' | 'receipt'
@@ -117,12 +119,66 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     })
 }
 
+const TAURI_ASSET_PREFIXES = [
+    'asset://localhost/',
+    'https://asset.localhost/',
+    'http://localhost/'
+]
+
+/**
+ * Extracts the filesystem path from a Tauri asset-protocol URL produced by
+ * `convertFileSrc` (for example `asset://localhost/attached-images/...` on
+ * iOS and `https://asset.localhost/C:/Users/...` on desktop).
+ */
+function extractTauriAssetFsPath(source: string): string | null {
+    for (const prefix of TAURI_ASSET_PREFIXES) {
+        if (!source.startsWith(prefix)) continue
+
+        let filePath = decodeURIComponent(source.slice(prefix.length))
+        if (/^\/[A-Za-z]:[\\/]/.test(filePath)) {
+            filePath = filePath.slice(1)
+        }
+        return filePath || null
+    }
+    return null
+}
+
+function imageMimeFromPath(filePath: string): string {
+    const ext = filePath.split('.').pop()?.toLowerCase() || ''
+    if (ext === 'png') return 'image/png'
+    if (ext === 'webp') return 'image/webp'
+    if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg'
+    return 'application/octet-stream'
+}
+
 async function inlineCaptureableImages(container: HTMLElement) {
     const images = Array.from(container.querySelectorAll('img'))
 
     await Promise.all(images.map(async (image) => {
         const source = image.currentSrc || image.src
-        if (!source || source.startsWith('data:') || (!source.startsWith('http:') && !source.startsWith('https:') && !source.startsWith('blob:'))) {
+        if (!source || source.startsWith('data:')) {
+            return
+        }
+
+        // Tauri asset-protocol URLs (asset://localhost/... on iOS,
+        // https://asset.localhost/... on desktop) cannot be fetched from the
+        // webview, so html-to-image cannot embed them in its SVG foreignObject
+        // clone and they silently vanish from the captured canvas on iOS
+        // WebKit. Read the file through the fs plugin and inline it as a data
+        // URL before capture.
+        const tauriFilePath = isTauri() ? extractTauriAssetFsPath(source) : null
+        if (tauriFilePath) {
+            try {
+                const bytes = await platformService.readFile(tauriFilePath)
+                image.src = await blobToDataUrl(new Blob([bytes], { type: imageMimeFromPath(tauriFilePath) }))
+                await waitForImageReady(image)
+            } catch (error) {
+                console.warn('[pdfGenerator] Failed to inline Tauri asset image:', tauriFilePath, error)
+            }
+            return
+        }
+
+        if (!source.startsWith('http:') && !source.startsWith('https:') && !source.startsWith('blob:')) {
             return
         }
 
