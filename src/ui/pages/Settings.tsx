@@ -22,6 +22,7 @@ import { platformService } from '@/services/platformService'
 import { r2Service } from '@/services/r2Service'
 import { Image as ImageIcon } from 'lucide-react'
 import { assetManager } from '@/lib/assetManager'
+import { downloadWorkspaceResources } from '@/lib/workspaceResourceSync'
 import { getMonthDisplayPreference, setMonthDisplayPreference, type MonthDisplayPreference } from '@/lib/monthDisplay'
 import { useWorkspaceContacts } from '@/local-db/hooks'
 import { getManualRateSource, getManualRateValue, setExchangeRateSource as setStoredExchangeRateSource } from '@/lib/manualExchangeRates'
@@ -1286,55 +1287,23 @@ export function Settings() {
         }
 
         const workspaceId = user.workspaceId
-        const allowedFolders = ['product-images', 'profile-images', 'workspace-logos', 'attached-images']
 
         try {
-            const keySet = new Set<string>()
+            const result = await downloadWorkspaceResources({
+                workspaceId,
+                onProgress: ({ current, total, fileName }) => {
+                    setMediaDownloadProgress({ total, current, fileName })
+                },
+            })
 
-            for (const folder of allowedFolders) {
-                const prefix = `${workspaceId}/${folder}/`
-                const keys = await r2Service.listObjects(prefix)
-                for (const key of keys) {
-                    keySet.add(key)
-                }
-            }
-
-            const keys = Array.from(keySet)
-            if (keys.length === 0) {
+            if (result.total === 0) {
                 alert(t('settings.messages.noCloudMediaFound') || 'No cloud media found for this workspace.')
                 return
             }
 
-            let downloadedCount = 0
-            setMediaDownloadProgress({ total: keys.length, current: 0, fileName: '' })
-
-            for (let i = 0; i < keys.length; i++) {
-                const key = keys[i]
-                const parts = key.split('/')
-                const wsPart = parts[0]
-                const folderPart = parts[1]
-                const restPath = parts.slice(2).join('/')
-
-                setMediaDownloadProgress(prev => prev ? { ...prev, current: i + 1, fileName: restPath || key } : null)
-
-                if (wsPart !== workspaceId || !allowedFolders.includes(folderPart) || !restPath) {
-                    console.warn('[Settings] Skipping unexpected R2 key:', key)
-                    continue
-                }
-
-                const data = await r2Service.download(key)
-                if (!data) continue
-
-                const localRelativePath = `${folderPart}/${workspaceId}/${restPath}`
-                const savedPath = await platformService.saveDownloadedFile(workspaceId, localRelativePath, data, folderPart)
-                if (savedPath) {
-                    downloadedCount++
-                }
-            }
-
             alert(
-                t('settings.messages.mediaDownloadComplete', { count: downloadedCount })
-                || `Media download complete! ${downloadedCount} files saved locally.`
+                t('settings.messages.mediaDownloadComplete', { count: result.downloaded })
+                || `Media download complete! ${result.downloaded} files saved locally.`
             )
         } catch (error) {
             console.error('[Settings] Media download failed:', error)

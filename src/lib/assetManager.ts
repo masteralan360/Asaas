@@ -4,6 +4,7 @@ import { r2Service } from '@/services/r2Service';
 import { db } from '@/local-db';
 import { supabase } from '@/auth/supabase';
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode';
+import { downloadWorkspaceResources } from '@/lib/workspaceResourceSync';
 
 // Simple browser-compatible EventEmitter implementation
 type Listener = (...args: any[]) => void;
@@ -34,11 +35,17 @@ export interface AssetProgress {
     progress?: number;
     currentFile?: string;
     error?: string;
+    current?: number;
+    total?: number;
 }
+
+const COLD_START_SESSION_STORAGE_KEY = 'atlas_asset_cold_start_synced';
 
 class AssetManager extends SimpleEventEmitter {
     private isScanning = false;
-    private isInitialSync = true;
+    private isInitialSync = false;
+    private coldStartStarted = false;
+    private forceEnterRequested = false;
     private workspaceId: string | null = null;
     private watchInterval: any = null;
 
@@ -52,7 +59,32 @@ class AssetManager extends SimpleEventEmitter {
 
         // Start background watcher if in Tauri
         if (isTauri()) {
+            // Full workspace resource download (the "Syncing Workspace" overlay)
+            // runs on cold startup only: once per app process AND once per webview
+            // session, so a reload/refresh never re-triggers it.
+            if (!this.coldStartStarted && !this.hasCompletedColdStartThisSession()) {
+                this.coldStartStarted = true;
+                this.markColdStartCompletedThisSession();
+                void this.coldStartResourceSync();
+            }
             this.startWatcher();
+        }
+    }
+
+    private hasCompletedColdStartThisSession(): boolean {
+        try {
+            return typeof window !== 'undefined'
+                && window.sessionStorage?.getItem(COLD_START_SESSION_STORAGE_KEY) === '1';
+        } catch {
+            return false;
+        }
+    }
+
+    private markColdStartCompletedThisSession(): void {
+        try {
+            window.sessionStorage?.setItem(COLD_START_SESSION_STORAGE_KEY, '1');
+        } catch {
+            // Session storage unavailable; the in-process flag still guards re-runs.
         }
     }
 
@@ -220,6 +252,65 @@ class AssetManager extends SimpleEventEmitter {
     }
 
     /**
+     * Cold-start-only full workspace resource download (visible overlay).
+     * Runs one time per app process; the 60s watcher never re-runs it.
+     */
+    private async coldStartResourceSync() {
+        if (!this.workspaceId) return;
+        if (isLocalWorkspaceMode(this.workspaceId)) {
+            this.isInitialSync = false;
+            this.emitStatus({ status: 'idle' });
+            return;
+        }
+
+        this.forceEnterRequested = false;
+        this.isInitialSync = true;
+        this.emitStatus({ status: 'scanning' });
+
+        try {
+            const result = await downloadWorkspaceResources({
+                workspaceId: this.workspaceId,
+                shouldSkip: () => this.forceEnterRequested,
+                onProgress: ({ current, total, fileName }) => {
+                    this.emitStatus({
+                        status: 'downloading',
+                        current,
+                        total,
+                        currentFile: fileName,
+                    });
+                },
+            });
+
+            console.log('[AssetManager] Cold start resource sync complete:', result);
+        } catch (error) {
+            console.error('[AssetManager] Cold start resource sync failed:', error);
+            this.emitStatus({ status: 'error', error: String(error) });
+        } finally {
+            this.isInitialSync = false;
+            this.emitStatus({ status: 'idle' });
+        }
+    }
+
+    public requestForceEnter() {
+        this.forceEnterRequested = true;
+        this.emitStatus({ status: 'downloading' });
+    }
+
+    public retryColdStartSync() {
+        if (!this.workspaceId || this.coldStartResourceSyncRunning) return;
+        void this.coldStartResourceSync();
+    }
+
+    private get coldStartResourceSyncRunning() {
+        return this.isInitialSync;
+    }
+
+    public dismissInitialSync() {
+        this.isInitialSync = false;
+        this.emitStatus({ status: 'idle' });
+    }
+
+    /**
      * Background watcher to ensure all DB assets are local
      */
     startWatcher(intervalMs: number = 60000) {
@@ -243,7 +334,6 @@ class AssetManager extends SimpleEventEmitter {
     async scanAndSync() {
         if (this.isScanning || !isTauri() || !this.workspaceId) return;
         if (isLocalWorkspaceMode(this.workspaceId)) {
-            this.isInitialSync = false;
             this.emitStatus({ status: 'idle' });
             return;
         }
@@ -281,7 +371,6 @@ class AssetManager extends SimpleEventEmitter {
             console.error('[AssetManager] Scan error:', e);
         } finally {
             this.isScanning = false;
-            this.isInitialSync = false;
             this.emitStatus({ status: 'idle' });
         }
     }
