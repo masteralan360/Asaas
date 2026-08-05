@@ -11,6 +11,7 @@ import {
     type A4KeepTogetherBlock
 } from '@/services/a4Pagination'
 import { paginateOrderItemsStatementPages, paginateOrderItemsTables } from '@/lib/orderItemsTablePagination'
+import { centerTablesOnPages } from '@/lib/centeredTablePagination'
 import { reportPdfProgress } from '@/services/pdfProgress'
 import { isTauri } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
@@ -342,6 +343,13 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
         })
         await expandContainerToRenderedBounds(container)
         paginateOrderItemsTables(container, {
+            pageHeightMm: A4_HEIGHT_MM,
+            pageWidthMm: widthMm
+        })
+        await expandContainerToRenderedBounds(container)
+        // Vertically center continuation tables (for example the Atlas Standard
+        // order invoice's follow-up tables) on their own A4 page.
+        centerTablesOnPages(container, {
             pageHeightMm: A4_HEIGHT_MM,
             pageWidthMm: widthMm
         })

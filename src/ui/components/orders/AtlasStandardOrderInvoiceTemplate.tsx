@@ -141,6 +141,39 @@ type TableColumn = {
     defaultLabel?: string
 }
 
+/**
+ * Applies the user's label overrides to the table columns. Shared by the
+ * editable first table and every continuation table so all pages of the order
+ * items table always render the exact same column definitions.
+ */
+function resolveTitledTableColumns(
+    columns: TableColumn[],
+    fieldLabelOverrides: Record<string, string>
+): TableColumn[] {
+    return columns.map((column) => {
+        const defaultLabel = column.defaultLabel || column.label
+        const labelOverride = fieldLabelOverrides[column.key]?.trim()
+        return {
+            ...column,
+            defaultLabel,
+            label: labelOverride || column.label
+        }
+    })
+}
+
+/**
+ * Resolves the columns that are actually printed: label overrides applied and
+ * hidden columns removed. Used to render continuation tables with the exact
+ * same definitions as the first page's order items table.
+ */
+function resolveVisibleTableColumns(
+    columns: TableColumn[],
+    fieldLabelOverrides: Record<string, string>,
+    hiddenFields: Record<string, boolean>
+): TableColumn[] {
+    return resolveTitledTableColumns(columns, fieldLabelOverrides).filter((column) => !hiddenFields[column.key])
+}
+
 function clampProductImageColumnWidth(value: number) {
     return Math.min(MAX_PRODUCT_IMAGE_COLUMN_WIDTH, Math.max(MIN_PRODUCT_IMAGE_COLUMN_WIDTH, value))
 }
@@ -625,7 +658,7 @@ function HideableSection({
     const renderFieldContent = (field: HideablePrintField) => {
         if (typeof field.render === 'function') return field.render(field.label)
         if (field.render) return field.render
-        return <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{field.label} : </strong>{field.value}</div>
+        return <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{field.label} : </strong>{field.value}</div>
     }
     const renderPickerField = (field: HideablePrintField, dragHandleProps?: DraggableProvidedDragHandleProps | null, isDragging = false) => {
         const hidden = Boolean(hiddenFields[field.key])
@@ -835,15 +868,7 @@ function HideableTable({
     const [renamedColumn, setRenamedColumn] = useState<TableColumn | null>(null)
     const [titleDraft, setTitleDraft] = useState('')
     const canConfigure = Boolean(onHiddenFieldChange || onFieldLabelChange)
-    const titledColumns = columns.map((column) => {
-        const defaultLabel = column.defaultLabel || column.label
-        const labelOverride = fieldLabelOverrides[column.key]?.trim()
-        return {
-            ...column,
-            defaultLabel,
-            label: labelOverride || column.label
-        }
-    })
+    const titledColumns = resolveTitledTableColumns(columns, fieldLabelOverrides)
     const visibleColumns = titledColumns.filter((column) => !hiddenFields[column.key])
     const openDialog = () => setOpen(true)
     const openRenameTitle = (column: TableColumn) => {
@@ -1045,6 +1070,15 @@ export function AtlasStandardOrderInvoiceTemplate({
         : '-'
     const amountInWords = numberToWords(order.total, printLang)
     const items = order.items || []
+    const maxItemRowsPerTable = Math.max(1, Math.floor(TABLE_DATA_AREA_MM / tableItemRowMm))
+    const itemChunks: typeof items[] = []
+    if (items.length === 0) {
+        itemChunks.push([])
+    } else {
+        for (let index = 0; index < items.length; index += maxItemRowsPerTable) {
+            itemChunks.push(items.slice(index, index + maxItemRowsPerTable))
+        }
+    }
     const paidQuantityTotal = items.reduce((sum, item) => sum + getOrderLinePaidQuantity(item), 0)
     const freeQuantityTotal = items.reduce((sum, item) => sum + getOrderLineFreeBonusQuantity(item), 0)
     const paidQuantityUnits = Array.from(new Set(
@@ -1061,7 +1095,6 @@ export function AtlasStandardOrderInvoiceTemplate({
             .filter((unit): unit is string => Boolean(unit))
     ))
     const freeQuantityUnit = freeQuantityUnits.length === 1 ? freeQuantityUnits[0] : ''
-    const emptyTableAreaMm = Math.max(0, TABLE_DATA_AREA_MM - (items.length * tableItemRowMm))
     const productImageWidthDifference = productImageColumnWidth - DEFAULT_PRODUCT_IMAGE_COLUMN_WIDTH
     const productKgTotalEnabled = fieldDisplayModes[tableSettingKeys.productKgTotal] === 'enabled'
     const weightGroupedKgTotal = items.reduce(
@@ -1110,6 +1143,118 @@ export function AtlasStandardOrderInvoiceTemplate({
         { key: tableKeys.total, label: labels.total, width: '10%' },
         { key: tableKeys.note, label: labels.note, width: `${17 - productImageWidthDifference * 0.3}%` }
     ]
+    const visibleTableColumns = resolveVisibleTableColumns(tableColumns, fieldLabelOverrides, hiddenFields)
+    const renderItemsTable = (tableItems: typeof items, rowStartIndex: number, tableKey: string, centered = false) => {
+        const tableEmptyAreaMm = Math.max(0, TABLE_DATA_AREA_MM - (tableItems.length * tableItemRowMm))
+        return (
+            <table
+                key={tableKey}
+                data-centered-table={centered ? '' : undefined}
+                className="mb-2 w-full table-fixed border-collapse border text-[10px] leading-none"
+                style={{ borderColor: INK }}
+            >
+                <colgroup>
+                    {visibleTableColumns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
+                </colgroup>
+                <thead>
+                    <tr className="h-[8mm] bg-[#e5e7eb] text-center font-bold" style={{ color: '#111827' }}>
+                        {visibleTableColumns.map((column) => (
+                            <th
+                                key={column.key}
+                                className="border px-[0.5mm] py-[0.75mm] text-center align-middle text-[9px] leading-[1.2] truncate"
+                                style={{ borderColor: INK }}
+                            >
+                                {column.label}
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {tableItems.map((item, index) => {
+                        const batch = getBatchDetails(item, kind)
+                        const paidQuantity = getOrderLinePaidQuantity(item)
+                        const unit = item.unit?.trim()
+                        const freeBonusUnit = (item.freeBonusUnit || item.unit)?.trim()
+                        const values: Record<string, ReactNode> = {
+                            [tableKeys.productImage]: (
+                                <ProductPrintImage
+                                    imageUrl={productImageUrls?.[item.productId]}
+                                    productName={item.productName}
+                                    sizeMm={productImageSizeMm}
+                                />
+                            ),
+                            [tableKeys.number]: rowStartIndex + index + 1,
+                            [tableKeys.product]: item.productName || '\u00a0',
+                            [tableKeys.expiry]: batch.expiry || '\u00a0',
+                            [tableKeys.batchNumber]: batch.batchNumber || '\u00a0',
+                            [tableKeys.quantity]: unit
+                                ? `${paidQuantity} ${t(`products.units.${unit}`, { defaultValue: unit })}`
+                                : paidQuantity,
+                            [tableKeys.freeQuantity]: getOrderLineFreeBonusQuantity(item)
+                                ? freeBonusUnit
+                                    ? `${getOrderLineFreeBonusQuantity(item)} ${t(`products.units.${freeBonusUnit}`, { defaultValue: freeBonusUnit })}`
+                                    : getOrderLineFreeBonusQuantity(item)
+                                : '\u00a0',
+                            [tableKeys.price]: formatCurrency(item.convertedUnitPrice, currency, iqdPreference),
+                            [tableKeys.total]: formatCurrency(item.lineTotal, currency, iqdPreference),
+                            [tableKeys.note]: item.note?.trim() || '\u00a0'
+                        }
+                        return (
+                            <tr key={item.id} style={{ height: `${tableItemRowMm}mm` }}>
+                                {visibleTableColumns.map((column) => (
+                                    <td
+                                        key={column.key}
+                                        className={cn(
+                                            'border text-center align-middle leading-[1.15]',
+                                            column.key === tableKeys.productImage
+                                                ? 'px-[0.5mm] py-[0.5mm] whitespace-nowrap'
+                                                : 'px-[1.2mm] py-[1mm] truncate'
+                                        )}
+                                        style={{ borderColor: INK }}
+                                    >
+                                        {values[column.key]}
+                                    </td>
+                                ))}
+                            </tr>
+                        )
+                    })}
+                    {tableEmptyAreaMm > 0 ? (
+                        <tr>
+                            {visibleTableColumns.map((column) => (
+                                    <td
+                                        key={column.key}
+                                        className="border-x px-1 text-center align-middle"
+                                    style={{ borderColor: INK, height: `${tableEmptyAreaMm}mm` }}
+                                >
+                                    {'\u00a0'}
+                                </td>
+                            ))}
+                        </tr>
+                    ) : null}
+                    <tr className="h-[8mm] bg-[#f3f4f6] font-bold">
+                        {visibleTableColumns.map((column) => {
+                            const value = column.key === tableKeys.product
+                                ? productKgTotalLabel || '\u00a0'
+                                : column.key === tableKeys.quantity
+                                    ? paidQuantityTotal + (paidQuantityUnit ? ` ${t(`products.units.${paidQuantityUnit}`, { defaultValue: paidQuantityUnit })}` : '')
+                                    : column.key === tableKeys.freeQuantity
+                                        ? freeQuantityTotal > 0
+                                            ? freeQuantityTotal + (freeQuantityUnit ? ` ${t(`products.units.${freeQuantityUnit}`, { defaultValue: freeQuantityUnit })}` : '')
+                                            : '\u00a0'
+                                        : column.key === tableKeys.total
+                                            ? formatCurrency(order.total, currency, iqdPreference)
+                                            : '\u00a0'
+                            return (
+                                <td key={column.key} className="border px-[1.2mm] py-[1mm] text-center align-middle leading-[1.15] whitespace-nowrap" style={{ borderColor: INK }}>
+                                    {value}
+                                </td>
+                            )
+                        })}
+                    </tr>
+                </tbody>
+            </table>
+        )
+    }
 
     const invoiceDetailFields: HideablePrintField[] = [
         {
@@ -1117,14 +1262,14 @@ export function AtlasStandardOrderInvoiceTemplate({
             label: counterpartyLabel,
             value: counterpartyName || '-',
             className: 'col-span-2 border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{counterpartyName || '-'}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{counterpartyName || '-'}</div>
         },
         {
             key: detailsKeys.invoice,
             label: labels.invoice,
             value: isSales ? labels.salesOrder : labels.purchaseOrder,
             className: 'border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{isSales ? labels.salesOrder : labels.purchaseOrder}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{isSales ? labels.salesOrder : labels.purchaseOrder}</div>
         },
         {
             key: detailsKeys.number,
@@ -1132,7 +1277,7 @@ export function AtlasStandardOrderInvoiceTemplate({
             label: labels.phone,
             value: partnerPhone,
             className: 'border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{partnerPhone}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{partnerPhone}</div>
         },
         {
             key: detailsKeys.salesPerson,
@@ -1147,42 +1292,42 @@ export function AtlasStandardOrderInvoiceTemplate({
                 onChange: (active) => onFieldDisplayModeChange(detailsKeys.salesPerson, active ? 'invoiceOrganizer' : '')
             } : undefined,
             className: 'col-span-2 border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{isInvoiceOrganizer ? '' : salesperson}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{isInvoiceOrganizer ? '' : salesperson}</div>
         },
         {
             key: detailsKeys.location,
             label: labels.partnerAddress,
             value: partnerAddress,
             className: 'border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{partnerAddress}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{partnerAddress}</div>
         },
         {
             key: detailsKeys.status,
             label: labels.status,
             value: statusLabel,
             className: 'border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{statusLabel}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{statusLabel}</div>
         },
         {
             key: detailsKeys.documentNumber,
             label: labels.documentNumber,
             value: order.orderNumber,
             className: 'col-span-2 border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{order.orderNumber}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{order.orderNumber}</div>
         },
         {
             key: detailsKeys.invoiceDate,
             label: labels.invoiceDate,
             value: issuedAt.date,
             className: 'border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{issuedAt.date}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{issuedAt.date}</div>
         },
         {
             key: detailsKeys.time,
             label: labels.time,
             value: issuedAt.time,
             className: 'border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{issuedAt.time}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{issuedAt.time}</div>
         }
     ]
 
@@ -1193,7 +1338,7 @@ export function AtlasStandardOrderInvoiceTemplate({
             value: formatCurrency(paidAmount, currency, iqdPreference),
             className: 'col-span-4 border-l border-t border-[#1f2937]',
             dialogClassName: 'col-span-2',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{formatCurrency(paidAmount, currency, iqdPreference)}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{formatCurrency(paidAmount, currency, iqdPreference)}</div>
         },
         {
             key: financialKeys.outstanding,
@@ -1201,7 +1346,7 @@ export function AtlasStandardOrderInvoiceTemplate({
             value: formatCurrency(outstanding, currency, iqdPreference),
             className: 'col-span-4 border-l border-t border-[#1f2937]',
             dialogClassName: 'col-span-2',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{formatCurrency(outstanding, currency, iqdPreference)}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{formatCurrency(outstanding, currency, iqdPreference)}</div>
         },
         {
             key: financialKeys.discount,
@@ -1209,7 +1354,7 @@ export function AtlasStandardOrderInvoiceTemplate({
             value: formatCurrency(order.discount, currency, iqdPreference),
             className: 'col-span-4 border-l border-t border-[#1f2937]',
             dialogClassName: 'col-span-2',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{formatCurrency(order.discount, currency, iqdPreference)}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{formatCurrency(order.discount, currency, iqdPreference)}</div>
         },
         {
             key: financialKeys.currentBalance,
@@ -1217,35 +1362,35 @@ export function AtlasStandardOrderInvoiceTemplate({
             value: formatPartnerBalance(currentPartnerBalance),
             className: 'col-span-4 border-l border-t border-[#1f2937]',
             dialogClassName: 'col-span-2',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{formatPartnerBalance(currentPartnerBalance)}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{formatPartnerBalance(currentPartnerBalance)}</div>
         },
         {
             key: financialKeys.paymentMethod,
             label: labels.paymentMethod,
             value: paymentMethod,
             className: 'col-span-2 border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{paymentMethod}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{paymentMethod}</div>
         },
         {
             key: financialKeys.amountInWords,
             label: labels.amountInWords,
             value: amountInWords,
             className: 'col-span-2 border-l border-t border-[#1f2937]',
-            render: () => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs">{amountInWords}</div>
+            render: () => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate">{amountInWords}</div>
         },
         {
             key: financialKeys.printedBy,
             label: labels.printedBy,
             value: salesperson,
             className: 'col-span-2 border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{salesperson}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{salesperson}</div>
         },
         {
             key: financialKeys.notes,
             label: labels.notes,
             value: noteValue,
             className: 'col-span-2 border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs"><strong>{label} : </strong>{noteValue}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{noteValue}</div>
         }
     ]
 
@@ -1307,7 +1452,7 @@ export function AtlasStandardOrderInvoiceTemplate({
                 >
                     <h1
                         data-rtl-workspace-name={workspaceNameDirection === 'rtl' ? 'true' : undefined}
-                        className="atlas-standard-workspace-name text-[18px] font-bold tracking-wide"
+                        className="atlas-standard-workspace-name max-w-[150mm] truncate text-[18px] font-bold tracking-wide"
                         style={workspaceNameDirection === 'rtl'
                             ? { color: INK, fontFamily: 'Tahoma, Arial, sans-serif', letterSpacing: 0 }
                             : { color: INK }}
@@ -1373,111 +1518,8 @@ export function AtlasStandardOrderInvoiceTemplate({
                 saveLabel={labels.save}
                 cancelLabel={labels.cancel}
             >
-                {(visibleColumns) => (
-                    <table className="mb-2 w-full table-fixed border-collapse border text-[10px] leading-none" style={{ borderColor: INK }}>
-                        <colgroup>
-                            {visibleColumns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
-                        </colgroup>
-                        <thead>
-                            <tr className="h-[8mm] bg-[#e5e7eb] text-center font-bold" style={{ color: '#111827' }}>
-                                {visibleColumns.map((column) => (
-                                    <th
-                                        key={column.key}
-                                        className="border px-[0.5mm] py-[0.75mm] text-center align-middle text-[9px] leading-[1.2] break-words whitespace-normal"
-                                        style={{ borderColor: INK }}
-                                    >
-                                        {column.label}
-                                    </th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {items.map((item, index) => {
-                                const batch = getBatchDetails(item, kind)
-                                const paidQuantity = getOrderLinePaidQuantity(item)
-                                const unit = item.unit?.trim()
-                                const freeBonusUnit = (item.freeBonusUnit || item.unit)?.trim()
-                                const values: Record<string, ReactNode> = {
-                                    [tableKeys.productImage]: (
-                                        <ProductPrintImage
-                                            imageUrl={productImageUrls?.[item.productId]}
-                                            productName={item.productName}
-                                            sizeMm={productImageSizeMm}
-                                        />
-                                    ),
-                                    [tableKeys.number]: index + 1,
-                                    [tableKeys.product]: item.productName || '\u00a0',
-                                    [tableKeys.expiry]: batch.expiry || '\u00a0',
-                                    [tableKeys.batchNumber]: batch.batchNumber || '\u00a0',
-                                    [tableKeys.quantity]: unit
-                                        ? `${paidQuantity} ${t(`products.units.${unit}`, { defaultValue: unit })}`
-                                        : paidQuantity,
-                                    [tableKeys.freeQuantity]: getOrderLineFreeBonusQuantity(item)
-                                        ? freeBonusUnit
-                                            ? `${getOrderLineFreeBonusQuantity(item)} ${t(`products.units.${freeBonusUnit}`, { defaultValue: freeBonusUnit })}`
-                                            : getOrderLineFreeBonusQuantity(item)
-                                        : '\u00a0',
-                                    [tableKeys.price]: formatCurrency(item.convertedUnitPrice, currency, iqdPreference),
-                                    [tableKeys.total]: formatCurrency(item.lineTotal, currency, iqdPreference),
-                                    [tableKeys.note]: item.note?.trim() || '\u00a0'
-                                }
-                                return (
-                                    <tr key={item.id} style={{ height: `${tableItemRowMm}mm` }}>
-                                        {visibleColumns.map((column) => (
-                                            <td
-                                                key={column.key}
-                                                className={cn(
-                                                    'border text-center align-middle leading-[1.15]',
-                                                    column.key === tableKeys.productImage
-                                                        ? 'px-[0.5mm] py-[0.5mm] whitespace-nowrap'
-                                                        : 'px-[1.2mm] py-[1mm]',
-                                                    column.key === tableKeys.product || column.key === tableKeys.note
-                                                        ? 'break-words whitespace-pre-wrap'
-                                                        : column.key === tableKeys.productImage ? '' : 'whitespace-nowrap'
-                                                )}
-                                                style={{ borderColor: INK }}
-                                            >
-                                                {values[column.key]}
-                                            </td>
-                                        ))}
-                                    </tr>
-                                )
-                            })}
-                            {emptyTableAreaMm > 0 ? (
-                                <tr>
-                                    {visibleColumns.map((column) => (
-                                            <td
-                                                key={column.key}
-                                                className="border-x px-1 text-center align-middle"
-                                            style={{ borderColor: INK, height: `${emptyTableAreaMm}mm` }}
-                                        >
-                                            {'\u00a0'}
-                                        </td>
-                                    ))}
-                                </tr>
-                            ) : null}
-                            <tr className="h-[8mm] bg-[#f3f4f6] font-bold">
-                                {visibleColumns.map((column) => {
-                                    const value = column.key === tableKeys.product
-                                        ? productKgTotalLabel || '\u00a0'
-                                        : column.key === tableKeys.quantity
-                                            ? paidQuantityTotal + (paidQuantityUnit ? ` ${t(`products.units.${paidQuantityUnit}`, { defaultValue: paidQuantityUnit })}` : '')
-                                            : column.key === tableKeys.freeQuantity
-                                                ? freeQuantityTotal > 0
-                                                    ? freeQuantityTotal + (freeQuantityUnit ? ` ${t(`products.units.${freeQuantityUnit}`, { defaultValue: freeQuantityUnit })}` : '')
-                                                    : '\u00a0'
-                                                : column.key === tableKeys.total
-                                                    ? formatCurrency(order.total, currency, iqdPreference)
-                                                    : '\u00a0'
-                                    return (
-                                        <td key={column.key} className="border px-[1.2mm] py-[1mm] text-center align-middle leading-[1.15] whitespace-nowrap" style={{ borderColor: INK }}>
-                                            {value}
-                                        </td>
-                                    )
-                                })}
-                            </tr>
-                        </tbody>
-                    </table>
+                {() => (
+                    renderItemsTable(itemChunks[0], 0, 'atlas-standard-order-items-page-1')
                 )}
             </HideableTable>
 
@@ -1508,10 +1550,10 @@ export function AtlasStandardOrderInvoiceTemplate({
             <div data-template-text-flow-anchor="" aria-hidden="true" />
 
             <div className="flex min-h-[13mm] items-start justify-between gap-4 text-[10px]" style={{ color: '#374151' }}>
-                <div className="pt-1 font-bold">{footerEmail.length ? `${labels.email}: ${footerEmail.join(' - ')}` : ''}</div>
-                <div className="max-w-[125mm] text-end leading-4">
-                    {footerAddress.length ? <div>{footerAddress.join(' - ')}</div> : null}
-                    {footerPhone.length ? <div>{footerPhone.join(' - ')}</div> : null}
+                <div className="truncate pt-1 font-bold">{footerEmail.length ? `${labels.email}: ${footerEmail.join(' - ')}` : ''}</div>
+                <div className="max-w-[125mm] truncate text-end leading-4">
+                    {footerAddress.length ? <div className="truncate">{footerAddress.join(' - ')}</div> : null}
+                    {footerPhone.length ? <div className="truncate">{footerPhone.join(' - ')}</div> : null}
                 </div>
             </div>
 
@@ -1520,6 +1562,17 @@ export function AtlasStandardOrderInvoiceTemplate({
                 <span>{labels.page} 1 {labels.pageOf} 1</span>
                 <span>{labels.printDate}: {issuedAt.date}</span>
             </footer>
+
+            {visibleTableColumns.length > 0
+                ? itemChunks.slice(1).map((chunk, chunkIndex) => (
+                    renderItemsTable(
+                        chunk,
+                        (chunkIndex + 1) * maxItemRowsPerTable,
+                        `atlas-standard-order-items-page-${chunkIndex + 2}`,
+                        true
+                    )
+                ))
+                : null}
         </div>
     )
 }

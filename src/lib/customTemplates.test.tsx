@@ -736,7 +736,8 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(html).toContain('>2 pcs</td>')
         expect(html).toContain('height:130.4mm')
         expect(html).toContain('h-[8mm] bg-[#e5e7eb]')
-        expect(html).toContain('text-[9px] leading-[1.2] break-words whitespace-normal')
+        expect(html).toContain('text-[9px] leading-[1.2] truncate')
+        expect(html).toContain('min-h-[6.5mm] px-2 py-1.5 text-xs truncate')
         expect(html).toContain('Invoice : </strong>Sales Order')
         expect(html).toContain('Phone : </strong>-')
         expect(html).toContain('Invoice Organizer : </strong>')
@@ -867,6 +868,42 @@ describe('Atlas Standard order invoice custom print template', () => {
         }))
         expect(belowThousandHtml).toContain('900 kg')
         expect(belowThousandHtml).not.toContain(' ton')
+    })
+
+    it('caps the order items table at 18 rows and continues with an identical table for the remaining rows', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const baseOrder = customTemplates
+            .createCustomTemplatePreview(target!, { printLang: 'en' })
+            .createElement({})
+            .props.order
+        const manyItemsOrder = {
+            ...baseOrder,
+            items: Array.from({ length: 28 }, (_, index) => ({
+                ...baseOrder.items[0],
+                id: `many-items-${index + 1}`,
+                productName: `Sample Product ${index + 1}`
+            }))
+        }
+
+        const html = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'en',
+            order: manyItemsOrder
+        }).createElement({}))
+
+        const heads = html.match(/<thead>[\s\S]*?<\/thead>/g) || []
+        expect(heads).toHaveLength(2)
+        expect(heads[0]).toBe(heads[1])
+        expect(html.match(/style="height:8mm"/g) || []).toHaveLength(28)
+        expect(html).toContain('>18</td>')
+        expect(html).toContain('>19</td>')
+        expect(html).toContain('>28</td>')
+        expect(html).not.toContain('>29</td>')
+        expect(html.indexOf('>18</td>')).toBeLessThan(html.indexOf('>19</td>'))
+        expect(html.indexOf('>19</td>')).toBeGreaterThan(html.indexOf('Made By AtlasERP'))
+        expect(html).toContain('data-centered-table=""')
+        expect(html.match(/data-centered-table/g) || []).toHaveLength(1)
     })
 })
 

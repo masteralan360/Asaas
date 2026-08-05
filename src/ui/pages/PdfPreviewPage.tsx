@@ -19,6 +19,7 @@ import {
 } from '@/lib/pdfPreviewStore'
 import { platformService } from '@/services/platformService'
 import { paginateOrderItemsStatementPages, paginateOrderItemsTables } from '@/lib/orderItemsTablePagination'
+import { centerTablesOnPages } from '@/lib/centeredTablePagination'
 import { EditableField } from '@/ui/components/EditableField'
 import {
     A4InvoiceTemplate,
@@ -732,6 +733,11 @@ export function PdfPreviewPage() {
         })
 
         paginateOrderItemsTables(contentLayer, {
+            pageHeightMm,
+            pageWidthMm: templatePageWidth
+        })
+
+        centerTablesOnPages(contentLayer, {
             pageHeightMm,
             pageWidthMm: templatePageWidth
         })
