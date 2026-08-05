@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness';
+import { useUnitRegistry, getQuantityStep } from '@/ui/components/unitRegistry';
 import {
   db,
   fetchInventoryWorkspaceFromSupabase,
@@ -174,12 +175,6 @@ type InventoryTransferTab = "manual" | "automation";
 const INVENTORY_TRANSFER_PENDING_TAB_KEY = "inventory-transfer.pending-tab";
 const INVENTORY_TRANSFER_TAB_EVENT = "inventory-transfer:open-tab";
 
-const DYNAMIC_UNITS = ["m²", "mÂ²", "Kg", "Meter"];
-
-function getQuantityStep(unit?: string | null) {
-  return DYNAMIC_UNITS.includes(unit ?? "") ? "0.01" : "1";
-}
-
 function isInventoryTransferTab(
   value: string | null | undefined,
 ): value is InventoryTransferTab {
@@ -319,6 +314,7 @@ export default function InventoryTransfer() {
   const products = useProducts(activeWorkspace?.id);
   const stockBatches = useStockBatches(activeWorkspace?.id);
   const reorderRules = useReorderTransferRules(activeWorkspace?.id);
+  const { dynamicCodes } = useUnitRegistry(activeWorkspace?.id);
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<InventoryTransferTab>(
     () => consumePendingInventoryTransferTab() ?? "manual",
@@ -1215,7 +1211,7 @@ export default function InventoryTransfer() {
   const targetDisplayName = getStorageDisplayName(targetStorage);
   const sourceWorkspaceDisplayName = getWorkspaceNameById(sourceWorkspaceId);
   const targetWorkspaceDisplayName = getWorkspaceNameById(targetWorkspaceId);
-  const ruleQuantityStep = getQuantityStep(selectedProduct?.unit);
+  const ruleQuantityStep = getQuantityStep(selectedProduct?.unit, dynamicCodes);
   const ruleMinStockLevel = Number(ruleForm.minStockLevel);
   const ruleTransferQuantity = Number(ruleForm.transferQuantity);
 
@@ -1502,9 +1498,9 @@ export default function InventoryTransfer() {
                             <div className="w-24">
                               <Input
                                 type="number"
-                                min={getQuantityStep(product.unit)}
+                                min={getQuantityStep(product.unit, dynamicCodes)}
                                 max={productLine.availableQuantity}
-                                step={getQuantityStep(product.unit)}
+                                step={getQuantityStep(product.unit, dynamicCodes)}
                                 value={transferQuantities[productLine.key] || ""}
                                 disabled={!productChecked}
                                 onChange={(event) =>
@@ -1574,9 +1570,9 @@ export default function InventoryTransfer() {
                                     </Label>
                                     <Input
                                       type="number"
-                                      min={getQuantityStep(product.unit)}
+                                      min={getQuantityStep(product.unit, dynamicCodes)}
                                       max={line.availableQuantity}
-                                      step={getQuantityStep(product.unit)}
+                                      step={getQuantityStep(product.unit, dynamicCodes)}
                                       value={transferQuantities[line.key] || ""}
                                       disabled={!isSelected}
                                       onChange={(event) =>

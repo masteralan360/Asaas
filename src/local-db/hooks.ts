@@ -24,6 +24,7 @@ import type {
     Inventory,
     ProductBarcode,
     Category,
+    Unit,
     ProductDiscount,
     CategoryDiscount,
     Invoice,
@@ -56,6 +57,7 @@ import type {
     PaymentTransactionSourceType,
     OfflineMutation
 } from './models'
+import { DEFAULT_UNITS } from './models'
 import {
     DuplicateProductBarcodeError,
     findActiveProductBarcodeByValue,
@@ -417,8 +419,160 @@ export async function deleteCategory(id: string): Promise<void> {
 }
 
 // ===================
-// PRODUCTS HOOKS
+// UNITS HOOKS
 // ===================
+
+export class UnitInUseError extends Error {
+    constructor() {
+        super('Unit is used by one or more products')
+        this.name = 'UnitInUseError'
+    }
+}
+
+export class UnitReservedCodeError extends Error {
+    constructor() {
+        super('Unit code is reserved for a built-in unit')
+        this.name = 'UnitReservedCodeError'
+    }
+}
+
+function toSupabaseUnitPayload(unit: Partial<Unit>) {
+    return toSnakeCase({
+        ...unit,
+        syncStatus: undefined,
+        lastSyncedAt: undefined
+    })
+}
+
+export function useUnits(workspaceId: string | undefined) {
+    const isOnline = useNetworkStatus()
+
+    // 1. Local Cache (Always Source of Truth for UI)
+    const units = useLiveQuery(
+        () => workspaceId ? db.units.where('workspaceId').equals(workspaceId).and(u => !u.isDeleted).toArray() : [],
+        [workspaceId]
+    )
+
+    // 2. Online: Fetch fresh data from Supabase & cleanup cache
+    useEffect(() => {
+        if (!isOnline || !workspaceId || !shouldUseCloudBusinessData(workspaceId)) {
+            return
+        }
+
+        void fetchTableFromSupabase('units', db.units, workspaceId)
+    }, [isOnline, workspaceId])
+
+    return units ?? []
+}
+
+function assertCustomUnitCode(code: string): void {
+    const normalized = code.trim().toLowerCase()
+    if (DEFAULT_UNITS.some((def) => def.code.trim().toLowerCase() === normalized)) {
+        throw new UnitReservedCodeError()
+    }
+}
+
+export async function createUnit(workspaceId: string, data: Omit<Unit, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted'>): Promise<Unit> {
+    assertCustomUnitCode(data.code)
+    const now = new Date().toISOString()
+    const id = generateId()
+    const session = isOnline() ? await getMutationSession('units.create') : null
+
+    const unit: Unit = {
+        ...data,
+        id,
+        workspaceId,
+        createdBy: data.createdBy ?? getActiveBusinessUserId() ?? session?.user?.id ?? null,
+        createdAt: now,
+        updatedAt: now,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any, // Optimistic status
+        lastSyncedAt: isOnline() ? now : null,
+        version: 1,
+        isDeleted: false
+    }
+
+    if (isOnline()) {
+        // ONLINE: Write directly to Supabase
+        const payload = toSupabaseUnitPayload(unit)
+        const { error } = await runMutation('units.create', () => supabase.from('units').upsert(payload))
+
+        if (error) {
+            console.error('Supabase write failed:', error)
+            throw normalizeSupabaseActionError(error) // Fail loudly if online
+        }
+
+        // Update local cache as synced
+        await db.units.put(unit)
+    } else {
+        // OFFLINE: Write to local mutation queue
+        await db.units.put(unit)
+        await addToOfflineMutations('units', id, 'create', unit as unknown as Record<string, unknown>, workspaceId)
+    }
+
+    return unit
+}
+
+export async function updateUnit(id: string, data: Partial<Unit>): Promise<void> {
+    const now = new Date().toISOString()
+    const existing = await db.units.get(id)
+    if (!existing) throw new Error('Unit not found')
+    if (data.code !== undefined) assertCustomUnitCode(data.code)
+
+    const updated = {
+        ...existing,
+        ...data,
+        updatedAt: now,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        lastSyncedAt: isOnline() ? now : existing.lastSyncedAt,
+        version: existing.version + 1
+    }
+
+    if (isOnline()) {
+        // ONLINE: Update Supabase directly
+        const payload = toSupabaseUnitPayload({ ...data, updatedAt: now })
+        const { error } = await runMutation('units.update', () => supabase.from('units').update(payload).eq('id', id))
+
+        if (error) throw normalizeSupabaseActionError(error)
+
+        await db.units.put(updated)
+    } else {
+        // OFFLINE: Local mutation
+        await db.units.put(updated)
+        await addToOfflineMutations('units', id, 'update', updated as unknown as Record<string, unknown>, existing.workspaceId)
+    }
+}
+
+export async function deleteUnit(id: string): Promise<void> {
+    const existing = await db.units.get(id)
+    if (!existing) return
+
+    const usedCount = await db.products
+        .where('workspaceId')
+        .equals(existing.workspaceId)
+        .and((product) => !product.isDeleted && product.unit === existing.code)
+        .count()
+
+    if (usedCount > 0) {
+        throw new UnitInUseError()
+    }
+
+    const shouldSyncOnline = shouldUseCloudBusinessData(existing.workspaceId) && isOnline()
+
+    if (shouldSyncOnline) {
+        // ONLINE: Hard delete from Supabase
+        const { error } = await runMutation('units.delete', () => supabase.from('units').delete().eq('id', id))
+        if (error) throw normalizeSupabaseActionError(error)
+
+        await db.units.delete(id)
+    } else {
+        // OFFLINE: Remove locally and queue a hard delete for the next sync
+        await db.units.delete(id)
+
+        if (shouldUseCloudBusinessData(existing.workspaceId)) {
+            await addToOfflineMutations('units', id, 'delete', { id, hardDelete: true }, existing.workspaceId)
+        }
+    }
+}
 
 // ===================
 // PRODUCTS HOOKS

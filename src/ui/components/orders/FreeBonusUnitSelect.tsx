@@ -1,12 +1,13 @@
 import { Info } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components'
-import { PRODUCT_UNITS } from '@/ui/components/units'
 import { ProductUnitIcon } from '@/ui/components/ProductUnitIcon'
+import type { WorkspaceUnitOption } from '@/ui/components/unitRegistry'
 
 interface FreeBonusUnitSelectProps {
     value: string
     productUnit?: string
+    units?: WorkspaceUnitOption[]
     onValueChange: (value: string) => void
 }
 
@@ -14,7 +15,7 @@ interface FreeBonusUnitSelectProps {
  * Display-only unit override for a line's free bonus quantity.
  * The saved order always keeps the product unit; this only changes what the form and prints show.
  */
-export function FreeBonusUnitSelect({ value, productUnit, onValueChange }: FreeBonusUnitSelectProps) {
+export function FreeBonusUnitSelect({ value, productUnit, units = [], onValueChange }: FreeBonusUnitSelectProps) {
     const { t } = useTranslation()
     const effectiveValue = value || productUnit || ''
 
@@ -33,11 +34,11 @@ export function FreeBonusUnitSelect({ value, productUnit, onValueChange }: FreeB
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                    {PRODUCT_UNITS.map((unit) => (
-                        <SelectItem key={unit} value={unit}>
+                    {units.map((unit) => (
+                        <SelectItem key={unit.value} value={unit.value}>
                             <span className="flex items-center gap-2">
-                                <ProductUnitIcon unit={unit} />
-                                {t(`products.units.${unit}`, unit)}
+                                <ProductUnitIcon unit={unit.value} iconName={unit.icon} />
+                                {t(`products.units.${unit.value}`, unit.value)}
                             </span>
                         </SelectItem>
                     ))}

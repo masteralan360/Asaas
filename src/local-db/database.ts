@@ -12,6 +12,7 @@ import type {
   PriceBook,
   PriceBookItem,
   Category,
+  Unit,
   Invoice,
   InvoiceVersion,
   User,
@@ -416,6 +417,7 @@ export class AtlasDatabase extends Dexie {
   price_books!: EntityTable<PriceBook, "id">;
   price_book_items!: EntityTable<PriceBookItem, "id">;
   categories!: EntityTable<Category, "id">;
+  units!: EntityTable<Unit, "id">;
   invoices!: EntityTable<Invoice, "id">;
   invoice_versions!: EntityTable<InvoiceVersion, "id">;
   users!: EntityTable<User, "id">;
@@ -3178,6 +3180,11 @@ export class AtlasDatabase extends Dexie {
         }
       });
 
+    this.version(93).stores({
+      units:
+        "id, workspaceId, code, updatedAt, isDeleted, syncStatus, [workspaceId+code], [workspaceId+updatedAt]",
+    });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }
@@ -3304,6 +3311,7 @@ export class AtlasDatabase extends Dexie {
       "price_books",
       "price_book_items",
       "categories",
+      "units",
       "invoices",
       "invoice_versions",
       "users",

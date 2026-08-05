@@ -74,6 +74,7 @@ import { LoanPartyPickerDialog } from '@/ui/components/loans/LoanPartyPickerDial
 import { OrderAdjustmentsDialog } from './OrderAdjustmentsDialog'
 import { OrderLineItemNoteDialog } from './OrderLineItemNoteDialog'
 import { FreeBonusUnitSelect } from './FreeBonusUnitSelect'
+import { useUnitRegistry } from '@/ui/components/unitRegistry'
 
 interface PurchaseOrderFormPageProps {
     workspaceId: string
@@ -131,12 +132,6 @@ function roundFormAmount(value: number) {
 function getCommonStorageId(items: Array<{ storageId?: string | null }>, fallbackStorageId = '') {
     const storageIds = Array.from(new Set(items.map((item) => item.storageId || fallbackStorageId).filter(Boolean)))
     return storageIds.length === 1 ? storageIds[0] : null
-}
-
-const DYNAMIC_UNITS = ['m²', 'Kg', 'Meter']
-
-function isDynamicUnit(unit: string | undefined) {
-    return DYNAMIC_UNITS.includes(unit ?? '')
 }
 
 type PartnerRequiredSectionProps = {
@@ -199,6 +194,7 @@ export function PurchaseOrderFormPage({
 
     const products = useProducts(workspaceId)
     const storages = useStorages(workspaceId)
+    const { isDynamicUnit, options: unitOptions } = useUnitRegistry(workspaceId)
     const supplierPartners = useBusinessPartners(workspaceId, { roles: ['supplier'] })
     const editingOrder = usePurchaseOrder(editingOrderId)
     const defaultStorageId = getPrimaryStorageFromList(storages)?.id || ''
@@ -973,11 +969,12 @@ export function PurchaseOrderFormPage({
                                                                 {(item.freeBonusUnit || product?.unit) && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${freeBonusDisplayUnit}`, freeBonusDisplayUnit)}</span>}
                                                             </div>
                                                             {isAccessKeyHeld ? (
-                                                                <FreeBonusUnitSelect
-                                                                    value={item.freeBonusUnit}
-                                                                    productUnit={product?.unit}
-                                                                    onValueChange={(value) => updateItem(index, { freeBonusUnit: value })}
-                                                                />
+                                                            <FreeBonusUnitSelect
+                                                                value={item.freeBonusUnit}
+                                                                productUnit={product?.unit}
+                                                                units={unitOptions}
+                                                                onValueChange={(value) => updateItem(index, { freeBonusUnit: value })}
+                                                            />
                                                             ) : null}
                                                         </div>
                                                     ) : null}

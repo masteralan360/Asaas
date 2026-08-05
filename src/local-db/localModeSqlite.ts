@@ -15,6 +15,7 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "price_books",
   "price_book_items",
   "categories",
+  "units",
   "invoices",
   "invoice_versions",
   "users",

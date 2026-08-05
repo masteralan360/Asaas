@@ -38,6 +38,7 @@ import {
   Vault,
   Wallet,
   Zap,
+  Ruler,
 } from "lucide-react";
 import type { WorkspaceFeatures } from "@/workspace";
 import type { ModuleFeatureKey } from "@/workspace/WorkspaceContext";
@@ -487,6 +488,13 @@ export function buildWorkspaceNavigation({
           name: t("nav.products", { defaultValue: "Products" }),
           href: "/products",
           icon: Package,
+          children: [
+            {
+              name: t("nav.units", { defaultValue: "Units" }),
+              href: "/units",
+              icon: Ruler,
+            },
+          ],
         },
       ]
       : []),

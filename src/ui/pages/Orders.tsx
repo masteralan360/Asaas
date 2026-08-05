@@ -112,6 +112,7 @@ import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal
 import { OrderDetailsView } from '@/ui/components/orders/OrderDetailsView'
 import { OrderListPrintTemplate } from '@/ui/components/orders/OrderPrintTemplates'
 import { OrderStatusBadge } from '@/ui/components/orders/OrderStatusBadge'
+import { useUnitRegistry } from '@/ui/components/unitRegistry'
 
 type OrderTab = 'sales' | 'purchase'
 type StatusFilter = 'all' | 'draft' | 'pending' | 'ordered' | 'received' | 'completed' | 'cancelled'
@@ -257,10 +258,6 @@ function createEmptyItem(storageId = ''): FormItem {
 
 function roundFormAmount(value: number) {
     return roundOrderValue(value)
-}
-
-function isDynamicUnit(unit: string | undefined) {
-    return unit === 'm²' || unit === 'Kg' || unit === 'Meter'
 }
 
 function formatStatusLabel(t: (key: string) => string, status: string) {
@@ -453,6 +450,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
     const salesOrders = useSalesOrders(workspaceId)
     const purchaseOrders = usePurchaseOrders(workspaceId)
     const defaultStorageId = getPrimaryStorageFromList(storages)?.id || ''
+    const unitRegistry = useUnitRegistry(workspaceId)
 
     const [activeTab, setActiveTab] = useState<OrderTab>(initialTab)
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => (localStorage.getItem('orders_view_mode') as 'table' | 'grid') || 'table')
@@ -2193,7 +2191,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                         </div>
                                                         <div className="space-y-2">
                                                             <Label className="md:hidden">{t('orders.form.table.qty') || 'Qty'}</Label>
-                                                            <Input type="number" min={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : '1'} step={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : '1'} value={item.quantity} onChange={(event) => updateSalesItem(index, { quantity: event.target.value })} placeholder={t('common.quantity') || 'Quantity'} />
+                                                            <Input type="number" min={unitRegistry.isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : '1'} step={unitRegistry.isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : '1'} value={item.quantity} onChange={(event) => updateSalesItem(index, { quantity: event.target.value })} placeholder={t('common.quantity') || 'Quantity'} />
                                                         </div>
                                                         <div className="space-y-2">
                                                             <Label className="md:hidden">{t('orders.form.table.price') || 'Unit Price'}</Label>
@@ -2451,7 +2449,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                         </div>
                                                         <div className="space-y-2">
                                                             <Label className="md:hidden">{t('orders.form.table.qty') || 'Qty'}</Label>
-                                                            <Input type="number" min={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : '1'} step={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : '1'} value={item.quantity} onChange={(event) => updatePurchaseItem(index, { quantity: event.target.value })} placeholder={t('common.quantity') || 'Quantity'} />
+                                                            <Input type="number" min={unitRegistry.isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : '1'} step={unitRegistry.isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : '1'} value={item.quantity} onChange={(event) => updatePurchaseItem(index, { quantity: event.target.value })} placeholder={t('common.quantity') || 'Quantity'} />
                                                         </div>
                                                         <div className="space-y-2">
                                                             <Label className="md:hidden">{t('orders.form.table.price') || 'Unit Price'}</Label>

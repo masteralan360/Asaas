@@ -102,8 +102,6 @@ import {
     RefreshCw,
     X,
     Archive,
-    Ruler,
-    Scale,
     ChevronRight,
     ChevronUp,
     ChevronDown,
@@ -131,10 +129,9 @@ import { useDemoTutorial } from '@/demo'
 import { ActivityReceiptPrintTemplate, createActivityReceiptLabels } from '@/ui/components/activities/ActivityReceiptPrintTemplate'
 import { generateTemplatePdf } from '@/services/pdfGenerator'
 import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
+import { useUnitRegistry, getDynamicUnitAdjustmentLabel, type UnitRegistry } from '@/ui/components/unitRegistry'
 
 const CART_IMAGE_VISIBILITY_THRESHOLD = 450
-const DYNAMIC_UNITS = ['m²', 'Kg', 'Meter'] as const
-type DynamicUnit = typeof DYNAMIC_UNITS[number]
 
 const ACTIVITIES_STORAGE_ID = '__atlas_activities__'
 const ACTIVITY_POS_QUANTITY_LIMIT = Number.MAX_SAFE_INTEGER
@@ -146,23 +143,6 @@ type PosCatalogProduct = BatchAwareInventoryProduct & {
 type CompletedActivityCheckout = {
     transaction: ActivityTransaction
     lines: ActivityTransactionLine[]
-}
-
-function isDynamicUnit(unit: string | undefined): unit is DynamicUnit {
-    return DYNAMIC_UNITS.some((dynamicUnit) => dynamicUnit === unit)
-}
-
-function getDynamicUnitAdjustmentLabel(t: any, unit: DynamicUnit) {
-    if (unit === 'm²') return t('pos.adjustM2') || 'Adjust m²'
-    if (unit === 'Kg') return t('pos.adjustKg') || 'Adjust Kg'
-
-    return 'Adjust Meter'
-}
-
-function getDynamicUnitIcon(unit: DynamicUnit, className: string) {
-    return unit === 'Kg'
-        ? <Scale className={className} />
-        : <Ruler className={className} />
 }
 
 function isLoanRegistrationData(value: unknown): value is LoanRegistrationData {
@@ -407,6 +387,7 @@ export function POS() {
     const isRTL = getLanguageDirection(i18n.resolvedLanguage || i18n.language) === 'rtl'
     const { permissionKeys, hasPermission, isLoading: arePermissionsLoading } = useWorkspacePermissions()
     const hideCosts = useHideCosts()
+    const unitRegistry = useUnitRegistry(user?.workspaceId)
     // Activities are a POS storage. Any user who may use POS can sell from it
     // when the workspace has enabled the Activities feature; access to the
     // standalone Activities management module remains separately permissioned.
@@ -478,7 +459,7 @@ export function POS() {
     } | null>(null)
     const [search, setSearch] = useState('')
     const [cart, setCart] = useState<CartItem[]>([])
-    const [dynamicUnitModal, setDynamicUnitModal] = useState<{ type: DynamicUnit; itemKey: string } | null>(null)
+    const [dynamicUnitModal, setDynamicUnitModal] = useState<{ type: string; itemKey: string } | null>(null)
     const [dynamicInputBuffer, setDynamicInputBuffer] = useState<Record<string, string>>({})
     const [isSkuModalOpen, setIsSkuModalOpen] = useState(false)
     const [selectedCategory, setSelectedCategory] = useState<string>(() => {
@@ -2856,6 +2837,7 @@ export function POS() {
                                 t={t}
                                 setDynamicUnitModal={setDynamicUnitModal}
                                 setExactQuantity={setExactQuantity}
+                                unitRegistry={unitRegistry}
                                 isActivitiesStorage={isActivitiesStorage}
                             />
                         )}
@@ -3243,17 +3225,17 @@ export function POS() {
                                                                     <Pencil className="w-3.5 h-3.5 text-primary" />
                                                                 </button>
                                                             )}
-                                                            {isDynamicUnit(item.unit) && (
+                                                            {unitRegistry.isDynamicUnit(item.unit) && (
                                                                 <button
                                                                     onClick={() => {
-                                                                        if (isDynamicUnit(item.unit)) {
+                                                                        if (unitRegistry.isDynamicUnit(item.unit)) {
                                                                             setDynamicUnitModal({ type: item.unit, itemKey })
                                                                         }
                                                                     }}
                                                                     className="transition-opacity p-1 hover:bg-muted rounded bg-muted/30 border border-border/50"
-                                                                    title={getDynamicUnitAdjustmentLabel(t, item.unit)}
+                                                                    title={getDynamicUnitAdjustmentLabel(t, item.unit, unitRegistry.dynamicCodes)}
                                                                 >
-                                                                    {getDynamicUnitIcon(item.unit, 'w-3.5 h-3.5 text-primary')}
+                                                                    {unitRegistry.getUnitIcon(item.unit, 'w-3.5 h-3.5 text-primary')}
                                                                 </button>
                                                             )}
                                                         </div>
@@ -3267,7 +3249,7 @@ export function POS() {
                                                         )}
                                                     </div>
                                                     <div className="flex items-center gap-1">
-                                                        {isDynamicUnit(item.unit) ? (
+                                                        {unitRegistry.isDynamicUnit(item.unit) ? (
                                                             <>
                                                                 <div className="flex items-center gap-1 bg-muted/30 rounded-md border border-border/50 px-1.5">
                                                                     <Input
@@ -3892,8 +3874,8 @@ export function POS() {
                             <div className="space-y-6 py-4">
                                 <DialogHeader>
                                     <DialogTitle className="flex items-center gap-2">
-                                        {getDynamicUnitIcon(dynamicUnitModal.type, 'w-5 h-5 text-primary')}
-                                        {getDynamicUnitAdjustmentLabel(t, dynamicUnitModal.type)}
+                                        {unitRegistry.getUnitIcon(dynamicUnitModal.type, 'w-5 h-5 text-primary')}
+                                        {getDynamicUnitAdjustmentLabel(t, dynamicUnitModal.type, unitRegistry.dynamicCodes)}
                                     </DialogTitle>
                                 </DialogHeader>
 
@@ -4690,8 +4672,9 @@ interface MobileCartProps {
     hasLoadingRates: boolean
     isActivitiesStorage: boolean
     t: any
-    setDynamicUnitModal: (modal: { type: DynamicUnit; itemKey: string } | null) => void
+    setDynamicUnitModal: (modal: { type: string; itemKey: string } | null) => void
     setExactQuantity: (itemKey: string, quantity: number) => void
+    unitRegistry: UnitRegistry
 }
 
 function MobileCart({
@@ -4702,7 +4685,7 @@ function MobileCart({
     clearNegotiatedPrice, isAdmin,
     discountValue, setDiscountValue, discountType, setDiscountType,
     hasTrulyMissingRates, hasLoadingRates, isActivitiesStorage, t,
-    setDynamicUnitModal, setExactQuantity
+    setDynamicUnitModal, setExactQuantity, unitRegistry
 }: MobileCartProps) {
     const [isExpanded, setIsExpanded] = useState(false)
     const [isDragging, setIsDragging] = useState(false)
@@ -4852,17 +4835,17 @@ function MobileCart({
                                                             <Pencil className="w-3.5 h-3.5" />
                                                         </button>
                                                     )}
-                                                    {isDynamicUnit(item.unit) && (
+                                                    {unitRegistry.isDynamicUnit(item.unit) && (
                                                         <button
                                                             onClick={() => {
-                                                                if (isDynamicUnit(item.unit)) {
+                                                                if (unitRegistry.isDynamicUnit(item.unit)) {
                                                                     setDynamicUnitModal({ type: item.unit, itemKey })
                                                                 }
                                                             }}
                                                             className="p-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 transition-colors"
-                                                            title={getDynamicUnitAdjustmentLabel(t, item.unit)}
+                                                            title={getDynamicUnitAdjustmentLabel(t, item.unit, unitRegistry.dynamicCodes)}
                                                         >
-                                                            {getDynamicUnitIcon(item.unit, 'w-3.5 h-3.5')}
+                                                            {unitRegistry.getUnitIcon(item.unit, 'w-3.5 h-3.5')}
                                                         </button>
                                                     )}
                                                 </div>
@@ -4904,7 +4887,7 @@ function MobileCart({
                                     </div>
 
                                     <div className="flex justify-end mt-2">
-                                        {isDynamicUnit(item.unit) ? (
+                                        {unitRegistry.isDynamicUnit(item.unit) ? (
                                             <div className="flex items-center gap-2 bg-muted/50 rounded-xl p-1.5 border border-border/50">
                                                 <Input
                                                     type="text"

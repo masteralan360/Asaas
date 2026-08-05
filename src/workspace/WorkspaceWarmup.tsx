@@ -132,6 +132,7 @@ export function WorkspaceWarmup() {
             tasks.push(
                 () => import('@/ui/pages/Products'),
                 () => import('@/ui/pages/ProductFormPage'),
+                () => import('@/ui/pages/UnitsPage'),
             )
         }
         if (hasFeature('discounts')) tasks.push(() => import('@/ui/pages/Discounts'))

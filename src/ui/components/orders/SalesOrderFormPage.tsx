@@ -86,6 +86,7 @@ import { LoanPartyPickerDialog } from '@/ui/components/loans/LoanPartyPickerDial
 import { OrderAdjustmentsDialog } from './OrderAdjustmentsDialog'
 import { OrderLineItemNoteDialog } from './OrderLineItemNoteDialog'
 import { FreeBonusUnitSelect } from './FreeBonusUnitSelect'
+import { useUnitRegistry } from '@/ui/components/unitRegistry'
 
 interface SalesOrderFormPageProps {
     workspaceId: string
@@ -131,12 +132,6 @@ function createEmptyItem(storageId = '', seq = 1): FormItem {
 
 function roundFormAmount(value: number) {
     return roundOrderValue(value)
-}
-
-const DYNAMIC_UNITS = ['m²', 'Kg', 'Meter']
-
-function isDynamicUnit(unit: string | undefined) {
-    return DYNAMIC_UNITS.includes(unit ?? '')
 }
 
 const PRODUCT_STOCK_SELECTION = '__product_stock__'
@@ -218,6 +213,7 @@ export function SalesOrderFormPage({
     const inventory = useInventory(workspaceId)
     const stockBatches = useStockBatches(workspaceId)
     const storages = useStorages(workspaceId)
+    const { isDynamicUnit, options: unitOptions } = useUnitRegistry(workspaceId)
     const customerPartners = useBusinessPartners(workspaceId, { roles: ['customer'] })
     const editingOrder = useSalesOrder(editingOrderId)
     const defaultStorageId = getPrimaryStorageFromList(storages)?.id || ''
@@ -1249,6 +1245,7 @@ export function SalesOrderFormPage({
                                                             <FreeBonusUnitSelect
                                                                 value={item.freeBonusUnit}
                                                                 productUnit={product?.unit}
+                                                                units={unitOptions}
                                                                 onValueChange={(value) => updateItem(index, { freeBonusUnit: value })}
                                                             />
                                                         ) : null}

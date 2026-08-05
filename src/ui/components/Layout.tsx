@@ -122,6 +122,7 @@ const routePrefetchMap: Record<string, () => Promise<unknown>> = {
     '/performance': () => import('@/ui/pages/TeamPerformance'),
     '/whatsapp': () => import('@/ui/pages/WhatsAppWeb'),
     '/products': () => import('@/ui/pages/Products'),
+    '/units': () => import('@/ui/pages/UnitsPage'),
     '/storages': () => import('@/ui/pages/Storages'),
     '/inventory-transfer': () => import('@/ui/pages/InventoryTransfer'),
     '/invoices-history': () => import('@/ui/pages/InvoicesHistory'),

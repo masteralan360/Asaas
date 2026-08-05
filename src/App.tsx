@@ -189,6 +189,9 @@ const Discounts = lazy(() =>
 const Storages = lazy(() =>
   import("@/ui/pages/Storages").then((m) => ({ default: m.default })),
 );
+const UnitsPage = lazy(() =>
+  import("@/ui/pages/UnitsPage").then((m) => ({ default: m.default })),
+);
 const InventoryTransfer = lazy(() =>
   import("@/ui/pages/InventoryTransfer").then((m) => ({ default: m.default })),
 );
@@ -2071,6 +2074,13 @@ function App() {
                         <ProtectedRoute requiredFeature="products" requiredPermission="products.access">
                           <Layout>
                             <Products />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/units">
+                        <ProtectedRoute requiredFeature="products" requiredPermission="products.access">
+                          <Layout>
+                            <UnitsPage />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

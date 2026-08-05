@@ -1,34 +1,123 @@
-import { BottleWine, Box, Boxes, CircleDot, Cylinder, Droplets, Package, Ruler, Scale, ShoppingBag, SquareDashed, Weight } from 'lucide-react'
+import {
+    Apple,
+    Archive,
+    BottleWine,
+    Box,
+    Boxes,
+    Briefcase,
+    Cake,
+    Carrot,
+    CircleDot,
+    Coffee,
+    Cookie,
+    CupSoda,
+    Cylinder,
+    Droplets,
+    Egg,
+    Fish,
+    Flower2,
+    Gem,
+    Gift,
+    Globe,
+    Hammer,
+    KeyRound,
+    Lamp,
+    Layers,
+    Milk,
+    Package,
+    PackageOpen,
+    Palette,
+    Pizza,
+    Popcorn,
+    Ruler,
+    Scale,
+    Shirt,
+    ShoppingBag,
+    Sparkles,
+    SquareDashed,
+    Store,
+    Tag,
+    TreePine,
+    Truck,
+    Utensils,
+    Weight,
+    Wine,
+    type LucideIcon,
+} from 'lucide-react'
 
-export function ProductUnitIcon({ unit }: { unit: string }) {
-    const className = 'h-4 w-4 text-primary/70'
+const UNIT_ICON_BY_CODE: Record<string, LucideIcon> = {
+    pcs: CircleDot,
+    gram: Scale,
+    liter: Droplets,
+    bottle: BottleWine,
+    can: Cylinder,
+    box: Box,
+    pack: Package,
+    carton: Boxes,
+    bag: ShoppingBag,
+    'm²': SquareDashed,
+    Kg: Weight,
+    Meter: Ruler,
+}
 
-    switch (unit) {
-        case 'pcs':
-            return <CircleDot className={className} />
-        case 'Kg':
-            return <Weight className={className} />
-        case 'gram':
-            return <Scale className={className} />
-        case 'liter':
-            return <Droplets className={className} />
-        case 'bottle':
-            return <BottleWine className={className} />
-        case 'can':
-            return <Cylinder className={className} />
-        case 'box':
-            return <Box className={className} />
-        case 'pack':
-            return <Package className={className} />
-        case 'carton':
-            return <Boxes className={className} />
-        case 'bag':
-            return <ShoppingBag className={className} />
-        case 'm²':
-            return <SquareDashed className={className} />
-        case 'Meter':
-            return <Ruler className={className} />
-        default:
-            return <Ruler className={className} />
-    }
+const NAMED_ICONS: Record<string, LucideIcon> = {
+    CircleDot,
+    Scale,
+    Droplets,
+    BottleWine,
+    Cylinder,
+    Box,
+    Package,
+    Boxes,
+    ShoppingBag,
+    SquareDashed,
+    Weight,
+    Ruler,
+    Apple,
+    Archive,
+    Briefcase,
+    Cake,
+    Carrot,
+    Coffee,
+    Cookie,
+    CupSoda,
+    Egg,
+    Fish,
+    Flower2,
+    Gem,
+    Gift,
+    Globe,
+    Hammer,
+    KeyRound,
+    Lamp,
+    Layers,
+    Milk,
+    PackageOpen,
+    Palette,
+    Pizza,
+    Popcorn,
+    Shirt,
+    Sparkles,
+    Store,
+    Tag,
+    TreePine,
+    Truck,
+    Utensils,
+    Wine,
+}
+
+export const CUSTOM_UNIT_ICON_CHOICES = Object.keys(NAMED_ICONS)
+
+export function ProductUnitIcon({
+    unit,
+    iconName,
+    className,
+}: {
+    unit: string
+    iconName?: string | null
+    className?: string
+}) {
+    const resolvedClassName = className ?? 'h-4 w-4 text-primary/70'
+    const IconComponent = UNIT_ICON_BY_CODE[unit] ?? (iconName ? NAMED_ICONS[iconName] : undefined) ?? Ruler
+    return <IconComponent className={resolvedClassName} />
 }

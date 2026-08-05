@@ -62,8 +62,8 @@ import { useWorkspace } from '@/workspace'
 import { useHideCosts } from '@/permissions'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { BarcodeScannerToggleButton } from '@/ui/components/BarcodeScannerToggleButton'
-import { PRODUCT_UNITS as UNITS } from '@/ui/components/units'
 import { ProductUnitIcon } from '@/ui/components/ProductUnitIcon'
+import { useUnitRegistry } from '@/ui/components/unitRegistry'
 import { useDemoTutorial } from '@/demo'
 import {
     ProductPriceBookItemsEditor,
@@ -99,10 +99,6 @@ import {
     useToast
 } from '@/ui/components'
 
-const DYNAMIC_UNITS = new Set(['m²', 'Kg', 'Meter'])
-function isDynamicUnit(unit: string): boolean {
-    return DYNAMIC_UNITS.has(unit)
-}
 type ProductScannerTarget = 'none' | 'sku' | 'barcode'
 
 const PRODUCT_SCANNER_TARGET_KEY = 'products_scanner_target'
@@ -270,6 +266,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const storages = useStorages(user?.workspaceId)
     const product = useProduct(productId)
     const workspaceId = user?.workspaceId || ''
+    const { isDynamicUnit, options: unitOptions } = useUnitRegistry(workspaceId)
     const priceBooksEnabled = hasCapability('priceBooks')
     const sourcePriceBookProductId = mode === 'create' ? undefined : product?.id
     const {
@@ -1292,11 +1289,11 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {UNITS.map((unit) => (
-                                                    <SelectItem key={unit} value={unit}>
+                                                {unitOptions.map((option) => (
+                                                    <SelectItem key={option.value} value={option.value}>
                                                         <span className="flex items-center gap-2">
-                                                            <ProductUnitIcon unit={unit} />
-                                                            {t(`products.units.${unit}`, unit)}
+                                                            <ProductUnitIcon unit={option.value} iconName={option.icon} />
+                                                            {t(`products.units.${option.value}`, option.value)}
                                                         </span>
                                                     </SelectItem>
                                                 ))}

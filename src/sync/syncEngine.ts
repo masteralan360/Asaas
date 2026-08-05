@@ -46,6 +46,7 @@ const SYNC_PULL_TABLES = [
   "category_discounts",
   "reorder_transfer_rules",
   "categories",
+  "units",
   "customers",
   "suppliers",
   "agents",

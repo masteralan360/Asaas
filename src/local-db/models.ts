@@ -133,6 +133,41 @@ export interface Category extends BaseEntity {
   createdBy?: string | null;
 }
 
+export interface Unit extends BaseEntity {
+  /** Value stored on products.unit (e.g. "box", "m²"). */
+  code: string;
+  /** Optional lucide icon name used to render this unit. */
+  icon?: string | null;
+  /** Dynamic units allow fractional quantities and POS quantity adjustment. */
+  isDynamic: boolean;
+  createdBy?: string | null;
+}
+
+/**
+ * Built-in units, hardcoded in the app and shared by every workspace.
+ * They are NOT stored in the `units` table — that table only holds
+ * workspace-created custom units. Codes here are reserved: the data layer
+ * and the units page reject custom units that collide with them.
+ */
+export const DEFAULT_UNITS: ReadonlyArray<{
+  code: string;
+  icon?: string | null;
+  isDynamic: boolean;
+}> = [
+  { code: "pcs", icon: "CircleDot", isDynamic: false },
+  { code: "gram", icon: "Scale", isDynamic: false },
+  { code: "liter", icon: "Droplets", isDynamic: false },
+  { code: "bottle", icon: "BottleWine", isDynamic: false },
+  { code: "can", icon: "Cylinder", isDynamic: false },
+  { code: "box", icon: "Box", isDynamic: false },
+  { code: "pack", icon: "Package", isDynamic: false },
+  { code: "carton", icon: "Boxes", isDynamic: false },
+  { code: "bag", icon: "ShoppingBag", isDynamic: false },
+  { code: "m²", icon: "SquareDashed", isDynamic: true },
+  { code: "Kg", icon: "Weight", isDynamic: true },
+  { code: "Meter", icon: "Ruler", isDynamic: true },
+];
+
 export interface Storage extends BaseEntity {
   name: string;
   isSystem: boolean;
@@ -1625,6 +1660,7 @@ export interface SyncQueueItem {
     | "order_returns"
     | "order_return_items"
     | "categories"
+    | "units"
     | "product_discounts"
     | "category_discounts"
     | "storages"
@@ -1761,6 +1797,7 @@ export interface OfflineMutation {
     | "order_returns"
     | "order_return_items"
     | "categories"
+    | "units"
     | "product_discounts"
     | "category_discounts"
     | "workspaces"
