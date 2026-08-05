@@ -34,9 +34,11 @@ import {
     deleteProductBarcode,
     DuplicateProductBarcodeError,
     DuplicateProductSkuError,
+    fetchTableFromSupabase,
     findActiveProductBySku,
     getPrimaryStorageFromList,
     replaceProductPriceBookItems,
+    syncProductBarcodeCachesForWorkspace,
     updateProductBarcode,
     updateProduct,
     useCategories,
@@ -53,6 +55,7 @@ import { assetManager } from '@/lib/assetManager'
 import { normalizeBarcodeDigits, normalizeBarcodeScannerText } from '@/lib/barcodeScanner'
 import { generateRandomUpc } from '@/lib/upc'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
+import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { isMobile, isTauri } from '@/lib/platform'
 import { roundQuantity } from '@/lib/quantity'
 import { cn, formatCurrency, formatNumericInput, sanitizeNumericInput } from '@/lib/utils'
@@ -245,7 +248,11 @@ function mapProductToFormData(product: Product, hideCosts = false): ProductFormD
         costPrice: hideCosts || product.costPrice == null ? '' : String(product.costPrice),
         quantity: product.quantity,
         minStockLevel: product.minStockLevel,
-        unit: normalizeUnitCode(product.unit),
+        // A product row that reached the local cache without a unit (possible
+        // for edits loaded offline where the fresh Supabase pull never runs)
+        // must never map to the placeholder. Fall back to the built-in default
+        // so the Radix SelectValue never shows a bare "Select unit" trigger.
+        unit: normalizeUnitCode(product.unit) || 'pcs',
         perQuantity: '1',
         currency: product.currency,
         imageUrl: product.imageUrl || '',
@@ -266,6 +273,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const categories = useCategories(user?.workspaceId)
     const storages = useStorages(user?.workspaceId)
     const product = useProduct(productId)
+    const isOnline = useNetworkStatus()
     const workspaceId = user?.workspaceId || ''
     const { isDynamicUnit, options: unitOptions } = useUnitRegistry(workspaceId)
     const priceBooksEnabled = hasCapability('priceBooks')
@@ -327,6 +335,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const [storageError, setStorageError] = useState(false)
     const [returnRulesModalOpen, setReturnRulesModalOpen] = useState(false)
     const [missingProductStateVisible, setMissingProductStateVisible] = useState(false)
+    const [productHydrationResolved, setProductHydrationResolved] = useState(false)
     const [newBarcodeValue, setNewBarcodeValue] = useState('')
     const [newBarcodeLabel, setNewBarcodeLabel] = useState('')
     const [isSubmittingBarcode, setIsSubmittingBarcode] = useState(false)
@@ -401,25 +410,70 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     }, [mode, productId])
 
     useEffect(() => {
+        setProductHydrationResolved(false)
+    }, [mode, productId])
+
+    useEffect(() => {
         if (!canEdit && mode !== 'edit') {
             navigate('/products')
         }
     }, [canEdit, mode, navigate])
 
     useEffect(() => {
-        if (mode === 'create') {
+        if (mode === 'create' || product) {
             setMissingProductStateVisible(false)
+            setProductHydrationResolved(true)
             return
         }
 
-        if (product) {
+        if (!productHydrationResolved) {
             setMissingProductStateVisible(false)
             return
         }
 
         const timer = window.setTimeout(() => setMissingProductStateVisible(true), 500)
         return () => window.clearTimeout(timer)
-    }, [mode, product])
+    }, [mode, product, productHydrationResolved])
+
+    // Self-hydrate the target product from Supabase when the local cache does
+    // not have it yet. The edit page must not depend on another page having
+    // already pulled the products table, otherwise a direct or repeated open
+    // can leave the page in a permanent "loading"/not-found state.
+    useEffect(() => {
+        let cancelled = false
+
+        const hydrateProduct = async () => {
+            if (mode === 'create' || product) {
+                setProductHydrationResolved(true)
+                return
+            }
+
+            if (!workspaceId || isLocalWorkspaceMode(workspaceId) || !isOnline) {
+                setProductHydrationResolved(true)
+                return
+            }
+
+            try {
+                await fetchTableFromSupabase('products', db.products, workspaceId)
+                if (cancelled) return
+                await syncProductBarcodeCachesForWorkspace(workspaceId)
+            } catch (error) {
+                if (!cancelled) {
+                    console.error('[ProductForm] Failed to hydrate product:', error)
+                }
+            } finally {
+                if (!cancelled) {
+                    setProductHydrationResolved(true)
+                }
+            }
+        }
+
+        void hydrateProduct()
+
+        return () => {
+            cancelled = true
+        }
+    }, [isOnline, mode, product, productId, workspaceId])
 
     useEffect(() => {
         const nextKey = mode === 'create'
@@ -972,7 +1026,17 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                 ? (t('products.editSubtitle') || 'Update product details, pricing, and return rules. Use Stock Adjustments for stock changes.')
                 : (t('products.subtitle') || 'Manage your inventory')
 
-    const unitLabel = t(`products.units.${formData.unit}`, formData.unit)
+    // The Radix SelectValue renders its placeholder whenever the select value
+    // is "" (even with children), so the unit display must never resolve to an
+    // empty string while editing. Prefer the form's field once the product has
+    // been patched into it; before that, trust the cached product's own unit;
+    // anything else collapses to the built-in default.
+    const formUnit = normalizeUnitCode(formData.unit)
+    const productUnit = isEditing && product?.id ? normalizeUnitCode(product.unit) : ''
+    const notYetPatched = mode !== 'create' && initialFormSnapshotRef.current === null
+    const normalizedUnit = normalizeUnitCode(notYetPatched && product ? product.unit : formUnit) || productUnit || 'pcs'
+    const selectedUnitOption = unitOptions.find((option) => option.value === normalizedUnit)
+    const unitLabel = t(`products.units.${normalizedUnit}`, normalizedUnit)
     const quantityValue = Number(formData.quantity) || 0
     const minStockValue = Number(formData.minStockLevel) || 0
     const lowStock = quantityValue <= minStockValue
@@ -1283,12 +1347,17 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             {t('products.form.unit')}
                                         </Label>
                                         <Select
-                                            value={formData.unit}
+                                            value={normalizedUnit}
                                             onValueChange={(value) => setFormData((current) => ({ ...current, unit: value }))}
                                             disabled={isReadOnly}
                                         >
                                             <SelectTrigger id="product-unit" data-tour-id="tutorial-product-unit" className="h-12 rounded-lg border-border/40 bg-muted/10" allowViewer={true}>
-                                                <SelectValue placeholder={t('units.selectPlaceholder', { defaultValue: 'Select unit' })} />
+                                                <SelectValue placeholder={t('units.selectPlaceholder', { defaultValue: 'Select unit' })}>
+                                                    <span className="flex items-center gap-2">
+                                                        <ProductUnitIcon unit={normalizedUnit} iconName={selectedUnitOption?.icon} />
+                                                        {unitLabel}
+                                                    </span>
+                                                </SelectValue>
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {unitOptions.map((option) => (
@@ -1299,11 +1368,11 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                         </span>
                                                     </SelectItem>
                                                 ))}
-                                                {formData.unit && !unitOptions.some((option) => option.value === formData.unit) ? (
-                                                    <SelectItem value={formData.unit}>
+                                                {normalizedUnit && !unitOptions.some((option) => option.value === normalizedUnit) ? (
+                                                    <SelectItem value={normalizedUnit}>
                                                         <span className="flex items-center gap-2">
-                                                            <ProductUnitIcon unit={formData.unit} />
-                                                            {normalizeUnitCode(formData.unit)}
+                                                            <ProductUnitIcon unit={normalizedUnit} />
+                                                            {unitLabel}
                                                         </span>
                                                     </SelectItem>
                                                 ) : null}
@@ -1790,7 +1859,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                         className="h-12 rounded-lg border-border/40 bg-muted/10 pr-16 font-black"
                                                     />
                                                     <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
-                                                        {t(`products.units.${formData.unit}`, formData.unit)}
+                                                        {unitLabel}
                                                     </span>
                                                 </div>
                                             </>
@@ -1836,7 +1905,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                 className="h-12 rounded-lg border-border/40 bg-muted/10 pr-16 font-bold"
                                             />
                                             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
-                                                {t(`products.units.${formData.unit}`, formData.unit)}
+                                                {unitLabel}
                                             </span>
                                         </div>
                                     </div>
