@@ -57,7 +57,7 @@ import type {
     PaymentTransactionSourceType,
     OfflineMutation
 } from './models'
-import { DEFAULT_UNITS } from './models'
+import { isReservedUnitCode } from './models'
 import {
     DuplicateProductBarcodeError,
     findActiveProductBarcodeByValue,
@@ -448,8 +448,15 @@ export function useUnits(workspaceId: string | undefined) {
     const isOnline = useNetworkStatus()
 
     // 1. Local Cache (Always Source of Truth for UI)
+    // Built-in units are hardcoded in DEFAULT_UNITS and never stored here.
+    // Rows whose code collides with a built-in are legacy seed data from the
+    // old auto-seed logic, so they are excluded from the UI entirely.
     const units = useLiveQuery(
-        () => workspaceId ? db.units.where('workspaceId').equals(workspaceId).and(u => !u.isDeleted).toArray() : [],
+        () => workspaceId
+            ? db.units.where('workspaceId').equals(workspaceId)
+                .and(u => !u.isDeleted && !isReservedUnitCode(u.code))
+                .toArray()
+            : [],
         [workspaceId]
     )
 
@@ -459,15 +466,23 @@ export function useUnits(workspaceId: string | undefined) {
             return
         }
 
-        void fetchTableFromSupabase('units', db.units, workspaceId)
+        void fetchTableFromSupabase('units', db.units, workspaceId).then(() => {
+            // Drop any legacy seeded built-in rows that were synced before the
+            // units table became custom-only. Built-in codes are reserved, so
+            // these rows can never be legitimate custom units.
+            return db.units
+                .where('workspaceId')
+                .equals(workspaceId)
+                .filter((unit) => !unit.isDeleted && isReservedUnitCode(unit.code))
+                .delete()
+        })
     }, [isOnline, workspaceId])
 
     return units ?? []
 }
 
 function assertCustomUnitCode(code: string): void {
-    const normalized = code.trim().toLowerCase()
-    if (DEFAULT_UNITS.some((def) => def.code.trim().toLowerCase() === normalized)) {
+    if (isReservedUnitCode(code)) {
         throw new UnitReservedCodeError()
     }
 }

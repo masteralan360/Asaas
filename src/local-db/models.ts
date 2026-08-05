@@ -168,6 +168,18 @@ export const DEFAULT_UNITS: ReadonlyArray<{
   { code: "Meter", icon: "Ruler", isDynamic: true },
 ];
 
+/**
+ * True when the code collides with a hardcoded built-in unit. Built-in codes
+ * are reserved, so a `units` row matching one is always legacy data seeded by
+ * the old auto-seed logic (or a stale pull) and must never be treated as a
+ * user-created custom unit.
+ */
+export function isReservedUnitCode(code: string | null | undefined): boolean {
+  if (!code) return false;
+  const normalized = code.trim().toLowerCase();
+  return DEFAULT_UNITS.some((def) => def.code.trim().toLowerCase() === normalized);
+}
+
 export interface Storage extends BaseEntity {
   name: string;
   isSystem: boolean;
