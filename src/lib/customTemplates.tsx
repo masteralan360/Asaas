@@ -1188,6 +1188,7 @@ function createSalesHistoryProfessionalA4Preview(options: CustomTemplatePreviewO
 
     return {
         fields: SALES_HISTORY_PROFESSIONAL_A4_FIELDS,
+        supportsBackgroundEdit: true,
         movableComponents: [
             { key: PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS.logo, label: 'Logo' },
             { key: PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS.qrCode, label: 'QR Code' },
@@ -1227,6 +1228,7 @@ function createSalesHistoryProfessionalA4Preview(options: CustomTemplatePreviewO
                 editableComponents={renderOptions?.editableComponents}
                 onComponentPositionChange={renderOptions?.onComponentPositionChange}
                 onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
+                background={renderOptions?.background}
             />
         ),
         buildPdf: (element, printLangOverride) => generateTemplatePdf({

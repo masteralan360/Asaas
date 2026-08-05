@@ -3,7 +3,7 @@ import { ReactQRCode } from '@lglab/react-qr-code'
 import { MapPin, Phone } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
+import type { CustomTemplateBackground, CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
 import { resolveIsolatedTextDirection } from '@/lib/textDirection'
 import { cn, formatCurrency, formatDateTime } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
@@ -66,6 +66,7 @@ interface ProfessionalA4InvoiceTemplateProps {
     editableComponents?: boolean
     onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
     onHiddenFieldChange?: (key: string, hidden: boolean) => void
+    background?: CustomTemplateBackground | null
 }
 
 function isRTL(lang: string): boolean {
@@ -143,7 +144,8 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
         hiddenFields,
         editableComponents,
         onComponentPositionChange,
-        onHiddenFieldChange
+        onHiddenFieldChange,
+        background
     }, ref) => {
         const { i18n } = useTranslation()
         const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
@@ -157,6 +159,7 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
         const itemRows = buildTwentyItemRows(items, rowCount)
         const effectiveWorkspaceId = propWorkspaceId || data.workspaceId
         const logoSrc = resolveLogoSrc(features?.logo_url)
+        const backgroundSrc = resolveLogoSrc(background?.path)
         const settlementCurrency = (data.settlement_currency || 'usd').toLowerCase()
         const iqdPreference = features?.iqd_display_preference
         const subtotalAmount = safeNumber(data.subtotal_amount, safeNumber(data.total_amount))
@@ -210,7 +213,7 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
                 ref={ref}
                 dir={isRtl ? 'rtl' : 'ltr'}
                 className="professional-a4-template relative bg-white text-black"
-                style={{ width: '210mm', minHeight: '297mm', padding: '14mm 12mm', margin: '0 auto' }}
+                style={{ width: '210mm', minHeight: '297mm', padding: '14mm 12mm', margin: '0 auto', position: 'relative', isolation: 'isolate' }}
                 data-order-print-page=""
                 data-page-width-mm="210"
             >
@@ -230,6 +233,24 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
 `
                     }}
                 />
+
+                {backgroundSrc && background ? (
+                    <img
+                        src={backgroundSrc}
+                        alt=""
+                        aria-hidden="true"
+                        className="pointer-events-none absolute -z-10 object-contain"
+                        data-atlas-standard-background=""
+                        style={{
+                            left: '50%',
+                            top: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            width: `${Math.min(100, Math.max(10, background.size || 100))}%`,
+                            height: 'auto',
+                            opacity: Math.min(1, Math.max(0.01, (background.opacity ?? 15) / 100))
+                        }}
+                    />
+                ) : null}
 
                 <div className="mb-4 border-b border-slate-300 pb-3">
                     <div className="flex items-start justify-between gap-3">
