@@ -73,7 +73,7 @@ function makeChainable() {
           tableRows.set(String(row.id), row);
           return { data: null, error: null };
         },
-        update: (payload: unknown) => ({
+        update: (_payload: unknown) => ({
           eq: () => ({ data: null, error: null }),
         }),
         delete: () => ({ eq: () => ({ data: null, error: null }) }),
