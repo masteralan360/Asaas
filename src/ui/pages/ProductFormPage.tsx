@@ -61,6 +61,7 @@ import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
 import { useHideCosts } from '@/permissions'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
+import { normalizeUnitCode } from '@/local-db/models'
 import { BarcodeScannerToggleButton } from '@/ui/components/BarcodeScannerToggleButton'
 import { ProductUnitIcon } from '@/ui/components/ProductUnitIcon'
 import { useUnitRegistry } from '@/ui/components/unitRegistry'
@@ -244,7 +245,7 @@ function mapProductToFormData(product: Product, hideCosts = false): ProductFormD
         costPrice: hideCosts || product.costPrice == null ? '' : String(product.costPrice),
         quantity: product.quantity,
         minStockLevel: product.minStockLevel,
-        unit: product.unit,
+        unit: normalizeUnitCode(product.unit),
         perQuantity: '1',
         currency: product.currency,
         imageUrl: product.imageUrl || '',
@@ -844,6 +845,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
             const dataToSave = {
                 ...formDataToSave,
                 sku: formData.sku.trim(),
+                unit: normalizeUnitCode(formData.unit),
                 category: categoryName || null,
                 storageName: storageName || undefined,
                 categoryId: formData.categoryId || null,
@@ -1286,7 +1288,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             disabled={isReadOnly}
                                         >
                                             <SelectTrigger id="product-unit" data-tour-id="tutorial-product-unit" className="h-12 rounded-lg border-border/40 bg-muted/10" allowViewer={true}>
-                                                <SelectValue />
+                                                <SelectValue placeholder={t('units.selectPlaceholder', { defaultValue: 'Select unit' })} />
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {unitOptions.map((option) => (
@@ -1297,6 +1299,14 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                         </span>
                                                     </SelectItem>
                                                 ))}
+                                                {formData.unit && !unitOptions.some((option) => option.value === formData.unit) ? (
+                                                    <SelectItem value={formData.unit}>
+                                                        <span className="flex items-center gap-2">
+                                                            <ProductUnitIcon unit={formData.unit} />
+                                                            {normalizeUnitCode(formData.unit)}
+                                                        </span>
+                                                    </SelectItem>
+                                                ) : null}
                                             </SelectContent>
                                         </Select>
                                     </div>

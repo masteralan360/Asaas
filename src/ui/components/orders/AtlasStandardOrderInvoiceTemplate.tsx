@@ -14,6 +14,7 @@ import {
 } from '@/local-db'
 import { getOrderLineFreeBonusQuantity, getOrderLinePaidQuantity } from '@/lib/orderLineItems'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
+import { normalizeUnitCode } from '@/local-db/models'
 import { platformService } from '@/services/platformService'
 import {
     Dialog,
@@ -1084,14 +1085,14 @@ export function AtlasStandardOrderInvoiceTemplate({
     const paidQuantityUnits = Array.from(new Set(
         items
             .filter((item) => getOrderLinePaidQuantity(item) > 0)
-            .map((item) => item.unit?.trim())
+            .map((item) => normalizeUnitCode(item.unit))
             .filter((unit): unit is string => Boolean(unit))
     ))
     const paidQuantityUnit = paidQuantityUnits.length === 1 ? paidQuantityUnits[0] : ''
     const freeQuantityUnits = Array.from(new Set(
         items
             .filter((item) => getOrderLineFreeBonusQuantity(item) > 0)
-            .map((item) => (item.freeBonusUnit || item.unit)?.trim())
+            .map((item) => normalizeUnitCode(item.freeBonusUnit || item.unit))
             .filter((unit): unit is string => Boolean(unit))
     ))
     const freeQuantityUnit = freeQuantityUnits.length === 1 ? freeQuantityUnits[0] : ''
@@ -1173,8 +1174,8 @@ export function AtlasStandardOrderInvoiceTemplate({
                     {tableItems.map((item, index) => {
                         const batch = getBatchDetails(item, kind)
                         const paidQuantity = getOrderLinePaidQuantity(item)
-                        const unit = item.unit?.trim()
-                        const freeBonusUnit = (item.freeBonusUnit || item.unit)?.trim()
+                        const unit = normalizeUnitCode(item.unit)
+                        const freeBonusUnit = normalizeUnitCode(item.freeBonusUnit || item.unit)
                         const values: Record<string, ReactNode> = {
                             [tableKeys.productImage]: (
                                 <ProductPrintImage

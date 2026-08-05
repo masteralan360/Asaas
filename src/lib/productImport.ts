@@ -1,4 +1,5 @@
 import type { Category, CurrencyCode, Storage } from '@/local-db/models'
+import { normalizeUnitCode } from '@/local-db/models'
 
 export const REQUIRED_PRODUCT_IMPORT_HEADERS = [
     'name',
@@ -223,7 +224,8 @@ export function parseProductImportMatrix(matrix: unknown[][], excelRowOffset = 0
         const values = createEmptyValues()
         for (const field of PRODUCT_IMPORT_FIELDS) {
             const columnIndex = headerIndexes.get(field)
-            values[field] = columnIndex === undefined ? '' : asTrimmedText(worksheetRow[columnIndex])
+            const rawValue = columnIndex === undefined ? '' : asTrimmedText(worksheetRow[columnIndex])
+            values[field] = field === 'unit' ? normalizeUnitCode(rawValue) : rawValue
         }
 
         return {

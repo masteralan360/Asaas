@@ -42,6 +42,14 @@ export function FreeBonusUnitSelect({ value, productUnit, units = [], onValueCha
                             </span>
                         </SelectItem>
                     ))}
+                    {effectiveValue && !units.some((unit) => unit.value === effectiveValue) ? (
+                        <SelectItem value={effectiveValue}>
+                            <span className="flex items-center gap-2">
+                                <ProductUnitIcon unit={effectiveValue} />
+                                {effectiveValue}
+                            </span>
+                        </SelectItem>
+                    ) : null}
                 </SelectContent>
             </Select>
             <p className="text-[10px] leading-snug text-muted-foreground">

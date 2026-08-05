@@ -9,6 +9,7 @@ import {
 } from '@/local-db'
 import { getOrderLineFreeBonusQuantity, getOrderLinePaidQuantity, hasOrderLineFreeBonus } from '@/lib/orderLineItems'
 import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
+import { normalizeUnitCode } from '@/local-db/models'
 import { platformService } from '@/services/platformService'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -156,7 +157,7 @@ function getOrderLineUnit(
     item: { productId: string; unit?: string | null },
     productUnits?: Record<string, string | null | undefined>
 ) {
-    return item.unit?.trim() || productUnits?.[item.productId]?.trim() || ''
+    return normalizeUnitCode(item.unit) || normalizeUnitCode(productUnits?.[item.productId]) || ''
 }
 
 function formatOrderLineUnit(
@@ -172,7 +173,7 @@ function getOrderLineFreeBonusUnit(
     item: { productId: string; unit?: string | null; freeBonusUnit?: string | null },
     productUnits?: Record<string, string | null | undefined>
 ) {
-    return item.freeBonusUnit?.trim() || getOrderLineUnit(item, productUnits)
+    return normalizeUnitCode(item.freeBonusUnit) || getOrderLineUnit(item, productUnits)
 }
 
 function formatOrderLineFreeBonusUnit(

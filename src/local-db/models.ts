@@ -169,6 +169,19 @@ export const DEFAULT_UNITS: ReadonlyArray<{
 ];
 
 /**
+ * Strips invisible/zero-width characters and surrounding whitespace from a
+ * unit code. Unit codes typed or imported through different sources (Excel,
+ * renamed units, pasted text) can otherwise carry invisible bytes that make
+ * exact string comparisons fail, which hides the unit in dropdowns and prints.
+ */
+export function normalizeUnitCode(code: string | null | undefined): string {
+  if (!code) return "";
+  return code
+    .replace(/[\u200B-\u200F\u2028-\u202F\uFEFF]/g, "")
+    .trim();
+}
+
+/**
  * True when the code collides with a hardcoded built-in unit. Built-in codes
  * are reserved, so a `units` row matching one is always legacy data seeded by
  * the old auto-seed logic (or a stale pull) and must never be treated as a
@@ -176,8 +189,10 @@ export const DEFAULT_UNITS: ReadonlyArray<{
  */
 export function isReservedUnitCode(code: string | null | undefined): boolean {
   if (!code) return false;
-  const normalized = code.trim().toLowerCase();
-  return DEFAULT_UNITS.some((def) => def.code.trim().toLowerCase() === normalized);
+  const normalized = normalizeUnitCode(code).toLowerCase();
+  return DEFAULT_UNITS.some(
+    (def) => normalizeUnitCode(def.code).toLowerCase() === normalized,
+  );
 }
 
 export interface Storage extends BaseEntity {

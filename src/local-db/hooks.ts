@@ -57,7 +57,7 @@ import type {
     PaymentTransactionSourceType,
     OfflineMutation
 } from './models'
-import { isReservedUnitCode } from './models'
+import { isReservedUnitCode, normalizeUnitCode } from './models'
 import {
     DuplicateProductBarcodeError,
     findActiveProductBarcodeByValue,
@@ -488,13 +488,15 @@ function assertCustomUnitCode(code: string): void {
 }
 
 export async function createUnit(workspaceId: string, data: Omit<Unit, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted'>): Promise<Unit> {
-    assertCustomUnitCode(data.code)
+    const code = normalizeUnitCode(data.code)
+    assertCustomUnitCode(code)
     const now = new Date().toISOString()
     const id = generateId()
     const session = isOnline() ? await getMutationSession('units.create') : null
 
     const unit: Unit = {
         ...data,
+        code,
         id,
         workspaceId,
         createdBy: data.createdBy ?? getActiveBusinessUserId() ?? session?.user?.id ?? null,
@@ -531,11 +533,15 @@ export async function updateUnit(id: string, data: Partial<Unit>): Promise<void>
     const now = new Date().toISOString()
     const existing = await db.units.get(id)
     if (!existing) throw new Error('Unit not found')
-    if (data.code !== undefined) assertCustomUnitCode(data.code)
+    const nextCode = data.code !== undefined ? normalizeUnitCode(data.code) : undefined
+    if (nextCode !== undefined) assertCustomUnitCode(nextCode)
+    const oldCode = existing.code
+    const codeChanged = nextCode !== undefined && nextCode !== oldCode
 
     const updated = {
         ...existing,
         ...data,
+        ...(nextCode !== undefined ? { code: nextCode } : {}),
         updatedAt: now,
         syncStatus: (isOnline() ? 'synced' : 'pending') as any,
         lastSyncedAt: isOnline() ? now : existing.lastSyncedAt,
@@ -544,7 +550,7 @@ export async function updateUnit(id: string, data: Partial<Unit>): Promise<void>
 
     if (isOnline()) {
         // ONLINE: Update Supabase directly
-        const payload = toSupabaseUnitPayload({ ...data, updatedAt: now })
+        const payload = toSupabaseUnitPayload({ ...data, ...(nextCode !== undefined ? { code: nextCode } : {}), updatedAt: now })
         const { error } = await runMutation('units.update', () => supabase.from('units').update(payload).eq('id', id))
 
         if (error) throw normalizeSupabaseActionError(error)
@@ -554,6 +560,25 @@ export async function updateUnit(id: string, data: Partial<Unit>): Promise<void>
         // OFFLINE: Local mutation
         await db.units.put(updated)
         await addToOfflineMutations('units', id, 'update', updated as unknown as Record<string, unknown>, existing.workspaceId)
+    }
+
+    // A renamed unit must update every product that references the old code,
+    // otherwise the products keep pointing at a code that no longer exists in
+    // the registry (empty dropdown trigger, missing prints).
+    if (codeChanged) {
+        await migrateProductUnitsToRenamedUnit(existing.workspaceId, oldCode, nextCode as string)
+    }
+}
+
+async function migrateProductUnitsToRenamedUnit(workspaceId: string, oldCode: string, newCode: string) {
+    const affectedProducts = await db.products
+        .where('workspaceId')
+        .equals(workspaceId)
+        .and((product) => !product.isDeleted && product.unit === oldCode)
+        .toArray()
+
+    for (const product of affectedProducts) {
+        await updateProduct(product.id, { unit: newCode })
     }
 }
 

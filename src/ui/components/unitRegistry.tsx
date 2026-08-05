@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react'
 
 import { useUnits } from '@/local-db/hooks'
-import { DEFAULT_UNITS } from '@/local-db/models'
+import { DEFAULT_UNITS, normalizeUnitCode } from '@/local-db/models'
 import { ProductUnitIcon } from '@/ui/components/ProductUnitIcon'
 
 export interface WorkspaceUnitOption {
@@ -20,13 +20,13 @@ export function useWorkspaceUnits(workspaceId: string | undefined): WorkspaceUni
 
     return useMemo(() => {
         const builtInOptions: WorkspaceUnitOption[] = DEFAULT_UNITS.map((def) => ({
-            value: def.code,
+            value: normalizeUnitCode(def.code),
             isDynamic: def.isDynamic,
             icon: def.icon ?? null,
         }))
 
         const customOptions: WorkspaceUnitOption[] = customUnits.map((unit) => ({
-            value: unit.code,
+            value: normalizeUnitCode(unit.code),
             isDynamic: unit.isDynamic,
             icon: unit.icon ?? null,
         }))
@@ -40,7 +40,7 @@ export function useWorkspaceUnits(workspaceId: string | undefined): WorkspaceUni
 }
 
 export function isUnitDynamic(unit: string | undefined, dynamicCodes: readonly string[]): unit is string {
-    return !!unit && dynamicCodes.includes(unit)
+    return !!unit && dynamicCodes.includes(normalizeUnitCode(unit))
 }
 
 export function getDynamicUnitAdjustmentLabel(
@@ -80,7 +80,7 @@ export function useUnitRegistry(workspaceId: string | undefined): UnitRegistry {
     )
     const getUnitIcon = useCallback(
         (unit: string, className?: string) => {
-            const option = options.find((candidate) => candidate.value === unit)
+            const option = options.find((candidate) => candidate.value === normalizeUnitCode(unit))
             return <ProductUnitIcon unit={unit} iconName={option?.icon ?? null} className={className} />
         },
         [options],

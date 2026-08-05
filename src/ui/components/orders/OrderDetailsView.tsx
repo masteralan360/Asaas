@@ -10,6 +10,7 @@ import { useProfileData } from '@/hooks/useProfileData'
 import { getOrderLineFreeBonusQuantity, getOrderLineInventoryQuantity, getOrderLinePaidQuantity, hasOrderLineFreeBonus } from '@/lib/orderLineItems'
 import { getOrderAdjustmentTotals, normalizeOrderAdjustments } from '@/lib/orderAdjustments'
 import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
+import { normalizeUnitCode } from '@/local-db/models'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import { setInvoicePreviewSource, type TemplatePreview, type TemplatePreviewRenderOptions } from '@/lib/pdfPreviewStore'
 import {
@@ -283,7 +284,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     )
     const orderProducts = useProductsByIds(workspaceId, orderProductIds)
     const productUnits = useMemo(() => orderProducts.reduce<Record<string, string>>((units, product) => {
-        const unit = product.unit?.trim()
+        const unit = normalizeUnitCode(product.unit)
         if (unit) units[product.id] = unit
         return units
     }, {}), [orderProducts])
