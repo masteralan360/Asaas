@@ -2171,6 +2171,18 @@
       "editExchangeRate": {
         "title": "How to edit the exchange rate manually",
         "description": "Open Settings, find the Exchange rate section, set a currency source to Manual entry, then type the rate you want."
+      },
+      "printOrder": {
+        "title": "How to print an order",
+        "description": "Open an order from the Orders list, click Print, pick a format or template, then confirm to print it."
+      },
+      "posCheckout": {
+        "title": "How to checkout on POS",
+        "description": "Add products to your cart, press Checkout, choose a payment method, then confirm to complete the sale."
+      },
+      "createLoan": {
+        "title": "How to create loan",
+        "description": "Open the Loans section, choose Create Loan, fill in the borrower and installment details, then confirm."
       }
     }
   },

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowUp, CircleHelp, Play, Search } from 'lucide-react'
 import { HintPlayerOverlay } from '@/ui/components/HintPlayerOverlay'
 import { VideoThumbnail } from '@/ui/components/VideoThumbnail'
-import { HELP_TOPICS, searchHelp, type HelpTopic } from '@/help/helpIndex'
+import { HELP_TOPICS, getTopicVideoSrc, searchHelp, type HelpTopic } from '@/help/helpIndex'
 
 interface ChatMessage {
     id: number
@@ -147,6 +147,7 @@ export function Help() {
                         }
 
                         const topic = message.topic
+                        const topicVideoSrc = getTopicVideoSrc(topic, i18n.language)
                         return (
                             <div key={message.id} className="flex items-start gap-3">
                                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -163,7 +164,7 @@ export function Help() {
                                         onClick={() => setPlayingTopic(topic)}
                                         className="group block w-full overflow-hidden rounded-2xl border border-border/50 bg-background text-start shadow-sm transition-all hover:border-primary/30 hover:shadow-md"
                                     >
-                                        <VideoThumbnail src={topic.videoSrc} />
+                                        <VideoThumbnail src={topicVideoSrc} />
                                         <div className="space-y-1 p-4">
                                             <h3 className="line-clamp-2 text-sm font-black">
                                                 {t(topic.titleKey)}
@@ -194,7 +195,7 @@ export function Help() {
                 <HintPlayerOverlay
                     open
                     onClose={() => setPlayingTopic(null)}
-                    src={playingTopic.videoSrc}
+                    src={getTopicVideoSrc(playingTopic, i18n.language)}
                     title={t(playingTopic.titleKey)}
                 />
             )}

@@ -555,9 +555,7 @@ export function POS() {
         }
     }, [selectedStorageId])
     useEffect(() => {
-        if (selectedPriceBookId) {
-            localStorage.setItem('pos_selected_price_book', selectedPriceBookId)
-        }
+        localStorage.setItem('pos_selected_price_book', selectedPriceBookId)
     }, [selectedPriceBookId])
     useEffect(() => {
         if (selectedPriceBookId && priceBookById.size > 0 && !priceBookById.has(selectedPriceBookId)) {
