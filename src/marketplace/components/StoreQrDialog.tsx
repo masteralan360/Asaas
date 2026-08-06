@@ -36,7 +36,7 @@ function getMarketplaceBaseOrigin() {
         }
     }
 
-    return 'https://marketplace.atlaserp.dev'
+    return 'https://shop.atlaserp.dev'
 }
 
 function buildStoreUrl(slug: string) {

@@ -90,7 +90,7 @@
             "has": [
                 {
                     "type": "host",
-                    "value": "marketplace.atlaserp.dev"
+                    "value": "shop.atlaserp.dev"
                 }
             ],
             "destination": "/marketplace.html"
