@@ -75,12 +75,27 @@ export default {
                     from: { transform: "translateX(0)" },
                     to: { transform: "translateX(calc(-100% - var(--gap, 2rem)))" },
                 },
+                "toast-in": {
+                    "0%": { opacity: "0", transform: "translate3d(0, 28px, 0) scale(0.96)" },
+                    "100%": { opacity: "1", transform: "translate3d(0, 0, 0) scale(1)" },
+                },
+                "toast-out": {
+                    "0%": { opacity: "1", transform: "translate3d(0, 0, 0) scale(1)" },
+                    "100%": { opacity: "0", transform: "translate3d(0, 12px, 0) scale(0.96)" },
+                },
+                "toast-progress": {
+                    "0%": { transform: "scaleX(1)" },
+                    "100%": { transform: "scaleX(0)" },
+                },
             },
             animation: {
                 "accordion-down": "accordion-down 0.2s ease-out",
                 "accordion-up": "accordion-up 0.2s ease-out",
                 "pulse-slow": "pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
                 "marquee": "marquee var(--duration, 30s) linear infinite",
+                "toast-in": "toast-in 0.45s cubic-bezier(0.16, 1, 0.3, 1)",
+                "toast-out": "toast-out 0.25s cubic-bezier(0.4, 0, 1, 1) both",
+                "toast-progress": "toast-progress var(--toast-duration, 5000ms) linear forwards",
             },
         },
     },

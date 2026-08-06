@@ -825,3 +825,11 @@ html[lang] pre {
 .low-power.dark .glass-card {
   @apply bg-card border-white/10;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-toast-in,
+  .animate-toast-out,
+  .animate-toast-progress {
+    animation: none !important;
+  }
+}

@@ -5,8 +5,10 @@ import type {
     ToastProps,
 } from "@/ui/components/toast"
 
-const TOAST_LIMIT = 1
+const TOAST_LIMIT = 3
 const TOAST_REMOVE_DELAY = 1000000
+const TOAST_OVERFLOW_DELAY = 500
+const STANDING_HEIGHT_PER_TOAST = 96
 
 type ToasterToast = ToastProps & {
     id: string
@@ -55,7 +57,7 @@ interface State {
 
 const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
 
-const addToRemoveQueue = (toastId: string) => {
+const addToRemoveQueue = (toastId: string, delay: number = TOAST_REMOVE_DELAY) => {
     if (toastTimeouts.has(toastId)) {
         return
     }
@@ -66,21 +68,40 @@ const addToRemoveQueue = (toastId: string) => {
             type: "REMOVE_TOAST",
             toastId,
         })
-    }, TOAST_REMOVE_DELAY)
+    }, delay)
 
     toastTimeouts.set(toastId, timeout)
 }
 
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
 
+const reserveNotificationSpace = (count: number) => {
+    if (count <= 0) {
+        whatsappManager.clearNotificationSpace()
+        return
+    }
+    whatsappManager.setNotificationSpace(Math.min(count, TOAST_LIMIT) * STANDING_HEIGHT_PER_TOAST)
+}
+
 export const reducer = (state: State, action: Action): State => {
     switch (action.type) {
         case "ADD_TOAST": {
-            // Shrink webview to make room for toast notification
-            whatsappManager.setNotificationSpace(100);
+            // Shrink webview to make room for toast notifications
+            const standingToasts = state.toasts.filter((toast) => toast.open !== false)
+            const next = [action.toast, ...standingToasts]
+            const overflowing = next.slice(TOAST_LIMIT)
+            const kept = next.slice(0, TOAST_LIMIT)
+
+            // Overflowing toasts exit gracefully instead of vanishing instantly
+            overflowing.forEach((toast) => addToRemoveQueue(toast.id, TOAST_OVERFLOW_DELAY))
+            reserveNotificationSpace(kept.length)
+
             return {
                 ...state,
-                toasts: [action.toast, ...state.toasts].slice(0, TOAST_LIMIT),
+                toasts: [
+                    ...kept,
+                    ...overflowing.map((toast) => ({ ...toast, open: false })),
+                ],
             }
         }
 
@@ -123,9 +144,9 @@ export const reducer = (state: State, action: Action): State => {
                 ? []
                 : state.toasts.filter((t) => t.id !== action.toastId);
 
-            if (remainingToasts.length === 0) {
-                whatsappManager.clearNotificationSpace();
-            }
+            reserveNotificationSpace(
+                remainingToasts.filter((t) => t.open !== false).length
+            );
 
             if (action.toastId === undefined) {
                 return {

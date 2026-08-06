@@ -142,6 +142,12 @@ window.addEventListener('unhandledrejection', (event) => {
     void recoverFromDynamicImportFailure(event.reason)
 })
 
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+    void import('@/ui/components/use-toast').then(({ toast }) => {
+        ;(window as any).toast = toast
+    })
+}
+
 const rootElement = document.getElementById('root')
 
 if (!rootElement) {
