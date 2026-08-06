@@ -17,7 +17,7 @@ import { areApplicationUpdatesDisabled } from '@/lib/updatePreference'
 
 const isMarketplaceHost =
     typeof window !== 'undefined'
-    && window.location.hostname === 'marketplace-atlas.vercel.app'
+    && window.location.hostname === 'marketplace.atlaserp.dev'
 
 const isTauriRuntime =
     typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window

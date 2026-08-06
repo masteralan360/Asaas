@@ -90,7 +90,7 @@
             "has": [
                 {
                     "type": "host",
-                    "value": "marketplace-atlas.vercel.app"
+                    "value": "marketplace.atlaserp.dev"
                 }
             ],
             "destination": "/marketplace.html"

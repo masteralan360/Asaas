@@ -403,11 +403,11 @@ export function Settings() {
         const configuredOrigin = (import.meta.env.VITE_MARKETPLACE_SITE_URL || '').trim().replace(/\/+$/, '')
         if (configuredOrigin) return configuredOrigin
         if (typeof window !== 'undefined' && /^https?:$/i.test(window.location.protocol)) {
-            if (window.location.hostname === 'marketplace-atlas.vercel.app') {
+            if (window.location.hostname === 'marketplace.atlaserp.dev') {
                 return window.location.origin
             }
         }
-        return 'https://marketplace-atlas.vercel.app'
+        return 'https://marketplace.atlaserp.dev'
     })()
     const normalizedMarketplaceSlug = marketplaceSlug
         .toLowerCase()

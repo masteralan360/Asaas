@@ -36,7 +36,7 @@ function getMarketplaceBaseOrigin() {
         }
     }
 
-    return 'https://marketplace-atlas.vercel.app'
+    return 'https://marketplace.atlaserp.dev'
 }
 
 function buildStoreUrl(slug: string) {
