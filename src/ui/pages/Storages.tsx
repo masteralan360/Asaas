@@ -117,17 +117,18 @@ export default function Storages() {
         return Math.round(converted * 100) / 100
     }, [exchangeData, eurRates, tryRates])
 
-    const totalStorageValue = useMemo(() => {
+const totalStorageValue = useMemo(() => {
         if (!selectedStorageId) return {} as Record<string, number>
         const byCurrency: Record<string, number> = {}
         inventory.forEach((row) => {
             if (row.storageId !== selectedStorageId) return
             const product = productById.get(row.productId)
             if (!product || product.isDeleted) return
+            if (selectedCategoryId !== 'all' && product.categoryId !== selectedCategoryId) return
             byCurrency[product.currency] = (byCurrency[product.currency] || 0) + (product.price * row.quantity)
         })
         return byCurrency
-    }, [inventory, productById, selectedStorageId])
+    }, [inventory, productById, selectedStorageId, selectedCategoryId])
 
     const totalCostValue = useMemo(() => {
         if (!selectedStorageId) return {} as Record<string, number>
@@ -136,10 +137,11 @@ export default function Storages() {
             if (row.storageId !== selectedStorageId) return
             const product = productById.get(row.productId)
             if (!product || product.isDeleted) return
+            if (selectedCategoryId !== 'all' && product.categoryId !== selectedCategoryId) return
             byCurrency[product.currency] = (byCurrency[product.currency] || 0) + ((product.costPrice ?? 0) * row.quantity)
         })
         return byCurrency
-    }, [inventory, productById, selectedStorageId])
+    }, [inventory, productById, selectedStorageId, selectedCategoryId])
 
     const totalStorageValueConverted = useMemo(() => {
         if (!selectedStorageId) return 0
@@ -147,9 +149,10 @@ export default function Storages() {
             if (row.storageId !== selectedStorageId) return sum
             const product = productById.get(row.productId)
             if (!product || product.isDeleted) return sum
+            if (selectedCategoryId !== 'all' && product.categoryId !== selectedCategoryId) return sum
             return sum + (convertPrice(product.price, product.currency, settlementCurrency) * row.quantity)
         }, 0)
-    }, [inventory, productById, selectedStorageId, convertPrice, settlementCurrency])
+    }, [inventory, productById, selectedStorageId, selectedCategoryId, convertPrice, settlementCurrency])
 
     const totalCostValueConverted = useMemo(() => {
         if (!selectedStorageId) return 0
@@ -157,9 +160,10 @@ export default function Storages() {
             if (row.storageId !== selectedStorageId) return sum
             const product = productById.get(row.productId)
             if (!product || product.isDeleted) return sum
+            if (selectedCategoryId !== 'all' && product.categoryId !== selectedCategoryId) return sum
             return sum + (convertPrice(product.costPrice ?? 0, product.currency, settlementCurrency) * row.quantity)
         }, 0)
-    }, [inventory, productById, selectedStorageId, convertPrice, settlementCurrency])
+    }, [inventory, productById, selectedStorageId, selectedCategoryId, convertPrice, settlementCurrency])
 
     useEffect(() => {
         if (selectedStorageId) {
@@ -194,6 +198,15 @@ export default function Storages() {
         })
         .filter((entry): entry is { row: (typeof inventory)[number]; product: (typeof products)[number] } => !!entry),
         [inventory, inventorySearch, productById, selectedCategoryId, selectedStorageId])
+
+    const totalQuantityByUnit = useMemo(() => {
+        const byUnit: Record<string, number> = {}
+        inventoryProducts.forEach(({ row, product }) => {
+            const unit = product.unit
+            byUnit[unit] = (byUnit[unit] || 0) + row.quantity
+        })
+        return byUnit
+    }, [inventoryProducts])
 
     const getDisplayImageUrl = (url?: string) => {
         if (!url) return '';
@@ -561,6 +574,45 @@ export default function Storages() {
                                             {inventoryProducts.length}
                                         </div>
                                     </div>
+
+                                    <TooltipProvider delayDuration={300}>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <div className="px-5 py-2.5 rounded-2xl bg-sky-500/10 border border-sky-500/20 border-solid cursor-help">
+                                                    <div className="text-[10px] font-black uppercase tracking-widest text-sky-600/70 mb-0.5">
+                                                        {t('storages.totalQuantity', 'Total Quantity')}
+                                                    </div>
+                                                    {Object.keys(totalQuantityByUnit).length === 1 ? (
+                                                        <div className="text-xl font-black text-sky-600 leading-none">
+                                                            {Object.entries(totalQuantityByUnit).map(([unit, value]) => (
+                                                                <span key={unit}>
+                                                                    {value} {t(`products.units.${unit}`, unit)}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-xl font-black text-sky-600 leading-none">
+                                                            {t('storages.mixedQuantity', 'Mixed')}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </TooltipTrigger>
+                                            {Object.keys(totalQuantityByUnit).length > 1 && (
+                                                <TooltipContent side="bottom" align="start" className="p-3 space-y-1">
+                                                    {Object.entries(totalQuantityByUnit).map(([unit, value]) => (
+                                                        <div key={unit} className="flex items-center justify-between gap-6 text-sm">
+                                                            <span className="font-medium text-muted-foreground">
+                                                                {t(`products.units.${unit}`, unit)}
+                                                            </span>
+                                                            <span className="font-black tabular-nums">
+                                                                {value}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </TooltipContent>
+                                            )}
+                                        </Tooltip>
+                                    </TooltipProvider>
 
                                     <TooltipProvider delayDuration={300}>
                                         <Tooltip>

@@ -4077,6 +4077,8 @@
     "totalItems": "Matched Items",
     "totalValue": "Storage Value",
     "totalCostValue": "Storage Cost Value",
+    "totalQuantity": "Total Quantity",
+    "mixedQuantity": "Mixed",
     "tryDifferentFilter": "Try adjusting your filters or search",
     "noReserve": "Reserve storage not found",
     "created": "Storage created successfully",
