@@ -256,7 +256,6 @@ export function Payments() {
 
     const kpis = useMemo(() => ({
         totalOpen: formatAmountSummary(obligations, features.iqd_display_preference),
-        overdue: formatAmountSummary(obligations.filter((item) => item.status === 'overdue'), features.iqd_display_preference),
         receivable: formatAmountSummary(obligations.filter((item) => item.direction === 'incoming'), features.iqd_display_preference),
         payable: formatAmountSummary(obligations.filter((item) => item.direction === 'outgoing'), features.iqd_display_preference)
     }), [obligations, features.iqd_display_preference])
@@ -349,18 +348,12 @@ export function Payments() {
                     )}
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     <Card className="min-w-[180px]">
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-medium">{t('payments.kpis.open', { defaultValue: 'Open' })}</CardTitle>
                         </CardHeader>
                         <CardContent className="text-lg font-semibold">{kpis.totalOpen}</CardContent>
-                    </Card>
-                    <Card className="min-w-[180px]">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium">{t('payments.kpis.overdue', { defaultValue: 'Overdue' })}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="text-lg font-semibold">{kpis.overdue}</CardContent>
                     </Card>
                     <Card className="min-w-[180px]">
                         <CardHeader className="pb-2">

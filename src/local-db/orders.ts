@@ -2745,27 +2745,20 @@ async function applySalesOrderReturnToFinancing(input: {
     return { loan: updatedLoan, initialPaymentAmount: nextInitialPayment }
 }
 
-export async function returnSalesOrder(input: ReturnSalesOrderInput) {
-    if (input.actorRole !== 'admin') {
-        throw new Error('Only admins can return completed sales orders')
-    }
+type PreparedSalesOrderReturn = {
+    quantitiesByItemId: Map<string, number>
+    returnedQuantityByItemId: Map<string, number>
+    preparedLines: PreparedSalesOrderReturnLine[]
+    returnAmount: number
+    willBeFullyReturned: boolean
+    originalTotal: number
+    returnedAmount: number
+}
 
-    const order = await db.sales_orders.get(input.orderId)
-    if (!order || order.isDeleted) {
-        throw new Error('Sales order not found')
-    }
-    if (order.status !== 'completed') {
-        throw new Error('Only completed sales orders can be returned')
-    }
-
-    const reason = input.reason.trim()
-    if (!reason) {
-        throw new Error('Select a return reason')
-    }
-    if (input.items.length === 0) {
-        throw new Error('Select at least one item to return')
-    }
-
+async function prepareSalesOrderReturn(
+    order: SalesOrder,
+    input: ReturnSalesOrderInput
+): Promise<PreparedSalesOrderReturn> {
     const quantitiesByItemId = new Map<string, number>()
     for (const line of input.items) {
         const quantity = roundQuantity(Number(line.quantity || 0))
@@ -2846,6 +2839,166 @@ export async function returnSalesOrder(input: ReturnSalesOrderInput) {
     if (returnAmount - Number(order.total || 0) > ORDER_AMOUNT_EPSILON) {
         throw new Error('Return amount exceeds the remaining order total')
     }
+
+    return {
+        quantitiesByItemId,
+        returnedQuantityByItemId,
+        preparedLines,
+        returnAmount,
+        willBeFullyReturned,
+        originalTotal,
+        returnedAmount
+    }
+}
+
+async function returnUnpaidEcommerceOrder(order: SalesOrder, input: ReturnSalesOrderInput) {
+    const {
+        quantitiesByItemId,
+        returnedQuantityByItemId,
+        preparedLines,
+        returnAmount,
+        willBeFullyReturned,
+        originalTotal,
+        returnedAmount
+    } = await prepareSalesOrderReturn(order, input)
+
+    const returnId = generateId()
+    const timestamp = new Date().toISOString()
+
+    const restoredLines = await restoreInventoryForSalesOrderReturn(order, preparedLines, timestamp)
+    const newReturnedAmount = roundAmount(returnedAmount + returnAmount, order.currency)
+    const nextTotal = roundAmount(Math.max(0, Number(order.total || 0) - returnAmount), order.currency)
+    const nextBalance = roundAmount(Math.max(0, Number(order.balanceAmount || 0) - returnAmount), order.currency)
+    const nextReturnStatus = willBeFullyReturned ? 'full' as const : 'partial' as const
+    const scale = nextTotal / Math.max(Number(order.total || 0), 1)
+    const updatedOrder: SalesOrder = {
+        ...order,
+        items: order.items.map((item) => ({
+            ...item,
+            returnedQuantity: Math.min(
+                getOrderLineInventoryQuantity(item),
+                roundQuantity((returnedQuantityByItemId.get(item.id) || 0) + (quantitiesByItemId.get(item.id) || 0))
+            )
+        })),
+        originalTotalAmount: order.originalTotalAmount ?? originalTotal,
+        returnedAmount: newReturnedAmount,
+        returnStatus: nextReturnStatus,
+        returnedAt: timestamp,
+        returnedBy: input.returnedBy || null,
+        total: nextTotal,
+        subtotal: roundAmount(Math.max(0, Number(order.subtotal || 0) * scale), order.currency),
+        discount: roundAmount(Math.max(0, Number(order.discount || 0) * scale), order.currency),
+        tax: roundAmount(Math.max(0, Number(order.tax || 0) * scale), order.currency),
+        balanceAmount: nextBalance,
+        paymentStatus: 'unpaid',
+        paidAmount: order.paidAmount,
+        paidAt: order.paidAt,
+        updatedAt: timestamp,
+        version: order.version + 1,
+        ...getSyncMetadata(order.workspaceId, timestamp)
+    }
+    const orderReturn: OrderReturn = {
+        id: returnId,
+        workspaceId: order.workspaceId,
+        orderId: order.id,
+        reason: input.reason,
+        status: 'posted',
+        refundAmount: returnAmount,
+        returnedBy: input.returnedBy || null,
+        returnedAt: timestamp,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        version: 1,
+        isDeleted: false,
+        ...getSyncMetadata(order.workspaceId, timestamp)
+    }
+    const orderReturnItems: OrderReturnItem[] = restoredLines.map((line) => ({
+        id: generateId(),
+        workspaceId: order.workspaceId,
+        returnId,
+        orderId: order.id,
+        orderItemId: line.item.id,
+        quantity: line.quantity,
+        unitRefundAmount: line.unitRefundAmount,
+        refundAmount: line.refundAmount,
+        restoredStorageId: line.restoredStorageId,
+        restoredBatchAllocations: line.restoredBatchAllocations,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        version: 1,
+        isDeleted: false,
+        ...getSyncMetadata(order.workspaceId, timestamp)
+    }))
+
+    await db.transaction('rw', [db.sales_orders, db.order_returns, db.order_return_items], async () => {
+        await db.sales_orders.put(updatedOrder)
+        await db.order_returns.put(orderReturn)
+        await db.order_return_items.bulkPut(orderReturnItems)
+    })
+
+    await recalculateCustomerAndPartnerSummaries(order.workspaceId, order.customerId, order.businessPartnerId)
+
+    await Promise.all([
+        syncUpsertEntities(
+            'sales_orders',
+            [updatedOrder] as unknown as Array<Record<string, unknown> & { id: string; version: number }>,
+            order.workspaceId
+        ),
+        syncUpsertEntities(
+            'order_returns',
+            [orderReturn] as unknown as Array<Record<string, unknown> & { id: string; version: number }>,
+            order.workspaceId
+        ),
+        syncUpsertEntities(
+            'order_return_items',
+            orderReturnItems as unknown as Array<Record<string, unknown> & { id: string; version: number }>,
+            order.workspaceId
+        )
+    ])
+
+    return { order: updatedOrder, return: orderReturn, items: orderReturnItems }
+}
+
+export async function returnSalesOrder(input: ReturnSalesOrderInput) {
+    if (input.actorRole !== 'admin') {
+        throw new Error('Only admins can return completed sales orders')
+    }
+
+    const order = await db.sales_orders.get(input.orderId)
+    if (!order || order.isDeleted) {
+        throw new Error('Sales order not found')
+    }
+    if (order.status !== 'completed') {
+        throw new Error('Only completed sales orders can be returned')
+    }
+
+    const reason = input.reason.trim()
+    if (!reason) {
+        throw new Error('Select a return reason')
+    }
+    if (input.items.length === 0) {
+        throw new Error('Select at least one item to return')
+    }
+
+    if (
+        order.sourceChannel === 'marketplace'
+        && !isOrderFinancingMethod(order.paymentMethod)
+        && !order.linkedLoanId
+        && order.paymentStatus !== 'paid'
+        && getOrderPaidAmount(order) <= ORDER_AMOUNT_EPSILON
+    ) {
+        return returnUnpaidEcommerceOrder(order, input)
+    }
+
+    const {
+        quantitiesByItemId,
+        returnedQuantityByItemId,
+        preparedLines,
+        returnAmount,
+        willBeFullyReturned,
+        originalTotal,
+        returnedAmount
+    } = await prepareSalesOrderReturn(order, input)
 
     const returnId = generateId()
     const timestamp = new Date().toISOString()
