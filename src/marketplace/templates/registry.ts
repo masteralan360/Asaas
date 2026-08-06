@@ -1,5 +1,6 @@
 import { barbadosStorefrontTemplate } from './barbados/BarbadosStorefrontTemplate'
 import { genericStorefrontTemplate } from './generic/GenericStorefrontTemplate'
+import { posStorefrontTemplate } from './pos/PosStorefrontTemplate'
 import type { StorefrontRules, StorefrontTemplate, StorefrontTemplateOptions } from './types'
 
 export const DEFAULT_STOREFRONT_TEMPLATE_ID = 'generic' as const
@@ -10,7 +11,8 @@ export const DEFAULT_STOREFRONT_TEMPLATE_ID = 'generic' as const
  */
 export const storefrontTemplates = {
     barbados: barbadosStorefrontTemplate,
-    generic: genericStorefrontTemplate
+    generic: genericStorefrontTemplate,
+    pos: posStorefrontTemplate
 } satisfies Record<string, StorefrontTemplate>
 
 export type StorefrontTemplateId = keyof typeof storefrontTemplates
@@ -37,7 +39,9 @@ export const storefrontTemplateAssignments: Readonly<Record<string, StorefrontTe
         templateId: 'generic',
         rules: { hidePrice: true, hideAddToCart: true }
     },
-    barbados: { templateId: 'barbados' }
+    barbados: { templateId: 'barbados' },
+    shayan: { templateId: 'pos' },
+    'shayan-jumla': { templateId: 'pos' }
 }
 
 export type ResolvedStorefrontTemplate = {

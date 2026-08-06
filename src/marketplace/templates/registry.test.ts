@@ -18,6 +18,15 @@ vi.mock('./barbados/BarbadosStorefrontTemplate', () => ({
     }
 }))
 
+vi.mock('./pos/PosStorefrontTemplate', () => ({
+    posStorefrontTemplate: {
+        id: 'pos',
+        label: 'POS storefront',
+        ShopPage: () => null,
+        ContactPage: () => null
+    }
+}))
+
 import {
     DEFAULT_STOREFRONT_TEMPLATE_ID,
     getStorefrontTemplateForSlug,
@@ -43,6 +52,22 @@ describe('getStorefrontTemplateForSlug', () => {
         const resolved = getStorefrontTemplateForSlug('  BARBADOS ')
 
         expect(resolved.template.id).toBe('barbados')
+        expect(resolved.options).toEqual({})
+        expect(resolved.rules).toEqual({})
+    })
+
+    it('selects the POS storefront template for the shayan slug', () => {
+        const resolved = getStorefrontTemplateForSlug(' shayan ')
+
+        expect(resolved.template.id).toBe('pos')
+        expect(resolved.options).toEqual({})
+        expect(resolved.rules).toEqual({})
+    })
+
+    it('selects the POS storefront template for the shayan-jumla slug', () => {
+        const resolved = getStorefrontTemplateForSlug(' shayan-jumla ')
+
+        expect(resolved.template.id).toBe('pos')
         expect(resolved.options).toEqual({})
         expect(resolved.rules).toEqual({})
     })
