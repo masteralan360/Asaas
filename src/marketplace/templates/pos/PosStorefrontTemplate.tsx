@@ -150,12 +150,70 @@ function PosHeader({ storeName, logoUrl, cartCount, showCart, onCartClick, showS
     )
 }
 
-function PosCategoryBar({
+function PosCategoryCard({
+    id,
+    name,
+    coverUrl,
+    isActive,
+    onSelect
+}: {
+    id: string | null
+    name: string
+    coverUrl: string | null
+    isActive: boolean
+    onSelect: (categoryId: string | null) => void
+}) {
+    const [hasImageError, setHasImageError] = useState(false)
+
+    useEffect(() => {
+        setHasImageError(false)
+    }, [coverUrl])
+
+    return (
+        <button
+            type="button"
+            onClick={() => onSelect(id)}
+            aria-pressed={isActive}
+            className={cn(
+                'group flex flex-col overflow-hidden rounded-lg border bg-card transition-[transform,box-shadow,border-color] duration-300 hover:scale-[1.02]',
+                isActive
+                    ? 'border-primary shadow-md shadow-primary/25 ring-2 ring-primary/25'
+                    : 'border-border/60 shadow-[0_1px_4px_rgba(0,0,0,0.06)] hover:border-border hover:shadow-[0_4px_12px_rgba(0,0,0,0.1)]'
+            )}
+        >
+            <span className="relative aspect-[3/4] w-full overflow-hidden bg-secondary">
+                {coverUrl && !hasImageError ? (
+                    <img
+                        src={coverUrl}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        onError={() => setHasImageError(true)}
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    />
+                ) : (
+                    <span className="flex h-full w-full items-center justify-center">
+                        <Store className="h-4 w-4 text-muted-foreground md:h-5 md:w-5" />
+                    </span>
+                )}
+            </span>
+            <span className="mt-auto border-t border-border px-1 py-1">
+                <span className="line-clamp-1 block text-center text-[10px] font-semibold leading-[1.3] text-foreground md:text-[11px]">
+                    {name}
+                </span>
+            </span>
+        </button>
+    )
+}
+
+function PosCategoryGrid({
     categories,
+    coverUrls,
     activeCategoryId,
     onSelect
 }: {
     categories: MarketplaceCategory[]
+    coverUrls: Map<string | null, string>
     activeCategoryId: string | null
     onSelect: (categoryId: string | null) => void
 }) {
@@ -166,44 +224,25 @@ function PosCategoryBar({
     }
 
     return (
-        <nav
-            aria-label={t('marketplace.categories', { defaultValue: 'Categories' })}
-            className="fixed inset-x-0 top-14 z-40 flex h-[50px] items-center overflow-x-auto bg-muted px-3 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-1px_rgba(0,0,0,0.06)] md:top-[52px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-            <div className="flex min-w-full items-center gap-3">
-                <button
-                    type="button"
-                    onClick={() => onSelect(null)}
-                    aria-pressed={activeCategoryId === null}
-                    className={cn(
-                        'flex h-8 shrink-0 items-center whitespace-nowrap rounded-full px-4 text-sm font-semibold transition-all',
-                        activeCategoryId === null
-                            ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25'
-                            : 'bg-card text-muted-foreground shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:text-primary'
-                    )}
-                >
-                    {t('common.all', { defaultValue: 'All' })}
-                </button>
-                {categories.map((category) => {
-                    const isActive = category.id === activeCategoryId
-
-                    return (
-                        <button
-                            key={category.id}
-                            type="button"
-                            onClick={() => onSelect(category.id)}
-                            aria-pressed={isActive}
-                            className={cn(
-                                'flex h-8 shrink-0 items-center whitespace-nowrap rounded-full px-4 text-sm font-semibold transition-all',
-                                isActive
-                                    ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25'
-                                    : 'bg-card text-muted-foreground shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:text-primary'
-                            )}
-                        >
-                            {category.name}
-                        </button>
-                    )
-                })}
+        <nav aria-label={t('marketplace.categories', { defaultValue: 'Categories' })} className="mb-5">
+            <div className="grid grid-cols-[repeat(10,minmax(0,1fr))] gap-1 sm:grid-cols-[repeat(14,minmax(0,1fr))] sm:gap-1.5 md:grid-cols-[repeat(20,minmax(0,1fr))] lg:grid-cols-[repeat(24,minmax(0,1fr))] lg:gap-2">
+                <PosCategoryCard
+                    id={null}
+                    name={t('common.all', { defaultValue: 'All' })}
+                    coverUrl={coverUrls.get(null) ?? null}
+                    isActive={activeCategoryId === null}
+                    onSelect={onSelect}
+                />
+                {categories.map((category) => (
+                    <PosCategoryCard
+                        key={category.id}
+                        id={category.id}
+                        name={category.name}
+                        coverUrl={coverUrls.get(category.id) ?? null}
+                        isActive={category.id === activeCategoryId}
+                        onSelect={onSelect}
+                    />
+                ))}
             </div>
         </nav>
     )
@@ -293,7 +332,18 @@ function PosProductCard({
 
 function PosLoadingGrid() {
     return (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-5 min-[1200px]:grid-cols-8">
+        <div className="space-y-6">
+            <div className="grid grid-cols-[repeat(10,minmax(0,1fr))] gap-1 sm:grid-cols-[repeat(14,minmax(0,1fr))] sm:gap-1.5 md:grid-cols-[repeat(20,minmax(0,1fr))] lg:grid-cols-[repeat(24,minmax(0,1fr))] lg:gap-2">
+                {Array.from({ length: 12 }).map((_, index) => (
+                    <div key={index} className="overflow-hidden rounded-lg border border-border/60 bg-card shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+                        <div className="aspect-[3/4] animate-pulse bg-muted" />
+                        <div className="flex items-center justify-center border-t border-border px-1 py-1.5">
+                            <div className="h-2 w-3/4 animate-pulse rounded bg-muted" />
+                        </div>
+                    </div>
+                ))}
+            </div>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-5 min-[1200px]:grid-cols-8">
             {Array.from({ length: 16 }).map((_, index) => (
                 <div key={index} className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
                     <div className="aspect-square animate-pulse bg-muted" />
@@ -303,6 +353,7 @@ function PosLoadingGrid() {
                     </div>
                 </div>
             ))}
+            </div>
         </div>
     )
 }
@@ -484,6 +535,37 @@ function PosShopPage({ slug, rules }: StorefrontTemplatePageProps) {
 
     const categories = useMemo<MarketplaceCategory[]>(() => catalog?.categories ?? [], [catalog?.categories])
 
+    const categoryCoverUrls = useMemo(() => {
+        const productsWithImages = (catalog?.products ?? []).filter((product) => product.image_url)
+        const covers = new Map<string | null, string>()
+
+        if (productsWithImages.length === 0) {
+            return covers
+        }
+
+        const pickRandomCover = (pool: MarketplaceProduct[]) => {
+            const picked = pool[Math.floor(Math.random() * pool.length)]
+            return picked ? getMarketplaceAssetUrl(picked.image_url) : null
+        }
+
+        const allCover = pickRandomCover(productsWithImages)
+
+        if (allCover) {
+            covers.set(null, allCover)
+        }
+
+        for (const category of categories) {
+            const pool = productsWithImages.filter((product) => product.category_id === category.id)
+            const cover = pickRandomCover(pool)
+
+            if (cover) {
+                covers.set(category.id, cover)
+            }
+        }
+
+        return covers
+    }, [categories, catalog?.products])
+
     useEffect(() => {
         setActiveCategoryId((currentCategoryId) => {
             if (currentCategoryId && categories.some((category) => category.id === currentCategoryId)) {
@@ -605,15 +687,7 @@ function PosShopPage({ slug, rules }: StorefrontTemplatePageProps) {
                     </Link>
                 )}
             />
-            {!isLoading && !error && catalog && (
-                <PosCategoryBar
-                    categories={categories}
-                    activeCategoryId={activeCategoryId}
-                    onSelect={setActiveCategoryId}
-                />
-            )}
-
-            <main className="px-3 pb-16 pt-[126px] md:px-6 md:pt-[122px]">
+            <main className="px-3 pb-16 pt-[70px] md:px-6 md:pt-[66px]">
                 {confirmation ? (
                     <div className="mx-auto max-w-2xl">
                         <OrderConfirmation
@@ -627,27 +701,37 @@ function PosShopPage({ slug, rules }: StorefrontTemplatePageProps) {
                     <PosLoadingGrid />
                 ) : error || !catalog ? (
                     <PosErrorState message={error || undefined} />
-                ) : displayedProducts.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center text-muted-foreground">
-                        <Search className="mx-auto h-8 w-8 opacity-25" />
-                        <p className="mt-3 text-sm font-semibold">
-                            {search
-                                ? t('marketplace.noProducts', { defaultValue: 'No products match your search.' })
-                                : t('marketplace.noProducts', { defaultValue: 'No products in this catalog yet.' })}
-                        </p>
-                    </div>
                 ) : (
-                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-5 min-[1200px]:grid-cols-8">
-                        {displayedProducts.map((product) => (
-                            <PosProductCard
-                                key={product.id}
-                                product={product}
-                                iqdPreference={iqdPreference}
-                                hidePrice={hidePrice}
-                                onAdd={hideAddToCart ? undefined : handleAddToCart}
-                            />
-                        ))}
-                    </div>
+                    <>
+                        <PosCategoryGrid
+                            categories={categories}
+                            coverUrls={categoryCoverUrls}
+                            activeCategoryId={activeCategoryId}
+                            onSelect={setActiveCategoryId}
+                        />
+                        {displayedProducts.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center text-muted-foreground">
+                                <Search className="mx-auto h-8 w-8 opacity-25" />
+                                <p className="mt-3 text-sm font-semibold">
+                                    {search
+                                        ? t('marketplace.noProducts', { defaultValue: 'No products match your search.' })
+                                        : t('marketplace.noProducts', { defaultValue: 'No products in this catalog yet.' })}
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-5 min-[1200px]:grid-cols-8">
+                                {displayedProducts.map((product) => (
+                                    <PosProductCard
+                                        key={product.id}
+                                        product={product}
+                                        iqdPreference={iqdPreference}
+                                        hidePrice={hidePrice}
+                                        onAdd={hideAddToCart ? undefined : handleAddToCart}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </>
                 )}
             </main>
 
@@ -733,7 +817,7 @@ function PosContactPage({ slug, rules }: StorefrontTemplatePageProps) {
                 )}
             />
 
-            <main className="px-3 pb-16 pt-[126px] md:px-6 md:pt-[122px]">
+            <main className="px-3 pb-16 pt-[70px] md:px-6 md:pt-[66px]">
                 {isLoading ? (
                     <div className="space-y-4">
                         <div className="h-24 animate-pulse rounded-xl bg-card shadow-[0_2px_8px_rgba(0,0,0,0.08)]" />
