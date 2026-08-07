@@ -23,7 +23,18 @@ type StoreQrDialogProps = {
     slug: string
     logoUrl?: string | null
     className?: string
+    tone?: 'light' | 'dark'
 }
+
+const darkContentClassName = cn(
+    'border-[#623926] bg-[#2a160d] text-[#fff4e9]',
+    '[--background:17_53%_12%] [--foreground:33_100%_96%] [--card:17_53%_12%] [--card-foreground:33_100%_96%]',
+    '[--primary:41_92%_55%] [--primary-foreground:23_66%_12%]',
+    '[--muted:20_36%_16%] [--muted-foreground:26_47%_72%]',
+    '[--accent:23_52%_20%] [--accent-foreground:41_92%_55%]',
+    '[--destructive:41_91%_55%] [--destructive-foreground:15_14%_8%]',
+    '[--border:23_62%_27%] [--input:23_62%_27%] [--ring:38_90%_63%]'
+)
 
 function getMarketplaceBaseOrigin() {
     const configuredOrigin = (import.meta.env.VITE_MARKETPLACE_SITE_URL || '').trim().replace(/\/+$/, '')
@@ -43,7 +54,7 @@ function buildStoreUrl(slug: string) {
     return `${getMarketplaceBaseOrigin()}/s/${slug}`
 }
 
-export function StoreQrDialog({ name, slug, logoUrl, className }: StoreQrDialogProps) {
+export function StoreQrDialog({ name, slug, logoUrl, className, tone = 'light' }: StoreQrDialogProps) {
     const { t } = useTranslation()
     const { toast } = useToast()
     const storeUrl = buildStoreUrl(slug)
@@ -86,7 +97,7 @@ export function StoreQrDialog({ name, slug, logoUrl, className }: StoreQrDialogP
                 </Button>
             </DialogTrigger>
 
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className={cn('sm:max-w-md', tone === 'dark' && darkContentClassName)}>
                 <DialogHeader className="items-center text-center sm:text-center">
                     <StoreAvatar
                         logoUrl={logoUrl}

@@ -7,6 +7,7 @@ import { cn, formatCurrency } from '@/lib/utils'
 import { usePageMeta } from '../../hooks/usePageMeta'
 import { useStoreCatalog } from '../../hooks/useStoreCatalog'
 import { getMarketplaceAssetUrl } from '../../lib/assets'
+import { StoreQrDialog } from '../../components/StoreQrDialog'
 import type { MarketplaceCategory, MarketplaceProduct } from '../../lib/marketplaceApi'
 import type { StorefrontTemplate, StorefrontTemplatePageProps } from '../types'
 
@@ -39,8 +40,8 @@ function BarbadosLoadingState() {
                         <div key={index} className="h-12 w-32 shrink-0 animate-pulse rounded-2xl bg-[#382015]" />
                     ))}
                 </div>
-                <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {Array.from({ length: 8 }).map((_, index) => (
+                <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-5 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                    {Array.from({ length: 12 }).map((_, index) => (
                         <div key={index} className="overflow-hidden rounded-[1.5rem] border border-[#623926] bg-[#331b10]">
                             <div className="aspect-[1.34] animate-pulse bg-[#563222]" />
                             <div className="space-y-3 p-5">
@@ -91,9 +92,9 @@ function BarbadosMenuCard({
                 )}
             </div>
 
-            <div className="p-5">
-                <div className="flex items-start justify-between gap-4">
-                    <h2 className="line-clamp-2 text-[17px] font-bold leading-6 tracking-[-0.01em] text-[#fff4e9]">
+            <div className="p-3 sm:p-5">
+                <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                    <h2 className="line-clamp-2 text-[13px] font-bold leading-[1.35] tracking-[-0.01em] text-[#fff4e9] sm:text-[17px] sm:leading-6">
                         {product.name}
                     </h2>
                     {!hidePrice && <div className="shrink-0 text-right">
@@ -102,13 +103,13 @@ function BarbadosMenuCard({
                                 {formatCurrency(product.price, product.currency, iqdPreference)}
                             </p>
                         )}
-                        <p className="text-[14px] font-extrabold text-[#f5bc24]">
+                        <p className="text-[13px] font-extrabold text-[#f5bc24] sm:text-[14px]">
                             {formatCurrency(getProductPrice(product), product.currency, iqdPreference)}
                         </p>
                     </div>}
                 </div>
                 {product.description && (
-                    <p className="mt-3 line-clamp-2 min-h-10 text-[13px] leading-5 text-[#cdb8a7]">
+                    <p className="mt-2 line-clamp-2 min-h-8 text-[12px] leading-[1.35] text-[#cdb8a7] sm:mt-3 sm:min-h-10 sm:text-[13px] sm:leading-5">
                         {product.description}
                     </p>
                 )}
@@ -229,6 +230,14 @@ function BarbadosMenuPage({ slug, rules }: StorefrontTemplatePageProps) {
                             className="h-full min-w-0 flex-1 bg-transparent text-sm text-[#fff4e9] outline-none placeholder:text-[#a98f7e]"
                         />
                     </label>
+
+                    <StoreQrDialog
+                        name={storeName}
+                        slug={slug}
+                        logoUrl={logoUrl}
+                        tone="dark"
+                        className="ms-auto h-12 shrink-0 rounded-xl border-[#623926] bg-[#3a2116] text-[#f5bc24] hover:bg-[#4a2a1a] hover:text-[#f5bc24] lg:ms-0"
+                    />
                 </div>
             </header>
 
@@ -327,7 +336,7 @@ function BarbadosMenuPage({ slug, rules }: StorefrontTemplatePageProps) {
                             </p>
                         </div>
                     ) : (
-                        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-5 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
                             {displayedProducts.map((product) => (
                                 <BarbadosMenuCard
                                     key={product.id}
