@@ -1200,7 +1200,9 @@
       "pay": "دفع",
       "unpay": "تراجع عن الدفع",
       "openLoan": "فتح حساب قرض",
-      "showPrintedInvoice": "عرض الفاتورة المطبوعة"
+      "showPrintedInvoice": "عرض الفاتورة المطبوعة",
+      "keepHolding": "استمر بالضغط…",
+      "advanceHoldHint": "اضغط مطولاً على الزر لتقديم حالة الطلب."
     },
     "return": {
       "title": "إرجاع الطلب",

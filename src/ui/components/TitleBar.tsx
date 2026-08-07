@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Minus, Square, X, Sun, Moon, ArrowUpCircle, RotateCw, GitBranch, Bot, AlertTriangle } from 'lucide-react'
+import { Minus, Square, X, Sun, Moon, ArrowUpCircle, RotateCw, GitBranch, Bot, AlertTriangle, ArrowLeft, ArrowRight } from 'lucide-react'
 import { useWorkspace } from '@/workspace/WorkspaceContext'
 import { useTheme } from '@/ui/components/theme-provider'
 import { useTranslation } from 'react-i18next'
@@ -11,6 +11,7 @@ import { ThemeAwareTitleLogo } from './ThemeAwareTitleLogo'
 import { useSubscriptionExpiryWarning } from '@/hooks/useSubscriptionExpiryWarning'
 import { WorkspaceUsageButton, WorkspaceUsageCircleButton, WorkspaceUsageModal } from './WorkspaceUsageModal'
 import { useWorkspaceUsageMeter } from './workspaceUsageMeter'
+import { useNavigationHistory } from '@/hooks/useNavigationHistory'
 
 export function TitleBar() {
     const [isMaximized, setIsMaximized] = useState(false)
@@ -23,6 +24,7 @@ export function TitleBar() {
     const subscriptionWarning = useSubscriptionExpiryWarning(
         isTauri && !isDemoMode ? features.subscription_expires_at : null
     )
+    const { canGoBack, canGoForward, back, forward } = useNavigationHistory()
     const usageMeter = useWorkspaceUsageMeter({
         enabled: isTauri && !isLocalMode && !isDemoMode,
         workspaceId: activeWorkspace?.id
@@ -137,6 +139,36 @@ export function TitleBar() {
                             )}
                         </span>
                     )}
+                </div>
+                <div data-tauri-drag-region className="flex items-center gap-1">
+                    <button
+                        onClick={back}
+                        disabled={!canGoBack}
+                        className={cn(
+                            "p-2 transition-colors",
+                            canGoBack
+                                ? style === 'neo-orange' ? "neo-indicator" : "hover:bg-secondary rounded-md text-muted-foreground hover:text-foreground"
+                                : "text-muted-foreground/30 cursor-not-allowed"
+                        )}
+                        title="Back"
+                        aria-label="Back"
+                    >
+                        <ArrowLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                        onClick={forward}
+                        disabled={!canGoForward}
+                        className={cn(
+                            "p-2 transition-colors",
+                            canGoForward
+                                ? style === 'neo-orange' ? "neo-indicator" : "hover:bg-secondary rounded-md text-muted-foreground hover:text-foreground"
+                                : "text-muted-foreground/30 cursor-not-allowed"
+                        )}
+                        title="Forward"
+                        aria-label="Forward"
+                    >
+                        <ArrowRight className="w-4 h-4" />
+                    </button>
                 </div>
             </div>
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button, type ButtonProps } from '@/ui/components/button'
 import {
@@ -8,9 +8,11 @@ import {
 
 interface PressAndHoldButtonProps extends Omit<ButtonProps, 'onClick' | 'onSubmit'> {
     onComplete: () => void
+    onPressStart?: () => void
     idleLabel: string
     holdingLabel: string
     loadingLabel: string
+    icon?: ReactNode
     isLoading?: boolean
     durationMs?: number
     showProgress?: boolean
@@ -18,9 +20,11 @@ interface PressAndHoldButtonProps extends Omit<ButtonProps, 'onClick' | 'onSubmi
 
 export function PressAndHoldButton({
     onComplete,
+    onPressStart,
     idleLabel,
     holdingLabel,
     loadingLabel,
+    icon,
     isLoading = false,
     durationMs = WORKSPACE_PAYMENT_HOLD_DURATION_MS,
     showProgress = true,
@@ -28,9 +32,16 @@ export function PressAndHoldButton({
     className,
     ...buttonProps
 }: PressAndHoldButtonProps) {
-    const [progress, setProgress] = useState(0)
+    const [isHolding, setIsHolding] = useState(false)
+    const overlayRef = useRef<HTMLSpanElement | null>(null)
     const animationFrameRef = useRef<number | null>(null)
     const completedRef = useRef(false)
+
+    const setOverlayWidth = useCallback((width: number) => {
+        if (overlayRef.current) {
+            overlayRef.current.style.width = `${width}%`
+        }
+    }, [])
 
     const cancelHold = useCallback(() => {
         if (animationFrameRef.current !== null) {
@@ -38,19 +49,25 @@ export function PressAndHoldButton({
             animationFrameRef.current = null
         }
         if (!completedRef.current) {
-            setProgress(0)
+            setIsHolding(false)
+            setOverlayWidth(0)
         }
-    }, [])
+    }, [setOverlayWidth])
 
     const beginHold = useCallback(() => {
         if (disabled || isLoading || animationFrameRef.current !== null || completedRef.current) {
             return
         }
 
+        onPressStart?.()
+
         const startedAt = performance.now()
+        setIsHolding(true)
+        setOverlayWidth(0)
+
         const updateProgress = (now: number) => {
             const next = getPressAndHoldProgress(startedAt, now, durationMs)
-            setProgress(next.progress)
+            setOverlayWidth(next.progress)
 
             if (next.complete) {
                 animationFrameRef.current = null
@@ -64,18 +81,17 @@ export function PressAndHoldButton({
         }
 
         animationFrameRef.current = window.requestAnimationFrame(updateProgress)
-    }, [disabled, durationMs, isLoading, onComplete])
+    }, [disabled, durationMs, isLoading, onComplete, onPressStart, setOverlayWidth])
 
     useEffect(() => {
         if (!isLoading) {
             completedRef.current = false
-            setProgress(0)
+            setIsHolding(false)
+            setOverlayWidth(0)
         }
-    }, [isLoading])
+    }, [isLoading, setOverlayWidth])
 
     useEffect(() => cancelHold, [cancelHold])
-
-    const isHolding = progress > 0 && progress < 100
 
     return (
         <Button
@@ -111,14 +127,20 @@ export function PressAndHoldButton({
         >
             {showProgress && (
                 <span
+                    ref={overlayRef}
                     aria-hidden="true"
-                    className="absolute inset-y-0 start-0 bg-white/20 transition-[width] duration-75"
-                    style={{ width: `${progress}%` }}
+                    className="absolute inset-y-0 start-0 bg-white/20"
+                    style={{ width: '0%' }}
                 />
             )}
             <span className="relative flex items-center justify-center gap-2">
                 {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                {isLoading ? loadingLabel : isHolding ? holdingLabel : idleLabel}
+                {isLoading ? loadingLabel : (
+                    <>
+                        {icon}
+                        {isHolding ? holdingLabel : idleLabel}
+                    </>
+                )}
             </span>
         </Button>
     )

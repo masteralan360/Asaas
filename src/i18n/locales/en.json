@@ -1832,7 +1832,9 @@
       "unpay": "Unpay",
       "reverseLastPayment": "Reverse Last Payment",
       "payInstallment": "Pay Installment",
-      "showPrintedInvoice": "Show Printed Invoice"
+      "showPrintedInvoice": "Show Printed Invoice",
+      "keepHolding": "Keep holding…",
+      "advanceHoldHint": "Press and hold the button to advance the order status."
     },
     "return": {
       "title": "Return Order",

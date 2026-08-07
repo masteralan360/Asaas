@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { ArrowLeft, BadgeCheck, CalendarDays, CircleCheck, CreditCard, Eye, LayoutGrid, List, Loader2, Lock, Package, PackageCheck, Pencil, Printer, Receipt, RotateCcw, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedOrderError } from '@/lib/orderErrors'
+import { ORDER_STATUS_ADVANCE_HOLD_DURATION_MS } from '@/lib/pressAndHold'
+import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
 import { Link, useLocation } from 'wouter'
 
 import { useAuth } from '@/auth'
@@ -254,8 +256,11 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(readViewMode)
     const [deleteOpen, setDeleteOpen] = useState(false)
     const [isDeleting, setIsDeleting] = useState(false)
-    const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(null)
+const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(null)
     const activeWorkflowActionRef = useRef<string | null>(null)
+    const workflowMissCountRef = useRef(0)
+    const [showAdvanceHoldTip, setShowAdvanceHoldTip] = useState(false)
+    const advanceHoldTipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const [showPrintPreview, setShowPrintPreview] = useState(false)
     const [lockConfirm, setLockConfirm] = useState<{ isOpen: boolean }>({ isOpen: false })
     const [isLocking, setIsLocking] = useState(false)
@@ -355,6 +360,26 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
             setActiveWorkflowAction(null)
         }
     }
+
+    const handleWorkflowPressStart = () => {
+        workflowMissCountRef.current += 1
+        if (workflowMissCountRef.current < 3) return
+        workflowMissCountRef.current = 0
+        setShowAdvanceHoldTip(true)
+        if (advanceHoldTipTimerRef.current) clearTimeout(advanceHoldTipTimerRef.current)
+        advanceHoldTipTimerRef.current = setTimeout(() => setShowAdvanceHoldTip(false), 3500)
+    }
+
+    const handleWorkflowAdvanceComplete = () => {
+        workflowMissCountRef.current = 0
+        if (advanceHoldTipTimerRef.current) clearTimeout(advanceHoldTipTimerRef.current)
+        advanceHoldTipTimerRef.current = null
+        setShowAdvanceHoldTip(false)
+    }
+
+    useEffect(() => () => {
+        if (advanceHoldTipTimerRef.current) clearTimeout(advanceHoldTipTimerRef.current)
+    }, [])
 
     const orderInvoice = useLiveQuery(
         async () => {
@@ -893,6 +918,39 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         if (!action) return null
                         const ActionIcon = action.icon
                         const isActionLoading = activeWorkflowAction === action.key
+                        const isProgressAction = action.key !== 'cancel'
+
+                        if (isProgressAction) {
+                            return (
+                                <div key={action.key} className="relative">
+                                    <PressAndHoldButton
+                                        variant={action.variant}
+                                        icon={<ActionIcon className="mr-2 h-4 w-4" aria-hidden="true" />}
+                                        disabled={activeWorkflowAction !== null}
+                                        onPressStart={handleWorkflowPressStart}
+                                        onComplete={() => {
+                                            handleWorkflowAdvanceComplete()
+                                            action.onClick()
+                                        }}
+                                        idleLabel={action.label}
+                                        holdingLabel={t('orders.actions.keepHolding', { defaultValue: 'Keep holding…' })}
+                                        loadingLabel={action.label}
+                                        isLoading={isActionLoading}
+                                        durationMs={ORDER_STATUS_ADVANCE_HOLD_DURATION_MS}
+                                    />
+                                    {showAdvanceHoldTip && (
+                                        <div
+                                            role="status"
+                                            className="pointer-events-none absolute start-0 top-[calc(100%+0.5rem)] z-50 w-max max-w-72 rounded-lg border border-border bg-popover px-3 py-2 text-xs font-semibold text-popover-foreground shadow-lg"
+                                        >
+                                            {t('orders.actions.advanceHoldHint', {
+                                                defaultValue: 'Press and hold the button to advance the order status.'
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )
+                        }
 
                         return (
                             <Button
