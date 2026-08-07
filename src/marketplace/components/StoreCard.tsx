@@ -1,5 +1,5 @@
 import { Link } from 'wouter'
-import { ArrowRight, Package2 } from 'lucide-react'
+import { ArrowRight, Package2, TreePalm } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Card, CardContent } from '@/ui/components'
@@ -14,6 +14,16 @@ type StoreCardProps = {
     index: number
 }
 
+function BarbadosPalmTree() {
+    return (
+        <TreePalm
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-14 bottom-0 h-[88%] w-auto -rotate-[45deg] opacity-[0.14] text-[#f5bc24]"
+            strokeWidth={1.25}
+        />
+    )
+}
+
 export function StoreCard({ store, index }: StoreCardProps) {
     const { t } = useTranslation()
     const storeHref = `/s/${store.slug}`
@@ -22,14 +32,15 @@ export function StoreCard({ store, index }: StoreCardProps) {
     return (
         <Card
             className={cn(
-                'group h-full overflow-hidden transition-all duration-300 hover:-translate-y-1',
+                'group relative h-full overflow-hidden transition-all duration-300 hover:-translate-y-1',
                 isBarbados
                     ? '!border-[#623926] !bg-[#331b10] !shadow-[0_18px_30px_rgba(8,3,1,0.18)] hover:!border-[#bd7c35] hover:!shadow-[0_26px_44px_rgba(8,3,1,0.32)]'
                     : 'border-border/60 bg-card/85 hover:border-primary/40 hover:shadow-[0_24px_60px_rgba(15,23,42,0.12)]'
             )}
             style={{ animationDelay: `${index * 70}ms` }}
         >
-            <CardContent className="flex h-full flex-col gap-5 p-5">
+            {isBarbados && <BarbadosPalmTree />}
+            <CardContent className={cn('flex h-full flex-col gap-5 p-5', isBarbados && 'relative')}>
                 <div className="flex items-start justify-between gap-4">
                     <StoreAvatar
                         logoUrl={store.logo_url}
@@ -85,7 +96,7 @@ export function StoreCard({ store, index }: StoreCardProps) {
                             tone={isBarbados ? 'dark' : 'light'}
                             className={cn(
                                 isBarbados &&
-                                    'border-[#623926] bg-[#3a2116] text-[#f5bc24] hover:bg-[#4a2a1a] hover:text-[#f5bc24]'
+                                'border-[#623926] bg-[#3a2116] text-[#f5bc24] hover:bg-[#4a2a1a] hover:text-[#f5bc24]'
                             )}
                         />
                         <Link
