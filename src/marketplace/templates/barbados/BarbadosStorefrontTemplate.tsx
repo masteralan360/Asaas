@@ -40,7 +40,7 @@ function BarbadosLoadingState() {
                         <div key={index} className="h-12 w-32 shrink-0 animate-pulse rounded-2xl bg-[#382015]" />
                     ))}
                 </div>
-                <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-5 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                <div className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-5 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                     {Array.from({ length: 12 }).map((_, index) => (
                         <div key={index} className="overflow-hidden rounded-[1.5rem] border border-[#623926] bg-[#331b10]">
                             <div className="aspect-[1.34] animate-pulse bg-[#563222]" />
@@ -336,7 +336,7 @@ function BarbadosMenuPage({ slug, rules }: StorefrontTemplatePageProps) {
                             </p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-5 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                        <div className="mx-auto grid w-full max-w-md grid-cols-1 gap-3 sm:mx-0 sm:max-w-none sm:grid-cols-2 sm:gap-5 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                             {displayedProducts.map((product) => (
                                 <BarbadosMenuCard
                                     key={product.id}
