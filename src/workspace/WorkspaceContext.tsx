@@ -25,6 +25,11 @@ import {
     writeWorkspaceModeSnapshot
 } from './workspaceMode'
 import { resolveFetchedWorkspaceLogo, resolvePersistedWorkspaceLogo } from './workspaceLogo'
+import {
+    resolveFetchedWorkspaceName,
+    resolveFetchedWorkspaceSettings,
+    resolvePersistedLocallyOwnedSettings
+} from './workspaceLocalSettings'
 import { runSupabaseAction, normalizeSupabaseActionError } from '@/lib/supabaseRequest'
 import {
     getWorkspacePaymentSummary,
@@ -501,6 +506,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             nextLogoUrl: nextFeatures.logo_url,
             existingLogoUrl: existing?.logo_url
         })
+        const persistedLocallyOwned = resolvePersistedLocallyOwnedSettings({
+            nextMode: nextFeatures.data_mode,
+            existingMode: existing?.data_mode,
+            next: nextFeatures,
+            existing: existing ?? null
+        })
 
         await db.workspaces.put({
             id: workspaceId,
@@ -534,23 +545,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             stock_adjustments: nextFeatures.stock_adjustments,
             invoices_history: nextFeatures.invoices_history,
             hr: nextFeatures.hr,
-            default_currency: nextFeatures.default_currency,
-            pos_convert_to_workspace_currency: nextFeatures.pos_convert_to_workspace_currency,
-            iqd_display_preference: nextFeatures.iqd_display_preference,
+            default_currency: persistedLocallyOwned.default_currency ?? nextFeatures.default_currency,
+            pos_convert_to_workspace_currency: persistedLocallyOwned.pos_convert_to_workspace_currency ?? nextFeatures.pos_convert_to_workspace_currency,
+            iqd_display_preference: persistedLocallyOwned.iqd_display_preference ?? nextFeatures.iqd_display_preference,
             locked_workspace: nextFeatures.locked_workspace,
-            allow_whatsapp: nextFeatures.allow_whatsapp,
+            allow_whatsapp: persistedLocallyOwned.allow_whatsapp ?? nextFeatures.allow_whatsapp,
             logo_url: logoUrl,
-            coordination: nextFeatures.coordination,
-            max_discount_percent: nextFeatures.max_discount_percent,
-            print_lang: nextFeatures.print_lang,
-            print_qr: nextFeatures.print_qr,
-            receipt_template: nextFeatures.receipt_template,
-            a4_template: nextFeatures.a4_template,
-            thermal_printing: nextFeatures.thermal_printing,
+            coordination: persistedLocallyOwned.coordination ?? nextFeatures.coordination,
+            max_discount_percent: persistedLocallyOwned.max_discount_percent ?? nextFeatures.max_discount_percent,
+            print_lang: persistedLocallyOwned.print_lang ?? nextFeatures.print_lang,
+            print_qr: persistedLocallyOwned.print_qr ?? nextFeatures.print_qr,
+            receipt_template: persistedLocallyOwned.receipt_template ?? nextFeatures.receipt_template,
+            a4_template: persistedLocallyOwned.a4_template ?? nextFeatures.a4_template,
+            thermal_printing: persistedLocallyOwned.thermal_printing ?? nextFeatures.thermal_printing,
             subscription_expires_at: nextFeatures.subscription_expires_at,
             renewal_due_at: nextFeatures.renewal_due_at,
             has_usage_limits: nextFeatures.has_usage_limits,
-            upload_limit_mb: nextFeatures.upload_limit_mb,
+            upload_limit_mb: persistedLocallyOwned.upload_limit_mb ?? nextFeatures.upload_limit_mb,
             visibility: nextFeatures.visibility,
             store_slug: nextFeatures.store_slug,
             store_description: nextFeatures.store_description,
@@ -715,6 +726,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 ?? persistedWorkspace?.thermal_printing
                 ?? currentFeatures.thermal_printing
                 ?? false
+            const resolvedLocallyOwned = resolveFetchedWorkspaceSettings({
+                workspaceMode: workspaceRow.data_mode,
+                persistedMode: persistedWorkspace?.data_mode,
+                remote: workspaceRow,
+                persisted: persistedWorkspace ?? null,
+                cached: cachedSnapshot?.features ?? null,
+                current: currentFeatures
+            })
             const fetchedFeatures = mergeWorkspaceFeatures({
                 plan: normalizeWorkspacePlan(workspaceRow.plan),
                 data_mode: workspaceRow.data_mode ?? currentFeatures.data_mode,
@@ -725,9 +744,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 agents: currentFeatures.agents,
                 clinical_appointments: currentFeatures.clinical_appointments,
                 is_configured: workspaceRow.is_configured ?? currentFeatures.is_configured,
-                default_currency: workspaceRow.default_currency ?? currentFeatures.default_currency,
-                pos_convert_to_workspace_currency: workspaceRow.pos_convert_to_workspace_currency ?? currentFeatures.pos_convert_to_workspace_currency,
-                iqd_display_preference: workspaceRow.iqd_display_preference ?? currentFeatures.iqd_display_preference,
+                default_currency: resolvedLocallyOwned.default_currency ?? workspaceRow.default_currency ?? currentFeatures.default_currency,
+                pos_convert_to_workspace_currency: resolvedLocallyOwned.pos_convert_to_workspace_currency ?? workspaceRow.pos_convert_to_workspace_currency ?? currentFeatures.pos_convert_to_workspace_currency,
+                iqd_display_preference: resolvedLocallyOwned.iqd_display_preference ?? workspaceRow.iqd_display_preference ?? currentFeatures.iqd_display_preference,
                 locked_workspace: workspaceRow.locked_workspace ?? currentFeatures.locked_workspace,
                 logo_url: resolveFetchedWorkspaceLogo({
                     workspaceMode: workspaceRow.data_mode,
@@ -737,24 +756,32 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     currentLogoUrl: currentFeatures.logo_url,
                     remoteLogoUrl: workspaceRow.logo_url
                 }),
-                coordination: workspaceRow.coordination ?? null,
-                max_discount_percent: workspaceRow.max_discount_percent ?? currentFeatures.max_discount_percent,
-                allow_whatsapp: workspaceRow.allow_whatsapp ?? currentFeatures.allow_whatsapp,
-                print_lang: workspaceRow.print_lang ?? currentFeatures.print_lang,
-                print_qr: workspaceRow.print_qr ?? currentFeatures.print_qr,
-                receipt_template: workspaceRow.receipt_template ?? currentFeatures.receipt_template,
-                a4_template: workspaceRow.a4_template ?? currentFeatures.a4_template,
+                coordination: resolvedLocallyOwned.coordination ?? workspaceRow.coordination ?? null,
+                max_discount_percent: resolvedLocallyOwned.max_discount_percent ?? workspaceRow.max_discount_percent ?? currentFeatures.max_discount_percent,
+                allow_whatsapp: resolvedLocallyOwned.allow_whatsapp ?? workspaceRow.allow_whatsapp ?? currentFeatures.allow_whatsapp,
+                print_lang: resolvedLocallyOwned.print_lang ?? workspaceRow.print_lang ?? currentFeatures.print_lang,
+                print_qr: resolvedLocallyOwned.print_qr ?? workspaceRow.print_qr ?? currentFeatures.print_qr,
+                receipt_template: resolvedLocallyOwned.receipt_template ?? workspaceRow.receipt_template ?? currentFeatures.receipt_template,
+                a4_template: resolvedLocallyOwned.a4_template ?? workspaceRow.a4_template ?? currentFeatures.a4_template,
                 print_quality: 'high' as const,
-                thermal_printing: localThermalPrinting,
+                thermal_printing: resolvedLocallyOwned.thermal_printing ?? localThermalPrinting,
                 subscription_expires_at: workspaceRow.subscription_expires_at ?? currentFeatures.subscription_expires_at,
                 renewal_due_at: renewalDueAt,
                 has_usage_limits: Boolean(usageStatus?.has_limits),
-                upload_limit_mb: workspaceRow.upload_limit_mb ?? null,
+                upload_limit_mb: resolvedLocallyOwned.upload_limit_mb ?? workspaceRow.upload_limit_mb ?? null,
                 visibility: workspaceRow.visibility ?? currentFeatures.visibility,
                 store_slug: workspaceRow.store_slug ?? currentFeatures.store_slug,
                 store_description: workspaceRow.store_description ?? currentFeatures.store_description
             }, fetchedOverrides)
-            const nextWorkspaceName = workspaceRow.name || user?.workspaceName || 'My Workspace'
+            const nextWorkspaceName = resolveFetchedWorkspaceName({
+                workspaceMode: workspaceRow.data_mode,
+                persistedMode: persistedWorkspace?.data_mode,
+                remoteName: workspaceRow.name,
+                persistedName: persistedWorkspace?.name,
+                cachedName: cachedSnapshot?.workspaceName,
+                currentName: workspaceNameRef.current ?? user?.workspaceName
+            })
+            const resolvedNextWorkspaceName = nextWorkspaceName || user?.workspaceName || 'My Workspace'
 
             if (!isCurrentWorkspaceRequest(workspaceId, requestId)) {
                 return
@@ -762,7 +789,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
             setOverrides(fetchedOverrides)
             setFeatures(fetchedFeatures)
-            setWorkspaceName(nextWorkspaceName)
+            setWorkspaceName(resolvedNextWorkspaceName)
             setLoadedWorkspaceId(workspaceId)
             if (paymentSummaryResult.error) {
                 console.warn('[WorkspacePayments] Failed to load payment summary:', paymentSummaryResult.error)
@@ -773,10 +800,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             writeWorkspaceCache({
                 workspaceId,
                 features: fetchedFeatures,
-                workspaceName: nextWorkspaceName,
+                workspaceName: resolvedNextWorkspaceName,
                 overrides: fetchedOverrides
             })
-            await persistWorkspaceState(workspaceId, fetchedFeatures, nextWorkspaceName)
+            await persistWorkspaceState(workspaceId, fetchedFeatures, resolvedNextWorkspaceName)
         } catch (err) {
             console.error('Error fetching workspace features:', err)
             await applyFallback()
@@ -925,10 +952,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     try {
                         const data = payload.new as any
                         const currentFeatures = featuresRef.current
+                        const persistedWorkspaceUpdate = await db.workspaces.get(user.workspaceId)
                         const accessStateChanged = hasWorkspacePaymentAccessStateUpdate({
                             lockedWorkspace: currentFeatures.locked_workspace,
                             subscriptionExpiresAt: currentFeatures.subscription_expires_at
                         }, data)
+                        const resolvedLocallyOwnedUpdate = resolveFetchedWorkspaceSettings({
+                            workspaceMode: data.data_mode,
+                            persistedMode: persistedWorkspaceUpdate?.data_mode,
+                            remote: data,
+                            persisted: persistedWorkspaceUpdate ?? null,
+                            cached: readWorkspaceCache<WorkspaceFeatures>(user.workspaceId)?.features ?? null,
+                            current: currentFeatures
+                        })
                         const updatedFeatures = mergeWorkspaceFeatures({
                             ...currentFeatures,
                             plan: normalizeWorkspacePlan(data.plan ?? currentFeatures.plan),
@@ -939,20 +975,27 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             agents: currentFeatures.agents,
                             clinical_appointments: currentFeatures.clinical_appointments,
                             is_configured: data.is_configured ?? currentFeatures.is_configured,
-                            default_currency: data.default_currency || currentFeatures.default_currency,
-                            pos_convert_to_workspace_currency: data.pos_convert_to_workspace_currency ?? currentFeatures.pos_convert_to_workspace_currency,
-                            iqd_display_preference: data.iqd_display_preference || currentFeatures.iqd_display_preference,
+                            default_currency: resolvedLocallyOwnedUpdate.default_currency ?? (data.default_currency || currentFeatures.default_currency),
+                            pos_convert_to_workspace_currency: resolvedLocallyOwnedUpdate.pos_convert_to_workspace_currency ?? data.pos_convert_to_workspace_currency ?? currentFeatures.pos_convert_to_workspace_currency,
+                            iqd_display_preference: resolvedLocallyOwnedUpdate.iqd_display_preference ?? (data.iqd_display_preference || currentFeatures.iqd_display_preference),
                             locked_workspace: data.locked_workspace ?? currentFeatures.locked_workspace,
-                            logo_url: data.logo_url ?? currentFeatures.logo_url,
-                            coordination: data.coordination ?? currentFeatures.coordination,
-                            max_discount_percent: data.max_discount_percent ?? currentFeatures.max_discount_percent,
-                            allow_whatsapp: data.allow_whatsapp ?? currentFeatures.allow_whatsapp,
-                            print_lang: data.print_lang ?? currentFeatures.print_lang,
-                            print_qr: data.print_qr ?? currentFeatures.print_qr,
-                            receipt_template: data.receipt_template ?? currentFeatures.receipt_template,
-                            a4_template: data.a4_template ?? currentFeatures.a4_template,
+                            logo_url: resolveFetchedWorkspaceLogo({
+                                workspaceMode: data.data_mode,
+                                persistedWorkspaceMode: persistedWorkspaceUpdate?.data_mode,
+                                persistedLogoUrl: persistedWorkspaceUpdate?.logo_url,
+                                cachedLogoUrl: readWorkspaceCache<WorkspaceFeatures>(user.workspaceId)?.features?.logo_url,
+                                currentLogoUrl: currentFeatures.logo_url,
+                                remoteLogoUrl: data.logo_url
+                            }),
+                            coordination: resolvedLocallyOwnedUpdate.coordination ?? data.coordination ?? currentFeatures.coordination,
+                            max_discount_percent: resolvedLocallyOwnedUpdate.max_discount_percent ?? data.max_discount_percent ?? currentFeatures.max_discount_percent,
+                            allow_whatsapp: resolvedLocallyOwnedUpdate.allow_whatsapp ?? data.allow_whatsapp ?? currentFeatures.allow_whatsapp,
+                            print_lang: resolvedLocallyOwnedUpdate.print_lang ?? data.print_lang ?? currentFeatures.print_lang,
+                            print_qr: resolvedLocallyOwnedUpdate.print_qr ?? data.print_qr ?? currentFeatures.print_qr,
+                            receipt_template: resolvedLocallyOwnedUpdate.receipt_template ?? data.receipt_template ?? currentFeatures.receipt_template,
+                            a4_template: resolvedLocallyOwnedUpdate.a4_template ?? data.a4_template ?? currentFeatures.a4_template,
                             print_quality: 'high' as const,
-                            thermal_printing: currentFeatures.thermal_printing,
+                            thermal_printing: resolvedLocallyOwnedUpdate.thermal_printing ?? currentFeatures.thermal_printing,
                             subscription_expires_at: data.subscription_expires_at ?? currentFeatures.subscription_expires_at,
                             renewal_due_at: currentFeatures.renewal_due_at,
                             has_usage_limits: currentFeatures.has_usage_limits,
@@ -960,7 +1003,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             store_slug: data.store_slug ?? currentFeatures.store_slug,
                             store_description: data.store_description ?? currentFeatures.store_description
                         }, overridesRef.current)
-                        const nextWorkspaceName = data.name || workspaceNameRef.current || user.workspaceName || 'My Workspace'
+                        const nextWorkspaceName = resolveFetchedWorkspaceName({
+                            workspaceMode: data.data_mode,
+                            persistedMode: persistedWorkspaceUpdate?.data_mode,
+                            remoteName: data.name,
+                            persistedName: persistedWorkspaceUpdate?.name,
+                            cachedName: readWorkspaceCache<WorkspaceFeatures>(user.workspaceId)?.workspaceName,
+                            currentName: workspaceNameRef.current ?? user.workspaceName
+                        }) || workspaceNameRef.current || user.workspaceName || 'My Workspace'
 
                         setFeatures(updatedFeatures)
                         setWorkspaceName(nextWorkspaceName)

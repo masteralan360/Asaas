@@ -15,6 +15,7 @@ import {
 } from '@/workspace/workspaceMode'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { markSupabaseReachableFromAccessToken } from '@/lib/offlineLease'
+import { resolveFetchedWorkspaceName } from '@/workspace/workspaceLocalSettings'
 import { db } from '@/local-db/database'
 import { hydrateLocalModeCacheFromSqlite, readLocalProfileWorkspaceState } from '@/local-db/localModeSqlite'
 import { runDailyBackupIfNeeded, runR2BackupIfNeeded } from '@/local-db/sqliteBackup'
@@ -435,10 +436,18 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
         }
 
         if (workspaceRow) {
-            parsedUser.workspaceName = workspaceRow.name || parsedUser.workspaceName
+            const localWorkspaceBootstrap = await db.workspaces.get(parsedUser.workspaceId)
+            const bootstrapMode = normalizeWorkspaceDataMode(workspaceRow.data_mode)
+            parsedUser.workspaceName = resolveFetchedWorkspaceName({
+                workspaceMode: bootstrapMode,
+                persistedMode: localWorkspaceBootstrap?.data_mode ?? bootstrapMode,
+                remoteName: workspaceRow.name,
+                persistedName: localWorkspaceBootstrap?.name,
+                currentName: parsedUser.workspaceName
+            }) || parsedUser.workspaceName || undefined
             parsedUser.workspaceCode = workspaceRow.code || parsedUser.workspaceCode
             parsedUser.isConfigured = workspaceRow.is_configured ?? parsedUser.isConfigured
-            parsedUser.workspaceMode = normalizeWorkspaceDataMode(workspaceRow.data_mode)
+            parsedUser.workspaceMode = bootstrapMode
             writeWorkspaceModeSnapshot({
                 workspaceId: parsedUser.workspaceId,
                 dataMode: parsedUser.workspaceMode
