@@ -25,6 +25,12 @@ type CategoryRow = {
     name: string
 }
 
+type ProductImageRow = {
+    product_id: string
+    image_url: string
+    position: number
+}
+
 function privateJsonResponse(payload: unknown, init: ResponseInit = {}) {
     const headers = new Headers(init.headers)
     headers.set('Cache-Control', 'private, no-store')
@@ -123,6 +129,30 @@ Deno.serve(async (req) => {
             }
         }
 
+        const productIds = visibleProducts.productRows.map((product) => product.id)
+        const additionalImageUrlsByProductId = new Map<string, string[]>()
+        if (productIds.length > 0) {
+            const { data: additionalImages, error: additionalImagesError } = await adminClient
+                .from('product_images')
+                .select('product_id, image_url, position')
+                .eq('workspace_id', context.workspace.id)
+                .in('product_id', productIds)
+                .order('product_id', { ascending: true })
+                .order('position', { ascending: true })
+
+            if (additionalImagesError) {
+                return errorResponse(additionalImagesError.message, 500)
+            }
+
+            for (const image of (additionalImages ?? []) as ProductImageRow[]) {
+                const imageUrl = resolvePublicAssetUrl(image.image_url)
+                if (!imageUrl) continue
+                const productImages = additionalImageUrlsByProductId.get(image.product_id) ?? []
+                productImages.push(imageUrl)
+                additionalImageUrlsByProductId.set(image.product_id, productImages)
+            }
+        }
+
         const directImageUrls = visibleProducts.productRows.map((product) => resolvePublicAssetUrl(product.image_url))
         const missingImageCount = directImageUrls.filter((value) => !value).length
         const fallbackImageUrls = missingImageCount > 0
@@ -164,6 +194,7 @@ Deno.serve(async (req) => {
                     image_url: directImageUrls[index]
                         ?? fallbackImageUrls[fallbackImageIndex++]
                         ?? resolvedLogoUrl,
+                    additional_image_urls: additionalImageUrlsByProductId.get(product.id) ?? [],
                     discount_price: discount
                         ? computeDiscountPrice(resolvedPrice.price, discount.discount_type, discount.discount_value)
                         : null,
