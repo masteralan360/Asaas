@@ -3021,6 +3021,22 @@
     }
   },
   "pos": {
+    "quickOrder": {
+      "title": "Quick Order",
+      "description": "Select the customer and payment method to complete this sales order.",
+      "installmentHint": "This uses the normal monthly installment schedule.",
+      "summary": "Order Summary",
+      "itemCount": "{{count}} cart items",
+      "save": "Save Order",
+      "completedTitle": "Order Completed",
+      "openDetails": "Open Order Details",
+      "progress": {
+        "preparing": "Preparing order details",
+        "creating": "Creating Sales Order",
+        "reserving": "Validating stock and payment",
+        "completing": "Completing order and inventory"
+      }
+    },
     "currencyError": "Currency Error",
     "currencyErrorDesc": "Please set a default currency in the settings.",
     "priceBookSelect": "Price Book",

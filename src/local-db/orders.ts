@@ -1918,6 +1918,34 @@ export async function createSalesOrder(
     return createdOrder
 }
 
+/**
+ * Creates a sales order through the normal draft -> pending -> completed
+ * lifecycle.  This keeps the inventory, payment, and financing transitions
+ * identical for callers that need an immediately completed sales order.
+ */
+export type CompletedSalesOrderProgressStage = 'creating' | 'reserving' | 'completing'
+
+export async function createCompletedSalesOrder(
+    workspaceId: string,
+    data: CreateOrderInput<SalesOrder>,
+    createdBy?: string | null,
+    options?: {
+        onProgress?: (stage: CompletedSalesOrderProgressStage) => void
+    }
+) {
+    options?.onProgress?.('creating')
+    const draft = await createSalesOrder(workspaceId, {
+        ...data,
+        status: 'draft',
+        actualDeliveryDate: null,
+        reservedAt: null
+    }, createdBy)
+    options?.onProgress?.('reserving')
+    const pending = await updateSalesOrderStatus(draft.id, 'pending')
+    options?.onProgress?.('completing')
+    return updateSalesOrderStatus(pending.id, 'completed')
+}
+
 export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
     const existing = await db.sales_orders.get(id)
     if (!existing || existing.isDeleted) {

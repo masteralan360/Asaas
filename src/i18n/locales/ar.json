@@ -2121,6 +2121,22 @@
     }
   },
   "pos": {
+    "quickOrder": {
+      "title": "طلب سريع",
+      "description": "اختر العميل وطريقة الدفع لإتمام طلب المبيعات هذا.",
+      "installmentHint": "يستخدم هذا جدول الأقساط الشهرية المعتاد.",
+      "summary": "ملخص الطلب",
+      "itemCount": "{{count}} عناصر في السلة",
+      "save": "حفظ الطلب",
+      "completedTitle": "اكتمل الطلب",
+      "openDetails": "فتح تفاصيل الطلب",
+      "progress": {
+        "preparing": "يجري إعداد تفاصيل الطلب",
+        "creating": "يجري إنشاء طلب المبيعات",
+        "reserving": "يجري التحقق من المخزون والدفع",
+        "completing": "يجري إكمال الطلب والمخزون"
+      }
+    },
     "currencyError": "خطأ في العملة",
     "currencyErrorDesc": "يرجى تعيين عملة افتراضية في الإعدادات.",
     "priceBookSelect": "كتاب الأسعار",

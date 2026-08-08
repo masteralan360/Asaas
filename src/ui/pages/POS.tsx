@@ -19,6 +19,8 @@ import {
     useWorkspaceProductBarcodes,
     useStorages,
     createActivityTransaction,
+    createCompletedSalesOrder,
+    isOrderFinancingMethod,
     updateActivityTransactionNotes,
     useActivityCatalog,
     usePriceBookCatalogState,
@@ -29,10 +31,13 @@ import {
     type InventoryProduct,
     type PriceBook,
     type ActivityTransaction,
-    type ActivityTransactionLine
+    type ActivityTransactionLine,
+    type SalesOrder,
+    type SalesOrderItem
 } from '@/local-db'
 import { db } from '@/local-db/database'
 import { formatCurrency, generateId, cn } from '@/lib/utils'
+import { roundOrderValue } from '@/lib/orderPrecision'
 import { CartItem } from '@/types'
 import { useWorkspace, type WorkspaceFeatures } from '@/workspace'
 import { useHideCosts, useWorkspacePermissions } from '@/permissions'
@@ -107,7 +112,8 @@ import {
     BookOpen,
     Check,
     Banknote,
-    BadgePercent
+    BadgePercent,
+    ClipboardCheck
 } from 'lucide-react'
 import { isDesktop } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
@@ -130,6 +136,16 @@ import { ActivityReceiptPrintTemplate, createActivityReceiptLabels } from '@/ui/
 import { generateTemplatePdf } from '@/services/pdfGenerator'
 import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
 import { useUnitRegistry, getDynamicUnitAdjustmentLabel, type UnitRegistry } from '@/ui/components/unitRegistry'
+import {
+    QuickOrderModal,
+    type QuickOrderCheckoutData,
+    type QuickOrderProgressStage
+} from '@/ui/components/pos/QuickOrderModal'
+import {
+    QuickOrderSuccessModal,
+    type CompletedQuickOrder
+} from '@/ui/components/pos/QuickOrderSuccessModal'
+import { useLocation } from 'wouter'
 
 const CART_IMAGE_VISIBILITY_THRESHOLD = 450
 
@@ -144,6 +160,8 @@ type CompletedActivityCheckout = {
     transaction: ActivityTransaction
     lines: ActivityTransactionLine[]
 }
+
+type PosPaymentType = 'cash' | 'digital' | 'loan' | 'order'
 
 function isLoanRegistrationData(value: unknown): value is LoanRegistrationData {
     if (!value || typeof value !== 'object') return false
@@ -378,12 +396,13 @@ const playCheckoutSound = () => {
 };
 
 export function POS() {
+    const [, navigate] = useLocation()
     const { trigger: hapticTrigger } = useWebHaptics({ debug: true })
     const { toast } = useToast()
     const { user } = useAuth()
     const demoTutorial = useDemoTutorial()
     const { t, i18n } = useTranslation()
-    const { features, hasCapability, workspaceName, isLocalMode, isLoading: isWorkspaceLoading, refreshFeatures } = useWorkspace()
+    const { features, hasCapability, hasFeature, workspaceName, isLocalMode, isLoading: isWorkspaceLoading, refreshFeatures } = useWorkspace()
     const isRTL = getLanguageDirection(i18n.resolvedLanguage || i18n.language) === 'rtl'
     const { permissionKeys, hasPermission, isLoading: arePermissionsLoading } = useWorkspacePermissions()
     const hideCosts = useHideCosts()
@@ -398,6 +417,9 @@ export function POS() {
     })
     const isActivitiesStorage = selectedStorageId === ACTIVITIES_STORAGE_ID
     const priceBooksEnabled = hasCapability('priceBooks')
+    // A Quick Order is still a Sales Order, so it requires the existing Orders
+    // module in addition to the opt-in Quick Order capability.
+    const quickOrderEnabled = hasCapability('quickOrder') && hasFeature('orders')
     const priceBookCatalog = usePriceBookCatalogState(user?.workspaceId, {
         enabled: priceBooksEnabled && !!selectedStorageId && !isActivitiesStorage && !isLocalMode
     })
@@ -807,10 +829,12 @@ export function POS() {
     const isModifyPriceHidden = !isAdmin && permissionKeys.includes('pos.hideModifyPriceButton' as any)
     const isPriceBelowCostHidden = hideCosts || (!isAdmin && permissionKeys.includes('pos.hidePriceBelowCostIndicator' as any))
 
-    const [paymentType, setPaymentType] = useState<'cash' | 'digital' | 'loan'>('cash')
+    const [paymentType, setPaymentType] = useState<PosPaymentType>(() => quickOrderEnabled ? 'order' : 'cash')
     const isTutorialPosTask = demoTutorial.isCurrentTask('pos-sale')
     const [digitalProvider, setDigitalProvider] = useState<'fib' | 'qicard' | 'zaincash' | 'fastpay'>('fib')
     const [isLoanRegistrationModalOpen, setIsLoanRegistrationModalOpen] = useState(false)
+    const [isQuickOrderModalOpen, setIsQuickOrderModalOpen] = useState(false)
+    const [quickOrderProgressStage, setQuickOrderProgressStage] = useState<QuickOrderProgressStage>(null)
     const [posLoanSavePartnerData, setPosLoanSavePartnerData] = usePendingSavePartnerPrompt()
 
     // Held Sales State
@@ -823,6 +847,14 @@ export function POS() {
     const [canScrollDown, setCanScrollDown] = useState(false)
 
     useEffect(() => {
+        setPaymentType((current) => {
+            if (!quickOrderEnabled && current === 'order') return 'cash'
+            if (quickOrderEnabled && current === 'cash') return 'order'
+            return current
+        })
+    }, [quickOrderEnabled])
+
+    useEffect(() => {
         if (isTutorialPosTask && paymentType === 'loan') {
             setPaymentType('cash')
         }
@@ -832,9 +864,13 @@ export function POS() {
         if (isActivitiesStorage) {
             setSelectedCategory('all')
             setShowExchangeTicker(false)
-            if (paymentType === 'loan') setPaymentType('cash')
+            if (paymentType === 'loan' || paymentType === 'order') setPaymentType('cash')
         }
     }, [isActivitiesStorage, paymentType])
+
+    const resetCheckoutPaymentType = useCallback(() => {
+        setPaymentType(quickOrderEnabled ? 'order' : 'cash')
+    }, [quickOrderEnabled])
 
     // Scroll Indicator Logic (Desktop)
     const checkScroll = useCallback(() => {
@@ -874,6 +910,8 @@ export function POS() {
     const [isSavingCurrencyConversion, setIsSavingCurrencyConversion] = useState(false)
     const [completedSaleData, setCompletedSaleData] = useState<any>(null)
     const [completedActivityCheckout, setCompletedActivityCheckout] = useState<CompletedActivityCheckout | null>(null)
+    const [completedQuickOrder, setCompletedQuickOrder] = useState<CompletedQuickOrder | null>(null)
+    const [isQuickOrderSuccessModalOpen, setIsQuickOrderSuccessModalOpen] = useState(false)
     const buildActivityCheckoutReceiptPdf = useCallback(async () => {
         if (!completedActivityCheckout) throw new Error('Activity transaction is not available.')
 
@@ -1976,7 +2014,7 @@ export function POS() {
         setHeldSales(prev => [...prev, newHeldSale])
         setCart([])
         setRestoredSale(null)
-        setPaymentType('cash')
+        resetCheckoutPaymentType()
 
         toast({
             title: t('pos.saleHeld', 'Sale Held'),
@@ -2107,6 +2145,16 @@ export function POS() {
 
     const handleCheckout = async (loanRegistrationData?: LoanRegistrationData) => {
         if (cart.length === 0 || !user) return
+
+        if (paymentType === 'order') {
+            if (!quickOrderEnabled || isActivitiesStorage) {
+                setPaymentType('cash')
+                return
+            }
+            setQuickOrderProgressStage(null)
+            setIsQuickOrderModalOpen(true)
+            return
+        }
 
         if (isActivitiesStorage) {
             await handleActivitiesCheckout()
@@ -2753,6 +2801,152 @@ export function POS() {
         }
     }
 
+    const handleQuickOrderSubmit = async (checkout: QuickOrderCheckoutData) => {
+        if (cart.length === 0 || !user) {
+            throw new Error(t('pos.emptyCart', { defaultValue: 'Your cart is empty.' }))
+        }
+
+        const restrictedCartItem = cart.find((item) => {
+            const product = products.find((candidate) => candidate.id === item.product_id && candidate.storageId === item.storageId)
+            return product ? !canSelectProduct(product) : false
+        })
+        if (restrictedCartItem) {
+            throw new Error(t('businessPartners.agent.productCategoryExcluded', {
+                defaultValue: 'This product category is not available to this user.'
+            }))
+        }
+
+        setQuickOrderProgressStage('preparing')
+        setIsLoading(true)
+        let orderCompleted = false
+        try {
+            const checkoutTimestamp = new Date().toISOString()
+            const usedCurrencies = new Set(cart.map((item) =>
+                getEffectiveProductCurrency(findStockProduct(item.product_id, item.storageId))
+            ))
+            const knownRates = {
+                usdIqd: exchangeData ? { rate: exchangeData.rate, source: exchangeData.source, timestamp: exchangeData.timestamp || checkoutTimestamp } : null,
+                eurIqd: eurRates.eur_iqd ? { rate: eurRates.eur_iqd.rate, source: eurRates.eur_iqd.source, timestamp: eurRates.eur_iqd.timestamp } : null,
+                tryIqd: tryRates.try_iqd ? { rate: tryRates.try_iqd.rate, source: tryRates.try_iqd.source, timestamp: tryRates.try_iqd.timestamp } : null,
+                usdEur: eurRates.usd_eur ? { rate: eurRates.usd_eur.rate, source: eurRates.usd_eur.source, timestamp: eurRates.usd_eur.timestamp } : null,
+                usdTry: tryRates.usd_try ? { rate: tryRates.usd_try.rate, source: tryRates.usd_try.source, timestamp: tryRates.usd_try.timestamp } : null,
+            }
+            const exchangeRates = currencyConversionEnabled
+                ? buildCheckoutRatesSnapshot(usedCurrencies, settlementCurrency, knownRates)
+                : []
+            const primaryRate = currencyConversionEnabled
+                ? getPrimaryCheckoutRate(usedCurrencies, settlementCurrency, knownRates)
+                : null
+
+            const orderItems: SalesOrderItem[] = cart.map((item) => {
+                const product = findStockProduct(item.product_id, item.storageId)
+                const storageId = item.storageId || selectedStorageId
+                if (!product || !storageId) {
+                    throw new Error(t('pos.stockMismatch', { defaultValue: 'One or more cart items no longer match an inventory row.' }))
+                }
+
+                const originalCurrency = getEffectiveProductCurrency(product)
+                const priceBookItem = item.price_book_id
+                    ? priceBookCatalog.priceBookItems.find((entry) => (
+                        !entry.isDeleted
+                        && entry.priceBookId === item.price_book_id
+                        && entry.productId === product.id
+                    ))
+                    : undefined
+                const effectivePrice = getCartEffectivePrice(item)
+                const convertedUnitPrice = roundOrderValue(convertPrice(effectivePrice, originalCurrency, settlementCurrency))
+                const sourceCostPrice = Number(priceBookItem?.costPrice ?? product.costPrice ?? 0)
+
+                return {
+                    id: generateId(),
+                    productId: product.id,
+                    storageId,
+                    productName: product.name,
+                    productSku: product.sku,
+                    unit: product.unit,
+                    quantity: item.quantity,
+                    lineTotal: roundOrderValue(convertedUnitPrice * item.quantity),
+                    originalCurrency,
+                    originalUnitPrice: effectivePrice,
+                    convertedUnitPrice,
+                    settlementCurrency,
+                    costPrice: sourceCostPrice,
+                    convertedCostPrice: roundOrderValue(convertPrice(sourceCostPrice, originalCurrency, settlementCurrency)),
+                    priceBookId: priceBookItem?.priceBookId ?? item.price_book_id ?? null,
+                    priceBookItemId: priceBookItem?.id ?? null,
+                    // Let the normal sales-order completion service allocate the
+                    // appropriate batches at the moment it deducts inventory.
+                    batchAllocations: null
+                }
+            })
+            const subtotal = roundOrderValue(orderItems.reduce((sum, item) => sum + item.lineTotal, 0))
+            const paymentMethod = checkout.paymentMethod as SalesOrder['paymentMethod']
+            const isFinanced = isOrderFinancingMethod(paymentMethod)
+            const sourceStorageIds = Array.from(new Set(orderItems.map((item) => item.storageId).filter(Boolean)))
+            const completedOrder = await createCompletedSalesOrder(user.workspaceId, {
+                businessPartnerId: checkout.customer.id,
+                customerId: checkout.customer.id,
+                customerName: checkout.customer.name,
+                sourceStorageId: sourceStorageIds.length === 1 ? sourceStorageIds[0] : null,
+                items: orderItems,
+                subtotal,
+                discount: 0,
+                tax: 0,
+                total: subtotal,
+                currency: settlementCurrency,
+                exchangeRate: primaryRate?.rate ?? null,
+                exchangeRateSource: primaryRate?.source ?? null,
+                exchangeRateTimestamp: primaryRate?.timestamp ?? null,
+                exchangeRates: exchangeRates.length > 0 ? exchangeRates : null,
+                status: 'draft',
+                expectedDeliveryDate: null,
+                actualDeliveryDate: null,
+                isPaid: !isFinanced,
+                paymentStatus: isFinanced ? 'unpaid' : 'paid',
+                paidAmount: isFinanced ? 0 : subtotal,
+                balanceAmount: isFinanced ? subtotal : 0,
+                paidAt: isFinanced ? null : checkoutTimestamp,
+                paymentMethod,
+                initialPaymentAmount: 0,
+                linkedLoanId: null,
+                isInstallmentBased: paymentMethod === 'installments',
+                installmentCount: paymentMethod === 'installments' ? checkout.installmentCount : 0,
+                installmentFrequency: isFinanced ? checkout.installmentFrequency : null,
+                firstDueDate: isFinanced ? checkout.firstDueDate : null,
+                nextDueDate: isFinanced ? checkout.firstDueDate : null,
+                reservedAt: null,
+                // The order is deliberately a normal Sales Order, never a POS
+                // sale or POS-origin record.
+                sourceChannel: 'manual',
+                createdAt: checkoutTimestamp
+            }, user.id, {
+                onProgress: (stage) => setQuickOrderProgressStage(stage)
+            })
+
+            orderCompleted = true
+            setCart([])
+            setDiscountValue('')
+            setIsQuickOrderModalOpen(false)
+            resetCheckoutPaymentType()
+            setCompletedActivityCheckout(null)
+            setCompletedQuickOrder({
+                id: completedOrder.id,
+                orderNumber: completedOrder.orderNumber,
+                total: completedOrder.total,
+                currency: completedOrder.currency
+            })
+            setIsQuickOrderSuccessModalOpen(true)
+            hapticTrigger('success')
+            playCheckoutSound()
+            refreshExchangeRate()
+        } finally {
+            setIsLoading(false)
+            if (!orderCompleted) {
+                setQuickOrderProgressStage(null)
+            }
+        }
+    }
+
 
 
 
@@ -2838,6 +3032,7 @@ export function POS() {
                                 tutorialProductId={demoTutorial.state?.productId}
                                 digitalProvider={digitalProvider}
                                 setDigitalProvider={setDigitalProvider}
+                                quickOrderEnabled={quickOrderEnabled}
                                 handleCheckout={handleCheckout}
                                 handleHoldSale={handleHoldSale}
                                 isLoading={isLoading}
@@ -3500,6 +3695,18 @@ export function POS() {
                                             <Banknote className={cn("w-3 h-3 transition-colors", paymentType === 'cash' ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-600/80")} />
                                             {t('pos.cash') || 'Cash'}
                                         </button>
+                                        {quickOrderEnabled && !isActivitiesStorage ? <button
+                                            onClick={() => setPaymentType('order')}
+                                            className={cn(
+                                                "px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 border transition-all",
+                                                paymentType === 'order'
+                                                    ? "bg-violet-100 text-violet-900 shadow-sm border-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-800"
+                                                    : "bg-violet-50/30 text-violet-700 border-violet-100/30 hover:bg-violet-100/50 dark:bg-violet-500/5 dark:text-violet-400 dark:border-violet-500/10 dark:hover:bg-violet-500/10"
+                                            )}
+                                        >
+                                            <ClipboardCheck className={cn("w-3 h-3 transition-colors", paymentType === 'order' ? "text-violet-600 dark:text-violet-400" : "text-violet-600/80")} />
+                                            {t('orders.actions.order', { defaultValue: 'Order' })}
+                                        </button> : null}
                                         <button
                                             data-tour-id="tutorial-pos-payment-digital"
                                             onClick={() => setPaymentType('digital')}
@@ -3632,7 +3839,9 @@ export function POS() {
                                     {isLoading ? (
                                         <Loader2 className="w-6 h-6 animate-spin mr-2" />
                                     ) : (
-                                        paymentType === 'digital' ? (
+                                        paymentType === 'order' ? (
+                                            <ClipboardCheck className="w-6 h-6 mr-2" />
+                                        ) : paymentType === 'digital' ? (
                                             <Zap className="w-6 h-6 mr-2" />
                                         ) : paymentType === 'loan' ? (
                                             <Coins className="w-6 h-6 mr-2" />
@@ -3640,7 +3849,9 @@ export function POS() {
                                             <Banknote className="w-6 h-6 mr-2" />
                                         )
                                     )}
-                                    {paymentType === 'digital'
+                                    {paymentType === 'order'
+                                        ? t('orders.actions.order', { defaultValue: 'Order' })
+                                        : paymentType === 'digital'
                                         ? t('pos.digitalCheckout') || 'Digital Checkout'
                                         : paymentType === 'loan'
                                             ? t('pos.processLoan') || 'Process Loan'
@@ -3997,6 +4208,24 @@ export function POS() {
                 onSubmit={(data) => handleCheckout(data)}
             />
 
+            <QuickOrderModal
+                isOpen={isQuickOrderModalOpen && quickOrderEnabled}
+                onOpenChange={(open) => {
+                    setIsQuickOrderModalOpen(open)
+                    if (!open) setQuickOrderProgressStage(null)
+                }}
+                workspaceId={user?.workspaceId ?? ''}
+                cart={cart}
+                totalAmount={totalAmount}
+                settlementCurrency={settlementCurrency as CurrencyCode}
+                iqdPreference={features.iqd_display_preference}
+                loansEnabled={hasFeature('loans')}
+                installmentsEnabled={hasFeature('installments')}
+                isSubmitting={isLoading}
+                progressStage={quickOrderProgressStage}
+                onSubmit={handleQuickOrderSubmit}
+            />
+
             <CheckoutSuccessModal
                 isOpen={isSuccessModalOpen}
                 onClose={() => {
@@ -4012,6 +4241,24 @@ export function POS() {
                 tutorialDisablePrint={isTutorialPosTask}
                 receiptPdfBuilder={completedActivityCheckout ? buildActivityCheckoutReceiptPdf : undefined}
                 onSaveNote={completedActivityCheckout ? saveCompletedActivityNote : undefined}
+            />
+
+            <QuickOrderSuccessModal
+                isOpen={isQuickOrderSuccessModalOpen}
+                order={completedQuickOrder}
+                iqdPreference={features.iqd_display_preference}
+                onClose={() => {
+                    setIsQuickOrderSuccessModalOpen(false)
+                    setCompletedQuickOrder(null)
+                    if (isPosKeyboardSelectionEnabled) searchInputRef.current?.focus()
+                }}
+                onOpenOrderDetails={() => {
+                    if (!completedQuickOrder) return
+                    const orderId = completedQuickOrder.id
+                    setIsQuickOrderSuccessModalOpen(false)
+                    setCompletedQuickOrder(null)
+                    navigate(`/orders/${orderId}`)
+                }}
             />
 
             <SaveBorrowerAsPartnerDialog
@@ -4740,12 +4987,13 @@ interface MobileCartProps {
     features: WorkspaceFeatures
     totalAmount: number
     settlementCurrency: string
-    paymentType: 'cash' | 'digital' | 'loan'
-    setPaymentType: (t: 'cash' | 'digital' | 'loan') => void
+    paymentType: PosPaymentType
+    setPaymentType: (t: PosPaymentType) => void
     isTutorialPosTask: boolean
     tutorialProductId?: string
     digitalProvider: 'fib' | 'qicard' | 'zaincash' | 'fastpay'
     setDigitalProvider: (p: 'fib' | 'qicard' | 'zaincash' | 'fastpay') => void
+    quickOrderEnabled: boolean
     handleCheckout: (loanRegistrationData?: LoanRegistrationData) => void
     handleHoldSale: () => void
     isLoading: boolean
@@ -4771,7 +5019,7 @@ interface MobileCartProps {
 function MobileCart({
     cart, removeFromCart, updateQuantity, features, totalAmount,
     settlementCurrency, paymentType, setPaymentType, isTutorialPosTask, tutorialProductId, digitalProvider,
-    setDigitalProvider, handleCheckout, handleHoldSale, isLoading,
+    setDigitalProvider, quickOrderEnabled, handleCheckout, handleHoldSale, isLoading,
     getDisplayImageUrl, products, convertPrice, openPriceEdit,
     clearNegotiatedPrice, isAdmin,
     discountValue, setDiscountValue, discountType, setDiscountType,
@@ -5081,7 +5329,9 @@ function MobileCart({
                         >
                             {isLoading ? <Loader2 className="animate-spin w-5 h-5" /> : (
                                 <div className="flex items-center gap-2">
-                                    {paymentType === 'digital' ? (
+                                    {paymentType === 'order' ? (
+                                        <ClipboardCheck className="w-5 h-5" />
+                                    ) : paymentType === 'digital' ? (
                                         <Zap className="w-5 h-5" />
                                     ) : paymentType === 'loan' ? (
                                         <Coins className="w-5 h-5" />
@@ -5089,7 +5339,9 @@ function MobileCart({
                                         <Banknote className="w-5 h-5" />
                                     )}
                                     <span>
-                                        {paymentType === 'digital'
+                                        {paymentType === 'order'
+                                            ? t('orders.actions.order', { defaultValue: 'Order' })
+                                            : paymentType === 'digital'
                                             ? t('pos.digitalCheckout') || 'Digital Checkout'
                                             : paymentType === 'loan'
                                                 ? t('pos.processLoan') || 'Process Loan'
@@ -5128,6 +5380,17 @@ function MobileCart({
                             >
                                 <Banknote className={cn("w-4 h-4 transition-colors", paymentType === 'cash' ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-600/80")} /> {t('pos.cash') || 'Cash'}
                             </button>
+                            {quickOrderEnabled && !isActivitiesStorage ? <button
+                                onClick={() => setPaymentType('order')}
+                                className={cn(
+                                    "flex-1 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all border",
+                                    paymentType === 'order'
+                                        ? "bg-violet-100 text-violet-900 shadow-lg border-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-800"
+                                        : "bg-violet-50/30 text-violet-700 border-violet-100/30 dark:bg-violet-500/5 dark:text-violet-400 dark:border-violet-500/10"
+                                )}
+                            >
+                                <ClipboardCheck className={cn("w-4 h-4 transition-colors", paymentType === 'order' ? "text-violet-600 dark:text-violet-400" : "text-violet-600/80")} /> {t('orders.actions.order', { defaultValue: 'Order' })}
+                            </button> : null}
                             <button
                                 data-tour-id="tutorial-pos-payment-digital"
                                 onClick={() => setPaymentType('digital')}
@@ -5256,7 +5519,9 @@ function MobileCart({
                                 >
                                     {isLoading ? <Loader2 className="animate-spin w-6 h-6" /> : (
                                         <div className="flex items-center gap-2">
-                                            {paymentType === 'digital' ? (
+                                            {paymentType === 'order' ? (
+                                                <ClipboardCheck className="w-6 h-6" />
+                                            ) : paymentType === 'digital' ? (
                                                 <Zap className="w-6 h-6" />
                                             ) : paymentType === 'loan' ? (
                                                 <Coins className="w-6 h-6" />
@@ -5264,7 +5529,9 @@ function MobileCart({
                                                 <Banknote className="w-6 h-6" />
                                             )}
                                             <span>
-                                                {paymentType === 'digital'
+                                                {paymentType === 'order'
+                                                    ? t('orders.actions.order', { defaultValue: 'Order' })
+                                                    : paymentType === 'digital'
                                                     ? t('pos.digitalCheckout') || 'Digital Checkout'
                                                     : paymentType === 'loan'
                                                         ? t('pos.processLoan') || 'Process Loan'

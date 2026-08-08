@@ -100,6 +100,7 @@ export type PlanCapabilityKey =
     | 'stockBatches'
     | 'orderFreeBonus'
     | 'priceBooks'
+    | 'quickOrder'
 
 export interface WorkspacePlanLimits {
     maxMembers: number

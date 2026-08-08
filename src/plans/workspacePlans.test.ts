@@ -129,3 +129,25 @@ describe('Price Books capability access', () => {
         expect(resolved.capabilities).toContain('priceBooks')
     })
 })
+
+describe('Quick Order capability access', () => {
+    it('is not included in any workspace subscription plan', () => {
+        for (const plan of WORKSPACE_PLANS) {
+            expect(planHasCapability(plan, 'quickOrder')).toBe(false)
+        }
+    })
+
+    it('is enabled only by a workspace capability grant override', () => {
+        const resolved = applyWorkspaceOverrides(getPlanCapabilities('enterprise'), [{
+            id: 'override-quick-order',
+            workspace_id: 'workspace-1',
+            type: 'capability',
+            key: 'quickOrder',
+            value: 'grant',
+            created_by: null,
+            created_at: new Date(0).toISOString()
+        }])
+
+        expect(resolved.capabilities).toContain('quickOrder')
+    })
+})

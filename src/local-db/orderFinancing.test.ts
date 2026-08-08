@@ -37,6 +37,7 @@ type SalesOrderCreateInput = Omit<
 
 let createBusinessPartner: typeof import('./businessPartners').createBusinessPartner
 let createSalesOrder: typeof import('./orders').createSalesOrder
+let createCompletedSalesOrder: typeof import('./orders').createCompletedSalesOrder
 let createPurchaseOrder: typeof import('./orders').createPurchaseOrder
 let updateSalesOrderStatus: typeof import('./orders').updateSalesOrderStatus
 let updatePurchaseOrderStatus: typeof import('./orders').updatePurchaseOrderStatus
@@ -356,6 +357,7 @@ describe('order-linked financing', () => {
         const payments = await import('./payments')
         createBusinessPartner = partners.createBusinessPartner
         createSalesOrder = orders.createSalesOrder
+        createCompletedSalesOrder = orders.createCompletedSalesOrder
         createPurchaseOrder = orders.createPurchaseOrder
         updateSalesOrderStatus = orders.updateSalesOrderStatus
         updatePurchaseOrderStatus = orders.updatePurchaseOrderStatus
@@ -405,6 +407,60 @@ describe('order-linked financing', () => {
 
         expect(salesOrder.items[0].note).toBe('Deliver this line before noon.')
         expect((await db.sales_orders.get(salesOrder.id))?.items[0].note).toBe('Deliver this line before noon.')
+    })
+
+    it('completes quick-order style cash sales through the existing paid order lifecycle', async () => {
+        const customer = await createCustomer()
+        const { storage, product } = await createStockedSalesProduct(100)
+        const input = salesOrderInput(customer.id, product, storage.id, { method: 'cash', total: 100 })
+        input.isPaid = true
+        input.paymentStatus = 'paid'
+        input.paidAmount = 100
+        input.balanceAmount = 0
+        input.paidAt = '2026-08-01T10:00:00.000Z'
+
+        const completed = await createCompletedSalesOrder(WORKSPACE_ID, input)
+
+        expect(completed).toMatchObject({
+            status: 'completed',
+            isPaid: true,
+            paidAmount: 100,
+            balanceAmount: 0,
+            paymentStatus: 'paid'
+        })
+        expect((await db.inventory.where('[productId+storageId]').equals([product.id, storage.id]).first())?.quantity).toBe(4)
+        expect(await db.payment_transactions.where('sourceRecordId').equals(completed.id).toArray()).toEqual([
+            expect.objectContaining({
+                sourceType: 'sales_order',
+                paymentMethod: 'cash',
+                amount: 100
+            })
+        ])
+    })
+
+    it('completes quick-order style financed sales without falsely settling them', async () => {
+        const customer = await createCustomer()
+        const { storage, product } = await createStockedSalesProduct(100)
+
+        const completed = await createCompletedSalesOrder(
+            WORKSPACE_ID,
+            salesOrderInput(customer.id, product, storage.id, {
+                method: 'installments',
+                total: 100,
+                firstDueDate: '2026-09-01'
+            })
+        )
+
+        expect(completed).toMatchObject({
+            status: 'completed',
+            isPaid: false,
+            paidAmount: 0,
+            balanceAmount: 100,
+            paymentStatus: 'unpaid'
+        })
+        expect(completed.linkedLoanId).toBeTruthy()
+        expect(await db.payment_transactions.where('sourceRecordId').equals(completed.id).count()).toBe(0)
+        expect((await db.inventory.where('[productId+storageId]').equals([product.id, storage.id]).first())?.quantity).toBe(4)
     })
 
     it('creates one standard borrowed loan and mirrors payments and reversals to the order', async () => {
