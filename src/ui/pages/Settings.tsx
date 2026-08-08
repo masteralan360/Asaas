@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { Coins } from 'lucide-react'
 import type { IQDDisplayPreference, CurrencyCode } from '@/local-db/models'
-import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, Upload, AlertCircle, Printer, Contact, Fingerprint, Store, ExternalLink, Usb, CalendarClock, Plus } from 'lucide-react'
+import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, Upload, AlertCircle, Printer, Contact, Fingerprint, Store, ExternalLink, Usb, CalendarClock, Plus, Menu } from 'lucide-react'
 import { formatDate, formatDateTime, formatTime, cn, generateId, getHourDisplayPreference, setHourDisplayPreference, type HourDisplayPreference } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell, MonitorPlay, Wifi } from 'lucide-react'
@@ -38,6 +38,7 @@ import { downloadDatabaseFile, injectLocalModeDatabaseFile } from '@/local-db/lo
 import { downloadInvoicePdfArchive } from '@/services/invoicePdfExport'
 import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
 import { StorefrontCatalogRulesEditor } from '@/ui/components/marketplace/StorefrontCatalogRulesEditor'
+import { PosAdjust } from '@/ui/components/pos/PosAdjust'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { BranchManager } from '@/ui/components/workspace/BranchManager'
 import { canManageClinicalRegistryType } from '@/i18n/clinicalRegistry'
@@ -77,6 +78,14 @@ export function Settings() {
     const [isPasswordChangeSaving, setIsPasswordChangeSaving] = useState(false)
     const [posHotkey, setPosHotkey] = useState(localStorage.getItem('pos_hotkey') || '')
     const [barcodeHotkey, setBarcodeHotkey] = useState(localStorage.getItem('barcode_hotkey') || '')
+    const [isPosAdjustOpen, setIsPosAdjustOpen] = useState(false)
+    const [posProductsPerRow, setPosProductsPerRow] = useState<number>(() => {
+        const saved = localStorage.getItem('pos_products_per_row')
+        return saved ? parseInt(saved, 10) : 4
+    })
+    const [posShowQuantityIndicator, setPosShowQuantityIndicator] = useState<boolean>(() => {
+        return localStorage.getItem('pos_show_quantity_indicator') !== 'false'
+    })
     const [exchangeRateSource, setExchangeRateSource] = useState(getManualRateSource('USD'))
     const [eurExchangeRateSource, setEurExchangeRateSource] = useState(getManualRateSource('EUR'))
     const [tryExchangeRateSource, setTryExchangeRateSource] = useState(getManualRateSource('TRY'))
@@ -2417,8 +2426,38 @@ export function Settings() {
                                     </p>
                                 </div>
                             )}
+
+                            <div className="border-t border-border/50 pt-4">
+                                <Button
+                                    variant="outline"
+                                    type="button"
+                                    className="h-12 w-full rounded-xl border-dashed border-primary/50 bg-primary/5 font-bold flex items-center justify-center gap-2"
+                                    onClick={() => setIsPosAdjustOpen(true)}
+                                >
+                                    <Menu className="w-4 h-4 text-primary" />
+                                    {t('pos.posAdjust', 'Pos Adjust')}
+                                </Button>
+                                <p className="text-sm text-muted-foreground mt-2">
+                                    {t('settings.pos.posAdjustDesc') || 'Open Pos Adjust to configure POS layout and display settings.'}
+                                </p>
+                            </div>
                         </CardContent>
                     </Card>
+
+                    <PosAdjust
+                        open={isPosAdjustOpen}
+                        onOpenChange={setIsPosAdjustOpen}
+                        productsPerRow={posProductsPerRow}
+                        onProductsPerRowChange={(value) => {
+                            setPosProductsPerRow(value)
+                            localStorage.setItem('pos_products_per_row', value.toString())
+                        }}
+                        showQuantityIndicator={posShowQuantityIndicator}
+                        onShowQuantityIndicatorChange={(value) => {
+                            setPosShowQuantityIndicator(value)
+                            localStorage.setItem('pos_show_quantity_indicator', value.toString())
+                        }}
+                    />
 
                 </TabsContent>
 

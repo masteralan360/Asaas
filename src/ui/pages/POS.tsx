@@ -77,11 +77,6 @@ import {
     useToast,
     Label,
     Switch,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
 } from '@/ui/components'
 import { UiAccessGate } from '@/context/UiAccessContext'
 import {
@@ -115,6 +110,7 @@ import { platformService } from '@/services/platformService'
 import { ExchangeRateList } from '@/ui/components'
 import { CheckoutSuccessModal, HeldSalesModal, type HeldSale, StorageSelector, CrossStorageWarningModal } from '@/ui/components'
 import { BarcodeScannerModal } from '@/ui/components/pos/BarcodeScannerModal'
+import { PosAdjust } from '@/ui/components/pos/PosAdjust'
 import type { StorageSelectorOption } from '@/ui/components/pos/StorageSelector'
 import { PosPriceBookSelector } from '@/ui/components/pos/PosPriceBookSelector'
 import { CameraBarcodeScanner } from '@/ui/components/pos/CameraBarcodeScanner'
@@ -469,6 +465,7 @@ export function POS() {
     const [skuInput, setSkuInput] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false)
+    const [isPosAdjustOpen, setIsPosAdjustOpen] = useState(false)
     const [isCameraScannerAutoEnabled, setIsCameraScannerAutoEnabled] = useState(() => {
         return localStorage.getItem('scanner_auto_enabled') === 'true'
     })
@@ -773,6 +770,14 @@ export function POS() {
     useEffect(() => {
         localStorage.setItem('pos_products_per_row', productsPerRow.toString())
     }, [productsPerRow])
+
+    const [showQuantityIndicator, setShowQuantityIndicator] = useState<boolean>(() => {
+        return localStorage.getItem('pos_show_quantity_indicator') !== 'false'
+    })
+
+    useEffect(() => {
+        localStorage.setItem('pos_show_quantity_indicator', showQuantityIndicator.toString())
+    }, [showQuantityIndicator])
 
     // Calculate grid columns for ArrowUp/Down navigation
     const getGridColumns = () => {
@@ -1289,7 +1294,7 @@ export function POS() {
 
         const handleNavigation = (e: KeyboardEvent) => {
             // Disable if modals are open
-            if (isSkuModalOpen || isBarcodeModalOpen || editingPriceItemKey) return
+            if (isSkuModalOpen || isBarcodeModalOpen || isPosAdjustOpen || editingPriceItemKey) return
 
             // If search is focused, only handle Escape and Enter
             if (document.activeElement === searchInputRef.current) {
@@ -1432,7 +1437,7 @@ export function POS() {
 
         window.addEventListener('keydown', handleNavigation)
         return () => window.removeEventListener('keydown', handleNavigation)
-    }, [isPosKeyboardSelectionEnabled, isSkuModalOpen, isBarcodeModalOpen, editingPriceItemKey, focusedProductIndex, focusedSection, focusedCartIndex, filteredProducts, cart, search, getCartItemKey])
+    }, [isPosKeyboardSelectionEnabled, isSkuModalOpen, isBarcodeModalOpen, isPosAdjustOpen, editingPriceItemKey, focusedProductIndex, focusedSection, focusedCartIndex, filteredProducts, cart, search, getCartItemKey])
 
     // Hotkey listener
     useEffect(() => {
@@ -2803,6 +2808,7 @@ export function POS() {
                                 setSelectedCategory={setSelectedCategory}
                                 activeDiscountMap={activeDiscountMap}
                                 getPriceBookPricing={getPriceBookPricing}
+                                showQuantityIndicator={showQuantityIndicator}
                                 tutorialProductId={demoTutorial.state?.productId}
                             />
                         ) : (
@@ -2865,26 +2871,16 @@ export function POS() {
 
                             <UiAccessGate>
                                 <div className="flex items-center gap-2 animate-in fade-in zoom-in duration-300">
-                                    <Select
-                                        value={productsPerRow.toString()}
-                                        onValueChange={(val) => setProductsPerRow(parseInt(val, 10))}
+                                    <Button
+                                        variant="outline"
+                                        type="button"
+                                        className="h-12 w-[140px] rounded-xl border-dashed border-primary/50 bg-primary/5 font-bold flex items-center gap-2"
+                                        onClick={() => setIsPosAdjustOpen(true)}
+                                        title={t('pos.posAdjust', 'Pos Adjust')}
                                     >
-                                        <SelectTrigger className="h-12 w-[140px] rounded-xl border-dashed border-primary/50 bg-primary/5 font-bold">
-                                            <div className="flex items-center gap-2">
-                                                <Menu className="w-4 h-4 text-primary" />
-                                                <SelectValue placeholder="Columns" />
-                                            </div>
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="2">2 Columns</SelectItem>
-                                            <SelectItem value="3">3 Columns</SelectItem>
-                                            <SelectItem value="4">4 Columns</SelectItem>
-                                            <SelectItem value="5">5 Columns</SelectItem>
-                                            <SelectItem value="6">6 Columns</SelectItem>
-                                            <SelectItem value="7">7 Columns</SelectItem>
-                                            <SelectItem value="8">8 Columns</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                        <Menu className="w-4 h-4 text-primary" />
+                                        {t('pos.posAdjust', 'Pos Adjust')}
+                                    </Button>
                                 </div>
                             </UiAccessGate>
                             <div className="relative flex-1">
@@ -2979,7 +2975,7 @@ export function POS() {
                                                     </div>
                                                 )}
 
-                                                {!isInfiniteActivity && <div className={cn(
+                                                {showQuantityIndicator && !isInfiniteActivity && <div className={cn(
                                                     "absolute top-2 right-2 px-2.5 py-1.5 rounded-2xl text-[12px] font-black uppercase tracking-tighter shadow-md z-10",
                                                     remainingQuantity <= 0
                                                         ? "bg-destructive text-destructive-foreground"
@@ -3677,6 +3673,15 @@ export function POS() {
                 scanDelay={scanDelay}
                 setScanDelay={setScanDelay}
                 cameras={cameras}
+            />
+
+            <PosAdjust
+                open={isPosAdjustOpen}
+                onOpenChange={setIsPosAdjustOpen}
+                productsPerRow={productsPerRow}
+                onProductsPerRowChange={setProductsPerRow}
+                showQuantityIndicator={showQuantityIndicator}
+                onShowQuantityIndicatorChange={setShowQuantityIndicator}
             />
 
             <Dialog
@@ -4408,10 +4413,11 @@ interface MobileGridProps {
         priceBookId: string
         priceBookName: string
     } | null
+    showQuantityIndicator: boolean
     tutorialProductId?: string
 }
 
-function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModalOpen, isDeviceScannerAutoEnabled, filteredProducts, cart, addToCart, updateQuantity, features, getDisplayImageUrl, categories, selectedCategory, setSelectedCategory, activeDiscountMap, getPriceBookPricing, tutorialProductId }: MobileGridProps) {
+function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModalOpen, isDeviceScannerAutoEnabled, filteredProducts, cart, addToCart, updateQuantity, features, getDisplayImageUrl, categories, selectedCategory, setSelectedCategory, activeDiscountMap, getPriceBookPricing, showQuantityIndicator, tutorialProductId }: MobileGridProps) {
     return (
         <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300">
             {/* Search & Tool Bar */}
@@ -4528,7 +4534,7 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                                 )}
 
                                 {/* Stock Badge */}
-                                {!isInfiniteActivity && <div className={cn(
+                                {showQuantityIndicator && !isInfiniteActivity && <div className={cn(
                                     "absolute top-2 right-2 backdrop-blur-md px-2.5 py-1 rounded-xl text-[10px] font-black border transition-colors duration-300",
                                     remainingQuantity <= 0
                                         ? "bg-destructive text-destructive-foreground border-destructive/20"
