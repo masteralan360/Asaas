@@ -77,6 +77,9 @@ import {
     useToast,
     Label,
     Switch,
+    Popover,
+    PopoverTrigger,
+    PopoverContent,
 } from '@/ui/components'
 import { UiAccessGate } from '@/context/UiAccessContext'
 import {
@@ -103,7 +106,8 @@ import {
     Warehouse,
     BookOpen,
     Check,
-    Banknote
+    Banknote,
+    BadgePercent
 } from 'lucide-react'
 import { isDesktop } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
@@ -3323,22 +3327,26 @@ export function POS() {
                             {/* Exchange Rate Info */}
                             {/* Exchange Rate Info */}
                             {!isActivitiesStorage && (exchangeData || (features.allowed_currencies.includes('eur') && eurRates.eur_iqd)) && (
-                                <div
-                                    className="bg-primary/5 rounded-lg border border-primary/10 overflow-hidden cursor-pointer transition-all hover:bg-primary/[0.07] active:scale-[0.98]"
-                                    onClick={() => setShowExchangeTicker(!showExchangeTicker)}
-                                >
-                                    {showExchangeTicker ? (
-                                        <ExchangeTicker
-                                            exchangeData={exchangeData}
-                                            eurRates={eurRates}
-                                            tryRates={tryRates}
-                                            status={status}
-                                            currencyStatus={currencyStatus}
-                                            features={features}
-                                            t={t}
-                                        />
-                                    ) : (
-                                        <div className="p-2.5 space-y-2">
+                                <div className={cn("flex gap-2 items-center", !showExchangeTicker && "flex-col items-stretch")}>
+                                    <div
+                                        className={cn(
+                                            "bg-primary/5 rounded-lg border border-primary/10 overflow-hidden cursor-pointer transition-all hover:bg-primary/[0.07] active:scale-[0.98]",
+                                            showExchangeTicker ? "flex-1" : "w-full"
+                                        )}
+                                        onClick={() => setShowExchangeTicker(!showExchangeTicker)}
+                                    >
+                                        {showExchangeTicker ? (
+                                            <ExchangeTicker
+                                                exchangeData={exchangeData}
+                                                eurRates={eurRates}
+                                                tryRates={tryRates}
+                                                status={status}
+                                                currencyStatus={currencyStatus}
+                                                features={features}
+                                                t={t}
+                                            />
+                                        ) : (
+                                            <div className="p-2.5 space-y-2">
                                             {/* USD Rate */}
                                             {exchangeData && (
                                                 <div className="flex justify-between items-center text-[11px]">
@@ -3403,46 +3411,17 @@ export function POS() {
                                             )}
                                         </div>
                                     )}
+                                    </div>
+                                    {showExchangeTicker && (
+                                        <PosDiscountButton
+                                            discountValue={discountValue}
+                                            setDiscountValue={setDiscountValue}
+                                            discountType={discountType}
+                                            setDiscountType={setDiscountType}
+                                        />
+                                    )}
                                 </div>
                             )}
-
-                            {/* Total Discount Input 1:1 Design */}
-                            <div className="flex items-center gap-2 bg-white dark:bg-black/20 p-1 rounded-xl border border-border/80 shadow-sm transition-all hover:border-primary/30">
-                                <div className="flex-1 relative">
-                                    <Input
-                                        type="number"
-                                        value={discountValue}
-                                        onChange={(e) => setDiscountValue(e.target.value)}
-                                        onFocus={(e) => e.target.select()}
-                                        className="h-8 bg-transparent border-none shadow-none focus-visible:ring-0 text-xs font-medium placeholder:text-muted-foreground/60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                        placeholder={t('pos.totalDiscount') || 'Total Discount'}
-                                    />
-                                </div>
-                                <div className="flex bg-muted/40 dark:bg-white/5 p-1 rounded-lg gap-1 border border-border/10">
-                                    <button
-                                        onClick={() => setDiscountType('percent')}
-                                        className={cn(
-                                            "w-9 h-7 rounded-md flex items-center justify-center text-xs font-bold transition-all duration-200",
-                                            discountType === 'percent'
-                                                ? "bg-white text-slate-900 shadow-sm ring-1 ring-black/5"
-                                                : "text-muted-foreground/50 hover:text-muted-foreground"
-                                        )}
-                                    >
-                                        %
-                                    </button>
-                                    <button
-                                        onClick={() => setDiscountType('amount')}
-                                        className={cn(
-                                            "w-9 h-7 rounded-md flex items-center justify-center text-xs font-bold transition-all duration-200",
-                                            discountType === 'amount'
-                                                ? "bg-white text-slate-900 shadow-sm ring-1 ring-black/5"
-                                                : "text-muted-foreground/50 hover:text-muted-foreground"
-                                        )}
-                                    >
-                                        $
-                                    </button>
-                                </div>
-                            </div>
 
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
@@ -3631,6 +3610,14 @@ export function POS() {
                                             ? t('pos.processLoan') || 'Process Loan'
                                             : t('pos.checkout') || 'Checkout'}
                                 </Button>
+                                {!showExchangeTicker && (
+                                    <PosDiscountButton
+                                        discountValue={discountValue}
+                                        setDiscountValue={setDiscountValue}
+                                        discountType={discountType}
+                                        setDiscountType={setDiscountType}
+                                    />
+                                )}
                                 <Button
                                     variant="outline"
                                     size="lg"
@@ -4027,7 +4014,7 @@ const ExchangeTicker = ({
 }: any) => {
     return (
         <div
-            className="h-9 flex items-center bg-background/50 backdrop-blur-sm border-y border-primary/5 overflow-hidden"
+            className="flex items-center bg-background/50 backdrop-blur-sm border-y border-primary/5 overflow-hidden"
             style={{ '--duration': '7s' } as React.CSSProperties}
         >
             <div className="flex animate-marquee whitespace-nowrap min-w-full items-center py-1">
@@ -4076,6 +4063,73 @@ const ExchangeTicker = ({
                 ))}
             </div>
         </div>
+    )
+}
+
+interface PosDiscountButtonProps {
+    discountValue: string
+    setDiscountValue: (val: string) => void
+    discountType: 'percent' | 'amount'
+    setDiscountType: (type: 'percent' | 'amount') => void
+}
+
+function PosDiscountButton({ discountValue, setDiscountValue, discountType, setDiscountType }: PosDiscountButtonProps) {
+    const { t } = useTranslation()
+    const hasDiscount = discountValue.trim() !== '' && parseFloat(discountValue) > 0
+
+    return (
+        <Popover>
+            <PopoverTrigger asChild>
+                <Button
+                    variant="outline"
+                    className={cn(
+                        "w-14 h-14 rounded-2xl border-2 hover:bg-primary/5 hover:text-primary transition-all group flex-none px-0",
+                        hasDiscount && "border-primary/70 bg-primary/10 text-primary"
+                    )}
+                    title={t('pos.totalDiscount') || 'Total Discount'}
+                >
+                    <BadgePercent className="w-6 h-6 group-hover:scale-110 transition-transform" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 rounded-2xl border-none shadow-2xl p-2" align="end">
+                <div className="flex items-center gap-2 bg-white dark:bg-black/20 p-1 rounded-xl border border-border/80 shadow-sm transition-all hover:border-primary/30">
+                    <div className="flex-1 relative">
+                        <Input
+                            type="number"
+                            value={discountValue}
+                            onChange={(e) => setDiscountValue(e.target.value)}
+                            onFocus={(e) => e.target.select()}
+                            className="h-8 bg-transparent border-none shadow-none focus-visible:ring-0 text-xs font-medium placeholder:text-muted-foreground/60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            placeholder={t('pos.totalDiscount') || 'Total Discount'}
+                        />
+                    </div>
+                    <div className="flex bg-muted/40 dark:bg-white/5 p-1 rounded-lg gap-1 border border-border/10">
+                        <button
+                            onClick={() => setDiscountType('percent')}
+                            className={cn(
+                                "w-9 h-7 rounded-md flex items-center justify-center text-xs font-bold transition-all duration-200",
+                                discountType === 'percent'
+                                    ? "bg-white text-slate-900 shadow-sm ring-1 ring-black/5"
+                                    : "text-muted-foreground/50 hover:text-muted-foreground"
+                            )}
+                        >
+                            %
+                        </button>
+                        <button
+                            onClick={() => setDiscountType('amount')}
+                            className={cn(
+                                "w-9 h-7 rounded-md flex items-center justify-center text-xs font-bold transition-all duration-200",
+                                discountType === 'amount'
+                                    ? "bg-white text-slate-900 shadow-sm ring-1 ring-black/5"
+                                    : "text-muted-foreground/50 hover:text-muted-foreground"
+                        )}
+                        >
+                            $
+                        </button>
+                    </div>
+                </div>
+            </PopoverContent>
+        </Popover>
     )
 }
 
