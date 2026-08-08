@@ -23,6 +23,8 @@ interface PosAdjustProps {
     onProductsPerRowChange: (value: number) => void
     showQuantityIndicator: boolean
     onShowQuantityIndicatorChange: (value: boolean) => void
+    showCategories: boolean
+    onShowCategoriesChange: (value: boolean) => void
 }
 
 export function PosAdjust({
@@ -32,6 +34,8 @@ export function PosAdjust({
     onProductsPerRowChange,
     showQuantityIndicator,
     onShowQuantityIndicatorChange,
+    showCategories,
+    onShowCategoriesChange,
 }: PosAdjustProps) {
     const { t } = useTranslation()
 
@@ -89,6 +93,22 @@ export function PosAdjust({
                         id="pos-show-quantity-indicator"
                         checked={showQuantityIndicator}
                         onCheckedChange={onShowQuantityIndicatorChange}
+                    />
+                </div>
+
+                <div className="mx-6 my-2 flex items-center justify-between gap-4 rounded-xl border border-border bg-muted/30 p-4">
+                    <div className="space-y-1">
+                        <Label htmlFor="pos-show-categories" className="font-semibold">
+                            {t('pos.showCategories', 'Show categories')}
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                            {t('pos.showCategoriesDescription', 'Show the category chips above the products grid.')}
+                        </p>
+                    </div>
+                    <Switch
+                        id="pos-show-categories"
+                        checked={showCategories}
+                        onCheckedChange={onShowCategoriesChange}
                     />
                 </div>
 

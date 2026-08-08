@@ -783,6 +783,14 @@ export function POS() {
         localStorage.setItem('pos_show_quantity_indicator', showQuantityIndicator.toString())
     }, [showQuantityIndicator])
 
+    const [showCategories, setShowCategories] = useState<boolean>(() => {
+        return localStorage.getItem('pos_show_categories') === 'true'
+    })
+
+    useEffect(() => {
+        localStorage.setItem('pos_show_categories', showCategories.toString())
+    }, [showCategories])
+
     // Calculate grid columns for ArrowUp/Down navigation
     const getGridColumns = () => {
         if (!isLayoutMobile) return productsPerRow
@@ -2813,6 +2821,7 @@ export function POS() {
                                 activeDiscountMap={activeDiscountMap}
                                 getPriceBookPricing={getPriceBookPricing}
                                 showQuantityIndicator={showQuantityIndicator}
+                                showCategories={showCategories}
                                 tutorialProductId={demoTutorial.state?.productId}
                             />
                         ) : (
@@ -2926,6 +2935,33 @@ export function POS() {
                         </div>
 
                         <div className="flex-1 overflow-y-auto pr-2">
+                            {/* Categories */}
+                            {showCategories && !isActivitiesStorage && categories.length > 0 && (
+                                <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-none no-scrollbar">
+                                    <button
+                                        key="all"
+                                        onClick={() => setSelectedCategory('all')}
+                                        className={cn(
+                                            "whitespace-nowrap px-6 py-2.5 rounded-full text-sm font-bold transition-all",
+                                            selectedCategory === 'all' ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-card border border-border text-muted-foreground"
+                                        )}
+                                    >
+                                        {t('common.all') || 'All Items'}
+                                    </button>
+                                    {categories.map((cat) => (
+                                        <button
+                                            key={cat.id}
+                                            onClick={() => setSelectedCategory(cat.id)}
+                                            className={cn(
+                                                "whitespace-nowrap px-6 py-2.5 rounded-full text-sm font-bold transition-all",
+                                                selectedCategory === cat.id ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-card border border-border text-muted-foreground"
+                                            )}
+                                        >
+                                            {cat.name}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                             <div
                                 className="grid gap-4"
                                 style={{
@@ -3669,6 +3705,8 @@ export function POS() {
                 onProductsPerRowChange={setProductsPerRow}
                 showQuantityIndicator={showQuantityIndicator}
                 onShowQuantityIndicatorChange={setShowQuantityIndicator}
+                showCategories={showCategories}
+                onShowCategoriesChange={setShowCategories}
             />
 
             <Dialog
@@ -4468,10 +4506,11 @@ interface MobileGridProps {
         priceBookName: string
     } | null
     showQuantityIndicator: boolean
+    showCategories: boolean
     tutorialProductId?: string
 }
 
-function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModalOpen, isDeviceScannerAutoEnabled, filteredProducts, cart, addToCart, updateQuantity, features, getDisplayImageUrl, categories, selectedCategory, setSelectedCategory, activeDiscountMap, getPriceBookPricing, showQuantityIndicator, tutorialProductId }: MobileGridProps) {
+function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModalOpen, isDeviceScannerAutoEnabled, filteredProducts, cart, addToCart, updateQuantity, features, getDisplayImageUrl, categories, selectedCategory, setSelectedCategory, activeDiscountMap, getPriceBookPricing, showQuantityIndicator, showCategories, tutorialProductId }: MobileGridProps) {
     return (
         <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300">
             {/* Search & Tool Bar */}
@@ -4509,28 +4548,19 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
             </div>
 
             {/* Categories */}
-            <div className="flex gap-2 overflow-x-auto px-4 py-2 scrollbar-none no-scrollbar">
-                <button
-                    key="all"
-                    onClick={() => setSelectedCategory('all')}
-                    className={cn(
-                        "whitespace-nowrap px-6 py-2.5 rounded-full text-sm font-bold transition-all",
-                        selectedCategory === 'all' ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-card border border-border text-muted-foreground"
-                    )}
-                >
-                    {t('common.all') || 'All Items'}
-                </button>
-                <button
-                    key="none"
-                    onClick={() => setSelectedCategory('none')}
-                    className={cn(
-                        "whitespace-nowrap px-6 py-2.5 rounded-full text-sm font-bold transition-all",
-                        selectedCategory === 'none' ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-card border border-border text-muted-foreground"
-                    )}
-                >
-                    {t('categories.noCategory') || 'No Category'}
-                </button>
-                {categories.map((cat) => (
+            {showCategories && (
+                <div className="flex gap-2 overflow-x-auto px-4 py-2 scrollbar-none no-scrollbar">
+                    <button
+                        key="all"
+                        onClick={() => setSelectedCategory('all')}
+                        className={cn(
+                            "whitespace-nowrap px-6 py-2.5 rounded-full text-sm font-bold transition-all",
+                            selectedCategory === 'all' ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-card border border-border text-muted-foreground"
+                        )}
+                    >
+                        {t('common.all') || 'All Items'}
+                    </button>
+                    {categories.map((cat) => (
                     <button
                         key={cat.id}
                         onClick={() => setSelectedCategory(cat.id)}
@@ -4543,6 +4573,7 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                     </button>
                 ))}
             </div>
+            )}
 
             {/* Products Grid */}
             <div className="grid grid-cols-2 gap-4 p-4 pt-0 pb-10">

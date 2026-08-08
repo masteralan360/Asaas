@@ -86,6 +86,9 @@ export function Settings() {
     const [posShowQuantityIndicator, setPosShowQuantityIndicator] = useState<boolean>(() => {
         return localStorage.getItem('pos_show_quantity_indicator') !== 'false'
     })
+    const [posShowCategories, setPosShowCategories] = useState<boolean>(() => {
+        return localStorage.getItem('pos_show_categories') === 'true'
+    })
     const [exchangeRateSource, setExchangeRateSource] = useState(getManualRateSource('USD'))
     const [eurExchangeRateSource, setEurExchangeRateSource] = useState(getManualRateSource('EUR'))
     const [tryExchangeRateSource, setTryExchangeRateSource] = useState(getManualRateSource('TRY'))
@@ -2456,6 +2459,11 @@ export function Settings() {
                         onShowQuantityIndicatorChange={(value) => {
                             setPosShowQuantityIndicator(value)
                             localStorage.setItem('pos_show_quantity_indicator', value.toString())
+                        }}
+                        showCategories={posShowCategories}
+                        onShowCategoriesChange={(value) => {
+                            setPosShowCategories(value)
+                            localStorage.setItem('pos_show_categories', value.toString())
                         }}
                     />
 
