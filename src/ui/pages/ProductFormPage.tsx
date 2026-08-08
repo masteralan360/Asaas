@@ -10,6 +10,7 @@ import {
     Shuffle,
     DollarSign,
     FileText,
+    Images,
     ImagePlus,
     Info,
     Package,
@@ -53,6 +54,7 @@ import {
 import type { CurrencyCode } from '@/local-db/models'
 import { assetManager } from '@/lib/assetManager'
 import { normalizeBarcodeDigits, normalizeBarcodeScannerText } from '@/lib/barcodeScanner'
+import { storeProductImageFile } from '@/lib/productImageStorage'
 import { generateRandomUpc } from '@/lib/upc'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
@@ -67,6 +69,7 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { normalizeUnitCode } from '@/local-db/models'
 import { BarcodeScannerToggleButton } from '@/ui/components/BarcodeScannerToggleButton'
 import { ProductUnitIcon } from '@/ui/components/ProductUnitIcon'
+import { ProductAdditionalImagesModal } from '@/ui/components/ProductAdditionalImagesModal'
 import { useUnitRegistry } from '@/ui/components/unitRegistry'
 import { useDemoTutorial } from '@/demo'
 import {
@@ -334,6 +337,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const [imageError, setImageError] = useState(false)
     const [storageError, setStorageError] = useState(false)
     const [returnRulesModalOpen, setReturnRulesModalOpen] = useState(false)
+    const [additionalImagesModalOpen, setAdditionalImagesModalOpen] = useState(false)
     const [missingProductStateVisible, setMissingProductStateVisible] = useState(false)
     const [productHydrationResolved, setProductHydrationResolved] = useState(false)
     const [newBarcodeValue, setNewBarcodeValue] = useState('')
@@ -592,38 +596,11 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     }
 
     const handleFileSelected = async (file: File) => {
-        if (isDesktopShell) {
-            const targetPath = await platformService.saveImageFile(file, workspaceId)
-            if (targetPath) {
-                setFormData((current) => ({ ...current, imageUrl: targetPath }))
-                setImageError(false)
-
-                assetManager.uploadFromPath(targetPath).catch(console.error)
-            }
-            return
-        }
-
-        const ext = file.name.split('.').pop() || 'jpg'
-        const fileName = `${Date.now()}.${ext}`
-        const targetPath = `product-images/${workspaceId}/${fileName}`
-        const r2Path = `${workspaceId}/product-images/${fileName}`
-
-        const { r2Service } = await import('@/services/r2Service')
-        if (!isLocalWorkspaceMode(workspaceId) && r2Service.isConfigured()) {
-            const success = await r2Service.upload(r2Path, file)
-            if (success) {
-                setFormData((current) => ({ ...current, imageUrl: targetPath }))
-                setImageError(false)
-                return
-            }
-        }
-
-        const reader = new FileReader()
-        reader.onloadend = () => {
-            setFormData((current) => ({ ...current, imageUrl: reader.result as string }))
+        const targetPath = await storeProductImageFile(file, workspaceId)
+        if (targetPath) {
+            setFormData((current) => ({ ...current, imageUrl: targetPath }))
             setImageError(false)
         }
-        reader.readAsDataURL(file)
     }
 
     const handleCameraCapture = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1986,13 +1963,27 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
 
                     <Card className="overflow-hidden border-border/60 shadow-sm">
                         <CardHeader className="border-b border-border/50 bg-muted/10">
-                            <CardTitle className="text-2xl font-black">
-                                {t('products.form.visuals') || 'Visuals'}
-                            </CardTitle>
-                            <p className="text-sm text-muted-foreground">
-                                {t('products.form.visualsDesc') || 'Upload or link a product image and keep the preview synced with the current record.'}
-                            </p>
-
+                            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                                <div>
+                                    <CardTitle className="text-2xl font-black">
+                                        {t('products.form.visuals') || 'Visuals'}
+                                    </CardTitle>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        {t('products.form.visualsDesc') || 'Upload or link a product image and keep the preview synced with the current record.'}
+                                    </p>
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setAdditionalImagesModalOpen(true)}
+                                    disabled={!persistedProductId}
+                                    title={!persistedProductId ? 'Save this product before managing additional images.' : undefined}
+                                    className="h-10 shrink-0 gap-2 rounded-xl border-primary/20 font-bold"
+                                >
+                                    <Images className="h-4 w-4" />
+                                    Additional Images
+                                </Button>
+                            </div>
                         </CardHeader>
                         <CardContent className="space-y-6 p-6 sm:p-8">
                             <div className="space-y-4">
@@ -2207,6 +2198,16 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                     </Card>
                 </div>
             </form>
+
+            <ProductAdditionalImagesModal
+                open={additionalImagesModalOpen}
+                onOpenChange={setAdditionalImagesModalOpen}
+                workspaceId={workspaceId}
+                productId={persistedProductId}
+                productName={formData.name}
+                primaryImageUrl={formData.imageUrl}
+                canManage={!isReadOnly && canEdit}
+            />
 
             <Dialog open={returnRulesModalOpen} onOpenChange={setReturnRulesModalOpen}>
                 <DialogContent className="max-w-md">
