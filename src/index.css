@@ -421,7 +421,23 @@ html[lang] pre {
 }
 
 .transition-smooth {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Keep interactive feedback crisp without shortening page, dialog, or loading animations. */
+@media (hover: hover) {
+  :where(
+    button,
+    a,
+    input,
+    textarea,
+    select,
+    [role="button"],
+    [data-radix-collection-item],
+    [class*="hover:"]
+  ) {
+    transition-duration: 120ms !important;
+  }
 }
 
 .gradient-text {

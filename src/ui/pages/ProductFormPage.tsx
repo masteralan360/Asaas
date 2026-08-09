@@ -6,7 +6,6 @@ import {
     Boxes,
     Camera,
     ChevronRight,
-    Copy,
     Shuffle,
     DollarSign,
     FileText,
@@ -14,9 +13,9 @@ import {
     ImagePlus,
     Info,
     Package,
-    Pencil,
     Plus,
     Ruler,
+    Save,
     Settings,
     Tag,
     Trash2,
@@ -32,6 +31,7 @@ import {
     addProductBarcode,
     createProduct,
     db,
+    deleteProduct,
     deleteProductBarcode,
     DuplicateProductBarcodeError,
     DuplicateProductSkuError,
@@ -337,6 +337,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const [imageError, setImageError] = useState(false)
     const [storageError, setStorageError] = useState(false)
     const [returnRulesModalOpen, setReturnRulesModalOpen] = useState(false)
+    const [visualsModalOpen, setVisualsModalOpen] = useState(false)
     const [additionalImagesModalOpen, setAdditionalImagesModalOpen] = useState(false)
     const [missingProductStateVisible, setMissingProductStateVisible] = useState(false)
     const [productHydrationResolved, setProductHydrationResolved] = useState(false)
@@ -345,6 +346,8 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const [isSubmittingBarcode, setIsSubmittingBarcode] = useState(false)
     const [barcodeToDelete, setBarcodeToDelete] = useState<ProductBarcode | null>(null)
     const [isDeletingBarcode, setIsDeletingBarcode] = useState(false)
+    const [deleteProductOpen, setDeleteProductOpen] = useState(false)
+    const [isDeletingProduct, setIsDeletingProduct] = useState(false)
     const [isGeneratingSku, setIsGeneratingSku] = useState(false)
     const [activeScannerTarget, setActiveScannerTarget] = useState<ProductScannerTarget>(() => readStoredScannerTarget())
     const skuInputRef = useRef<HTMLInputElement>(null)
@@ -636,6 +639,29 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
             setImageError(false)
         } catch (error) {
             console.error('[Products] Error removing image:', error)
+        }
+    }
+
+    const handleConfirmDeleteProduct = async () => {
+        if (!isEditing || !product || isReadOnly) {
+            return
+        }
+
+        setIsDeletingProduct(true)
+        try {
+            await deleteProduct(product.id)
+            navigate('/products')
+        } catch (error) {
+            console.error('[ProductForm] Error deleting product:', error)
+            toast({
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: error instanceof Error
+                    ? error.message
+                    : (t('products.messages.deleteError', { defaultValue: 'Failed to delete the product' })),
+                variant: 'destructive'
+            })
+        } finally {
+            setIsDeletingProduct(false)
         }
     }
 
@@ -1097,59 +1123,109 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     }
 
     return (
-        <div className="w-full space-y-6">
-            <section className="overflow-hidden rounded-[2rem] border border-primary/15 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.16),_transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.75),rgba(255,255,255,0.94))] dark:bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.08),_transparent_42%),linear-gradient(180deg,rgba(30,41,59,0.4),rgba(30,41,59,0.7))] px-6 py-6 shadow-sm backdrop-blur sm:px-8">
-                <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="space-y-4">
-                        <Button variant="ghost" className="w-fit gap-2 px-0" allowViewer={true} onClick={goToProducts}>
-                            <ArrowLeft className="h-4 w-4" />
-                            {t('products.backToList') || 'Back to Products'}
+        <div className="mx-auto w-full max-w-[1600px] space-y-3 pb-8">
+            <header className="flex flex-col gap-3 border-b border-border/60 px-1 pb-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+                    <Button variant="ghost" className="h-10 shrink-0 gap-2 px-2 sm:px-3" allowViewer={true} onClick={goToProducts}>
+                        <ArrowLeft className="h-4 w-4" />
+                        <span className="hidden sm:inline">{t('common.back') || 'Back'}</span>
+                    </Button>
+                    <div className="hidden h-6 w-px bg-border sm:block" />
+                    <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <h1 className="truncate text-xl font-black tracking-tight text-foreground sm:text-2xl">{title}</h1>
+                            <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-primary">
+                                {statusLabel}
+                            </span>
+                        </div>
+                        <p className="hidden text-sm text-muted-foreground lg:block">{subtitle}</p>
+                    </div>
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                    {isEditing && !isReadOnly && (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setDeleteProductOpen(true)}
+                            className="h-10 gap-2 border-destructive/30 px-3 text-destructive hover:bg-destructive/10 hover:text-destructive sm:px-4"
+                        >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="hidden sm:inline">{t('products.confirmDelete', { defaultValue: 'Delete Product' })}</span>
                         </Button>
-                        <div className="space-y-3">
-                            <div className="flex items-start gap-4">
-                                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-inner">
-                                    {isClone ? <Copy className="h-6 w-6" /> : isEditing ? <Pencil className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
-                                </div>
-                                <div className="space-y-1">
-                                    <h1 className="text-3xl font-black tracking-tight text-foreground">{title}</h1>
-                                    <p className="max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">{subtitle}</p>
-                                </div>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                <div className="rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-primary">
-                                    {statusLabel}
-                                </div>
-                                <div className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                    {t('products.table.sku')}: {formData.sku || '--'}
-                                </div>
-                                <div className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                    {formData.currency.toUpperCase()}
-                                </div>
-                                {isDirty && !isReadOnly && (
-                                    <div className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-amber-600">
-                                        {t('common.unsavedChanges.title') || 'Unsaved Changes'}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
+                    )}
+                    {!isReadOnly && (
+                        <Button
+                            type="submit"
+                            form="product-form-page"
+                            disabled={isSaving || (priceBooksEnabled && !isPriceBookCatalogReady)}
+                            className="h-10 gap-2 px-4 font-bold"
+                            data-tour-id="tutorial-product-save"
+                        >
+                            <Save className="h-4 w-4" />
+                            {isSaving
+                                ? (t('common.loading') || 'Loading...')
+                                : isClone
+                                    ? (t('common.clone') || 'Clone')
+                                    : isEditing
+                                        ? (t('common.save') || 'Save')
+                                        : (t('common.create') || 'Create')}
+                        </Button>
+                    )}
+                </div>
+            </header>
 
-                    <div className="grid gap-3 sm:grid-cols-3 lg:w-[420px]">
-                        <div className="rounded-2xl border border-border/60 bg-background/80 px-4 py-3">
-                            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('products.table.price')}</div>
-                            <div className="mt-1 text-lg font-black text-primary">{pricePreview}</div>
+            <section className="grid gap-5 rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:p-5 md:grid-cols-[190px_minmax(0,1fr)]">
+                <button
+                    type="button"
+                    onClick={() => setVisualsModalOpen(true)}
+                    className="group relative mx-auto aspect-square w-full max-w-[190px] overflow-hidden rounded-xl border border-border/60 bg-muted/30 text-start focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    aria-label={t('products.form.visuals') || 'Visuals'}
+                >
+                    {!formData.imageUrl ? (
+                        <div className="flex h-full flex-col items-center justify-center gap-2 text-primary">
+                            <ImagePlus className="h-8 w-8" />
+                            <span className="text-[10px] font-black uppercase tracking-[0.12em]">{t('products.form.noImage') || 'Add image'}</span>
                         </div>
-                        <div className="rounded-2xl border border-border/60 bg-background/80 px-4 py-3">
-                            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('products.form.stock')}</div>
-                            <div className={cn('mt-1 text-lg font-black', lowStock ? 'text-amber-600' : 'text-foreground')}>
-                                {quantityValue} {unitLabel}
+                    ) : imageError ? (
+                        <div className="flex h-full flex-col items-center justify-center gap-2 text-destructive">
+                            <Package className="h-8 w-8" />
+                            <span className="text-[10px] font-black uppercase tracking-[0.12em]">{t('products.form.imageError') || 'Image Error'}</span>
+                        </div>
+                    ) : (
+                        <img
+                            src={getDisplayImageUrl(formData.imageUrl)}
+                            alt={formData.name || 'Product preview'}
+                            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                            onError={() => setImageError(true)}
+                        />
+                    )}
+                    <span className="absolute inset-x-2 bottom-2 rounded-lg bg-background/90 px-2 py-1.5 text-center text-xs font-bold text-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                        {t('products.form.visuals') || 'Change image'}
+                    </span>
+                </button>
+
+                <div className="min-w-0 self-center">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <h2 className="truncate text-2xl font-black tracking-tight text-foreground">{formData.name || (t('products.form.name') || 'Product name')}</h2>
+                                <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">{selectedCategoryLabel}</span>
                             </div>
+                            <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">
+                                {formData.description || (t('products.form.productDetailsDesc') || 'Add the product details, price, stock, and image.')}
+                            </p>
                         </div>
-                        <div className="rounded-2xl border border-border/60 bg-background/80 px-4 py-3">
-                            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('products.table.category')}</div>
-                            <div className="mt-1 truncate text-sm font-semibold text-foreground">{selectedCategoryLabel}</div>
-                        </div>
+                        {isDirty && !isReadOnly && (
+                            <span className="w-fit shrink-0 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-700">
+                                {t('common.unsavedChanges.title') || 'Unsaved Changes'}
+                            </span>
+                        )}
                     </div>
+                    <dl className="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
+                        <div><dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{t('products.table.sku')}</dt><dd className="mt-0.5 font-semibold text-foreground">{formData.sku || '—'}</dd></div>
+                        <div><dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{t('products.table.category')}</dt><dd className="mt-0.5 font-semibold text-foreground">{selectedCategoryLabel}</dd></div>
+                        <div><dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{t('products.form.unit')}</dt><dd className="mt-0.5 font-semibold text-foreground">{unitLabel}</dd></div>
+                    </dl>
                 </div>
             </section>
 
@@ -1160,27 +1236,27 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                 </div>
             )}
 
-            <form id="product-form-page" onSubmit={handleSubmit} className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_340px]">
-                <div className="min-w-0 space-y-6">
-                    <Card className="overflow-hidden border-border/60 shadow-sm">
-                        <CardHeader className="border-b border-border/50 bg-muted/10">
-                            <CardTitle className="text-2xl font-black">
+            <form id="product-form-page" onSubmit={handleSubmit} className="space-y-4">
+                <div className="min-w-0 space-y-4">
+                    <Card className="overflow-hidden rounded-2xl border-border/60 shadow-sm">
+                        <CardHeader className="border-b border-border/60 bg-gradient-to-r from-primary/5 via-transparent to-transparent px-5 py-3 sm:px-6">
+                            <CardTitle className="text-lg font-black tracking-tight">
                                 {t('products.form.productDetailsTitle') || 'Product Details'}
                             </CardTitle>
-                            <p className="text-sm text-muted-foreground">
+                            <p className="sr-only">
                                 {t('products.form.productDetailsDesc') || 'Capture the core identity, description, unit, category, and storage location for this product.'}
                             </p>
                         </CardHeader>
-                        <CardContent className="space-y-8 p-6 sm:p-8">
-                            <div className="space-y-4">
-                                <div className="flex items-center gap-2">
+                        <CardContent className="grid gap-x-8 gap-y-4 p-5 sm:p-6 md:grid-cols-2">
+                            <div className="contents">
+                                <div className="hidden">
                                     <div className="h-4 w-1 rounded-full bg-primary" />
                                     <h2 className="text-sm font-black uppercase tracking-widest text-primary/80">
                                         {t('products.form.basicInfo')}
                                     </h2>
                                 </div>
-                                <div className="grid gap-6 md:grid-cols-2">
-                                    <div className="space-y-2">
+                                <div className="contents">
+                                    <div className="order-2 space-y-2 md:order-none md:col-start-2 md:row-start-1">
                                         <div className="flex items-center gap-1">
                                             <Label htmlFor="product-sku" className="flex items-center gap-2 font-bold">
                                                 <Barcode className="h-4 w-4 text-primary/60" />
@@ -1235,7 +1311,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                 placeholder="PRD-001"
                                                 readOnly={isReadOnly}
                                                 required
-                                                className="h-12 min-w-0 flex-1 rounded-lg border-border/40 bg-muted/10 font-mono"
+                                                className="h-12 min-w-0 flex-1 rounded-xl border-border/80 bg-background/80 font-mono shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50"
                                             />
                                             {!isReadOnly && (
                                                 <BarcodeScannerToggleButton
@@ -1252,7 +1328,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             )}
                                         </div>
                                     </div>
-                                    <div className="space-y-2">
+                                    <div className="order-1 space-y-2 md:order-none md:col-start-1 md:row-start-1">
                                         <Label htmlFor="product-name" className="flex items-center gap-2 font-bold">
                                             <Type className="h-4 w-4 text-primary/60" />
                                             {t('products.table.name')}
@@ -1265,12 +1341,12 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             placeholder={t('products.form.name') || 'Product name'}
                                             readOnly={isReadOnly}
                                             required
-                                            className="h-12 rounded-lg border-border/40 bg-muted/10 font-bold"
+                                            className="h-12 rounded-xl border-border/80 bg-background/80 font-bold shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50"
                                         />
                                     </div>
                                 </div>
 
-                                <div className="space-y-2">
+                                <div className="order-6 space-y-2 md:order-none md:col-start-1 md:row-start-4">
                                     <Label htmlFor="product-description" className="flex items-center gap-2 font-bold">
                                         <FileText className="h-4 w-4 text-primary/60" />
                                         {t('products.form.description')}
@@ -1282,20 +1358,20 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                         placeholder={t('products.form.description') || 'Product description...'}
                                         rows={3}
                                         readOnly={isReadOnly}
-                                        className="min-h-[100px] rounded-lg border-border/40 bg-muted/10"
+                                        className="min-h-[76px] rounded-xl border-border/80 bg-background/80 shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50"
                                     />
                                 </div>
                             </div>
 
-                            <div className="space-y-4">
-                                <div className="flex items-center gap-2">
+                            <div className="contents">
+                                <div className="hidden">
                                     <div className="h-4 w-1 rounded-full bg-primary" />
                                     <h2 className="text-sm font-black uppercase tracking-widest text-primary/80">
                                         {t('products.form.categorization')}
                                     </h2>
                                 </div>
-                                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                                    <div className="space-y-2">
+                                <div className="contents">
+                                    <div className="order-4 space-y-2 md:order-none md:col-start-2 md:row-start-2">
                                         <Label htmlFor="product-category" className="flex items-center gap-2 font-bold">
                                             <Tag className="h-4 w-4 text-primary/60" />
                                             {t('products.table.category')}
@@ -1305,7 +1381,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             onValueChange={(value) => setFormData((current) => ({ ...current, categoryId: value === 'none' ? undefined : value }))}
                                             disabled={isReadOnly}
                                         >
-                                            <SelectTrigger id="product-category" className="h-12 rounded-lg border-border/40 bg-muted/10" allowViewer={true}>
+                                            <SelectTrigger id="product-category" className="h-12 rounded-xl border-border/80 bg-background/80 shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50" allowViewer={true}>
                                                 <SelectValue placeholder={t('categories.noCategory')} />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -1318,7 +1394,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                    <div className="space-y-2">
+                                    <div className="order-3 space-y-2 md:order-none md:col-start-1 md:row-start-2">
                                         <Label htmlFor="product-unit" className="flex items-center gap-2 font-bold">
                                             <Ruler className="h-4 w-4 text-primary/60" />
                                             {t('products.form.unit')}
@@ -1328,7 +1404,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             onValueChange={(value) => setFormData((current) => ({ ...current, unit: value }))}
                                             disabled={isReadOnly}
                                         >
-                                            <SelectTrigger id="product-unit" data-tour-id="tutorial-product-unit" className="h-12 rounded-lg border-border/40 bg-muted/10" allowViewer={true}>
+                                            <SelectTrigger id="product-unit" data-tour-id="tutorial-product-unit" className="h-12 rounded-xl border-border/80 bg-background/80 shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50" allowViewer={true}>
                                                 <SelectValue placeholder={t('units.selectPlaceholder', { defaultValue: 'Select unit' })}>
                                                     <span className="flex items-center gap-2">
                                                         <ProductUnitIcon unit={normalizedUnit} iconName={selectedUnitOption?.icon} />
@@ -1356,8 +1432,42 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                    {mode !== 'create' ? null : (
-                                        <div className="space-y-2">
+                                    {mode !== 'create' ? (
+                                        <div className="order-5 space-y-2 md:order-none md:col-start-1 md:row-start-3">
+                                            <Label htmlFor="product-storage-edit" className="flex items-center gap-2 font-bold">
+                                                <Warehouse className="h-4 w-4 text-primary/60" />
+                                                {t('storages.title') || 'Storage'}
+                                            </Label>
+                                            <Select
+                                                value={formData.storageId}
+                                                onValueChange={(value) => {
+                                                    setFormData((current) => ({ ...current, storageId: value }))
+                                                    setStorageError(false)
+                                                }}
+                                                disabled={isReadOnly || !canEditStockAllocation}
+                                            >
+                                                <SelectTrigger
+                                                    ref={storageTriggerRef}
+                                                    id="product-storage-edit"
+                                                    className={cn('h-12 rounded-xl bg-background/80 shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50', storageError ? 'border-destructive ring-2 ring-destructive/50' : 'border-border/80')}
+                                                    allowViewer={true}
+                                                >
+                                                    <SelectValue placeholder={t('storages.selectStorage') || 'Select Storage'} />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {storages.map((storage) => (
+                                                        <SelectItem key={storage.id} value={storage.id}>
+                                                            <div className="flex items-center gap-2">
+                                                                <div className={cn('h-1.5 w-1.5 rounded-full', storage.isSystem ? 'bg-primary' : 'bg-muted-foreground/30')} />
+                                                                {storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name}
+                                                            </div>
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    ) : (
+                                        <div className="order-5 space-y-2 md:order-none md:col-start-1 md:row-start-3">
                                             <Label htmlFor="product-storage" className="flex items-center gap-2 font-bold">
                                                 <Warehouse className="h-4 w-4 text-primary/60" />
                                                 {t('storages.title') || 'Storage'}
@@ -1374,7 +1484,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                     ref={storageTriggerRef}
                                                     id="product-storage"
                                                     data-tour-id="tutorial-product-storage"
-                                                    className={cn('h-12 rounded-lg bg-muted/10', storageError ? 'border-destructive ring-2 ring-destructive/50' : 'border-border/40')}
+                                                    className={cn('h-12 rounded-xl bg-background/80 shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50', storageError ? 'border-destructive ring-2 ring-destructive/50' : 'border-border/80')}
                                                     allowViewer={true}
                                                 >
                                                     <SelectValue placeholder={t('storages.selectStorage') || 'Select Storage'} />
@@ -1393,7 +1503,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                         </div>
                                     )}
                                 </div>
-                                <div className="grid gap-3 sm:grid-cols-3">
+                                <div className="hidden">
                                     <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
                                         <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('products.table.category')}</div>
                                         <div className="mt-1 text-sm font-semibold text-foreground">{selectedCategoryLabel}</div>
@@ -1415,7 +1525,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                     </Card>
 
                     {(isEditing || isClone) && (
-                        <Card className="overflow-hidden border-border/60 shadow-sm">
+                        <Card className="overflow-hidden rounded-2xl border-border/60 shadow-sm">
                             <CardHeader className="border-b border-border/50 bg-muted/10">
                                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                                     <div className="space-y-1">
@@ -1481,7 +1591,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                                             id={`product-barcode-label-${barcodeRow.id}`}
                                                                             defaultValue={barcodeRow.label || ''}
                                                                             placeholder={t('products.barcodes.label') || 'Label'}
-                                                                            className="h-10 rounded-lg border-border/40 bg-muted/10"
+                                                                            className="h-10 rounded-xl border-border/70 bg-background/75 shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50"
                                                                             onBlur={(event) => {
                                                                                 void handleBarcodeLabelBlur(barcodeRow, event.currentTarget.value)
                                                                             }}
@@ -1551,7 +1661,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                             }
                                                         }}
                                                         placeholder="0123456789012"
-                                                        className="h-11 rounded-lg border-border/40 bg-background/80 font-mono"
+                                                        className="h-11 rounded-xl border-border/80 bg-background/80 font-mono shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50"
                                                     />
                                                     <Input
                                                         value={newBarcodeLabel}
@@ -1563,7 +1673,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                             }
                                                         }}
                                                         placeholder={t('products.barcodes.label') || 'Label'}
-                                                        className="h-11 rounded-lg border-border/40 bg-background/80"
+                                                        className="h-11 rounded-xl border-border/80 bg-background/80 shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50"
                                                     />
                                                     <Button
                                                         type="button"
@@ -1599,7 +1709,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                         </Card>
                     )}
 
-                    <Card className="overflow-hidden border-border/60 shadow-sm">
+                    <Card className="overflow-hidden rounded-2xl border-border/60 shadow-sm">
                         <CardHeader className="border-b border-border/50 bg-gradient-to-r from-primary/5 via-transparent to-transparent">
                             <CardTitle className="text-2xl font-black">
                                 {t('products.form.pricing') || 'Pricing'}
@@ -1633,7 +1743,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                         placeholder="0"
                                                         readOnly={isReadOnly}
                                                         required
-                                                        className="h-12 rounded-lg border-border/40 bg-background/50 pr-3 text-lg font-black text-primary"
+                                                        className="h-12 rounded-xl border-border/80 bg-background/80 pr-3 text-lg font-black text-primary shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50"
                                                     />
                                                 </div>
                                                 <div className="flex items-center gap-1.5 pt-3 shrink-0">
@@ -1649,7 +1759,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                                 setFormData((current) => ({ ...current, perQuantity: val }))
                                                             }
                                                         }}
-                                                        className="h-9 w-24 rounded-lg border-border/40 text-center text-sm font-medium tabular-nums"
+                                                        className="h-9 w-24 rounded-lg border-border/80 bg-background/80 text-center text-sm font-medium tabular-nums shadow-sm transition-all hover:border-primary/45 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50"
                                                         placeholder="1"
                                                         readOnly={isReadOnly}
                                                     />
@@ -1674,7 +1784,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                     placeholder="0.000"
                                                     readOnly={isReadOnly}
                                                     required
-                                                    className="h-12 rounded-lg border-border/40 bg-background/50 pr-16 text-lg font-black text-primary"
+                                                    className="h-12 rounded-xl border-border/80 bg-background/80 pr-16 text-lg font-black text-primary shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50"
                                                 />
                                                 <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
                                                     {getCurrencySymbol(formData.currency, features.iqd_display_preference)}
@@ -1715,7 +1825,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                     readOnly={isReadOnly}
                                                     required={!hideCosts}
                                                     className={cn(
-                                                        "h-12 rounded-lg border-border/40 bg-background/50 font-bold",
+                                                        "h-12 rounded-xl border-border/80 bg-background/80 font-bold shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50",
                                                         isDynamicUnit(formData.unit) ? "pr-8" : "pr-16"
                                                     )}
                                                 />
@@ -1788,7 +1898,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                         </CardContent>
                     </Card>
 
-                    <Card className="overflow-hidden border-border/60 shadow-sm">
+                    <Card className="overflow-hidden rounded-2xl border-border/60 shadow-sm">
                         <CardHeader className="border-b border-border/50 bg-muted/10">
                             <CardTitle className="text-2xl font-black">
                                 {t('products.form.inventoryAndReturnsTitle') || 'Inventory & Returns'}
@@ -1833,7 +1943,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                         placeholder="0"
                                                         readOnly={isReadOnly || isEditing}
                                                         required
-                                                        className="h-12 rounded-lg border-border/40 bg-muted/10 pr-16 font-black"
+                                                        className="h-12 rounded-xl border-border/80 bg-background/80 pr-16 font-black shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50"
                                                     />
                                                     <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
                                                         {unitLabel}
@@ -1879,7 +1989,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                 }))}
                                                 readOnly={isReadOnly}
                                                 required
-                                                className="h-12 rounded-lg border-border/40 bg-muted/10 pr-16 font-bold"
+                                                className="h-12 rounded-xl border-border/80 bg-background/80 pr-16 font-bold shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50"
                                             />
                                             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
                                                 {unitLabel}
@@ -1961,13 +2071,14 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                         </CardContent>
                     </Card>
 
-                    <Card className="overflow-hidden border-border/60 shadow-sm">
-                        <CardHeader className="border-b border-border/50 bg-muted/10">
-                            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                                <div>
-                                    <CardTitle className="text-2xl font-black">
+                    <Dialog open={visualsModalOpen} onOpenChange={setVisualsModalOpen}>
+                        <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-1rem)] max-w-3xl overflow-y-auto rounded-2xl border-border/60 p-0 sm:w-[calc(100vw-2rem)]">
+                            <DialogHeader className="border-b border-border/50 bg-muted/10 px-5 py-4 sm:px-6">
+                                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                                    <div>
+                                    <DialogTitle className="text-2xl font-black">
                                         {t('products.form.visuals') || 'Visuals'}
-                                    </CardTitle>
+                                    </DialogTitle>
                                     <p className="mt-1 text-sm text-muted-foreground">
                                         {t('products.form.visualsDesc') || 'Upload or link a product image and keep the preview synced with the current record.'}
                                     </p>
@@ -1984,8 +2095,8 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                     Additional Images
                                 </Button>
                             </div>
-                        </CardHeader>
-                        <CardContent className="space-y-6 p-6 sm:p-8">
+                            </DialogHeader>
+                        <div className="space-y-6 p-5 sm:p-6">
                             <div className="space-y-4">
 
                                 <div className="flex flex-col items-start gap-6 md:flex-row">
@@ -2046,7 +2157,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                     }}
                                                     placeholder={t('products.form.imageUrlPlaceholder') || 'Image URL or local path'}
                                                     readOnly={isReadOnly}
-                                                    className="h-12 flex-1 rounded-lg border-border/40 bg-muted/10"
+                                                    className="h-12 flex-1 rounded-xl border-border/80 bg-background/80 shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50"
                                                 />
                                                 {!isReadOnly && (
                                                     <div className="flex gap-2">
@@ -2101,12 +2212,12 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                     </div>
                                 </div>
                             </div>
-                        </CardContent>
-
-                    </Card>
+                        </div>
+                        </DialogContent>
+                    </Dialog>
                 </div>
 
-                <div className="space-y-6">
+                <div className="hidden space-y-6">
                     <Card className="border-border/60 shadow-sm">
                         <CardHeader className="space-y-1">
                             <CardTitle className="text-xl">{t('products.summaryTitle') || 'Live Summary'}</CardTitle>
@@ -2255,6 +2366,22 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <DeleteConfirmationModal
+                isOpen={deleteProductOpen}
+                onClose={() => {
+                    if (!isDeletingProduct) {
+                        setDeleteProductOpen(false)
+                    }
+                }}
+                onConfirm={() => {
+                    void handleConfirmDeleteProduct()
+                }}
+                isLoading={isDeletingProduct}
+                title={t('products.confirmDelete', { defaultValue: 'Delete Product' })}
+                description={t('products.deleteDescription', { defaultValue: 'This will remove the product from your catalog.' })}
+                itemName={product?.name || formData.name}
+            />
 
             <DeleteConfirmationModal
                 isOpen={!!barcodeToDelete}
