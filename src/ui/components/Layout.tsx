@@ -205,6 +205,15 @@ export function Layout({ children }: LayoutProps) {
         }
         return false
     })
+    const [viewportWidth, setViewportWidth] = useState(() => (
+        typeof window !== 'undefined' ? window.innerWidth : 1440
+    ))
+
+    useEffect(() => {
+        const handleResize = () => setViewportWidth(window.innerWidth)
+        window.addEventListener('resize', handleResize)
+        return () => window.removeEventListener('resize', handleResize)
+    }, [])
 
     useEffect(() => {
         const syncUpdatePreference = () => setUpdatesDisabled(areApplicationUpdatesDisabled())
@@ -570,6 +579,8 @@ export function Layout({ children }: LayoutProps) {
     const ecommercePendingLabel = t('ecommerce.pendingOrders', { defaultValue: 'Pending Orders' })
 
     const isPosLikeRoute = location === '/pos' || location === '/instant-pos' || location === '/real-estate/new'
+    const isPosTabletLayout = isPosLikeRoute && viewportWidth >= 1024 && viewportWidth < 1366
+    const isSidebarMini = isMini || isPosTabletLayout
     const isModuleLauncherRoute = location === '/modules'
 
     const openInventoryTransferAutomationTab = (event: { preventDefault: () => void; stopPropagation: () => void }) => {
@@ -630,8 +641,9 @@ export function Layout({ children }: LayoutProps) {
                             'sidebar-gradient shadow-2xl',
                             isTauri ? 'top-[var(--titlebar-height)] h-[calc(100vh-var(--titlebar-height))]' : 'inset-y-0 h-full',
                             'pt-[var(--safe-area-top)] pb-[var(--safe-area-bottom)]',
-                            // Desktop state - Width changes based on isMini
-                            isMini
+                            // Desktop state - Width changes based on the effective
+                            // compact layout (including landscape POS tablets).
+                            isSidebarMini
                                 ? (desktopSidebarOpen ? 'w-[70px] lg:translate-x-0 lg:rtl:translate-x-0' : 'lg:-translate-x-full lg:rtl:translate-x-full w-[70px]')
                                 : (desktopSidebarOpen ? 'w-64 lg:translate-x-0 lg:rtl:translate-x-0' : 'lg:-translate-x-full lg:rtl:translate-x-full w-64'),
 
@@ -645,7 +657,7 @@ export function Layout({ children }: LayoutProps) {
                         {/* Logo */}
                         <div className={cn(
                             "flex items-center gap-3 px-6 py-5 border-b border-border transition-all duration-300",
-                            isMini && !mobileSidebarOpen ? "justify-center px-2 flex-col gap-2" : ""
+                            isSidebarMini && !mobileSidebarOpen ? "justify-center px-2 flex-col gap-2" : ""
                         )}>
                             {features.logo_url ? (
                                 <img
@@ -660,7 +672,7 @@ export function Layout({ children }: LayoutProps) {
                                 <Boxes className="w-8 h-8 text-primary" />
                             )}
 
-                            {!(isMini && !mobileSidebarOpen) && (
+                            {!(isSidebarMini && !mobileSidebarOpen) && (
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
                                         <button
@@ -814,11 +826,12 @@ export function Layout({ children }: LayoutProps) {
                                     toggleMini()
                                     triggerHaptic('light')
                                 }}
+                                disabled={isPosTabletLayout}
                                 className={cn(
                                     "hidden lg:flex items-center justify-center w-6 h-6 rounded-md hover:bg-secondary text-muted-foreground hover:text-primary transition-all",
-                                    isMini ? "mt-2 rotate-180" : "ms-auto"
+                                    isSidebarMini ? "mt-2 rotate-180" : "ms-auto"
                                 )}
-                                title={isMini ? "Expand Sidebar" : "Collapse Sidebar"}
+                                title={isPosTabletLayout ? "Sidebar is compact on tablets" : isSidebarMini ? "Expand Sidebar" : "Collapse Sidebar"}
                             >
                                 <PanelRightOpen className="w-4 h-4 rtl:hidden" />
                                 <PanelRightClose className="w-4 h-4 hidden rtl:block" />
@@ -829,7 +842,7 @@ export function Layout({ children }: LayoutProps) {
                         <nav className="flex-1 px-2 py-4 space-y-6 overflow-y-auto custom-scrollbar antialiased">
                             {navigation.map((group) => (
                                 <div key={group.title} className="space-y-1">
-                                    {!(isMini && !mobileSidebarOpen) && group.title && (
+                                    {!(isSidebarMini && !mobileSidebarOpen) && group.title && (
                                         <div className="flex items-center gap-2 px-3 mb-4">
                                             <group.icon className="w-3.5 h-3.5 text-muted-foreground/40" />
                                             <h2 className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.2em]">
@@ -837,7 +850,7 @@ export function Layout({ children }: LayoutProps) {
                                             </h2>
                                         </div>
                                     )}
-                                    {isMini && !mobileSidebarOpen && (
+                                    {isSidebarMini && !mobileSidebarOpen && (
                                         <div className="h-px bg-border/40 mx-2 mb-4" />
                                     )}
 
@@ -851,7 +864,7 @@ export function Layout({ children }: LayoutProps) {
                                                 : false
                                             const isActive = location === item.href || (item.href !== '/' && location.startsWith(item.href)) || isChildActive
                                             const isOpen = isExpandableGroup ? (Boolean(expandedNavGroups[item.href]) || isChildActive) : false
-                                            const showChildren = isExpandableGroup && isOpen && !(isMini && !mobileSidebarOpen)
+                                            const showChildren = isExpandableGroup && isOpen && !(isSidebarMini && !mobileSidebarOpen)
 
                                             const parentContent = (
                                                 <span
@@ -860,12 +873,12 @@ export function Layout({ children }: LayoutProps) {
                                                         isActive
                                                             ? 'bg-primary/10 text-primary border-primary'
                                                             : 'text-muted-foreground hover:bg-primary/5 hover:text-primary hover:border-primary/30',
-                                                        (isMini && !mobileSidebarOpen) && "justify-center px-0 py-3 border-s-0"
+                                                        (isSidebarMini && !mobileSidebarOpen) && "justify-center px-0 py-3 border-s-0"
                                                     )}
-                                                    title={(isMini && !mobileSidebarOpen) ? item.name : undefined}
+                                                    title={(isSidebarMini && !mobileSidebarOpen) ? item.name : undefined}
                                                 >
                                                     <item.icon className="w-5 h-5 flex-shrink-0" />
-                                                    {!(isMini && !mobileSidebarOpen) && (
+                                                    {!(isSidebarMini && !mobileSidebarOpen) && (
                                                         <>
                                                             {item.name}
                                                             {isExpandableGroup && (
@@ -932,10 +945,10 @@ export function Layout({ children }: LayoutProps) {
                                                             )}
                                                         </>
                                                     )}
-                                                    {(isMini && !mobileSidebarOpen) && item.alert && (
+                                                    {(isSidebarMini && !mobileSidebarOpen) && item.alert && (
                                                         <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-background shadow-sm" />
                                                     )}
-                                                    {(isMini && !mobileSidebarOpen) && showReorderAutomationBadge && (
+                                                    {(isSidebarMini && !mobileSidebarOpen) && showReorderAutomationBadge && (
                                                         <span
                                                             role="button"
                                                             tabIndex={0}
@@ -967,7 +980,7 @@ export function Layout({ children }: LayoutProps) {
                                                             </span>
                                                         </span>
                                                     )}
-                                                    {(isMini && !mobileSidebarOpen) && showEcommerceBadge && (
+                                                    {(isSidebarMini && !mobileSidebarOpen) && showEcommerceBadge && (
                                                         <span
                                                             title={ecommercePendingLabel}
                                                             className={cn(
@@ -980,7 +993,7 @@ export function Layout({ children }: LayoutProps) {
                                                             {ecommerceCountLabel}
                                                         </span>
                                                     )}
-                                                    {(isMini && !mobileSidebarOpen) && item.status && (
+                                                    {(isSidebarMini && !mobileSidebarOpen) && item.status && (
                                                         <div className={cn(
                                                             "absolute top-2 right-2 w-2 h-2 rounded-full border border-background shadow-sm",
                                                             item.status === 'live' ? "bg-emerald-500" : "bg-red-500"
@@ -1067,8 +1080,8 @@ export function Layout({ children }: LayoutProps) {
                                                     {showChildren && (
                                                         <div className={cn(
                                                             "relative flex flex-col space-y-1 mt-1.5",
-                                                            !(isMini && !mobileSidebarOpen) && "before:absolute before:inset-y-0 before:left-[22px] rtl:before:right-[22px] rtl:before:left-auto before:w-px before:bg-border/60",
-                                                            (isMini && !mobileSidebarOpen) ? "ps-0" : "ps-10"
+                                                            !(isSidebarMini && !mobileSidebarOpen) && "before:absolute before:inset-y-0 before:left-[22px] rtl:before:right-[22px] rtl:before:left-auto before:w-px before:bg-border/60",
+                                                            (isSidebarMini && !mobileSidebarOpen) ? "ps-0" : "ps-10"
                                                         )}>
                                                             {item.children!.map(child => {
                                                                  const isChildSelected = location === child.href || (child.href !== '/' && location.startsWith(child.href))
@@ -1084,7 +1097,7 @@ export function Layout({ children }: LayoutProps) {
                                                                          className="relative block"
                                                                      >
                                                                          {/* Horizontal hierarchy line */}
-                                                                         {!(isMini && !mobileSidebarOpen) && (
+                                                                         {!(isSidebarMini && !mobileSidebarOpen) && (
                                                                              <div className={cn(
                                                                                  "absolute top-1/2 -translate-y-1/2 w-[18px] h-px",
                                                                                  "left-[-18px] rtl:right-[-18px] rtl:left-auto",
@@ -1141,7 +1154,7 @@ export function Layout({ children }: LayoutProps) {
                             {/* Workspace Members Section */}
                             {(user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') && (
                                 <div className="pt-6 pb-2">
-                                    {!(isMini && !mobileSidebarOpen) ? (
+                                    {!(isSidebarMini && !mobileSidebarOpen) ? (
                                         <h2 className="px-3 text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.2em] mb-4">
                                             {t('auth.members')}
                                         </h2>
@@ -1162,12 +1175,12 @@ export function Layout({ children }: LayoutProps) {
                                                 <div
                                                     className={cn(
                                                         "mx-3 mb-4 rounded-sm border border-border relative overflow-hidden",
-                                                        (isMini && !mobileSidebarOpen)
+                                                        (isSidebarMini && !mobileSidebarOpen)
                                                             ? "p-2 bg-transparent border-transparent flex justify-center mx-0"
                                                             : "p-2.5 bg-secondary/30"
                                                     )}
                                                 >
-                                                    {(isMini && !mobileSidebarOpen) ? (
+                                                    {(isSidebarMini && !mobileSidebarOpen) ? (
                                                         <Clock className="w-5 h-5 text-amber-500" />
                                                     ) : (
                                                         <div className="relative z-10">
@@ -1194,7 +1207,7 @@ export function Layout({ children }: LayoutProps) {
                                             <div
                                                 className={cn(
                                                     "mx-3 mb-4 rounded-sm border border-border group hover:border-primary/50 transition-all cursor-pointer relative overflow-hidden",
-                                                    (isMini && !mobileSidebarOpen)
+                                                    (isSidebarMini && !mobileSidebarOpen)
                                                         ? "p-2 bg-transparent border-transparent hover:bg-secondary/50 flex justify-center mx-0"
                                                         : "p-2.5 bg-secondary/30"
                                                 )}
@@ -1202,9 +1215,9 @@ export function Layout({ children }: LayoutProps) {
                                                     copyToClipboard(user.workspaceCode)
                                                     triggerHaptic('success')
                                                 }}
-                                                title={(isMini && !mobileSidebarOpen) ? "Copy Workspace Code" : undefined}
+                                                title={(isSidebarMini && !mobileSidebarOpen) ? "Copy Workspace Code" : undefined}
                                             >
-                                                {(isMini && !mobileSidebarOpen) ? (
+                                                {(isSidebarMini && !mobileSidebarOpen) ? (
                                                     <div className="relative">
                                                         {copied ? (
                                                             <Check className="w-5 h-5 text-emerald-500" />
@@ -1235,7 +1248,7 @@ export function Layout({ children }: LayoutProps) {
                                         )
                                     })()}
 
-                                    <div className={cn("px-3 space-y-3", (isMini && !mobileSidebarOpen) && "px-0 space-y-2 flex flex-col items-center")}>
+                                    <div className={cn("px-3 space-y-3", (isSidebarMini && !mobileSidebarOpen) && "px-0 space-y-2 flex flex-col items-center")}>
                                         {members.map((member) => {
                                             // Use dynamic user profile for the current user to ensure immediate updates
                                             const profileUrl = member.id === user?.id && user?.profileUrl
@@ -1243,10 +1256,10 @@ export function Layout({ children }: LayoutProps) {
                                                 : member.profile_url;
 
                                             return (
-                                                <div key={member.id} className={cn("flex items-center gap-3", (isMini && !mobileSidebarOpen) && "justify-center w-full")}>
+                                                <div key={member.id} className={cn("flex items-center gap-3", (isSidebarMini && !mobileSidebarOpen) && "justify-center w-full")}>
                                                     <div
                                                         className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-xs font-medium overflow-hidden ring-2 ring-transparent hover:ring-primary/20 transition-all"
-                                                        title={(isMini && !mobileSidebarOpen) ? `${member.name} (${member.role})` : undefined}
+                                                        title={(isSidebarMini && !mobileSidebarOpen) ? `${member.name} (${member.role})` : undefined}
                                                     >
                                                         {profileUrl ? (
                                                             <img
@@ -1258,7 +1271,7 @@ export function Layout({ children }: LayoutProps) {
                                                             member.name?.charAt(0).toUpperCase() || 'M'
                                                         )}
                                                     </div>
-                                                    {!(isMini && !mobileSidebarOpen) && (
+                                                    {!(isSidebarMini && !mobileSidebarOpen) && (
                                                         <div className="flex-1 min-w-0">
                                                             <p className="text-[13px] font-semibold truncate">{member.name}</p>
                                                             <p className="text-[10px] text-muted-foreground/60 uppercase font-bold tracking-wider">{member.role}</p>
@@ -1275,11 +1288,11 @@ export function Layout({ children }: LayoutProps) {
                         <div className={cn(
                             "p-4 border-t border-border shrink-0 transition-all duration-300",
                             mobileSidebarOpen ? "bg-card" : "bg-background/50 backdrop-blur-md",
-                            (isMini && !mobileSidebarOpen) && "flex flex-col items-center gap-4 py-6"
+                            (isSidebarMini && !mobileSidebarOpen) && "flex flex-col items-center gap-4 py-6"
                         )}>
-                            <div className={cn("flex items-center gap-2 px-2 py-1", (isMini && !mobileSidebarOpen) && "flex-col p-0 gap-2")}>
+                            <div className={cn("flex items-center gap-2 px-2 py-1", (isSidebarMini && !mobileSidebarOpen) && "flex-col p-0 gap-2")}>
                                 {isLocalMode && !isDemoWorkspace(user?.workspaceCode) ? (
-                                    <LocalAccountSwitcher isCompact={isMini && !mobileSidebarOpen} />
+                                    <LocalAccountSwitcher isCompact={isSidebarMini && !mobileSidebarOpen} />
                                 ) : (
                                     <>
                                         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-emerald-600 flex items-center justify-center text-sm font-bold text-white overflow-hidden shadow-sm">
@@ -1294,7 +1307,7 @@ export function Layout({ children }: LayoutProps) {
                                             )}
                                         </div>
 
-                                        {(isMini && !mobileSidebarOpen) ? (
+                                        {(isSidebarMini && !mobileSidebarOpen) ? (
                                             <div className="text-center">
                                                 <p className="text-xs font-medium truncate max-w-[80px]">{user?.name}</p>
                                                 <p className="text-[10px] text-muted-foreground capitalize">{user?.role}</p>
@@ -1316,14 +1329,14 @@ export function Layout({ children }: LayoutProps) {
                                         setIsSignOutModalOpen(true)
                                         triggerHaptic('warning')
                                     }}
-                                    className={cn("text-muted-foreground hover:text-destructive", (isMini && !mobileSidebarOpen) && "h-8 w-8 mt-1")}
+                                    className={cn("text-muted-foreground hover:text-destructive", (isSidebarMini && !mobileSidebarOpen) && "h-8 w-8 mt-1")}
                                     title="Sign Out"
                                 >
                                     <LogOut className="w-4 h-4" />
                                 </Button>
                             </div>
                             {/* Version Display */}
-                            {!(isMini && !mobileSidebarOpen) && version && (
+                            {!(isSidebarMini && !mobileSidebarOpen) && version && (
                                 <div className="mt-2 text-center">
                                     {isTauri ? (
                                         <p className="text-[10px] text-muted-foreground font-mono opacity-50 truncate px-2" title={versionTooltip || undefined}>
@@ -1358,7 +1371,9 @@ export function Layout({ children }: LayoutProps) {
                         isTauri && "mt-[var(--titlebar-height)] h-[calc(100vh-var(--titlebar-height))]",
                         // Desktop Sidebar Padding Logic
                         desktopSidebarOpen
-                            ? (isMini ? "lg:pl-[70px] lg:rtl:pl-0 lg:rtl:pr-[70px]" : "lg:pl-64 lg:rtl:pl-0 lg:rtl:pr-64")
+                            ? (isSidebarMini
+                                ? "lg:pl-[70px] lg:rtl:pl-0 lg:rtl:pr-[70px]"
+                                : "lg:pl-64 lg:rtl:pl-0 lg:rtl:pr-64")
                             : "lg:pl-0",
                         "pb-[var(--safe-area-bottom)]"
                     )}>

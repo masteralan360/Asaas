@@ -148,6 +148,9 @@ import {
 import { useLocation } from 'wouter'
 
 const CART_IMAGE_VISIBILITY_THRESHOLD = 450
+const POS_MOBILE_BREAKPOINT = 1024
+const POS_TABLET_MAX_WIDTH = 1366
+const POS_WIDE_TABLET_CATALOG_BREAKPOINT = 1180
 
 const ACTIVITIES_STORAGE_ID = '__atlas_activities__'
 const ACTIVITY_POS_QUANTITY_LIMIT = Number.MAX_SAFE_INTEGER
@@ -540,7 +543,9 @@ export function POS() {
         localStorage.setItem('scanner_bluetooth_mode_enabled', String(val))
     }
 
-    const [isLayoutMobile, setIsLayoutMobile] = useState(window.innerWidth < 1024)
+    const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
+    const isLayoutMobile = viewportWidth < POS_MOBILE_BREAKPOINT
+    const isTabletLayout = viewportWidth >= POS_MOBILE_BREAKPOINT && viewportWidth < POS_TABLET_MAX_WIDTH
     useEffect(() => {
         if (isCameraScannerAutoEnabled && isDeviceScannerAutoEnabled) {
             const preferredScannerMode = localStorage.getItem('pos_barcode_scanner_mode')
@@ -750,7 +755,7 @@ export function POS() {
     }, [mobileView])
 
     useEffect(() => {
-        const handleResize = () => setIsLayoutMobile(window.innerWidth < 1024)
+        const handleResize = () => setViewportWidth(window.innerWidth)
         window.addEventListener('resize', handleResize)
         return () => window.removeEventListener('resize', handleResize)
     }, [])
@@ -792,6 +797,11 @@ export function POS() {
         const saved = localStorage.getItem('pos_products_per_row')
         return saved ? parseInt(saved, 10) : 4
     })
+    // Landscape tablets benefit from one additional catalogue column, while
+    // still respecting an operator's choice when they have selected more.
+    const catalogColumns = isTabletLayout
+        ? Math.max(productsPerRow, viewportWidth >= POS_WIDE_TABLET_CATALOG_BREAKPOINT ? 5 : 4)
+        : productsPerRow
 
     useEffect(() => {
         localStorage.setItem('pos_products_per_row', productsPerRow.toString())
@@ -815,7 +825,7 @@ export function POS() {
 
     // Calculate grid columns for ArrowUp/Down navigation
     const getGridColumns = () => {
-        if (!isLayoutMobile) return productsPerRow
+        if (!isLayoutMobile) return catalogColumns
         const width = window.innerWidth
         if (width >= 1280) return 4 // xl
         if (width >= 1024) return 3 // lg
@@ -982,6 +992,9 @@ export function POS() {
         const saved = localStorage.getItem('pos_cart_width')
         return saved ? parseInt(saved, 10) : 502
     })
+    // Keep both panes useful on landscape tablets even when this device has a
+    // wider cart size saved from a desktop terminal.
+    const cartPanelWidth = isTabletLayout ? Math.min(cartWidth, 440) : cartWidth
     const [isResizing, setIsResizing] = useState(false)
 
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -997,15 +1010,15 @@ export function POS() {
         document.body.style.userSelect = ''
 
         // Sync the temporary DOM width back to React state on release
-        if (sidebarRef.current && !isLayoutMobile) {
+        if (sidebarRef.current && !isLayoutMobile && !isTabletLayout) {
             const finalWidth = sidebarRef.current.offsetWidth
             setCartWidth(finalWidth)
             localStorage.setItem('pos_cart_width', finalWidth.toString())
         }
-    }, [isLayoutMobile])
+    }, [isLayoutMobile, isTabletLayout])
 
     const handleMouseMove = useCallback((e: MouseEvent) => {
-        if (!isResizing || isLayoutMobile) return
+        if (!isResizing || isLayoutMobile || isTabletLayout) return
         const newWidth = isRTL ? e.clientX : window.innerWidth - e.clientX
         if (newWidth >= 384 && newWidth <= 800) {
             if (sidebarRef.current) {
@@ -1013,7 +1026,7 @@ export function POS() {
                 sidebarRef.current.style.width = `${newWidth}px`
             }
         }
-    }, [isResizing, isRTL, isLayoutMobile])
+    }, [isResizing, isRTL, isLayoutMobile, isTabletLayout])
 
     useEffect(() => {
         if (isResizing) {
@@ -2952,7 +2965,10 @@ export function POS() {
 
 
     return (
-        <div className="h-full flex flex-col lg:flex-row gap-4 overflow-hidden lg:m-0">
+        <div className={cn(
+            "pos-workspace h-full flex flex-col lg:flex-row gap-4 overflow-hidden lg:m-0",
+            isTabletLayout && "pos-tablet-workspace"
+        )}>
             {isLayoutMobile ? (
                 <div className="flex-1 flex flex-col bg-background relative overflow-hidden">
                     <MobileHeader
@@ -3162,7 +3178,7 @@ export function POS() {
                                 style={{
                                     gridTemplateColumns: isLayoutMobile
                                         ? undefined
-                                        : `repeat(${productsPerRow}, minmax(0, 1fr))`
+                                        : `repeat(${catalogColumns}, minmax(0, 1fr))`
                                 }}
                             >
                                 {filteredProducts.map((product, index) => {
@@ -3306,10 +3322,10 @@ export function POS() {
                             "bg-card border border-border rounded-xl flex flex-col shadow-xl relative",
                             isResizing ? "transition-none will-change-[width]" : "transition-all duration-300"
                         )}
-                        style={{ width: isLayoutMobile ? '100%' : `${cartWidth}px` }}
+                        style={{ width: isLayoutMobile ? '100%' : `${cartPanelWidth}px` }}
                     >
                         {/* Resize Handle - Desktop Only */}
-                        {!isLayoutMobile && (
+                        {!isLayoutMobile && !isTabletLayout && (
                             <div
                                 className={cn(
                                     "absolute top-0 bottom-0 w-2 cursor-col-resize z-[60] flex items-center justify-center group",
@@ -3400,7 +3416,7 @@ export function POS() {
                                                     )}
                                                 >
                                                     {/* Product Image - Responsive Visibility */}
-                                                    {cartWidth > CART_IMAGE_VISIBILITY_THRESHOLD && (
+                                                    {cartPanelWidth > CART_IMAGE_VISIBILITY_THRESHOLD && (
                                                         <div className="w-12 h-12 bg-muted/30 rounded-lg overflow-hidden shrink-0 border border-border/50 shadow-sm transition-all animate-in zoom-in-95 duration-300">
                                                             <ProductImage
                                                                 url={item.imageUrl}
