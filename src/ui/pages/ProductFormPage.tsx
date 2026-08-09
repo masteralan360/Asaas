@@ -46,6 +46,8 @@ import {
     usePriceBookCatalogState,
     useProduct,
     useProductBarcodes,
+    useProducts,
+    useProductVariants,
     useStorages,
     type Product,
     type ProductBarcode,
@@ -70,6 +72,7 @@ import { normalizeUnitCode } from '@/local-db/models'
 import { BarcodeScannerToggleButton } from '@/ui/components/BarcodeScannerToggleButton'
 import { ProductUnitIcon } from '@/ui/components/ProductUnitIcon'
 import { ProductAdditionalImagesModal } from '@/ui/components/ProductAdditionalImagesModal'
+import { ProductVariantParentNotice, ProductVariantsSection } from '@/ui/components/ProductVariantsSection'
 import { useUnitRegistry } from '@/ui/components/unitRegistry'
 import { useDemoTutorial } from '@/demo'
 import {
@@ -276,6 +279,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const categories = useCategories(user?.workspaceId)
     const storages = useStorages(user?.workspaceId)
     const product = useProduct(productId)
+    const parentProduct = useProduct(product?.parentProductId || undefined)
     const isOnline = useNetworkStatus()
     const workspaceId = user?.workspaceId || ''
     const { isDynamicUnit, options: unitOptions } = useUnitRegistry(workspaceId)
@@ -300,6 +304,8 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const isClone = mode === 'clone'
     const isEditing = mode === 'edit'
     const isReadOnly = isEditing && !canEdit
+    const catalogProducts = useProducts(workspaceId, { syncBarcodeCache: false })
+    const productVariants = useProductVariants(isEditing && !product?.parentProductId ? product?.id : undefined)
     const canEditStockAllocation = mode !== 'edit'
     const isDesktopShell = isTauri()
     const persistedProductId = isEditing ? product?.id : undefined
@@ -687,9 +693,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
             toast({
                 variant: 'destructive',
                 title: t('common.error', { defaultValue: 'Error' }),
-                description: t('products.messages.skuDuplicate', {
-                    defaultValue: 'A product with this SKU already exists in this workspace.'
-                })
+                description: error.message
             })
             return
         }
@@ -1237,6 +1241,18 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
             )}
 
             <form id="product-form-page" onSubmit={handleSubmit} className="space-y-4">
+                {isEditing && product?.parentProductId && (
+                    <ProductVariantParentNotice
+                        variant={product}
+                        parent={parentProduct}
+                        canManage={!isReadOnly}
+                        onOpenParent={() => {
+                            if (parentProduct) {
+                                navigate(`/products/${parentProduct.id}`)
+                            }
+                        }}
+                    />
+                )}
                 <div className="min-w-0 space-y-4">
                     <Card className="overflow-hidden rounded-2xl border-border/60 shadow-sm">
                         <CardHeader className="border-b border-border/60 bg-gradient-to-r from-primary/5 via-transparent to-transparent px-5 py-3 sm:px-6">
@@ -2071,6 +2087,24 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                         </CardContent>
                     </Card>
 
+                    {isEditing && product && !product.parentProductId && (
+                        <ProductVariantsSection
+                            parent={product}
+                            variants={productVariants}
+                            products={catalogProducts}
+                            workspaceId={workspaceId}
+                            userId={user?.id}
+                            categories={categories}
+                            storages={storages}
+                            unitOptions={unitOptions}
+                            allowedCurrencies={features.allowed_currencies}
+                            iqdDisplayPreference={features.iqd_display_preference}
+                            canManage={!isReadOnly}
+                            hideCosts={hideCosts}
+                            onOpenProduct={(variantId) => navigate(`/products/${variantId}`)}
+                        />
+                    )}
+
                     <Dialog open={visualsModalOpen} onOpenChange={setVisualsModalOpen}>
                         <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-1rem)] max-w-3xl overflow-y-auto rounded-2xl border-border/60 p-0 sm:w-[calc(100vw-2rem)]">
                             <DialogHeader className="border-b border-border/50 bg-muted/10 px-5 py-4 sm:px-6">
@@ -2379,7 +2413,12 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                 }}
                 isLoading={isDeletingProduct}
                 title={t('products.confirmDelete', { defaultValue: 'Delete Product' })}
-                description={t('products.deleteDescription', { defaultValue: 'This will remove the product from your catalog.' })}
+                description={productVariants.length > 0
+                    ? t('products.variants.deleteParentDescription', {
+                        defaultValue: 'This will remove the parent product. Its {{count}} variants will stay as independent products.',
+                        count: productVariants.length
+                    })
+                    : t('products.deleteDescription', { defaultValue: 'This will remove the product from your catalog.' })}
                 itemName={product?.name || formData.name}
             />
 

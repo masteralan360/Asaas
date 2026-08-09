@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { db } from './database'
 import type { Product } from './models'
 import { DuplicateProductSkuError, normalizeProductSku } from './productSku'
+import { clearWorkspaceModeSnapshot, writeWorkspaceModeSnapshot } from '@/workspace/workspaceMode'
 
 const WORKSPACE_ID = '00000000-0000-4000-8000-000000000401'
 const OTHER_WORKSPACE_ID = '00000000-0000-4000-8000-000000000402'
@@ -50,13 +51,14 @@ function installBrowserGlobals() {
     })
 }
 
-function makeProduct(id: string, workspaceId: string, sku: string, isDeleted = false): Product {
+function makeProduct(id: string, workspaceId: string, sku: string, isDeleted = false, parentProductId?: string | null): Product {
     const timestamp = '2026-07-13T00:00:00.000Z'
     return {
         id,
         workspaceId,
         sku,
         skuKey: normalizeProductSku(sku),
+        parentProductId,
         name: sku,
         description: '',
         price: 0,
@@ -86,13 +88,17 @@ describe('workspace product SKU lookup', () => {
     beforeEach(async () => {
         await db.delete()
         await db.open()
+        writeWorkspaceModeSnapshot({ workspaceId: WORKSPACE_ID, dataMode: 'local' })
+        writeWorkspaceModeSnapshot({ workspaceId: OTHER_WORKSPACE_ID, dataMode: 'local' })
     })
 
     afterAll(async () => {
         await db.delete()
+        clearWorkspaceModeSnapshot(WORKSPACE_ID)
+        clearWorkspaceModeSnapshot(OTHER_WORKSPACE_ID)
     })
 
-    it('matches normalized SKUs through the workspace compound index', async () => {
+    it('matches normalized SKUs through the workspace compound index and rejects a duplicate in another product family', async () => {
         const matchingProduct = makeProduct('product-1', WORKSPACE_ID, '  SKU-001  ')
         const editableProduct = makeProduct('product-4', WORKSPACE_ID, 'SKU-002')
         await db.products.bulkPut([
@@ -107,6 +113,18 @@ describe('workspace product SKU lookup', () => {
         await expect(findActiveProductBySku(WORKSPACE_ID, 'SKU-001', { excludeId: matchingProduct.id }))
             .resolves.toBeUndefined()
         await expect(updateProduct(editableProduct.id, { sku: 'sku-001' }))
+            .rejects.toBeInstanceOf(DuplicateProductSkuError)
+    })
+
+    it('allows a variant to share its direct parent SKU but rejects an unrelated parent', async () => {
+        const parent = makeProduct('parent', WORKSPACE_ID, 'SKU-FAMILY')
+        const variant = makeProduct('variant', WORKSPACE_ID, 'SKU-VARIANT', false, parent.id)
+        const unrelatedParent = makeProduct('unrelated-parent', WORKSPACE_ID, 'SKU-UNRELATED')
+        await db.products.bulkPut([parent, variant, unrelatedParent])
+
+        await expect(updateProduct(variant.id, { sku: parent.sku }))
+            .resolves.toBeUndefined()
+        await expect(updateProduct(unrelatedParent.id, { sku: parent.sku }))
             .rejects.toBeInstanceOf(DuplicateProductSkuError)
     })
 })

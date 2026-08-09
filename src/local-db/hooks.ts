@@ -226,13 +226,38 @@ export async function findActiveProductBySku(
         .first()
 }
 
+function belongsToSameSkuVariantFamily(
+    product: Product,
+    productId: string,
+    parentProductId: string | null
+) {
+    const candidateFamilyId = parentProductId ?? productId
+    const existingFamilyId = product.parentProductId ?? product.id
+
+    return candidateFamilyId === existingFamilyId
+}
+
 async function ensureProductSkuIsAvailable(
     workspaceId: string,
     sku: string,
-    options?: { excludeId?: string }
+    options: { productId: string; parentProductId: string | null }
 ) {
-    const duplicate = await findActiveProductBySku(workspaceId, sku, options)
-    if (duplicate) {
+    const skuKey = normalizeProductSku(sku)
+    if (!workspaceId || !skuKey) {
+        return
+    }
+
+    const productsWithSku = await db.products
+        .where('[workspaceId+skuKey]')
+        .equals([workspaceId, skuKey])
+        .and((product) => !product.isDeleted && product.id !== options.productId)
+        .toArray()
+
+    const hasProductOutsideFamily = productsWithSku.some((product) =>
+        !belongsToSameSkuVariantFamily(product, options.productId, options.parentProductId)
+    )
+
+    if (hasProductOutsideFamily) {
         throw new DuplicateProductSkuError()
     }
 }
@@ -678,17 +703,110 @@ export function useProduct(id: string | undefined) {
     return product
 }
 
+export function useProductVariants(parentProductId: string | undefined) {
+    const variants = useLiveQuery(
+        () => parentProductId
+            ? db.products
+                .where('parentProductId')
+                .equals(parentProductId)
+                .and((product) => !product.isDeleted)
+                .sortBy('name')
+            : [],
+        [parentProductId]
+    )
+
+    return variants ?? []
+}
+
+export class ProductVariantRelationshipError extends Error {
+    constructor(message: string) {
+        super(message)
+        this.name = 'ProductVariantRelationshipError'
+    }
+}
+
+async function assertCanUseProductAsVariantParent(
+    workspaceId: string,
+    parentProductId: string,
+    variantProductId?: string,
+    currentParentProductId?: string | null
+) {
+    const parent = await db.products.get(parentProductId)
+    if (!parent || parent.isDeleted || parent.workspaceId !== workspaceId) {
+        throw new ProductVariantRelationshipError('The selected parent product is not available in this workspace.')
+    }
+
+    if (parent.parentProductId) {
+        throw new ProductVariantRelationshipError('A variant cannot be used as a parent product.')
+    }
+
+    if (!variantProductId) {
+        return
+    }
+
+    if (parentProductId === variantProductId) {
+        throw new ProductVariantRelationshipError('A product cannot be linked to itself.')
+    }
+
+    if (currentParentProductId && currentParentProductId !== parentProductId) {
+        throw new ProductVariantRelationshipError('Unlink this product before assigning it to a different parent.')
+    }
+
+    const childVariants = await db.products
+        .where('parentProductId')
+        .equals(variantProductId)
+        .and((product) => !product.isDeleted)
+        .count()
+
+    if (childVariants > 0) {
+        throw new ProductVariantRelationshipError('A product with variants cannot become a variant itself.')
+    }
+}
+
+export async function linkProductVariant(parentProductId: string, variantProductId: string) {
+    const variant = await db.products.get(variantProductId)
+    if (!variant || variant.isDeleted) {
+        throw new ProductVariantRelationshipError('The selected product is no longer available.')
+    }
+
+    await assertCanUseProductAsVariantParent(
+        variant.workspaceId,
+        parentProductId,
+        variant.id,
+        variant.parentProductId
+    )
+    await updateProduct(variant.id, { parentProductId })
+}
+
+export async function unlinkProductVariant(variantProductId: string) {
+    const variant = await db.products.get(variantProductId)
+    if (!variant || variant.isDeleted) {
+        throw new ProductVariantRelationshipError('The selected product is no longer available.')
+    }
+
+    if (!variant.parentProductId) {
+        return
+    }
+
+    await updateProduct(variant.id, { parentProductId: null })
+}
+
 export async function createProduct(workspaceId: string, data: Omit<Product, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted'>): Promise<Product> {
     const now = new Date().toISOString()
     const id = generateId()
     const sku = trimProductSku(data.sku)
-    const isSavingOnline = isOnline()
+    const isSavingOnline = isOnline(workspaceId)
     const initialQuantity = Number(data.quantity) || 0
     const initialStorageId = data.storageId ?? null
 
-    if (isSavingOnline) {
-        await ensureProductSkuIsAvailable(workspaceId, sku)
+    if (data.parentProductId) {
+        await assertCanUseProductAsVariantParent(workspaceId, data.parentProductId)
     }
+
+    await ensureProductSkuIsAvailable(workspaceId, sku, {
+        productId: id,
+        parentProductId: data.parentProductId ?? null
+    })
 
     const product: Product = {
         ...data,
@@ -726,7 +844,6 @@ export async function createProduct(workspaceId: string, data: Omit<Product, 'id
     } else {
         // OFFLINE
         await db.transaction('rw', db.products, async () => {
-            await ensureProductSkuIsAvailable(workspaceId, sku)
             await db.products.add(product)
         })
         await addToOfflineMutations('products', id, 'create', product as unknown as Record<string, unknown>, workspaceId)
@@ -761,7 +878,7 @@ export async function updateProduct(id: string, data: Partial<Product>): Promise
     const now = new Date().toISOString()
     const existing = await db.products.get(id)
     if (!existing) throw new Error('Product not found')
-    const isSavingOnline = isOnline()
+    const isSavingOnline = isOnline(existing.workspaceId)
     const {
         quantity: _ignoredQuantity,
         storageId: _ignoredStorageId,
@@ -769,10 +886,29 @@ export async function updateProduct(id: string, data: Partial<Product>): Promise
         ...productData
     } = data
     const hasSkuUpdate = Object.prototype.hasOwnProperty.call(productData, 'sku')
+    const hasParentProductIdUpdate = Object.prototype.hasOwnProperty.call(productData, 'parentProductId')
+    const hasIsDeletedUpdate = Object.prototype.hasOwnProperty.call(productData, 'isDeleted')
     const sku = hasSkuUpdate ? trimProductSku(productData.sku ?? '') : existing.sku
 
-    if (hasSkuUpdate && isSavingOnline) {
-        await ensureProductSkuIsAvailable(existing.workspaceId, sku, { excludeId: id })
+    if (hasParentProductIdUpdate && productData.parentProductId) {
+        await assertCanUseProductAsVariantParent(
+            existing.workspaceId,
+            productData.parentProductId,
+            existing.id,
+            existing.parentProductId
+        )
+    }
+
+    const parentProductId = hasParentProductIdUpdate
+        ? productData.parentProductId ?? null
+        : existing.parentProductId ?? null
+
+    const remainsActive = hasIsDeletedUpdate ? !productData.isDeleted : !existing.isDeleted
+    if (remainsActive && (hasSkuUpdate || hasParentProductIdUpdate || (hasIsDeletedUpdate && productData.isDeleted === false))) {
+        await ensureProductSkuIsAvailable(existing.workspaceId, sku, {
+            productId: id,
+            parentProductId
+        })
     }
 
     const updated = {
@@ -805,9 +941,6 @@ export async function updateProduct(id: string, data: Partial<Product>): Promise
     } else {
         // OFFLINE
         await db.transaction('rw', db.products, async () => {
-            if (hasSkuUpdate) {
-                await ensureProductSkuIsAvailable(existing.workspaceId, sku, { excludeId: id })
-            }
             await db.products.put(updated)
         })
         await addToOfflineMutations('products', id, 'update', updated as unknown as Record<string, unknown>, existing.workspaceId)
@@ -821,7 +954,7 @@ async function softDeleteProductBarcodesForDeletedProduct(productId: string, wor
     }
 
     const usesCloud = shouldUseCloudBusinessData(workspaceId)
-    let shouldQueueOffline = usesCloud && !isOnline()
+    let shouldQueueOffline = usesCloud && !isOnline(workspaceId)
     let deletedRows: ProductBarcode[] = activeRows.map((row) => ({
         ...row,
         isPrimary: false,
@@ -832,7 +965,7 @@ async function softDeleteProductBarcodesForDeletedProduct(productId: string, wor
         version: row.version + 1
     }))
 
-    if (usesCloud && isOnline()) {
+    if (usesCloud && isOnline(workspaceId)) {
         try {
             const { error } = await runMutation('product_barcodes.cascadeDelete', () =>
                 supabase.from('product_barcodes').upsert(deletedRows.map(toSupabaseProductBarcodePayload))
@@ -863,20 +996,81 @@ async function softDeleteProductBarcodesForDeletedProduct(productId: string, wor
     }
 }
 
+async function detachProductVariantsAfterParentDeletion(
+    parentProductId: string,
+    workspaceId: string,
+    timestamp: string,
+    savedOnline: boolean
+) {
+    const variants = await db.products
+        .where('parentProductId')
+        .equals(parentProductId)
+        .and((product) => !product.isDeleted)
+        .toArray()
+
+    if (variants.length === 0) {
+        return
+    }
+
+    const detachedVariants = variants.map((variant) => ({
+        ...variant,
+        parentProductId: null,
+        updatedAt: timestamp,
+        syncStatus: savedOnline ? 'synced' as const : 'pending' as const,
+        lastSyncedAt: savedOnline ? timestamp : variant.lastSyncedAt,
+        version: savedOnline ? variant.version : variant.version + 1
+    }))
+
+    await db.products.bulkPut(detachedVariants)
+
+    if (!savedOnline && shouldUseCloudBusinessData(workspaceId)) {
+        await Promise.all(detachedVariants.map((variant) =>
+            addToOfflineMutations('products', variant.id, 'update', variant as unknown as Record<string, unknown>, workspaceId)
+        ))
+    }
+}
+
+async function assertVariantsCanBecomeIndependentAfterParentDeletion(parentProductId: string) {
+    const variants = await db.products
+        .where('parentProductId')
+        .equals(parentProductId)
+        .and((product) => !product.isDeleted)
+        .toArray()
+    const seenSkuKeys = new Set<string>()
+
+    for (const variant of variants) {
+        const skuKey = normalizeProductSku(variant.sku)
+        if (!skuKey) {
+            continue
+        }
+        if (seenSkuKeys.has(skuKey)) {
+            throw new ProductVariantRelationshipError(
+                'Variants that share an SKU must stay linked to their parent. Change one of their SKUs before deleting this parent.'
+            )
+        }
+        seenSkuKeys.add(skuKey)
+    }
+}
+
 export async function deleteProduct(id: string): Promise<void> {
     const now = new Date().toISOString()
     const existing = await db.products.get(id)
     if (!existing) return
+    const isSavingOnline = isOnline(existing.workspaceId)
+
+    if (!existing.parentProductId) {
+        await assertVariantsCanBecomeIndependentAfterParentDeletion(id)
+    }
 
     const updated = {
         ...existing,
         isDeleted: true,
         updatedAt: now,
-        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        syncStatus: (isSavingOnline ? 'synced' : 'pending') as any,
         version: existing.version + 1
     } as Product
 
-    if (isOnline()) {
+    if (isSavingOnline) {
         // ONLINE
         const { error } = await runMutation('products.delete', () => supabase.from('products').update({ is_deleted: true, updated_at: now }).eq('id', id))
         if (error) throw normalizeSupabaseActionError(error)
@@ -887,6 +1081,8 @@ export async function deleteProduct(id: string): Promise<void> {
         await db.products.put(updated)
         await addToOfflineMutations('products', id, 'delete', { id }, existing.workspaceId)
     }
+
+    await detachProductVariantsAfterParentDeletion(id, existing.workspaceId, now, isSavingOnline)
 
     await softDeleteProductBarcodesForDeletedProduct(id, existing.workspaceId, now)
 

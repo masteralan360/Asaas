@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
-import { ArrowDown, ArrowUp, ArrowUpDown, Barcode, BookOpen, Boxes, CircleAlert, Copy, FileSpreadsheet, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Barcode, BookOpen, Boxes, ChevronDown, ChevronRight, CircleAlert, Copy, FileSpreadsheet, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import {
@@ -136,6 +136,19 @@ export const DEFAULT_PRODUCT_FILTERS: ProductFilterState = {
     minStock: '',
     maxStock: '',
     sort: 'name_asc'
+}
+
+type ProductListGroup = {
+    primary: Product
+    variants: Product[]
+}
+
+type ProductTableRow = {
+    product: Product
+    isPrimary: boolean
+    isVariant: boolean
+    hasVisibleVariants: boolean
+    isLastVariant: boolean
 }
 
 function countActiveProductFilters(filters: ProductFilterState) {
@@ -285,6 +298,7 @@ export function Products() {
     const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false)
     const [draftFilters, setDraftFilters] = useState<ProductFilterState>(filters)
     const [currentPage, setCurrentPage] = useState(1)
+    const [collapsedPrimaryProductIds, setCollapsedPrimaryProductIds] = useState<Set<string>>(() => new Set())
     const [pageSize, setPageSize] = useState(() => {
         return Number(localStorage.getItem('products_page_size')) || 20
     })
@@ -643,12 +657,83 @@ export function Products() {
         return result
     }, [products, search, getCategoryName, getStorageName, filters])
 
-    const totalCount = filteredProducts.length
+    const productById = useMemo(
+        () => new Map(products.map((product) => [product.id, product] as const)),
+        [products]
+    )
 
-    const paginatedProducts = useMemo(() => {
+    const variantsByParentId = useMemo(() => {
+        const map = new Map<string, Product[]>()
+        for (const product of products) {
+            if (!product.parentProductId) continue
+            const variants = map.get(product.parentProductId) ?? []
+            variants.push(product)
+            map.set(product.parentProductId, variants)
+        }
+        return map
+    }, [products])
+
+    const productListGroups = useMemo(() => {
+        const groups = new Map<string, ProductListGroup>()
+
+        for (const product of filteredProducts) {
+            const primary = product.parentProductId ? productById.get(product.parentProductId) : product
+            const groupPrimary = primary ?? product
+            const group = groups.get(groupPrimary.id) ?? { primary: groupPrimary, variants: [] }
+
+            if (product.parentProductId && primary) {
+                group.variants.push(product)
+            }
+
+            groups.set(groupPrimary.id, group)
+        }
+
+        return Array.from(groups.values())
+    }, [filteredProducts, productById])
+
+    const totalCount = filteredProducts.length
+    const paginationCount = productListGroups.length
+
+    const paginatedProductGroups = useMemo(() => {
         const from = (currentPage - 1) * pageSize
-        return filteredProducts.slice(from, from + pageSize)
-    }, [filteredProducts, currentPage, pageSize])
+        return productListGroups.slice(from, from + pageSize)
+    }, [currentPage, pageSize, productListGroups])
+
+    const paginatedProducts = useMemo(
+        () => paginatedProductGroups.flatMap((group) => [group.primary, ...group.variants]),
+        [paginatedProductGroups]
+    )
+
+    const tableProductRows = useMemo<ProductTableRow[]>(() => {
+        return paginatedProductGroups.flatMap((group) => {
+            const hasVisibleVariants = group.variants.length > 0
+            const isPrimary = (variantsByParentId.get(group.primary.id)?.length ?? 0) > 0
+            const primaryRow: ProductTableRow = {
+                product: group.primary,
+                isPrimary,
+                isVariant: Boolean(group.primary.parentProductId),
+                hasVisibleVariants,
+                isLastVariant: false
+            }
+
+            if (!hasVisibleVariants || collapsedPrimaryProductIds.has(group.primary.id)) {
+                return [primaryRow]
+            }
+
+            return [
+                primaryRow,
+                ...group.variants.map((product, index) => ({
+                    product,
+                    isPrimary: false,
+                    isVariant: true,
+                    hasVisibleVariants: false,
+                    isLastVariant: index === group.variants.length - 1
+                }))
+            ]
+        })
+    }, [collapsedPrimaryProductIds, paginatedProductGroups, variantsByParentId])
+
+    const isPrimaryProduct = (product: Product) => (variantsByParentId.get(product.id)?.length ?? 0) > 0
 
     useEffect(() => {
         setCurrentPage(1)
@@ -1368,7 +1453,7 @@ export function Products() {
                     <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
                         <AppPagination
                             currentPage={currentPage}
-                            totalCount={totalCount}
+                            totalCount={paginationCount}
                             pageSize={pageSize}
                             onPageChange={setCurrentPage}
                             onPageSizeChange={(newSize) => {
@@ -1460,7 +1545,7 @@ export function Products() {
                                                 </div>
                                                 <div className="flex min-w-0 flex-1 flex-col justify-center">
                                                     <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{product.sku}</div>
-                                                    <div className="truncate text-base font-black leading-tight text-foreground">{product.name}</div>
+                                                    <div className="flex items-center gap-2"><div className="truncate text-base font-black leading-tight text-foreground">{product.name}</div>{isPrimaryProduct(product) && <span className="shrink-0 rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-primary">{t('products.variants.primary', { defaultValue: 'Primary' })}</span>}</div>
                                                     <div className="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-primary/80">
                                                         {getCategoryName(product.categoryId)}
                                                     </div>
@@ -1597,7 +1682,7 @@ export function Products() {
 
                                                     <div className="flex-1 space-y-1">
                                                         <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground/60">{product.sku}</div>
-                                                        <h3 className="line-clamp-2 text-sm font-bold leading-snug text-foreground transition-colors group-hover:text-primary">{product.name}</h3>
+                                                        <div className="flex items-start gap-2"><h3 className="line-clamp-2 text-sm font-bold leading-snug text-foreground transition-colors group-hover:text-primary">{product.name}</h3>{isPrimaryProduct(product) && <span className="shrink-0 rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-primary">{t('products.variants.primary', { defaultValue: 'Primary' })}</span>}</div>
                                                         <div className="text-[11px] font-bold uppercase tracking-wide text-primary/70">{getCategoryName(product.categoryId)}</div>
                                                         <div className="text-[10px] font-medium text-muted-foreground/80">{renderStorage(product.id) ?? getStorageName(product.storageId)}</div>
                                                     </div>
@@ -1735,11 +1820,12 @@ export function Products() {
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
-                                                {paginatedProducts.map((product) => (
+                                                {tableProductRows.map(({ product, isPrimary, isVariant, hasVisibleVariants, isLastVariant }) => (
                                                     <ContextMenu key={product.id}>
                                                         <ContextMenuTrigger asChild>
                                                     <TableRow className={cn(
                                                         isProductSelectionMode && selectedProductIds.has(product.id) && 'bg-primary/5',
+                                                        isVariant && 'bg-primary/[0.02] hover:bg-primary/[0.05]',
                                                         hasProductCostWarning(product) && 'bg-destructive/10 hover:bg-destructive/15'
                                                     )}>
                                                         {isProductSelectionMode && (
@@ -1752,6 +1838,30 @@ export function Products() {
                                                             </TableCell>
                                                         )}
                                                         <TableCell>
+                                                            <div className="flex items-center gap-1">
+                                                                {isPrimary && hasVisibleVariants && (
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-7 w-7 rounded-lg"
+                                                                        aria-label={collapsedPrimaryProductIds.has(product.id)
+                                                                            ? t('products.variants.expand', { defaultValue: 'Show variants' })
+                                                                            : t('products.variants.collapse', { defaultValue: 'Hide variants' })}
+                                                                        aria-expanded={!collapsedPrimaryProductIds.has(product.id)}
+                                                                        onClick={() => setCollapsedPrimaryProductIds((current) => {
+                                                                            const next = new Set(current)
+                                                                            if (next.has(product.id)) {
+                                                                                next.delete(product.id)
+                                                                            } else {
+                                                                                next.add(product.id)
+                                                                            }
+                                                                            return next
+                                                                        })}
+                                                                    >
+                                                                        {collapsedPrimaryProductIds.has(product.id) ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                                                    </Button>
+                                                                )}
                                                             {hasProductCostWarning(product) && (
                                                                 <TooltipProvider>
                                                                     <Tooltip delayDuration={150}>
@@ -1764,8 +1874,10 @@ export function Products() {
                                                                     </Tooltip>
                                                                 </TooltipProvider>
                                                             )}
+                                                            </div>
                                                         </TableCell>
-                                                        <TableCell>
+                                                        <TableCell className={cn('relative', isVariant && 'pl-9')}>
+                                                            {isVariant && <span aria-hidden="true" className={cn('pointer-events-none absolute start-3 top-0 w-4 border-b border-s border-border/60', isLastVariant ? 'h-1/2' : 'bottom-0')} />}
                                                             <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-muted">
                                                                 {product.imageUrl ? (
                                                                     <img src={getDisplayImageUrl(product.imageUrl)} alt={product.name} className="h-full w-full object-cover" />
@@ -1775,7 +1887,7 @@ export function Products() {
                                                             </div>
                                                         </TableCell>
                                                         <TableCell className="font-mono text-sm">{product.sku}</TableCell>
-                                                        <TableCell className="font-medium">{product.name}</TableCell>
+                                                        <TableCell className="font-medium"><div className="flex items-center gap-2"><span>{product.name}</span>{isPrimary && <span className="inline-flex rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-primary">{t('products.variants.primary', { defaultValue: 'Primary' })}</span>}{isVariant && <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground"><GitBranch className="h-3 w-3" />{t('products.variants.variant', { defaultValue: 'Variant' })}</span>}</div></TableCell>
                                                         <TableCell>{getCategoryName(product.categoryId)}</TableCell>
                                                         <TableCell>{renderStorage(product.id) ?? getStorageName(product.storageId)}</TableCell>
                                                         {priceBooksEnabled && <TableCell>{renderPriceBooks(product.id)}</TableCell>}

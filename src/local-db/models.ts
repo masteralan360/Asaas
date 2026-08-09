@@ -60,8 +60,13 @@ export interface ProductBarcode extends BaseEntity {
 
 export interface Product extends BaseEntity {
   sku: string;
-  /** Local-only normalized SKU key used by the indexed duplicate check. */
+  /** Local-only normalized SKU key used by indexed catalog lookups. */
   skuKey?: string;
+  /**
+   * The sellable parent product for this product's variant group. A null value
+   * means the product is independent or is itself a parent product.
+   */
+  parentProductId?: string | null;
   name: string;
   description: string;
   categoryId?: string | null;

@@ -1,7 +1,7 @@
 export class DuplicateProductSkuError extends Error {
     readonly code = 'PRODUCT_SKU_DUPLICATE'
 
-    constructor(message = 'A product with this SKU already exists in this workspace.') {
+    constructor(message = 'This SKU is already used by another product group. It may only be shared by a parent product and its direct variants.') {
         super(message)
         this.name = 'DuplicateProductSkuError'
     }
@@ -9,7 +9,7 @@ export class DuplicateProductSkuError extends Error {
 
 /**
  * Produces the canonical key used to compare SKUs. SKU values remain
- * display-preserving; this key only exists for lookup and uniqueness checks.
+ * display-preserving; this key only exists for catalog lookups.
  */
 export function normalizeProductSku(value?: string | null): string {
     return value?.trim().toLowerCase() ?? ''

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Check, Package } from 'lucide-react'
+import { AlertTriangle, Check, GitBranch, Package } from 'lucide-react'
 
 import { useProductSelectionAccess, type Product } from '@/local-db'
 import { useOptionalAuth } from '@/auth'
@@ -77,7 +77,7 @@ export function ProductAutocompleteInput({
     onStorageMissingClick,
     storageMissingLabel = 'Select Storage'
 }: ProductAutocompleteInputProps) {
-    const { i18n } = useTranslation()
+    const { i18n, t } = useTranslation()
     const user = useOptionalAuth()?.user
     const { canSelectProduct, filterProducts } = useProductSelectionAccess(user?.workspaceId, user?.id)
     const [isFocused, setIsFocused] = useState(false)
@@ -88,6 +88,10 @@ export function ProductAutocompleteInput({
     const selectableProducts = useMemo(
         () => filterProducts(products),
         [filterProducts, products]
+    )
+    const productById = useMemo(
+        () => new Map(products.map((product) => [product.id, product] as const)),
+        [products]
     )
 
     const filtered = useMemo(() => {
@@ -215,10 +219,13 @@ export function ProductAutocompleteInput({
                         >
                             <ProductThumbnail url={product.imageUrl} name={product.name} />
                             <div className="min-w-0 flex-1">
-                                <div className="break-words font-medium">{product.name}</div>
+                                <div className="flex flex-wrap items-center gap-1.5"><span className="break-words font-medium">{product.name}</span>{product.parentProductId && <span className="inline-flex items-center gap-1 rounded-md border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary"><GitBranch className="h-3 w-3" />{t('products.variants.variant', { defaultValue: 'Variant' })}</span>}</div>
                                 {product.sku ? (
                                     <div className="break-words text-xs text-muted-foreground">{skuLabel}: {product.sku}</div>
                                 ) : null}
+                                {product.parentProductId && productById.get(product.parentProductId) && (
+                                    <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{t('products.variants.variantOf', { defaultValue: 'Variant of' })}: {productById.get(product.parentProductId)?.name}</div>
+                                )}
                             </div>
                         </button>
                     ))}
