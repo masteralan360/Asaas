@@ -469,7 +469,23 @@ class PlatformService implements PlatformAPI {
                 console.error('[PlatformService] Error saving image file:', error);
             }
         }
-        return null;
+
+        try {
+            const ext = this.getImageExtension(file);
+            const fileName = `${Date.now()}.${ext}`;
+            const relativeDest = `${subDir}/${workspaceId}/${fileName}`.replace(/\\/g, '/');
+            const r2Path = `${workspaceId}/${subDir}/${fileName}`.replace(/\\/g, '/');
+
+            if (!isLocalWorkspaceMode(workspaceId) && r2Service.isConfigured()) {
+                await r2Service.upload(r2Path, file, file.type || this.getImageContentType(ext));
+                return relativeDest;
+            }
+
+            return await this.blobToDataUrl(file);
+        } catch (error) {
+            console.error('[PlatformService] Error saving image file on web:', error);
+            return null;
+        }
     }
 
     /**

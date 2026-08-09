@@ -247,7 +247,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                             <thead>
                                 <tr className={cn("text-[10px] text-black border-b border-black", !isRTL && "uppercase")} style={{ opacity: labelOpacity / 100 }}>
                                     <th className={cn("pb-2 text-start font-bold", !isRTL && "tracking-wider")}>{t('products.table.name')}</th>
-                                    <th className={cn("pb-2 text-center font-bold", !isRTL && "tracking-wider")}>{t('common.quantity')}</th>
+                                    <th className={cn("pb-2 text-center font-bold", !isRTL && "tracking-wider")}>{t('products.receipt.qty')}</th>
                                     <th className={cn("pb-2 text-end font-bold", !isRTL && "tracking-wider")}>{t('common.price')}</th>
                                     <th className={cn("pb-2 text-end font-bold", !isRTL && "tracking-wider")}>{t('common.total')}</th>
                                 </tr>

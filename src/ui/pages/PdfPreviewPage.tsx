@@ -70,6 +70,21 @@ const PREVIEW_PAGE_BREAK_ORIGINAL_TRANSLATE = 'pdfPreviewPageBreakOriginalTransl
 const PREVIEW_PAGE_BREAK_TRANSFORM_ATTRIBUTE = 'data-pdf-preview-page-break-transform'
 const PAGE_BREAK_EPSILON_MM = 0.05
 
+function getClipboardImageFile(event: ClipboardEvent): File | null {
+    const imageItem = Array.from(event.clipboardData?.items || []).find((item) => (
+        item.kind === 'file' && item.type.startsWith('image/')
+    ))
+
+    return imageItem?.getAsFile() || null
+}
+
+function isTextPasteTarget(target: EventTarget | null) {
+    return target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLElement && target.isContentEditable)
+}
+
 function resetPreviewPageBreakMargins(contentLayer: HTMLElement) {
     contentLayer.querySelectorAll<HTMLElement>([
         `[${PREVIEW_PAGE_BREAK_MARGIN_ATTRIBUTE}]`,
@@ -1196,22 +1211,36 @@ export function PdfPreviewPage() {
         })
     }, [])
 
+    const addTemplateImage = useCallback((path: string) => {
+        setTemplateImages(prev => [...prev, {
+            path,
+            x: Math.max(5, templatePageWidth * 0.2),
+            y: 50,
+            width: Math.max(15, templatePageWidth * 0.3)
+        }])
+    }, [templatePageWidth])
+
     const handleAddTemplateImage = useCallback(async () => {
         if (!source?.workspaceId) return
         try {
             const relPath = await platformService.pickAndSaveImage(source.workspaceId, 'attached-images')
             if (relPath) {
-                setTemplateImages(prev => [...prev, {
-                    path: relPath,
-                    x: Math.max(5, templatePageWidth * 0.2),
-                    y: 50,
-                    width: Math.max(15, templatePageWidth * 0.3)
-                }])
+                addTemplateImage(relPath)
             }
         } catch (error) {
             error instanceof Error && console.error('Failed to add image:', error.message)
         }
-    }, [source?.workspaceId, templatePageWidth])
+    }, [addTemplateImage, source?.workspaceId])
+
+    const handlePasteTemplateImage = useCallback(async (image: File) => {
+        if (!source?.workspaceId) return
+        try {
+            const relPath = await platformService.saveImageFile(image, source.workspaceId, 'attached-images')
+            if (relPath) addTemplateImage(relPath)
+        } catch (error) {
+            error instanceof Error && console.error('Failed to paste image:', error.message)
+        }
+    }, [addTemplateImage, source?.workspaceId])
 
     const handleUploadTemplateBackground = useCallback(async () => {
         if (!source?.workspaceId) return
@@ -1254,29 +1283,43 @@ export function PdfPreviewPage() {
         }])
     }, [brushColor, templatePageWidth])
 
+    const addImage = useCallback((path: string) => {
+        setEditableData(prev => {
+            if (!prev) return null
+            const current = prev.attached_images || []
+            return {
+                ...prev,
+                attached_images: [...current, {
+                    path,
+                    x: 50, // Default mid X (mm)
+                    y: 50, // Default mid Y (mm)
+                    width: 60, // Default width (mm)
+                }]
+            }
+        })
+    }, [])
+
     const handleAddImage = useCallback(async () => {
-        if (!source.workspaceId) return
+        if (!source?.workspaceId) return
         try {
             const relPath = await platformService.pickAndSaveImage(source.workspaceId, 'attached-images')
             if (relPath) {
-                setEditableData(prev => {
-                    if (!prev) return null
-                    const current = prev.attached_images || []
-                    return {
-                        ...prev,
-                        attached_images: [...current, {
-                            path: relPath,
-                            x: 50, // Default mid X (mm)
-                            y: 50, // Default mid Y (mm)
-                            width: 60, // Default width (mm)
-                        }]
-                    }
-                })
+                addImage(relPath)
             }
         } catch (error) {
             error instanceof Error && console.error('Failed to add image:', error.message)
         }
-    }, [source.workspaceId])
+    }, [addImage, source?.workspaceId])
+
+    const handlePasteImage = useCallback(async (image: File) => {
+        if (!source?.workspaceId) return
+        try {
+            const relPath = await platformService.saveImageFile(image, source.workspaceId, 'attached-images')
+            if (relPath) addImage(relPath)
+        } catch (error) {
+            error instanceof Error && console.error('Failed to paste image:', error.message)
+        }
+    }, [addImage, source?.workspaceId])
 
     const handleRemoveImage = useCallback((path: string) => {
         setEditableData(prev => {
@@ -1330,6 +1373,22 @@ export function PdfPreviewPage() {
             }
         })
     }, [brushColor])
+
+    useEffect(() => {
+        const handlePaste = (event: ClipboardEvent) => {
+            if (!isAdmin || !source?.workspaceId || (!templatePreview && !editableData)) return
+            if (isTextPasteTarget(event.target)) return
+
+            const image = getClipboardImageFile(event)
+            if (!image) return
+
+            event.preventDefault()
+            void (templatePreview ? handlePasteTemplateImage(image) : handlePasteImage(image))
+        }
+
+        window.addEventListener('paste', handlePaste)
+        return () => window.removeEventListener('paste', handlePaste)
+    }, [editableData, handlePasteImage, handlePasteTemplateImage, isAdmin, source?.workspaceId, templatePreview])
 
     const handlePointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
         if (drawingMode === 'none') return
