@@ -579,7 +579,11 @@ export function Layout({ children }: LayoutProps) {
     const ecommercePendingLabel = t('ecommerce.pendingOrders', { defaultValue: 'Pending Orders' })
 
     const isPosLikeRoute = location === '/pos' || location === '/instant-pos' || location === '/real-estate/new'
-    const isPosTabletLayout = isPosLikeRoute && viewportWidth >= 1024 && viewportWidth < 1366
+    // Android and iPad PWAs may expose a desktop-sized CSS width on a tablet.
+    // Keep the actual sidebar in its compact rail whenever that happens.
+    const isPosTabletLayout = isPosLikeRoute && viewportWidth >= 1024 && (
+        viewportWidth < 1366 || isMobile()
+    )
     const isSidebarMini = isMini || isPosTabletLayout
     const isModuleLauncherRoute = location === '/modules'
 

@@ -28,8 +28,7 @@ import { useWorkspaceContacts } from '@/local-db/hooks'
 import { getManualRateSource, getManualRateValue, setExchangeRateSource as setStoredExchangeRateSource } from '@/lib/manualExchangeRates'
 import type { ExchangeRateSource } from '@/lib/exchangeRate'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
-import { DEFAULT_THERMAL_ROLL_WIDTH, THERMAL_ROLL_WIDTHS, isLikelyThermalPrinter, isVirtualPrinter, printService, type StoredThermalPrinter, type ThermalRollWidth } from '@/services/printService'
-import type { PrinterInfo } from 'tauri-plugin-thermal-printer'
+import { DEFAULT_THERMAL_ROLL_WIDTH, THERMAL_ROLL_WIDTHS, isLikelyThermalPrinter, isVirtualPrinter, printService, type StoredThermalPrinter, type ThermalPrinterInfo, type ThermalRollWidth } from '@/services/printService'
 // Notification imports moved to dynamic imports for cross-platform support
 import { registerDeviceTokenIfNeeded } from '@/services/notificationDevice'
 import { useKdsStream } from '@/hooks/useKdsStream'
@@ -129,7 +128,7 @@ export function Settings() {
     const [mediaDownloadProgress, setMediaDownloadProgress] = useState<{ total: number, current: number, fileName: string } | null>(null)
     const [localMediaCount, setLocalMediaCount] = useState<number | null>(null)
     const [isThermalDialogOpen, setIsThermalDialogOpen] = useState(false)
-    const [availableThermalPrinters, setAvailableThermalPrinters] = useState<PrinterInfo[]>([])
+    const [availableThermalPrinters, setAvailableThermalPrinters] = useState<ThermalPrinterInfo[]>([])
     const [selectedThermalPrinter, setSelectedThermalPrinter] = useState<StoredThermalPrinter | null>(null)
     const [selectedThermalRollWidth, setSelectedThermalRollWidth] = useState<ThermalRollWidth>(DEFAULT_THERMAL_ROLL_WIDTH)
     const [isScanningThermalPrinters, setIsScanningThermalPrinters] = useState(false)
@@ -263,14 +262,6 @@ export function Settings() {
         setThermalPrinterMessage(null)
         setShowAllDetectedPrinters(false)
 
-        if (!isElectron) {
-            setAvailableThermalPrinters([])
-            setThermalPrinterMessage(t('settings.printing.thermalDesktopOnly', {
-                defaultValue: 'Thermal printer scanning is available in the desktop Tauri app only.'
-            }))
-            return
-        }
-
         setIsScanningThermalPrinters(true)
         try {
             const printers = await printService.listThermalPrinters()
@@ -298,8 +289,10 @@ export function Settings() {
             console.error('[Settings] Failed to scan thermal printers:', error)
             setAvailableThermalPrinters([])
             setThermalPrinterMessage(
-                normalizeSupabaseActionError(error).message
-                || t('settings.printing.thermalScanError', { defaultValue: 'Failed to scan thermal printers.' })
+                error instanceof Error && error.message
+                    ? error.message
+                    : normalizeSupabaseActionError(error).message
+                        || t('settings.printing.thermalScanError', { defaultValue: 'Failed to scan thermal printers.' })
             )
         } finally {
             setIsScanningThermalPrinters(false)
@@ -310,7 +303,7 @@ export function Settings() {
         setIsThermalDialogOpen(true)
     }
 
-    const handleEnableThermalPrinter = async (printer: PrinterInfo) => {
+    const handleEnableThermalPrinter = async (printer: ThermalPrinterInfo) => {
         if (!user?.workspaceId) return
 
         setIsThermalActionPending(true)
@@ -346,8 +339,9 @@ export function Settings() {
                 name: selectedThermalPrinter.name,
                 interface_type: selectedThermalPrinter.interface_type,
                 identifier: selectedThermalPrinter.identifier,
-                status: selectedThermalPrinter.status
-            } as PrinterInfo, nextValue)
+                status: selectedThermalPrinter.status,
+                transport: selectedThermalPrinter.transport ?? (isElectron ? 'tauri' : 'qz')
+            }, nextValue)
             setSelectedThermalPrinter(selection)
         } catch (error) {
             showActionError(error, t('settings.printing.thermalRollWidthError', {
@@ -371,6 +365,27 @@ export function Settings() {
         } catch (error) {
             showActionError(error, t('settings.printing.thermalDisableError', {
                 defaultValue: 'Failed to disable thermal printing.'
+            }))
+        } finally {
+            setIsThermalActionPending(false)
+        }
+    }
+
+    const handleTestThermalPrinter = async () => {
+        if (!user?.workspaceId || !selectedThermalPrinter) return
+
+        setIsThermalActionPending(true)
+        try {
+            await printService.testThermalPrinter(user.workspaceId, selectedThermalPrinter)
+            toast({
+                title: t('settings.printing.thermalTestSuccessTitle', { defaultValue: 'Test receipt sent' }),
+                description: t('settings.printing.thermalTestSuccessDesc', {
+                    defaultValue: `A test receipt was sent to ${selectedThermalPrinter.name}.`
+                })
+            })
+        } catch (error) {
+            showActionError(error, t('settings.printing.thermalTestError', {
+                defaultValue: 'Could not print a thermal printer test receipt.'
             }))
         } finally {
             setIsThermalActionPending(false)
@@ -404,7 +419,12 @@ export function Settings() {
         if (!isThermalDialogOpen) return
 
         void loadSelectedThermalPrinter()
-        void scanThermalPrinters()
+        if (isElectron) {
+            void scanThermalPrinters()
+        } else {
+            setAvailableThermalPrinters([])
+            setThermalPrinterMessage('Install and run QZ Tray, then select Connect & Scan to choose a printer for this PWA.')
+        }
     }, [isThermalDialogOpen, user?.workspaceId, isElectron])
 
     const [updateStatus, setUpdateStatus] = useState<any>(null)
@@ -4030,9 +4050,13 @@ export function Settings() {
                                 {t('settings.printing.thermalDialogTitle', { defaultValue: 'Thermal Printers' })}
                             </DialogTitle>
                             <DialogDescription>
-                                {t('settings.printing.thermalDialogDesc', {
-                                    defaultValue: 'Scan this device for available thermal printers and choose which one should handle POS receipt printing for this workspace.'
-                                })}
+                                {isElectron
+                                    ? t('settings.printing.thermalDialogDesc', {
+                                        defaultValue: 'Scan this device for available thermal printers and choose which one should handle POS receipt printing for this workspace.'
+                                    })
+                                    : t('settings.printing.thermalPwaDialogDesc', {
+                                        defaultValue: 'Connect QZ Tray on this device to scan printers and print POS receipts directly from the installed PWA.'
+                                    })}
                             </DialogDescription>
                         </DialogHeader>
 
@@ -4055,6 +4079,11 @@ export function Settings() {
                                                 {t('settings.printing.thermalRollWidthValue', {
                                                     defaultValue: `Roll width: ${selectedRollWidthLabel}`
                                                 })}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {selectedThermalPrinter.transport === 'qz'
+                                                    ? t('settings.printing.thermalQzTransport', { defaultValue: 'Connected through QZ Tray on this device.' })
+                                                    : t('settings.printing.thermalTauriTransport', { defaultValue: 'Connected through the native desktop print service.' })}
                                             </p>
                                         </>
                                     ) : (
@@ -4085,17 +4114,43 @@ export function Settings() {
                                             </SelectContent>
                                         </Select>
                                     </div>
+                                    {selectedThermalPrinter && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={handleTestThermalPrinter}
+                                            disabled={isThermalActionPending}
+                                            className="mt-3"
+                                        >
+                                            <Printer className="mr-2 h-4 w-4" />
+                                            {t('settings.printing.testThermalPrinter', { defaultValue: 'Print Test Receipt' })}
+                                        </Button>
+                                    )}
                                 </div>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={scanThermalPrinters}
-                                    disabled={isScanningThermalPrinters}
-                                    className="self-start md:self-auto"
-                                >
-                                    <RefreshCw className={cn('mr-2 h-4 w-4', isScanningThermalPrinters && 'animate-spin')} />
-                                    {t('settings.printing.refreshPrinters', { defaultValue: 'Refresh' })}
-                                </Button>
+                                <div className="flex shrink-0 flex-col gap-2 self-start md:items-end">
+                                    {!isElectron && (
+                                        <a
+                                            href="https://qz.io/download/"
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex items-center text-xs text-primary underline-offset-4 hover:underline"
+                                        >
+                                            {t('settings.printing.installQzTray', { defaultValue: 'Install QZ Tray' })}
+                                            <ExternalLink className="ml-1 h-3 w-3" />
+                                        </a>
+                                    )}
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={scanThermalPrinters}
+                                        disabled={isScanningThermalPrinters}
+                                    >
+                                        <RefreshCw className={cn('mr-2 h-4 w-4', isScanningThermalPrinters && 'animate-spin')} />
+                                        {isElectron
+                                            ? t('settings.printing.refreshPrinters', { defaultValue: 'Refresh' })
+                                            : t('settings.printing.connectAndScanPrinters', { defaultValue: 'Connect & Scan' })}
+                                    </Button>
+                                </div>
                             </div>
 
                             {thermalPrinterMessage && (

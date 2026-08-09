@@ -10,12 +10,12 @@ import {
     print_thermal_printer,
     test_thermal_printer,
     type PaperSize,
-    type PrinterInfo,
     type PrintJobRequest,
     type PrintSections
 } from 'tauri-plugin-thermal-printer'
 
 export type ThermalRollWidth = 58 | 76 | 80 | 112
+export type ThermalPrintTransport = 'tauri' | 'qz'
 
 export const THERMAL_ROLL_WIDTHS: { value: ThermalRollWidth; label: string }[] = [
     { value: 58, label: '57-58 mm' },
@@ -33,6 +33,35 @@ export interface StoredThermalPrinter {
     status?: string
     paper_size: PaperSize
     roll_width_mm?: ThermalRollWidth
+    /** The device-local transport that can reach this printer. */
+    transport?: ThermalPrintTransport
+}
+
+/**
+ * A printer exposed by either the native Tauri plugin or QZ Tray in the PWA.
+ * Keeping this independent from the Tauri plugin's type lets Settings work in
+ * browsers without loading a native-only API.
+ */
+export interface ThermalPrinterInfo {
+    name: string
+    interface_type: string
+    identifier: string
+    status?: string
+    transport: ThermalPrintTransport
+}
+
+interface QzClient {
+    websocket: {
+        isActive: () => boolean
+        connect: (options?: { retries?: number; delay?: number }) => Promise<void>
+    }
+    printers: {
+        find: () => Promise<string[] | string>
+    }
+    configs: {
+        create: (printer: string, options?: Record<string, unknown>) => unknown
+    }
+    print: (config: unknown, data: Array<string | Record<string, unknown>>) => Promise<void>
 }
 
 interface ThermalReceiptPrintRequest {
@@ -128,8 +157,43 @@ function getThermalPrinterSettingKey(workspaceId: string) {
     return `thermal_printer_selection_${workspaceId}`
 }
 
-function getPrinterSearchText(printer: Pick<PrinterInfo, 'name' | 'identifier' | 'interface_type'>) {
+function getPrinterSearchText(printer: Pick<ThermalPrinterInfo, 'name' | 'identifier' | 'interface_type'>) {
     return `${printer.name} ${printer.identifier} ${printer.interface_type}`.toLowerCase()
+}
+
+let qzClientPromise: Promise<QzClient> | null = null
+
+async function getQzClient(): Promise<QzClient> {
+    qzClientPromise ??= import('qz-tray').then((module) => (
+        (module.default ?? module) as unknown as QzClient
+    ))
+    return qzClientPromise
+}
+
+async function connectQzTray(): Promise<QzClient> {
+    const qz = await getQzClient()
+    if (qz.websocket.isActive()) return qz
+
+    try {
+        // Do not retry for a long time when the bridge is not installed. The
+        // Settings UI should return control to the user immediately.
+        await qz.websocket.connect({ retries: 0, delay: 0 })
+        return qz
+    } catch (error) {
+        console.warn('[PrintService] QZ Tray connection failed:', error)
+        throw new Error('Could not connect to QZ Tray. Install and run QZ Tray on this device, then approve its connection prompt and try again.')
+    }
+}
+
+function getStoredPrinterTransport(printer: Partial<StoredThermalPrinter>): ThermalPrintTransport {
+    if (printer.transport === 'qz' || printer.transport === 'tauri') {
+        return printer.transport
+    }
+
+    // Existing saved selections predate transport metadata. Their local
+    // storage belongs to the running app, so native selections remain native
+    // while browser/PWA selections are treated as QZ Tray profiles.
+    return isDesktop() ? 'tauri' : 'qz'
 }
 
 function getPrintLanguage(features: WorkspaceFeatures) {
@@ -249,7 +313,8 @@ async function getStoredSelectedThermalPrinter(workspaceId: string): Promise<Sto
         return {
             ...parsed,
             paper_size: parsed.paper_size || DEFAULT_PAPER_SIZE,
-            roll_width_mm: parsed.roll_width_mm ?? inferRollWidthFromPaperSize(parsed.paper_size)
+            roll_width_mm: parsed.roll_width_mm ?? inferRollWidthFromPaperSize(parsed.paper_size),
+            transport: getStoredPrinterTransport(parsed)
         }
     } catch (error) {
         console.error('[PrintService] Failed to parse stored thermal printer:', error)
@@ -257,12 +322,12 @@ async function getStoredSelectedThermalPrinter(workspaceId: string): Promise<Sto
     }
 }
 
-export function isVirtualPrinter(printer: Pick<PrinterInfo, 'name' | 'identifier' | 'interface_type'>): boolean {
+export function isVirtualPrinter(printer: Pick<ThermalPrinterInfo, 'name' | 'identifier' | 'interface_type'>): boolean {
     const haystack = getPrinterSearchText(printer)
     return VIRTUAL_PRINTER_PATTERNS.some((pattern) => pattern.test(haystack))
 }
 
-export function isLikelyThermalPrinter(printer: Pick<PrinterInfo, 'name' | 'identifier' | 'interface_type'>): boolean {
+export function isLikelyThermalPrinter(printer: Pick<ThermalPrinterInfo, 'name' | 'identifier' | 'interface_type'>): boolean {
     const haystack = getPrinterSearchText(printer)
 
     if (isVirtualPrinter(printer)) {
@@ -277,9 +342,25 @@ export function isLikelyThermalPrinter(printer: Pick<PrinterInfo, 'name' | 'iden
 }
 
 export const printService = {
-    async listThermalPrinters(): Promise<PrinterInfo[]> {
-        if (!isDesktop()) return []
-        return list_thermal_printers()
+    async listThermalPrinters(): Promise<ThermalPrinterInfo[]> {
+        if (isDesktop()) {
+            const printers = await list_thermal_printers()
+            return printers.map((printer) => ({ ...printer, transport: 'tauri' }))
+        }
+
+        const qz = await connectQzTray()
+        const result = await qz.printers.find()
+        const printers = Array.isArray(result) ? result : [result]
+
+        return printers
+            .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+            .map((name) => ({
+                name,
+                identifier: name,
+                interface_type: 'QZ Tray (local bridge)',
+                status: 'Available',
+                transport: 'qz'
+            }))
     },
 
     async getSelectedThermalPrinter(workspaceId: string): Promise<StoredThermalPrinter | null> {
@@ -288,7 +369,7 @@ export const printService = {
 
     async setSelectedThermalPrinter(
         workspaceId: string,
-        printer: PrinterInfo,
+        printer: ThermalPrinterInfo,
         rollWidth: ThermalRollWidth = DEFAULT_THERMAL_ROLL_WIDTH
     ): Promise<StoredThermalPrinter> {
         const paperSize = rollWidthToPaperSize(rollWidth)
@@ -298,7 +379,8 @@ export const printService = {
             identifier: printer.identifier,
             status: printer.status,
             paper_size: paperSize,
-            roll_width_mm: rollWidth
+            roll_width_mm: rollWidth,
+            transport: printer.transport
         }
 
         await setAppSetting(getThermalPrinterSettingKey(workspaceId), JSON.stringify(selection))
@@ -309,19 +391,35 @@ export const printService = {
         await clearAppSetting(getThermalPrinterSettingKey(workspaceId))
     },
 
-    async testThermalPrinter(workspaceId: string, printer?: PrinterInfo | StoredThermalPrinter): Promise<boolean> {
-        if (!isDesktop()) return false
-
+    async testThermalPrinter(workspaceId: string, printer?: ThermalPrinterInfo | StoredThermalPrinter): Promise<boolean> {
         const selectedPrinter = printer
             ? {
                 name: printer.name,
-                paper_size: 'paper_size' in printer ? printer.paper_size : DEFAULT_PAPER_SIZE
+                paper_size: 'paper_size' in printer ? printer.paper_size : DEFAULT_PAPER_SIZE,
+                transport: getStoredPrinterTransport(printer)
             }
             : await getStoredSelectedThermalPrinter(workspaceId)
 
         if (!selectedPrinter?.name) {
             throw new Error('No thermal printer selected for this workspace on this device.')
         }
+
+        if (selectedPrinter.transport === 'qz') {
+            const qz = await connectQzTray()
+            const config = qz.configs.create(selectedPrinter.name, { jobName: 'Atlas Thermal Printer Test' })
+            await qz.print(config, [
+                '\x1B@',
+                '\x1Ba\x01',
+                'ATLAS\n',
+                'Thermal printer connected\n',
+                '\x1Ba\x00',
+                'Test receipt printed successfully.\n\n\n',
+                '\x1DV\x00'
+            ])
+            return true
+        }
+
+        if (!isDesktop()) return false
 
         await test_thermal_printer({
             printer_info: {
@@ -349,7 +447,6 @@ export const printService = {
     },
 
     async silentPrintImage({ imageBase64, workspaceId, maxWidth: maxWidthParam }: ThermalImagePrintRequest): Promise<boolean> {
-        if (!isDesktop()) return false
         if (!workspaceId) return false
 
         const printer = await getStoredSelectedThermalPrinter(workspaceId)
@@ -358,6 +455,32 @@ export const printService = {
         }
 
         const maxWidth = maxWidthParam ?? await getThermalPrinterMaxWidth(workspaceId)
+
+        if (getStoredPrinterTransport(printer) === 'qz') {
+            const qz = await connectQzTray()
+            const config = qz.configs.create(printer.name, { jobName: 'Atlas Receipt' })
+            const rawImageBase64 = imageBase64.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '')
+
+            await qz.print(config, [
+                {
+                    type: 'raw',
+                    format: 'image',
+                    flavor: 'base64',
+                    data: rawImageBase64,
+                    options: {
+                        language: 'ESCPOS',
+                        dotDensity: maxWidth <= THERMAL_MAX_WIDTHS[58] ? 'single' : 'double',
+                        imageEncoding: 'gs_v_0',
+                        quantization: 'dither'
+                    }
+                },
+                '\n\n\n',
+                '\x1DV\x00'
+            ])
+            return true
+        }
+
+        if (!isDesktop()) return false
 
         const printJob: PrintJobRequest = {
             printer: printer.name,
@@ -382,13 +505,18 @@ export const printService = {
     },
 
     async silentPrintReceipt({ saleData, features, workspaceName, workspaceId }: ThermalReceiptPrintRequest): Promise<boolean> {
-        if (!isDesktop()) return false
         if (!workspaceId) return false
 
         const printer = await getStoredSelectedThermalPrinter(workspaceId)
         if (!printer?.name) {
             throw new Error('No thermal printer selected for this workspace on this device.')
         }
+
+        // Checkout uses silentPrintImage so PWA receipts are rasterized before
+        // reaching ESC/POS. Keep the text-section path exclusive to Tauri,
+        // where the plugin already handles Unicode and structured sections.
+        if (getStoredPrinterTransport(printer) === 'qz') return false
+        if (!isDesktop()) return false
 
         const printJob: PrintJobRequest = {
             printer: printer.name,

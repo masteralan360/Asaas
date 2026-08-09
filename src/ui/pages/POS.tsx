@@ -115,7 +115,7 @@ import {
     BadgePercent,
     ClipboardCheck
 } from 'lucide-react'
-import { isDesktop } from '@/lib/platform'
+import { isDesktop, isMobile } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
 import { ExchangeRateList } from '@/ui/components'
 import { CheckoutSuccessModal, HeldSalesModal, type HeldSale, StorageSelector, CrossStorageWarningModal } from '@/ui/components'
@@ -151,6 +151,7 @@ const CART_IMAGE_VISIBILITY_THRESHOLD = 450
 const POS_MOBILE_BREAKPOINT = 1024
 const POS_TABLET_MAX_WIDTH = 1366
 const POS_WIDE_TABLET_CATALOG_BREAKPOINT = 1180
+const POS_EXTRA_WIDE_TABLET_CATALOG_BREAKPOINT = 1600
 
 const ACTIVITIES_STORAGE_ID = '__atlas_activities__'
 const ACTIVITY_POS_QUANTITY_LIMIT = Number.MAX_SAFE_INTEGER
@@ -545,7 +546,12 @@ export function POS() {
 
     const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
     const isLayoutMobile = viewportWidth < POS_MOBILE_BREAKPOINT
-    const isTabletLayout = viewportWidth >= POS_MOBILE_BREAKPOINT && viewportWidth < POS_TABLET_MAX_WIDTH
+    // Android and iPad PWAs can expose a high-density viewport wider than a
+    // typical laptop. Keep their landscape POS in the tablet layout instead
+    // of allowing the checkout pane to be pushed outside the screen.
+    const isTabletLayout = viewportWidth >= POS_MOBILE_BREAKPOINT && (
+        viewportWidth < POS_TABLET_MAX_WIDTH || isMobile()
+    )
     useEffect(() => {
         if (isCameraScannerAutoEnabled && isDeviceScannerAutoEnabled) {
             const preferredScannerMode = localStorage.getItem('pos_barcode_scanner_mode')
@@ -799,9 +805,12 @@ export function POS() {
     })
     // Landscape tablets benefit from one additional catalogue column, while
     // still respecting an operator's choice when they have selected more.
-    const catalogColumns = isTabletLayout
-        ? Math.max(productsPerRow, viewportWidth >= POS_WIDE_TABLET_CATALOG_BREAKPOINT ? 5 : 4)
-        : productsPerRow
+    const tabletCatalogMinimum = viewportWidth >= POS_EXTRA_WIDE_TABLET_CATALOG_BREAKPOINT
+        ? 6
+        : viewportWidth >= POS_WIDE_TABLET_CATALOG_BREAKPOINT
+            ? 5
+            : 4
+    const catalogColumns = isTabletLayout ? Math.max(productsPerRow, tabletCatalogMinimum) : productsPerRow
 
     useEffect(() => {
         localStorage.setItem('pos_products_per_row', productsPerRow.toString())
@@ -2965,10 +2974,7 @@ export function POS() {
 
 
     return (
-        <div className={cn(
-            "pos-workspace h-full flex flex-col lg:flex-row gap-4 overflow-hidden lg:m-0",
-            isTabletLayout && "pos-tablet-workspace"
-        )}>
+        <div className="h-full min-w-0 flex flex-col lg:flex-row gap-4 overflow-hidden lg:m-0">
             {isLayoutMobile ? (
                 <div className="flex-1 flex flex-col bg-background relative overflow-hidden">
                     <MobileHeader
@@ -3077,7 +3083,7 @@ export function POS() {
                 <>
                     {/* Desktop ... (rest of existing code) */}
                     {/* Products Grid */}
-                    <div className="flex-1 flex flex-col gap-4">
+                    <div className="flex-1 min-w-0 flex flex-col gap-4">
                         <div className="flex items-center gap-4 bg-card p-4 rounded-xl border border-border shadow-sm">
                             <StorageSelector
                                 storages={posStorages}
@@ -3319,7 +3325,7 @@ export function POS() {
                         ref={sidebarRef}
                         data-tour-id="tutorial-pos-cart"
                         className={cn(
-                            "bg-card border border-border rounded-xl flex flex-col shadow-xl relative",
+                            "bg-card border border-border rounded-xl flex shrink-0 flex-col shadow-xl relative",
                             isResizing ? "transition-none will-change-[width]" : "transition-all duration-300"
                         )}
                         style={{ width: isLayoutMobile ? '100%' : `${cartPanelWidth}px` }}

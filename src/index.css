@@ -33,21 +33,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
- * POS has a dedicated landscape-tablet canvas.  A Redmi Pad 2 reports a
- * 1280px-wide CSS viewport in landscape, which is enough for a two-pane POS
- * but too tight for the full desktop scale.  Expanding the logical canvas and
- * scaling it down keeps the catalogue and sale panel visible together without
- * changing the phone layout below 1024px.
- */
-.pos-tablet-workspace {
-  width: 128.205129%;
-  min-height: 128.205129%;
-  height: 128.205129%;
-  transform: scale(0.78);
-  transform-origin: top left;
-}
-
 @font-face {
   font-family: 'Noto Kufi Arabic';
   src: url('/fonts/NotoKufiArabic-Regular.ttf') format('truetype');
