@@ -20,6 +20,7 @@ import {
 } from '@/ui/components'
 
 const MAX_ADDITIONAL_IMAGES = 9
+const EMPTY_DRAFT_FILES: File[] = []
 
 type StoredProductImage = {
     id: string
@@ -65,7 +66,9 @@ export function ProductAdditionalImagesModal({
     productId,
     productName,
     primaryImageUrl,
-    canManage
+    canManage,
+    draftFiles = EMPTY_DRAFT_FILES,
+    onDraftFilesChange
 }: {
     open: boolean
     onOpenChange: (open: boolean) => void
@@ -74,6 +77,8 @@ export function ProductAdditionalImagesModal({
     productName?: string
     primaryImageUrl?: string
     canManage: boolean
+    draftFiles?: File[]
+    onDraftFilesChange?: (files: File[]) => void
 }) {
     const { toast } = useToast()
     const inputRef = useRef<HTMLInputElement>(null)
@@ -82,6 +87,7 @@ export function ProductAdditionalImagesModal({
     const [draftImages, setDraftImages] = useState<ProductImageDraft[]>([])
     const [isLoading, setIsLoading] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
+    const isDraftMode = !productId && Boolean(onDraftFilesChange)
 
     const imageCount = draftImages.length + (primaryImageUrl ? 1 : 0)
     const canAddImages = canManage && draftImages.length < MAX_ADDITIONAL_IMAGES && !isSaving
@@ -103,6 +109,20 @@ export function ProductAdditionalImagesModal({
         setSavedImages(normalized)
         setDraftImages(normalized.map(createDraftFromStoredImage))
     }, [])
+
+    const applyDraftFiles = useCallback((files: File[]) => {
+        revokeAllPreviewUrls()
+        setSavedImages([])
+        setDraftImages(files.map((file) => {
+            const previewUrl = URL.createObjectURL(file)
+            previewUrlsRef.current.add(previewUrl)
+            return {
+                clientId: `new-${generateId()}`,
+                previewUrl,
+                file
+            }
+        }))
+    }, [revokeAllPreviewUrls])
 
     const loadImages = useCallback(async () => {
         if (!workspaceId || !productId) {
@@ -138,16 +158,22 @@ export function ProductAdditionalImagesModal({
 
     useEffect(() => {
         if (open) {
+            if (isDraftMode) {
+                applyDraftFiles(draftFiles)
+                return
+            }
             void loadImages()
         }
-    }, [loadImages, open])
+    }, [applyDraftFiles, draftFiles, isDraftMode, loadImages, open])
 
     useEffect(() => () => revokeAllPreviewUrls(), [revokeAllPreviewUrls])
 
     const discardChanges = () => {
         if (isSaving) return
         revokeAllPreviewUrls()
-        applyStoredImages(savedImages)
+        if (!isDraftMode) {
+            applyStoredImages(savedImages)
+        }
         onOpenChange(false)
     }
 
@@ -205,6 +231,13 @@ export function ProductAdditionalImagesModal({
     }
 
     const handleSave = async () => {
+        if (isDraftMode) {
+            onDraftFilesChange?.(draftImages.flatMap((image) => image.file ? [image.file] : []))
+            revokeAllPreviewUrls()
+            onOpenChange(false)
+            return
+        }
+
         if (!workspaceId || !productId || !canManage || isSaving) return
 
         setIsSaving(true)
@@ -307,9 +340,10 @@ export function ProductAdditionalImagesModal({
     )
 
     const modalDescription = useMemo(() => {
+        if (isDraftMode) return 'Add or reorder images now. They will be saved when the product is created.'
         if (canManage) return 'Upload, remove, or drag additional images to set their display order.'
         return 'The primary image stays first. Additional images are view-only for your role.'
-    }, [canManage])
+    }, [canManage, isDraftMode])
 
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -423,7 +457,7 @@ export function ProductAdditionalImagesModal({
                     {canManage ? (
                         <Button type="button" onClick={() => void handleSave()} disabled={isLoading || isSaving} className="min-w-32">
                             {isSaving ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
-                            Save Images
+                            {isDraftMode ? 'Apply Images' : 'Save Images'}
                         </Button>
                     ) : null}
                 </DialogFooter>

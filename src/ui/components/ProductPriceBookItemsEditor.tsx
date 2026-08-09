@@ -35,6 +35,7 @@ interface ProductPriceBookItemsEditorProps {
     disabled?: boolean
     hideCosts?: boolean
     attention?: boolean
+    description?: string
 }
 
 export function ProductPriceBookItemsEditor({
@@ -48,7 +49,8 @@ export function ProductPriceBookItemsEditor({
     iqdDisplayPreference,
     disabled = false,
     hideCosts = false,
-    attention = false
+    attention = false,
+    description
 }: ProductPriceBookItemsEditorProps) {
     const { t } = useTranslation()
     const sortedPriceBooks = useMemo(
@@ -92,7 +94,7 @@ export function ProductPriceBookItemsEditor({
                         {t('priceBooks.productOverridesTitle', { defaultValue: 'Price Book overrides' })}
                     </div>
                     <p className="max-w-2xl text-sm text-muted-foreground">
-                        {t('priceBooks.productOverridesDescription', {
+                        {description || t('priceBooks.productOverridesDescription', {
                             defaultValue: hideCosts
                                 ? 'Set a custom selling price for each pricing tier that uses this product.'
                                 : 'Set a custom unit cost and selling price for each pricing tier that uses this product.'

@@ -2099,6 +2099,11 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                             unitOptions={unitOptions}
                             allowedCurrencies={features.allowed_currencies}
                             iqdDisplayPreference={features.iqd_display_preference}
+                            priceBooksEnabled={priceBooksEnabled}
+                            priceBooks={priceBooks}
+                            priceBookItems={priceBookItems}
+                            isPriceBookCatalogReady={isPriceBookCatalogReady}
+                            priceBookCatalogError={priceBookCatalogError}
                             canManage={!isReadOnly}
                             hideCosts={hideCosts}
                             onOpenProduct={(variantId) => navigate(`/products/${variantId}`)}
