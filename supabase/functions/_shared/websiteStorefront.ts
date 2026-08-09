@@ -33,6 +33,7 @@ export type MarketplaceInventoryRow = {
 
 export type MarketplaceProductRow = {
     id: string
+    parent_product_id: string | null
     name: string
     sku: string
     description: string | null
@@ -242,7 +243,7 @@ export async function loadVisibleModeProducts(
 
     const { data: products, error: productsError } = await adminClient
         .from('products')
-        .select('id, name, sku, description, price, cost_price, currency, unit, category_id, image_url, created_at')
+        .select('id, parent_product_id, name, sku, description, price, cost_price, currency, unit, category_id, image_url, created_at')
         .eq('workspace_id', context.workspace.id)
         .eq('is_deleted', false)
         .in('id', visibleProductIds)

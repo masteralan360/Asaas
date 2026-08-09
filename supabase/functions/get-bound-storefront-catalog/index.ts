@@ -183,6 +183,7 @@ Deno.serve(async (req) => {
                 const discount = discountByProductId.get(product.id)
                 return {
                     id: product.id,
+                    parent_product_id: product.parent_product_id,
                     name: product.name,
                     sku: product.sku,
                     description: product.description ?? '',
