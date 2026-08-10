@@ -13,7 +13,7 @@ import { formatDate, formatDateTime, formatTime, cn, generateId, getHourDisplayP
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell, MonitorPlay, Wifi } from 'lucide-react'
 import { useState, useEffect, useRef, type ChangeEvent } from 'react'
-import { isMobile, isDesktop, isTauri } from '@/lib/platform'
+import { isAndroidPwa, isMobile, isDesktop, isTauri } from '@/lib/platform'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { getAppSettingSync, setAppSetting } from '@/local-db/settings'
 import { decrypt } from '@/lib/encryption'
@@ -133,6 +133,8 @@ export function Settings() {
     const [selectedThermalRollWidth, setSelectedThermalRollWidth] = useState<ThermalRollWidth>(DEFAULT_THERMAL_ROLL_WIDTH)
     const [isScanningThermalPrinters, setIsScanningThermalPrinters] = useState(false)
     const [isThermalActionPending, setIsThermalActionPending] = useState(false)
+    const [bleServiceUuid, setBleServiceUuid] = useState('')
+    const [bleCharacteristicUuid, setBleCharacteristicUuid] = useState('')
     const [isInvoicePdfExporting, setIsInvoicePdfExporting] = useState(false)
     const [isDatabaseInjectionDialogOpen, setIsDatabaseInjectionDialogOpen] = useState(false)
     const [databaseFileToInject, setDatabaseFileToInject] = useState<File | null>(null)
@@ -157,6 +159,8 @@ export function Settings() {
     const [secondaryStorefrontSlugStatus, setSecondaryStorefrontSlugStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle')
     const canUseBarcodeScanner = hasCapability('barcodeScanner')
     const canUseThermalPrinter = hasCapability('thermalPrinter')
+    const isAndroidDirectThermalPwa = isAndroidPwa()
+    const directMobileThermalCapabilities = printService.getDirectMobileThermalCapabilities()
     const canUseA4Invoices = hasCapability('a4PdfInvoices')
     const canUseReceiptPrinting = hasCapability('receiptPrinting')
     const canUseMultiCurrency = features.allowed_currencies.length > 1
@@ -249,6 +253,10 @@ export function Settings() {
 
         const selection = await printService.getSelectedThermalPrinter(user.workspaceId)
         setSelectedThermalPrinter(selection)
+        if (selection?.bluetooth) {
+            setBleServiceUuid(selection.bluetooth.service_uuid)
+            setBleCharacteristicUuid(selection.bluetooth.characteristic_uuid)
+        }
         if (selection?.roll_width_mm) {
             setSelectedThermalRollWidth(selection.roll_width_mm)
         } else if (selection?.paper_size === 'Mm58') {
@@ -303,6 +311,48 @@ export function Settings() {
         setIsThermalDialogOpen(true)
     }
 
+    const addPairedThermalPrinter = (printer: ThermalPrinterInfo, message: string) => {
+        setAvailableThermalPrinters((current) => [
+            printer,
+            ...current.filter((item) => item.identifier !== printer.identifier)
+        ])
+        setShowAllDetectedPrinters(true)
+        setThermalPrinterMessage(message)
+    }
+
+    const handlePairUsbThermalPrinter = async () => {
+        setIsThermalActionPending(true)
+        setThermalPrinterMessage(null)
+        try {
+            const printer = await printService.pairUsbThermalPrinter()
+            addPairedThermalPrinter(printer, 'USB printer paired. Choose Enable to use it for POS receipts.')
+        } catch (error) {
+            showActionError(error, t('settings.printing.usbThermalPairError', {
+                defaultValue: 'Could not pair the USB thermal printer.'
+            }))
+        } finally {
+            setIsThermalActionPending(false)
+        }
+    }
+
+    const handlePairBluetoothThermalPrinter = async () => {
+        setIsThermalActionPending(true)
+        setThermalPrinterMessage(null)
+        try {
+            const printer = await printService.pairBluetoothThermalPrinter({
+                serviceUuid: bleServiceUuid,
+                characteristicUuid: bleCharacteristicUuid
+            })
+            addPairedThermalPrinter(printer, 'Bluetooth LE printer paired. Choose Enable to use it for POS receipts.')
+        } catch (error) {
+            showActionError(error, t('settings.printing.bluetoothThermalPairError', {
+                defaultValue: 'Could not pair the Bluetooth LE thermal printer.'
+            }))
+        } finally {
+            setIsThermalActionPending(false)
+        }
+    }
+
     const handleEnableThermalPrinter = async (printer: ThermalPrinterInfo) => {
         if (!user?.workspaceId) return
 
@@ -340,7 +390,9 @@ export function Settings() {
                 interface_type: selectedThermalPrinter.interface_type,
                 identifier: selectedThermalPrinter.identifier,
                 status: selectedThermalPrinter.status,
-                transport: selectedThermalPrinter.transport ?? (isElectron ? 'tauri' : 'qz')
+                transport: selectedThermalPrinter.transport ?? (isElectron ? 'tauri' : 'qz'),
+                usb: selectedThermalPrinter.usb,
+                bluetooth: selectedThermalPrinter.bluetooth
             }, nextValue)
             setSelectedThermalPrinter(selection)
         } catch (error) {
@@ -421,11 +473,14 @@ export function Settings() {
         void loadSelectedThermalPrinter()
         if (isElectron) {
             void scanThermalPrinters()
+        } else if (isAndroidDirectThermalPwa) {
+            setAvailableThermalPrinters([])
+            setThermalPrinterMessage('Pair a USB printer first. Bluetooth LE is also available when you enter the printer service and write-characteristic UUIDs.')
         } else {
             setAvailableThermalPrinters([])
             setThermalPrinterMessage('Install and run QZ Tray, then select Connect & Scan to choose a printer for this PWA.')
         }
-    }, [isThermalDialogOpen, user?.workspaceId, isElectron])
+    }, [isThermalDialogOpen, user?.workspaceId, isElectron, isAndroidDirectThermalPwa])
 
     const [updateStatus, setUpdateStatus] = useState<any>(null)
     const [updatesDisabled, setUpdatesDisabled] = useState(() => areApplicationUpdatesDisabled())
@@ -4054,6 +4109,10 @@ export function Settings() {
                                     ? t('settings.printing.thermalDialogDesc', {
                                         defaultValue: 'Scan this device for available thermal printers and choose which one should handle POS receipt printing for this workspace.'
                                     })
+                                    : isAndroidDirectThermalPwa
+                                        ? t('settings.printing.thermalAndroidPwaDialogDesc', {
+                                            defaultValue: 'Pair a wired USB printer directly with this Android device. Bluetooth LE is also supported when the printer provides its GATT service and write-characteristic UUIDs.'
+                                        })
                                     : t('settings.printing.thermalPwaDialogDesc', {
                                         defaultValue: 'Connect QZ Tray on this device to scan printers and print POS receipts directly from the installed PWA.'
                                     })}
@@ -4061,6 +4120,84 @@ export function Settings() {
                         </DialogHeader>
 
                         <div className="space-y-4">
+                            {isAndroidDirectThermalPwa && (
+                                <div className="space-y-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                                    <div>
+                                        <p className="text-sm font-semibold">
+                                            {t('settings.printing.androidDirectTitle', { defaultValue: 'Android direct printer pairing' })}
+                                        </p>
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                            {t('settings.printing.androidDirectDesc', {
+                                                defaultValue: 'USB is recommended for wired thermal printers. Connect the printer with an OTG adapter, turn it on, then pair it below.'
+                                            })}
+                                        </p>
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-2">
+                                        <Button
+                                            type="button"
+                                            onClick={handlePairUsbThermalPrinter}
+                                            disabled={isThermalActionPending || !directMobileThermalCapabilities.usb}
+                                        >
+                                            <Usb className="mr-2 h-4 w-4" />
+                                            {t('settings.printing.pairUsbThermalPrinter', { defaultValue: 'Pair USB Printer' })}
+                                        </Button>
+                                        {!directMobileThermalCapabilities.usb && (
+                                            <p className="self-center text-xs text-amber-600 dark:text-amber-400">
+                                                {t('settings.printing.usbThermalUnsupported', { defaultValue: 'WebUSB is not available in this browser.' })}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-3 border-t border-primary/20 pt-4">
+                                        <div>
+                                            <p className="text-sm font-medium">
+                                                {t('settings.printing.bluetoothLeThermalTitle', { defaultValue: 'Bluetooth LE (optional)' })}
+                                            </p>
+                                            <p className="mt-1 text-xs text-muted-foreground">
+                                                {t('settings.printing.bluetoothLeThermalDesc', {
+                                                    defaultValue: 'Only BLE/GATT printers are supported. Enter the UUIDs from the printer documentation; Bluetooth Classic printers cannot be paired by a browser PWA.'
+                                                })}
+                                            </p>
+                                        </div>
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="thermal-ble-service" className="text-xs">
+                                                    {t('settings.printing.bluetoothServiceUuid', { defaultValue: 'BLE Service UUID' })}
+                                                </Label>
+                                                <Input
+                                                    id="thermal-ble-service"
+                                                    value={bleServiceUuid}
+                                                    onChange={(event) => setBleServiceUuid(event.target.value)}
+                                                    placeholder="From printer documentation"
+                                                    disabled={isThermalActionPending}
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="thermal-ble-characteristic" className="text-xs">
+                                                    {t('settings.printing.bluetoothCharacteristicUuid', { defaultValue: 'BLE Write Characteristic UUID' })}
+                                                </Label>
+                                                <Input
+                                                    id="thermal-ble-characteristic"
+                                                    value={bleCharacteristicUuid}
+                                                    onChange={(event) => setBleCharacteristicUuid(event.target.value)}
+                                                    placeholder="From printer documentation"
+                                                    disabled={isThermalActionPending}
+                                                />
+                                            </div>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={handlePairBluetoothThermalPrinter}
+                                            disabled={isThermalActionPending || !directMobileThermalCapabilities.bluetooth || !bleServiceUuid.trim() || !bleCharacteristicUuid.trim()}
+                                        >
+                                            {t('settings.printing.pairBluetoothThermalPrinter', { defaultValue: 'Pair Bluetooth LE Printer' })}
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/30 p-4 md:flex-row md:items-start md:justify-between">
                                 <div className="space-y-1">
                                     <p className="text-sm font-semibold">
@@ -4081,7 +4218,11 @@ export function Settings() {
                                                 })}
                                             </p>
                                             <p className="text-xs text-muted-foreground">
-                                                {selectedThermalPrinter.transport === 'qz'
+                                                {selectedThermalPrinter.transport === 'webusb'
+                                                    ? t('settings.printing.thermalWebUsbTransport', { defaultValue: 'Connected directly by USB to this Android device.' })
+                                                    : selectedThermalPrinter.transport === 'webbluetooth'
+                                                        ? t('settings.printing.thermalWebBluetoothTransport', { defaultValue: 'Connected directly by Bluetooth LE to this Android device.' })
+                                                    : selectedThermalPrinter.transport === 'qz'
                                                     ? t('settings.printing.thermalQzTransport', { defaultValue: 'Connected through QZ Tray on this device.' })
                                                     : t('settings.printing.thermalTauriTransport', { defaultValue: 'Connected through the native desktop print service.' })}
                                             </p>
@@ -4128,7 +4269,7 @@ export function Settings() {
                                     )}
                                 </div>
                                 <div className="flex shrink-0 flex-col gap-2 self-start md:items-end">
-                                    {!isElectron && (
+                                    {!isElectron && !isAndroidDirectThermalPwa && (
                                         <a
                                             href="https://qz.io/download/"
                                             target="_blank"
@@ -4148,7 +4289,9 @@ export function Settings() {
                                         <RefreshCw className={cn('mr-2 h-4 w-4', isScanningThermalPrinters && 'animate-spin')} />
                                         {isElectron
                                             ? t('settings.printing.refreshPrinters', { defaultValue: 'Refresh' })
-                                            : t('settings.printing.connectAndScanPrinters', { defaultValue: 'Connect & Scan' })}
+                                            : isAndroidDirectThermalPwa
+                                                ? t('settings.printing.refreshPairedUsbPrinters', { defaultValue: 'Refresh Paired USB Printers' })
+                                                : t('settings.printing.connectAndScanPrinters', { defaultValue: 'Connect & Scan' })}
                                     </Button>
                                 </div>
                             </div>

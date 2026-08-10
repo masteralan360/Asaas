@@ -3,10 +3,14 @@
  */
 
 export const isTauri = () =>
-    !!(window as any).__TAURI__ ||
-    !!(window as any).__TAURI_METADATA__ ||
-    !!(window as any).__TAURI_INTERNALS__;
-export const isMobile = () => /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    typeof window !== 'undefined'
+    && (!!(window as any).__TAURI__
+        || !!(window as any).__TAURI_METADATA__
+        || !!(window as any).__TAURI_INTERNALS__);
+export const isMobile = () => typeof navigator !== 'undefined'
+    && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+export const isAndroid = () => typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+export const isAndroidPwa = () => isAndroid() && !isTauri();
 export const isDesktop = () => isTauri() && !isMobile();
 export const isPwaDesktop = () => {
     if (isTauri() || isMobile()) return false;

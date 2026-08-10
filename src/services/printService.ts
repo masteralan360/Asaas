@@ -1,7 +1,20 @@
 import i18n from '@/i18n/config'
 import { formatCurrency, formatDocumentDateTime } from '@/lib/utils'
-import { isDesktop } from '@/lib/platform'
+import { isAndroidPwa, isDesktop } from '@/lib/platform'
 import { clearAppSetting, getAppSetting, setAppSetting } from '@/local-db/settings'
+import {
+    getDirectMobileThermalCapabilities,
+    listAuthorizedUsbThermalPrinters,
+    printToDirectMobileThermalPrinter,
+    renderReceiptImageToEscPos,
+    requestBluetoothThermalPrinter,
+    requestUsbThermalPrinter,
+    testDirectMobileThermalPrinter,
+    type DirectMobileThermalPrinter,
+    type DirectMobileThermalTransport,
+    type WebBluetoothThermalProfile,
+    type WebUsbThermalProfile
+} from '@/services/mobileThermalPrinter'
 import type { UniversalInvoice } from '@/types'
 import type { WorkspaceFeatures } from '@/workspace'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
@@ -15,7 +28,7 @@ import {
 } from 'tauri-plugin-thermal-printer'
 
 export type ThermalRollWidth = 58 | 76 | 80 | 112
-export type ThermalPrintTransport = 'tauri' | 'qz'
+export type ThermalPrintTransport = 'tauri' | 'qz' | DirectMobileThermalTransport
 
 export const THERMAL_ROLL_WIDTHS: { value: ThermalRollWidth; label: string }[] = [
     { value: 58, label: '57-58 mm' },
@@ -35,6 +48,8 @@ export interface StoredThermalPrinter {
     roll_width_mm?: ThermalRollWidth
     /** The device-local transport that can reach this printer. */
     transport?: ThermalPrintTransport
+    usb?: WebUsbThermalProfile
+    bluetooth?: WebBluetoothThermalProfile
 }
 
 /**
@@ -48,6 +63,10 @@ export interface ThermalPrinterInfo {
     identifier: string
     status?: string
     transport: ThermalPrintTransport
+    /** Directly paired mobile printers are trusted as thermal printers. */
+    is_thermal?: boolean
+    usb?: WebUsbThermalProfile
+    bluetooth?: WebBluetoothThermalProfile
 }
 
 interface QzClient {
@@ -186,7 +205,12 @@ async function connectQzTray(): Promise<QzClient> {
 }
 
 function getStoredPrinterTransport(printer: Partial<StoredThermalPrinter>): ThermalPrintTransport {
-    if (printer.transport === 'qz' || printer.transport === 'tauri') {
+    if (
+        printer.transport === 'qz'
+        || printer.transport === 'tauri'
+        || printer.transport === 'webusb'
+        || printer.transport === 'webbluetooth'
+    ) {
         return printer.transport
     }
 
@@ -322,12 +346,14 @@ async function getStoredSelectedThermalPrinter(workspaceId: string): Promise<Sto
     }
 }
 
-export function isVirtualPrinter(printer: Pick<ThermalPrinterInfo, 'name' | 'identifier' | 'interface_type'>): boolean {
+export function isVirtualPrinter(printer: Pick<ThermalPrinterInfo, 'name' | 'identifier' | 'interface_type' | 'is_thermal'>): boolean {
+    if (printer.is_thermal) return false
     const haystack = getPrinterSearchText(printer)
     return VIRTUAL_PRINTER_PATTERNS.some((pattern) => pattern.test(haystack))
 }
 
-export function isLikelyThermalPrinter(printer: Pick<ThermalPrinterInfo, 'name' | 'identifier' | 'interface_type'>): boolean {
+export function isLikelyThermalPrinter(printer: Pick<ThermalPrinterInfo, 'name' | 'identifier' | 'interface_type' | 'is_thermal'>): boolean {
+    if (printer.is_thermal) return true
     const haystack = getPrinterSearchText(printer)
 
     if (isVirtualPrinter(printer)) {
@@ -342,10 +368,16 @@ export function isLikelyThermalPrinter(printer: Pick<ThermalPrinterInfo, 'name' 
 }
 
 export const printService = {
+    getDirectMobileThermalCapabilities,
+
     async listThermalPrinters(): Promise<ThermalPrinterInfo[]> {
         if (isDesktop()) {
             const printers = await list_thermal_printers()
             return printers.map((printer) => ({ ...printer, transport: 'tauri' }))
+        }
+
+        if (isAndroidPwa()) {
+            return listAuthorizedUsbThermalPrinters()
         }
 
         const qz = await connectQzTray()
@@ -361,6 +393,23 @@ export const printService = {
                 status: 'Available',
                 transport: 'qz'
             }))
+    },
+
+    async pairUsbThermalPrinter(): Promise<ThermalPrinterInfo> {
+        if (!isAndroidPwa()) {
+            throw new Error('Direct USB thermal printing is available in the Android PWA only.')
+        }
+        return requestUsbThermalPrinter()
+    },
+
+    async pairBluetoothThermalPrinter(input: {
+        serviceUuid: string
+        characteristicUuid: string
+    }): Promise<ThermalPrinterInfo> {
+        if (!isAndroidPwa()) {
+            throw new Error('Direct Bluetooth thermal printing is available in the Android PWA only.')
+        }
+        return requestBluetoothThermalPrinter(input)
     },
 
     async getSelectedThermalPrinter(workspaceId: string): Promise<StoredThermalPrinter | null> {
@@ -380,7 +429,9 @@ export const printService = {
             status: printer.status,
             paper_size: paperSize,
             roll_width_mm: rollWidth,
-            transport: printer.transport
+            transport: printer.transport,
+            usb: printer.usb,
+            bluetooth: printer.bluetooth
         }
 
         await setAppSetting(getThermalPrinterSettingKey(workspaceId), JSON.stringify(selection))
@@ -396,7 +447,12 @@ export const printService = {
             ? {
                 name: printer.name,
                 paper_size: 'paper_size' in printer ? printer.paper_size : DEFAULT_PAPER_SIZE,
-                transport: getStoredPrinterTransport(printer)
+                transport: getStoredPrinterTransport(printer),
+                interface_type: printer.interface_type,
+                identifier: printer.identifier,
+                status: printer.status,
+                usb: printer.usb,
+                bluetooth: printer.bluetooth
             }
             : await getStoredSelectedThermalPrinter(workspaceId)
 
@@ -416,6 +472,20 @@ export const printService = {
                 'Test receipt printed successfully.\n\n\n',
                 '\x1DV\x00'
             ])
+            return true
+        }
+
+        if (selectedPrinter.transport === 'webusb' || selectedPrinter.transport === 'webbluetooth') {
+            await testDirectMobileThermalPrinter({
+                name: selectedPrinter.name,
+                interface_type: selectedPrinter.interface_type,
+                identifier: selectedPrinter.identifier,
+                status: selectedPrinter.status || 'Paired',
+                transport: selectedPrinter.transport,
+                is_thermal: true,
+                usb: selectedPrinter.usb,
+                bluetooth: selectedPrinter.bluetooth
+            } as DirectMobileThermalPrinter)
             return true
         }
 
@@ -480,6 +550,22 @@ export const printService = {
             return true
         }
 
+        const transport = getStoredPrinterTransport(printer)
+        if (transport === 'webusb' || transport === 'webbluetooth') {
+            const payload = await renderReceiptImageToEscPos(imageBase64, maxWidth)
+            await printToDirectMobileThermalPrinter({
+                name: printer.name,
+                interface_type: printer.interface_type,
+                identifier: printer.identifier,
+                status: printer.status || 'Paired',
+                transport,
+                is_thermal: true,
+                usb: printer.usb,
+                bluetooth: printer.bluetooth
+            } as DirectMobileThermalPrinter, payload)
+            return true
+        }
+
         if (!isDesktop()) return false
 
         const printJob: PrintJobRequest = {
@@ -515,7 +601,7 @@ export const printService = {
         // Checkout uses silentPrintImage so PWA receipts are rasterized before
         // reaching ESC/POS. Keep the text-section path exclusive to Tauri,
         // where the plugin already handles Unicode and structured sections.
-        if (getStoredPrinterTransport(printer) === 'qz') return false
+        if (getStoredPrinterTransport(printer) !== 'tauri') return false
         if (!isDesktop()) return false
 
         const printJob: PrintJobRequest = {

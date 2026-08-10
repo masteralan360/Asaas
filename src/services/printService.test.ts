@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
     isDesktop: vi.fn(),
+    isAndroidPwa: vi.fn(),
     listNativePrinters: vi.fn(),
     printNative: vi.fn(),
     testNative: vi.fn(),
@@ -16,7 +17,8 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/platform', () => ({
-    isDesktop: mocks.isDesktop
+    isDesktop: mocks.isDesktop,
+    isAndroidPwa: mocks.isAndroidPwa
 }))
 
 vi.mock('@/i18n/config', () => ({
@@ -60,6 +62,7 @@ describe('PWA thermal printing through QZ Tray', () => {
     beforeEach(() => {
         vi.clearAllMocks()
         mocks.isDesktop.mockReturnValue(false)
+        mocks.isAndroidPwa.mockReturnValue(false)
         mocks.qzIsActive.mockReturnValue(false)
         mocks.qzConnect.mockResolvedValue(undefined)
         mocks.qzCreateConfig.mockReturnValue({ printer: 'EPSON TM-T20' })
