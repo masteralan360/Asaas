@@ -34,7 +34,7 @@ import {
 import { Camera, Settings as SettingsIcon } from 'lucide-react'
 import { CameraBarcodeScanner } from '@/ui/components/pos/CameraBarcodeScanner'
 
-const BARCODE_SCANNER_VERSION = '1.1'
+const BARCODE_SCANNER_VERSION = '1.2'
 
 interface BarcodeScannerModalProps {
     open: boolean
@@ -45,6 +45,9 @@ interface BarcodeScannerModalProps {
     setIsDeviceScannerAutoEnabled: (value: boolean) => void
     isBluetoothScannerModeEnabled: boolean
     setIsBluetoothScannerModeEnabled: (value: boolean) => void
+    isDeviceScannerImmediateSubmitEnabled: boolean
+    setIsDeviceScannerImmediateSubmitEnabled: (value: boolean) => void
+    canImmediatelySubmitDeviceScan: (value: string) => boolean
     handleBarcodeDetected: (barcodes: any[], source: 'camera' | 'device') => void
     selectedCameraId: string
     setSelectedCameraId: (value: string) => void
@@ -62,6 +65,9 @@ export function BarcodeScannerModal({
     setIsDeviceScannerAutoEnabled,
     isBluetoothScannerModeEnabled,
     setIsBluetoothScannerModeEnabled,
+    isDeviceScannerImmediateSubmitEnabled,
+    setIsDeviceScannerImmediateSubmitEnabled,
+    canImmediatelySubmitDeviceScan,
     handleBarcodeDetected,
     selectedCameraId,
     setSelectedCameraId,
@@ -282,6 +288,10 @@ export function BarcodeScannerModal({
         })
 
         if (scannerActiveRef.current && isDeviceScannerAutoEnabled) {
+            if (isDeviceScannerImmediateSubmitEnabled && canImmediatelySubmitDeviceScan(nextValue)) {
+                commitDeviceScan(nextValue)
+                return
+            }
             scheduleDeviceScan(nextValue)
         }
     }
@@ -475,6 +485,10 @@ export function BarcodeScannerModal({
                                             return
                                         }
                                         if (scannerActiveRef.current && isDeviceScannerAutoEnabled) {
+                                            if (isDeviceScannerImmediateSubmitEnabled && canImmediatelySubmitDeviceScan(nextValue)) {
+                                                commitDeviceScan(nextValue)
+                                                return
+                                            }
                                             scheduleDeviceScan(nextValue)
                                         }
                                     }}
@@ -560,6 +574,23 @@ export function BarcodeScannerModal({
                                         <Switch
                                             checked={isBluetoothScannerModeEnabled}
                                             onCheckedChange={setIsBluetoothScannerModeEnabled}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4 p-4 rounded-xl bg-muted/30 border border-border md:col-span-2">
+                                    <div className="flex items-center justify-between gap-4">
+                                        <div className="space-y-0.5">
+                                            <Label className="text-base">
+                                                {t('pos.scannerImmediateSubmit', { defaultValue: 'Auto-submit scans without Enter' })}
+                                            </Label>
+                                            <p className="text-xs text-muted-foreground">
+                                                {/*t('pos.scannerImmediateSubmitDesc', {defaultValue: 'Adds a recognized barcode immediately, as if Enter was pressed. Barcodes that share a prefix still wait until the scan is complete.'})*/}
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={isDeviceScannerImmediateSubmitEnabled}
+                                            onCheckedChange={setIsDeviceScannerImmediateSubmitEnabled}
                                         />
                                     </div>
                                 </div>

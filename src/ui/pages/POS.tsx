@@ -505,6 +505,9 @@ export function POS() {
     const [isBluetoothScannerModeEnabled, setIsBluetoothScannerModeEnabled] = useState(() => {
         return localStorage.getItem('scanner_bluetooth_mode_enabled') === 'true'
     })
+    const [isDeviceScannerImmediateSubmitEnabled, setIsDeviceScannerImmediateSubmitEnabled] = useState(() => {
+        return localStorage.getItem('scanner_device_immediate_submit_enabled') !== 'false'
+    })
     const [selectedCameraId, setSelectedCameraId] = useState(localStorage.getItem('scanner_camera_id') || '')
     const [cameras, setCameras] = useState<MediaDeviceInfo[]>([])
     const skuInputRef = useRef<HTMLInputElement>(null)
@@ -542,6 +545,11 @@ export function POS() {
     const updateBluetoothScannerModeEnabled = (val: boolean) => {
         setIsBluetoothScannerModeEnabled(val)
         localStorage.setItem('scanner_bluetooth_mode_enabled', String(val))
+    }
+
+    const updateDeviceScannerImmediateSubmitEnabled = (val: boolean) => {
+        setIsDeviceScannerImmediateSubmitEnabled(val)
+        localStorage.setItem('scanner_device_immediate_submit_enabled', String(val))
     }
 
     const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
@@ -1108,6 +1116,13 @@ export function POS() {
 
         return createBarcodeScannerCodeIndex(codes)
     }, [productBarcodes, selectableInventoryProducts])
+
+    const canImmediatelySubmitDeviceScan = useCallback((value: string) => {
+        // Treat a recognized, unambiguous code as the end of a scan. If a code
+        // can also be the prefix of a longer barcode, keep collecting keys so a
+        // scanner without an Enter suffix cannot submit the shorter item early.
+        return shouldCommitBarcodeScannerValue(value, knownScannerCodeIndex)
+    }, [knownScannerCodeIndex])
 
     const getDisplayImageUrl = (url?: string) => {
         if (!url) return '';
@@ -1987,6 +2002,16 @@ export function POS() {
                 event.preventDefault()
                 event.stopPropagation()
                 clearDeviceScanTimeout()
+
+                if (
+                    isDeviceScannerImmediateSubmitEnabled
+                    && canImmediatelySubmitDeviceScan(deviceScanBuffer.current)
+                ) {
+                    restoreEditableScanSnapshot(deviceScanEditableSnapshot.current)
+                    commitDeviceScan()
+                    return
+                }
+
                 deviceScanTimeout.current = window.setTimeout(() => {
                     commitDeviceScan(false)
                 }, deviceAutoCommitDelay)
@@ -2000,9 +2025,11 @@ export function POS() {
         }
     }, [
         editingPriceItemKey,
+        canImmediatelySubmitDeviceScan,
         handleBarcodeDetected,
         isBluetoothScannerModeEnabled,
         isDeviceScannerAutoEnabled,
+        isDeviceScannerImmediateSubmitEnabled,
         isLoanRegistrationModalOpen,
         isSkuModalOpen,
         knownScannerCodeIndex
@@ -3923,6 +3950,9 @@ export function POS() {
                 setIsDeviceScannerAutoEnabled={updateDeviceScannerAutoEnabled}
                 isBluetoothScannerModeEnabled={isBluetoothScannerModeEnabled}
                 setIsBluetoothScannerModeEnabled={updateBluetoothScannerModeEnabled}
+                isDeviceScannerImmediateSubmitEnabled={isDeviceScannerImmediateSubmitEnabled}
+                setIsDeviceScannerImmediateSubmitEnabled={updateDeviceScannerImmediateSubmitEnabled}
+                canImmediatelySubmitDeviceScan={canImmediatelySubmitDeviceScan}
                 handleBarcodeDetected={handleBarcodeDetected}
                 selectedCameraId={selectedCameraId}
                 setSelectedCameraId={setSelectedCameraId}
