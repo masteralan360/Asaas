@@ -21,11 +21,13 @@ import { assetManager } from '@/lib/assetManager'
 import { getProductImageDisplayUrl, storeProductImageFile } from '@/lib/productImageStorage'
 import { saveInitialProductAdditionalImages } from '@/lib/productAdditionalImages'
 import { isTauri } from '@/lib/platform'
+import { normalizeBarcodeScannerText } from '@/lib/barcodeScanner'
 import { platformService } from '@/services/platformService'
 import { cn, formatCurrency, formatNumericInput, sanitizeNumericInput } from '@/lib/utils'
 import { ProductUnitIcon } from '@/ui/components/ProductUnitIcon'
 import type { WorkspaceUnitOption } from '@/ui/components/unitRegistry'
 import { ProductAdditionalImagesModal } from '@/ui/components/ProductAdditionalImagesModal'
+import { BarcodeScannerToggleButton } from '@/ui/components/BarcodeScannerToggleButton'
 import {
     ProductPriceBookItemsEditor,
     type ProductPriceBookDraft
@@ -87,6 +89,10 @@ interface ProductVariantsSectionProps {
     priceBookItems: PriceBookItem[]
     isPriceBookCatalogReady: boolean
     priceBookCatalogError?: Error | null
+    variantSkuScannerEnabled: boolean
+    onVariantSkuScannerEnabledChange: (enabled: boolean) => void
+    onVariantSkuScannerDialogOpen: () => void
+    onVariantSkuScannerDialogClose: () => void
     canManage: boolean
     hideCosts: boolean
     onOpenProduct: (productId: string) => void
@@ -231,6 +237,10 @@ export function ProductVariantsSection({
     priceBookItems,
     isPriceBookCatalogReady,
     priceBookCatalogError,
+    variantSkuScannerEnabled,
+    onVariantSkuScannerEnabledChange,
+    onVariantSkuScannerDialogOpen,
+    onVariantSkuScannerDialogClose,
     canManage,
     hideCosts,
     onOpenProduct
@@ -239,6 +249,7 @@ export function ProductVariantsSection({
     const { toast } = useToast()
     const imageInputRef = useRef<HTMLInputElement>(null)
     const cameraInputRef = useRef<HTMLInputElement>(null)
+    const variantSkuInputRef = useRef<HTMLInputElement>(null)
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [isLinkOpen, setIsLinkOpen] = useState(false)
     const [isCreating, setIsCreating] = useState(false)
@@ -303,8 +314,21 @@ export function ProductVariantsSection({
     }
 
     const openCreateDialog = () => {
+        onVariantSkuScannerDialogOpen()
         resetCreateDialog()
         setIsCreateOpen(true)
+    }
+
+    const handleCreateDialogOpenChange = (open: boolean) => {
+        setIsCreateOpen(open)
+        if (open) onVariantSkuScannerDialogOpen()
+        else onVariantSkuScannerDialogClose()
+    }
+
+    const handleVariantSkuScan = (value: string) => {
+        if (!variantSkuScannerEnabled) return
+
+        setDraft((current) => ({ ...current, sku: normalizeBarcodeScannerText(value) }))
     }
 
     const savePrimaryImageFile = async (image: File) => {
@@ -419,7 +443,7 @@ export function ProductVariantsSection({
                 postCreateStep = 'additionalImages'
                 await saveInitialProductAdditionalImages(workspaceId, createdProduct.id, additionalImageFiles)
             }
-            setIsCreateOpen(false)
+            handleCreateDialogOpenChange(false)
             toast({
                 title: t('products.variants.created', { defaultValue: 'Variant created' }),
                 description: t('products.variants.createdDescription', { defaultValue: 'The new product is now linked to this parent.' })
@@ -439,7 +463,7 @@ export function ProductVariantsSection({
                 variant: 'destructive'
             })
             if (createdProduct) {
-                setIsCreateOpen(false)
+                handleCreateDialogOpenChange(false)
             }
         } finally {
             setIsCreating(false)
@@ -593,7 +617,7 @@ export function ProductVariantsSection({
                 </CardContent>
             </Card>
 
-            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <Dialog open={isCreateOpen} onOpenChange={handleCreateDialogOpenChange}>
                 <DialogContent layout="structured" className="max-w-3xl sm:max-w-5xl">
                     <DialogHeader layout="structured" className="shrink-0 bg-muted/25 px-6 py-5 sm:px-8">
                         <div className="flex items-start justify-between gap-4 pr-8">
@@ -615,7 +639,7 @@ export function ProductVariantsSection({
                         <DialogBody className="px-6 py-6 sm:px-8">
                             <div className="grid gap-5 sm:grid-cols-2">
                                 <div className="space-y-2"><Label htmlFor="variant-name">{t('products.form.name', { defaultValue: 'Product Name' })} *</Label><Input id="variant-name" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} required autoFocus className="h-11 rounded-xl" /></div>
-                                <div className="space-y-2"><div className="flex items-center gap-1"><Label htmlFor="variant-sku">SKU *</Label><Button type="button" variant="ghost" size="icon" onClick={() => setDraft((current) => ({ ...current, sku: parent.sku }))} disabled={!parent.sku} aria-label={t('products.variants.copyParentSku', { defaultValue: 'Copy parent SKU' })} title={t('products.variants.copyParentSku', { defaultValue: 'Copy parent SKU' })} className="h-6 w-6 text-primary hover:text-primary"><Copy className="h-3.5 w-3.5" /></Button></div><Input id="variant-sku" value={draft.sku} onChange={(event) => setDraft((current) => ({ ...current, sku: event.target.value }))} required className="h-11 rounded-xl" /></div>
+                                <div className="space-y-2"><div className="flex items-center gap-1"><Label htmlFor="variant-sku">SKU *</Label><Button type="button" variant="ghost" size="icon" onClick={() => setDraft((current) => ({ ...current, sku: parent.sku }))} disabled={!parent.sku} aria-label={t('products.variants.copyParentSku', { defaultValue: 'Copy parent SKU' })} title={t('products.variants.copyParentSku', { defaultValue: 'Copy parent SKU' })} className="h-6 w-6 text-primary hover:text-primary"><Copy className="h-3.5 w-3.5" /></Button></div><div className="flex gap-2"><Input ref={variantSkuInputRef} id="variant-sku" value={draft.sku} onChange={(event) => setDraft((current) => ({ ...current, sku: event.target.value }))} required className="h-11 min-w-0 flex-1 rounded-xl" /><BarcodeScannerToggleButton enabled={variantSkuScannerEnabled} onEnabledChange={onVariantSkuScannerEnabledChange} onScan={handleVariantSkuScan} label={t('products.table.sku', { defaultValue: 'SKU' })} activeLabel={t('pos.scannerEnabled', { defaultValue: 'Scanner Enabled' })} inactiveLabel={t('pos.scannerDisabled', { defaultValue: 'Scanner Disabled' })} deviceStorageKey="products_sku_hid_device_id" targetInputRef={variantSkuInputRef} idleCommitDelayMs={1200} /></div></div>
                                 <div className="space-y-2"><Label htmlFor="variant-price">{t('products.table.price', { defaultValue: 'Price' })} *</Label><div className="relative"><Input id="variant-price" type="text" inputMode="decimal" value={formatNumericInput(draft.price)} onChange={(event) => setDraft((current) => ({ ...current, price: sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 }) }))} placeholder="0.000" required className="h-11 rounded-xl pr-16 text-lg font-black text-primary" /><span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{getCurrencySymbol(draft.currency, iqdDisplayPreference)}</span></div></div>
                                 {!hideCosts && <div className="space-y-2"><Label htmlFor="variant-cost">{t('products.form.cost', { defaultValue: 'Cost Price' })}</Label><div className="relative"><Input id="variant-cost" type="text" inputMode="decimal" value={formatNumericInput(draft.costPrice)} onChange={(event) => setDraft((current) => ({ ...current, costPrice: sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 }) }))} placeholder="0.000" className="h-11 rounded-xl pr-16 font-bold" /><span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{getCurrencySymbol(draft.currency, iqdDisplayPreference)}</span></div></div>}
                                 <div className="space-y-2"><Label htmlFor="variant-stock">{t('products.variants.stockQuantity', { defaultValue: 'Stock Quantity' })} *</Label><Input id="variant-stock" type="text" inputMode="decimal" value={formatNumericInput(draft.quantity)} onChange={(event) => setDraft((current) => ({ ...current, quantity: sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 }) }))} placeholder="0" required className="h-11 rounded-xl" /></div>
@@ -712,7 +736,7 @@ export function ProductVariantsSection({
                                 </section>
                             </div>
                         </DialogBody>
-                        <DialogFooter layout="structured" className="shrink-0 bg-muted/15 px-6 py-4 sm:px-8"><Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)} disabled={isCreating} className="h-11 rounded-xl">{t('common.cancel', { defaultValue: 'Cancel' })}</Button><Button type="submit" disabled={isCreating || (priceBooksEnabled && !isPriceBookCatalogReady)} className="h-11 gap-2 rounded-xl">{isCreating && <Loader2 className="h-4 w-4 animate-spin" />}{t('products.variants.create', { defaultValue: 'Create Variant' })}</Button></DialogFooter>
+                        <DialogFooter layout="structured" className="shrink-0 bg-muted/15 px-6 py-4 sm:px-8"><Button type="button" variant="outline" onClick={() => handleCreateDialogOpenChange(false)} disabled={isCreating} className="h-11 rounded-xl">{t('common.cancel', { defaultValue: 'Cancel' })}</Button><Button type="submit" disabled={isCreating || (priceBooksEnabled && !isPriceBookCatalogReady)} className="h-11 gap-2 rounded-xl">{isCreating && <Loader2 className="h-4 w-4 animate-spin" />}{t('products.variants.create', { defaultValue: 'Create Variant' })}</Button></DialogFooter>
                     </form>
                 </DialogContent>
             </Dialog>

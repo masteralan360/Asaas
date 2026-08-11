@@ -109,11 +109,12 @@ import {
     useToast
 } from '@/ui/components'
 
-type ProductScannerTarget = 'none' | 'sku' | 'barcode'
+type ProductScannerTarget = 'none' | 'sku' | 'barcode' | 'variantSku'
 
 const PRODUCT_SCANNER_TARGET_KEY = 'products_scanner_target'
 const PRODUCT_SKU_SCANNER_ENABLED_KEY = 'products_sku_scanner_enabled'
 const PRODUCT_BARCODE_SCANNER_ENABLED_KEY = 'products_barcode_scanner_enabled'
+const PRODUCT_VARIANT_SKU_SCANNER_ENABLED_KEY = 'products_variant_sku_scanner_enabled'
 const PRODUCT_SKU_HID_DEVICE_KEY = 'products_sku_hid_device_id'
 const PRODUCT_BARCODE_HID_DEVICE_KEY = 'products_barcode_hid_device_id'
 const PRODUCT_FORM_SCANNER_IDLE_COMMIT_DELAY_MS = 1200
@@ -186,6 +187,14 @@ function readStoredBoolean(key: string) {
     }
 
     return localStorage.getItem(key) === 'true'
+}
+
+function writeStoredBoolean(key: string, value: boolean) {
+    if (typeof localStorage === 'undefined') {
+        return
+    }
+
+    localStorage.setItem(key, String(value))
 }
 
 function readStoredScannerTarget(): ProductScannerTarget {
@@ -356,6 +365,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const [isDeletingProduct, setIsDeletingProduct] = useState(false)
     const [isGeneratingSku, setIsGeneratingSku] = useState(false)
     const [activeScannerTarget, setActiveScannerTarget] = useState<ProductScannerTarget>(() => readStoredScannerTarget())
+    const [variantSkuScannerPreference, setVariantSkuScannerPreference] = useState(() => readStoredBoolean(PRODUCT_VARIANT_SKU_SCANNER_ENABLED_KEY))
     const skuInputRef = useRef<HTMLInputElement>(null)
     const isGeneratingSkuRef = useRef(false)
     const storageTriggerRef = useRef<HTMLButtonElement>(null)
@@ -807,6 +817,20 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
 
     const handleBarcodeScannerEnabledChange = (enabled: boolean) => {
         handleScannerTargetChange(enabled ? 'barcode' : 'none')
+    }
+
+    const handleVariantSkuScannerEnabledChange = (enabled: boolean) => {
+        setVariantSkuScannerPreference(enabled)
+        writeStoredBoolean(PRODUCT_VARIANT_SKU_SCANNER_ENABLED_KEY, enabled)
+        setActiveScannerTarget(enabled ? 'variantSku' : 'none')
+    }
+
+    const handleVariantSkuScannerDialogOpen = () => {
+        setActiveScannerTarget(variantSkuScannerPreference ? 'variantSku' : 'none')
+    }
+
+    const handleVariantSkuScannerDialogClose = () => {
+        setActiveScannerTarget((current) => current === 'variantSku' ? 'none' : current)
     }
 
     const handleSkuBarcodeScan = (value: string) => {
@@ -2104,6 +2128,10 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                             priceBookItems={priceBookItems}
                             isPriceBookCatalogReady={isPriceBookCatalogReady}
                             priceBookCatalogError={priceBookCatalogError}
+                            variantSkuScannerEnabled={activeScannerTarget === 'variantSku'}
+                            onVariantSkuScannerEnabledChange={handleVariantSkuScannerEnabledChange}
+                            onVariantSkuScannerDialogOpen={handleVariantSkuScannerDialogOpen}
+                            onVariantSkuScannerDialogClose={handleVariantSkuScannerDialogClose}
                             canManage={!isReadOnly}
                             hideCosts={hideCosts}
                             onOpenProduct={(variantId) => navigate(`/products/${variantId}`)}

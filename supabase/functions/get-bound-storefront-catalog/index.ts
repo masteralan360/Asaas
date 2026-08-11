@@ -130,6 +130,12 @@ Deno.serve(async (req) => {
         }
 
         const productIds = visibleProducts.productRows.map((product) => product.id)
+        const quantityByProductId = new Map(
+            visibleProducts.inventoryRows.map((inventory) => [
+                inventory.product_id,
+                Number(inventory.quantity ?? 0)
+            ] as const)
+        )
         const additionalImageUrlsByProductId = new Map<string, string[]>()
         if (productIds.length > 0) {
             const { data: additionalImages, error: additionalImagesError } = await adminClient
@@ -187,6 +193,7 @@ Deno.serve(async (req) => {
                     name: product.name,
                     sku: product.sku,
                     description: product.description ?? '',
+                    quantity: quantityByProductId.get(product.id) ?? 0,
                     price: resolvedPrice.price,
                     currency: resolvedPrice.currency ?? context.workspace.default_currency ?? 'iqd',
                     unit: product.unit ?? 'pcs',
