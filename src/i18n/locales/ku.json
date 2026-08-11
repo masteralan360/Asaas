@@ -3362,6 +3362,63 @@
     "increaseLabel": "زیادکردن",
     "decreaseLabel": "کەمکردن",
     "adjustmentLabel": "ڕێکخستنی کۆگا",
+    "posSaleLabel": "فرۆشتنی POS",
+    "posReturnLabel": "گەڕاندنەوەی POS",
+    "salesOrderLabel": "داواکاریی فرۆشتن",
+    "salesOrderReturnLabel": "گەڕاندنەوەی داواکاریی فرۆشتن",
+    "purchaseOrderReceiptLabel": "وەرگرتنی داواکاریی کڕین",
+    "actions": {
+      "viewPosSale": "بینینی فرۆشتنی POS",
+      "viewSalesOrder": "بینینی داواکاریی فرۆشتن"
+    },
+    "tabs": {
+      "timeline": "هێڵی کات",
+      "productSummary": "پوختەی بەرهەمەکان"
+    },
+    "productSummary": {
+      "name": "بەرهەم",
+      "incoming": "هاتوو",
+      "outgoing": "چوو",
+      "balance": "باڵانس",
+      "emptyTitle": "هیچ جوڵەیەکی بەرهەم لەم ماوەیەدا نییە",
+      "emptyDescription": "مەودای بەروار بگۆڕە یان جوڵەی کۆگا تۆمار بکە بۆ بینینی پوختەی بەرهەمەکان."
+    },
+    "filters": {
+      "title": "فلتەرەکان",
+      "description": "هێڵی کات و پوختەی بەرهەمەکان لە ناو مەودای بەرواری ئێستادا تەسک بکەوە.",
+      "product": "بەرهەم",
+      "selectProduct": "بە ناو یان SKU بگەڕێ",
+      "linked": "بەستراو",
+      "linkedTooltip": "ئەم بەرهەمە بە فلتەری چالاکەوە بەستراوە.",
+      "openLinkedProduct": "بەستراو: {{name}}",
+      "sku": "SKU",
+      "direction": "ئاڕاستە",
+      "allDirections": "هەموو ئاڕاستەکان",
+      "incoming": "هاتوو",
+      "outgoing": "چوو",
+      "source": "سەرچاوەی جوڵە",
+      "allSources": "هەموو سەرچاوەکان",
+      "storage": "کۆگا",
+      "allStorages": "هەموو کۆگاکان",
+      "snapshot": "دۆخی پێش/دواتر",
+      "anySnapshot": "هەر دۆخێک",
+      "recorded": "تۆمارکراو",
+      "notRecorded": "تۆمار نەکراو",
+      "clear": "پاککردنەوەی فلتەرەکان",
+      "reset": "ڕێکخستنەوەی فلتەرەکان",
+      "resetDraft": "ڕێکخستنەوەی ڕەشنووس",
+      "apply": "جێبەجێکردنی فلتەرەکان",
+      "sources": {
+        "stockAdjustment": "ڕێکخستنی کۆگا",
+        "transfer": "گواستنەوە"
+      }
+    },
+    "columns": {
+      "beforeAfter": "پێشتر ← دواتر",
+      "before": "پێشتر",
+      "after": "دواتر",
+      "notRecorded": "تۆمار نەکراوە"
+    },
     "summaryDescription": "ژماردنێکی ڕاستەوخۆی تۆمارە هەمیشەییەکانی جوڵەی کۆگا بۆ ئەم شوێنی کارە."
   },
   "stockAdjustments": {

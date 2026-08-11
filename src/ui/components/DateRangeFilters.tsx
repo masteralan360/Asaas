@@ -15,6 +15,7 @@ interface DateRangeFiltersProps {
     label?: string
     labelDotClassName?: string
     allTimeButtonClassName?: string
+    showAllTime?: boolean
     dateRange?: DateRangeType
     customDates?: CustomDates
     onDateRangeChange?: (range: DateRangeType) => void
@@ -26,6 +27,7 @@ export function DateRangeFilters({
     label,
     labelDotClassName,
     allTimeButtonClassName,
+    showAllTime = true,
     dateRange: controlledDateRange,
     customDates: controlledCustomDates,
     onDateRangeChange,
@@ -89,16 +91,18 @@ export function DateRangeFilters({
                     >
                         {t('performance.filters.lastMonth')}
                     </Button>
-                    <Button
-                        variant={dateRange === 'allTime' ? 'default' : 'ghost'}
-                        size="sm"
-                        allowViewer={true}
-                        onClick={() => setDateRange('allTime')}
-                        className={cn("text-xs h-8 px-4 transition-all duration-200", allTimeButtonClassName, dateRange === 'allTime' && "shadow-sm")}
-                        type="button"
-                    >
-                        {t('performance.filters.allTime') || 'All Time'}
-                    </Button>
+                    {showAllTime && (
+                        <Button
+                            variant={dateRange === 'allTime' ? 'default' : 'ghost'}
+                            size="sm"
+                            allowViewer={true}
+                            onClick={() => setDateRange('allTime')}
+                            className={cn("text-xs h-8 px-4 transition-all duration-200", allTimeButtonClassName, dateRange === 'allTime' && "shadow-sm")}
+                            type="button"
+                        >
+                            {t('performance.filters.allTime') || 'All Time'}
+                        </Button>
+                    )}
                     <Button
                         variant={dateRange === 'custom' ? 'default' : 'ghost'}
                         size="sm"

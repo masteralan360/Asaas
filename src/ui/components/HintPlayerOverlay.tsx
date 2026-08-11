@@ -7,7 +7,7 @@ import { resolveHintVideoUrl } from './hintVideoUrl'
 export interface HintPlayerOverlayProps {
     open: boolean
     onClose: () => void
-    /** Video file under public/tips, or a full URL. */
+    /** Video object name under the R2 bucket's hints prefix, or a full URL. */
     src: string
     /** Optional heading shown under the video. */
     title?: string

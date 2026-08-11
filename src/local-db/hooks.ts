@@ -6,7 +6,6 @@ import { useViewOwnRecordScope, type ViewOwnRecordScope } from '@/permissions/us
 import { db } from './database'
 import { canReconcileCloudWorkspaceData } from './cloudReconciliation'
 import { createInventoryTransferTransactions } from './inventoryTransferTransactions'
-import { createInventoryTransaction } from './inventoryTransactions'
 import { addToOfflineMutations } from './offlineMutations'
 import { isSyncIntegrityError } from '@/sync/syncErrors'
 import { refreshStockBatchesFromSupabase } from './stockBatches'
@@ -856,20 +855,6 @@ export async function createProduct(workspaceId: string, data: Omit<Product, 'id
         quantity: initialQuantity,
         timestamp: now
     })
-
-    if (initialQuantity > 0 && initialStorageId) {
-        await createInventoryTransaction(workspaceId, {
-            productId: id,
-            storageId: initialStorageId,
-            transactionType: 'initial_stock',
-            quantityDelta: initialQuantity,
-            previousQuantity: 0,
-            newQuantity: initialQuantity,
-            referenceId: id,
-            referenceType: 'product',
-            createdBy: null
-        }, { timestamp: now })
-    }
 
     return normalizedProduct || product
 }

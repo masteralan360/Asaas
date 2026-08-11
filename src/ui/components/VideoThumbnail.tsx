@@ -14,6 +14,9 @@ export function VideoThumbnail({ src, className }: { src: string; className?: st
     useEffect(() => {
         cancelledRef.current = false
         const video = document.createElement('video')
+        // The video is served by the R2 worker. Opt in before assigning src so
+        // its CORS response can be drawn to the thumbnail canvas.
+        video.crossOrigin = 'anonymous'
         video.muted = true
         video.playsInline = true
         video.preload = 'auto'

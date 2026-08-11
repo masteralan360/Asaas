@@ -6,9 +6,20 @@ import { db } from './database'
 import type { OfflineMutation } from './models'
 
 const LOCAL_ONLY_ENTITY_TYPES = new Set<OfflineMutation['entityType']>([
-    'inventory_transactions',
     'inventory_transfer_transactions'
 ])
+
+function isCloudInventoryTransactionMutation(
+    entityType: OfflineMutation['entityType'],
+    payload: Record<string, unknown>
+) {
+    if (entityType !== 'inventory_transactions') {
+        return true
+    }
+
+    const transactionType = payload.transactionType || payload.transaction_type
+    return transactionType === 'stock_adjustment'
+}
 
 export async function addToOfflineMutations(
     entityType: OfflineMutation['entityType'],
@@ -17,7 +28,11 @@ export async function addToOfflineMutations(
     payload: Record<string, unknown>,
     workspaceId: string
 ): Promise<void> {
-    if (isLocalWorkspaceMode(workspaceId) || LOCAL_ONLY_ENTITY_TYPES.has(entityType)) {
+    if (
+        isLocalWorkspaceMode(workspaceId)
+        || LOCAL_ONLY_ENTITY_TYPES.has(entityType)
+        || !isCloudInventoryTransactionMutation(entityType, payload)
+    ) {
         return
     }
 

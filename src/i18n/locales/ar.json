@@ -3365,6 +3365,63 @@
     "increaseLabel": "زيادة",
     "decreaseLabel": "نقصان",
     "adjustmentLabel": "تسوية مخزون",
+    "posSaleLabel": "بيع نقطة البيع",
+    "posReturnLabel": "مرتجع نقطة البيع",
+    "salesOrderLabel": "طلب مبيعات",
+    "salesOrderReturnLabel": "مرتجع طلب مبيعات",
+    "purchaseOrderReceiptLabel": "استلام طلب شراء",
+    "actions": {
+      "viewPosSale": "عرض بيع نقطة البيع",
+      "viewSalesOrder": "عرض طلب المبيعات"
+    },
+    "tabs": {
+      "timeline": "الجدول الزمني",
+      "productSummary": "ملخص المنتجات"
+    },
+    "productSummary": {
+      "name": "المنتج",
+      "incoming": "الوارد",
+      "outgoing": "الصادر",
+      "balance": "الرصيد",
+      "emptyTitle": "لا توجد حركة منتجات في هذه الفترة",
+      "emptyDescription": "غيّر نطاق التاريخ أو سجل حركة مخزون لرؤية ملخص المنتجات."
+    },
+    "filters": {
+      "title": "الفلاتر",
+      "description": "تضييق الجدول الزمني وملخص المنتجات ضمن نطاق التاريخ الحالي.",
+      "product": "المنتج",
+      "selectProduct": "ابحث بالاسم أو SKU",
+      "linked": "مرتبط",
+      "linkedTooltip": "هذا المنتج مرتبط بالفلتر النشط.",
+      "openLinkedProduct": "مرتبط: {{name}}",
+      "sku": "SKU",
+      "direction": "الاتجاه",
+      "allDirections": "كل الاتجاهات",
+      "incoming": "الوارد",
+      "outgoing": "الصادر",
+      "source": "مصدر الحركة",
+      "allSources": "كل المصادر",
+      "storage": "المخزن",
+      "allStorages": "كل المخازن",
+      "snapshot": "حالة قبل/بعد",
+      "anySnapshot": "أي حالة",
+      "recorded": "مسجل",
+      "notRecorded": "غير مسجل",
+      "clear": "مسح الفلاتر",
+      "reset": "إعادة ضبط الفلاتر",
+      "resetDraft": "إعادة ضبط المسودة",
+      "apply": "تطبيق الفلاتر",
+      "sources": {
+        "stockAdjustment": "تسوية مخزون",
+        "transfer": "نقل"
+      }
+    },
+    "columns": {
+      "beforeAfter": "قبل ← بعد",
+      "before": "قبل",
+      "after": "بعد",
+      "notRecorded": "غير مسجّل"
+    },
     "summaryDescription": "عدد مباشر لسجلات حركة المخزون الدائمة لمساحة العمل هذه."
   },
   "stockAdjustments": {

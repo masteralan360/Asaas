@@ -44,15 +44,15 @@ describe('searchHelp', () => {
 
     it('picks the language-specific video for create loan', () => {
         const createLoan = searchHelp('create loan', 'en')[0].topic
-        expect(getTopicVideoSrc(createLoan, 'en')).toBe('/tips/create_loan_ku.mp4')
-        expect(getTopicVideoSrc(createLoan, 'ar')).toBe('/tips/create_loan_ar.mp4')
-        expect(getTopicVideoSrc(createLoan, 'ku')).toBe('/tips/create_loan_ku.mp4')
+        expect(getTopicVideoSrc(createLoan, 'en')).toBe('create_loan_ku.mp4')
+        expect(getTopicVideoSrc(createLoan, 'ar')).toBe('create_loan_ar.mp4')
+        expect(getTopicVideoSrc(createLoan, 'ku')).toBe('create_loan_ku.mp4')
     })
 
     it('falls back to the default video for other topics', () => {
         const checkout = searchHelp('checkout', 'en')[0].topic
-        expect(getTopicVideoSrc(checkout, 'ar')).toBe('/tips/pos_checkout.mp4')
-        expect(getTopicVideoSrc(checkout, 'fr')).toBe('/tips/pos_checkout.mp4')
+        expect(getTopicVideoSrc(checkout, 'ar')).toBe('pos_checkout.mp4')
+        expect(getTopicVideoSrc(checkout, 'fr')).toBe('pos_checkout.mp4')
     })
 
     it('ranks each topic first for its own query', () => {

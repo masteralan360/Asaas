@@ -1993,7 +1993,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                         )
                                         return isEditing ? (
                                             <HoverHintVideo
-                                                src="/tips/export-1785734352530.mp4"
+                                                src="export-1785734352530.mp4"
                                                 title={t('products.form.stockAdjustmentHint.videoTitle', { defaultValue: 'Watch how to adjust stock' })}
                                                 triggerClassName="block"
                                             >

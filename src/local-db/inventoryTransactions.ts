@@ -6,16 +6,27 @@ import {
   quantitiesEqual,
   roundQuantity,
 } from "@/lib/quantity";
-import { generateId } from "@/lib/utils";
+import { isOnline } from "@/lib/network";
+import { getSupabaseClientForTable } from "@/lib/supabaseSchema";
+import { runSupabaseAction } from "@/lib/supabaseRequest";
+import { generateId, toCamelCase, toSnakeCase } from "@/lib/utils";
+import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 
 import { db } from "./database";
+import { addToOfflineMutations } from "./offlineMutations";
 import type {
   InventoryTransaction,
   InventoryTransactionType,
   StockAdjustmentReason,
 } from "./models";
 
-// Inventory activity is intentionally device-local in every workspace mode.
+const TABLE_NAME = "inventory_transactions";
+const CLOUD_TRANSACTION_TYPES = new Set<InventoryTransactionType>([
+  "stock_adjustment",
+]);
+
+// Sales, returns, purchases, transfers, and initial stock are mirrored only
+// in the local ledger. Manual stock adjustments are the sole cloud entries.
 export interface InventoryTransactionInput {
   productId: string;
   storageId: string;
@@ -130,16 +141,98 @@ function normalizeTransactionInput(input: InventoryTransactionInput) {
   };
 }
 
+function shouldSyncInventoryTransaction(
+  workspaceId: string,
+  transactionType: InventoryTransactionType,
+) {
+  return (
+    CLOUD_TRANSACTION_TYPES.has(transactionType) &&
+    !isLocalWorkspaceMode(workspaceId)
+  );
+}
+
+function toRemoteInventoryTransactionPayload(transaction: InventoryTransaction) {
+  return toSnakeCase({
+    ...transaction,
+    syncStatus: undefined,
+    lastSyncedAt: undefined,
+  });
+}
+
+async function queueInventoryTransactionForSync(transaction: InventoryTransaction) {
+  await addToOfflineMutations(
+    TABLE_NAME,
+    transaction.id,
+    "create",
+    transaction as unknown as Record<string, unknown>,
+    transaction.workspaceId,
+  );
+}
+
+export async function syncInventoryTransactionBestEffort(
+  transaction: InventoryTransaction,
+) {
+  if (!shouldSyncInventoryTransaction(transaction.workspaceId, transaction.transactionType)) {
+    return;
+  }
+
+  if (!isOnline(transaction.workspaceId)) {
+    await queueInventoryTransactionForSync(transaction);
+    return;
+  }
+
+  try {
+    const client = getSupabaseClientForTable(TABLE_NAME);
+    const { error } = await runSupabaseAction(`${TABLE_NAME}.sync`, () =>
+      client
+        .from(TABLE_NAME)
+        .upsert(toRemoteInventoryTransactionPayload(transaction)),
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    await db.inventory_transactions.update(transaction.id, {
+      syncStatus: "synced",
+      lastSyncedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("[InventoryTransactions] Failed to sync inventory transaction:", error);
+    await queueInventoryTransactionForSync(transaction);
+  }
+}
+
+export async function syncInventoryTransactionsBestEffort(
+  transactions: InventoryTransaction[],
+) {
+  await Promise.all(
+    transactions.map((transaction) =>
+      syncInventoryTransactionBestEffort(transaction),
+    ),
+  );
+}
+
+// Kept as a compatibility alias for callers introduced with the original
+// stock-adjustment-only ledger.
+export const syncStockAdjustmentTransactionBestEffort =
+  syncInventoryTransactionBestEffort;
+
 export async function createInventoryTransaction(
   workspaceId: string,
   input: InventoryTransactionInput,
   options?: {
     id?: string;
     timestamp?: string;
+    skipRemoteSync?: boolean;
   },
 ) {
   const timestamp = options?.timestamp || new Date().toISOString();
   const normalized = normalizeTransactionInput(input);
+  const shouldSync = shouldSyncInventoryTransaction(
+    workspaceId,
+    normalized.transactionType,
+  );
 
   const transaction: InventoryTransaction = {
     id: options?.id || generateId(),
@@ -149,12 +242,61 @@ export async function createInventoryTransaction(
     updatedAt: timestamp,
     version: 1,
     isDeleted: false,
-    syncStatus: "synced",
-    lastSyncedAt: timestamp,
+    syncStatus: shouldSync ? "pending" : "synced",
+    lastSyncedAt: shouldSync ? null : timestamp,
   };
 
   await db.inventory_transactions.put(transaction);
+  if (!options?.skipRemoteSync) {
+    await syncInventoryTransactionBestEffort(transaction);
+  }
   return transaction;
+}
+
+export async function hydrateInventoryTransactionsFromSupabase(
+  workspaceId: string,
+) {
+  if (isLocalWorkspaceMode(workspaceId) || !isOnline(workspaceId)) {
+    return;
+  }
+
+  const client = getSupabaseClientForTable(TABLE_NAME);
+  const remoteTransactions: InventoryTransaction[] = [];
+  const pageSize = 1000;
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await runSupabaseAction(
+      `${TABLE_NAME}.hydrate`,
+      () =>
+        client
+          .from(TABLE_NAME)
+          .select("*")
+          .eq("workspace_id", workspaceId)
+          .order("created_at", { ascending: false })
+          .range(from, from + pageSize - 1),
+    );
+
+    if (error) {
+      console.error("[InventoryTransactions] Failed to hydrate ledger:", error);
+      return;
+    }
+
+    remoteTransactions.push(
+      ...((data ?? []).map((row) => ({
+        ...(toCamelCase(row) as unknown as InventoryTransaction),
+        syncStatus: "synced" as const,
+        lastSyncedAt: new Date().toISOString(),
+      }))),
+    );
+
+    if (!data || data.length < pageSize) {
+      break;
+    }
+  }
+
+  if (remoteTransactions.length > 0) {
+    await db.inventory_transactions.bulkPut(remoteTransactions);
+  }
 }
 
 export function filterInventoryTransactions(

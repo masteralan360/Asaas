@@ -6,7 +6,7 @@ import { HintPlayerOverlay } from './HintPlayerOverlay'
 import { resolveHintVideoUrl } from './hintVideoUrl'
 
 export interface HoverHintVideoProps {
-    /** Video file under public/tips, or a full URL. */
+    /** Video object name under the R2 bucket's hints prefix, or a full URL. */
     src: string
     /** The element that is hovered to reveal the video hint. */
     children: React.ReactNode

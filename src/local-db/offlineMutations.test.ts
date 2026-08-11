@@ -234,6 +234,44 @@ describe('addToOfflineMutations', () => {
         expect(mutationStore.table.add).not.toHaveBeenCalled()
     })
 
+    it('queues only stock-adjustment inventory transactions', async () => {
+        await addToOfflineMutations(
+            'inventory_transactions',
+            'transfer-transaction',
+            'create',
+            { transactionType: 'transfer_out' },
+            'workspace-1'
+        )
+        await addToOfflineMutations(
+            'inventory_transactions',
+            'stock-adjustment-transaction',
+            'create',
+            { transactionType: 'stock_adjustment' },
+            'workspace-1'
+        )
+        await addToOfflineMutations(
+            'inventory_transactions',
+            'sale-transaction',
+            'create',
+            { transactionType: 'sale' },
+            'workspace-1'
+        )
+        await addToOfflineMutations(
+            'inventory_transactions',
+            'purchase-transaction',
+            'create',
+            { transactionType: 'purchase' },
+            'workspace-1'
+        )
+
+        expect(mutationStore.rows).toHaveLength(1)
+        expect(mutationStore.rows[0]).toMatchObject({
+            entityType: 'inventory_transactions',
+            entityId: 'stock-adjustment-transaction',
+            operation: 'create'
+        })
+    })
+
     it('requeues schema mismatches only after an explicit retry request', async () => {
         mutationStore.rows.push({
             id: 'schema-mismatch',

@@ -4287,13 +4287,73 @@
     }
   },
   "inventoryTransactions": {
-    "pageSubtitle": "Review permanent records for inventory transfers and stock adjustments.",
-    "subtitle": "Every manual transfer, automation move, and stock adjustment is recorded here. These records are permanent and cannot be deleted.",
+    "pageSubtitle": "Review permanent records for transfers, adjustments, sales, returns, and purchase receipts.",
+    "subtitle": "Every stock-changing sale, return, purchase receipt, transfer, and adjustment is recorded here. These records are permanent and cannot be deleted.",
     "emptyTitle": "No inventory transactions yet",
-    "emptyDescription": "Transfer products manually, let an automation rule trigger, or record a stock adjustment, and the records will appear here.",
+    "emptyDescription": "Complete a sale or purchase receipt, process a return, transfer products, or record a stock adjustment to see it here.",
     "increaseLabel": "Increase",
     "decreaseLabel": "Decrease",
     "adjustmentLabel": "Stock Adjustment",
+    "saleLabel": "Sale",
+    "posSaleLabel": "POS Sale",
+    "posReturnLabel": "POS Return",
+    "salesOrderLabel": "Sales Order",
+    "salesOrderReturnLabel": "Sales Order Return",
+    "purchaseOrderReceiptLabel": "Purchase Order Receipt",
+    "returnLabel": "Return",
+    "actions": {
+      "viewPosSale": "View POS sale",
+      "viewSalesOrder": "View sales order"
+    },
+    "tabs": {
+      "timeline": "Timeline",
+      "productSummary": "Product Summary"
+    },
+    "productSummary": {
+      "name": "Name",
+      "incoming": "Incoming",
+      "outgoing": "Outgoing",
+      "balance": "Balance",
+      "emptyTitle": "No product movement in this period",
+      "emptyDescription": "Change the date range or record inventory movement to see a product summary."
+    },
+    "filters": {
+      "title": "Filters",
+      "description": "Narrow both the timeline and product summary within the current date range.",
+      "product": "Product",
+      "selectProduct": "Search by name or SKU",
+      "linked": "Linked",
+      "linkedTooltip": "This product is linked to the active filter.",
+      "openLinkedProduct": "Linked: {{name}}",
+      "sku": "SKU",
+      "direction": "Direction",
+      "allDirections": "All directions",
+      "incoming": "Incoming",
+      "outgoing": "Outgoing",
+      "source": "Movement source",
+      "allSources": "All sources",
+      "storage": "Storage",
+      "allStorages": "All storages",
+      "snapshot": "Before/after status",
+      "anySnapshot": "Any status",
+      "recorded": "Recorded",
+      "notRecorded": "Not recorded",
+      "clear": "Clear filters",
+      "reset": "Reset filters",
+      "resetDraft": "Reset draft",
+      "apply": "Apply filters",
+      "sources": {
+        "stockAdjustment": "Stock adjustment",
+        "transfer": "Transfer"
+      }
+    },
+    "purchaseLabel": "Purchase Receipt",
+    "columns": {
+      "beforeAfter": "Before → After",
+      "before": "Before",
+      "after": "After",
+      "notRecorded": "Not recorded"
+    },
     "summaryDescription": "A live count of permanent inventory movement records for this workspace."
   },
   "stockAdjustments": {

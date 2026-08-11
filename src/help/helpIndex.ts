@@ -17,7 +17,7 @@ export interface HelpTopic {
     titleKey: string
     /** i18n key for the localized description. */
     descriptionKey: string
-    /** Video file under public/tips, or a full URL. */
+    /** Video object name under the R2 bucket's hints prefix, or a full URL. */
     videoSrc: string
     /** Language-specific video files (overrides videoSrc for that UI language). */
     videoSrcByLanguage?: Partial<Record<HelpLanguage, string>>
@@ -36,7 +36,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         id: 'adjust-stock',
         titleKey: 'help.topics.adjustStock.title',
         descriptionKey: 'help.topics.adjustStock.description',
-        videoSrc: '/tips/export-1785734352530.mp4',
+        videoSrc: 'export-1785734352530.mp4',
         keywords: {
             en: [
                 'how to adjust stock',
@@ -130,7 +130,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         id: 'edit-exchange-rate',
         titleKey: 'help.topics.editExchangeRate.title',
         descriptionKey: 'help.topics.editExchangeRate.description',
-        videoSrc: '/tips/export-1785786138786.mp4',
+        videoSrc: 'export-1785786138786.mp4',
         keywords: {
             en: [
                 'how to edit exchange rate',
@@ -226,7 +226,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         id: 'print-order',
         titleKey: 'help.topics.printOrder.title',
         descriptionKey: 'help.topics.printOrder.description',
-        videoSrc: '/tips/print_order.mp4',
+        videoSrc: 'print_order.mp4',
         keywords: {
             en: [
                 'how to print an order',
@@ -336,7 +336,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         id: 'pos-checkout',
         titleKey: 'help.topics.posCheckout.title',
         descriptionKey: 'help.topics.posCheckout.description',
-        videoSrc: '/tips/pos_checkout.mp4',
+        videoSrc: 'pos_checkout.mp4',
         keywords: {
             en: [
                 'how to checkout on pos',
@@ -431,10 +431,10 @@ export const HELP_TOPICS: HelpTopic[] = [
         id: 'create-loan',
         titleKey: 'help.topics.createLoan.title',
         descriptionKey: 'help.topics.createLoan.description',
-        videoSrc: '/tips/create_loan_ku.mp4',
+        videoSrc: 'create_loan_ku.mp4',
         videoSrcByLanguage: {
-            ar: '/tips/create_loan_ar.mp4',
-            ku: '/tips/create_loan_ku.mp4',
+            ar: 'create_loan_ar.mp4',
+            ku: 'create_loan_ku.mp4',
         },
         keywords: {
             en: [
