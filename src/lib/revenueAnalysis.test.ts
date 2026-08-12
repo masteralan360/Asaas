@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { SalesOrder } from '@/local-db'
 
-import { getRevenueAnalysisTotals, getRevenueProductSalesSummary, getRevenueRecordReturnSummary, toRevenueRecordFromSalesOrder, type RevenueAnalysisRecord } from './revenueAnalysis'
+import { filterRevenueRecordsByStorage, getRevenueAnalysisTotals, getRevenueProductSalesSummary, getRevenueRecordReturnSummary, toRevenueRecordFromSalesOrder, type RevenueAnalysisRecord } from './revenueAnalysis'
 
 describe('sales order revenue analysis', () => {
   it('charges revenue on paid quantity and cost on paid plus free bonus quantity', () => {
@@ -143,5 +143,35 @@ describe('sales order revenue analysis', () => {
       productsSold: 1,
       unitsSold: 5
     })
+  })
+
+  it('scopes mixed-storage sales to matching line items before calculating totals', () => {
+    const records: RevenueAnalysisRecord[] = [{
+      key: 'sale:storage-mix',
+      id: 'storage-mix',
+      source: 'sale',
+      referenceCode: 'S-STORAGE',
+      date: '2026-01-01T00:00:00.000Z',
+      currency: 'usd',
+      origin: 'pos',
+      cashier: 'Staff',
+      hasPartialReturn: false,
+      isReturned: false,
+      items: [
+        { productId: 'product-a', productName: 'Product A', storageId: 'storage-a', quantity: 2, returnedQuantity: 0, unitPrice: 10, costPrice: 4 },
+        { productId: 'product-b', productName: 'Product B', storageId: 'storage-b', quantity: 3, returnedQuantity: 0, unitPrice: 20, costPrice: 8 }
+      ]
+    }]
+
+    const storageARecords = filterRevenueRecordsByStorage(records, 'storage-a')
+
+    expect(storageARecords).toHaveLength(1)
+    expect(storageARecords[0].items).toHaveLength(1)
+    expect(getRevenueAnalysisTotals(storageARecords[0])).toMatchObject({
+      revenue: 20,
+      cost: 8,
+      profit: 12
+    })
+    expect(filterRevenueRecordsByStorage(records, 'storage-missing')).toEqual([])
   })
 })

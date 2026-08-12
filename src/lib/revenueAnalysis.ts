@@ -6,6 +6,8 @@ import { getOrderLineInventoryQuantity, getOrderLinePaidQuantity } from '@/lib/o
 export interface RevenueAnalysisItem {
     productId: string
     productName: string
+    /** Storage captured when this line was sold, when the source supports inventory storage. */
+    storageId?: string | null
     productCategory?: string
     quantity: number
     returnedQuantity: number
@@ -154,6 +156,7 @@ export function toRevenueRecordFromSale(sale: Sale, options: RevenueCategoryLook
         items: (sale.items || []).map((item) => ({
             productId: item.product_id,
             productName: item.product_name || item.product?.name || 'Unknown Product',
+            storageId: item.storage_id || null,
             productCategory: resolveRevenueCategory(item.product_id, [item.product_category, item.product?.category], options),
             quantity: item.quantity || 0,
             returnedQuantity: item.is_returned ? (item.quantity || 0) : (item.returned_quantity || 0),
@@ -193,6 +196,7 @@ export function toRevenueRecordFromSalesOrder(order: SalesOrder, options: Revenu
             return {
                 productId: item.productId,
                 productName: item.productName || 'Unknown Product',
+                storageId: item.storageId || order.sourceStorageId || null,
                 productCategory: resolveRevenueCategory(item.productId, [
                     categorySource.productCategory,
                     categorySource.product_category,
@@ -309,6 +313,27 @@ export function getRevenueAnalysisTotals(record: RevenueAnalysisRecord): Revenue
         profit,
         margin: revenue > 0 ? (profit / revenue) * 100 : 0
     }
+}
+
+/**
+ * Keeps only the revenue lines that were sold from a selected storage.
+ *
+ * A transaction may contain products from multiple storages. Returning a copy
+ * with only matching lines makes all downstream totals, charts, and product
+ * summaries reflect the selected storage instead of the whole transaction.
+ */
+export function filterRevenueRecordsByStorage(
+    records: RevenueAnalysisRecord[],
+    storageId: string
+) {
+    if (storageId === 'all') {
+        return records
+    }
+
+    return records.flatMap((record) => {
+        const items = record.items.filter((item) => item.storageId === storageId)
+        return items.length > 0 ? [{ ...record, items }] : []
+    })
 }
 
 export function getRevenueProductSalesSummary(records: RevenueAnalysisRecord[]): RevenueProductSalesSummary {

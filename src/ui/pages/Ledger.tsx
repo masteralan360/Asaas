@@ -19,6 +19,7 @@ import {
     useRealEstateTransactions,
     useSales,
     useSalesOrders,
+    useStorages,
     usePurchaseOrders,
     useBusinessPartners,
     useExchangeTransactions,
@@ -120,6 +121,8 @@ interface LedgerEntry {
     relationTitle?: string | null
     relationDescription?: string | null
     relationIsCompleted?: boolean
+    /** Storage locations linked to the sale or sales order behind this entry. */
+    storageIds?: string[]
 }
 
 type LedgerDirectionFilter = 'all' | LedgerDirection
@@ -135,6 +138,7 @@ interface LedgerFilterState {
     partner: string
     currency: LedgerCurrencyFilter
     paymentMethod: string
+    storage: string
     notes: LedgerNotesFilter
     minAmount: string
     maxAmount: string
@@ -149,6 +153,7 @@ const DEFAULT_LEDGER_FILTERS: LedgerFilterState = {
     partner: 'all',
     currency: 'all',
     paymentMethod: 'all',
+    storage: 'all',
     notes: 'all',
     minAmount: '',
     maxAmount: '',
@@ -164,6 +169,7 @@ function countActiveLedgerFilters(filters: LedgerFilterState) {
         filters.partner !== 'all',
         filters.currency !== 'all',
         filters.paymentMethod !== 'all',
+        filters.storage !== 'all',
         filters.notes !== 'all',
         !!filters.minAmount,
         !!filters.maxAmount,
@@ -439,6 +445,10 @@ function applyLedgerFilters(entries: LedgerEntry[], filters: LedgerFilterState) 
             return false
         }
 
+        if (filters.storage !== 'all' && !entry.storageIds?.includes(filters.storage)) {
+            return false
+        }
+
         if (filters.notes === 'with_notes' && !entry.notes?.trim()) {
             return false
         }
@@ -661,6 +671,26 @@ interface LedgerBuildContext {
     businessPartnerByName: Map<string, string>
 }
 
+function getSaleStorageIds(sale: Sale | undefined) {
+    if (!sale) return []
+
+    return Array.from(new Set(
+        (sale.items || [])
+            .map((item) => item.storage_id)
+            .filter((storageId): storageId is string => !!storageId)
+    ))
+}
+
+function getSalesOrderStorageIds(order: SalesOrder | undefined) {
+    if (!order) return []
+
+    return Array.from(new Set(
+        (order.items || [])
+            .map((item) => item.storageId || order.sourceStorageId)
+            .filter((storageId): storageId is string => !!storageId)
+    ))
+}
+
 function buildSaleLedgerEntry(sale: Sale, t: any): LedgerEntry | null {
     if (sale.isDeleted || sale.isReturned) {
         return null
@@ -697,7 +727,8 @@ function buildSaleLedgerEntry(sale: Sale, t: any): LedgerEntry | null {
         paymentMethod,
         notes: sale.notes?.trim() || null,
         description: descriptionParts.length > 0 ? descriptionParts.join(' | ') : null,
-        routePath: '/sales'
+        routePath: '/sales',
+        storageIds: getSaleStorageIds(sale)
     }
 }
 
@@ -1006,6 +1037,7 @@ function buildPaymentLedgerEntry(
                 notes: transaction.note?.trim() || null,
                 description: buildTransactionDescription(transaction, t),
                 routePath: getPaymentTransactionRoutePath(transaction),
+                storageIds: getSalesOrderStorageIds(salesOrder),
                 ...relation
             }
         }
@@ -1156,6 +1188,7 @@ function buildPaymentLedgerEntry(
                 notes: transaction.note?.trim() || null,
                 description: buildTransactionDescription(transaction, t),
                 routePath: getPaymentTransactionRoutePath(transaction),
+                storageIds: getSaleStorageIds(installmentLoan?.saleId ? context.saleById.get(installmentLoan.saleId) : undefined),
                 ...relation
             }
         }
@@ -1178,6 +1211,7 @@ function buildPaymentLedgerEntry(
                 notes: transaction.note?.trim() || null,
                 description: buildTransactionDescription(transaction, t),
                 routePath: getPaymentTransactionRoutePath(transaction),
+                storageIds: getSaleStorageIds(loanPaymentLoan?.saleId ? context.saleById.get(loanPaymentLoan.saleId) : undefined),
                 ...relation
             }
         }
@@ -1252,6 +1286,7 @@ export function Ledger() {
     const loans = useLoans(workspaceId)
     const realEstateTransactions = useRealEstateTransactions(workspaceId)
     const sales = useSales(workspaceId, dateBounds.startDate, dateBounds.endDate)
+    const storages = useStorages(workspaceId)
     const paymentTransactions = usePaymentTransactions(workspaceId, { includeReversals: true })
     const salesOrders = useSalesOrders(workspaceId, dateBounds.startDate, dateBounds.endDate)
     const purchaseOrders = usePurchaseOrders(workspaceId)
@@ -1512,6 +1547,10 @@ export function Ledger() {
         if (filters.paymentMethod !== 'all') {
             chips.push(t('ledger.filters.chipMethod', { name: paymentMethodLabel(filters.paymentMethod, t), defaultValue: `Method: ${paymentMethodLabel(filters.paymentMethod, t)}` }))
         }
+        if (filters.storage !== 'all') {
+            const storageName = storages.find((storage) => storage.id === filters.storage)?.name || filters.storage
+            chips.push(t('ledger.filters.chipStorage', { name: storageName, defaultValue: `Storage: ${storageName}` }))
+        }
         if (filters.notes !== 'all') {
             chips.push(notesFilterLabel(filters.notes, t))
         }
@@ -1526,7 +1565,7 @@ export function Ledger() {
         }
 
         return chips
-    }, [filters, t])
+    }, [filters, storages, t])
 
     const activeFilterCount = useMemo(
         () => countActiveLedgerFilters(filters),
@@ -2724,9 +2763,9 @@ export function Ledger() {
                                         </div>
                                     </div>
 
-                                    <div className="grid gap-4 sm:grid-cols-2">
-                                        <div className="space-y-2">
-                                            <Label>{t('ledger.filters.paymentMethod', { defaultValue: 'Payment Method' })}</Label>
+                                        <div className="grid gap-4 sm:grid-cols-2">
+                                            <div className="space-y-2">
+                                                <Label>{t('ledger.filters.paymentMethod', { defaultValue: 'Payment Method' })}</Label>
                                             <Select value={draftFilters.paymentMethod} onValueChange={(value) => setDraftFilters((current) => ({ ...current, paymentMethod: value }))}>
                                                 <SelectTrigger>
                                                     <SelectValue placeholder={t('ledger.filters.anyMethod', { defaultValue: 'Any Method' })} />
@@ -2752,11 +2791,26 @@ export function Ledger() {
                                                     <SelectItem value="with_notes">{t('ledger.filters.withNotes', { defaultValue: 'With Notes' })}</SelectItem>
                                                     <SelectItem value="without_notes">{t('ledger.filters.withoutNotes', { defaultValue: 'Without Notes' })}</SelectItem>
                                                 </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <Label>{t('ledger.filters.storage', { defaultValue: 'Storage' })}</Label>
+                                            <Select value={draftFilters.storage} onValueChange={(value) => setDraftFilters((current) => ({ ...current, storage: value }))}>
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">{t('ledger.filters.allStorages', { defaultValue: 'All Storages' })}</SelectItem>
+                                                    {storages.map((storage) => (
+                                                        <SelectItem key={storage.id} value={storage.id}>{storage.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
                                             </Select>
                                         </div>
-                                    </div>
 
-                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <div className="grid gap-4 sm:grid-cols-2">
                                         <div className="space-y-2">
                                             <Label htmlFor="ledger-filter-min-amount">{t('ledger.filters.minimumAmount', { defaultValue: 'Minimum Amount' })}</Label>
                                             <Input

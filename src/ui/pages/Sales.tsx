@@ -120,6 +120,7 @@ export interface SalesFilterState {
     maxAmount: string
     returnStatus: string
     productSku: string
+    storage: string
     sort: SalesSortOption
 }
 
@@ -133,6 +134,7 @@ export const DEFAULT_SALES_FILTERS: SalesFilterState = {
     maxAmount: '',
     returnStatus: 'all',
     productSku: '',
+    storage: 'all',
     sort: 'date_desc'
 }
 
@@ -147,6 +149,7 @@ function countActiveSalesFilters(filters: SalesFilterState) {
         !!filters.maxAmount,
         filters.returnStatus !== 'all',
         !!filters.productSku.trim(),
+        filters.storage !== 'all',
         filters.sort !== 'date_desc'
     ].filter(Boolean).length
 }
@@ -593,6 +596,10 @@ export function Sales() {
                     return itemSku.toLowerCase().includes(normalizedSku)
                 })
                 if (!hasMatchingSku) return false
+            }
+
+            if (effectiveFilters.storage !== 'all' && !(s.items || []).some((item: SaleItem) => item.storage_id === effectiveFilters.storage)) {
+                return false
             }
 
             if (!normalizedSearch) {
@@ -3343,6 +3350,21 @@ export function Sales() {
                                                     </SelectContent>
                                                 </Select>
                                             </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <Label>{t('sales.filters.storage', { defaultValue: 'Storage' })}</Label>
+                                            <Select value={draftFilters.storage} onValueChange={(value) => setDraftFilters((current) => ({ ...current, storage: value }))}>
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">{t('sales.filters.allStorages', { defaultValue: 'All Storages' })}</SelectItem>
+                                                    {storages.map((storage) => (
+                                                        <SelectItem key={storage.id} value={storage.id}>{storage.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
 
                                         <div className="space-y-2">

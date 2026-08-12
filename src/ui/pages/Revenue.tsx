@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { Sale } from '@/types'
-import { applySalesOrderReturnQuantities, useCategories, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, toUISale, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction } from '@/local-db'
+import { applySalesOrderReturnQuantities, useCategories, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, toUISale, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction } from '@/local-db'
 import { formatCurrency, formatDateTime, formatDate, formatOriginLabel, formatTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
@@ -85,6 +85,7 @@ import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, Tooltip as Rechart
 import {
     buildRevenueAnalysisRecords,
     filterRevenueAnalysisRecords,
+    filterRevenueRecordsByStorage,
     filterSalesByDateRange,
     getRevenueAnalysisTotals,
     getRevenueProductSalesSummary,
@@ -125,6 +126,7 @@ interface RevenueFilterState {
     category: string
     product: string
     productSearch: string
+    storage: string
     returnStatus: RevenueReturnStatusFilter
     profitStatus: RevenueProfitStatusFilter
     dayOfWeek: RevenueDayFilter
@@ -153,6 +155,7 @@ const DEFAULT_REVENUE_FILTERS: RevenueFilterState = {
     category: 'all',
     product: 'all',
     productSearch: '',
+    storage: 'all',
     returnStatus: 'all',
     profitStatus: 'all',
     dayOfWeek: 'all',
@@ -179,6 +182,7 @@ function countActiveRevenueFilters(filters: RevenueFilterState) {
         filters.paymentMethod !== 'all',
         filters.category !== 'all',
         filters.product !== 'all',
+        filters.storage !== 'all',
         filters.returnStatus !== 'all',
         filters.profitStatus !== 'all',
         filters.dayOfWeek !== 'all',
@@ -620,6 +624,7 @@ export function Revenue() {
     const activityTransactionLines = useActivityTransactionLinesForWorkspace(user?.workspaceId)
     const products = useProducts(user?.workspaceId)
     const categories = useCategories(user?.workspaceId)
+    const storages = useStorages(user?.workspaceId)
     const workspaceUsers = useWorkspaceUsers(user?.workspaceId)
     const userNameById = useMemo(
         () => new Map(workspaceUsers.map((member) => [member.id, member.name || member.email || member.id] as const)),
@@ -769,15 +774,15 @@ export function Revenue() {
         [revenueRecords, dateRange, customDates]
     )
     const filteredRevenueRecords = useMemo(
-        () => applyRevenueFilters(dateScopedRevenueRecords, filters, userNameById),
+        () => applyRevenueFilters(filterRevenueRecordsByStorage(dateScopedRevenueRecords, filters.storage), filters, userNameById),
         [dateScopedRevenueRecords, filters, userNameById]
     )
     const allTimeFilteredRevenueRecords = useMemo(
-        () => applyRevenueFilters(revenueRecords, filters, userNameById),
+        () => applyRevenueFilters(filterRevenueRecordsByStorage(revenueRecords, filters.storage), filters, userNameById),
         [filters, revenueRecords, userNameById]
     )
     const draftPreviewRevenueRecords = useMemo(
-        () => applyRevenueFilters(dateScopedRevenueRecords, draftFilters, userNameById),
+        () => applyRevenueFilters(filterRevenueRecordsByStorage(dateScopedRevenueRecords, draftFilters.storage), draftFilters, userNameById),
         [dateScopedRevenueRecords, draftFilters, userNameById]
     )
     const filteredSales = useMemo(() => {
@@ -1176,6 +1181,10 @@ export function Revenue() {
             const productLabel = filters.productSearch || optionLabel(revenueFilterOptions.products, filters.product)
             chips.push(t('revenue.filters.chipProduct', { name: productLabel, defaultValue: `Product: ${productLabel}` }))
         }
+        if (filters.storage !== 'all') {
+            const storageName = storages.find((storage) => storage.id === filters.storage)?.name || filters.storage
+            chips.push(t('revenue.filters.chipStorage', { name: storageName, defaultValue: `Storage: ${storageName}` }))
+        }
         if (filters.returnStatus !== 'all') {
             chips.push(revenueReturnStatusLabel(filters.returnStatus, t))
         }
@@ -1201,7 +1210,7 @@ export function Revenue() {
         }
 
         return chips
-    }, [filters, revenueFilterOptions, t])
+    }, [filters, revenueFilterOptions, storages, t])
 
     const handleResetAllFilters = () => {
         setFilters(DEFAULT_REVENUE_FILTERS)
@@ -2590,6 +2599,21 @@ export function Revenue() {
                                                         </SelectContent>
                                                     </Select>
                                                 </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <Label>{t('revenue.filters.storage', { defaultValue: 'Storage' })}</Label>
+                                                <Select value={draftFilters.storage} onValueChange={(value) => setDraftFilters((current) => ({ ...current, storage: value }))}>
+                                                    <SelectTrigger>
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="all">{t('revenue.filters.allStorages', { defaultValue: 'All Storages' })}</SelectItem>
+                                                        {storages.map((storage) => (
+                                                            <SelectItem key={storage.id} value={storage.id}>{storage.name}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
                                             </div>
 
                                             <div className="grid gap-4 sm:grid-cols-2">

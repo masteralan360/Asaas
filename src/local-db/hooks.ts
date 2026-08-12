@@ -6082,6 +6082,7 @@ export function toUISaleFromOrder(order: any): any {
         id: item.id || Math.random().toString(36).substr(2, 9),
         sale_id: order.id,
         product_id: item.productId,
+        storage_id: item.storageId || order.sourceStorageId || null,
         product_name: item.productName || 'Unknown Product',
         product_sku: item.productSku || '',
         quantity: item.quantity || 0,
