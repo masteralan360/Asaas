@@ -13,6 +13,7 @@ let createPriceBook: typeof import('./priceBooks').createPriceBook
 let hardDeletePriceBook: typeof import('./priceBooks').hardDeletePriceBook
 let replaceProductPriceBookItems: typeof import('./priceBooks').replaceProductPriceBookItems
 let updatePriceBook: typeof import('./priceBooks').updatePriceBook
+let deleteProduct: typeof import('./hooks').deleteProduct
 let createBusinessPartner: typeof import('./businessPartners').createBusinessPartner
 let updateBusinessPartner: typeof import('./businessPartners').updateBusinessPartner
 let rekeyPriceBookItemReferences: typeof import('./priceBookReferences').rekeyPriceBookItemReferences
@@ -89,6 +90,7 @@ describe('Price Book local data', () => {
         hardDeletePriceBook = module.hardDeletePriceBook
         replaceProductPriceBookItems = module.replaceProductPriceBookItems
         updatePriceBook = module.updatePriceBook
+        deleteProduct = (await import('./hooks')).deleteProduct
         createBusinessPartner = partners.createBusinessPartner
         updateBusinessPartner = partners.updateBusinessPartner
         rekeyPriceBookItemReferences = (await import('./priceBookReferences')).rekeyPriceBookItemReferences
@@ -156,6 +158,20 @@ describe('Price Book local data', () => {
         }])
 
         expect(item).toMatchObject({ costPrice: null, price: 15, isDeleted: false })
+    })
+
+    it('retires Price Book overrides when its product is deleted', async () => {
+        const book = await createPriceBook(WORKSPACE_ID, { name: 'Retired product overrides' })
+        const [item] = await replaceProductPriceBookItems(WORKSPACE_ID, makeProduct().id, [{
+            priceBookId: book.id,
+            costPrice: 8,
+            price: 12,
+            currency: 'usd'
+        }])
+
+        await deleteProduct(makeProduct().id)
+
+        expect(await db.price_book_items.get(item.id)).toMatchObject({ isDeleted: true })
     })
 
     it('rejects duplicate rows and cross-workspace books', async () => {

@@ -67,6 +67,7 @@ import {
     syncProductBarcodeCachesForWorkspace
 } from './productBarcodes'
 import { DuplicateProductSkuError, normalizeProductSku, trimProductSku } from './productSku'
+import { replaceProductPriceBookItems } from './priceBooks'
 import { generateId, toSnakeCase, toCamelCase } from '@/lib/utils'
 import { supabase } from '@/auth/supabase'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
@@ -1046,6 +1047,8 @@ export async function deleteProduct(id: string): Promise<void> {
     if (!existing.parentProductId) {
         await assertVariantsCanBecomeIndependentAfterParentDeletion(id)
     }
+
+    await replaceProductPriceBookItems(existing.workspaceId, id, [])
 
     const updated = {
         ...existing,

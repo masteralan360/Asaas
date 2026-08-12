@@ -1503,12 +1503,30 @@ export function Products() {
                         <>
                             {isMobile() && (
                                 <div className="grid grid-cols-1 gap-4">
-                                    {paginatedProducts.map((product) => (
-                                        <ContextMenu key={product.id}>
+                                    {paginatedProductGroups.map((group) => {
+                                        const groupedProducts = [group.primary, ...group.variants]
+
+                                        return (
+                                            <div key={group.primary.id} className="space-y-4">
+                                                {groupedProducts.map((product, index) => {
+                                                    const isLinkedVariant = index > 0
+                                                    const isAttachedVariant = index === 1
+
+                                                    return (
+                                                        <div
+                                                            key={product.id}
+                                                            className={cn(
+                                                                isAttachedVariant && 'relative !-mt-px mx-6 pt-0',
+                                                                isLinkedVariant && !isAttachedVariant && 'mx-6 pt-3'
+                                                            )}
+                                                        >
+                                        <ContextMenu>
                                             <ContextMenuTrigger asChild>
                                                 <div
                                                     className={cn(
                                                         'space-y-4 rounded-[2rem] border border-border bg-card p-4 shadow-sm',
+                                                        isLinkedVariant && 'rounded-[1.5rem] p-3',
+                                                        isAttachedVariant && 'relative z-10 rounded-t-none border-t-0 shadow-none',
                                                         isProductSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5',
                                                         hasProductCostWarning(product) && 'border-destructive/40 bg-destructive/10'
                                                     )}
@@ -1525,7 +1543,7 @@ export function Products() {
                                                     </Label>
                                                 </div>
                                             )}
-                                            <div className="flex gap-4">
+                                            <div className={cn('flex gap-4', isLinkedVariant && 'gap-3')}>
                                                 {hasProductCostWarning(product) && (
                                                     <TooltipProvider>
                                                         <Tooltip delayDuration={150}>
@@ -1536,7 +1554,7 @@ export function Products() {
                                                         </Tooltip>
                                                     </TooltipProvider>
                                                 )}
-                                                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem] border border-border/50 bg-muted/30">
+                                                <div className={cn('flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem] border border-border/50 bg-muted/30', isLinkedVariant && 'h-14 w-14 rounded-2xl')}>
                                                     {product.imageUrl ? (
                                                         <img src={getDisplayImageUrl(product.imageUrl)} alt="" className="h-full w-full object-cover" />
                                                     ) : (
@@ -1544,33 +1562,44 @@ export function Products() {
                                                     )}
                                                 </div>
                                                 <div className="flex min-w-0 flex-1 flex-col justify-center">
-                                                    <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{product.sku}</div>
-                                                    <div className="flex items-center gap-2"><div className="truncate text-base font-black leading-tight text-foreground">{product.name}</div>{isPrimaryProduct(product) && <span className="shrink-0 rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-primary">{t('products.variants.primary', { defaultValue: 'Primary' })}</span>}</div>
-                                                    <div className="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-primary/80">
+                                                    <div className={cn('text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground', isLinkedVariant && 'text-[9px]')}>{product.sku}</div>
+                                                    <div className={cn('truncate text-base font-black leading-tight text-foreground', isLinkedVariant && 'text-sm')}>{product.name}</div>
+                                                    <div className={cn('mt-0.5 text-[11px] font-bold uppercase tracking-wide text-primary/80', isLinkedVariant && 'text-[10px]')}>
                                                         {getCategoryName(product.categoryId)}
                                                     </div>
-                                                    <div className="mt-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                                                    <div className={cn('mt-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60', isLinkedVariant && 'text-[9px]')}>
                                                         {renderStorage(product.id) ?? getStorageName(product.storageId)}
                                                     </div>
                                                 </div>
                                                 <div className="flex flex-col justify-center text-right">
-                                                    <div className="text-lg font-black leading-tight text-primary">
+                                                    {product.parentProductId ? (
+                                                        <span className="mb-1 inline-flex self-end items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-muted-foreground">
+                                                            <GitBranch className="h-3 w-3" />
+                                                            {t('products.variants.variant', { defaultValue: 'Variant' })}
+                                                        </span>
+                                                    ) : isPrimaryProduct(product) ? (
+                                                        <span className="mb-1 self-end rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-primary">
+                                                            {t('products.variants.primary', { defaultValue: 'Primary' })}
+                                                        </span>
+                                                    ) : null}
+                                                    <div className={cn('text-lg font-black leading-tight text-primary', isLinkedVariant && 'text-base')}>
                                                         {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
                                                     </div>
                                                     <div className={cn(
                                                         'mt-0.5 text-[11px] font-black uppercase tracking-widest',
+                                                        isLinkedVariant && 'text-[10px]',
                                                         product.quantity <= product.minStockLevel ? 'text-amber-500' : 'text-muted-foreground/60'
                                                     )}>
                                                         {product.quantity} {t(`products.units.${product.unit}`, product.unit)}
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div className="flex justify-end gap-2 border-t border-border/50 pt-3">
+                                            <div className={cn('flex justify-end gap-2 border-t border-border/50 pt-3', isLinkedVariant && 'gap-1.5 pt-2')}>
                                                 <Button
                                                     variant="secondary"
                                                     size="sm"
                                                     allowViewer={!canEdit}
-                                                    className="h-10 gap-2 rounded-xl px-6 font-bold"
+                                                    className={cn('h-10 gap-2 rounded-xl px-6 font-bold', isLinkedVariant && 'h-9 gap-1.5 rounded-lg px-4 text-xs')}
                                                     onClick={() => openProductForm(product)}
                                                 >
                                                     {canEdit ? <Pencil className="h-4 w-4" /> : <Info className="h-4 w-4" />}
@@ -1580,7 +1609,7 @@ export function Products() {
                                                     <Button
                                                         variant="secondary"
                                                         size="sm"
-                                                        className="h-10 gap-2 rounded-xl px-4 font-bold text-primary"
+                                                        className={cn('h-10 gap-2 rounded-xl px-4 font-bold text-primary', isLinkedVariant && 'h-9 gap-1.5 rounded-lg px-3 text-xs')}
                                                         onClick={() => {
                                                             setSelectedProductForStock(product.id)
                                                             setAdjustmentDialogOpen(true)
@@ -1595,7 +1624,7 @@ export function Products() {
                                                         variant="ghost"
                                                         size="icon"
                                                         aria-label={t('common.clone') || 'Clone'}
-                                                        className="h-10 w-10 rounded-xl text-primary hover:bg-primary/5"
+                                                        className={cn('h-10 w-10 rounded-xl text-primary hover:bg-primary/5', isLinkedVariant && 'h-9 w-9 rounded-lg')}
                                                         onClick={() => handleCloneProduct(product)}
                                                     >
                                                         <Copy className="h-4 w-4" />
@@ -1606,7 +1635,7 @@ export function Products() {
                                                         variant="ghost"
                                                         size="icon"
                                                         aria-label={t('common.delete') || 'Delete'}
-                                                        className="h-10 w-10 rounded-xl text-destructive hover:bg-destructive/5"
+                                                        className={cn('h-10 w-10 rounded-xl text-destructive hover:bg-destructive/5', isLinkedVariant && 'h-9 w-9 rounded-lg')}
                                                         onClick={() => handleDeleteProduct(product)}
                                                     >
                                                         <Trash2 className="h-4 w-4" />
@@ -1624,7 +1653,12 @@ export function Products() {
                                             )}
                                         </ContextMenuContent>
                                     </ContextMenu>
-                                    ))}
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                        )
+                                    })}
                                 </div>
                             )}
 

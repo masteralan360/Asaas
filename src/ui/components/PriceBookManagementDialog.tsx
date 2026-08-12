@@ -67,9 +67,13 @@ export function PriceBookManagementDialog({
         () => new Map(products.map((product) => [product.id, product] as const)),
         [products]
     )
+    const visiblePriceBookItems = useMemo(
+        () => priceBookItems.filter((item) => productById.has(item.productId)),
+        [priceBookItems, productById]
+    )
     const priceBookItemsByBookId = useMemo(() => {
-        const itemsByBookId = new Map<string, typeof priceBookItems>()
-        for (const item of priceBookItems) {
+        const itemsByBookId = new Map<string, typeof visiblePriceBookItems>()
+        for (const item of visiblePriceBookItems) {
             const items = itemsByBookId.get(item.priceBookId) ?? []
             items.push(item)
             itemsByBookId.set(item.priceBookId, items)
@@ -82,7 +86,7 @@ export function PriceBookManagementDialog({
             })
         }
         return itemsByBookId
-    }, [priceBookItems, productById])
+    }, [productById, visiblePriceBookItems])
 
     useEffect(() => {
         if (!open) {
