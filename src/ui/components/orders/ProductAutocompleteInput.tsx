@@ -96,12 +96,32 @@ export function ProductAutocompleteInput({
 
     const filtered = useMemo(() => {
         if (!query || query.length < 1) return []
-        return selectableProducts
-            .filter((p) =>
-                p.name.toLowerCase().includes(query) ||
-                (p.sku && p.sku.toLowerCase().includes(query))
-            )
-            .slice(0, 8)
+
+        const families = new Map<string, Product[]>()
+        for (const product of selectableProducts) {
+            const familyId = product.parentProductId || product.id
+            const members = families.get(familyId) ?? []
+            members.push(product)
+            families.set(familyId, members)
+        }
+
+        return Array.from(families.entries())
+            .filter(([, members]) => members.some((product) => (
+                product.name.toLowerCase().includes(query)
+                || (product.sku && product.sku.toLowerCase().includes(query))
+            )))
+            .flatMap(([familyId, members]) => {
+                const primaryIndex = members.findIndex((product) => product.id === familyId)
+                if (primaryIndex <= 0) {
+                    return members
+                }
+
+                return [
+                    members[primaryIndex],
+                    ...members.slice(0, primaryIndex),
+                    ...members.slice(primaryIndex + 1)
+                ]
+            })
     }, [query, selectableProducts])
 
     const showDropdown = isFocused && !justSelected && filtered.length > 0
