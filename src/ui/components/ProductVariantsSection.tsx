@@ -56,6 +56,7 @@ import {
     SelectItem,
     SelectTrigger,
     SelectValue,
+    Switch,
     Textarea,
     useToast
 } from '@/ui/components'
@@ -127,7 +128,8 @@ function mapPriceBookItemsToDrafts(items: PriceBookItem[]): ProductPriceBookDraf
             priceBookId: item.priceBookId,
             costPrice: item.costPrice == null ? '' : String(item.costPrice),
             price: String(item.price),
-            currency: item.currency
+            currency: item.currency,
+            useParentPriceBookCost: true
         }))
 }
 
@@ -258,6 +260,7 @@ export function ProductVariantsSection({
     const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
     const [searchTerm, setSearchTerm] = useState('')
     const [draft, setDraft] = useState<VariantDraft>(() => createVariantDraft(parent, hideCosts))
+    const [useParentCost, setUseParentCost] = useState(true)
     const [imageError, setImageError] = useState(false)
     const [isAdditionalImagesOpen, setIsAdditionalImagesOpen] = useState(false)
     const [additionalImageFiles, setAdditionalImageFiles] = useState<File[]>([])
@@ -277,6 +280,14 @@ export function ProductVariantsSection({
             priceBookItems.filter((item) => item.productId === parent.id && activePriceBookIds.has(item.priceBookId))
         )
     }, [parent.id, priceBookItems, priceBooks, priceBooksEnabled])
+    const parentPriceBookCostsById = useMemo(() => {
+        const activePriceBookIds = new Set(priceBooks.map((priceBook) => priceBook.id))
+        return new Map(
+            priceBookItems
+                .filter((item) => item.productId === parent.id && activePriceBookIds.has(item.priceBookId))
+                .map((item) => [item.priceBookId, item.costPrice] as const)
+        )
+    }, [parent.id, priceBookItems, priceBooks])
     const productsWithVariants = useMemo(
         () => new Set(products.filter((product) => product.parentProductId && !product.isDeleted).map((product) => product.parentProductId)),
         [products]
@@ -307,6 +318,7 @@ export function ProductVariantsSection({
 
     const resetCreateDialog = () => {
         setDraft(createVariantDraft(parent, hideCosts))
+        setUseParentCost(true)
         setImageError(false)
         setAdditionalImageFiles([])
         setPriceBookRows(priceBooksEnabled && isPriceBookCatalogReady ? parentPriceBookRows : [])
@@ -401,6 +413,9 @@ export function ProductVariantsSection({
 
         const selectedCategory = categories.find((category) => category.id === draft.categoryId)
         const selectedStorage = storages.find((storage) => storage.id === defaultStorageId)
+        const costPrice = hideCosts
+            ? (useParentCost ? parent.costPrice : null)
+            : (draft.costPrice.trim() === '' ? null : Number(draft.costPrice))
         setIsCreating(true)
         let createdProduct: Product | null = null
         let postCreateStep: 'priceBooks' | 'additionalImages' | null = null
@@ -415,7 +430,7 @@ export function ProductVariantsSection({
                 storageId: defaultStorageId,
                 storageName: selectedStorage?.name,
                 price: Number(draft.price) || 0,
-                costPrice: hideCosts || draft.costPrice.trim() === '' ? null : Number(draft.costPrice),
+                costPrice,
                 quantity,
                 minStockLevel: 0,
                 unit: draft.unit,
@@ -432,7 +447,9 @@ export function ProductVariantsSection({
                     createdProduct.id,
                     priceBookRows.map((row) => ({
                         priceBookId: row.priceBookId,
-                        costPrice: hideCosts || row.costPrice.trim() === '' ? null : Number(row.costPrice),
+                        costPrice: hideCosts
+                            ? (row.useParentPriceBookCost !== false ? parentPriceBookCostsById.get(row.priceBookId) ?? null : null)
+                            : (row.costPrice.trim() === '' ? null : Number(row.costPrice)),
                         price: Number(row.price),
                         currency: row.currency
                     })),
@@ -641,7 +658,17 @@ export function ProductVariantsSection({
                                 <div className="space-y-2"><Label htmlFor="variant-name">{t('products.form.name', { defaultValue: 'Product Name' })} *</Label><Input id="variant-name" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} required autoFocus className="h-11 rounded-xl" /></div>
                                 <div className="space-y-2"><div className="flex items-center gap-1"><Label htmlFor="variant-sku">SKU *</Label><Button type="button" variant="ghost" size="icon" onClick={() => setDraft((current) => ({ ...current, sku: parent.sku }))} disabled={!parent.sku} aria-label={t('products.variants.copyParentSku', { defaultValue: 'Copy parent SKU' })} title={t('products.variants.copyParentSku', { defaultValue: 'Copy parent SKU' })} className="h-6 w-6 text-primary hover:text-primary"><Copy className="h-3.5 w-3.5" /></Button></div><div className="flex gap-2"><Input ref={variantSkuInputRef} id="variant-sku" value={draft.sku} onChange={(event) => setDraft((current) => ({ ...current, sku: event.target.value }))} required className="h-11 min-w-0 flex-1 rounded-xl" /><BarcodeScannerToggleButton enabled={variantSkuScannerEnabled} onEnabledChange={onVariantSkuScannerEnabledChange} onScan={handleVariantSkuScan} label={t('products.table.sku', { defaultValue: 'SKU' })} activeLabel={t('pos.scannerEnabled', { defaultValue: 'Scanner Enabled' })} inactiveLabel={t('pos.scannerDisabled', { defaultValue: 'Scanner Disabled' })} deviceStorageKey="products_sku_hid_device_id" targetInputRef={variantSkuInputRef} idleCommitDelayMs={1200} /></div></div>
                                 <div className="space-y-2"><Label htmlFor="variant-price">{t('products.table.price', { defaultValue: 'Price' })} *</Label><div className="relative"><Input id="variant-price" type="text" inputMode="decimal" value={formatNumericInput(draft.price)} onChange={(event) => setDraft((current) => ({ ...current, price: sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 }) }))} placeholder="0.000" required className="h-11 rounded-xl pr-16 text-lg font-black text-primary" /><span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{getCurrencySymbol(draft.currency, iqdDisplayPreference)}</span></div></div>
-                                {!hideCosts && <div className="space-y-2"><Label htmlFor="variant-cost">{t('products.form.cost', { defaultValue: 'Cost Price' })}</Label><div className="relative"><Input id="variant-cost" type="text" inputMode="decimal" value={formatNumericInput(draft.costPrice)} onChange={(event) => setDraft((current) => ({ ...current, costPrice: sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 }) }))} placeholder="0.000" className="h-11 rounded-xl pr-16 font-bold" /><span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{getCurrencySymbol(draft.currency, iqdDisplayPreference)}</span></div></div>}
+                                {hideCosts ? (
+                                    <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
+                                        <div>
+                                            <Label htmlFor="variant-use-parent-cost" className="font-bold">{t('products.variants.useParentCost', { defaultValue: 'Use parent product cost' })}</Label>
+                                            <p className="mt-1 text-xs text-muted-foreground">{t('products.variants.useParentCostDescription', { defaultValue: 'Copy the parent product cost without showing it.' })}</p>
+                                        </div>
+                                        <Switch id="variant-use-parent-cost" checked={useParentCost} onCheckedChange={setUseParentCost} />
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2"><Label htmlFor="variant-cost">{t('products.form.cost', { defaultValue: 'Cost Price' })}</Label><div className="relative"><Input id="variant-cost" type="text" inputMode="decimal" value={formatNumericInput(draft.costPrice)} onChange={(event) => setDraft((current) => ({ ...current, costPrice: sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 }) }))} placeholder="0.000" className="h-11 rounded-xl pr-16 font-bold" /><span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{getCurrencySymbol(draft.currency, iqdDisplayPreference)}</span></div></div>
+                                )}
                                 <div className="space-y-2"><Label htmlFor="variant-stock">{t('products.variants.stockQuantity', { defaultValue: 'Stock Quantity' })} *</Label><Input id="variant-stock" type="text" inputMode="decimal" value={formatNumericInput(draft.quantity)} onChange={(event) => setDraft((current) => ({ ...current, quantity: sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 }) }))} placeholder="0" required className="h-11 rounded-xl" /></div>
                                 <div className="space-y-2"><Label>{t('products.table.category', { defaultValue: 'Category' })}</Label><Select value={draft.categoryId || '__none__'} onValueChange={(value) => setDraft((current) => ({ ...current, categoryId: value === '__none__' ? '' : value }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">{t('categories.noCategory', { defaultValue: 'No Category' })}</SelectItem>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent></Select></div>
                                 <CurrencySelector label={t('products.form.currency', { defaultValue: 'Currency' })} value={draft.currency} onChange={(currency) => setDraft((current) => ({ ...current, currency }))} iqdDisplayPreference={iqdDisplayPreference} allowedCurrencies={allowedCurrencies} />
@@ -660,6 +687,7 @@ export function ProductVariantsSection({
                                                 allowedCurrencies={allowedCurrencies}
                                                 iqdDisplayPreference={iqdDisplayPreference}
                                                 hideCosts={hideCosts}
+                                                showParentPriceBookCostToggle={hideCosts}
                                                 description={t('products.variants.priceBookOverridesDescription', {
                                                     defaultValue: 'Starts with this primary product\'s Price Book overrides. Adjust, remove, or add entries; they will be independent for this variant.'
                                                 })}

@@ -13,7 +13,8 @@ import {
     SelectContent,
     SelectItem,
     SelectTrigger,
-    SelectValue
+    SelectValue,
+    Switch
 } from '@/ui/components'
 
 export interface ProductPriceBookDraft {
@@ -21,6 +22,7 @@ export interface ProductPriceBookDraft {
     costPrice: string
     price: string
     currency: CurrencyCode
+    useParentPriceBookCost?: boolean
 }
 
 interface ProductPriceBookItemsEditorProps {
@@ -34,6 +36,8 @@ interface ProductPriceBookItemsEditorProps {
     iqdDisplayPreference: IQDDisplayPreference
     disabled?: boolean
     hideCosts?: boolean
+    showParentPriceBookCostToggle?: boolean
+    highlightMissingCosts?: boolean
     attention?: boolean
     description?: string
 }
@@ -49,6 +53,8 @@ export function ProductPriceBookItemsEditor({
     iqdDisplayPreference,
     disabled = false,
     hideCosts = false,
+    showParentPriceBookCostToggle = false,
+    highlightMissingCosts = false,
     attention = false,
     description
 }: ProductPriceBookItemsEditorProps) {
@@ -76,7 +82,8 @@ export function ProductPriceBookItemsEditor({
                 priceBookId: nextAvailableBook.id,
                 costPrice: hideCosts ? '' : defaultCostPrice.trim(),
                 price: defaultPrice.trim() || '0',
-                currency: defaultCurrency
+                currency: defaultCurrency,
+                ...(showParentPriceBookCostToggle ? { useParentPriceBookCost: true } : {})
             }
         ])
     }
@@ -147,7 +154,9 @@ export function ProductPriceBookItemsEditor({
                         return (
                             <div key={`${row.priceBookId}-${index}`} className="rounded-2xl border border-border/60 bg-muted/10 p-4">
                                 <div className={hideCosts
-                                    ? 'grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(180px,1.2fr)_minmax(150px,1fr)_minmax(140px,0.8fr)_40px] xl:items-end'
+                                    ? showParentPriceBookCostToggle
+                                        ? 'grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(180px,1.2fr)_minmax(150px,1fr)_minmax(160px,1fr)_minmax(140px,0.8fr)_40px] xl:items-end'
+                                        : 'grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(180px,1.2fr)_minmax(150px,1fr)_minmax(140px,0.8fr)_40px] xl:items-end'
                                     : 'grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(180px,1.2fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(140px,0.8fr)_40px] xl:items-end'}>
                                     <div className="space-y-2">
                                         <Label>{t('priceBooks.titleSingular', { defaultValue: 'Price Book' })}</Label>
@@ -208,7 +217,25 @@ export function ProductPriceBookItemsEditor({
                                                 readOnly={disabled}
                                                 placeholder="0.000"
                                                 required
+                                                className={cn(
+                                                    highlightMissingCosts && row.costPrice.trim() === ''
+                                                        && 'border-destructive bg-destructive/5 ring-2 ring-destructive/20 hover:border-destructive focus-visible:border-destructive focus-visible:ring-destructive/30'
+                                                )}
                                             />
+                                        </div>
+                                    )}
+
+                                    {hideCosts && showParentPriceBookCostToggle && (
+                                        <div className="space-y-2">
+                                            <Label htmlFor={`price-book-use-parent-cost-${index}`}>{t('products.variants.useParentPriceBookCost', { defaultValue: 'Use parent Price Book cost' })}</Label>
+                                            <div className="flex h-10 items-center">
+                                                <Switch
+                                                    id={`price-book-use-parent-cost-${index}`}
+                                                    checked={row.useParentPriceBookCost !== false}
+                                                    onCheckedChange={(useParentPriceBookCost) => updateRow(index, { useParentPriceBookCost })}
+                                                    disabled={disabled}
+                                                />
+                                            </div>
                                         </div>
                                     )}
 

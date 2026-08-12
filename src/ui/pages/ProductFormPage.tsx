@@ -313,6 +313,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const isClone = mode === 'clone'
     const isEditing = mode === 'edit'
     const isReadOnly = isEditing && !canEdit
+    const highlightMissingCosts = isEditing && !isReadOnly && !hideCosts
     const catalogProducts = useProducts(workspaceId, { syncBarcodeCache: false })
     const productVariants = useProductVariants(isEditing && !product?.parentProductId ? product?.id : undefined)
     const canEditStockAllocation = mode !== 'edit'
@@ -1866,7 +1867,9 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                     required={!hideCosts}
                                                     className={cn(
                                                         "h-12 rounded-xl border-border/80 bg-background/80 font-bold shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50",
-                                                        isDynamicUnit(formData.unit) ? "pr-8" : "pr-16"
+                                                        isDynamicUnit(formData.unit) ? "pr-8" : "pr-16",
+                                                        highlightMissingCosts && formData.costPrice.trim() === ''
+                                                            && 'border-destructive bg-destructive/5 ring-2 ring-destructive/20 hover:border-destructive focus-visible:border-destructive focus-visible:ring-destructive/30'
                                                     )}
                                                 />
                                                 <span className={cn(
@@ -1915,6 +1918,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             iqdDisplayPreference={features.iqd_display_preference}
                                             disabled={isReadOnly}
                                             hideCosts={hideCosts}
+                                            highlightMissingCosts={highlightMissingCosts}
                                             attention={overrideAttention}
                                         />
                                     </div>
