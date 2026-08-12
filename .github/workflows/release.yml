@@ -58,7 +58,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: src-tauri/target/.tauri
-          key: tauri-tools-windows-wix-3.14.1-nsis-3.11-v2
+          key: tauri-tools-windows-wix-3.14.1-nsis-3.11-v3
 
       - name: Provision WiX Toolset (Windows only)
         if: matrix.settings.platform == 'windows-latest'
@@ -72,14 +72,47 @@ jobs:
           }
 
           New-Item -ItemType Directory -Path $wixToolsDir -Force | Out-Null
-          $archive = Join-Path $env:RUNNER_TEMP 'wix314-binaries.zip'
+          $package = Join-Path $env:RUNNER_TEMP 'wixtoolset.3.14.1.20250415.nupkg'
+          $packageDir = Join-Path $env:RUNNER_TEMP 'wixtoolset-package'
           curl.exe --fail --location --retry 5 --retry-all-errors --retry-delay 5 `
-            --output $archive `
-            'https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip'
-          Expand-Archive -LiteralPath $archive -DestinationPath $wixToolsDir -Force
+            --output $package `
+            'https://community.chocolatey.org/api/v2/package/wixtoolset/3.14.1.20250415'
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to download the WiX Toolset package from Chocolatey.'
+          }
+
+          Expand-Archive -LiteralPath $package -DestinationPath $packageDir -Force
+          $installer = Join-Path $packageDir 'tools\wix314.exe'
+          if (-not (Test-Path -LiteralPath $installer)) {
+            throw "The WiX Toolset package did not contain wix314.exe."
+          }
+
+          $expectedSha256 = '6BF6D03D6923D9EF827AE1D943B90B42B8EBB1B0F68EF6D55F868FA34C738A29'
+          $actualSha256 = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash
+          if ($actualSha256 -ne $expectedSha256) {
+            throw "WiX installer SHA-256 mismatch. Expected $expectedSha256, received $actualSha256."
+          }
+
+          $installerProcess = Start-Process -FilePath $installer -ArgumentList '/q' -Wait -PassThru
+          if ($installerProcess.ExitCode -ne 0) {
+            throw "WiX Toolset installer failed with exit code $($installerProcess.ExitCode)."
+          }
+
+          $wixBinCandidates = @(
+            (Join-Path ${env:ProgramFiles(x86)} 'WiX Toolset v3.14\bin'),
+            (Join-Path $env:ProgramFiles 'WiX Toolset v3.14\bin')
+          )
+          $wixBinDir = $wixBinCandidates | Where-Object {
+            Test-Path -LiteralPath (Join-Path $_ 'candle.exe')
+          } | Select-Object -First 1
+          if (-not $wixBinDir) {
+            throw 'WiX Toolset installed, but candle.exe could not be found.'
+          }
+
+          Copy-Item -Path (Join-Path $wixBinDir '*') -Destination $wixToolsDir -Recurse -Force
 
           if (-not (Test-Path -LiteralPath $candle)) {
-            throw "WiX Toolset was downloaded but candle.exe was not found in $wixToolsDir."
+            throw "WiX Toolset was provisioned but candle.exe was not found in $wixToolsDir."
           }
 
       - name: Provision NSIS Toolset (Windows only)
