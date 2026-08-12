@@ -113,7 +113,8 @@ import {
     Check,
     Banknote,
     BadgePercent,
-    ClipboardCheck
+    ClipboardCheck,
+    Gift
 } from 'lucide-react'
 import { isDesktop, isMobile } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
@@ -136,6 +137,8 @@ import { ActivityReceiptPrintTemplate, createActivityReceiptLabels } from '@/ui/
 import { generateTemplatePdf } from '@/services/pdfGenerator'
 import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
 import { useUnitRegistry, getDynamicUnitAdjustmentLabel, type UnitRegistry } from '@/ui/components/unitRegistry'
+import { getOrderLineFreeBonusQuantity } from '@/lib/orderLineItems'
+import { FreeBonusUnitSelect } from '@/ui/components/orders/FreeBonusUnitSelect'
 import {
     QuickOrderModal,
     type QuickOrderCheckoutData,
@@ -857,6 +860,11 @@ export function POS() {
     const isPriceBelowCostHidden = hideCosts || (!isAdmin && permissionKeys.includes('pos.hidePriceBelowCostIndicator' as any))
 
     const [paymentType, setPaymentType] = useState<PosPaymentType>(() => quickOrderEnabled ? 'order' : 'cash')
+    const canUseOrderFreeBonus = hasCapability('orderFreeBonus')
+    const showOrderFreeBonus = canUseOrderFreeBonus && paymentType === 'order'
+    const [freeBonusEditorItemKey, setFreeBonusEditorItemKey] = useState<string | null>(null)
+    const [freeBonusQuantityInput, setFreeBonusQuantityInput] = useState('')
+    const [freeBonusUnitInput, setFreeBonusUnitInput] = useState('')
     const isTutorialPosTask = demoTutorial.isCurrentTask('pos-sale')
     const [digitalProvider, setDigitalProvider] = useState<'fib' | 'qicard' | 'zaincash' | 'fastpay'>('fib')
     const [isLoanRegistrationModalOpen, setIsLoanRegistrationModalOpen] = useState(false)
@@ -894,6 +902,12 @@ export function POS() {
             if (paymentType === 'loan' || paymentType === 'order') setPaymentType('cash')
         }
     }, [isActivitiesStorage, paymentType])
+
+    useEffect(() => {
+        if (!showOrderFreeBonus) {
+            setFreeBonusEditorItemKey(null)
+        }
+    }, [showOrderFreeBonus])
 
     const resetCheckoutPaymentType = useCallback(() => {
         setPaymentType(quickOrderEnabled ? 'order' : 'cash')
@@ -1719,6 +1733,63 @@ export function POS() {
                 return item
             })
         )
+    }
+
+    const openFreeBonusEditor = (item: CartItem) => {
+        const productUnit = item.unit || findStockProduct(item.product_id, item.storageId)?.unit || ''
+        setFreeBonusEditorItemKey(getCartItemKey(item))
+        setFreeBonusQuantityInput(String(getOrderLineFreeBonusQuantity(item)))
+        setFreeBonusUnitInput(item.freeBonusUnit || productUnit)
+    }
+
+    const saveFreeBonus = () => {
+        if (!freeBonusEditorItemKey || !canUseOrderFreeBonus) return
+
+        const enteredQuantity = Number(freeBonusQuantityInput || 0)
+        if (!Number.isFinite(enteredQuantity) || enteredQuantity < 0) {
+            toast({
+                variant: 'destructive',
+                title: t('messages.error', { defaultValue: 'Error' }),
+                description: t('orders.form.errors.invalidFreeBonus', { defaultValue: 'Enter a valid free bonus quantity.' })
+            })
+            return
+        }
+
+        const freeBonusQuantity = getOrderLineFreeBonusQuantity({ freeBonusQuantity: enteredQuantity })
+        const cartItem = cart.find((item) => getCartItemKey(item) === freeBonusEditorItemKey)
+        if (!cartItem) {
+            setFreeBonusEditorItemKey(null)
+            return
+        }
+
+        const product = findStockProduct(cartItem.product_id, cartItem.storageId)
+        const availableQuantity = product?.inventoryQuantity ?? cartItem.max_stock
+        if (cartItem.quantity + freeBonusQuantity > availableQuantity) {
+            toast({
+                variant: 'destructive',
+                title: t('messages.error', { defaultValue: 'Error' }),
+                description: t('orders.form.errors.freeBonusExceedsStock', {
+                    defaultValue: 'The paid quantity and free bonus cannot exceed available stock.'
+                })
+            })
+            return
+        }
+
+        const productUnit = cartItem.unit || product?.unit || ''
+        const selectedDisplayUnit = freeBonusUnitInput.trim()
+        setCart((current) => current.map((item) => {
+            if (getCartItemKey(item) !== freeBonusEditorItemKey) return item
+
+            return {
+                ...item,
+                freeBonusQuantity: freeBonusQuantity || undefined,
+                freeBonusUnit: freeBonusQuantity > 0 && selectedDisplayUnit && selectedDisplayUnit !== productUnit
+                    ? selectedDisplayUnit
+                    : undefined
+            }
+        }))
+        setFreeBonusEditorItemKey(null)
+        hapticTrigger('success')
     }
 
     const setNegotiatedPrice = (itemKey: string, price: number | undefined) => {
@@ -2905,6 +2976,9 @@ export function POS() {
                 const effectivePrice = getCartEffectivePrice(item)
                 const convertedUnitPrice = roundOrderValue(convertPrice(effectivePrice, originalCurrency, settlementCurrency))
                 const sourceCostPrice = Number(priceBookItem?.costPrice ?? product.costPrice ?? 0)
+                const freeBonusQuantity = canUseOrderFreeBonus
+                    ? getOrderLineFreeBonusQuantity(item)
+                    : 0
 
                 return {
                     id: generateId(),
@@ -2914,6 +2988,10 @@ export function POS() {
                     productSku: product.sku,
                     unit: product.unit,
                     quantity: item.quantity,
+                    ...(freeBonusQuantity > 0 ? { freeBonusQuantity } : {}),
+                    ...(freeBonusQuantity > 0 && item.freeBonusUnit && item.freeBonusUnit !== product.unit
+                        ? { freeBonusUnit: item.freeBonusUnit }
+                        : {}),
                     lineTotal: roundOrderValue(convertedUnitPrice * item.quantity),
                     originalCurrency,
                     originalUnitPrice: effectivePrice,
@@ -3102,6 +3180,8 @@ export function POS() {
                                 setExactQuantity={setExactQuantity}
                                 unitRegistry={unitRegistry}
                                 isActivitiesStorage={isActivitiesStorage}
+                                showOrderFreeBonus={showOrderFreeBonus}
+                                onOpenFreeBonusEditor={openFreeBonusEditor}
                             />
                         )}
                     </div>
@@ -3529,6 +3609,14 @@ export function POS() {
                                                         )}
                                                     </div>
                                                     <div className="flex items-center gap-1">
+                                                        {showOrderFreeBonus && (
+                                                            <PosFreeBonusButton
+                                                                item={item}
+                                                                t={t}
+                                                                compact
+                                                                onClick={() => openFreeBonusEditor(item)}
+                                                            />
+                                                        )}
                                                         {unitRegistry.isDynamicUnit(item.unit) ? (
                                                             <>
                                                                 <div className="flex items-center gap-1 bg-muted/30 rounded-md border border-border/50 px-1.5">
@@ -4023,6 +4111,86 @@ export function POS() {
                 </DialogContent>
             </Dialog>
 
+            <Dialog
+                open={freeBonusEditorItemKey !== null}
+                onOpenChange={(open) => {
+                    if (!open) setFreeBonusEditorItemKey(null)
+                }}
+            >
+                <DialogContent className="max-w-md rounded-2xl">
+                    {(() => {
+                        const item = cart.find((entry) => getCartItemKey(entry) === freeBonusEditorItemKey)
+                        if (!item) return null
+
+                        const productUnit = item.unit || findStockProduct(item.product_id, item.storageId)?.unit || ''
+                        const displayUnit = freeBonusUnitInput || productUnit
+                        const isDynamicUnit = unitRegistry.isDynamicUnit(productUnit)
+
+                        return (
+                            <form
+                                className="space-y-5"
+                                onSubmit={(event) => {
+                                    event.preventDefault()
+                                    saveFreeBonus()
+                                }}
+                            >
+                                <DialogHeader>
+                                    <DialogTitle className="flex items-center gap-2">
+                                        <span className="rounded-xl bg-emerald-500/10 p-2 text-emerald-600 dark:text-emerald-400">
+                                            <Gift className="h-5 w-5" />
+                                        </span>
+                                        {t('orders.form.freeBonus', { defaultValue: 'Free Bonus' })}
+                                    </DialogTitle>
+                                    <DialogDescription>
+                                        {item.name}
+                                    </DialogDescription>
+                                </DialogHeader>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="pos-free-bonus-quantity">
+                                        {t('orders.form.freeBonus', { defaultValue: 'Free Bonus' })}
+                                    </Label>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            id="pos-free-bonus-quantity"
+                                            type="number"
+                                            min="0"
+                                            step={isDynamicUnit ? '0.01' : '1'}
+                                            inputMode="decimal"
+                                            value={freeBonusQuantityInput}
+                                            onChange={(event) => setFreeBonusQuantityInput(event.target.value)}
+                                            className="h-11 text-base font-semibold"
+                                            autoFocus
+                                        />
+                                        {displayUnit ? (
+                                            <span className="shrink-0 text-sm font-bold text-muted-foreground">
+                                                {t(`products.units.${displayUnit}`, { defaultValue: displayUnit })}
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                </div>
+
+                                <FreeBonusUnitSelect
+                                    value={freeBonusUnitInput}
+                                    productUnit={productUnit}
+                                    units={unitRegistry.options}
+                                    onValueChange={setFreeBonusUnitInput}
+                                />
+
+                                <DialogFooter>
+                                    <Button type="button" variant="outline" onClick={() => setFreeBonusEditorItemKey(null)}>
+                                        {t('common.cancel', { defaultValue: 'Cancel' })}
+                                    </Button>
+                                    <Button type="submit">
+                                        {t('common.save', { defaultValue: 'Save' })}
+                                    </Button>
+                                </DialogFooter>
+                            </form>
+                        )
+                    })()}
+                </DialogContent>
+            </Dialog>
+
             {/* SKU Modal */}
             <Dialog open={isSkuModalOpen} onOpenChange={setIsSkuModalOpen}>
                 <DialogContent>
@@ -4467,6 +4635,38 @@ function PosDiscountButton({ discountValue, setDiscountValue, discountType, setD
                 </div>
             </PopoverContent>
         </Popover>
+    )
+}
+
+interface PosFreeBonusButtonProps {
+    item: CartItem
+    t: any
+    onClick: () => void
+    compact?: boolean
+}
+
+function PosFreeBonusButton({ item, t, onClick, compact = false }: PosFreeBonusButtonProps) {
+    const freeBonusQuantity = getOrderLineFreeBonusQuantity(item)
+    const displayUnit = item.freeBonusUnit || item.unit || ''
+    const label = freeBonusQuantity > 0
+        ? `${freeBonusQuantity}${displayUnit ? ` ${t(`products.units.${displayUnit}`, { defaultValue: displayUnit }).toUpperCase()}` : ''}`
+        : t('pos.freeBonusAction', { defaultValue: 'Free' })
+
+    return (
+        <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn(
+                'shrink-0 border-emerald-500/20 bg-emerald-500/10 font-bold text-emerald-700 shadow-none hover:bg-emerald-500/15 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-200',
+                compact ? 'h-7 gap-1 rounded-md px-2 text-[10px]' : 'h-9 gap-1.5 rounded-xl px-3 text-xs'
+            )}
+            onClick={onClick}
+            aria-label={t('orders.form.freeBonus', { defaultValue: 'Free Bonus' })}
+        >
+            <Gift className={compact ? 'h-3 w-3' : 'h-4 w-4'} />
+            <span className="whitespace-nowrap">{label}</span>
+        </Button>
     )
 }
 
@@ -5066,6 +5266,8 @@ interface MobileCartProps {
     setDynamicUnitModal: (modal: { type: string; itemKey: string } | null) => void
     setExactQuantity: (itemKey: string, quantity: number) => void
     unitRegistry: UnitRegistry
+    showOrderFreeBonus: boolean
+    onOpenFreeBonusEditor: (item: CartItem) => void
 }
 
 function MobileCart({
@@ -5076,7 +5278,8 @@ function MobileCart({
     clearNegotiatedPrice, isAdmin,
     discountValue, setDiscountValue, discountType, setDiscountType,
     hasTrulyMissingRates, hasLoadingRates, isActivitiesStorage, t,
-    setDynamicUnitModal, setExactQuantity, unitRegistry
+    setDynamicUnitModal, setExactQuantity, unitRegistry,
+    showOrderFreeBonus, onOpenFreeBonusEditor
 }: MobileCartProps) {
     const [isExpanded, setIsExpanded] = useState(false)
     const [isDragging, setIsDragging] = useState(false)
@@ -5277,7 +5480,14 @@ function MobileCart({
                                         </button>
                                     </div>
 
-                                    <div className="flex justify-end mt-2">
+                                    <div className="flex justify-end items-center gap-2 mt-2">
+                                        {showOrderFreeBonus && (
+                                            <PosFreeBonusButton
+                                                item={item}
+                                                t={t}
+                                                onClick={() => onOpenFreeBonusEditor(item)}
+                                            />
+                                        )}
                                         {unitRegistry.isDynamicUnit(item.unit) ? (
                                             <div className="flex items-center gap-2 bg-muted/50 rounded-xl p-1.5 border border-border/50">
                                                 <Input
