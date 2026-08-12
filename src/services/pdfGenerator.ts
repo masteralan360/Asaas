@@ -74,6 +74,11 @@ const A4_WIDTH_MM = 210
 const A4_HEIGHT_MM = A4_PAGE_HEIGHT_MM
 const RECEIPT_WIDTH_MM = 80
 const RENDER_SCALE = 2.5
+// html-to-image needs a valid data URL when an image cannot be downloaded.
+// An empty source makes its cloned <img> emit an error event, which rejects
+// the entire PDF render. This transparent GIF preserves the image's layout
+// without putting an unreadable third-party image in the canvas.
+const TRANSPARENT_IMAGE_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
 
 function resolvePrintLanguage(printLang: string | null | undefined) {
     return printLang && printLang !== 'auto' ? printLang : i18n.language
@@ -179,23 +184,9 @@ async function inlineCaptureableImages(container: HTMLElement) {
             return
         }
 
-        if (!source.startsWith('http:') && !source.startsWith('https:') && !source.startsWith('blob:')) {
-            return
-        }
-
-        try {
-            const response = await fetch(source)
-            if (!response.ok) return
-
-            const blob = await response.blob()
-            if (!blob.type.startsWith('image/')) return
-
-            image.src = await blobToDataUrl(blob)
-            await waitForImageReady(image)
-        } catch {
-            // Keep the original source when it cannot be fetched (for example,
-            // a local Tauri asset URL). html-to-image can still render it there.
-        }
+        // Remote images are embedded by html-to-image during capture. Its
+        // placeholder option below makes a CORS-blocked image empty instead of
+        // allowing the image error event to abort the complete PDF generation.
     }))
 }
 
@@ -366,6 +357,13 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     const background = await toCanvas(container, {
         pixelRatio: RENDER_SCALE,
         backgroundColor: '#ffffff',
+        // Product image providers such as Google thumbnails use a shared path
+        // and identify the actual image entirely through query parameters.
+        // html-to-image otherwise drops those parameters from its cache key,
+        // causing a previously downloaded product photo to be reused for
+        // different rows in the same PDF.
+        includeQueryParams: true,
+        imagePlaceholder: TRANSPARENT_IMAGE_PLACEHOLDER,
         style: { opacity: '1' }
     })
     reportPdfProgress(0.6, 'print.progressRendering')
