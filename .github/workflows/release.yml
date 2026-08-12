@@ -58,7 +58,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: src-tauri/target/.tauri
-          key: tauri-tools-windows-wix-3.14.1-nsis-3.11-v1
+          key: tauri-tools-windows-wix-3.14.1-nsis-3.11-v2
 
       - name: Provision WiX Toolset (Windows only)
         if: matrix.settings.platform == 'windows-latest'
@@ -80,6 +80,75 @@ jobs:
 
           if (-not (Test-Path -LiteralPath $candle)) {
             throw "WiX Toolset was downloaded but candle.exe was not found in $wixToolsDir."
+          }
+
+      - name: Provision NSIS Toolset (Windows only)
+        if: matrix.settings.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $tauriToolsDir = Join-Path $env:GITHUB_WORKSPACE 'src-tauri\target\.tauri'
+          $nsisDir = Join-Path $tauriToolsDir 'NSIS'
+          $nsisUtilityDll = Join-Path $nsisDir 'Plugins\x86-unicode\additional\nsis_tauri_utils.dll'
+          $requiredFiles = @(
+            'makensis.exe',
+            'Bin\makensis.exe',
+            'Stubs\lzma-x86-unicode',
+            'Stubs\lzma_solid-x86-unicode',
+            'Include\MUI2.nsh',
+            'Include\FileFunc.nsh',
+            'Include\x64.nsh',
+            'Include\nsDialogs.nsh',
+            'Include\WinMessages.nsh',
+            'Include\Win\COM.nsh',
+            'Include\Win\Propkey.nsh',
+            'Include\Win\RestartManager.nsh'
+          )
+
+          function Download-VerifiedFile([string] $url, [string] $destination, [string] $expectedSha1) {
+            curl.exe --fail --location --retry 5 --retry-all-errors --retry-delay 5 `
+              --output $destination $url
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to download $url."
+            }
+
+            $actualSha1 = (Get-FileHash -LiteralPath $destination -Algorithm SHA1).Hash
+            if ($actualSha1 -ne $expectedSha1) {
+              throw "SHA-1 mismatch for $url. Expected $expectedSha1, received $actualSha1."
+            }
+          }
+
+          $nsisIsComplete = (Test-Path -LiteralPath $nsisUtilityDll) -and
+            -not ($requiredFiles | Where-Object { -not (Test-Path -LiteralPath (Join-Path $nsisDir $_)) })
+
+          if (-not $nsisIsComplete) {
+            if (Test-Path -LiteralPath $nsisDir) {
+              Remove-Item -LiteralPath $nsisDir -Recurse -Force
+            }
+
+            New-Item -ItemType Directory -Path $tauriToolsDir -Force | Out-Null
+            $archive = Join-Path $env:RUNNER_TEMP 'nsis-3.11.zip'
+            Download-VerifiedFile `
+              'https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip' `
+              $archive `
+              'EF7FF767E5CBD9EDD22ADD3A32C9B8F4500BB10D'
+
+            Expand-Archive -LiteralPath $archive -DestinationPath $tauriToolsDir -Force
+            $extractedNsisDir = Join-Path $tauriToolsDir 'nsis-3.11'
+            if (-not (Test-Path -LiteralPath $extractedNsisDir)) {
+              throw "NSIS archive did not contain the expected nsis-3.11 directory."
+            }
+            Rename-Item -LiteralPath $extractedNsisDir -NewName 'NSIS'
+
+            $nsisUtilityDir = Split-Path -Parent $nsisUtilityDll
+            New-Item -ItemType Directory -Path $nsisUtilityDir -Force | Out-Null
+            Download-VerifiedFile `
+              'https://github.com/tauri-apps/nsis-tauri-utils/releases/download/nsis_tauri_utils-v0.5.3/nsis_tauri_utils.dll' `
+              $nsisUtilityDll `
+              '75197FEE3C6A814FE035788D1C34EAD39349B860'
+          }
+
+          if (-not (Test-Path -LiteralPath $nsisUtilityDll)) {
+            throw "NSIS toolchain was not provisioned completely."
           }
 
       - name: Restore google-services.json (Android only)
