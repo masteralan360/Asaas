@@ -186,32 +186,54 @@ def upload_assets():
         except Exception as e:
             print(f"Error reading local latest.json: {e}")
 
-    # Dynamically Map Windows if missing
-    windows_bin = None
+    # Fill in missing Windows updater entries with their matching installer type.
+    # A legacy generic entry remains MSI-first for compatibility with existing releases.
+    windows_msi = None
+    windows_nsis = None
     for f_path in all_files:
-        if f_path.endswith(".msi"):
-            windows_bin = f_path
-            break
-        elif f_path.endswith(".exe") and not windows_bin:
-            windows_bin = f_path
-            
-    if windows_bin and "windows-x86_64" not in data["platforms"]:
-        sig_path = f"{windows_bin}.sig"
+        if f_path.endswith(".msi") and windows_msi is None:
+            windows_msi = f_path
+        elif f_path.endswith(".exe") and windows_nsis is None:
+            windows_nsis = f_path
+
+    def windows_update_details(installer_path):
+        sig_path = f"{installer_path}.sig"
         signature = ""
         if os.path.exists(sig_path):
             try:
-                with open(sig_path, 'r') as f: signature = f.read().strip()
-            except: pass
-        
-        filename = os.path.basename(windows_bin)
-        details = {
+                with open(sig_path, 'r') as f:
+                    signature = f.read().strip()
+            except Exception:
+                pass
+
+        filename = os.path.basename(installer_path)
+        return {
             "signature": signature,
             "url": f"{base_download_url}atlas-updates/{filename}"
         }
-        data["platforms"]["windows-x86_64"] = details
-        data["platforms"]["windows-x86_64-msi"] = details
-        data["platforms"]["windows-x86_64-nsis"] = details
-        print(f"Dynamically mapped windows platforms to {filename}")
+
+    if windows_msi and "windows-x86_64" not in data["platforms"]:
+        data["platforms"]["windows-x86_64"] = windows_update_details(windows_msi)
+
+    if windows_msi and "windows-x86_64-msi" not in data["platforms"]:
+        data["platforms"]["windows-x86_64-msi"] = windows_update_details(windows_msi)
+
+    if windows_nsis and "windows-x86_64-nsis" not in data["platforms"]:
+        data["platforms"]["windows-x86_64-nsis"] = windows_update_details(windows_nsis)
+
+    if windows_msi or windows_nsis:
+        mapped_installers = []
+        if windows_msi:
+            mapped_installers.append(os.path.basename(windows_msi))
+        if windows_nsis:
+            mapped_installers.append(os.path.basename(windows_nsis))
+        print(f"Mapped Windows updater platforms to: {', '.join(mapped_installers)}")
+
+    # Older Tauri CLI versions may not create a type-specific updater entry.
+    # Keep the previous fallback so a single-installer release still has a valid feed.
+    windows_bin = windows_msi or windows_nsis
+    if windows_bin and "windows-x86_64" not in data["platforms"]:
+        data["platforms"]["windows-x86_64"] = windows_update_details(windows_bin)
 
     # Dynamically Map Android
     android_apk = None

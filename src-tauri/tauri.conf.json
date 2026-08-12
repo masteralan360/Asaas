@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Atlas",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "identifier": "com.atlas.app",
   "build": {
     "frontendDist": "../dist",
@@ -39,7 +39,11 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "msi",
+      "nsis"
+    ],
+    "useLocalToolsDir": true,
     "createUpdaterArtifacts": true,
     "icon": [
       "icons/icon.ico",

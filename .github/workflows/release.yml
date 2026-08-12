@@ -53,6 +53,35 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Cache Tauri bundler tools (Windows only)
+        if: matrix.settings.platform == 'windows-latest'
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/target/.tauri
+          key: tauri-tools-windows-wix-3.14.1-nsis-3.11-v1
+
+      - name: Provision WiX Toolset (Windows only)
+        if: matrix.settings.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $wixToolsDir = Join-Path $env:GITHUB_WORKSPACE 'src-tauri\target\.tauri\WixTools314'
+          $candle = Join-Path $wixToolsDir 'candle.exe'
+          if (Test-Path -LiteralPath $candle) {
+            Write-Host "WiX Toolset is already cached."
+            exit 0
+          }
+
+          New-Item -ItemType Directory -Path $wixToolsDir -Force | Out-Null
+          $archive = Join-Path $env:RUNNER_TEMP 'wix314-binaries.zip'
+          curl.exe --fail --location --retry 5 --retry-all-errors --retry-delay 5 `
+            --output $archive `
+            'https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip'
+          Expand-Archive -LiteralPath $archive -DestinationPath $wixToolsDir -Force
+
+          if (-not (Test-Path -LiteralPath $candle)) {
+            throw "WiX Toolset was downloaded but candle.exe was not found in $wixToolsDir."
+          }
+
       - name: Restore google-services.json (Android only)
         if: matrix.settings.platform == 'ubuntu-latest'
         run: |
