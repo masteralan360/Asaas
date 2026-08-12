@@ -672,10 +672,12 @@ interface LedgerBuildContext {
 }
 
 function getSaleStorageIds(sale: Sale | undefined) {
-    if (!sale) return []
+    const enrichedItems = (sale as (Sale & {
+        _enrichedItems?: Array<{ storage_id?: string | null }>
+    }) | undefined)?._enrichedItems ?? []
 
     return Array.from(new Set(
-        (sale.items || [])
+        enrichedItems
             .map((item) => item.storage_id)
             .filter((storageId): storageId is string => !!storageId)
     ))
