@@ -52,7 +52,7 @@ interface ExportPreviewModalProps {
         customDates: { start: string | null; end: string | null }
         selectedCashier: string
     }
-    type?: 'sales' | 'revenue' | 'finance' | 'products'
+    type?: 'sales' | 'revenue' | 'finance' | 'products' | 'inventory-product-summary'
     records?: any[]
 }
 
@@ -74,7 +74,7 @@ export function ExportPreviewModal({
     const [selectedPreviewCells, setSelectedPreviewCells] = useState<Selection | null>(null)
 
     useEffect(() => {
-        if (isOpen && (type === 'revenue' || type === 'finance' || type === 'products') && records) {
+        if (isOpen && (type === 'revenue' || type === 'finance' || type === 'products' || type === 'inventory-product-summary') && records) {
             setData(records)
             setIsLoading(false)
         } else if (isOpen && filters) {
@@ -297,7 +297,7 @@ export function ExportPreviewModal({
     const exportData = useMemo(() => {
         if (!data) return []
         if (type === 'finance') return mapFinanceForExport(data)
-        if (type === 'products') return mapFinanceForExport(data)
+        if (type === 'products' || type === 'inventory-product-summary') return mapFinanceForExport(data)
         if (type === 'revenue') return mapRevenueForExport(data, t, !hideCosts)
         return mapSalesForExport(data, t)
     }, [data, hideCosts, t, type])
@@ -356,7 +356,9 @@ export function ExportPreviewModal({
                 ? 'Revenue_Export'
                 : type === 'finance'
                     ? 'Finance_Export'
-                    : type === 'products'
+                    : type === 'inventory-product-summary'
+                        ? 'Inventory_Product_Summary'
+                        : type === 'products'
                         ? 'Products_Export'
                         : 'Sales_Export'
             const success = await exportToExcel(previewExportData, `${prefix}_${new Date().toISOString().split('T')[0]}`)

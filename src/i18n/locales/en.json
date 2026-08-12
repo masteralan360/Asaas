@@ -4314,6 +4314,8 @@
     },
     "productSummary": {
       "name": "Name",
+      "sku": "SKU",
+      "unit": "Unit",
       "incoming": "Incoming",
       "outgoing": "Outgoing",
       "balance": "Balance",

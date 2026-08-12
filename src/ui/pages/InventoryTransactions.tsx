@@ -5,6 +5,7 @@ import {
   Bot,
   Boxes,
   ChevronRight,
+  FileSpreadsheet,
   History,
   Link2,
   RotateCcw,
@@ -32,6 +33,7 @@ import { getOrderLineInventoryQuantity } from "@/lib/orderLineItems";
 import { setPendingSaleDetailsId } from "@/lib/saleNavigation";
 import { formatDateTime } from "@/lib/utils";
 import { ProductAutocompleteInput } from "@/ui/components/orders/ProductAutocompleteInput";
+import { ExportPreviewModal } from "@/ui/components/ExportPreviewModal";
 import {
   Button,
   Card,
@@ -323,6 +325,8 @@ export function InventoryTransactionsPage() {
   const [draftFilters, setDraftFilters] =
     useState<InventoryTransactionFilters>(DEFAULT_INVENTORY_TRANSACTION_FILTERS);
   const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
+  const [isProductSummaryExportOpen, setIsProductSummaryExportOpen] =
+    useState(false);
 
   const productsById = useMemo(
     () => new Map(products.map((product) => [product.id, product] as const)),
@@ -647,6 +651,25 @@ export function InventoryTransactionsPage() {
       );
   }, [activeWorkspace?.id, filteredActivityRecords, productsById, t]);
 
+  const productSummaryExportRows = useMemo(
+    () =>
+      productMovementSummary.map((summary) => ({
+        [t("inventoryTransactions.productSummary.name", "Name")]:
+          summary.productName,
+        [t("inventoryTransactions.productSummary.sku", "SKU")]:
+          summary.sku || "",
+        [t("inventoryTransactions.productSummary.unit", "Unit")]:
+          summary.unit || "",
+        [t("inventoryTransactions.productSummary.incoming", "Incoming")]:
+          summary.incoming,
+        [t("inventoryTransactions.productSummary.outgoing", "Outgoing")]:
+          summary.outgoing,
+        [t("inventoryTransactions.productSummary.balance", "Balance")]:
+          summary.balance,
+      })),
+    [productMovementSummary, t],
+  );
+
   const getLedgerMovementLabel = (
     record: Extract<InventoryActivityRecord, { kind: "ledger" }>,
   ) => {
@@ -764,6 +787,17 @@ export function InventoryTransactionsPage() {
       totalUnits,
     };
   }, [filteredActivityRecords]);
+
+  if (isProductSummaryExportOpen) {
+    return (
+      <ExportPreviewModal
+        isOpen={isProductSummaryExportOpen}
+        onClose={() => setIsProductSummaryExportOpen(false)}
+        type="inventory-product-summary"
+        records={productSummaryExportRows}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -1345,11 +1379,24 @@ export function InventoryTransactionsPage() {
                     </p>
                   </div>
                 ) : (
-                  <div
-                    dir={isRtl ? "rtl" : "ltr"}
-                    className="overflow-x-auto rounded-3xl border bg-card"
-                  >
-                    <Table>
+                  <div className="space-y-4">
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        allowViewer={true}
+                        onClick={() => setIsProductSummaryExportOpen(true)}
+                        className="h-10 gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-5 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition-all hover:bg-emerald-100 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] active:scale-95 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400 dark:hover:bg-emerald-500/20"
+                      >
+                        <FileSpreadsheet className="h-4 w-4" />
+                        {t("sales.export.button", "Excel Export")}
+                      </Button>
+                    </div>
+                    <div
+                      dir={pageDirection}
+                      className="overflow-x-auto rounded-3xl border bg-card"
+                    >
+                      <Table>
                       <TableHeader>
                         <TableRow className="bg-muted/40 hover:bg-muted/40">
                           <TableHead className="text-start">
@@ -1415,7 +1462,8 @@ export function InventoryTransactionsPage() {
                           </TableRow>
                         ))}
                       </TableBody>
-                    </Table>
+                      </Table>
+                    </div>
                   </div>
                 )}
               </TabsContent>
