@@ -10,6 +10,7 @@ export type WebsiteStorefrontConfig = {
     wholesale_price_book_id: string
     primary_domain: string
     is_enabled: boolean
+    featured_storage_ids: string[] | null
 }
 
 export type WebsiteWorkspace = {
@@ -27,8 +28,14 @@ export type WebsiteStorefrontContext = {
 
 export type MarketplaceInventoryRow = {
     product_id: string
+    storage_id: string
     quantity: number | null
     created_at: string | null
+}
+
+export type StorefrontInventoryAllocation = {
+    storageId: string
+    quantity: number
 }
 
 export type MarketplaceProductRow = {
@@ -55,7 +62,10 @@ export type WebsitePriceBookItem = {
 
 export type VisibleModeProducts = {
     marketplaceStorageId: string
+    marketplaceStorageIds: string[]
     inventoryRows: MarketplaceInventoryRow[]
+    inventoryQuantityByProductId: Map<string, number>
+    inventoryAllocationsByProductId: Map<string, StorefrontInventoryAllocation[]>
     productRows: MarketplaceProductRow[]
     priceBookItemsByProductId: Map<string, WebsitePriceBookItem>
     marketplaceAddedAtByProductId: Map<string, string | null>
@@ -101,7 +111,7 @@ export async function loadWebsiteStorefrontContext(
 ): Promise<WebsiteStorefrontContext | { error: string; status: number }> {
     const { data: config, error: configError } = await adminClient
         .from('website_storefront_configs')
-        .select('site_key, workspace_id, wholesale_price_book_id, primary_domain, is_enabled')
+        .select('site_key, workspace_id, wholesale_price_book_id, primary_domain, is_enabled, featured_storage_ids')
         .eq('site_key', JUMLA_KHALEEJ_SITE_KEY)
         .maybeSingle()
 
@@ -156,16 +166,62 @@ export async function loadMarketplaceStorageId(
     return typeof data === 'string' && data ? data : null
 }
 
+function configuredStorageIds(value: string[] | null | undefined) {
+    const seen = new Set<string>()
+    const result: string[] = []
+
+    for (const storageId of value ?? []) {
+        if (typeof storageId !== 'string' || !storageId || seen.has(storageId)) continue
+        seen.add(storageId)
+        result.push(storageId)
+    }
+
+    return result
+}
+
+async function loadStorefrontStorageIds(
+    adminClient: ReturnType<typeof createAdminClient>,
+    context: WebsiteStorefrontContext
+) {
+    // This additional source list is intentionally limited to Jumla Khaleej.
+    // Every other Marketplace consumer continues to use its one designated
+    // Marketplace storage through ensure_marketplace_storage.
+    const configuredIds = context.config.site_key === JUMLA_KHALEEJ_SITE_KEY
+        ? configuredStorageIds(context.config.featured_storage_ids)
+        : []
+
+    if (configuredIds.length > 0) {
+        const { data, error } = await adminClient
+            .from('storages')
+            .select('id')
+            .eq('workspace_id', context.workspace.id)
+            .eq('is_deleted', false)
+            .in('id', configuredIds)
+
+        if (error) throw error
+
+        const validIds = new Set((data ?? []).map((storage) => String(storage.id)))
+        return configuredIds.filter((storageId) => validIds.has(storageId))
+    }
+
+    const marketplaceStorageId = await loadMarketplaceStorageId(adminClient, context.workspace.id)
+    return marketplaceStorageId ? [marketplaceStorageId] : []
+}
+
 export async function loadVisibleModeProducts(
     adminClient: ReturnType<typeof createAdminClient>,
     context: WebsiteStorefrontContext,
     mode: WebsiteStorefrontMode
 ): Promise<VisibleModeProducts> {
-    const marketplaceStorageId = await loadMarketplaceStorageId(adminClient, context.workspace.id)
+    const marketplaceStorageIds = await loadStorefrontStorageIds(adminClient, context)
+    const marketplaceStorageId = marketplaceStorageIds[0] ?? ''
     if (!marketplaceStorageId) {
         return {
             marketplaceStorageId: '',
+            marketplaceStorageIds: [],
             inventoryRows: [],
+            inventoryQuantityByProductId: new Map(),
+            inventoryAllocationsByProductId: new Map(),
             productRows: [],
             priceBookItemsByProductId: new Map(),
             marketplaceAddedAtByProductId: new Map()
@@ -174,9 +230,9 @@ export async function loadVisibleModeProducts(
 
     const { data: inventoryRows, error: inventoryError } = await adminClient
         .from('inventory')
-        .select('product_id, quantity, created_at')
+        .select('product_id, storage_id, quantity, created_at')
         .eq('workspace_id', context.workspace.id)
-        .eq('storage_id', marketplaceStorageId)
+        .in('storage_id', marketplaceStorageIds)
         .eq('is_deleted', false)
 
     if (inventoryError) {
@@ -184,6 +240,36 @@ export async function loadVisibleModeProducts(
     }
 
     const resolvedInventoryRows = (inventoryRows ?? []) as MarketplaceInventoryRow[]
+    const inventoryQuantityByProductId = new Map<string, number>()
+    const inventoryQuantityByProductAndStorage = new Map<string, Map<string, number>>()
+    const marketplaceAddedAtByProductId = new Map<string, string | null>()
+    for (const inventory of resolvedInventoryRows) {
+        const quantity = Number(inventory.quantity ?? 0)
+        inventoryQuantityByProductId.set(
+            inventory.product_id,
+            (inventoryQuantityByProductId.get(inventory.product_id) ?? 0) + quantity
+        )
+
+        const quantitiesByStorage = inventoryQuantityByProductAndStorage.get(inventory.product_id) ?? new Map<string, number>()
+        quantitiesByStorage.set(
+            inventory.storage_id,
+            (quantitiesByStorage.get(inventory.storage_id) ?? 0) + quantity
+        )
+        inventoryQuantityByProductAndStorage.set(inventory.product_id, quantitiesByStorage)
+
+        const currentAddedAt = marketplaceAddedAtByProductId.get(inventory.product_id)
+        if (!currentAddedAt || (inventory.created_at && inventory.created_at < currentAddedAt)) {
+            marketplaceAddedAtByProductId.set(inventory.product_id, inventory.created_at)
+        }
+    }
+
+    const inventoryAllocationsByProductId = new Map<string, StorefrontInventoryAllocation[]>()
+    for (const [productId, quantitiesByStorage] of inventoryQuantityByProductAndStorage) {
+        inventoryAllocationsByProductId.set(productId, marketplaceStorageIds.map((storageId) => ({
+            storageId,
+            quantity: quantitiesByStorage.get(storageId) ?? 0
+        })))
+    }
     const inventoryProductIds = Array.from(new Set(
         resolvedInventoryRows.map((inventory) => inventory.product_id).filter(Boolean)
     ))
@@ -191,7 +277,10 @@ export async function loadVisibleModeProducts(
     if (inventoryProductIds.length === 0) {
         return {
             marketplaceStorageId,
+            marketplaceStorageIds,
             inventoryRows: resolvedInventoryRows,
+            inventoryQuantityByProductId,
+            inventoryAllocationsByProductId,
             productRows: [],
             priceBookItemsByProductId: new Map(),
             marketplaceAddedAtByProductId: new Map()
@@ -234,7 +323,10 @@ export async function loadVisibleModeProducts(
     if (visibleProductIds.length === 0) {
         return {
             marketplaceStorageId,
+            marketplaceStorageIds,
             inventoryRows: resolvedInventoryRows,
+            inventoryQuantityByProductId,
+            inventoryAllocationsByProductId,
             productRows: [],
             priceBookItemsByProductId: resolvedPriceBookItems,
             marketplaceAddedAtByProductId: new Map()
@@ -255,12 +347,36 @@ export async function loadVisibleModeProducts(
 
     return {
         marketplaceStorageId,
+        marketplaceStorageIds,
         inventoryRows: resolvedInventoryRows,
+        inventoryQuantityByProductId,
+        inventoryAllocationsByProductId,
         productRows: (products ?? []) as MarketplaceProductRow[],
         priceBookItemsByProductId: resolvedPriceBookItems,
-        marketplaceAddedAtByProductId: new Map(
-            resolvedInventoryRows.map((inventory) => [inventory.product_id, inventory.created_at] as const)
-        )
+        marketplaceAddedAtByProductId
+    }
+}
+
+export function allocateVisibleProductQuantity(
+    visibleProducts: VisibleModeProducts,
+    productId: string,
+    requestedQuantity: number
+) {
+    let remaining = requestedQuantity
+    const allocations: StorefrontInventoryAllocation[] = []
+
+    for (const source of visibleProducts.inventoryAllocationsByProductId.get(productId) ?? []) {
+        const availableQuantity = Math.max(0, Number(source.quantity ?? 0))
+        if (availableQuantity <= 0 || remaining <= 0) continue
+
+        const quantity = Math.min(availableQuantity, remaining)
+        allocations.push({ storageId: source.storageId, quantity })
+        remaining -= quantity
+    }
+
+    return {
+        allocations,
+        unallocatedQuantity: Math.max(0, remaining)
     }
 }
 

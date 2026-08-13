@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useLocation, useRoute } from 'wouter'
-import { ArrowLeft, Loader2, PackageSearch, RefreshCw, Search, ShoppingBag } from 'lucide-react'
+import { ArrowLeft, FileText, Loader2, PackageSearch, RefreshCw, Search, ShoppingBag } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
 import { formatCurrency, formatDateTime } from '@/lib/utils'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
+import { r2Service } from '@/services/r2Service'
+import { PdfJsViewer } from '@/ui/components/PdfJsViewer'
 import {
     db,
     fetchTableFromSupabase,
@@ -54,10 +56,37 @@ type MarketplaceOrderItemRecord = {
     line_total: number
     image_url?: string | null
     storage_id?: string | null
+    allocation_group_id?: string | null
+}
+
+function getMarketplaceDisplayItems(items: MarketplaceOrderItemRecord[]) {
+    const groupedItems = new Map<string, MarketplaceOrderItemRecord>()
+
+    for (const [index, item] of items.entries()) {
+        // A Jumla storefront product may be stored as multiple immutable lines
+        // when it is fulfilled by more than one storage. Show it once to the
+        // operator while retaining those individual storage lines for delivery
+        // and ERP sales-order deduction.
+        const key = item.allocation_group_id
+            ? `allocation:${item.allocation_group_id}`
+            : `line:${index}`
+        const existing = groupedItems.get(key)
+
+        if (!existing) {
+            groupedItems.set(key, { ...item })
+            continue
+        }
+
+        existing.quantity += Number(item.quantity ?? 0)
+        existing.line_total += Number(item.line_total ?? 0)
+    }
+
+    return Array.from(groupedItems.values())
 }
 
 type MarketplaceOrderRecord = {
     id: string
+    workspace_id: string
     order_number: string
     business_partner_id: string | null
     customer_id: string | null
@@ -68,6 +97,9 @@ type MarketplaceOrderRecord = {
     customer_address: string | null
     customer_city: string | null
     customer_notes: string | null
+    inquiry_pdf_storage_id: string | null
+    inquiry_pdf_document_number: string | null
+    inquiry_pdf_uploaded_at: string | null
     items: MarketplaceOrderItemRecord[]
     subtotal: number
     total: number
@@ -86,6 +118,7 @@ type MarketplaceOrderRecord = {
 
 const MARKETPLACE_ORDER_SELECT = `
     id,
+    workspace_id,
     order_number,
     business_partner_id,
     customer_id,
@@ -96,6 +129,9 @@ const MARKETPLACE_ORDER_SELECT = `
     customer_address,
     customer_city,
     customer_notes,
+    inquiry_pdf_storage_id,
+    inquiry_pdf_document_number,
+    inquiry_pdf_uploaded_at,
     items,
     subtotal,
     total,
@@ -235,6 +271,49 @@ function TimelineRow({
     )
 }
 
+function MarketplaceInquiryPdfCard({ order }: { order: MarketplaceOrderRecord }) {
+    const { t } = useTranslation()
+    const [isOpen, setIsOpen] = useState(false)
+
+    if (!order.inquiry_pdf_storage_id || !order.inquiry_pdf_document_number) return null
+
+    const pdfUrl = r2Service.getUrl(`${order.workspace_id}/inquiries/${order.inquiry_pdf_storage_id}.pdf`)
+    if (!pdfUrl) return null
+
+    return (
+        <Card className="border-border/60 bg-card/80">
+            <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
+                <div>
+                    <CardTitle>{t('ecommerce.inquiryPdf', { defaultValue: 'Inquiry PDF' })}</CardTitle>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        {order.inquiry_pdf_document_number}
+                        {order.inquiry_pdf_uploaded_at ? ` • ${formatDateTime(order.inquiry_pdf_uploaded_at)}` : ''}
+                    </p>
+                </div>
+                <Button variant="outline" className="gap-2 rounded-xl" onClick={() => setIsOpen(true)}>
+                    <FileText className="h-4 w-4" />
+                    {t('common.view', { defaultValue: 'View' })}
+                </Button>
+            </CardHeader>
+
+            <CardContent className="pt-0">
+                <div className="h-[min(76dvh,62rem)] min-h-[36rem] overflow-hidden rounded-2xl border border-border/60 bg-muted/30">
+                    <PdfJsViewer url={pdfUrl} title={order.inquiry_pdf_document_number} />
+                </div>
+            </CardContent>
+
+            <Dialog open={isOpen} onOpenChange={setIsOpen}>
+                <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] flex h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-1rem)] w-[calc(100vw-1rem)] max-w-6xl flex-col overflow-hidden rounded-2xl border-border/60 p-0 shadow-2xl sm:h-[min(calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem),1080px)] sm:w-[calc(100vw-2rem)]">
+                    <DialogHeader className="sr-only">
+                        <DialogTitle>{`${t('ecommerce.inquiryPdf', { defaultValue: 'Inquiry PDF' })} ${order.inquiry_pdf_document_number}`}</DialogTitle>
+                    </DialogHeader>
+                    <PdfJsViewer url={pdfUrl} title={order.inquiry_pdf_document_number} />
+                </DialogContent>
+            </Dialog>
+        </Card>
+    )
+}
+
 function EcommerceListView({
     orders,
     isLoading,
@@ -354,7 +433,7 @@ function EcommerceListView({
                                                     <EcommerceStatusBadge status={order.status} />
                                                 </div>
                                                 <p className="text-sm text-muted-foreground">
-                                                    {order.customer_name} • {order.items.length} {t('common.items', { defaultValue: 'Items' })}
+                                                    {order.customer_name} • {getMarketplaceDisplayItems(order.items).length} {t('common.items', { defaultValue: 'Items' })}
                                                 </p>
                                             </div>
                                             <div className="text-sm text-muted-foreground">
@@ -401,6 +480,7 @@ function EcommerceDetailView({
     const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
     const [cancelReason, setCancelReason] = useState('')
     const nextStatus = nextActionForStatus(order.status)
+    const displayItems = getMarketplaceDisplayItems(order.items)
 
     const submitCancel = async () => {
         await onCancel(cancelReason)
@@ -462,14 +542,28 @@ function EcommerceDetailView({
                             <CardTitle>{t('common.items', { defaultValue: 'Items' })}</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3">
-                            {order.items.map((item, index) => (
+                            {displayItems.map((item, index) => (
                                 <div key={`${item.product_id}-${index}`} className="rounded-2xl border border-border/60 bg-card/60 p-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <div className="font-semibold">{item.name}</div>
-                                            <div className="text-sm text-muted-foreground">{item.sku}</div>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="flex min-w-0 items-center gap-3">
+                                            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-muted/40">
+                                                {item.image_url ? (
+                                                    <img
+                                                        src={item.image_url}
+                                                        alt=""
+                                                        className="h-full w-full object-contain p-1"
+                                                        loading="lazy"
+                                                    />
+                                                ) : (
+                                                    <PackageSearch className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                                                )}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="truncate font-semibold">{item.name}</div>
+                                                <div className="truncate text-sm text-muted-foreground">{item.sku}</div>
+                                            </div>
                                         </div>
-                                        <div className="text-right">
+                                        <div className="shrink-0 text-right">
                                             <div className="font-semibold">× {item.quantity}</div>
                                             <div className="text-sm text-muted-foreground">
                                                 {formatCurrency(item.line_total, item.currency, features.iqd_display_preference)}
@@ -489,6 +583,8 @@ function EcommerceDetailView({
                             </div>
                         </CardContent>
                     </Card>
+
+                    <MarketplaceInquiryPdfCard order={order} />
                 </div>
 
                 <div className="space-y-6">
@@ -581,6 +677,7 @@ function EcommerceDetailView({
                             )}
                         </CardContent>
                     </Card>
+
                 </div>
             </div>
 

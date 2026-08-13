@@ -145,3 +145,5 @@ Secrets/novu-ec341-firebase-adminsdk-fbsvc-ee588ba935.json
 
 # Build-time tip video optimizer state
 /scripts/.optimized-tips.json
+.vercel
+.env*

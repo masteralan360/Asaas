@@ -76,21 +76,31 @@ export function PdfJsViewer({ url, title }: PdfJsViewerProps) {
                 if (cancelled) return
 
                 const containerWidth = pagesContainerRef.current?.clientWidth || 900
+                // Render at the display scale multiplied by the device pixel ratio. This keeps
+                // inline previews crisp on high-density displays without changing their layout.
+                const outputScale = Math.min(window.devicePixelRatio || 1, 3)
                 for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
                     if (cancelled) return
                     const page = await pdf.getPage(pageNumber)
                     const baseViewport = page.getViewport({ scale: 1 })
-                    const scale = Math.max(1, Math.min(2.5, containerWidth / baseViewport.width))
+                    const scale = Math.max(1, Math.min(3, containerWidth / baseViewport.width))
                     const viewport = page.getViewport({ scale })
                     const canvas = document.createElement('canvas')
-                    canvas.width = Math.ceil(viewport.width)
-                    canvas.height = Math.ceil(viewport.height)
+                    canvas.width = Math.ceil(viewport.width * outputScale)
+                    canvas.height = Math.ceil(viewport.height * outputScale)
+                    canvas.style.width = `${Math.ceil(viewport.width)}px`
+                    canvas.style.height = `${Math.ceil(viewport.height)}px`
                     canvas.className = 'block h-auto w-full'
                     const context = canvas.getContext('2d', { alpha: false })
                     if (!context) throw new Error('Unable to create a canvas context for PDF viewing.')
                     context.fillStyle = '#ffffff'
                     context.fillRect(0, 0, canvas.width, canvas.height)
-                    await page.render({ canvas, viewport, background: '#ffffff' }).promise
+                    await page.render({
+                        canvas,
+                        viewport,
+                        background: '#ffffff',
+                        transform: outputScale === 1 ? undefined : [outputScale, 0, 0, outputScale, 0, 0]
+                    }).promise
                     if (cancelled) return
 
                     const wrapper = document.createElement('div')

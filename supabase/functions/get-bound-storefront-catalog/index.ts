@@ -73,16 +73,13 @@ Deno.serve(async (req) => {
             return errorResponse(contactsError.message, 500)
         }
 
-        const [
-            { data: activeDiscounts, error: discountsError },
-            resolvedLogoUrl
-        ] = await Promise.all([
-            visibleProducts.marketplaceStorageId
-                ? adminClient.rpc('get_active_discounts_for_marketplace_storage', {
+        const [discountResults, resolvedLogoUrl] = await Promise.all([
+            Promise.all(visibleProducts.marketplaceStorageIds.map((storageId) =>
+                adminClient.rpc('get_active_discounts_for_marketplace_storage', {
                     p_workspace_id: context.workspace.id,
-                    p_storage_id: visibleProducts.marketplaceStorageId
+                    p_storage_id: storageId
                 })
-                : Promise.resolve({ data: [], error: null }),
+            )),
             (async () => resolvePublicAssetUrl(context.workspace.logo_url)
                 ?? (await listMarketplaceAssetUrls([
                     `${context.workspace.id}/workspace-logos/`,
@@ -91,17 +88,21 @@ Deno.serve(async (req) => {
                 ?? null)()
         ])
 
-        if (discountsError) {
-            return errorResponse(discountsError.message, 500)
+        for (const result of discountResults) {
+            if (result.error) return errorResponse(result.error.message, 500)
         }
 
         const discountByProductId = new Map<string, ResolvedWorkspaceDiscountRow>()
-        for (const discount of (activeDiscounts ?? []) as ResolvedWorkspaceDiscountRow[]) {
-            if (discount.is_stock_ok) {
-                discountByProductId.set(discount.product_id, {
-                    ...discount,
-                    discount_value: Number(discount.discount_value ?? 0)
-                })
+        // Storage order is fulfillment order.  If the same product has an
+        // active discount in both sources, maxzan 1's discount wins.
+        for (const result of discountResults) {
+            for (const discount of (result.data ?? []) as ResolvedWorkspaceDiscountRow[]) {
+                if (discount.is_stock_ok && !discountByProductId.has(discount.product_id)) {
+                    discountByProductId.set(discount.product_id, {
+                        ...discount,
+                        discount_value: Number(discount.discount_value ?? 0)
+                    })
+                }
             }
         }
 
@@ -130,12 +131,6 @@ Deno.serve(async (req) => {
         }
 
         const productIds = visibleProducts.productRows.map((product) => product.id)
-        const quantityByProductId = new Map(
-            visibleProducts.inventoryRows.map((inventory) => [
-                inventory.product_id,
-                Number(inventory.quantity ?? 0)
-            ] as const)
-        )
         const additionalImageUrlsByProductId = new Map<string, string[]>()
         if (productIds.length > 0) {
             const { data: additionalImages, error: additionalImagesError } = await adminClient
@@ -193,7 +188,7 @@ Deno.serve(async (req) => {
                     name: product.name,
                     sku: product.sku,
                     description: product.description ?? '',
-                    quantity: quantityByProductId.get(product.id) ?? 0,
+                    quantity: visibleProducts.inventoryQuantityByProductId.get(product.id) ?? 0,
                     price: resolvedPrice.price,
                     currency: resolvedPrice.currency ?? context.workspace.default_currency ?? 'iqd',
                     unit: product.unit ?? 'pcs',

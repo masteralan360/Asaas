@@ -13,6 +13,7 @@ import {
     getTrustedStorefrontClientIp,
     isWebsiteStorefrontGatewayRequest,
     JUMLA_KHALEEJ_SITE_KEY,
+    allocateVisibleProductQuantity,
     loadVisibleModeProducts,
     loadWebsiteStorefrontContext,
     parseWebsiteStorefrontMode,
@@ -143,7 +144,7 @@ Deno.serve(async (req) => {
 
         const { data: existingOrder, error: existingOrderError } = await adminClient
             .from('marketplace_orders')
-            .select('order_number')
+            .select('id, order_number')
             .eq('workspace_id', context.workspace.id)
             .eq('checkout_request_id', checkoutRequestId)
             .maybeSingle()
@@ -151,6 +152,7 @@ Deno.serve(async (req) => {
         if (existingOrderError) return errorResponse(existingOrderError.message, 500)
         if (existingOrder) {
             return privateJsonResponse({
+                id: (existingOrder as { id: string }).id,
                 order_number: (existingOrder as { order_number: string }).order_number,
                 message: getLocalizedMarketplaceOrderMessage(language)
             })
@@ -182,19 +184,28 @@ Deno.serve(async (req) => {
             return errorResponse('Some products could not be found for this store')
         }
 
-        const { data: activeDiscounts, error: discountsError } = await adminClient.rpc('get_active_discounts_for_marketplace_storage', {
-            p_workspace_id: context.workspace.id,
-            p_storage_id: visibleProducts.marketplaceStorageId
-        })
-        if (discountsError) return errorResponse(discountsError.message, 500)
+        const discountResults = await Promise.all(visibleProducts.marketplaceStorageIds.map((storageId) =>
+            adminClient.rpc('get_active_discounts_for_marketplace_storage', {
+                p_workspace_id: context.workspace.id,
+                p_storage_id: storageId
+            })
+        ))
+        for (const result of discountResults) {
+            if (result.error) return errorResponse(result.error.message, 500)
+        }
 
         const discountByProductId = new Map<string, ResolvedWorkspaceDiscountRow>()
-        for (const discount of (activeDiscounts ?? []) as ResolvedWorkspaceDiscountRow[]) {
-            if (discount.is_stock_ok) {
-                discountByProductId.set(discount.product_id, {
-                    ...discount,
-                    discount_value: Number(discount.discount_value ?? 0)
-                })
+        // Follow the same source priority as fulfillment: maxzan 1 before
+        // maxzan 2.  A product therefore has one stable storefront price even
+        // if its ordered quantity is fulfilled by both source storages.
+        for (const result of discountResults) {
+            for (const discount of (result.data ?? []) as ResolvedWorkspaceDiscountRow[]) {
+                if (discount.is_stock_ok && !discountByProductId.has(discount.product_id)) {
+                    discountByProductId.set(discount.product_id, {
+                        ...discount,
+                        discount_value: Number(discount.discount_value ?? 0)
+                    })
+                }
             }
         }
 
@@ -209,37 +220,54 @@ Deno.serve(async (req) => {
         }
 
         let subtotal = 0
-        const orderItems = productIds.map((productId) => {
+        const orderItems: Array<Record<string, unknown>> = []
+        for (const productId of productIds) {
             const product = productsById.get(productId)!
             const quantity = normalizedItems.get(productId) ?? 0
+            const allocation = allocateVisibleProductQuantity(visibleProducts, productId, quantity)
+            if (allocation.unallocatedQuantity > 0.000001) {
+                return errorResponse(`Insufficient available quantity for ${product.name}`, 409)
+            }
+
             const resolvedPrice = resolveModePrice(product, mode, visibleProducts.priceBookItemsByProductId)
             const discount = discountByProductId.get(product.id)
             const unitPrice = discount
                 ? computeDiscountPrice(resolvedPrice.price, discount.discount_type, discount.discount_value)
                 : resolvedPrice.price
-            const lineTotal = unitPrice * quantity
-            subtotal += lineTotal
 
-            return {
-                product_id: product.id,
-                name: product.name,
-                sku: product.sku,
-                unit_price: unitPrice,
-                original_unit_price: resolvedPrice.price,
-                currency: (resolvedPrice.currency ?? context.workspace.default_currency ?? 'iqd').toLowerCase(),
-                quantity,
-                line_total: lineTotal,
-                cost_price: resolvedPrice.costPrice,
-                image_url: resolvePublicAssetUrl(product.image_url),
-                storage_id: visibleProducts.marketplaceStorageId,
-                discount_type: discount?.discount_type ?? null,
-                discount_value: discount?.discount_value ?? null,
-                discount_ends_at: discount?.ends_at ?? null,
-                discount_source: discount?.source ?? null,
-                storefront_mode: mode,
-                price_book_id: mode === 'wholesale' ? context.config.wholesale_price_book_id : null
+            // Store one immutable order-item snapshot per physical allocation.
+            // The existing marketplace transition then locks and deducts each
+            // exact inventory row and creates sales-order rows with the same
+            // storage IDs, without changing generic Marketplace behavior.
+            for (const source of allocation.allocations) {
+                const allocatedQuantity = roundQuantity(source.quantity)
+                if (allocatedQuantity <= 0) continue
+
+                const lineTotal = unitPrice * allocatedQuantity
+                subtotal += lineTotal
+                orderItems.push({
+                    product_id: product.id,
+                    name: product.name,
+                    sku: product.sku,
+                    unit_price: unitPrice,
+                    original_unit_price: resolvedPrice.price,
+                    currency: (resolvedPrice.currency ?? context.workspace.default_currency ?? 'iqd').toLowerCase(),
+                    quantity: allocatedQuantity,
+                    line_total: lineTotal,
+                    cost_price: resolvedPrice.costPrice,
+                    image_url: resolvePublicAssetUrl(product.image_url),
+                    storage_id: source.storageId,
+                    allocation_group_id: product.id,
+                    allocation_group_quantity: quantity,
+                    discount_type: discount?.discount_type ?? null,
+                    discount_value: discount?.discount_value ?? null,
+                    discount_ends_at: discount?.ends_at ?? null,
+                    discount_source: discount?.source ?? null,
+                    storefront_mode: mode,
+                    price_book_id: mode === 'wholesale' ? context.config.wholesale_price_book_id : null
+                })
             }
-        })
+        }
 
         const currency = orderItems[0]?.currency ?? (context.workspace.default_currency ?? 'iqd').toLowerCase()
         const { data: insertedOrder, error: insertError } = await adminClient
@@ -270,12 +298,13 @@ Deno.serve(async (req) => {
             if (insertError?.code === '23505') {
                 const { data: duplicateOrder } = await adminClient
                     .from('marketplace_orders')
-                    .select('order_number')
+                    .select('id, order_number')
                     .eq('workspace_id', context.workspace.id)
                     .eq('checkout_request_id', checkoutRequestId)
                     .maybeSingle()
                 if (duplicateOrder) {
                     return privateJsonResponse({
+                        id: (duplicateOrder as { id: string }).id,
                         order_number: (duplicateOrder as { order_number: string }).order_number,
                         message: getLocalizedMarketplaceOrderMessage(language)
                     })
@@ -294,6 +323,7 @@ Deno.serve(async (req) => {
         }
 
         return privateJsonResponse({
+            id: insertedOrder.id,
             order_number: insertedOrder.order_number,
             message: getLocalizedMarketplaceOrderMessage(language)
         }, { status: 201 })
