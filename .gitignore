@@ -147,3 +147,10 @@ Secrets/novu-ec341-firebase-adminsdk-fbsvc-ee588ba935.json
 /scripts/.optimized-tips.json
 .vercel
 .env*
+
+# Microsoft Excel creates these temporary lock files while a workbook is open.
+~$*.xlsx
+
+# Local workbook-creation diagnostics and previews are not release artifacts.
+*.xlsx.inspect.ndjson
+/excel samples/**/product-import-sample-preview.png
