@@ -13,6 +13,7 @@ import {
     getTrustedStorefrontClientIp,
     isWebsiteStorefrontGatewayRequest,
     JUMLA_KHALEEJ_SITE_KEY,
+    JUMLA_KHALEEJ_WHOLESALE_MINIMUM_QUANTITY,
     allocateVisibleProductQuantity,
     loadVisibleModeProducts,
     loadWebsiteStorefrontContext,
@@ -137,6 +138,17 @@ Deno.serve(async (req) => {
         }
 
         if (normalizedItems.size === 0) return errorResponse('At least one order item is required')
+
+        // The MOQ is enforced on the server as well as in the storefront UI,
+        // preventing handcrafted requests and old local carts from bypassing
+        // Jumla Khaleej's per-product wholesale minimum.
+        if (mode === 'wholesale') {
+            const belowMinimum = Array.from(normalizedItems.entries())
+                .find(([, quantity]) => quantity < JUMLA_KHALEEJ_WHOLESALE_MINIMUM_QUANTITY)
+            if (belowMinimum) {
+                return errorResponse(`Each wholesale product requires at least ${JUMLA_KHALEEJ_WHOLESALE_MINIMUM_QUANTITY} units`, 409)
+            }
+        }
 
         const adminClient = createAdminClient()
         const context = await loadWebsiteStorefrontContext(adminClient, req)

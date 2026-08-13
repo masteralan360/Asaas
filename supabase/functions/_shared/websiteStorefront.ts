@@ -1,6 +1,7 @@
 import { createAdminClient } from './supabase.ts'
 
 export const JUMLA_KHALEEJ_SITE_KEY = 'jumla-khaleej'
+export const JUMLA_KHALEEJ_WHOLESALE_MINIMUM_QUANTITY = 3
 
 export type WebsiteStorefrontMode = 'retail' | 'wholesale'
 
