@@ -1533,7 +1533,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
 
     useEffect(() => {
-        if (!user?.workspaceId) {
+        if (!user?.workspaceId || loadedWorkspaceId !== user.workspaceId) {
             return
         }
 
@@ -1543,6 +1543,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         })
     }, [
         features.data_mode,
+        loadedWorkspaceId,
         user?.workspaceId
     ])
 

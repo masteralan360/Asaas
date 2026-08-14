@@ -3,6 +3,7 @@ import { platformService } from '@/services/platformService';
 import { r2Service } from '@/services/r2Service';
 import { db } from '@/local-db';
 import { supabase } from '@/auth/supabase';
+import type { WorkspaceDataMode } from '@/local-db/models';
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode';
 import { downloadWorkspaceResources } from '@/lib/workspaceResourceSync';
 
@@ -41,24 +42,36 @@ export interface AssetProgress {
 
 const COLD_START_SESSION_STORAGE_KEY = 'atlas_asset_cold_start_synced';
 
-class AssetManager extends SimpleEventEmitter {
+export class AssetManager extends SimpleEventEmitter {
     private isScanning = false;
     private isInitialSync = false;
     private coldStartStarted = false;
     private forceEnterRequested = false;
     private workspaceId: string | null = null;
+    private workspaceMode: WorkspaceDataMode | null = null;
     private watchInterval: any = null;
 
     constructor() {
         super();
     }
 
-    initialize(workspaceId: string) {
+    initialize(workspaceId: string, workspaceMode?: WorkspaceDataMode) {
         this.workspaceId = workspaceId;
+        this.workspaceMode = workspaceMode ?? null;
         console.log('[AssetManager] Initialized for workspace:', workspaceId);
 
         // Start background watcher if in Tauri
         if (isTauri()) {
+            // The resolved mode passed by the workspace provider is authoritative.
+            // Falling back to the snapshot preserves compatibility for callers that
+            // have not resolved the workspace state yet.
+            if (this.isLocalMode()) {
+                this.stopWatcher();
+                this.isInitialSync = false;
+                this.emitStatus({ status: 'idle' });
+                return;
+            }
+
             // Full workspace resource download (the "Syncing Workspace" overlay)
             // runs on cold startup only: once per app process AND once per webview
             // session, so a reload/refresh never re-triggers it.
@@ -69,6 +82,14 @@ class AssetManager extends SimpleEventEmitter {
             }
             this.startWatcher();
         }
+    }
+
+    private isLocalMode(): boolean {
+        if (this.workspaceMode) {
+            return this.workspaceMode === 'local' || this.workspaceMode === 'demo';
+        }
+
+        return isLocalWorkspaceMode(this.workspaceId);
     }
 
     private hasCompletedColdStartThisSession(): boolean {
@@ -110,7 +131,7 @@ class AssetManager extends SimpleEventEmitter {
      */
     async uploadAsset(file: File, folder: string = 'general'): Promise<string | null> {
         if (!this.workspaceId) return null;
-        if (isLocalWorkspaceMode(this.workspaceId)) return null;
+        if (this.isLocalMode()) return null;
 
         try {
             this.emitStatus({ status: 'uploading', currentFile: file.name });
@@ -143,7 +164,7 @@ class AssetManager extends SimpleEventEmitter {
         customPath?: string
     ): Promise<string | null> {
         if (!this.workspaceId) return null;
-        if (isLocalWorkspaceMode(this.workspaceId)) return null;
+        if (this.isLocalMode()) return null;
 
         try {
             const folder = format === 'a4' ? 'A4' : 'receipts';
@@ -172,7 +193,7 @@ class AssetManager extends SimpleEventEmitter {
      */
     async uploadFromPath(filePath: string, _folder: string = 'general'): Promise<string | null> {
         if (!isTauri()) return null;
-        if (this.workspaceId && isLocalWorkspaceMode(this.workspaceId)) return null;
+        if (this.workspaceId && this.isLocalMode()) return null;
 
         try {
             const fileName = filePath.split(/[\\/]/).pop() || 'file';
@@ -218,7 +239,7 @@ class AssetManager extends SimpleEventEmitter {
      */
     async deleteAsset(remotePath: string): Promise<void> {
         if (!this.workspaceId || !remotePath) return;
-        if (isLocalWorkspaceMode(this.workspaceId)) return;
+        if (this.isLocalMode()) return;
 
         if (remotePath.startsWith('data:') || remotePath.startsWith('blob:')) {
             return;
@@ -257,7 +278,7 @@ class AssetManager extends SimpleEventEmitter {
      */
     private async coldStartResourceSync() {
         if (!this.workspaceId) return;
-        if (isLocalWorkspaceMode(this.workspaceId)) {
+        if (this.isLocalMode()) {
             this.isInitialSync = false;
             this.emitStatus({ status: 'idle' });
             return;
@@ -293,7 +314,10 @@ class AssetManager extends SimpleEventEmitter {
 
     public requestForceEnter() {
         this.forceEnterRequested = true;
-        this.emitStatus({ status: 'downloading' });
+        // R2 listing requests cannot be reliably aborted once in flight. Let the
+        // user into the app immediately while the current request unwinds and
+        // the sync's skip callback prevents any remaining downloads.
+        this.dismissInitialSync();
     }
 
     public retryColdStartSync() {
@@ -333,7 +357,7 @@ class AssetManager extends SimpleEventEmitter {
 
     async scanAndSync() {
         if (this.isScanning || !isTauri() || !this.workspaceId) return;
-        if (isLocalWorkspaceMode(this.workspaceId)) {
+        if (this.isLocalMode()) {
             this.emitStatus({ status: 'idle' });
             return;
         }
@@ -380,7 +404,7 @@ class AssetManager extends SimpleEventEmitter {
      */
     private async syncPendingInvoices() {
         if (!this.workspaceId) return;
-        if (isLocalWorkspaceMode(this.workspaceId)) return;
+        if (this.isLocalMode()) return;
 
         try {
             // New invoice saves are synchronized as immutable version records first.
@@ -482,7 +506,7 @@ class AssetManager extends SimpleEventEmitter {
 
     private async ensureLocal(remotePath: string) {
         if (!this.workspaceId) return;
-        if (isLocalWorkspaceMode(this.workspaceId)) return;
+        if (this.isLocalMode()) return;
 
         try {
             // Check if we already have it locally

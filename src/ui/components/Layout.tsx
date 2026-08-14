@@ -20,7 +20,6 @@ import { NotificationCenter } from './NotificationCenter'
 import { ManualRateModals } from './exchange/ManualRateModals'
 import { GlobalLoanReminders } from './loans/GlobalLoanReminders'
 import { GlobalBudgetReminders } from './budget/GlobalBudgetReminders'
-import { GlobalMarketplaceOrderReminders } from './ecommerce/GlobalMarketplaceOrderReminders'
 import { LoanPaymentModalProvider } from './loans/LoanPaymentModalProvider'
 import { UnifiedSnoozeProvider } from '@/context/UnifiedSnoozeContext'
 import { GlobalExchangeRateReminders } from './exchange/GlobalExchangeRateReminders'
@@ -148,7 +147,7 @@ export function Layout({ children }: LayoutProps) {
     const [location, setLocation] = useLocation()
     const { user, signOut, session } = useAuth()
     const clinicalRegistryType = useClinicalRegistryType(user?.workspaceId)
-    const { hasFeature, hasCapability, workspaceName, isFullscreen, features, activeWorkspace, isLocalMode, isDemoMode, isLocked } = useWorkspace()
+    const { hasFeature, hasCapability, workspaceName, isFullscreen, features, activeWorkspace, isLocalMode, isDemoMode, isLocked, isLoading: isWorkspaceLoading, loadedWorkspaceId } = useWorkspace()
     const { hasPermission } = useWorkspacePermissions()
     const demoExpiryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const {
@@ -286,9 +285,16 @@ export function Layout({ children }: LayoutProps) {
 
         fetchMembers()
 
-        // Initialize Asset Manager
-        if (user?.id && user?.workspaceId) {
-            assetManager.initialize(user.workspaceId);
+        // Do not initialize cloud resource sync until this workspace's mode has
+        // resolved. `features` starts as cloud, which must never override a
+        // Local Mode workspace during startup.
+        if (
+            user?.id
+            && user.workspaceId
+            && !isWorkspaceLoading
+            && loadedWorkspaceId === user.workspaceId
+        ) {
+            assetManager.initialize(user.workspaceId, features.data_mode);
         }
 
         // Start R2 database backup interval for local mode
@@ -344,7 +350,7 @@ export function Layout({ children }: LayoutProps) {
             window.removeEventListener('whatsapp-status-change', handleWhatsAppStatusChange)
             stopR2BackupInterval()
         }
-    }, [isLocalMode, session?.user?.id, user?.id, user?.workspaceId])
+    }, [features.data_mode, isLocalMode, isWorkspaceLoading, loadedWorkspaceId, session?.user?.id, user?.id, user?.workspaceId])
 
     useEffect(() => {
         if (
@@ -628,7 +634,6 @@ export function Layout({ children }: LayoutProps) {
                     {features.allowed_currencies.length > 1 && <GlobalExchangeRateReminders />}
                     {user?.role === 'admin' && hasFeature('budget') && <GlobalBudgetReminders />}
                     {hasFeature('loans') && <GlobalLoanReminders />}
-                    {hasFeature('ecommerce') && <GlobalMarketplaceOrderReminders />}
                     {/* Mobile sidebar backdrop */}
                     {mobileSidebarOpen && (
                         <div
