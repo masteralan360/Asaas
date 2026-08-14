@@ -13,6 +13,7 @@ import {
     type SalesOrder
 } from '@/local-db'
 import { getOrderLineFreeBonusQuantity, getOrderLinePaidQuantity } from '@/lib/orderLineItems'
+import { getA4OrderPrintReturnRowStyle, getOrderPrintReturnState } from '@/lib/orderPrintReturnState'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import { normalizeUnitCode } from '@/local-db/models'
 import { platformService } from '@/services/platformService'
@@ -35,6 +36,7 @@ import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
 import { ReorderablePickerGrid } from '@/ui/components/ReorderablePickerGrid'
 
 import { ProductPrintImage, type ProductPrintImageUrls } from '@/ui/components/print/ProductPrintImage'
+import { OrderPrintReturnValue } from './OrderPrintReturnValue'
 
 type OrderKind = 'sales' | 'purchase'
 
@@ -1080,7 +1082,9 @@ export function AtlasStandardOrderInvoiceTemplate({
             itemChunks.push(items.slice(index, index + maxItemRowsPerTable))
         }
     }
-    const paidQuantityTotal = items.reduce((sum, item) => sum + getOrderLinePaidQuantity(item), 0)
+    const paidQuantityTotal = items.reduce((sum, item) => sum + (isSales
+        ? getOrderPrintReturnState(item).remainingQuantity
+        : getOrderLinePaidQuantity(item)), 0)
     const freeQuantityTotal = items.reduce((sum, item) => sum + getOrderLineFreeBonusQuantity(item), 0)
     const paidQuantityUnits = Array.from(new Set(
         items
@@ -1176,6 +1180,13 @@ export function AtlasStandardOrderInvoiceTemplate({
                         const paidQuantity = getOrderLinePaidQuantity(item)
                         const unit = normalizeUnitCode(item.unit)
                         const freeBonusUnit = normalizeUnitCode(item.freeBonusUnit || item.unit)
+                        const returnState = isSales ? getOrderPrintReturnState(item) : null
+                        const originalQuantity = unit
+                            ? `${paidQuantity} ${t(`products.units.${unit}`, { defaultValue: unit })}`
+                            : paidQuantity
+                        const remainingQuantity = unit
+                            ? `${returnState?.remainingQuantity} ${t(`products.units.${unit}`, { defaultValue: unit })}`
+                            : returnState?.remainingQuantity
                         const values: Record<string, ReactNode> = {
                             [tableKeys.productImage]: (
                                 <ProductPrintImage
@@ -1188,20 +1199,41 @@ export function AtlasStandardOrderInvoiceTemplate({
                             [tableKeys.product]: item.productName || '\u00a0',
                             [tableKeys.expiry]: batch.expiry || '\u00a0',
                             [tableKeys.batchNumber]: batch.batchNumber || '\u00a0',
-                            [tableKeys.quantity]: unit
-                                ? `${paidQuantity} ${t(`products.units.${unit}`, { defaultValue: unit })}`
-                                : paidQuantity,
+                            [tableKeys.quantity]: returnState
+                                ? <OrderPrintReturnValue
+                                    state={returnState}
+                                    original={originalQuantity}
+                                    remaining={remainingQuantity}
+                                    stacked
+                                    className="items-center"
+                                />
+                                : originalQuantity,
                             [tableKeys.freeQuantity]: getOrderLineFreeBonusQuantity(item)
                                 ? freeBonusUnit
                                     ? `${getOrderLineFreeBonusQuantity(item)} ${t(`products.units.${freeBonusUnit}`, { defaultValue: freeBonusUnit })}`
                                     : getOrderLineFreeBonusQuantity(item)
                                 : '\u00a0',
                             [tableKeys.price]: formatCurrency(item.convertedUnitPrice, currency, iqdPreference),
-                            [tableKeys.total]: formatCurrency(item.lineTotal, currency, iqdPreference),
+                            [tableKeys.total]: returnState
+                                ? <OrderPrintReturnValue
+                                    state={returnState}
+                                    original={formatCurrency(returnState.originalLineTotal, currency, iqdPreference)}
+                                    remaining={formatCurrency(returnState.remainingLineTotal, currency, iqdPreference)}
+                                    stacked
+                                    className="items-center"
+                                />
+                                : formatCurrency(item.lineTotal, currency, iqdPreference),
                             [tableKeys.note]: item.note?.trim() || '\u00a0'
                         }
                         return (
-                            <tr key={item.id} style={{ height: `${tableItemRowMm}mm` }}>
+                            <tr
+                                key={item.id}
+                                style={{
+                                    height: `${tableItemRowMm}mm`,
+                                    ...getA4OrderPrintReturnRowStyle(returnState?.status || 'active')
+                                }}
+                                data-order-print-return-state={returnState?.status}
+                            >
                                 {visibleTableColumns.map((column) => (
                                     <td
                                         key={column.key}

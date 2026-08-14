@@ -548,6 +548,36 @@ describe('Order Details custom print template', () => {
         expect(html).toContain('2 pcs')
     })
 
+    it('highlights returned lines in the legacy A4 custom layout', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_DETAILS_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const baseOrder = customTemplates
+            .createCustomTemplatePreview(target!, { printLang: 'en' })
+            .createElement({})
+            .props.order
+        const html = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'en',
+            order: {
+                ...baseOrder,
+                items: [{
+                    ...baseOrder.items[0],
+                    quantity: 3,
+                    lineTotal: 75,
+                    convertedUnitPrice: 25,
+                    returnedQuantity: 1
+                }]
+            }
+        }).createElement({}))
+
+        expect(html).toContain('data-order-print-return-state="partially-returned"')
+        expect(html).toContain('background-color:#fef3c7')
+        expect(html).toContain('>3 pcs</span><span')
+        expect(html).toContain('>2 pcs</span>')
+        expect(html).toContain('>$75</span><span')
+        expect(html).toContain('>$50</span>')
+    })
+
     it('preserves movable component positions, hidden fields, field orders, and field titles when reading a saved layout', () => {
         const componentPositions = {
             customer: { x: 10, y: 5 },
@@ -804,6 +834,54 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(kurdish).toContain('شێوازی پارەدان : </strong>کاش')
     })
 
+    it('highlights partial and full sales-order returns in every Atlas Standard custom layout', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const baseOrder = customTemplates
+            .createCustomTemplatePreview(target!, { printLang: 'en' })
+            .createElement({})
+            .props.order
+        const partialHtml = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'en',
+            order: {
+                ...baseOrder,
+                items: [{
+                    ...baseOrder.items[0],
+                    quantity: 3,
+                    lineTotal: 75,
+                    convertedUnitPrice: 25,
+                    returnedQuantity: 1
+                }]
+            }
+        }).createElement({}))
+        const fullHtml = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'en',
+            order: {
+                ...baseOrder,
+                items: [{
+                    ...baseOrder.items[0],
+                    quantity: 3,
+                    lineTotal: 75,
+                    convertedUnitPrice: 25,
+                    returnedQuantity: 3
+                }]
+            }
+        }).createElement({}))
+
+        expect(partialHtml).toContain('data-order-print-return-state="partially-returned"')
+        expect(partialHtml).toContain('background-color:#fef3c7')
+        expect(partialHtml).toContain('>3 pcs</span><span')
+        expect(partialHtml).toContain('>2 pcs</span>')
+        expect(partialHtml).toContain('>$75</span><span')
+        expect(partialHtml).toContain('>$50</span>')
+        expect(partialHtml).toContain('flex-col gap-0 text-[9px] leading-[1.05] items-center')
+        expect(fullHtml).toContain('data-order-print-return-state="fully-returned"')
+        expect(fullHtml).toContain('background-color:#fee2e2')
+        expect(fullHtml).toContain('>0 pcs</span>')
+        expect(fullHtml).toContain('>$0</span>')
+    })
+
     it('totals kilogram-quantity products in the product-name column when enabled, converting to tons above 1000 kg', () => {
         const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
         expect(target).toBeDefined()
@@ -1002,6 +1080,36 @@ describe('Order Receipt custom print template', () => {
         expect(html).not.toContain('data-order-print-component="orderReceiptContacts"')
         expect(html).toContain('Paid')
         expect(html).toContain('Outstanding')
+    })
+
+    it('keeps returned receipt lines monochrome while preserving the original and remaining values', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_RECEIPT_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const baseOrder = customTemplates
+            .createCustomTemplatePreview(target!, { printLang: 'en' })
+            .createElement({})
+            .props.order
+        const html = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'en',
+            order: {
+                ...baseOrder,
+                items: [{
+                    ...baseOrder.items[0],
+                    quantity: 3,
+                    lineTotal: 75,
+                    convertedUnitPrice: 25,
+                    returnedQuantity: 1
+                }]
+            }
+        }).createElement({}))
+
+        expect(html).toContain('data-order-print-return-state="partially-returned"')
+        expect(html).toContain('Partial Return')
+        expect(html).toContain('data-order-print-return-value="partially-returned"')
+        expect(html).toContain('flex-col gap-0 text-[9px] leading-[1.05] items-end')
+        expect(html).not.toContain('#fef3c7')
+        expect(html).not.toContain('#fee2e2')
     })
 })
 

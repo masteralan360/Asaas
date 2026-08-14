@@ -11,6 +11,7 @@ import { useDemoTutorial } from '@/demo'
 import { useProfileData } from '@/hooks/useProfileData'
 import { getOrderLineFreeBonusQuantity, getOrderLineInventoryQuantity, getOrderLinePaidQuantity, hasOrderLineFreeBonus } from '@/lib/orderLineItems'
 import { getOrderAdjustmentTotals, normalizeOrderAdjustments } from '@/lib/orderAdjustments'
+import { getOrderPrintReturnState } from '@/lib/orderPrintReturnState'
 import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { normalizeUnitCode } from '@/local-db/models'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
@@ -200,6 +201,25 @@ function InstallmentAmount({
     )
 }
 
+function ReturnedOrderValue({
+    currentValue,
+    originalValue,
+    className,
+    currentValueClassName
+}: {
+    currentValue: string
+    originalValue: string
+    className?: string
+    currentValueClassName?: string
+}) {
+    return (
+        <div className={cn('flex flex-col items-end leading-tight', className)}>
+            <span className={cn('font-semibold', currentValueClassName)}>{currentValue}</span>
+            <span className="mt-0.5 text-xs text-muted-foreground line-through decoration-muted-foreground/70">{originalValue}</span>
+        </div>
+    )
+}
+
 export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string; orderId: string }) {
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
@@ -326,6 +346,17 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
             quantities.set(item.orderItemId, (quantities.get(item.orderItemId) || 0) + item.quantity)
         }
         return quantities
+    }, [salesOrderReturnItems])
+
+    const returnedAmountByItemId = useMemo(() => {
+        const amounts = new Map<string, number>()
+        for (const item of salesOrderReturnItems) {
+            amounts.set(
+                item.orderItemId,
+                (amounts.get(item.orderItemId) || 0) + Math.max(0, Number(item.refundAmount || 0))
+            )
+        }
+        return amounts
     }, [salesOrderReturnItems])
 
     const getReturnableQuantity = useCallback((item: SalesOrderItem) => Math.max(
@@ -1407,11 +1438,17 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                          const freeBonusQuantity = getOrderLineFreeBonusQuantity(item)
                                          const inventoryQuantity = getOrderLineInventoryQuantity(item)
                                          const returnedQuantity = isSales ? (returnedQuantityByItemId.get(item.id) || 0) : 0
-                                         const remainingQuantity = Math.max(0, paidQuantity - returnedQuantity)
+                                         const returnedAmount = isSales ? (returnedAmountByItemId.get(item.id) || 0) : 0
+                                         const returnState = isSales
+                                             ? getOrderPrintReturnState(item, { returnedQuantity, returnedAmount })
+                                             : null
+                                         const remainingQuantity = returnState?.remainingQuantity ?? paidQuantity
                                          const remainingInventoryQuantity = Math.max(0, inventoryQuantity - returnedQuantity)
-                                         const isItemFullyReturned = isSales && returnedQuantity >= inventoryQuantity
-                                         const hasItemPartialReturn = isSales && returnedQuantity > 0 && !isItemFullyReturned
-                                         const itemProfit = isSales ? item.lineTotal - (salesItem.convertedCostPrice * remainingInventoryQuantity) : 0
+                                         const isItemFullyReturned = returnState?.status === 'fully-returned'
+                                         const hasItemPartialReturn = returnState?.status === 'partially-returned'
+                                         const remainingLineTotal = returnState?.remainingLineTotal ?? item.lineTotal
+                                         const originalItemProfit = isSales ? item.lineTotal - (salesItem.convertedCostPrice * inventoryQuantity) : 0
+                                         const itemProfit = isSales ? remainingLineTotal - (salesItem.convertedCostPrice * remainingInventoryQuantity) : 0
                                          const itemReceived = !isSales ? purchaseItem.receivedQuantity ?? ((order.status === 'received' || order.status === 'completed') ? inventoryQuantity : 0) : 0
                                          const returnableQuantity = isSales ? getReturnableQuantity(salesItem) : 0
                                          const itemUnit = item.unit?.trim() || productUnits[item.productId]?.trim() || ''
@@ -1448,11 +1485,13 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                                     </div>
                                                     <div className="rounded-2xl border bg-muted/20 p-3">
                                                         <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.form.table.qty') || 'Qty'}</div>
-                                                        <div className="mt-1 flex items-baseline gap-1.5 font-medium">
-                                                            <span className={cn(isItemFullyReturned && 'line-through opacity-50')}>{isSales ? remainingQuantity : paidQuantity}{itemUnitLabel ? ` ${itemUnitLabel}` : ''}</span>
-                                                            {isSales && returnedQuantity > 0 ? <span className="text-xs text-muted-foreground line-through">{paidQuantity}{itemUnitLabel ? ` ${itemUnitLabel}` : ''}</span> : null}
-                                                        </div>
-                                                        {hasItemPartialReturn ? <div className="mt-1 text-[10px] font-bold text-orange-600">-{returnedQuantity} {t('sales.return.returnedLabel') || 'returned'}</div> : null}
+                                                        {returnState?.status !== 'active' ? (
+                                                            <ReturnedOrderValue
+                                                                className="mt-1 items-start"
+                                                                currentValue={`${remainingQuantity}${itemUnitLabel ? ` ${itemUnitLabel}` : ''}`}
+                                                                originalValue={`${paidQuantity}${itemUnitLabel ? ` ${itemUnitLabel}` : ''}`}
+                                                            />
+                                                        ) : <div className="mt-1 font-medium">{paidQuantity}{itemUnitLabel ? ` ${itemUnitLabel}` : ''}</div>}
                                                     </div>
                                                     {showFreeBonus ? (
                                                         <div className="rounded-2xl border bg-muted/20 p-3">
@@ -1462,7 +1501,13 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                                     ) : null}
                                                     <div className="rounded-2xl border bg-muted/20 p-3">
                                                         <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.lineTotal') || 'Line Total'}</div>
-                                                        <div className="mt-1 font-medium">{formatCurrency(item.lineTotal, currency, iqd)}</div>
+                                                        {returnState?.status !== 'active' ? (
+                                                            <ReturnedOrderValue
+                                                                className="mt-1 items-start"
+                                                                currentValue={formatCurrency(remainingLineTotal, currency, iqd)}
+                                                                originalValue={formatCurrency(item.lineTotal, currency, iqd)}
+                                                            />
+                                                        ) : <div className="mt-1 font-medium">{formatCurrency(item.lineTotal, currency, iqd)}</div>}
                                                     </div>
                                                     <div className="rounded-2xl border bg-muted/20 p-3">
                                                         <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.unitPrice') || 'Unit Price'}</div>
@@ -1471,9 +1516,18 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                                     {(!isSales || canViewProfit) && (
                                                         <div className="rounded-2xl border bg-muted/20 p-3">
                                                             <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{isSales ? (t('orders.details.itemProfit') || 'Item Profit') : (t('orders.details.receivedUnits') || 'Received Units')}</div>
-                                                            <div className={cn('mt-1 font-medium', isSales && itemProfit >= 0 ? 'text-emerald-600' : isSales ? 'text-rose-600' : '')}>
-                                                                {isSales ? formatCurrency(itemProfit, currency, iqd) : itemReceived}
-                                                            </div>
+                                                            {isSales && returnState?.status !== 'active' ? (
+                                                                <ReturnedOrderValue
+                                                                    className="mt-1 items-start"
+                                                                    currentValue={formatCurrency(itemProfit, currency, iqd)}
+                                                                    originalValue={formatCurrency(originalItemProfit, currency, iqd)}
+                                                                    currentValueClassName={itemProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}
+                                                                />
+                                                            ) : (
+                                                                <div className={cn('mt-1 font-medium', isSales && itemProfit >= 0 ? 'text-emerald-600' : isSales ? 'text-rose-600' : '')}>
+                                                                    {isSales ? formatCurrency(itemProfit, currency, iqd) : itemReceived}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     )}
                                                 </div>
@@ -1521,12 +1575,18 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                                  const freeBonusQuantity = getOrderLineFreeBonusQuantity(item)
                                                  const inventoryQuantity = getOrderLineInventoryQuantity(item)
                                                  const returnedQuantity = isSales ? (returnedQuantityByItemId.get(item.id) || 0) : 0
-                                                 const remainingQuantity = Math.max(0, paidQuantity - returnedQuantity)
+                                                 const returnedAmount = isSales ? (returnedAmountByItemId.get(item.id) || 0) : 0
+                                                 const returnState = isSales
+                                                     ? getOrderPrintReturnState(item, { returnedQuantity, returnedAmount })
+                                                     : null
+                                                 const remainingQuantity = returnState?.remainingQuantity ?? paidQuantity
                                                  const remainingInventoryQuantity = Math.max(0, inventoryQuantity - returnedQuantity)
-                                                 const isItemFullyReturned = isSales && returnedQuantity >= inventoryQuantity
-                                                 const hasItemPartialReturn = isSales && returnedQuantity > 0 && !isItemFullyReturned
+                                                 const isItemFullyReturned = returnState?.status === 'fully-returned'
+                                                 const hasItemPartialReturn = returnState?.status === 'partially-returned'
+                                                 const remainingLineTotal = returnState?.remainingLineTotal ?? item.lineTotal
                                                  const itemReceived = purchaseItem.receivedQuantity ?? ((order.status === 'received' || order.status === 'completed') ? inventoryQuantity : 0)
-                                                 const itemProfit = item.lineTotal - (salesItem.convertedCostPrice * remainingInventoryQuantity)
+                                                 const originalItemProfit = isSales ? item.lineTotal - (salesItem.convertedCostPrice * inventoryQuantity) : 0
+                                                 const itemProfit = isSales ? remainingLineTotal - (salesItem.convertedCostPrice * remainingInventoryQuantity) : 0
                                                  const returnableQuantity = isSales ? getReturnableQuantity(salesItem) : 0
                                                  const itemUnit = item.unit?.trim() || productUnits[item.productId]?.trim() || ''
                                                  const itemUnitLabel = itemUnit ? t(`products.units.${itemUnit}`, itemUnit) : ''
@@ -1548,17 +1608,42 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                                         </TableCell>
                                                         <TableCell>{storageName(item.storageId || mainStorageId)}</TableCell>
                                                          <TableCell className="text-end">
-                                                             <div className="flex flex-col items-end">
-                                                                 <span className={cn(isItemFullyReturned && 'line-through opacity-50')}>{isSales ? remainingQuantity : paidQuantity}{itemUnitLabel ? ` ${itemUnitLabel}` : ''}</span>
-                                                                 {hasItemPartialReturn ? <span className="text-[10px] font-medium text-orange-600">-{returnedQuantity} {t('sales.return.returnedLabel') || 'returned'}</span> : null}
-                                                             </div>
+                                                             {returnState?.status !== 'active' ? (
+                                                                 <ReturnedOrderValue
+                                                                     currentValue={`${remainingQuantity}${itemUnitLabel ? ` ${itemUnitLabel}` : ''}`}
+                                                                     originalValue={`${paidQuantity}${itemUnitLabel ? ` ${itemUnitLabel}` : ''}`}
+                                                                 />
+                                                             ) : (
+                                                                 <span>{paidQuantity}{itemUnitLabel ? ` ${itemUnitLabel}` : ''}</span>
+                                                             )}
                                                          </TableCell>
                                                         {showFreeBonus && <TableCell className="text-end">{freeBonusQuantity}{freeBonusItemUnitLabel ? ` ${freeBonusItemUnitLabel}` : ''}</TableCell>}
                                                         {!isSales && <TableCell className="text-end">{itemReceived}</TableCell>}
                                                         <TableCell className="text-end">{formatCurrency(item.convertedUnitPrice, currency, iqd)}</TableCell>
                                                         {isSales && canViewProfit && <TableCell className="text-end">{formatCurrency(salesItem.convertedCostPrice, currency, iqd)}</TableCell>}
-                                                        <TableCell className="text-end font-semibold">{formatCurrency(item.lineTotal, currency, iqd)}</TableCell>
-                                                        {isSales && canViewProfit && <TableCell className={cn('text-end font-semibold', itemProfit >= 0 ? 'text-emerald-600' : 'text-rose-600')}>{formatCurrency(itemProfit, currency, iqd)}</TableCell>}
+                                                        <TableCell className="text-end font-semibold">
+                                                            {returnState?.status !== 'active' ? (
+                                                                <ReturnedOrderValue
+                                                                    currentValue={formatCurrency(remainingLineTotal, currency, iqd)}
+                                                                    originalValue={formatCurrency(item.lineTotal, currency, iqd)}
+                                                                />
+                                                            ) : formatCurrency(item.lineTotal, currency, iqd)}
+                                                        </TableCell>
+                                                        {isSales && canViewProfit && (
+                                                            <TableCell className="text-end">
+                                                                {returnState?.status !== 'active' ? (
+                                                                    <ReturnedOrderValue
+                                                                        currentValue={formatCurrency(itemProfit, currency, iqd)}
+                                                                        originalValue={formatCurrency(originalItemProfit, currency, iqd)}
+                                                                        currentValueClassName={itemProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}
+                                                                    />
+                                                                ) : (
+                                                                    <span className={cn('font-semibold', itemProfit >= 0 ? 'text-emerald-600' : 'text-rose-600')}>
+                                                                        {formatCurrency(itemProfit, currency, iqd)}
+                                                                    </span>
+                                                                )}
+                                                            </TableCell>
+                                                        )}
                                                         {canReturnSalesOrder && (
                                                             <TableCell className="text-end">
                                                                 {returnableQuantity > 0 ? (

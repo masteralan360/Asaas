@@ -8,6 +8,7 @@ import {
     type IQDDisplayPreference
 } from '@/local-db'
 import { getOrderLineFreeBonusQuantity, getOrderLinePaidQuantity, hasOrderLineFreeBonus } from '@/lib/orderLineItems'
+import { getA4OrderPrintReturnRowStyle, getOrderPrintReturnState } from '@/lib/orderPrintReturnState'
 import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { normalizeUnitCode } from '@/local-db/models'
 import { platformService } from '@/services/platformService'
@@ -20,6 +21,7 @@ import type { ReactNode } from 'react'
 import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
 import { MovableOrderPrintBlock } from '../MovableComponentPrint'
 import { HideablePrintFieldCard } from '@/ui/components/print/HideablePrintFieldCard'
+import { OrderPrintReturnValue } from './OrderPrintReturnValue'
 
 type OrderTab = 'sales' | 'purchase'
 
@@ -739,11 +741,19 @@ export function OrderReceiptPrintTemplate({
                                 const freeBonus = getOrderLineFreeBonusQuantity(item)
                                 const unit = formatOrderLineUnit(t, item, productUnits)
                                 const freeBonusUnit = formatOrderLineFreeBonusUnit(t, item, productUnits)
+                                const returnState = isSales ? getOrderPrintReturnState(item) : null
                                 return (
-                                    <tr key={item.id}>
+                                    <tr key={item.id} data-order-print-return-state={returnState?.status}>
                                         <td className="py-3 align-top text-start">
                                             <div className="break-words [overflow-wrap:anywhere] text-sm font-bold">{item.productName}</div>
                                             {item.productSku ? <div className="mt-0.5 break-all font-mono text-[10px] text-black" style={{ opacity: labelOpacity / 100 }}>{item.productSku}</div> : null}
+                                            {returnState && returnState.status !== 'active' ? (
+                                                <div className="mt-0.5 text-[10px] font-bold uppercase">
+                                                    {returnState.status === 'fully-returned'
+                                                        ? (t('sales.return.returnedStatus') || 'Returned')
+                                                        : (t('sales.return.partialReturn') || 'Partial Return')}
+                                                </div>
+                                            ) : null}
                                             {showFreeBonus && freeBonus > 0 ? (
                                                 <div className="mt-0.5 text-[10px] text-black" style={{ opacity: labelOpacity / 100 }}>
                                                     {t('orders.details.freeBonus', { defaultValue: 'Free bonus' })}: {freeBonus}{!hideUnit && freeBonusUnit ? ` ${freeBonusUnit}` : ''}
@@ -751,7 +761,15 @@ export function OrderReceiptPrintTemplate({
                                             ) : null}
                                         </td>
                                         <td className="py-3 text-center align-top font-mono">
-                                            {quantity}{!hideUnit && unit ? ` ${unit}` : ''}
+                                            {returnState
+                                                ? <OrderPrintReturnValue
+                                                    state={returnState}
+                                                    original={`${quantity}${!hideUnit && unit ? ` ${unit}` : ''}`}
+                                                    remaining={`${returnState.remainingQuantity}${!hideUnit && unit ? ` ${unit}` : ''}`}
+                                                    stacked
+                                                    className="items-center"
+                                                />
+                                                : `${quantity}${!hideUnit && unit ? ` ${unit}` : ''}`}
                                         </td>
                                         <td className="min-w-0 py-3 align-top text-end">
                                             {formatReceiptPrice(item.convertedUnitPrice, order.currency)}
@@ -762,7 +780,15 @@ export function OrderReceiptPrintTemplate({
                                             ) : null}
                                         </td>
                                         <td className="min-w-0 py-3 align-top text-end">
-                                            {formatReceiptPrice(item.lineTotal, order.currency)}
+                                            {returnState
+                                                ? <OrderPrintReturnValue
+                                                    state={returnState}
+                                                    original={formatReceiptPrice(returnState.originalLineTotal, order.currency)}
+                                                    remaining={formatReceiptPrice(returnState.remainingLineTotal, order.currency)}
+                                                    stacked
+                                                    className="items-end"
+                                                />
+                                                : formatReceiptPrice(item.lineTotal, order.currency)}
                                             {showOriginalCurrencyPrice && isConverted ? (
                                                 <div className="mt-1 origin-right scale-90 opacity-60 line-through decoration-gray-400">
                                                     {formatReceiptPrice(item.originalUnitPrice * quantity, item.originalCurrency)}
@@ -1113,14 +1139,28 @@ export function OrderDetailsPrintTemplate({
                     ) : itemRows.map((item, index) => {
                         const unit = item ? formatOrderLineUnit(t, item, productUnits) : ''
                         const freeBonusUnit = item ? formatOrderLineFreeBonusUnit(t, item, productUnits) : ''
+                        const returnState = item && isSales ? getOrderPrintReturnState(item) : null
                         return (
-                            <tr key={item?.id || `empty-${index}`} className="h-9">
+                            <tr
+                                key={item?.id || `empty-${index}`}
+                                className="h-9"
+                                style={returnState ? getA4OrderPrintReturnRowStyle(returnState.status) : undefined}
+                                data-order-print-return-state={returnState?.status}
+                            >
                                 <td className="border border-slate-300 p-2 font-medium">{item?.productName || '\u00A0'}</td>
                                 <td className="border border-slate-300 p-2 text-slate-600">
                                     {item?.productSku ? <span className="text-black" style={labelOpacityStyle}>{item.productSku}</span> : '\u00A0'}
                                 </td>
                                 <td className="border border-slate-300 p-2 text-end">
-                                    {item ? `${getOrderLinePaidQuantity(item)}${!hideUnit && unit ? ` ${unit}` : ''}` : '\u00A0'}
+                                    {item && returnState
+                                        ? <OrderPrintReturnValue
+                                            state={returnState}
+                                            original={`${getOrderLinePaidQuantity(item)}${!hideUnit && unit ? ` ${unit}` : ''}`}
+                                            remaining={`${returnState.remainingQuantity}${!hideUnit && unit ? ` ${unit}` : ''}`}
+                                            stacked
+                                            className="items-end"
+                                        />
+                                        : item ? `${getOrderLinePaidQuantity(item)}${!hideUnit && unit ? ` ${unit}` : ''}` : '\u00A0'}
                                 </td>
                                 {showFreeBonus ? (
                                     <td className="border border-slate-300 p-2 text-end">
@@ -1128,7 +1168,17 @@ export function OrderDetailsPrintTemplate({
                                     </td>
                                 ) : null}
                                 <td className="border border-slate-300 p-2 text-end">{item ? formatCurrency(item.convertedUnitPrice, currency, iqdPreference) : '\u00A0'}</td>
-                                <td className="border border-slate-300 p-2 text-end font-semibold">{item ? formatCurrency(item.lineTotal, currency, iqdPreference) : '\u00A0'}</td>
+                                <td className="border border-slate-300 p-2 text-end font-semibold">
+                                    {item && returnState
+                                        ? <OrderPrintReturnValue
+                                            state={returnState}
+                                            original={formatCurrency(returnState.originalLineTotal, currency, iqdPreference)}
+                                            remaining={formatCurrency(returnState.remainingLineTotal, currency, iqdPreference)}
+                                            stacked
+                                            className="items-end"
+                                        />
+                                        : item ? formatCurrency(item.lineTotal, currency, iqdPreference) : '\u00A0'}
+                                </td>
                             </tr>
                         )
                     })}

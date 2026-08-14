@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -40,6 +40,7 @@ export function ReturnConfirmationModal({
     const [selectedReason, setSelectedReason] = useState<string>('customer_returned')
     const [otherReason, setOtherReason] = useState('')
     const [returnQuantity, setReturnQuantity] = useState<number>(1)
+    const maxQuantityDescriptionId = useId()
 
     const returnReasons = [
         { value: 'customer_returned', label: t('sales.return.reasons.customerReturned') || 'Customer returned item' },
@@ -135,14 +136,16 @@ export function ReturnConfirmationModal({
                                     {t('sales.return.selectQuantity', { item: itemName }) || `How many "${itemName}" would you like to return?`}
                                 </Label>
                                 <div className="flex flex-col gap-2">
-                                    <div className="relative">
+                                    <div className="relative" dir="ltr">
                                         <input
                                             type="number"
                                             min="0.01"
                                             max={maxQuantity}
                                             step="0.01"
+                                            inputMode="decimal"
                                             value={returnQuantity}
                                             autoFocus
+                                            aria-describedby={maxQuantityDescriptionId}
                                             onChange={(e) => {
                                                 const parsed = Number.parseFloat(e.target.value)
                                                 if (!Number.isFinite(parsed)) {
@@ -151,13 +154,16 @@ export function ReturnConfirmationModal({
                                                 }
                                                 setReturnQuantity(roundQuantity(Math.min(Math.max(0.01, parsed), maxQuantity)))
                                             }}
-                                            className="w-full h-16 px-6 text-2xl font-black bg-muted/30 border-2 border-border/50 rounded-2xl focus:border-primary focus:ring-0 transition-all outline-none"
+                                            className="w-full h-16 pl-6 pr-24 text-left text-2xl font-black tabular-nums bg-muted/30 border-2 border-border/50 rounded-2xl focus:border-primary focus:ring-0 transition-all outline-none"
                                         />
-                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">
+                                        <div
+                                            aria-hidden="true"
+                                            className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 whitespace-nowrap tabular-nums text-muted-foreground font-bold"
+                                        >
                                             / {maxQuantity}
                                         </div>
                                     </div>
-                                    <p className="text-sm text-muted-foreground font-medium px-2">
+                                    <p id={maxQuantityDescriptionId} className="text-sm text-muted-foreground font-medium px-2">
                                         {t('sales.return.maxQuantity', { max: maxQuantity }) || `Maximum allowed: ${maxQuantity}`}
                                     </p>
                                 </div>
