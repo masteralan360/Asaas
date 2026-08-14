@@ -30,6 +30,7 @@ import {
     updateSalesOrder,
     useBusinessPartners,
     useInventory,
+    useDiscountPriceResolver,
     usePriceBookCatalogState,
     useProducts,
     useSalesOrder,
@@ -211,6 +212,7 @@ export function SalesOrderFormPage({
 
     const products = useProducts(workspaceId)
     const inventory = useInventory(workspaceId)
+    const resolveDiscountForPrice = useDiscountPriceResolver(workspaceId, { inventoryRows: inventory })
     const stockBatches = useStockBatches(workspaceId)
     const storages = useStorages(workspaceId)
     const { isDynamicUnit, options: unitOptions } = useUnitRegistry(workspaceId)
@@ -480,9 +482,14 @@ export function SalesOrderFormPage({
 
         const priceBookItem = getPriceBookItemForPartner(partner, productId)
         if (priceBookItem) {
+            const discount = resolveDiscountForPrice(product, {
+                priceBookId: partner?.priceBookId ?? null,
+                basePrice: priceBookItem.price,
+                currency: priceBookItem.currency
+            })
             return {
                 unitPrice: String(convertCurrencyAmountWithLiveRates(
-                    priceBookItem.price,
+                    discount?.discountPrice ?? priceBookItem.price,
                     priceBookItem.currency,
                     partnerCurrency,
                     liveRates
@@ -499,14 +506,19 @@ export function SalesOrderFormPage({
             : undefined
         const sourcePrice = batch && batch.productId === productId ? batch.price : product.price
         const sourceCurrency = batch && batch.productId === productId ? batch.currency : product.currency
+        const discount = resolveDiscountForPrice(product, {
+            priceBookId: partner?.priceBookId ?? null,
+            basePrice: sourcePrice,
+            currency: sourceCurrency
+        })
         return {
-            unitPrice: String(convertCurrencyAmountWithLiveRates(sourcePrice, sourceCurrency, partnerCurrency, liveRates)),
+            unitPrice: String(convertCurrencyAmountWithLiveRates(discount?.discountPrice ?? sourcePrice, sourceCurrency, partnerCurrency, liveRates)),
             priceBookId: '',
             priceBookItemId: '',
             priceSourceCurrency: '',
             priceBookCostPrice: ''
         }
-    }, [getPriceBookItemForPartner, liveRates, products, stockBatchesById])
+    }, [getPriceBookItemForPartner, liveRates, products, resolveDiscountForPrice, stockBatchesById])
 
     const getItemCostDetails = useCallback((item: FormItem, product: typeof products[number]) => {
         const hasPriceBookProvenance = Boolean(item.priceBookId && item.priceBookItemId)
@@ -546,13 +558,11 @@ export function SalesOrderFormPage({
         setCustomerSearch(partner.name)
         setCustomerId(partner.id)
         changeOrderCurrency(nextCurrency)
-        if (priceBooksEnabled) {
-            setItems((current) => current.map((item) => item.productId
-                ? { ...item, ...resolveItemPricing(item.productId, item.batchId, nextCurrency, partner) }
-                : item
-            ))
-        }
-    }, [changeOrderCurrency, currency, priceBooksEnabled, resolveItemPricing])
+        setItems((current) => current.map((item) => item.productId
+            ? { ...item, ...resolveItemPricing(item.productId, item.batchId, nextCurrency, partner) }
+            : item
+        ))
+    }, [changeOrderCurrency, currency, resolveItemPricing])
 
     const handleStorageMissing = useCallback((index: number) => {
         setHighlightedStorageIndex(index)

@@ -14,7 +14,7 @@ import {
     refreshStockBatchesFromSupabase,
     useBatchAwareInventoryProducts,
     useProductSelectionAccess,
-    useActiveDiscountMap,
+    useDiscountPriceResolver,
     useCategories,
     useWorkspaceProductBarcodes,
     useStorages,
@@ -476,8 +476,7 @@ export function POS() {
     const productBarcodes = useWorkspaceProductBarcodes(user?.workspaceId, {
         syncProductCache: false
     })
-    const activeDiscountMap = useActiveDiscountMap(user?.workspaceId, {
-        products,
+    const resolveDiscountForPrice = useDiscountPriceResolver(user?.workspaceId, {
         inventoryRows: selectedStorageId && !isActivitiesStorage ? undefined : [],
         storageId: !isActivitiesStorage ? selectedStorageId || undefined : undefined,
         syncRemote: false
@@ -1595,6 +1594,16 @@ export function POS() {
         }
     }, [cart.length, isLayoutMobile])
 
+    const getActiveDiscountForProduct = useCallback((product: PosCatalogProduct, basePrice: number, currency: CurrencyCode) => {
+        if (product.isInfiniteActivity === true) return null
+
+        return resolveDiscountForPrice(product, {
+            priceBookId: selectedPriceBookId || null,
+            basePrice,
+            currency
+        })
+    }, [resolveDiscountForPrice, selectedPriceBookId])
+
     const addToCart = useCallback((product: PosCatalogProduct) => {
         const isInfiniteActivity = product.isInfiniteActivity === true
         const priceBookPricing = isInfiniteActivity ? null : getPriceBookPricing(product)
@@ -1620,7 +1629,7 @@ export function POS() {
             return
         }
         if (!isInfiniteActivity && product.inventoryQuantity <= 0) return // Out of stock
-        const activeDiscount = activeDiscountMap.get(product.id)
+        const activeDiscount = getActiveDiscountForProduct(product, effectivePrice, effectiveCurrency)
 
         if (!currencyConversionEnabled && !isInfiniteActivity) {
             const cartCurrency = cartCurrencies[0]
@@ -1693,7 +1702,7 @@ export function POS() {
             ]
         })
         hapticTrigger('selection')
-    }, [activeDiscountMap, canSelectProduct, cartCurrencies, currencyConversionEnabled, features, getPriceBookPricing, t, toast, hapticTrigger])
+    }, [canSelectProduct, cartCurrencies, currencyConversionEnabled, features, getActiveDiscountForProduct, getPriceBookPricing, t, toast, hapticTrigger])
 
     const removeFromCart = (itemKey: string) => {
         setCart((prev) => prev.filter((item) => getCartItemKey(item) !== itemKey))
@@ -3139,7 +3148,7 @@ export function POS() {
                                 categories={isActivitiesStorage ? [] : categories}
                                 selectedCategory={selectedCategory}
                                 setSelectedCategory={setSelectedCategory}
-                                activeDiscountMap={activeDiscountMap}
+                                getActiveDiscount={getActiveDiscountForProduct}
                                 getPriceBookPricing={getPriceBookPricing}
                                 showQuantityIndicator={showQuantityIndicator}
                                 showCategories={showCategories}
@@ -3302,9 +3311,10 @@ export function POS() {
                                     const minStock = product.minStockLevel || 5
                                     const isLowStock = remainingQuantity <= minStock
                                     const isCriticalStock = remainingQuantity <= (minStock / 2)
-                                    const activeDiscount = activeDiscountMap.get(product.id)
                                     const priceBookPricing = isInfiniteActivity ? null : getPriceBookPricing(product)
                                     const basePrice = priceBookPricing?.price ?? product.price
+                                    const priceCurrency = (priceBookPricing?.currency ?? product.currency) as CurrencyCode
+                                    const activeDiscount = getActiveDiscountForProduct(product, basePrice, priceCurrency)
                                     const displayPrice = activeDiscount?.discountPrice ?? basePrice
 
                                     return (
@@ -3363,7 +3373,7 @@ export function POS() {
                                                         "absolute left-2 rounded-2xl bg-emerald-500 px-2.5 py-1 text-[11px] font-black text-white shadow-md z-10",
                                                         product.hasBatches && product.nextBatchQuantity !== null ? "bottom-12" : "bottom-2"
                                                     )}>
-                                                        {formatDiscountBadge(activeDiscount, product.currency, features.iqd_display_preference)}
+                                                        {formatDiscountBadge(activeDiscount, priceCurrency, features.iqd_display_preference)}
                                                     </div>
                                                 )}
 
@@ -3401,16 +3411,16 @@ export function POS() {
                                                 {activeDiscount ? (
                                                     <div className="space-y-0.5">
                                                         <div className="text-xs font-semibold text-muted-foreground line-through">
-                                                            {formatCurrency(basePrice, priceBookPricing?.currency ?? product.currency, features.iqd_display_preference)}
+                                                            {formatCurrency(basePrice, priceCurrency, features.iqd_display_preference)}
                                                         </div>
                                                         <div className={cn('text-lg font-black text-emerald-600', priceBookPricing && 'flex items-center justify-between gap-2')}>
-                                                            {formatCurrency(displayPrice, priceBookPricing?.currency ?? product.currency, features.iqd_display_preference)}
+                                                            {formatCurrency(displayPrice, priceCurrency, features.iqd_display_preference)}
                                                         </div>
                                                     </div>
                                                 ) : (
                                                     <div className={cn('text-lg font-black text-primary', priceBookPricing && 'flex items-center justify-between gap-2')}>
                                                         <span className={cn(priceBookPricing && 'text-amber-500')}>
-                                                            {formatCurrency(displayPrice, priceBookPricing?.currency ?? product.currency, features.iqd_display_preference)}
+                                                            {formatCurrency(displayPrice, priceCurrency, features.iqd_display_preference)}
                                                         </span>
                                                         {priceBookPricing && (
                                                             <span className="truncate text-[10px] font-bold uppercase tracking-wide text-amber-600/90">
@@ -4996,7 +5006,7 @@ interface MobileGridProps {
     categories: Category[]
     selectedCategory: string
     setSelectedCategory: (id: string) => void
-    activeDiscountMap: Map<string, ResolvedActiveDiscount>
+    getActiveDiscount: (product: PosCatalogProduct, basePrice: number, currency: CurrencyCode) => ResolvedActiveDiscount | null
     getPriceBookPricing: (product: Pick<PosCatalogProduct, 'id'>) => {
         price: number
         costPrice: number | null
@@ -5009,7 +5019,7 @@ interface MobileGridProps {
     tutorialProductId?: string
 }
 
-function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModalOpen, isDeviceScannerAutoEnabled, filteredProducts, cart, addToCart, updateQuantity, features, getDisplayImageUrl, categories, selectedCategory, setSelectedCategory, activeDiscountMap, getPriceBookPricing, showQuantityIndicator, showCategories, tutorialProductId }: MobileGridProps) {
+function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModalOpen, isDeviceScannerAutoEnabled, filteredProducts, cart, addToCart, updateQuantity, features, getDisplayImageUrl, categories, selectedCategory, setSelectedCategory, getActiveDiscount, getPriceBookPricing, showQuantityIndicator, showCategories, tutorialProductId }: MobileGridProps) {
     return (
         <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300">
             {/* Search & Tool Bar */}
@@ -5084,9 +5094,10 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                     const minStock = product.minStockLevel || 5
                     const isLowStock = remainingQuantity <= minStock
                     const isCriticalStock = remainingQuantity <= (minStock / 2)
-                    const activeDiscount = activeDiscountMap.get(product.id)
                     const priceBookPricing = isInfiniteActivity ? null : getPriceBookPricing(product)
                     const basePrice = priceBookPricing?.price ?? product.price
+                    const priceCurrency = (priceBookPricing?.currency ?? product.currency) as CurrencyCode
+                    const activeDiscount = getActiveDiscount(product, basePrice, priceCurrency)
                     const displayPrice = activeDiscount?.discountPrice ?? basePrice
 
                     return (
@@ -5142,7 +5153,7 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                                         "absolute left-2 rounded-xl bg-emerald-500 px-2 py-1 text-[10px] font-black text-white shadow-sm z-10",
                                         product.hasBatches && product.nextBatchQuantity !== null ? "bottom-10" : "bottom-2"
                                     )}>
-                                        {formatDiscountBadge(activeDiscount, product.currency, features.iqd_display_preference)}
+                                        {formatDiscountBadge(activeDiscount, priceCurrency, features.iqd_display_preference)}
                                     </div>
                                 )}
 
@@ -5175,16 +5186,16 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                                 {activeDiscount ? (
                                     <div className="space-y-0.5">
                                         <div className="text-[11px] font-semibold text-muted-foreground line-through">
-                                            {formatCurrency(basePrice, priceBookPricing?.currency ?? product.currency, features.iqd_display_preference)}
+                                            {formatCurrency(basePrice, priceCurrency, features.iqd_display_preference)}
                                         </div>
                                         <div className={cn('font-black text-sm text-emerald-600', priceBookPricing && 'flex items-center justify-between gap-2')}>
-                                            {formatCurrency(displayPrice, priceBookPricing?.currency ?? product.currency, features.iqd_display_preference)}
+                                            {formatCurrency(displayPrice, priceCurrency, features.iqd_display_preference)}
                                         </div>
                                     </div>
                                 ) : (
                                     <div className={cn('text-primary font-black text-sm', priceBookPricing && 'flex items-center justify-between gap-2')}>
                                         <span className={cn(priceBookPricing && 'text-amber-500')}>
-                                            {formatCurrency(displayPrice, priceBookPricing?.currency ?? product.currency, features.iqd_display_preference)}
+                                            {formatCurrency(displayPrice, priceCurrency, features.iqd_display_preference)}
                                         </span>
                                         {priceBookPricing && (
                                             <span className="truncate text-[9px] font-bold uppercase tracking-wide text-amber-600/90">

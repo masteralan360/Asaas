@@ -299,11 +299,18 @@ export interface InventoryTransferBatchAllocation {
 
 export type DiscountType = "percentage" | "fixed_amount";
 export type DiscountSource = "product" | "category";
+export type ProductDiscountPriceScope = "all" | "native_only" | "specific_price_books";
 
 export interface ProductDiscount extends BaseEntity {
   productId: string;
   discountType: DiscountType;
   discountValue: number;
+  /** Controls which selling-price source this rule applies to. Legacy rules default to all. */
+  priceScope?: ProductDiscountPriceScope;
+  /** Required only when priceScope is specific_price_books. */
+  priceBookIds?: string[];
+  /** Required for fixed discounts so an amount is never applied across currencies. */
+  discountCurrency?: CurrencyCode | null;
   startsAt: string;
   endsAt: string;
   minStockThreshold?: number | null;

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useTranslation } from 'react-i18next'
 import { Pencil, Percent, Plus, Shapes, Trash2 } from 'lucide-react'
@@ -15,13 +15,17 @@ import {
     type DiscountType,
     type Product,
     type ProductDiscount,
+    type PriceBook,
+    type PriceBookItem,
     updateCategoryDiscount,
     updateProductDiscount,
     useCategories,
     useCategoryDiscounts,
     useInventory,
+    usePriceBookCatalogState,
     useProducts,
-    useProductDiscounts
+    useProductDiscounts,
+    type ProductDiscountPriceScope
 } from '@/local-db'
 import { buildInventoryTotalsByProduct, computeDiscountPrice, getDiscountStatus, type DiscountLifecycleStatus } from '@/lib/discounts'
 import { cn, formatCurrency, formatDateTime } from '@/lib/utils'
@@ -35,6 +39,7 @@ import {
     CardDescription,
     CardHeader,
     CardTitle,
+    Checkbox,
     DeleteConfirmationModal,
     Dialog,
     DialogContent,
@@ -66,6 +71,8 @@ type DiscountFormState = {
     targetId: string
     discountType: DiscountType
     discountValue: string
+    priceScope: ProductDiscountPriceScope
+    priceBookIds: string[]
     startsAt: Date | undefined
     endsAt: Date | undefined
     minStockThreshold: string
@@ -77,7 +84,6 @@ type ProductDiscountRow = {
     product?: Product
     stockTotal: number
     status: DiscountLifecycleStatus
-    discountPrice: number | null
 }
 
 type CategoryDiscountRow = {
@@ -91,6 +97,97 @@ type TargetOption = {
     id: string
     label: string
     meta: string
+}
+
+type ProductDiscountPricePreview = {
+    priceBookId: string | null
+    usesNativePrice: boolean
+    basePrice: number
+    discountPrice: number
+    currency: CurrencyCode
+}
+
+type ProductDiscountPricePreviewInput = {
+    priceScope?: ProductDiscountPriceScope
+    priceBookIds?: string[]
+    discountType: DiscountType
+    discountValue: number
+    discountCurrency?: CurrencyCode | null
+}
+
+type PriceTransitionProps = {
+    from: number
+    to: number
+    currency: CurrencyCode
+    iqdPreference: 'IQD' | 'د.ع'
+    className?: string
+    arrowClassName?: string
+}
+
+function PriceTransition({ from, to, currency, iqdPreference, className, arrowClassName }: PriceTransitionProps) {
+    return (
+        <span dir="ltr" className={cn('inline-flex items-center whitespace-nowrap', className)}>
+            <bdi>{formatCurrency(from, currency, iqdPreference)}</bdi>
+            <span aria-hidden="true" className={cn('px-1', arrowClassName)}>→</span>
+            <bdi>{formatCurrency(to, currency, iqdPreference)}</bdi>
+        </span>
+    )
+}
+
+function getProductDiscountPricePreviews(
+    product: Product,
+    discount: ProductDiscountPricePreviewInput,
+    priceBooks: PriceBook[],
+    priceBookItems: PriceBookItem[]
+): ProductDiscountPricePreview[] {
+    const scope = discount.priceScope ?? 'all'
+    const previews: ProductDiscountPricePreview[] = []
+    const addPreview = (priceBookId: string | null, basePrice: number, currency: CurrencyCode, usesNativePrice: boolean) => {
+        if (discount.discountType === 'fixed_amount' && discount.discountCurrency && discount.discountCurrency !== currency) {
+            return
+        }
+
+        previews.push({
+            priceBookId,
+            usesNativePrice,
+            basePrice,
+            discountPrice: computeDiscountPrice(basePrice, discount.discountType, discount.discountValue),
+            currency
+        })
+    }
+
+    if (scope === 'all' || scope === 'native_only') {
+        addPreview(null, product.price, product.currency, true)
+    }
+
+    const scopedPriceBooks = scope === 'specific_price_books'
+        ? priceBooks.filter((priceBook) => discount.priceBookIds?.includes(priceBook.id))
+        : scope === 'all'
+            ? priceBooks
+            : []
+
+    for (const priceBook of scopedPriceBooks) {
+        const priceBookItem = priceBookItems.find((item) => (
+            !item.isDeleted
+            && item.priceBookId === priceBook.id
+            && item.productId === product.id
+        ))
+
+        // A Price Book without an item falls back to the native product price.
+        // It is useful to show that fallback only when the rule explicitly targets it.
+        if (!priceBookItem && scope !== 'specific_price_books') {
+            continue
+        }
+
+        addPreview(
+            priceBook.id,
+            priceBookItem?.price ?? product.price,
+            priceBookItem?.currency ?? product.currency,
+            !priceBookItem
+        )
+    }
+
+    return previews
 }
 
 function getDaysUntilDateTime(value?: string | Date | null) {
@@ -114,6 +211,8 @@ function buildDefaultForm(): DiscountFormState {
         targetId: '',
         discountType: 'fixed_amount',
         discountValue: '',
+        priceScope: 'all',
+        priceBookIds: [],
         startsAt: now,
         endsAt: endsAt,
         minStockThreshold: '',
@@ -206,7 +305,7 @@ export function Discounts() {
     const { t } = useTranslation()
     const { user } = useAuth()
     const { toast } = useToast()
-    const { features } = useWorkspace()
+    const { features, hasCapability } = useWorkspace()
     const iqdPreference = features.iqd_display_preference as any
     const products = useProducts(user?.workspaceId)
     const categories = useCategories(user?.workspaceId)
@@ -215,6 +314,11 @@ export function Discounts() {
     const categoryDiscounts = useCategoryDiscounts(user?.workspaceId)
 
     const workspaceId = user?.workspaceId
+    const priceBooksEnabled = hasCapability('priceBooks')
+    const { priceBooks, priceBookItems } = usePriceBookCatalogState(
+        priceBooksEnabled ? workspaceId : undefined,
+        { enabled: priceBooksEnabled }
+    )
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
     const [activeTab, setActiveTab] = useState<DiscountTab>('products')
@@ -271,16 +375,12 @@ export function Discounts() {
                 const product = productsById.get(discount.productId)
                 const stockTotal = inventoryTotals.get(discount.productId) ?? 0
                 const status = getDiscountStatus(discount, stockTotal)
-                const discountPrice = product
-                    ? computeDiscountPrice(product.price, discount.discountType, discount.discountValue)
-                    : null
 
                 return {
                     discount,
                     product,
                     stockTotal,
-                    status,
-                    discountPrice
+                    status
                 }
             })
             .filter((row: ProductDiscountRow) => {
@@ -406,6 +506,8 @@ export function Discounts() {
             targetId: discount.productId,
             discountType: discount.discountType,
             discountValue: String(discount.discountValue),
+            priceScope: discount.priceScope ?? 'all',
+            priceBookIds: discount.priceBookIds ?? [],
             startsAt: new Date(discount.startsAt),
             endsAt: new Date(discount.endsAt),
             minStockThreshold: discount.minStockThreshold == null ? '' : String(discount.minStockThreshold),
@@ -423,6 +525,8 @@ export function Discounts() {
             targetId: discount.categoryId,
             discountType: discount.discountType,
             discountValue: String(discount.discountValue),
+            priceScope: 'all',
+            priceBookIds: [],
             startsAt: new Date(discount.startsAt),
             endsAt: new Date(discount.endsAt),
             minStockThreshold: discount.minStockThreshold == null ? '' : String(discount.minStockThreshold),
@@ -494,6 +598,24 @@ export function Discounts() {
             }
         }
 
+        if (activeTab === 'products' && form.priceScope === 'specific_price_books' && form.priceBookIds.length === 0) {
+            toast({
+                title: t('common.error'),
+                description: t('discounts.validation.priceBookRequired'),
+                variant: 'destructive'
+            })
+            return
+        }
+
+        if (activeTab === 'products' && form.discountType === 'fixed_amount' && !isFixedDiscountScopeCurrencyValid) {
+            toast({
+                title: t('common.error'),
+                description: t('discounts.validation.fixedDiscountCurrency'),
+                variant: 'destructive'
+            })
+            return
+        }
+
         if (activeTab === 'categories' && form.isActive) {
             const conflict = categoryDiscounts.some((discount: CategoryDiscount) =>
                 !discount.isDeleted &&
@@ -519,6 +641,9 @@ export function Discounts() {
                     productId: form.targetId,
                     discountType: form.discountType,
                     discountValue,
+                    priceScope: form.priceScope,
+                    priceBookIds: form.priceScope === 'specific_price_books' ? form.priceBookIds : [],
+                    discountCurrency: form.discountType === 'fixed_amount' ? fixedDiscountCurrency : null,
                     startsAt: startsAt.toISOString(),
                     endsAt: endsAt.toISOString(),
                     minStockThreshold,
@@ -612,6 +737,80 @@ export function Discounts() {
     const selectedProduct = activeTab === 'products' ? productsById.get(form.targetId) : undefined
     const selectedCategory = activeTab === 'categories' ? categoriesById.get(form.targetId) : undefined
     const selectedCategoryProducts = activeTab === 'categories' ? (productsByCategory.get(form.targetId) ?? []) : []
+    const availablePriceBooks = useMemo(
+        () => priceBooks.filter((priceBook) => !priceBook.isDeleted).sort((left, right) => left.name.localeCompare(right.name)),
+        [priceBooks]
+    )
+    const availablePriceBookIds = useMemo(
+        () => new Set(availablePriceBooks.map((priceBook) => priceBook.id)),
+        [availablePriceBooks]
+    )
+    const priceBookNameById = useMemo(
+        () => new Map(availablePriceBooks.map((priceBook) => [priceBook.id, priceBook.name] as const)),
+        [availablePriceBooks]
+    )
+    const formPricePreviews = useMemo(() => {
+        if (activeTab !== 'products' || !selectedProduct) {
+            return [] as ProductDiscountPricePreview[]
+        }
+
+        return getProductDiscountPricePreviews(selectedProduct, {
+            priceScope: form.priceScope,
+            priceBookIds: form.priceBookIds,
+            discountType: form.discountType,
+            discountValue: Number.isFinite(Number(form.discountValue)) ? Number(form.discountValue) : 0
+        }, availablePriceBooks, priceBookItems)
+    }, [activeTab, availablePriceBooks, form.discountType, form.discountValue, form.priceBookIds, form.priceScope, priceBookItems, selectedProduct])
+    const getPricePreviewSourceLabel = useCallback((preview: ProductDiscountPricePreview) => {
+        if (!preview.priceBookId) {
+            return t('discounts.priceScope.nativePrice')
+        }
+
+        const priceBookName = priceBookNameById.get(preview.priceBookId) ?? t('discounts.priceScope.specific')
+        return preview.usesNativePrice
+            ? t('discounts.priceScope.nativeFallback', { name: priceBookName })
+            : priceBookName
+    }, [priceBookNameById, t])
+    const productHasActivePriceBookOverride = !!selectedProduct && priceBookItems.some((item) => (
+        !item.isDeleted
+        && item.productId === selectedProduct.id
+        && availablePriceBookIds.has(item.priceBookId)
+    ))
+    const isEditingPriceBookScopedProductDiscount = activeTab === 'products'
+        && !!editingDiscount
+        && 'productId' in editingDiscount
+        && form.priceScope !== 'native_only'
+    const shouldShowPriceScope = activeTab === 'products'
+        && priceBooksEnabled
+        && (productHasActivePriceBookOverride || isEditingPriceBookScopedProductDiscount)
+    const scopedPriceCurrencies = useMemo(() => {
+        if (!selectedProduct) return [] as CurrencyCode[]
+
+        const getPriceBookCurrency = (priceBookId: string) => (
+            priceBookItems.find((item) => (
+                !item.isDeleted
+                && item.priceBookId === priceBookId
+                && item.productId === selectedProduct.id
+            ))?.currency
+            ?? selectedProduct.currency
+        )
+
+        if (form.priceScope === 'native_only') {
+            return [selectedProduct.currency]
+        }
+
+        if (form.priceScope === 'specific_price_books') {
+            return form.priceBookIds.map(getPriceBookCurrency)
+        }
+
+        return [selectedProduct.currency, ...availablePriceBooks.map((priceBook) => getPriceBookCurrency(priceBook.id))]
+    }, [availablePriceBooks, form.priceBookIds, form.priceScope, priceBookItems, selectedProduct])
+    const fixedDiscountCurrencies = Array.from(new Set(scopedPriceCurrencies))
+    const fixedDiscountCurrency = fixedDiscountCurrencies[0] ?? selectedProduct?.currency ?? features.default_currency
+    const isFixedDiscountScopeCurrencyValid = form.discountType !== 'fixed_amount' || fixedDiscountCurrencies.length <= 1
+    const isPriceScopeValid = activeTab !== 'products'
+        || form.priceScope !== 'specific_price_books'
+        || form.priceBookIds.length > 0
     const parsedStartsAt = form.startsAt
     const parsedEndsAt = form.endsAt
     const parsedDiscountValue = Number(form.discountValue)
@@ -619,7 +818,26 @@ export function Discounts() {
     const isDiscountValueValid = Number.isFinite(parsedDiscountValue) && parsedDiscountValue > 0
     const isMinStockThresholdValid = parsedMinStockThreshold === null || (Number.isFinite(parsedMinStockThreshold) && parsedMinStockThreshold >= 0)
     const isDateRangeValid = !!parsedStartsAt && !!parsedEndsAt && parsedStartsAt < parsedEndsAt
-    const isFormInvalid = !form.targetId || !isDiscountValueValid || !isMinStockThresholdValid || !isDateRangeValid
+    const isFormInvalid = !form.targetId || !isDiscountValueValid || !isMinStockThresholdValid || !isDateRangeValid || !isPriceScopeValid || !isFixedDiscountScopeCurrencyValid
+
+    function selectProductDiscountTarget(product: Product) {
+        const hasActivePriceBookOverride = priceBooksEnabled && priceBookItems.some((item) => (
+            !item.isDeleted
+            && item.productId === product.id
+            && availablePriceBookIds.has(item.priceBookId)
+        ))
+
+        setProductSearch(product.name)
+        setForm((current) => ({
+            ...current,
+            targetId: product.id,
+            ...(editingDiscount
+                ? {}
+                : hasActivePriceBookOverride
+                    ? { priceScope: 'all' as const }
+                    : { priceScope: 'native_only' as const, priceBookIds: [] })
+        }))
+    }
 
     const productInsightStats = useMemo(() => ({
         active: productRows.filter((row) => row.status === 'active').length,
@@ -686,11 +904,29 @@ export function Discounts() {
             return t('discounts.modalPreviewDateFallback')
         }
 
+        if (!isFixedDiscountScopeCurrencyValid) {
+            return t('discounts.priceScope.fixedCurrencyConflict')
+        }
+
         if (activeTab === 'products' && selectedProduct) {
-            const discountPrice = computeDiscountPrice(selectedProduct.price, form.discountType, parsedDiscountValue)
+            if (formPricePreviews.length === 0) {
+                return t('discounts.modalPreviewFallback')
+            }
+
+            if (formPricePreviews.length > 1) {
+                return t('discounts.preview.productMultiple', {
+                    name: selectedProduct.name,
+                    count: formPricePreviews.length,
+                    start: formatDateTime(form.startsAt!),
+                    end: formatDateTime(form.endsAt!)
+                })
+            }
+
+            const preview = formPricePreviews[0]
             return t('discounts.preview.product', {
                 name: selectedProduct.name,
-                price: formatCurrency(discountPrice, selectedProduct.currency, iqdPreference),
+                source: getPricePreviewSourceLabel(preview),
+                price: formatCurrency(preview.discountPrice, preview.currency, iqdPreference),
                 start: formatDateTime(form.startsAt!),
                 end: formatDateTime(form.endsAt!)
             })
@@ -706,14 +942,15 @@ export function Discounts() {
         return t('discounts.modalPreviewFallback')
     }, [
         activeTab,
-        form.discountType,
         form.endsAt,
         form.startsAt,
         form.targetId,
+        formPricePreviews,
+        getPricePreviewSourceLabel,
         iqdPreference,
         isDateRangeValid,
         isDiscountValueValid,
-        parsedDiscountValue,
+        isFixedDiscountScopeCurrencyValid,
         selectedCategory,
         selectedCategoryProducts.length,
         selectedProduct,
@@ -843,6 +1080,21 @@ export function Discounts() {
                                             <div className="divide-y">
                                                 {productRows.map((row) => {
                                                     const remainingDays = getDaysUntilDateTime(row.discount.endsAt)
+                                                    const pricingPreviews = row.product
+                                                        ? getProductDiscountPricePreviews(row.product, row.discount, availablePriceBooks, priceBookItems)
+                                                        : []
+                                                    const discountCurrency = row.discount.discountCurrency
+                                                        ?? pricingPreviews[0]?.currency
+                                                        ?? row.product?.currency
+                                                        ?? features.default_currency
+                                                    const priceScopeLabel = row.discount.priceScope === 'native_only'
+                                                        ? t('discounts.priceScope.nativeOnly')
+                                                        : row.discount.priceScope === 'specific_price_books'
+                                                            ? (row.discount.priceBookIds ?? [])
+                                                                .map((id) => priceBookNameById.get(id))
+                                                                .filter((name): name is string => !!name)
+                                                                .join(', ') || t('discounts.priceScope.specific')
+                                                            : t('discounts.priceScope.all')
 
                                                     return (
                                                         <div key={row.discount.id} className="grid gap-4 px-5 py-5 md:grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,0.95fr)_120px_84px] md:items-center">
@@ -858,19 +1110,30 @@ export function Discounts() {
                                                             <div className="space-y-1 text-sm">
                                                                 <div className="font-semibold">
                                                                     {row.product
-                                                                        ? formatDiscountLabel(row.discount.discountType, row.discount.discountValue, row.product.currency, iqdPreference)
+                                                                        ? formatDiscountLabel(row.discount.discountType, row.discount.discountValue, discountCurrency, iqdPreference)
                                                                         : formatDiscountLabel(row.discount.discountType, row.discount.discountValue, features.default_currency, iqdPreference)}
                                                                 </div>
                                                                 <div className="text-xs text-muted-foreground">
                                                                     {t('discounts.thresholdShort')}: {row.discount.minStockThreshold ?? '-'}
                                                                 </div>
+                                                                <div className="text-xs text-muted-foreground">{priceScopeLabel}</div>
                                                             </div>
 
                                                             <div className="space-y-1 text-sm">
-                                                                <div className="font-medium">
-                                                                    {row.product ? formatCurrency(row.product.price, row.product.currency, iqdPreference) : '-'}
-                                                                    {row.discountPrice != null ? ` -> ${formatCurrency(row.discountPrice, row.product?.currency || features.default_currency, iqdPreference)}` : ''}
-                                                                </div>
+                                                                {pricingPreviews.length > 0 ? pricingPreviews.map((preview) => (
+                                                                    <div key={preview.priceBookId ?? 'native'} className="space-y-0.5">
+                                                                        <div className="text-xs text-muted-foreground">{getPricePreviewSourceLabel(preview)}</div>
+                                                                        <div className="font-medium">
+                                                                            <PriceTransition
+                                                                                from={preview.basePrice}
+                                                                                to={preview.discountPrice}
+                                                                                currency={preview.currency}
+                                                                                iqdPreference={iqdPreference}
+                                                                                arrowClassName="text-muted-foreground"
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                )) : <div className="font-medium">-</div>}
                                                                 <div className="text-muted-foreground">
                                                                     {t('discounts.stock')}: <span className="font-semibold text-foreground">{row.stockTotal}</span>
                                                                 </div>
@@ -1138,8 +1401,7 @@ export function Discounts() {
                                                         setForm((current) => ({ ...current, targetId: '' }))
                                                     }}
                                                     onSelectProduct={(product) => {
-                                                        setProductSearch(product.name)
-                                                        setForm((current) => ({ ...current, targetId: product.id }))
+                                                        selectProductDiscountTarget(product)
                                                     }}
                                                     products={productDiscountTargets}
                                                     placeholder={t('discounts.searchProducts')}
@@ -1202,9 +1464,77 @@ export function Discounts() {
                                             <div className="font-semibold">{selectedProduct?.name || selectedCategory?.name}</div>
                                             <div className="mt-1 text-muted-foreground">{selectedProduct?.sku || selectedTarget?.meta}</div>
                                             {selectedProduct ? (
-                                                <div className="mt-3 text-xs text-muted-foreground">
-                                                    {t('discounts.originalPrice')}: {formatCurrency(selectedProduct.price, selectedProduct.currency, iqdPreference)}
+                                                <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                                                    {formPricePreviews.length > 0 ? formPricePreviews.map((preview) => (
+                                                        <div key={preview.priceBookId ?? 'native'}>
+                                                            {t('discounts.originalPrice')} ({getPricePreviewSourceLabel(preview)}): {formatCurrency(preview.basePrice, preview.currency, iqdPreference)}
+                                                        </div>
+                                                    )) : (
+                                                        <div>{t('discounts.originalPrice')}: {formatCurrency(selectedProduct.price, selectedProduct.currency, iqdPreference)}</div>
+                                                    )}
                                                 </div>
+                                            ) : null}
+                                        </div>
+                                    ) : null}
+
+                                    {shouldShowPriceScope ? (
+                                        <div className="space-y-3 rounded-2xl border bg-muted/10 p-4">
+                                            <div>
+                                                <Label>{t('discounts.priceScope.label')}</Label>
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    {t('discounts.priceScope.hint')}
+                                                </p>
+                                            </div>
+                                            <Select
+                                                value={form.priceScope}
+                                                onValueChange={(value) => setForm((current) => ({
+                                                    ...current,
+                                                    priceScope: value as ProductDiscountPriceScope,
+                                                    priceBookIds: value === 'specific_price_books' ? current.priceBookIds : []
+                                                }))}
+                                            >
+                                                <SelectTrigger className="h-12 rounded-2xl"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">{t('discounts.priceScope.all')}</SelectItem>
+                                                    <SelectItem value="native_only">{t('discounts.priceScope.nativeOnly')}</SelectItem>
+                                                    <SelectItem value="specific_price_books">{t('discounts.priceScope.specific')}</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+
+                                            {form.priceScope === 'specific_price_books' ? (
+                                                availablePriceBooks.length === 0 ? (
+                                                    <p className="rounded-xl border border-dashed px-3 py-3 text-sm text-muted-foreground">
+                                                        {t('discounts.priceScope.noPriceBooks')}
+                                                    </p>
+                                                ) : (
+                                                    <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border p-2">
+                                                        {availablePriceBooks.map((priceBook) => {
+                                                            const checked = form.priceBookIds.includes(priceBook.id)
+                                                            return (
+                                                                <label key={priceBook.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 hover:bg-muted">
+                                                                    <Checkbox
+                                                                        checked={checked}
+                                                                        onCheckedChange={(nextChecked) => setForm((current) => ({
+                                                                            ...current,
+                                                                            priceBookIds: nextChecked
+                                                                                ? Array.from(new Set([...current.priceBookIds, priceBook.id]))
+                                                                                : current.priceBookIds.filter((id) => id !== priceBook.id)
+                                                                        }))}
+                                                                    />
+                                                                    <span className="text-sm font-medium">{priceBook.name}</span>
+                                                                </label>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                )
+                                            ) : null}
+
+                                            {form.discountType === 'fixed_amount' && selectedProduct ? (
+                                                <p className={cn('text-xs', isFixedDiscountScopeCurrencyValid ? 'text-muted-foreground' : 'text-destructive')}>
+                                                    {isFixedDiscountScopeCurrencyValid
+                                                        ? t('discounts.priceScope.fixedCurrency', { currency: fixedDiscountCurrency.toUpperCase() })
+                                                        : t('discounts.priceScope.fixedCurrencyConflict')}
+                                                </p>
                                             ) : null}
                                         </div>
                                     ) : null}
@@ -1324,6 +1654,23 @@ export function Discounts() {
                                     <div className="rounded-2xl bg-white/10 p-4">
                                         <div className="text-xs uppercase tracking-[0.2em] text-emerald-100/80">{t('discounts.previewTitle')}</div>
                                         <div className="mt-2 text-lg font-semibold">{previewMessage}</div>
+                                        {activeTab === 'products' && isDiscountValueValid && isDateRangeValid && isFixedDiscountScopeCurrencyValid && formPricePreviews.length > 0 ? (
+                                            <div className="mt-3 space-y-2 border-t border-white/15 pt-3 text-sm">
+                                                {formPricePreviews.map((preview) => (
+                                                    <div key={preview.priceBookId ?? 'native'} className="flex items-center justify-between gap-3">
+                                                        <span className="text-emerald-100/85">{getPricePreviewSourceLabel(preview)}</span>
+                                                        <PriceTransition
+                                                            from={preview.basePrice}
+                                                            to={preview.discountPrice}
+                                                            currency={preview.currency}
+                                                            iqdPreference={iqdPreference}
+                                                            className="font-semibold"
+                                                            arrowClassName="text-emerald-100/70"
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : null}
                                     </div>
 
                                     <div className="rounded-2xl bg-white/10 p-4">
@@ -1353,8 +1700,7 @@ export function Discounts() {
                     noResultsLabel: t('discounts.noTargets')
                 }}
                 onSelectProduct={(product) => {
-                    setProductSearch(product.name)
-                    setForm((current) => ({ ...current, targetId: product.id }))
+                    selectProductDiscountTarget(product)
                 }}
             />
 

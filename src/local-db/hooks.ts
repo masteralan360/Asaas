@@ -72,7 +72,13 @@ import { generateId, toSnakeCase, toCamelCase } from '@/lib/utils'
 import { supabase } from '@/auth/supabase'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { getActiveBusinessUserId, isOnline } from '@/lib/network'
-import { resolveActiveDiscountMap, type ResolvedActiveDiscount } from '@/lib/discounts'
+import {
+    buildInventoryTotalsByProduct,
+    resolveActiveDiscountForPriceContext,
+    resolveActiveDiscountMap,
+    type DiscountPriceContext,
+    type ResolvedActiveDiscount
+} from '@/lib/discounts'
 import { convertCurrencyAmountWithAvailableSnapshot, getEffectiveExchangeRatesSnapshot } from '@/lib/orderCurrency'
 import { QUANTITY_EPSILON, isPositiveQuantity, roundQuantity } from '@/lib/quantity'
 import { salesExchangeRowsToSnapshots } from '@/lib/salesExchange'
@@ -1615,6 +1621,33 @@ export function useActiveDiscountMap(workspaceId: string | undefined, options: U
         categoryDiscounts,
         inventoryRows: inventory
     }), [categoryDiscounts, inventory, productDiscounts, products])
+}
+
+/** Resolves discounts against the price source currently selected by a selling flow. */
+export function useDiscountPriceResolver(workspaceId: string | undefined, options: UseActiveDiscountMapOptions = {}) {
+    const hasInventoryOverride = options.inventoryRows !== undefined
+    const syncRemote = options.syncRemote ?? true
+
+    const localInventory = useInventory(workspaceId, {
+        enabled: !hasInventoryOverride,
+        storageId: options.storageId,
+        syncRemote: syncRemote && !hasInventoryOverride
+    })
+    const productDiscounts = useProductDiscounts(workspaceId)
+    const categoryDiscounts = useCategoryDiscounts(workspaceId)
+    const inventory = options.inventoryRows ?? localInventory
+    const inventoryTotals = useMemo(() => buildInventoryTotalsByProduct(inventory), [inventory])
+
+    return useCallback((product: Product, context: DiscountPriceContext) => {
+        return resolveActiveDiscountForPriceContext({
+            product,
+            productDiscounts,
+            categoryDiscounts,
+            inventoryRows: inventory,
+            context,
+            stockTotal: inventoryTotals.get(product.id) ?? 0
+        })
+    }, [categoryDiscounts, inventory, inventoryTotals, productDiscounts])
 }
 
 export async function createProductDiscount(

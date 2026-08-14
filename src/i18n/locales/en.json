@@ -583,7 +583,8 @@
     "modalProductInsight": "Product rules apply first and can pause on low stock.",
     "modalCategoryInsight": "Category rules apply broadly but are skipped if product rule exists.",
     "preview": {
-      "product": "{{name}} will be priced at {{price}} from {{start}} until {{end}}.",
+      "product": "{{name}} will be priced at {{price}} via {{source}} from {{start}} until {{end}}.",
+      "productMultiple": "{{name}} will receive this discount across {{count}} price sources from {{start}} until {{end}}.",
       "category": "{{name}} will apply this discount to {{count}} products whenever no product-level rule overrides it."
     },
     "deleteTitle": "Delete Discount",
@@ -629,13 +630,27 @@
       "productDescription": "Choose a product, type, threshold, and window for this rule.",
       "categoryDescription": "Choose a category, type, threshold, and window for this rule."
     },
+    "priceScope": {
+      "label": "Apply discount to",
+      "hint": "Choose which price source this product discount can change.",
+      "all": "All pricing (native and Price Books)",
+      "nativeOnly": "Native price only",
+      "nativePrice": "Native price",
+      "nativeFallback": "{{name}} (native price)",
+      "specific": "Specific Price Books",
+      "noPriceBooks": "No active Price Books are available.",
+      "fixedCurrency": "Fixed amount will be applied in {{currency}}.",
+      "fixedCurrencyConflict": "Fixed amounts cannot cover price sources with different currencies. Use a percentage or narrow the scope."
+    },
     "validation": {
       "targetRequired": "Select a product or category first.",
       "discountValue": "Enter a valid discount value.",
       "dateRange": "Choose a valid date and time range.",
       "stockThreshold": "Stock threshold must be zero or greater.",
       "activeProductConflict": "This product already has an active discount.",
-      "activeCategoryConflict": "This category already has an active discount."
+      "activeCategoryConflict": "This category already has an active discount.",
+      "priceBookRequired": "Select at least one Price Book.",
+      "fixedDiscountCurrency": "A fixed discount can only target prices in one currency. Use a percentage discount or narrow the Price Book scope."
     },
     "messages": {
       "saved": "Discount updated successfully.",
@@ -1879,6 +1894,7 @@
       "cancel": "Cancel",
       "lock": "Lock",
       "pay": "Pay",
+      "recordPayment": "Record Payment",
       "unpay": "Unpay",
       "reverseLastPayment": "Reverse Last Payment",
       "payInstallment": "Pay Installment",

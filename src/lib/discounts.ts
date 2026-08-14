@@ -1,5 +1,6 @@
 import type {
     CategoryDiscount,
+    CurrencyCode,
     DiscountSource,
     DiscountType,
     Inventory,
@@ -21,6 +22,13 @@ export interface ResolvedActiveDiscount {
     endsAt: string
     minStockThreshold: number | null
     source: DiscountSource
+}
+
+export interface DiscountPriceContext {
+    /** Null means native/default pricing, including marketplace pricing. */
+    priceBookId?: string | null
+    basePrice: number
+    currency: CurrencyCode
 }
 
 function toTimestamp(value: string) {
@@ -74,6 +82,34 @@ export function computeDiscountPrice(price: number, discountType: DiscountType, 
     return Math.max(Math.round((basePrice - Math.max(normalizedValue, 0)) * 100) / 100, 0)
 }
 
+export function getProductDiscountPriceScope(discount: ProductDiscount) {
+    return discount.priceScope ?? 'all'
+}
+
+export function doesProductDiscountApplyToPriceContext(
+    discount: ProductDiscount,
+    priceBookId: string | null | undefined,
+    currency: CurrencyCode
+) {
+    if (
+        discount.discountType === 'fixed_amount'
+        && discount.discountCurrency
+        && discount.discountCurrency !== currency
+    ) {
+        return false
+    }
+
+    switch (getProductDiscountPriceScope(discount)) {
+        case 'native_only':
+            return !priceBookId
+        case 'specific_price_books':
+            return !!priceBookId && (discount.priceBookIds ?? []).includes(priceBookId)
+        case 'all':
+        default:
+            return true
+    }
+}
+
 export function getDiscountStatus(
     discount: Pick<DiscountRecord, 'startsAt' | 'endsAt' | 'isActive' | 'minStockThreshold'>,
     stockTotal: number,
@@ -102,6 +138,75 @@ export function getDiscountStatus(
     return 'active'
 }
 
+function toResolvedActiveDiscount(
+    productId: string,
+    discount: DiscountRecord,
+    source: DiscountSource,
+    context: DiscountPriceContext
+): ResolvedActiveDiscount {
+    return {
+        productId,
+        originalPrice: context.basePrice,
+        discountPrice: computeDiscountPrice(context.basePrice, discount.discountType, discount.discountValue),
+        discountType: discount.discountType,
+        discountValue: discount.discountValue,
+        startsAt: discount.startsAt,
+        endsAt: discount.endsAt,
+        minStockThreshold: discount.minStockThreshold ?? null,
+        source
+    }
+}
+
+/**
+ * Resolves a discount for the exact selling-price source in use. A direct
+ * product rule applies only when its scope matches; otherwise category rules
+ * remain eligible as the fallback.
+ */
+export function resolveActiveDiscountForPriceContext(input: {
+    product: Product
+    productDiscounts: ProductDiscount[]
+    categoryDiscounts: CategoryDiscount[]
+    inventoryRows: Inventory[]
+    context: DiscountPriceContext
+    stockTotal?: number
+    now?: Date
+}) {
+    const now = input.now ?? new Date()
+    const stockTotal = input.stockTotal ?? buildInventoryTotalsByProduct(input.inventoryRows).get(input.product.id) ?? 0
+    const productDiscount = pickNewestDiscount(
+        input.productDiscounts.filter((discount) => (
+            !discount.isDeleted
+            && discount.productId === input.product.id
+            && doesProductDiscountApplyToPriceContext(discount, input.context.priceBookId, input.context.currency)
+            && getDiscountStatus(discount, stockTotal, now) === 'active'
+        ))
+    )
+
+    if (productDiscount) {
+        return toResolvedActiveDiscount(input.product.id, productDiscount, 'product', input.context)
+    }
+
+    if (!input.product.categoryId) {
+        return null
+    }
+
+    const categoryDiscount = pickNewestDiscount(
+        input.categoryDiscounts.filter((discount) => (
+            !discount.isDeleted
+            && discount.categoryId === input.product.categoryId
+            // Category fixed amounts predate Price Books and are denominated in
+            // the native product currency. Do not reinterpret them in another
+            // currency; percentage category rules remain currency-agnostic.
+            && (discount.discountType !== 'fixed_amount' || input.product.currency === input.context.currency)
+            && getDiscountStatus(discount, stockTotal, now) === 'active'
+        ))
+    )
+
+    return categoryDiscount
+        ? toResolvedActiveDiscount(input.product.id, categoryDiscount, 'category', input.context)
+        : null
+}
+
 export function resolveActiveDiscountMap(input: {
     products: Product[]
     productDiscounts: ProductDiscount[]
@@ -113,53 +218,24 @@ export function resolveActiveDiscountMap(input: {
     const inventoryTotals = buildInventoryTotalsByProduct(input.inventoryRows)
     const resolved = new Map<string, ResolvedActiveDiscount>()
 
-    const latestProductDiscountByProduct = new Map<string, ProductDiscount>()
-    for (const discount of input.productDiscounts.filter((entry) => !entry.isDeleted)) {
-        const existing = latestProductDiscountByProduct.get(discount.productId)
-        latestProductDiscountByProduct.set(
-            discount.productId,
-            pickNewestDiscount([discount, ...(existing ? [existing] : [])]) ?? discount
-        )
-    }
-
-    const latestCategoryDiscountByCategory = new Map<string, CategoryDiscount>()
-    for (const discount of input.categoryDiscounts.filter((entry) => !entry.isDeleted)) {
-        const existing = latestCategoryDiscountByCategory.get(discount.categoryId)
-        latestCategoryDiscountByCategory.set(
-            discount.categoryId,
-            pickNewestDiscount([discount, ...(existing ? [existing] : [])]) ?? discount
-        )
-    }
-
     for (const product of input.products.filter((entry) => !entry.isDeleted)) {
-        const stockTotal = inventoryTotals.get(product.id) ?? 0
-        const productDiscount = latestProductDiscountByProduct.get(product.id)
-        const categoryDiscount = product.categoryId
-            ? latestCategoryDiscountByCategory.get(product.categoryId)
-            : undefined
-
-        const winner = productDiscount ?? categoryDiscount
-        const source: DiscountSource = productDiscount ? 'product' : 'category'
-
-        if (!winner) {
-            continue
-        }
-
-        if (getDiscountStatus(winner, stockTotal, now) !== 'active') {
-            continue
-        }
-
-        resolved.set(product.id, {
-            productId: product.id,
-            originalPrice: product.price,
-            discountPrice: computeDiscountPrice(product.price, winner.discountType, winner.discountValue),
-            discountType: winner.discountType,
-            discountValue: winner.discountValue,
-            startsAt: winner.startsAt,
-            endsAt: winner.endsAt,
-            minStockThreshold: winner.minStockThreshold ?? null,
-            source
+        const discount = resolveActiveDiscountForPriceContext({
+            product,
+            productDiscounts: input.productDiscounts,
+            categoryDiscounts: input.categoryDiscounts,
+            inventoryRows: input.inventoryRows,
+            context: {
+                priceBookId: null,
+                basePrice: product.price,
+                currency: product.currency
+            },
+            stockTotal: inventoryTotals.get(product.id) ?? 0,
+            now
         })
+
+        if (discount) {
+            resolved.set(product.id, discount)
+        }
     }
 
     return resolved
