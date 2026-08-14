@@ -26,6 +26,8 @@ import {
 import { buildInventoryTotalsByProduct, computeDiscountPrice, getDiscountStatus, type DiscountLifecycleStatus } from '@/lib/discounts'
 import { cn, formatCurrency, formatDateTime } from '@/lib/utils'
 import { useWorkspace } from '@/workspace'
+import { ProductAutocompleteInput } from '@/ui/components/orders/ProductAutocompleteInput'
+import { ProductsViewModal, ProductsViewModalTrigger } from '@/ui/components/ProductsViewModal'
 import {
     Button,
     Card,
@@ -218,6 +220,8 @@ export function Discounts() {
     const [activeTab, setActiveTab] = useState<DiscountTab>('products')
     const [search, setSearch] = useState('')
     const [targetSearch, setTargetSearch] = useState('')
+    const [productSearch, setProductSearch] = useState('')
+    const [productsViewOpen, setProductsViewOpen] = useState(false)
     const [dialogOpen, setDialogOpen] = useState(false)
     const [editingDiscount, setEditingDiscount] = useState<DiscountEntity | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string; type: DiscountTab } | null>(null)
@@ -345,31 +349,20 @@ export function Discounts() {
         }
     }, [categoryRows, productRows])
 
+    const productDiscountTargets = useMemo(() => {
+        return products
+            .filter((product: Product) => {
+                const isTaken = activeProductTargetIds.has(product.id) && (editingDiscount as ProductDiscount | null)?.productId !== product.id
+                return !isTaken
+            })
+            .sort((left: Product, right: Product) => left.name.localeCompare(right.name))
+    }, [activeProductTargetIds, editingDiscount, products])
+
     const targetOptions = useMemo<TargetOption[]>(() => {
         const query = targetSearch.trim().toLowerCase()
 
         if (activeTab === 'products') {
-            return products
-                .filter((product: Product) => {
-                    const isTaken = activeProductTargetIds.has(product.id) && (editingDiscount as ProductDiscount | null)?.productId !== product.id
-                    if (isTaken) {
-                        return false
-                    }
-
-                    if (!query) {
-                        return true
-                    }
-
-                    return [product.name, product.sku, product.category]
-                        .filter((value): value is string => !!value)
-                        .some((value) => value.toLowerCase().includes(query))
-                })
-                .sort((left: Product, right: Product) => left.name.localeCompare(right.name))
-                .map((product: Product) => ({
-                    id: product.id,
-                    label: `${product.name} (${product.sku})`,
-                    meta: product.category || t('discounts.uncategorized')
-                }))
+            return []
         }
 
         return categories
@@ -393,12 +386,13 @@ export function Discounts() {
                 label: category.name,
                 meta: pluralizeProducts((productsByCategory.get(category.id) ?? []).length, t)
             }))
-    }, [activeCategoryTargetIds, activeProductTargetIds, activeTab, categories, editingDiscount, products, productsByCategory, t, targetSearch])
+    }, [activeCategoryTargetIds, activeTab, categories, editingDiscount, productsByCategory, t, targetSearch])
 
     function resetDialog(tab: DiscountTab) {
         setActiveTab(tab)
         setEditingDiscount(null)
         setTargetSearch('')
+        setProductSearch('')
         setForm(buildDefaultForm())
         setDialogOpen(true)
     }
@@ -407,6 +401,7 @@ export function Discounts() {
         setActiveTab('products')
         setEditingDiscount(discount)
         setTargetSearch('')
+        setProductSearch(productsById.get(discount.productId)?.name ?? '')
         setForm({
             targetId: discount.productId,
             discountType: discount.discountType,
@@ -423,6 +418,7 @@ export function Discounts() {
         setActiveTab('categories')
         setEditingDiscount(discount)
         setTargetSearch('')
+        setProductSearch('')
         setForm({
             targetId: discount.categoryId,
             discountType: discount.discountType,
@@ -563,6 +559,7 @@ export function Discounts() {
             setEditingDiscount(null)
             setForm(buildDefaultForm())
             setTargetSearch('')
+            setProductSearch('')
         } catch (error: any) {
             toast({
                 title: t('common.error'),
@@ -1103,6 +1100,7 @@ export function Discounts() {
                 if (!open) {
                     setEditingDiscount(null)
                     setTargetSearch('')
+                    setProductSearch('')
                 }
             }}>
                 <DialogContent className="left-0 top-0 flex h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col overflow-hidden rounded-none border-0 p-0 sm:left-[50%] sm:top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] sm:h-auto sm:max-h-[min(calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem),920px)] sm:w-[calc(100vw-2rem)] sm:max-w-5xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl sm:border-border/60">
@@ -1123,56 +1121,81 @@ export function Discounts() {
 
                             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-6 sm:px-8 sm:py-6 sm:pb-8">
                                 <div className="space-y-5 sm:space-y-6">
-                                    <div className="space-y-3">
-                                        <Label htmlFor="target-search">{t('discounts.targetSearch')}</Label>
-                                        <Input
-                                            id="target-search"
-                                            value={targetSearch}
-                                            onChange={(event) => setTargetSearch(event.target.value)}
-                                            placeholder={activeTab === 'products'
-                                                ? t('discounts.searchProducts')
-                                                : t('discounts.searchCategories')}
-                                            className="h-12 rounded-2xl"
-                                        />
-                                    </div>
+                                    {activeTab === 'products' ? (
+                                        <div className="space-y-3">
+                                            <Label>{t('discounts.product')}</Label>
+                                            <div className="flex items-center">
+                                                <ProductsViewModalTrigger
+                                                    label={t('products.title', { defaultValue: 'Browse products' })}
+                                                    onClick={() => setProductsViewOpen(true)}
+                                                />
+                                                <ProductAutocompleteInput
+                                                    className="min-w-0 flex-1"
+                                                    inputClassName="h-12 rounded-s-none rounded-e-2xl"
+                                                    value={productSearch}
+                                                    onChange={(value) => {
+                                                        setProductSearch(value)
+                                                        setForm((current) => ({ ...current, targetId: '' }))
+                                                    }}
+                                                    onSelectProduct={(product) => {
+                                                        setProductSearch(product.name)
+                                                        setForm((current) => ({ ...current, targetId: product.id }))
+                                                    }}
+                                                    products={productDiscountTargets}
+                                                    placeholder={t('discounts.searchProducts')}
+                                                    hasSelection={!!form.targetId}
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="space-y-3">
+                                                <Label htmlFor="target-search">{t('discounts.targetSearch')}</Label>
+                                                <Input
+                                                    id="target-search"
+                                                    value={targetSearch}
+                                                    onChange={(event) => setTargetSearch(event.target.value)}
+                                                    placeholder={t('discounts.searchCategories')}
+                                                    className="h-12 rounded-2xl"
+                                                />
+                                            </div>
 
-                                    <div className="space-y-3">
-                                        <Label>{activeTab === 'products'
-                                            ? t('discounts.product')
-                                            : t('discounts.category')}
-                                        </Label>
-                                        {targetOptions.length === 0 ? (
-                                            <div className="rounded-2xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
-                                                {t('discounts.noTargets')}
+                                            <div className="space-y-3">
+                                                <Label>{t('discounts.category')}</Label>
+                                                {targetOptions.length === 0 ? (
+                                                    <div className="rounded-2xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
+                                                        {t('discounts.noTargets')}
+                                                    </div>
+                                                ) : (
+                                                    <div className="max-h-56 space-y-2 overflow-y-auto rounded-2xl border p-2">
+                                                        {targetOptions.map((option) => {
+                                                            const isSelected = form.targetId === option.id
+                                                            return (
+                                                                <button
+                                                                    key={option.id}
+                                                                    type="button"
+                                                                    onClick={() => setForm((current) => ({ ...current, targetId: option.id }))}
+                                                                    className={`flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition-colors ${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                                                                >
+                                                                    <div>
+                                                                        <div className="text-sm font-semibold">{option.label}</div>
+                                                                        <div className={`text-xs ${isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
+                                                                            {option.meta}
+                                                                        </div>
+                                                                    </div>
+                                                                    {isSelected ? (
+                                                                        <span className="text-xs font-semibold uppercase tracking-[0.18em]">
+                                                                            {t('common.selected')}
+                                                                        </span>
+                                                                    ) : null}
+                                                                </button>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                )}
                                             </div>
-                                        ) : (
-                                            <div className="max-h-56 space-y-2 overflow-y-auto rounded-2xl border p-2">
-                                                {targetOptions.map((option) => {
-                                                    const isSelected = form.targetId === option.id
-                                                    return (
-                                                        <button
-                                                            key={option.id}
-                                                            type="button"
-                                                            onClick={() => setForm((current) => ({ ...current, targetId: option.id }))}
-                                                            className={`flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition-colors ${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-                                                        >
-                                                            <div>
-                                                                <div className="text-sm font-semibold">{option.label}</div>
-                                                                <div className={`text-xs ${isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
-                                                                    {option.meta}
-                                                                </div>
-                                                            </div>
-                                                            {isSelected ? (
-                                                                <span className="text-xs font-semibold uppercase tracking-[0.18em]">
-                                                                    {t('common.selected')}
-                                                                </span>
-                                                            ) : null}
-                                                        </button>
-                                                    )
-                                                })}
-                                            </div>
-                                        )}
-                                    </div>
+                                        </>
+                                    )}
 
                                     {(selectedProduct || selectedCategory) ? (
                                         <div className="rounded-2xl border bg-muted/20 p-4 text-sm">
@@ -1315,6 +1338,25 @@ export function Discounts() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            <ProductsViewModal
+                open={productsViewOpen}
+                onOpenChange={setProductsViewOpen}
+                products={productDiscountTargets}
+                storages={[]}
+                showStorageSelector={false}
+                labels={{
+                    title: t('products.title', { defaultValue: 'Browse products' }),
+                    searchLabel: t('discounts.product'),
+                    searchPlaceholder: t('discounts.searchProducts'),
+                    noProductsLabel: t('discounts.noTargets'),
+                    noResultsLabel: t('discounts.noTargets')
+                }}
+                onSelectProduct={(product) => {
+                    setProductSearch(product.name)
+                    setForm((current) => ({ ...current, targetId: product.id }))
+                }}
+            />
 
             <DeleteConfirmationModal
                 isOpen={!!deleteTarget}

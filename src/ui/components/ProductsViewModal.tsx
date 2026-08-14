@@ -80,6 +80,8 @@ export interface ProductsViewModalProps {
     onOpenChange: (open: boolean) => void
     products: Product[]
     storages: Storage[]
+    /** Hide the storage picker when a product selection is not storage-specific. */
+    showStorageSelector?: boolean
     initialStorageId?: string
     onSelectProduct: (product: Product, storageId: string, batchId?: string) => void
     filterProducts?: (products: Product[], storageId: string) => Product[]
@@ -131,6 +133,7 @@ export function ProductsViewModal({
     onOpenChange,
     products,
     storages,
+    showStorageSelector = true,
     initialStorageId,
     onSelectProduct,
     filterProducts,
@@ -217,7 +220,7 @@ export function ProductsViewModal({
                 </DialogHeader>
 
                 <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 p-5 sm:p-6">
-                    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(14rem,0.38fr)]">
+                    <div className={cn('grid gap-4', showStorageSelector && 'md:grid-cols-[minmax(0,1fr)_minmax(14rem,0.38fr)]')}>
                         <div className="space-y-2">
                             <Label htmlFor="products-view-modal-search">{labels?.searchLabel || 'Search products'}</Label>
                             <div className="relative">
@@ -232,22 +235,24 @@ export function ProductsViewModal({
                                 />
                             </div>
                         </div>
-                        <div className="space-y-2">
-                            <Label>{labels?.storageLabel || 'Storage'}</Label>
-                            <Select value={selectedStorageId} onValueChange={setStorageId} disabled={storages.length === 0}>
-                                <SelectTrigger className="h-10">
-                                    <Warehouse className="me-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                                    <SelectValue placeholder={labels?.storagePlaceholder || 'Select a storage'} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {storages.map((storage) => (
-                                        <SelectItem key={storage.id} value={storage.id}>
-                                            {getStorageLabel(storage)}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                        {showStorageSelector ? (
+                            <div className="space-y-2">
+                                <Label>{labels?.storageLabel || 'Storage'}</Label>
+                                <Select value={selectedStorageId} onValueChange={setStorageId} disabled={storages.length === 0}>
+                                    <SelectTrigger className="h-10">
+                                        <Warehouse className="me-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                                        <SelectValue placeholder={labels?.storagePlaceholder || 'Select a storage'} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {storages.map((storage) => (
+                                            <SelectItem key={storage.id} value={storage.id}>
+                                                {getStorageLabel(storage)}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        ) : null}
                     </div>
 
                     <div className="min-h-0 overflow-y-auto rounded-xl border bg-muted/20 p-2">
