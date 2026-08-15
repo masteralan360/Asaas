@@ -142,6 +142,28 @@ describe("Post Service COD accounting", () => {
     await expect(updateDeliveryShipmentStatus(shipment.id, { status: "postponed", actorAgentId: deliveryCourier.id })).rejects.toThrow("reason is required");
   });
 
+  it("uses a daily PST tracking sequence in local workspaces", async () => {
+    const merchant = partner(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id });
+    const input = {
+      merchantProfileId: profile.id,
+      recipientName: "Recipient",
+      recipientPhone: "07500000000",
+      recipientAddress: "Baghdad",
+      currency: "iqd" as const,
+      codAmount: 1,
+    };
+
+    const first = await createDeliveryShipment(WORKSPACE_ID, input);
+    const second = await createDeliveryShipment(WORKSPACE_ID, input);
+
+    expect(first.trackingNumber).toMatch(/^PST-\d{8}-00001$/);
+    expect(second.trackingNumber).toBe(
+      first.trackingNumber.replace(/00001$/, "00002"),
+    );
+  });
+
   it("projects only the delivery fee, never the merchant COD, into sales reporting", async () => {
     const merchant = partner(crypto.randomUUID());
     await db.business_partners.put(merchant);

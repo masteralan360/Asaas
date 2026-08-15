@@ -3,7 +3,7 @@ import { isSchemaMismatchError, isSyncIntegrityError } from '@/sync/syncErrors'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
-import type { OfflineMutation } from './models'
+import type { BusinessPartner, DeliveryMerchantProfile, OfflineMutation } from './models'
 
 const LOCAL_ONLY_ENTITY_TYPES = new Set<OfflineMutation['entityType']>([
     'inventory_transfer_transactions'
@@ -52,8 +52,8 @@ async function requeueDeliveryShipmentParents(
 
     const profiles = (await Promise.all(
         [...profileIds].map((profileId) => db.delivery_merchant_profiles.get(profileId))
-    )).filter((profile) => (
-        profile
+    )).filter((profile): profile is DeliveryMerchantProfile => (
+        !!profile
         && !profile.isDeleted
         && profile.workspaceId === workspaceId
     ))
@@ -63,8 +63,8 @@ async function requeueDeliveryShipmentParents(
 
     const partners = (await Promise.all(
         [...partnerIds].map((partnerId) => db.business_partners.get(partnerId))
-    )).filter((partner) => (
-        partner
+    )).filter((partner): partner is BusinessPartner => (
+        !!partner
         && !partner.isDeleted
         && partner.workspaceId === workspaceId
     ))

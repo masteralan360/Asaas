@@ -1479,6 +1479,7 @@ export type InvoiceOrigin =
   | "travel_agency"
   | "clinical_appointment"
   | "activities"
+  | "post_service"
   | "upload";
 
 export interface Invoice extends BaseEntity {

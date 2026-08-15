@@ -299,17 +299,47 @@ async function syncEntities(
 
   try {
     const client = getSupabaseClientForTable(tableName);
-    const { error } = (await runSupabaseAction(`${tableName}.sync`, () =>
-      client.from(tableName).upsert(entities.map(sanitizePayload)),
-    )) as { error?: unknown };
+    const receivesTrackingNumber = tableName === SHIPMENT_TABLE;
+    let result: { data?: unknown; error?: unknown };
+    if (receivesTrackingNumber) {
+      result = await runSupabaseAction(`${tableName}.sync`, () =>
+        client.from(SHIPMENT_TABLE).upsert(entities.map(sanitizePayload)).select("id, tracking_number"),
+      );
+    } else {
+      result = await runSupabaseAction(`${tableName}.sync`, () =>
+        client.from(tableName).upsert(entities.map(sanitizePayload)),
+      );
+    }
+    const { data, error } = result as { data?: unknown; error?: unknown };
     if (error) throw error;
+
+    const trackingNumbers = new Map<string, string>();
+    if (receivesTrackingNumber && Array.isArray(data)) {
+      for (const row of data) {
+        if (!row || typeof row !== "object") continue;
+        const remoteShipment = row as { id?: unknown; tracking_number?: unknown };
+        if (typeof remoteShipment.id === "string" && typeof remoteShipment.tracking_number === "string") {
+          trackingNumbers.set(remoteShipment.id, remoteShipment.tracking_number);
+        }
+      }
+    }
 
     const syncedAt = new Date().toISOString();
     await getTable(tableName).bulkUpdate(
-      entities.map((entity) => ({
-        key: entity.id,
-        changes: { syncStatus: "synced", lastSyncedAt: syncedAt },
-      })) as never,
+      entities.map((entity) => {
+        const trackingNumber = trackingNumbers.get(entity.id);
+        if (trackingNumber && tableName === SHIPMENT_TABLE) {
+          (entity as DeliveryShipment).trackingNumber = trackingNumber;
+        }
+        return {
+          key: entity.id,
+          changes: {
+            ...(trackingNumber ? { trackingNumber } : {}),
+            syncStatus: "synced",
+            lastSyncedAt: syncedAt,
+          },
+        };
+      }) as never,
     );
     return true;
   } catch (error) {
@@ -397,8 +427,45 @@ function positiveMoney(value: number, label: string, allowZero = true) {
 }
 
 function makeReference(prefix: string, timestamp = new Date()) {
-  const date = timestamp.toISOString().slice(0, 10).replaceAll("-", "");
+  const date = timestamp.toISOString().slice(0, 10).replace(/-/g, "");
   return `${prefix}-${date}-${generateId().slice(0, 6).toUpperCase()}`;
+}
+
+function getBaghdadDate(timestamp = new Date()) {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Baghdad",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(timestamp);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  return `${values.year}${values.month}${values.day}`;
+}
+
+async function getInitialShipmentTrackingNumber(workspaceId: string) {
+  if (shouldUseCloudDeliveryData(workspaceId)) {
+    // Supabase replaces this during the insert with the authoritative,
+    // workspace-wide daily sequence. A non-numeric placeholder cannot be
+    // mistaken for a final tracking number while the device is offline.
+    return `PST-PENDING-${generateId().toUpperCase()}`;
+  }
+
+  const trackingDay = getBaghdadDate();
+  const trackingPattern = new RegExp(`^PST-${trackingDay}-(\\d+)$`);
+  const shipments = await db.delivery_shipments
+    .where("workspaceId")
+    .equals(workspaceId)
+    .toArray();
+  const nextSequence = shipments.reduce((highest, shipment) => {
+    const match = shipment.trackingNumber.match(trackingPattern);
+    return Math.max(highest, match ? Number(match[1]) : 0);
+  }, 0) + 1;
+
+  return `PST-${trackingDay}-${String(nextSequence).padStart(5, "0")}`;
 }
 
 function makeBase<T extends Record<string, unknown>>(
@@ -657,8 +724,9 @@ export async function createDeliveryShipment(
     throw new Error("Recipient name, phone, and address are required");
   }
   const now = new Date().toISOString();
+  const trackingNumber = await getInitialShipmentTrackingNumber(workspaceId);
   const shipment = makeBase(workspaceId, {
-    trackingNumber: makeReference("PST"),
+    trackingNumber,
     merchantProfileId: profile.id,
     merchantBusinessPartnerId: profile.businessPartnerId,
     recipientName: input.recipientName.trim(),

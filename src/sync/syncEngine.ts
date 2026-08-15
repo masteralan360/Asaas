@@ -975,6 +975,33 @@ export async function processMutationQueue(
             });
             entityHandledInline = true;
           }
+        } else if (entityType === "delivery_shipments") {
+          const { data: remoteShipments, error } = await client
+            .from(tableName)
+            .upsert(dbPayload)
+            .select("id, tracking_number");
+
+          if (error) throw error;
+
+          const remoteShipment = Array.isArray(remoteShipments)
+            ? remoteShipments.find(
+              (row) =>
+                row &&
+                typeof row === "object" &&
+                (row as { id?: unknown }).id === entityId,
+            ) as { tracking_number?: unknown } | undefined
+            : undefined;
+          const trackingNumber = remoteShipment?.tracking_number;
+
+          if (typeof trackingNumber === "string" && trackingNumber.length > 0) {
+            const syncedAt = new Date().toISOString();
+            await db.delivery_shipments.update(entityId, {
+              trackingNumber,
+              syncStatus: "synced",
+              lastSyncedAt: syncedAt,
+            });
+            entityHandledInline = true;
+          }
         } else {
           const { error } = await client.from(tableName).upsert(dbPayload);
           if (error) throw error;
