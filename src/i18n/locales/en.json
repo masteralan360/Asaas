@@ -1855,6 +1855,11 @@
     "title": "Orders",
     "subtitle": "orders total",
     "paymentStatus": "Payment status",
+    "ecommerceFilter": {
+      "label": "Order source",
+      "ecommerce": "E-Commerce Orders",
+      "nonEcommerce": "Non-E-Commerce Orders"
+    },
     "dateFilters": {
       "created": "Created date",
       "fulfilled": "Fulfilled date",

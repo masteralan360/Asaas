@@ -1222,6 +1222,11 @@
     "title": "الطلبات",
     "subtitle": "إجمالي الطلبات",
     "paymentStatus": "حالة الدفع",
+    "ecommerceFilter": {
+      "label": "مصدر الطلب",
+      "ecommerce": "طلبات التجارة الإلكترونية",
+      "nonEcommerce": "طلبات غير التجارة الإلكترونية"
+    },
     "dateFilters": {
       "created": "تاريخ الإنشاء",
       "fulfilled": "تاريخ التنفيذ",

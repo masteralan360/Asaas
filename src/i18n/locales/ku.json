@@ -1224,6 +1224,11 @@
     "title": "داواکارییەکان",
     "subtitle": "کۆی داواکارییەکان",
     "paymentStatus": "دۆخی پارەدان",
+    "ecommerceFilter": {
+      "label": "سەرچاوەی داواکاری",
+      "ecommerce": "داواکارییەکانی بازرگانیی ئەلیکترۆنی",
+      "nonEcommerce": "داواکارییەکانی نا بازرگانیی ئەلیکترۆنی"
+    },
     "installmentStatus": "دۆخی قیست",
     "dateFilters": {
       "created": "بەرواری دروستکردن",

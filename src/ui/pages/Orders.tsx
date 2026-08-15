@@ -117,6 +117,7 @@ import { useUnitRegistry } from '@/ui/components/unitRegistry'
 type OrderTab = 'sales' | 'purchase'
 type StatusFilter = 'all' | 'draft' | 'pending' | 'ordered' | 'received' | 'completed' | 'cancelled'
 type PaymentFilter = 'all' | 'unpaid' | 'partial' | 'paid' | 'returned'
+type EcommerceFilter = 'all' | 'ecommerce' | 'nonEcommerce'
 
 const statusFilterIcons = {
     all: ListFilter,
@@ -135,6 +136,12 @@ const paymentFilterIcons = {
     paid: BadgeCheck,
     returned: RotateCcw
 } satisfies Record<PaymentFilter, LucideIcon>
+
+const ecommerceFilterIcons = {
+    all: ListFilter,
+    ecommerce: ShoppingCart,
+    nonEcommerce: List
+} satisfies Record<EcommerceFilter, LucideIcon>
 
 type OrderMosaicItem = {
     productId: string
@@ -457,6 +464,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
     const [search, setSearch] = useState('')
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
     const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all')
+    const [ecommerceFilter, setEcommerceFilter] = useState<EcommerceFilter>('all')
     const [fulfillmentDateRange, setFulfillmentDateRange] = useState<DateRangeType>('allTime')
     const [fulfillmentCustomDates, setFulfillmentCustomDates] = useState({ start: '', end: '' })
     const [isFulfilledDateFilterExpanded, setIsFulfilledDateFilterExpanded] = useState(false)
@@ -562,16 +570,32 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         }))
     }, [defaultStorageId])
 
+    const createdDateFilteredSalesOrders = useMemo(
+        () => filterOrdersByDate(salesOrders, dateRange, customDates, (order) => order.createdAt),
+        [salesOrders, dateRange, customDates]
+    )
+
     const dateFilteredSalesOrders = useMemo(
         () => filterOrdersByDate(
-            filterOrdersByDate(salesOrders, dateRange, customDates, (order) => order.createdAt),
+            createdDateFilteredSalesOrders,
             fulfillmentDateRange,
             fulfillmentCustomDates,
             (order) => order.actualDeliveryDate
         )
             .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
-        [salesOrders, dateRange, customDates, fulfillmentDateRange, fulfillmentCustomDates]
+        [createdDateFilteredSalesOrders, fulfillmentDateRange, fulfillmentCustomDates]
     )
+
+    const hasEcommerceOrdersForCreatedDate = useMemo(
+        () => createdDateFilteredSalesOrders.some((order) => order.sourceChannel === 'marketplace'),
+        [createdDateFilteredSalesOrders]
+    )
+
+    useEffect(() => {
+        if (!hasEcommerceOrdersForCreatedDate) {
+            setEcommerceFilter('all')
+        }
+    }, [hasEcommerceOrdersForCreatedDate])
 
     const dateFilteredPurchaseOrders = useMemo(
         () => filterOrdersByDate(
@@ -590,6 +614,12 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
             items = items.filter((order) => order.status === statusFilter)
         }
 
+        if (ecommerceFilter === 'ecommerce') {
+            items = items.filter((order) => order.sourceChannel === 'marketplace')
+        } else if (ecommerceFilter === 'nonEcommerce') {
+            items = items.filter((order) => order.sourceChannel !== 'marketplace')
+        }
+
         if (paymentFilter === 'returned') {
             items = items.filter((order) => order.returnStatus === 'full')
         } else if (paymentFilter !== 'all') {
@@ -604,7 +634,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
             || order.customerName.toLowerCase().includes(query)
             || order.items.some((item) => item.productName.toLowerCase().includes(query))
         )
-    }, [dateFilteredSalesOrders, search, statusFilter, paymentFilter])
+    }, [dateFilteredSalesOrders, search, statusFilter, paymentFilter, ecommerceFilter])
 
     const filteredPurchaseOrders = useMemo(() => {
         let items = [...dateFilteredPurchaseOrders]
@@ -1659,6 +1689,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
     const purchaseDisabled = suppliers.length === 0 || products.length === 0
     const StatusFilterIcon = statusFilterIcons[statusFilter]
     const PaymentFilterIcon = paymentFilterIcons[paymentFilter]
+    const EcommerceFilterIcon = ecommerceFilterIcons[ecommerceFilter]
     const areDateFiltersSynced = dateRange === fulfillmentDateRange
         && customDates.start === fulfillmentCustomDates.start
         && customDates.end === fulfillmentCustomDates.end
@@ -2006,6 +2037,58 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                             })}
                                         </DropdownMenuContent>
                                     </DropdownMenu>
+
+                                    {activeTab === 'sales' && hasEcommerceOrdersForCreatedDate && (
+                                        <DropdownMenu dir={pageDirection}>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button
+                                                    variant="outline"
+                                                    allowViewer={true}
+                                                    className={cn(
+                                                        'h-10 justify-between gap-2 rounded-xl border-border/70 bg-background px-3 font-semibold shadow-sm hover:border-primary/30 hover:bg-primary/5',
+                                                        ecommerceFilter !== 'all' && 'border-primary/30 bg-primary/5 text-primary'
+                                                    )}
+                                                >
+                                                    <span className="flex min-w-0 items-center gap-2">
+                                                        <EcommerceFilterIcon className="h-4 w-4 shrink-0" />
+                                                        <span className="hidden text-xs text-muted-foreground sm:inline">{t('orders.ecommerceFilter.label', { defaultValue: 'Order source' })}</span>
+                                                        <span className="truncate text-sm">
+                                                            {ecommerceFilter === 'all'
+                                                                ? (t('common.all') || 'All')
+                                                                : ecommerceFilter === 'ecommerce'
+                                                                    ? t('orders.ecommerceFilter.ecommerce', { defaultValue: 'E-Commerce Orders' })
+                                                                    : t('orders.ecommerceFilter.nonEcommerce', { defaultValue: 'Non-E-Commerce Orders' })}
+                                                        </span>
+                                                    </span>
+                                                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end" className="min-w-52 rounded-xl border-border/70 p-1.5">
+                                                {(['all', 'ecommerce', 'nonEcommerce'] as const).map((value) => {
+                                                    const EcommerceOptionIcon = ecommerceFilterIcons[value]
+                                                    const label = value === 'all'
+                                                        ? (t('common.all') || 'All')
+                                                        : value === 'ecommerce'
+                                                            ? t('orders.ecommerceFilter.ecommerce', { defaultValue: 'E-Commerce Orders' })
+                                                            : t('orders.ecommerceFilter.nonEcommerce', { defaultValue: 'Non-E-Commerce Orders' })
+
+                                                    return (
+                                                        <DropdownMenuItem
+                                                            key={value}
+                                                            onSelect={() => setEcommerceFilter(value)}
+                                                            className={cn(
+                                                                'rounded-lg px-3 py-2 text-sm font-medium',
+                                                                ecommerceFilter === value && 'bg-primary/10 text-primary focus:bg-primary/10 focus:text-primary'
+                                                            )}
+                                                        >
+                                                            <EcommerceOptionIcon className="me-2 h-4 w-4" />
+                                                            {label}
+                                                        </DropdownMenuItem>
+                                                    )
+                                                })}
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    )}
 
                                     <DropdownMenu dir={pageDirection}>
                                         <DropdownMenuTrigger asChild>
