@@ -1490,6 +1490,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                          const returnState = isSales
                                              ? getOrderPrintReturnState(item, { returnedQuantity, returnedAmount })
                                              : null
+                                         const hasReturnAdjustment = Boolean(returnState && returnState.status !== 'active')
                                          const remainingQuantity = returnState?.remainingQuantity ?? paidQuantity
                                          const remainingInventoryQuantity = Math.max(0, inventoryQuantity - returnedQuantity)
                                          const isItemFullyReturned = returnState?.status === 'fully-returned'
@@ -1533,7 +1534,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                                     </div>
                                                     <div className="rounded-2xl border bg-muted/20 p-3">
                                                         <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.form.table.qty') || 'Qty'}</div>
-                                                        {returnState?.status !== 'active' ? (
+                                                        {hasReturnAdjustment ? (
                                                             <ReturnedOrderValue
                                                                 className="mt-1 items-start"
                                                                 currentValue={`${remainingQuantity}${itemUnitLabel ? ` ${itemUnitLabel}` : ''}`}
@@ -1549,7 +1550,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                                     ) : null}
                                                     <div className="rounded-2xl border bg-muted/20 p-3">
                                                         <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.lineTotal') || 'Line Total'}</div>
-                                                        {returnState?.status !== 'active' ? (
+                                                        {hasReturnAdjustment ? (
                                                             <ReturnedOrderValue
                                                                 className="mt-1 items-start"
                                                                 currentValue={formatCurrency(remainingLineTotal, currency, iqd)}
@@ -1564,7 +1565,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                                     {(!isSales || canViewProfit) && (
                                                         <div className="rounded-2xl border bg-muted/20 p-3">
                                                             <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{isSales ? (t('orders.details.itemProfit') || 'Item Profit') : (t('orders.details.receivedUnits') || 'Received Units')}</div>
-                                                            {isSales && returnState?.status !== 'active' ? (
+                                                            {isSales && hasReturnAdjustment ? (
                                                                 <ReturnedOrderValue
                                                                     className="mt-1 items-start"
                                                                     currentValue={formatCurrency(itemProfit, currency, iqd)}
@@ -1627,6 +1628,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                                  const returnState = isSales
                                                      ? getOrderPrintReturnState(item, { returnedQuantity, returnedAmount })
                                                      : null
+                                                 const hasReturnAdjustment = Boolean(returnState && returnState.status !== 'active')
                                                  const remainingQuantity = returnState?.remainingQuantity ?? paidQuantity
                                                  const remainingInventoryQuantity = Math.max(0, inventoryQuantity - returnedQuantity)
                                                  const isItemFullyReturned = returnState?.status === 'fully-returned'
@@ -1656,7 +1658,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                                         </TableCell>
                                                         <TableCell>{storageName(item.storageId || mainStorageId)}</TableCell>
                                                          <TableCell className="text-end">
-                                                             {returnState?.status !== 'active' ? (
+                                                             {hasReturnAdjustment ? (
                                                                  <ReturnedOrderValue
                                                                      currentValue={`${remainingQuantity}${itemUnitLabel ? ` ${itemUnitLabel}` : ''}`}
                                                                      originalValue={`${paidQuantity}${itemUnitLabel ? ` ${itemUnitLabel}` : ''}`}
@@ -1670,7 +1672,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                                         <TableCell className="text-end">{formatCurrency(item.convertedUnitPrice, currency, iqd)}</TableCell>
                                                         {isSales && canViewProfit && <TableCell className="text-end">{formatCurrency(salesItem.convertedCostPrice, currency, iqd)}</TableCell>}
                                                         <TableCell className="text-end font-semibold">
-                                                            {returnState?.status !== 'active' ? (
+                                                            {hasReturnAdjustment ? (
                                                                 <ReturnedOrderValue
                                                                     currentValue={formatCurrency(remainingLineTotal, currency, iqd)}
                                                                     originalValue={formatCurrency(item.lineTotal, currency, iqd)}
@@ -1679,7 +1681,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                                         </TableCell>
                                                         {isSales && canViewProfit && (
                                                             <TableCell className="text-end">
-                                                                {returnState?.status !== 'active' ? (
+                                                                {hasReturnAdjustment ? (
                                                                     <ReturnedOrderValue
                                                                         currentValue={formatCurrency(itemProfit, currency, iqd)}
                                                                         originalValue={formatCurrency(originalItemProfit, currency, iqd)}
