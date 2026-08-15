@@ -139,17 +139,6 @@ Deno.serve(async (req) => {
 
         if (normalizedItems.size === 0) return errorResponse('At least one order item is required')
 
-        // The MOQ is enforced on the server as well as in the storefront UI,
-        // preventing handcrafted requests and old local carts from bypassing
-        // Jumla Khaleej's per-product wholesale minimum.
-        if (mode === 'wholesale') {
-            const belowMinimum = Array.from(normalizedItems.entries())
-                .find(([, quantity]) => quantity < JUMLA_KHALEEJ_WHOLESALE_MINIMUM_QUANTITY)
-            if (belowMinimum) {
-                return errorResponse(`Each wholesale product requires at least ${JUMLA_KHALEEJ_WHOLESALE_MINIMUM_QUANTITY} units`, 409)
-            }
-        }
-
         const adminClient = createAdminClient()
         const context = await loadWebsiteStorefrontContext(adminClient, req)
         if ('error' in context) return errorResponse(context.error, context.status)
@@ -194,6 +183,30 @@ Deno.serve(async (req) => {
         const productsById = new Map(visibleProducts.productRows.map((product) => [product.id, product] as const))
         if (productIds.some((productId) => !inventoryProductIds.has(productId) || !productsById.has(productId))) {
             return errorResponse('Some products could not be found for this store')
+        }
+
+        // A wholesale MOQ belongs to the parent product, not to each child
+        // variant. This lets a customer meet the minimum with a mixed set of
+        // variants, for example 1 + 1 + 1 from the same parent product.
+        // Resolve the group from the server-side product record so requests
+        // cannot forge their own parent grouping.
+        if (mode === 'wholesale') {
+            const quantitiesByParentProductId = new Map<string, number>()
+            for (const productId of productIds) {
+                const product = productsById.get(productId)!
+                const parentProductId = product.parent_product_id ?? product.id
+                const nextQuantity = roundQuantity(
+                    (quantitiesByParentProductId.get(parentProductId) ?? 0)
+                    + (normalizedItems.get(productId) ?? 0)
+                )
+                quantitiesByParentProductId.set(parentProductId, nextQuantity)
+            }
+
+            const belowMinimum = Array.from(quantitiesByParentProductId.values())
+                .some((quantity) => quantity < JUMLA_KHALEEJ_WHOLESALE_MINIMUM_QUANTITY)
+            if (belowMinimum) {
+                return errorResponse(`Select at least ${JUMLA_KHALEEJ_WHOLESALE_MINIMUM_QUANTITY} items from each product's variants before continuing`, 409)
+            }
         }
 
         const discountResults = await Promise.all(visibleProducts.marketplaceStorageIds.map((storageId) =>
