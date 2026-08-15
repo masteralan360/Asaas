@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
 import { formatCurrency, formatDateTime } from '@/lib/utils'
-import { runSupabaseAction } from '@/lib/supabaseRequest'
+import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { r2Service } from '@/services/r2Service'
 import { PdfJsViewer } from '@/ui/components/PdfJsViewer'
 import {
@@ -832,10 +832,14 @@ export function Ecommerce() {
                     next_status: nextStatus,
                     cancel_reason: cancelReason || null
                 })
-            ) as { data: MarketplaceTransitionResponse | null; error: Error | null }
+            ) as { data: MarketplaceTransitionResponse | null; error: unknown | null }
 
             if (error) {
-                throw error
+                // Supabase RPC errors are plain PostgREST objects rather than
+                // native Error instances. Normalize them before the toast so
+                // database validation messages (including the exact product)
+                // are never replaced by the generic fallback below.
+                throw normalizeSupabaseActionError(error)
             }
 
             await loadOrders()
@@ -861,7 +865,7 @@ export function Ecommerce() {
         } catch (error) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
-                description: error instanceof Error ? error.message : 'Failed to update marketplace order',
+                description: normalizeSupabaseActionError(error).message || 'Failed to update marketplace order',
                 variant: 'destructive'
             })
         } finally {
