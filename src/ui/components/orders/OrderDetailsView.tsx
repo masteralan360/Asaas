@@ -12,6 +12,7 @@ import { useProfileData } from '@/hooks/useProfileData'
 import { getOrderLineFreeBonusQuantity, getOrderLineInventoryQuantity, getOrderLinePaidQuantity, hasOrderLineFreeBonus } from '@/lib/orderLineItems'
 import { getOrderAdjustmentTotals, normalizeOrderAdjustments } from '@/lib/orderAdjustments'
 import { getOrderPrintReturnState } from '@/lib/orderPrintReturnState'
+import { createSalesOrderReturnPrintData } from '@/lib/orderReturnPrintData'
 import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { normalizeUnitCode } from '@/local-db/models'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
@@ -359,6 +360,10 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
         return amounts
     }, [salesOrderReturnItems])
 
+    const returnPrintData = useMemo(() => salesOrder
+        ? createSalesOrderReturnPrintData(salesOrder, salesOrderReturns, salesOrderReturnItems)
+        : null, [salesOrder, salesOrderReturnItems, salesOrderReturns])
+
     const getReturnableQuantity = useCallback((item: SalesOrderItem) => Math.max(
         0,
         getOrderLineInventoryQuantity(item) - (returnedQuantityByItemId.get(item.id) || 0)
@@ -657,6 +662,45 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
         }
     }, [resolved, features, installments, workspaceName, i18n, bizPartner, workspaceFooterContacts, creatorName, productImageUrls])
 
+    const orderAtlasStandardReturnPreview = useMemo<TemplatePreview | undefined>(() => {
+        if (!resolved || resolved.kind !== 'sales' || !returnPrintData) return undefined
+        const { order } = resolved
+        return {
+            fields: [],
+            supportsBackgroundEdit: true,
+            createElement: (_data, _effectiveId, printLangOverride, renderOptions) => {
+                const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+                return (
+                    <AtlasStandardOrderInvoiceTemplate
+                        workspaceName={workspaceName}
+                        printLang={printLangOverride || baseLang}
+                        order={order}
+                        installments={installments}
+                        kind="sales"
+                        iqdPreference={features.iqd_display_preference}
+                        logoUrl={features.logo_url}
+                        workspaceFooterContacts={renderOptions?.workspaceFooterContacts || workspaceFooterContacts}
+                        businessPartner={bizPartner}
+                        printedBy={creatorName}
+                        productImageUrls={productImageUrls}
+                        hiddenFields={renderOptions?.hiddenFields}
+                        onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
+                        fieldLabelOverrides={renderOptions?.fieldLabelOverrides}
+                        onFieldLabelChange={renderOptions?.onFieldLabelChange}
+                        fieldDisplayModes={renderOptions?.fieldDisplayModes}
+                        onFieldDisplayModeChange={renderOptions?.onFieldDisplayModeChange}
+                        background={renderOptions?.background}
+                        returnPrintData={returnPrintData}
+                    />
+                )
+            },
+            buildPdf: async (element: ReactElement, printLangOverride?: string) => {
+                const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+                return generateTemplatePdf({ element, format: 'a4', printLang: printLangOverride || baseLang })
+            }
+        }
+    }, [resolved, features, installments, workspaceName, i18n, bizPartner, workspaceFooterContacts, creatorName, productImageUrls, returnPrintData])
+
     const customOrderPrint = useOrderCustomPrint({
         workspaceId,
         workspaceName,
@@ -666,6 +710,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
         printLanguage: i18n.language,
         order: resolved?.order,
         orderKind: resolved?.kind,
+        returnPrintData,
         installments,
         productUnits,
         productImageUrls,
@@ -1871,6 +1916,8 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                 }}
                 title={customOrderPrint.selectedTemplateLabel
                     ? customOrderPrint.selectedTemplateLabel
+                    : customOrderPrint.isAtlasStandardReturnSelected
+                        ? t('orders.print.nativeReturnTemplate', { defaultValue: 'Atlas Standard Return' })
                     : isSales
                         ? (t('orders.tabs.sales') || 'Sales Order')
                         : (t('orders.tabs.purchase') || 'Purchase Order')}
@@ -1880,7 +1927,9 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                 originId={order.id}
                 invoiceData={{
                     invoiceid: order.orderNumber,
-                    totalAmount: order.total,
+                    totalAmount: customOrderPrint.isReturnPrintSelected
+                        ? returnPrintData?.totalRefundAmount || 0
+                        : order.total,
                     settlementCurrency: order.currency,
                     origin: isSales ? 'sales_order' as const : 'purchase_order' as const,
                     createdByName: creatorName || 'Unknown',
@@ -1909,7 +1958,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                         counterpartyPhone={counterpartyPhone}
                                         workspaceFooterContacts={workspaceFooterContacts}
                                     />
-                                ) : customOrderPrint.isAtlasStandardSelected ? (
+                                ) : customOrderPrint.isAtlasStandardSelected || customOrderPrint.isAtlasStandardReturnSelected ? (
                                     <AtlasStandardOrderInvoiceTemplate
                                         workspaceName={workspaceName}
                                         printLang={printLang}
@@ -1922,6 +1971,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                         businessPartner={bizPartner}
                                         printedBy={creatorName}
                                         productImageUrls={productImageUrls}
+                                        returnPrintData={customOrderPrint.isAtlasStandardReturnSelected ? returnPrintData : undefined}
                                     />
                                 ) : (
                                     <OrderDetailsPrintTemplate
@@ -1960,7 +2010,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                             counterpartyPhone={counterpartyPhone}
                             workspaceFooterContacts={workspaceFooterContacts}
                         />
-                    ) : customOrderPrint.isAtlasStandardSelected ? (
+                    ) : customOrderPrint.isAtlasStandardSelected || customOrderPrint.isAtlasStandardReturnSelected ? (
                         <AtlasStandardOrderInvoiceTemplate
                             workspaceName={workspaceName}
                             printLang={printLang}
@@ -1973,6 +2023,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                             businessPartner={bizPartner}
                             printedBy={creatorName}
                             productImageUrls={productImageUrls}
+                            returnPrintData={customOrderPrint.isAtlasStandardReturnSelected ? returnPrintData : undefined}
                         />
                     ) : (
                         <OrderDetailsPrintTemplate
@@ -1995,7 +2046,9 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                     ? customOrderPrint.preview
                     : customOrderPrint.isReceiptSelected
                         ? orderReceiptPreview
-                        : customOrderPrint.isAtlasStandardSelected
+                        : customOrderPrint.isAtlasStandardReturnSelected
+                            ? orderAtlasStandardReturnPreview
+                            : customOrderPrint.isAtlasStandardSelected
                             ? orderAtlasStandardPreview
                             : orderDetailsPreview}
                 customTemplate={customOrderPrint.customTemplate}
@@ -2005,6 +2058,11 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                 printSelectionOptions={customOrderPrint.nativeOptions}
                 printSelectionTemplates={customOrderPrint.templateOptions}
                 onPrintSelection={customOrderPrint.handleSelection}
+                onCreateReturnTemplate={returnPrintData ? () => {
+                    setShowPrintPreview(false)
+                    customOrderPrint.resetSelection()
+                    navigate('/custom-templates?new=return')
+                } : undefined}
             />
         </div>
     )

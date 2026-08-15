@@ -1917,6 +1917,7 @@
       "itemConfirmation": "Return {{itemName}} from this completed order?",
       "wholeConfirmation": "Return all remaining items from this completed order?",
       "returnedQuantity": "Returned: {{returned}} / {{total}}",
+      "returnedStatus": "Returned",
       "history": "Returns ({{count}})"
     },
     "table": {
@@ -2578,6 +2579,7 @@
     "previewTitle": "{{name}} Custom Template",
     "customize": "Customize",
     "saveLayout": "Save Layout",
+    "primary": "Primary",
     "labelDialogTitle": "Name Custom Template",
     "labelDialogDescription": "Enter a label to identify this custom print layout later.",
     "labelField": "Template Label",

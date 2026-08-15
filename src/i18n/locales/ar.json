@@ -1285,6 +1285,7 @@
       "itemConfirmation": "هل تريد إرجاع {{itemName}} من هذا الطلب المكتمل؟",
       "wholeConfirmation": "هل تريد إرجاع جميع العناصر المتبقية من هذا الطلب المكتمل؟",
       "returnedQuantity": "تم إرجاع: {{returned}} / {{total}}",
+      "returnedStatus": "مرتجع",
       "history": "المرتجعات ({{count}})"
     },
     "table": {
@@ -4479,6 +4480,7 @@
     "previewTitle": "قالب مخصص لـ {{name}}",
     "customize": "تخصيص",
     "saveLayout": "حفظ التخطيط",
+    "primary": "أساسي",
     "labelDialogTitle": "تسمية القالب المخصص",
     "labelDialogDescription": "أدخل تسمية لتعريف تخطيط الطباعة المخصص هذا لاحقاً.",
     "labelField": "تسمية القالب",

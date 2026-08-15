@@ -132,4 +132,61 @@ describe('PrintSelectionModal', () => {
         expect(html).toContain('Saved for AR, but workspace printing is EN.')
         expect(html).toContain('disabled=""')
     })
+
+    it('stacks a Returned badge below Primary for a custom return template and hides the creation action', () => {
+        const html = renderToStaticMarkup(
+            <PrintSelectionModal
+                isOpen
+                onClose={() => undefined}
+                onSelect={() => undefined}
+                onCreateReturnTemplate={() => undefined}
+                nativeOptions={[{
+                    format: 'a4',
+                    label: 'Atlas Standard Return',
+                    description: 'Returned items only',
+                    returned: true
+                }]}
+                templateOptions={[{
+                    format: 'a4',
+                    template: {
+                        id: 'return-template',
+                        module_type_key: 'orders.AtlasStandardReturn',
+                        layout_json: {}
+                    },
+                    label: 'My Return Layout',
+                    primary: true,
+                    returned: true
+                }]}
+            />
+        )
+
+        expect(html).toContain('Atlas Standard Return')
+        expect(html).toContain('My Return Layout')
+        expect(html).not.toContain('Create return template')
+        expect(html).toContain('Primary')
+        expect(html.match(/Returned/g) || []).toHaveLength(3)
+    })
+
+    it('offers return-template creation when no saved return template is available', () => {
+        const html = renderToStaticMarkup(
+            <PrintSelectionModal
+                isOpen
+                onClose={() => undefined}
+                onSelect={() => undefined}
+                onCreateReturnTemplate={() => undefined}
+                nativeOptions={[]}
+                templateOptions={[{
+                    format: 'a4',
+                    template: {
+                        id: 'sales-template',
+                        module_type_key: 'orders.AtlasStandard',
+                        layout_json: {}
+                    },
+                    label: 'My Sales Layout'
+                }]}
+            />
+        )
+
+        expect(html).toContain('Create return template')
+    })
 })

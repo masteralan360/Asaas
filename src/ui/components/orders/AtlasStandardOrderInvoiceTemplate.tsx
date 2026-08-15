@@ -14,6 +14,7 @@ import {
 } from '@/local-db'
 import { getOrderLineFreeBonusQuantity, getOrderLinePaidQuantity } from '@/lib/orderLineItems'
 import { getA4OrderPrintReturnRowStyle, getOrderPrintReturnState } from '@/lib/orderPrintReturnState'
+import type { SalesOrderReturnPrintData } from '@/lib/orderReturnPrintData'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import { normalizeUnitCode } from '@/local-db/models'
 import { platformService } from '@/services/platformService'
@@ -75,6 +76,8 @@ export interface AtlasStandardOrderInvoiceTemplateProps {
     onFieldDisplayModeChange?: (fieldKey: string, mode: string) => void
     productImageUrls?: ProductPrintImageUrls
     background?: CustomTemplateBackground | null
+    /** Renders a return-only document with the same Atlas Standard editor controls. */
+    returnPrintData?: SalesOrderReturnPrintData | null
 }
 
 const INK = '#1f2937'
@@ -366,6 +369,63 @@ const ATLAS_STANDARD_LABELS = {
         invoiceDetails: 'وردەکارییەکانی پسوڵە', orderItemsTable: 'خشتەی کاڵاکانی داواکاری', financialSummary: 'پوختەی دارایی', selectValues: 'ئەو بەهایانە هەڵبژێرە کە دەتهەوێت لەم چاپەدا دەربکەون.', selectColumns: 'ستوونەکانی خشتە هەڵبژێرە کە دەتهەوێت لەم چاپەدا دەربکەون.', noColumns: 'هیچ ستوونی کاڵا هەڵنەبژێردراوە', dragToSwap: 'ڕابکێشە بۆ گۆڕینی شوێن', renameTitle: 'ناونیشان بگۆڕە', renameTitleDescription: 'ناونیشانێکی تایبەت بۆ ئەم بەهایە لە چاپەکەدا بەکاربهێنە.', title: 'ناونیشان', save: 'پاشەکەوتکردن', cancel: 'هەڵوەشاندنەوە', resetTitle: 'ناونیشان بگەڕێنەوە', invoiceOrganizer: 'ڕێکخەری پسوڵە', switchToInvoiceOrganizer: 'بگۆڕە بۆ ڕێکخەری پسوڵە', switchToCashier: 'بگۆڕە بۆ کاشێر', logo: 'لۆگۆ', workspaceLogo: 'لۆگۆی شوێنی کار', workspaceName: 'ناوی شوێنی کار', email: 'ئیمەیڵ', madeBy: 'دروستکراوە لەلایەن AtlasERP', page: 'لاپەڕە', pageOf: 'لە', printDate: 'بەرواری چاپ', enableKgTotal: 'کۆی کێش نیشان بدە (کگ/تۆن)', disableKgTotal: 'کۆی کێش بشارەوە',
         statuses: { draft: 'ڕەشنووس', pending: 'چاوەڕوان', completed: 'تەواوبوو', cancelled: 'هەڵوەشاوە', ordered: 'داواکراو', received: 'وەرگیراو' },
         paymentMethods: { cash: 'کاش', fib: 'FIB', qicard: 'کیو کارد', zaincash: 'زین کاش', fastpay: 'فاست پەی', bank_transfer: 'گواستنەوەی بانکی', loan: 'قەرز', installments: 'قسط' }
+    }
+} as const
+
+const ATLAS_STANDARD_RETURN_LABELS = {
+    en: {
+        invoice: 'Return Document',
+        returnInvoice: 'Return Invoice',
+        returnStatus: 'Return Status',
+        partialReturn: 'Partial Return',
+        fullReturn: 'Fully Returned',
+        originalOrderNumber: 'Original Order No.',
+        returnDate: 'Return date',
+        returnTime: 'Return time',
+        returnedQuantity: 'Returned Qty',
+        returnedFreeQuantity: 'Returned Bonus Qty',
+        refundPerUnit: 'Refund / Unit',
+        refundedAmount: 'Refund Amount',
+        returnedItemsTable: 'Returned items table',
+        returnSummary: 'Return summary',
+        totalRefunded: 'Total Refunded',
+        refundAmountInWords: 'Refund amount in words'
+    },
+    ar: {
+        invoice: 'مستند المرتجع',
+        returnInvoice: 'فاتورة مرتجع',
+        returnStatus: 'حالة المرتجع',
+        partialReturn: 'مرتجع جزئي',
+        fullReturn: 'مرتجع كامل',
+        originalOrderNumber: 'رقم الطلب الأصلي',
+        returnDate: 'تاريخ المرتجع',
+        returnTime: 'وقت المرتجع',
+        returnedQuantity: 'الكمية المرتجعة',
+        returnedFreeQuantity: 'الكمية المجانية المرتجعة',
+        refundPerUnit: 'المبلغ المسترد / الوحدة',
+        refundedAmount: 'المبلغ المسترد',
+        returnedItemsTable: 'جدول الأصناف المرتجعة',
+        returnSummary: 'ملخص المرتجع',
+        totalRefunded: 'إجمالي المبلغ المسترد',
+        refundAmountInWords: 'المبلغ المسترد كتابة'
+    },
+    ku: {
+        invoice: 'بەڵگەی گەڕاندنەوە',
+        returnInvoice: 'پسوڵەی گەڕاندنەوە',
+        returnStatus: 'دۆخی گەڕاندنەوە',
+        partialReturn: 'گەڕاندنەوەی بەشێکی',
+        fullReturn: 'گەڕاندنەوەی تەواو',
+        originalOrderNumber: 'ژمارەی داواکاری سەرەکی',
+        returnDate: 'بەرواری گەڕاندنەوە',
+        returnTime: 'کاتی گەڕاندنەوە',
+        returnedQuantity: 'بڕی گەڕێندراوە',
+        returnedFreeQuantity: 'بڕی بەخۆڕایی گەڕێندراوە',
+        refundPerUnit: 'بڕی گەڕاندنەوە / یەکە',
+        refundedAmount: 'بڕی گەڕێندراوە',
+        returnedItemsTable: 'خشتەی کاڵاکانی گەڕێندراوە',
+        returnSummary: 'پوختەی گەڕاندنەوە',
+        totalRefunded: 'کۆی بڕی گەڕێندراوە',
+        refundAmountInWords: 'بڕی گەڕێندراوە بە نووسین'
     }
 } as const
 
@@ -1027,19 +1087,25 @@ export function AtlasStandardOrderInvoiceTemplate({
     fieldDisplayModes = {},
     onFieldDisplayModeChange,
     productImageUrls,
-    background
+    background,
+    returnPrintData
 }: AtlasStandardOrderInvoiceTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
-    const labels = ATLAS_STANDARD_LABELS[resolveAtlasStandardLocale(printLang)]
+    const locale = resolveAtlasStandardLocale(printLang)
+    const labels = ATLAS_STANDARD_LABELS[locale]
+    const returnLabels = ATLAS_STANDARD_RETURN_LABELS[locale]
     const isSales = kind === 'sales'
+    const isReturnPrint = isSales && Boolean(returnPrintData)
     const salesOrder = isSales ? order as SalesOrder : null
     const purchaseOrder = !isSales ? order as PurchaseOrder : null
     const counterpartyLabel = isSales
         ? labels.customer
         : labels.supplier
     const counterpartyName = isSales ? salesOrder?.customerName : purchaseOrder?.supplierName
-    const issuedAt = formatPrintDateTime(order.createdAt, printLang)
+    const issuedAt = formatPrintDateTime(isReturnPrint && returnPrintData?.returnedAt
+        ? returnPrintData.returnedAt
+        : order.createdAt, printLang)
     const logoSrc = resolveLogoSrc(logoUrl)
     const backgroundSrc = resolveLogoSrc(background?.path)
     const workspaceNameValue = workspaceName?.trim() || 'Atlas'
@@ -1053,6 +1119,7 @@ export function AtlasStandardOrderInvoiceTemplate({
     const productImageColumnWidth = getProductImageColumnWidth(fieldDisplayModes[tableSettingKeys.productImageWidth])
     const productImageSizeMm = getProductImageSizeMm(productImageColumnWidth)
     const tableItemRowMm = Math.max(TABLE_ITEM_ROW_MIN_MM, productImageSizeMm + 1)
+    const returnLineByOrderItemId = new Map(returnPrintData?.lines.map((line) => [line.orderItemId, line]) || [])
     const currency = order.currency
     const balanceCurrency = businessPartner?.defaultCurrency || currency
     const noteValue = order.notes?.trim() || '-'
@@ -1067,12 +1134,17 @@ export function AtlasStandardOrderInvoiceTemplate({
     const salesperson = printedBy?.trim() || '-'
     const partnerAddress = businessPartner?.address?.trim() || '-'
     const partnerPhone = businessPartner?.phone?.trim() || '-'
-    const statusLabel = labels.statuses[order.status as keyof typeof labels.statuses] || order.status
+    const statusLabel = isReturnPrint
+        ? returnPrintData?.status === 'full' ? returnLabels.fullReturn : returnLabels.partialReturn
+        : labels.statuses[order.status as keyof typeof labels.statuses] || order.status
     const paymentMethod = order.paymentMethod
         ? labels.paymentMethods[order.paymentMethod as keyof typeof labels.paymentMethods] || order.paymentMethod
         : '-'
-    const amountInWords = numberToWords(order.total, printLang)
-    const items = order.items || []
+    const printTotal = isReturnPrint ? returnPrintData?.totalRefundAmount || 0 : order.total
+    const amountInWords = numberToWords(printTotal, printLang)
+    const items = isReturnPrint
+        ? order.items.filter((item) => returnLineByOrderItemId.has(item.id))
+        : order.items || []
     const maxItemRowsPerTable = Math.max(1, Math.floor(TABLE_DATA_AREA_MM / tableItemRowMm))
     const itemChunks: typeof items[] = []
     if (items.length === 0) {
@@ -1082,13 +1154,19 @@ export function AtlasStandardOrderInvoiceTemplate({
             itemChunks.push(items.slice(index, index + maxItemRowsPerTable))
         }
     }
-    const paidQuantityTotal = items.reduce((sum, item) => sum + (isSales
+    const paidQuantityTotal = items.reduce((sum, item) => sum + (isReturnPrint
+        ? returnLineByOrderItemId.get(item.id)?.returnedQuantity || 0
+        : isSales
         ? getOrderPrintReturnState(item).remainingQuantity
         : getOrderLinePaidQuantity(item)), 0)
-    const freeQuantityTotal = items.reduce((sum, item) => sum + getOrderLineFreeBonusQuantity(item), 0)
+    const freeQuantityTotal = isReturnPrint
+        ? 0
+        : items.reduce((sum, item) => sum + getOrderLineFreeBonusQuantity(item), 0)
     const paidQuantityUnits = Array.from(new Set(
         items
-            .filter((item) => getOrderLinePaidQuantity(item) > 0)
+            .filter((item) => isReturnPrint
+                ? (returnLineByOrderItemId.get(item.id)?.returnedQuantity || 0) > 0
+                : getOrderLinePaidQuantity(item) > 0)
             .map((item) => normalizeUnitCode(item.unit))
             .filter((unit): unit is string => Boolean(unit))
     ))
@@ -1142,10 +1220,10 @@ export function AtlasStandardOrderInvoiceTemplate({
         },
         { key: tableKeys.expiry, label: labels.expiry, width: '8%' },
         { key: tableKeys.batchNumber, label: labels.batchNumber, width: '9%' },
-        { key: tableKeys.quantity, label: labels.quantity, width: '8%' },
-        { key: tableKeys.freeQuantity, label: labels.freeQuantity, width: '8%' },
-        { key: tableKeys.price, label: labels.price, width: '10%' },
-        { key: tableKeys.total, label: labels.total, width: '10%' },
+        { key: tableKeys.quantity, label: isReturnPrint ? returnLabels.returnedQuantity : labels.quantity, width: '8%' },
+        { key: tableKeys.freeQuantity, label: isReturnPrint ? returnLabels.returnedFreeQuantity : labels.freeQuantity, width: '8%' },
+        { key: tableKeys.price, label: isReturnPrint ? returnLabels.refundPerUnit : labels.price, width: '10%' },
+        { key: tableKeys.total, label: isReturnPrint ? returnLabels.refundedAmount : labels.total, width: '10%' },
         { key: tableKeys.note, label: labels.note, width: `${17 - productImageWidthDifference * 0.3}%` }
     ]
     const visibleTableColumns = resolveVisibleTableColumns(tableColumns, fieldLabelOverrides, hiddenFields)
@@ -1178,6 +1256,7 @@ export function AtlasStandardOrderInvoiceTemplate({
                     {tableItems.map((item, index) => {
                         const batch = getBatchDetails(item, kind)
                         const paidQuantity = getOrderLinePaidQuantity(item)
+                        const returnLine = returnLineByOrderItemId.get(item.id)
                         const unit = normalizeUnitCode(item.unit)
                         const freeBonusUnit = normalizeUnitCode(item.freeBonusUnit || item.unit)
                         const returnState = isSales ? getOrderPrintReturnState(item) : null
@@ -1199,7 +1278,9 @@ export function AtlasStandardOrderInvoiceTemplate({
                             [tableKeys.product]: item.productName || '\u00a0',
                             [tableKeys.expiry]: batch.expiry || '\u00a0',
                             [tableKeys.batchNumber]: batch.batchNumber || '\u00a0',
-                            [tableKeys.quantity]: returnState
+                            [tableKeys.quantity]: isReturnPrint
+                                ? `${returnLine?.returnedQuantity || 0}${unit ? ` ${t(`products.units.${unit}`, { defaultValue: unit })}` : ''}`
+                                : returnState
                                 ? <OrderPrintReturnValue
                                     state={returnState}
                                     original={originalQuantity}
@@ -1208,13 +1289,19 @@ export function AtlasStandardOrderInvoiceTemplate({
                                     className="items-center"
                                 />
                                 : originalQuantity,
-                            [tableKeys.freeQuantity]: getOrderLineFreeBonusQuantity(item)
+                            [tableKeys.freeQuantity]: isReturnPrint
+                                ? '\u00a0'
+                                : getOrderLineFreeBonusQuantity(item)
                                 ? freeBonusUnit
                                     ? `${getOrderLineFreeBonusQuantity(item)} ${t(`products.units.${freeBonusUnit}`, { defaultValue: freeBonusUnit })}`
                                     : getOrderLineFreeBonusQuantity(item)
                                 : '\u00a0',
-                            [tableKeys.price]: formatCurrency(item.convertedUnitPrice, currency, iqdPreference),
-                            [tableKeys.total]: returnState
+                            [tableKeys.price]: formatCurrency(isReturnPrint
+                                ? returnLine?.unitRefundAmount || 0
+                                : item.convertedUnitPrice, currency, iqdPreference),
+                            [tableKeys.total]: isReturnPrint
+                                ? formatCurrency(returnLine?.refundAmount || 0, currency, iqdPreference)
+                                : returnState
                                 ? <OrderPrintReturnValue
                                     state={returnState}
                                     original={formatCurrency(returnState.originalLineTotal, currency, iqdPreference)}
@@ -1230,9 +1317,9 @@ export function AtlasStandardOrderInvoiceTemplate({
                                 key={item.id}
                                 style={{
                                     height: `${tableItemRowMm}mm`,
-                                    ...getA4OrderPrintReturnRowStyle(returnState?.status || 'active')
+                                    ...(!isReturnPrint ? getA4OrderPrintReturnRowStyle(returnState?.status || 'active') : {})
                                 }}
-                                data-order-print-return-state={returnState?.status}
+                                data-order-print-return-state={isReturnPrint ? 'returned' : returnState?.status}
                             >
                                 {visibleTableColumns.map((column) => (
                                     <td
@@ -1275,7 +1362,7 @@ export function AtlasStandardOrderInvoiceTemplate({
                                             ? freeQuantityTotal + (freeQuantityUnit ? ` ${t(`products.units.${freeQuantityUnit}`, { defaultValue: freeQuantityUnit })}` : '')
                                             : '\u00a0'
                                         : column.key === tableKeys.total
-                                            ? formatCurrency(order.total, currency, iqdPreference)
+                                            ? formatCurrency(printTotal, currency, iqdPreference)
                                             : '\u00a0'
                             return (
                                 <td key={column.key} className="border px-[1.2mm] py-[1mm] text-center align-middle leading-[1.15] whitespace-nowrap" style={{ borderColor: INK }}>
@@ -1299,10 +1386,10 @@ export function AtlasStandardOrderInvoiceTemplate({
         },
         {
             key: detailsKeys.invoice,
-            label: labels.invoice,
-            value: isSales ? labels.salesOrder : labels.purchaseOrder,
+            label: isReturnPrint ? returnLabels.invoice : labels.invoice,
+            value: isReturnPrint ? returnLabels.returnInvoice : isSales ? labels.salesOrder : labels.purchaseOrder,
             className: 'border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{isSales ? labels.salesOrder : labels.purchaseOrder}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{isReturnPrint ? returnLabels.returnInvoice : isSales ? labels.salesOrder : labels.purchaseOrder}</div>
         },
         {
             key: detailsKeys.number,
@@ -1336,35 +1423,59 @@ export function AtlasStandardOrderInvoiceTemplate({
         },
         {
             key: detailsKeys.status,
-            label: labels.status,
+            label: isReturnPrint ? returnLabels.returnStatus : labels.status,
             value: statusLabel,
             className: 'border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{statusLabel}</div>
         },
         {
             key: detailsKeys.documentNumber,
-            label: labels.documentNumber,
+            label: isReturnPrint ? returnLabels.originalOrderNumber : labels.documentNumber,
             value: order.orderNumber,
             className: 'col-span-2 border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{order.orderNumber}</div>
         },
         {
             key: detailsKeys.invoiceDate,
-            label: labels.invoiceDate,
+            label: isReturnPrint ? returnLabels.returnDate : labels.invoiceDate,
             value: issuedAt.date,
             className: 'border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{issuedAt.date}</div>
         },
         {
             key: detailsKeys.time,
-            label: labels.time,
+            label: isReturnPrint ? returnLabels.returnTime : labels.time,
             value: issuedAt.time,
             className: 'border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{issuedAt.time}</div>
         }
     ]
 
-    const financialFields: HideablePrintField[] = [
+    const financialFields: HideablePrintField[] = isReturnPrint ? [
+        {
+            key: financialKeys.paidAmount,
+            label: returnLabels.totalRefunded,
+            value: formatCurrency(printTotal, currency, iqdPreference),
+            className: 'col-span-4 border-l border-t border-[#1f2937]',
+            dialogClassName: 'col-span-2',
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{formatCurrency(printTotal, currency, iqdPreference)}</div>
+        },
+        {
+            key: financialKeys.amountInWords,
+            label: returnLabels.refundAmountInWords,
+            value: amountInWords,
+            className: 'col-span-4 border-l border-t border-[#1f2937]',
+            dialogClassName: 'col-span-2',
+            render: () => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate">{amountInWords}</div>
+        },
+        {
+            key: financialKeys.printedBy,
+            label: labels.printedBy,
+            value: salesperson,
+            className: 'col-span-2 border-l border-t border-[#1f2937]',
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{salesperson}</div>
+        }
+    ] : [
         {
             key: financialKeys.paidAmount,
             label: labels.paidAmount,
@@ -1536,7 +1647,7 @@ export function AtlasStandardOrderInvoiceTemplate({
             />
 
             <HideableTable
-                title={labels.orderItemsTable}
+                title={isReturnPrint ? returnLabels.returnedItemsTable : labels.orderItemsTable}
                 dialogDescription={labels.selectColumns}
                 emptyLabel={labels.noColumns}
                 columns={tableColumns}
@@ -1557,7 +1668,7 @@ export function AtlasStandardOrderInvoiceTemplate({
             </HideableTable>
 
             <HideableSection
-                title={labels.financialSummary}
+                title={isReturnPrint ? returnLabels.returnSummary : labels.financialSummary}
                 dialogDescription={labels.selectValues}
                 fields={financialFields}
                 fieldOrder={fieldOrders[fieldOrderKeys.financialSummary]}

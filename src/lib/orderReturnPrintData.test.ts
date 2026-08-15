@@ -1,0 +1,56 @@
+import { describe, expect, it } from 'vitest'
+
+import { createSalesOrderReturnPrintData } from './orderReturnPrintData'
+
+describe('sales order return print data', () => {
+    it('includes only posted return items and their recorded refund amounts', () => {
+        const order = {
+            id: 'order-1',
+            returnStatus: 'partial',
+            items: [
+                { id: 'line-returned', quantity: 3, lineTotal: 75, convertedUnitPrice: 25 },
+                { id: 'line-not-returned', quantity: 2, lineTotal: 40, convertedUnitPrice: 20 }
+            ]
+        } as any
+        const printData = createSalesOrderReturnPrintData(order, [
+            { id: 'posted-return', status: 'posted', returnedAt: '2026-08-15T10:00:00.000Z', isDeleted: false },
+            { id: 'voided-return', status: 'voided', returnedAt: '2026-08-15T11:00:00.000Z', isDeleted: false }
+        ] as any, [
+            { returnId: 'posted-return', orderItemId: 'line-returned', quantity: 1, refundAmount: 20, isDeleted: false },
+            { returnId: 'voided-return', orderItemId: 'line-not-returned', quantity: 2, refundAmount: 40, isDeleted: false },
+            { returnId: 'posted-return', orderItemId: 'missing-line', quantity: 1, refundAmount: 99, isDeleted: false }
+        ] as any)
+
+        expect(printData).toEqual({
+            status: 'partial',
+            returnedAt: '2026-08-15T10:00:00.000Z',
+            totalRefundAmount: 20,
+            lines: [{
+                orderItemId: 'line-returned',
+                returnedQuantity: 1,
+                refundAmount: 20,
+                unitRefundAmount: 20
+            }]
+        })
+    })
+
+    it('marks a document fully returned when every inventory line has been returned', () => {
+        const order = {
+            id: 'order-2',
+            returnStatus: 'partial',
+            items: [
+                { id: 'line-1', quantity: 1, lineTotal: 25, convertedUnitPrice: 25 },
+                { id: 'line-2', quantity: 2, lineTotal: 40, convertedUnitPrice: 20 }
+            ]
+        } as any
+        const printData = createSalesOrderReturnPrintData(order, [
+            { id: 'posted-return', status: 'posted', returnedAt: '2026-08-15T10:00:00.000Z', isDeleted: false }
+        ] as any, [
+            { returnId: 'posted-return', orderItemId: 'line-1', quantity: 1, refundAmount: 25, isDeleted: false },
+            { returnId: 'posted-return', orderItemId: 'line-2', quantity: 2, refundAmount: 40, isDeleted: false }
+        ] as any)
+
+        expect(printData?.status).toBe('full')
+        expect(printData?.totalRefundAmount).toBe(65)
+    })
+})

@@ -72,6 +72,7 @@ interface PrintPreviewModalProps {
     printSelectionOptions?: PrintSelectionNativeOption[]
     printSelectionTemplates?: PrintSelectionTemplateOption[]
     onPrintSelection?: (format: PrintFormat, template?: StoredCustomTemplateRow, nativeTemplateKey?: string) => void
+    onCreateReturnTemplate?: () => void
     onPreviewPrint?: (blob: Blob) => Promise<void>
     previewPrintActionLabel?: string
 }
@@ -114,6 +115,7 @@ export function PrintPreviewModal({
     printSelectionOptions,
     printSelectionTemplates,
     onPrintSelection,
+    onCreateReturnTemplate,
     onPreviewPrint,
     previewPrintActionLabel
 }: PrintPreviewModalProps) {
@@ -590,6 +592,7 @@ export function PrintPreviewModal({
                 onSelect={handlePrintSelection}
                 nativeOptions={resolvedPrintSelectionOptions}
                 templateOptions={printSelectionTemplates}
+                onCreateReturnTemplate={onCreateReturnTemplate}
             />
             <SmallDialog
                 open={isOpen && selectedPrintFormat !== null}

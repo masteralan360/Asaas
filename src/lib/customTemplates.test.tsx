@@ -985,6 +985,86 @@ describe('Atlas Standard order invoice custom print template', () => {
     })
 })
 
+describe('Atlas Standard return custom print template', () => {
+    it('uses a separate return target, native labels, and returned lines only', () => {
+        const standardTarget = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
+        const returnTarget = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY)
+        expect(standardTarget).toBeDefined()
+        expect(returnTarget).toMatchObject({
+            moduleTypeKey: customTemplates.ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
+            typeLabel: 'Atlas Standard Return',
+            printFormat: 'a4',
+            nativeTemplateAvailable: true
+        })
+
+        const baseOrder = customTemplates
+            .createCustomTemplatePreview(standardTarget!, { printLang: 'en' })
+            .createElement({})
+            .props.order
+        const order = {
+            ...baseOrder,
+            items: [
+                { ...baseOrder.items[0], id: 'returned-line', productName: 'Returned Product', quantity: 3, lineTotal: 75, convertedUnitPrice: 25 },
+                { ...baseOrder.items[0], id: 'unreturned-line', productName: 'Unreturned Product', quantity: 2, lineTotal: 80, convertedUnitPrice: 40 }
+            ]
+        }
+        const html = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(returnTarget!, {
+            printLang: 'en',
+            order,
+            orderKind: 'sales',
+            orderReturnPrintData: {
+                status: 'partial',
+                returnedAt: '2026-08-15T10:00:00.000Z',
+                totalRefundAmount: 20,
+                lines: [{ orderItemId: 'returned-line', returnedQuantity: 1, refundAmount: 20, unitRefundAmount: 20 }]
+            }
+        }).createElement({}))
+
+        expect(html).toContain('Return Invoice')
+        expect(html).toContain('Returned Qty')
+        expect(html).toContain('Refund Amount')
+        expect(html).toContain('Returned Product')
+        expect(html).not.toContain('Unreturned Product')
+        expect(html).toContain('$20')
+        expect(html).not.toContain('data-order-print-return-value=')
+    })
+
+    it('copies Atlas Standard layout elements but resets sale field labels and values', () => {
+        const cloned = customTemplates.cloneAtlasStandardOrderLayoutForReturn({
+            id: 'order-template',
+            module_type_key: customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY,
+            layout_json: {
+                version: 1,
+                moduleTypeKey: customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY,
+                page: { widthMm: 210, heightMm: 297 },
+                fields: { customTitle: 'Sales invoice' },
+                hiddenFields: { 'atlasStandard.table.note': true },
+                fieldOrders: { 'atlasStandard.invoiceDetails': ['atlasStandard.invoiceDetails.partner'] },
+                fieldLabelOverrides: { 'atlasStandard.table.quantity': 'Sold Qty' },
+                fieldDisplayModes: {
+                    'atlasStandard.table.productImage.width': '12',
+                    'atlasStandard.invoiceDetails.salesPerson': 'invoiceOrganizer'
+                },
+                annotations: [],
+                texts: [{ id: 'text-1', text: 'Thank you', x: 1, y: 2, width: 20, rotation: 0 }],
+                images: [],
+                shapes: [],
+                updatedAt: '2026-08-15T10:00:00.000Z'
+            }
+        })
+
+        expect(cloned).toMatchObject({
+            moduleTypeKey: customTemplates.ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
+            nativeTemplateKey: customTemplates.ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
+            fields: {},
+            fieldLabelOverrides: {},
+            fieldDisplayModes: { 'atlasStandard.table.productImage.width': '12' },
+            hiddenFields: { 'atlasStandard.table.note': true },
+            texts: [{ text: 'Thank you' }]
+        })
+    })
+})
+
 describe('Order Receipt custom print template', () => {
     it('registers the thermal Orders - Receipt Print target', () => {
         const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_RECEIPT_TEMPLATE_KEY)

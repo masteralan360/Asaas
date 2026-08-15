@@ -62,6 +62,10 @@ import {
     AtlasStandardOrderInvoiceTemplate,
     ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS
 } from '@/ui/components/orders/AtlasStandardOrderInvoiceTemplate'
+import {
+    createSampleSalesOrderReturnPrintData,
+    type SalesOrderReturnPrintData
+} from '@/lib/orderReturnPrintData'
 import type { ProductPrintImageUrls } from '@/ui/components/print/ProductPrintImage'
 import { ModernA4InvoiceTemplate, MODERN_A4_MOVABLE_COMPONENT_KEYS } from '@/ui/components/ModernA4InvoiceTemplate'
 import {
@@ -80,6 +84,7 @@ export const SALES_HISTORY_A4_TEMPLATE_KEYS = [
 export const PARTNER_DETAILS_TEMPLATE_KEY = 'businessPartners.Details'
 export const PARTNER_ORDER_ITEMS_TEMPLATE_KEY = 'businessPartners.OrderItems'
 export const ORDER_ATLAS_STANDARD_TEMPLATE_KEY = 'orders.AtlasStandard'
+export const ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY = 'orders.AtlasStandardReturn'
 export const ORDER_DETAILS_TEMPLATE_KEY = 'orders.Details'
 export const ORDER_RECEIPT_TEMPLATE_KEY = 'orders.Receipt'
 export const PARTNER_DETAILS_TEMPLATE_FIELD_KEYS = {
@@ -233,6 +238,17 @@ export const CUSTOM_TEMPLATE_TARGETS: CustomTemplateTarget[] = [
         page: { widthMm: 210, heightMm: 297 }
     },
     {
+        moduleTypeKey: ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
+        workspaceModuleKey: 'crm',
+        moduleLabel: 'Orders',
+        typeLabel: 'Atlas Standard Return',
+        description: 'Atlas Standard partial and fully returned sales-order A4 print layout.',
+        nativeTemplateKey: ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
+        nativeTemplateAvailable: true,
+        printFormat: 'a4',
+        page: { widthMm: 210, heightMm: 297 }
+    },
+    {
         moduleTypeKey: ORDER_DETAILS_TEMPLATE_KEY,
         workspaceModuleKey: 'crm',
         moduleLabel: 'Orders',
@@ -268,7 +284,9 @@ export function getCustomTemplateTarget(moduleTypeKey: string) {
 export function getCustomTemplateDisplayName(moduleTypeKey: string) {
     const target = getCustomTemplateTarget(moduleTypeKey)
     if (target) {
-        if (moduleTypeKey === ORDER_ATLAS_STANDARD_TEMPLATE_KEY || moduleTypeKey === ORDER_DETAILS_TEMPLATE_KEY) {
+        if (moduleTypeKey === ORDER_ATLAS_STANDARD_TEMPLATE_KEY
+            || moduleTypeKey === ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY
+            || moduleTypeKey === ORDER_DETAILS_TEMPLATE_KEY) {
             return target.typeLabel
         }
         return `${target.moduleLabel} - ${target.typeLabel}`
@@ -391,6 +409,48 @@ export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): 
     }
 }
 
+/**
+ * Starts a Sales Return template from an Atlas Standard order layout without
+ * carrying sale-specific labels or field values into the new document type.
+ */
+export function cloneAtlasStandardOrderLayoutForReturn(
+    source: StoredCustomTemplateRow
+): CustomTemplateLayout | null {
+    if (source.module_type_key !== ORDER_ATLAS_STANDARD_TEMPLATE_KEY) return null
+
+    const layout = readCustomTemplateLayout(source)
+    if (!layout) return null
+
+    const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+    const copiedTableSettings = Object.fromEntries(
+        Object.entries(layout.fieldDisplayModes || {}).filter(([key]) =>
+            key.startsWith('atlasStandard.table.')
+        )
+    )
+
+    return {
+        version: layout.version,
+        label: getCustomTemplateDisplayName(ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY),
+        moduleTypeKey: ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
+        nativeTemplateKey: ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
+        printLanguage: layout.printLanguage,
+        page: { ...layout.page },
+        // Return documents start with native labels and field values.
+        fields: {},
+        hiddenFields: clone(layout.hiddenFields || {}),
+        fieldOrders: clone(layout.fieldOrders || {}),
+        fieldLabelOverrides: {},
+        fieldDisplayModes: copiedTableSettings,
+        background: layout.background ? clone(layout.background) : undefined,
+        componentPositions: clone(layout.componentPositions || {}),
+        annotations: clone(layout.annotations || []),
+        texts: clone(layout.texts || []),
+        images: clone(layout.images || []),
+        shapes: clone(layout.shapes || []),
+        updatedAt: new Date().toISOString()
+    }
+}
+
 export function getStoredCustomTemplatePrintLanguage(
     row?: StoredCustomTemplateRow | null
 ): CustomTemplatePrintLanguage | null {
@@ -456,6 +516,7 @@ export type CustomTemplatePreviewOptions = {
     partnerOrderItemsData?: PartnerOrderItemsPrintData
     order?: SalesOrder | PurchaseOrder
     orderKind?: 'sales' | 'purchase'
+    orderReturnPrintData?: SalesOrderReturnPrintData | null
     orderInstallments?: OrderInstallment[]
     businessPartner?: BusinessPartner | null
     productUnits?: Record<string, string | null | undefined>
@@ -1452,9 +1513,17 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
     }
 }
 
-function createAtlasStandardOrderInvoicePreview(options: CustomTemplatePreviewOptions): TemplatePreview {
-    const order = options.order || SAMPLE_ORDER_DATA
-    const kind = options.orderKind || 'sales'
+function createAtlasStandardOrderInvoicePreview(
+    options: CustomTemplatePreviewOptions,
+    printMode: 'order' | 'return' = 'order'
+): TemplatePreview {
+    const order = printMode === 'return' && options.orderKind !== 'sales'
+        ? SAMPLE_ORDER_DATA
+        : options.order || SAMPLE_ORDER_DATA
+    const kind = printMode === 'return' ? 'sales' : options.orderKind || 'sales'
+    const returnPrintData = printMode === 'return'
+        ? options.orderReturnPrintData || createSampleSalesOrderReturnPrintData(order as SalesOrder)
+        : undefined
     const configuredPrintLang = options.features?.print_lang
     const printLang = options.printLang
         || (configuredPrintLang && configuredPrintLang !== 'auto' ? configuredPrintLang : 'en')
@@ -1499,6 +1568,7 @@ function createAtlasStandardOrderInvoicePreview(options: CustomTemplatePreviewOp
                 fieldDisplayModes={renderOptions?.fieldDisplayModes}
                 onFieldDisplayModeChange={renderOptions?.onFieldDisplayModeChange}
                 background={renderOptions?.background}
+                returnPrintData={returnPrintData}
             />
         ),
         buildPdf: (element, printLangOverride) => generateTemplatePdf({
@@ -1596,6 +1666,10 @@ export function createCustomTemplatePreview(
 
     if (target.moduleTypeKey === ORDER_ATLAS_STANDARD_TEMPLATE_KEY) {
         return createAtlasStandardOrderInvoicePreview(options)
+    }
+
+    if (target.moduleTypeKey === ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY) {
+        return createAtlasStandardOrderInvoicePreview(options, 'return')
     }
 
     if (target.moduleTypeKey === ORDER_DETAILS_TEMPLATE_KEY) {

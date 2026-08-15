@@ -36,11 +36,14 @@ import {
 } from '@/ui/components'
 import {
     CUSTOM_TEMPLATE_TARGETS,
+    cloneAtlasStandardOrderLayoutForReturn,
     createCustomTemplatePreview,
     getCustomTemplatePrintLanguageWarning,
     getCustomTemplateDisplayName,
     getCustomTemplateTarget,
     getStoredCustomTemplatePrintLanguage,
+    ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
+    ORDER_ATLAS_STANDARD_TEMPLATE_KEY,
     resolveCustomTemplatePrintLanguage,
     stampCustomTemplatePrintLanguage
 } from '@/lib/customTemplates'
@@ -184,12 +187,13 @@ export function CustomTemplates() {
         isDemoMode,
         isHybridMode
     } = useWorkspace()
-    const [, setLocation] = useLocation()
+    const [location, setLocation] = useLocation()
     const [templates, setTemplates] = useState<CustomTemplateRow[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [isAddOpen, setIsAddOpen] = useState(false)
     const [selectedModuleTypeKey, setSelectedModuleTypeKey] = useState(CUSTOM_TEMPLATE_TARGETS[0]?.moduleTypeKey || '')
+    const [returnCloneSource, setReturnCloneSource] = useState<CustomTemplateRow | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<CustomTemplateRow | null>(null)
     const [isDeleting, setIsDeleting] = useState(false)
 
@@ -231,6 +235,12 @@ export function CustomTemplates() {
         () => availableTargets.find((target) => target.moduleTypeKey === selectedModuleTypeKey),
         [availableTargets, selectedModuleTypeKey]
     )
+    const atlasStandardOrderCloneSource = useMemo(() => templates
+        .filter((template) => template.module_type_key === ORDER_ATLAS_STANDARD_TEMPLATE_KEY && Boolean(readStoredLayout(template)))
+        .sort((left, right) => {
+            if (left.primary !== right.primary) return left.primary ? -1 : 1
+            return new Date(right.updated_at || 0).getTime() - new Date(left.updated_at || 0).getTime()
+        })[0] || null, [templates])
 
     useEffect(() => {
         if (availableTargets.length === 0) return
@@ -238,6 +248,17 @@ export function CustomTemplates() {
             setSelectedModuleTypeKey(availableTargets[0].moduleTypeKey)
         }
     }, [availableTargets, selectedModuleTypeKey])
+
+    useEffect(() => {
+        if (!location.includes('new=return')
+            || !availableTargets.some((target) => target.moduleTypeKey === ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY)) {
+            return
+        }
+
+        setSelectedModuleTypeKey(ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY)
+        setIsAddOpen(true)
+        setLocation('/custom-templates')
+    }, [availableTargets, location, setLocation])
 
     const loadCloudTemplates = useCallback(async () => {
         if (!workspaceId) {
@@ -396,9 +417,14 @@ export function CustomTemplates() {
         })
     }, [currentPrintLanguage, fetchTemplates, isDemoMode, isHybridMode, isLocalMode, loadCloudTemplates, t, templates, toast, user?.id, workspaceId])
 
-    const openPreview = useCallback((moduleTypeKey: string, template?: CustomTemplateRow) => {
+    const openPreview = useCallback((
+        moduleTypeKey: string,
+        template?: CustomTemplateRow,
+        initialTemplateLayout?: CustomTemplateLayout | null
+    ) => {
         const target = availableTargets.find((item) => item.moduleTypeKey === moduleTypeKey)
         if (!target || !workspaceId) return
+        const resolvedInitialLayout = initialTemplateLayout || readStoredLayout(template)
 
         setInvoicePreviewSource({
             title: t('customTemplates.previewTitle', {
@@ -420,16 +446,27 @@ export function CustomTemplates() {
                 moduleTypeKey,
                 nativeTemplateKey: target.nativeTemplateKey,
                 templateId: template?.id,
-                label: template?.label?.trim() || readStoredLayout(template)?.label || getCustomTemplateDisplayName(moduleTypeKey)
+                label: template?.label?.trim() || resolvedInitialLayout?.label || getCustomTemplateDisplayName(moduleTypeKey)
             },
             effectiveId: template?.id || `custom-template-${moduleTypeKey}`,
-            initialTemplateLayout: readStoredLayout(template),
+            initialTemplateLayout: resolvedInitialLayout,
             onSaveTemplateLayout: (layout, options) => saveTemplateLayout(layout, options, template?.id)
         })
 
         setIsAddOpen(false)
         setLocation('/pdf-preview')
     }, [availableTargets, features, i18n.language, saveTemplateLayout, setLocation, t, workspaceFooterContacts, workspaceId, workspaceName])
+
+    const openSelectedTemplatePreview = useCallback(() => {
+        if (!selectedTarget) return
+
+        if (selectedTarget.moduleTypeKey === ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY && atlasStandardOrderCloneSource) {
+            setReturnCloneSource(atlasStandardOrderCloneSource)
+            return
+        }
+
+        openPreview(selectedTarget.moduleTypeKey)
+    }, [atlasStandardOrderCloneSource, openPreview, selectedTarget])
 
     const updateTemplateStatus = useCallback(async (
         template: CustomTemplateRow,
@@ -864,11 +901,51 @@ export function CustomTemplates() {
 
                     <DialogFooter>
                         {selectedTarget && (
-                            <Button className="gap-2" onClick={() => openPreview(selectedTarget.moduleTypeKey)}>
+                            <Button className="gap-2" onClick={openSelectedTemplatePreview}>
                                 {t('customTemplates.openPreview', { defaultValue: 'Open Print Preview' })}
                                 <ArrowRight className="h-4 w-4" />
                             </Button>
                         )}
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={returnCloneSource !== null} onOpenChange={(open) => {
+                if (!open) setReturnCloneSource(null)
+            }}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>{t('customTemplates.returnClone.title', { defaultValue: 'Copy your Atlas Standard layout?' })}</DialogTitle>
+                        <DialogDescription>
+                            {t('customTemplates.returnClone.description', {
+                                defaultValue: 'Use your existing Orders - Atlas Standard design as the starting point for this independent return template.'
+                            })}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+                        <p>{t('customTemplates.returnClone.copied', {
+                            defaultValue: 'Copied: page setup, positions, static text, photos, shapes, background, and table layout.'
+                        })}</p>
+                        <p className="mt-2">{t('customTemplates.returnClone.reset', {
+                            defaultValue: 'Reset: document labels, column names, and dynamic field values for the return document.'
+                        })}</p>
+                    </div>
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button variant="outline" onClick={() => {
+                            setReturnCloneSource(null)
+                            openPreview(ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY)
+                        }}>
+                            {t('customTemplates.returnClone.defaults', { defaultValue: 'Start with Return defaults' })}
+                        </Button>
+                        <Button onClick={() => {
+                            const returnLayout = returnCloneSource
+                                ? cloneAtlasStandardOrderLayoutForReturn(returnCloneSource)
+                                : null
+                            setReturnCloneSource(null)
+                            openPreview(ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY, undefined, returnLayout)
+                        }}>
+                            {t('customTemplates.returnClone.copy', { defaultValue: 'Copy layout' })}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
