@@ -40,6 +40,13 @@ import type {
   AgentExcludedCategory,
   FleetVehicle,
   FleetVehicleAssignment,
+  DeliveryMerchantProfile,
+  DeliveryShipment,
+  DeliveryShipmentEvent,
+  DeliveryRun,
+  DeliveryRunItem,
+  DeliverySettlement,
+  DeliveryLedgerEntry,
   BusinessPartner,
   BusinessPartnerMergeCandidate,
   Employee,
@@ -447,6 +454,13 @@ export class AtlasDatabase extends Dexie {
   agent_excluded_categories!: EntityTable<AgentExcludedCategory, "id">;
   fleet_vehicles!: EntityTable<FleetVehicle, "id">;
   fleet_vehicle_assignments!: EntityTable<FleetVehicleAssignment, "id">;
+  delivery_merchant_profiles!: EntityTable<DeliveryMerchantProfile, "id">;
+  delivery_shipments!: EntityTable<DeliveryShipment, "id">;
+  delivery_shipment_events!: EntityTable<DeliveryShipmentEvent, "id">;
+  delivery_runs!: EntityTable<DeliveryRun, "id">;
+  delivery_run_items!: EntityTable<DeliveryRunItem, "id">;
+  delivery_settlements!: EntityTable<DeliverySettlement, "id">;
+  delivery_ledger_entries!: EntityTable<DeliveryLedgerEntry, "id">;
   business_partners!: EntityTable<BusinessPartner, "id">;
   business_partner_merge_candidates!: EntityTable<
     BusinessPartnerMergeCandidate,
@@ -3190,6 +3204,23 @@ export class AtlasDatabase extends Dexie {
         "id, sku, skuKey, name, categoryId, storageId, workspaceId, parentProductId, currency, syncStatus, updatedAt, isDeleted, canBeReturned, [workspaceId+name], [workspaceId+sku], [workspaceId+skuKey], [workspaceId+parentProductId], [workspaceId+categoryId], [workspaceId+currency], [workspaceId+updatedAt], [workspaceId+storageId]",
     });
 
+    this.version(95).stores({
+      delivery_merchant_profiles:
+        "id, workspaceId, businessPartnerId, isActive, updatedAt, isDeleted, syncStatus, [workspaceId+businessPartnerId], [workspaceId+isActive]",
+      delivery_shipments:
+        "id, workspaceId, trackingNumber, merchantProfileId, merchantBusinessPartnerId, assignedAgentId, assignedRunId, status, currency, updatedAt, isDeleted, syncStatus, [workspaceId+trackingNumber], [workspaceId+status], [workspaceId+merchantProfileId], [workspaceId+assignedAgentId], [workspaceId+assignedRunId]",
+      delivery_shipment_events:
+        "id, workspaceId, shipmentId, status, occurredAt, updatedAt, isDeleted, syncStatus, [workspaceId+shipmentId], [workspaceId+occurredAt]",
+      delivery_runs:
+        "id, workspaceId, runNumber, agentId, vehicleId, status, dispatchedAt, updatedAt, isDeleted, syncStatus, [workspaceId+runNumber], [workspaceId+agentId], [workspaceId+status]",
+      delivery_run_items:
+        "id, workspaceId, runId, shipmentId, assignedAt, updatedAt, isDeleted, syncStatus, [workspaceId+runId], [workspaceId+shipmentId], [runId+shipmentId]",
+      delivery_settlements:
+        "id, workspaceId, settlementNumber, type, agentId, merchantProfileId, businessPartnerId, currency, settledAt, updatedAt, isDeleted, syncStatus, [workspaceId+type], [workspaceId+agentId], [workspaceId+merchantProfileId]",
+      delivery_ledger_entries:
+        "id, workspaceId, kind, shipmentId, settlementId, agentId, merchantProfileId, businessPartnerId, currency, occurredAt, updatedAt, isDeleted, syncStatus, [workspaceId+shipmentId], [workspaceId+settlementId], [workspaceId+agentId], [workspaceId+merchantProfileId]",
+    });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }
@@ -3341,6 +3372,13 @@ export class AtlasDatabase extends Dexie {
       "agents",
       "fleet_vehicles",
       "fleet_vehicle_assignments",
+      "delivery_merchant_profiles",
+      "delivery_shipments",
+      "delivery_shipment_events",
+      "delivery_runs",
+      "delivery_run_items",
+      "delivery_settlements",
+      "delivery_ledger_entries",
       "business_partners",
       "business_partner_merge_candidates",
       "employees",
@@ -3543,6 +3581,13 @@ export async function clearDatabase(): Promise<void> {
       db.manual_entries,
       db.fleet_vehicles,
       db.fleet_vehicle_assignments,
+      db.delivery_merchant_profiles,
+      db.delivery_shipments,
+      db.delivery_shipment_events,
+      db.delivery_runs,
+      db.delivery_run_items,
+      db.delivery_settlements,
+      db.delivery_ledger_entries,
       db.payment_transactions,
       db.order_installments,
       db.order_returns,
@@ -3586,6 +3631,13 @@ export async function clearDatabase(): Promise<void> {
       await db.manual_entries.clear();
       await db.fleet_vehicles.clear();
       await db.fleet_vehicle_assignments.clear();
+      await db.delivery_merchant_profiles.clear();
+      await db.delivery_shipments.clear();
+      await db.delivery_shipment_events.clear();
+      await db.delivery_runs.clear();
+      await db.delivery_run_items.clear();
+      await db.delivery_settlements.clear();
+      await db.delivery_ledger_entries.clear();
       await db.payment_transactions.clear();
       await db.order_installments.clear();
       await db.order_returns.clear();

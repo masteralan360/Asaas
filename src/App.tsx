@@ -237,6 +237,9 @@ const OnlineCustomerDetails = lazy(() =>
 const Agents = lazy(() =>
   import("@/ui/pages/Agents").then((m) => ({ default: m.Agents })),
 );
+const PostService = lazy(() =>
+  import("@/ui/pages/PostService").then((m) => ({ default: m.PostService })),
+);
 const AgentDetails = lazy(() =>
   import("@/ui/pages/AgentDetails").then((m) => ({ default: m.AgentDetails })),
 );
@@ -1534,6 +1537,17 @@ function App() {
                         >
                           <Layout>
                             <Agents />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/post-service">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="post_service"
+                          requiredPermission="postService.access"
+                        >
+                          <Layout>
+                            <PostService />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

@@ -400,7 +400,7 @@ export type BusinessPartnerRole =
   | "agent"
   | "online_customer"
   | RealEstateBusinessPartnerRole;
-export type AgentType = "driver" | "field_agent";
+export type AgentType = "driver" | "field_agent" | "courier";
 export type AgentStatus = "active" | "inactive" | "blocked";
 
 export const REAL_ESTATE_BUSINESS_PARTNER_ROLES: readonly RealEstateBusinessPartnerRole[] = [
@@ -497,6 +497,139 @@ export interface FleetLocationPoint {
   recordedAt: string;
   receivedAt?: string;
   isSharing: boolean;
+}
+
+/**
+ * Delivery profiles extend an existing business partner.  They deliberately do
+ * not create a second merchant/customer directory: a merchant is still one
+ * of the workspace's commercial partners.
+ */
+export interface DeliveryMerchantProfile extends BaseEntity {
+  businessPartnerId: string;
+  defaultFeeAmount: number;
+  defaultFeePayer: DeliveryFeePayer;
+  defaultPickupAddress?: string | null;
+  payoutSchedule: DeliveryPayoutSchedule;
+  isActive: boolean;
+}
+
+export type DeliveryFeePayer = "merchant" | "recipient";
+export type DeliveryPayoutSchedule = "daily" | "weekly" | "on_request";
+export type DeliveryShipmentStatus =
+  | "received"
+  | "ready_for_dispatch"
+  | "assigned"
+  | "delivered"
+  | "postponed"
+  | "returned"
+  | "cancelled";
+export type DeliveryRunStatus = "open" | "closed" | "cancelled";
+export type DeliverySettlementType = "courier_remittance" | "merchant_payout";
+
+export interface DeliveryShipment extends BaseEntity {
+  trackingNumber: string;
+  merchantProfileId: string;
+  merchantBusinessPartnerId: string;
+  recipientName: string;
+  recipientPhone: string;
+  recipientAlternatePhone?: string | null;
+  recipientAddress: string;
+  recipientCity?: string | null;
+  recipientLatitude?: number | null;
+  recipientLongitude?: number | null;
+  description?: string | null;
+  currency: CurrencyCode;
+  codAmount: number;
+  deliveryFee: number;
+  feePayer: DeliveryFeePayer;
+  status: DeliveryShipmentStatus;
+  assignedAgentId?: string | null;
+  assignedRunId?: string | null;
+  deliveredAt?: string | null;
+  postponedAt?: string | null;
+  returnedAt?: string | null;
+  statusNote?: string | null;
+  sourceSalesOrderId?: string | null;
+  createdBy?: string | null;
+}
+
+/** Immutable log of every operational change to a shipment. */
+export interface DeliveryShipmentEvent extends BaseEntity {
+  shipmentId: string;
+  previousStatus?: DeliveryShipmentStatus | null;
+  status: DeliveryShipmentStatus;
+  note?: string | null;
+  actorUserId?: string | null;
+  actorAgentId?: string | null;
+  occurredAt: string;
+}
+
+export interface DeliveryRun extends BaseEntity {
+  runNumber: string;
+  agentId: string;
+  vehicleId?: string | null;
+  status: DeliveryRunStatus;
+  dispatchedAt: string;
+  closedAt?: string | null;
+  notes?: string | null;
+  createdBy?: string | null;
+}
+
+/** Retains manifest history even when a shipment is later sent with another courier. */
+export interface DeliveryRunItem extends BaseEntity {
+  runId: string;
+  shipmentId: string;
+  assignedAt: string;
+  returnedAt?: string | null;
+}
+
+/**
+ * The header represents real cash movement. The associated custody and
+ * merchant ledger entries remain the source for the two derived balances.
+ */
+export interface DeliverySettlement extends BaseEntity {
+  settlementNumber: string;
+  type: DeliverySettlementType;
+  agentId?: string | null;
+  merchantProfileId?: string | null;
+  businessPartnerId?: string | null;
+  currency: CurrencyCode;
+  expectedAmount: number;
+  actualAmount: number;
+  varianceAmount: number;
+  varianceNote?: string | null;
+  paymentMethod: WorkspacePaymentMethod;
+  settledAt: string;
+  note?: string | null;
+  paymentTransactionId?: string | null;
+  createdBy?: string | null;
+}
+
+export type DeliveryLedgerEntryKind =
+  | "courier_collection"
+  | "courier_remittance"
+  | "merchant_cod_payable"
+  | "merchant_fee"
+  | "merchant_payout"
+  | "adjustment";
+
+/**
+ * A signed entry in either the courier-custody or merchant-payable view.
+ * Positive `amount` increases what the named party is responsible for;
+ * negative entries reduce it. Entries are never edited after creation.
+ */
+export interface DeliveryLedgerEntry extends BaseEntity {
+  kind: DeliveryLedgerEntryKind;
+  shipmentId?: string | null;
+  settlementId?: string | null;
+  agentId?: string | null;
+  merchantProfileId?: string | null;
+  businessPartnerId?: string | null;
+  amount: number;
+  currency: CurrencyCode;
+  occurredAt: string;
+  note?: string | null;
+  createdBy?: string | null;
 }
 
 export interface BusinessPartner extends BaseEntity {
@@ -1616,6 +1749,7 @@ export type PaymentTransactionSourceModule =
   | "activities"
   | "clinical_appointments"
   | "currency_exchange"
+  | "post_service"
   | "payments";
 export type PaymentTransactionSourceType =
   | "sale_exchange"
@@ -1635,7 +1769,9 @@ export type PaymentTransactionSourceType =
   | "expense_item"
   | "payroll_status"
   | "direct_transaction"
-  | "exchange_transaction";
+  | "exchange_transaction"
+  | "delivery_courier_remittance"
+  | "delivery_merchant_payout";
 export type PaymentTransactionDirection = "incoming" | "outgoing";
 
 export interface PaymentTransaction extends BaseEntity {
@@ -1721,6 +1857,13 @@ export interface SyncQueueItem {
     | "agent_excluded_categories"
     | "fleet_vehicles"
     | "fleet_vehicle_assignments"
+    | "delivery_merchant_profiles"
+    | "delivery_shipments"
+    | "delivery_shipment_events"
+    | "delivery_runs"
+    | "delivery_run_items"
+    | "delivery_settlements"
+    | "delivery_ledger_entries"
     | "business_partners"
     | "business_partner_merge_candidates"
     | "sales_orders"
@@ -1766,6 +1909,7 @@ export interface Workspace extends BaseEntity {
   activities?: boolean;
   currency_exchange?: boolean;
   agents?: boolean;
+  post_service?: boolean;
   clinical_appointments?: boolean;
   loans?: boolean;
   installments?: boolean;
@@ -1860,6 +2004,13 @@ export interface OfflineMutation {
     | "agent_excluded_categories"
     | "fleet_vehicles"
     | "fleet_vehicle_assignments"
+    | "delivery_merchant_profiles"
+    | "delivery_shipments"
+    | "delivery_shipment_events"
+    | "delivery_runs"
+    | "delivery_run_items"
+    | "delivery_settlements"
+    | "delivery_ledger_entries"
     | "business_partners"
     | "business_partner_merge_candidates"
     | "sales_orders"

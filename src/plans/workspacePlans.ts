@@ -19,6 +19,7 @@ export type PlanModuleKey =
     | 'members'
     | 'business_partners'
     | 'agents'
+    | 'post_service'
     | 'customers'
     | 'suppliers'
     | 'orders'
@@ -49,6 +50,7 @@ export type WorkspaceFeatureKey =
     | 'crm'
     | 'orders'
     | 'agents'
+    | 'post_service'
     | 'ecommerce'
     | 'travel_agency'
     | 'real_estate'
@@ -158,6 +160,7 @@ export const PLAN_DEFINITIONS: Record<WorkspacePlan, WorkspacePlanDefinition> = 
             'customers',
             'suppliers',
             'orders',
+            'post_service',
             'ecommerce',
             'loans',
             'installments',
@@ -233,6 +236,7 @@ export const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModul
     sales_history: 'sales_history',
     crm: 'customers',
     agents: 'agents',
+    post_service: 'post_service',
     ecommerce: 'ecommerce',
     orders: 'orders',
     travel_agency: 'travel_agency',

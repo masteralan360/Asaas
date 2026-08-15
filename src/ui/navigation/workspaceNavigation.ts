@@ -19,6 +19,7 @@ import {
   MessageSquare,
   Monitor,
   Package,
+  PackageCheck,
   Pen,
   Percent,
   Plane,
@@ -267,6 +268,15 @@ export function buildWorkspaceNavigation({
               },
             ]
             : undefined,
+        },
+      ]
+      : []),
+    ...(isCoreRole && hasFeature("post_service") && canAccessPermission("postService.access")
+      ? [
+        {
+          name: t("nav.postService", { defaultValue: "Post Service" }),
+          href: "/post-service",
+          icon: PackageCheck,
         },
       ]
       : []),

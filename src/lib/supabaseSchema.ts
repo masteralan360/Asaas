@@ -58,6 +58,16 @@ const fleetTables = new Set([
     'location_history'
 ])
 
+const deliveryTables = new Set([
+    'delivery_merchant_profiles',
+    'delivery_shipments',
+    'delivery_shipment_events',
+    'delivery_runs',
+    'delivery_run_items',
+    'delivery_settlements',
+    'delivery_ledger_entries'
+])
+
 const budgetClient = supabase.schema('budget')
 const crmClient = supabase.schema('crm')
 const realEstateClient = supabase.schema('real_estate')
@@ -65,6 +75,7 @@ const activitiesClient = supabase.schema('activities')
 const fxClient = supabase.schema('fx')
 const clinicsClient = supabase.schema('clinics')
 const fleetClient = supabase.schema('fleet')
+const deliveryClient = supabase.schema('delivery')
 
 export function isBudgetTable(tableName: string): boolean {
     return budgetTables.has(tableName)
@@ -92,6 +103,10 @@ export function isActivitiesTable(tableName: string): boolean {
 
 export function isFleetTable(tableName: string): boolean {
     return fleetTables.has(tableName)
+}
+
+export function isDeliveryTable(tableName: string): boolean {
+    return deliveryTables.has(tableName)
 }
 
 export function getFleetSupabaseClient() {
@@ -125,6 +140,10 @@ export function getSupabaseClientForTable(tableName: string) {
 
     if (isFleetTable(tableName)) {
         return fleetClient
+    }
+
+    if (isDeliveryTable(tableName)) {
+        return deliveryClient
     }
 
     return supabase

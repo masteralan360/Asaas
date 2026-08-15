@@ -773,7 +773,7 @@ function normalizeAgentFacetInput(input: Partial<AgentFacetInput> | undefined, e
         input?.linkedUserId === undefined ? existing?.linkedUserId ?? '' : input.linkedUserId ?? ''
     ).trim() || null
 
-    if (agentType !== 'driver' && agentType !== 'field_agent') {
+    if (agentType !== 'driver' && agentType !== 'field_agent' && agentType !== 'courier') {
         throw new Error('Agent type is required')
     }
     if (!zone) {

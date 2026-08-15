@@ -485,6 +485,7 @@ export function BusinessPartnerFormDialog({
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="driver">{t('businessPartners.agent.types.driver', { defaultValue: 'Driver' })}</SelectItem>
+                                                <SelectItem value="courier">{t('businessPartners.agent.types.courier', { defaultValue: 'Courier' })}</SelectItem>
                                                 <SelectItem value="field_agent">{t('businessPartners.agent.types.fieldAgent', { defaultValue: 'Field Agent' })}</SelectItem>
                                             </SelectContent>
                                         </Select>

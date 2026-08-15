@@ -248,6 +248,8 @@ export function Agents() {
                                                 {agent
                                                     ? agent.agentType === 'driver'
                                                         ? t('businessPartners.agent.types.driver', { defaultValue: 'Driver' })
+                                                        : agent.agentType === 'courier'
+                                                            ? t('businessPartners.agent.types.courier', { defaultValue: 'Courier' })
                                                         : t('businessPartners.agent.types.fieldAgent', { defaultValue: 'Field Agent' })
                                                     : 'N/A'}
                                             </TableCell>

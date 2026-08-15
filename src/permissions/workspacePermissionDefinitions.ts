@@ -26,6 +26,7 @@ import {
   Receipt,
   CalendarClock,
   MapPinned,
+  PackageCheck,
   History as RouteHistory,
   Car,
   Link2,
@@ -33,6 +34,36 @@ import {
 } from "lucide-react";
 
 export const WORKSPACE_PERMISSION_DEFINITIONS = [
+  {
+    key: "postService.access",
+    module: "postService",
+    labelKey: "members.permissions.postServiceAccess",
+    defaultLabel: "Post Service",
+    descriptionKey: "members.permissions.postServiceAccessDescription",
+    defaultDescription: "Access delivery merchants, shipments, dispatch, and settlement views.",
+    icon: PackageCheck,
+    section: "agents",
+  },
+  {
+    key: "postService.dispatch",
+    module: "postService",
+    labelKey: "members.permissions.postServiceDispatch",
+    defaultLabel: "Dispatch shipments",
+    descriptionKey: "members.permissions.postServiceDispatchDescription",
+    defaultDescription: "Create courier manifests and assign shipments to couriers.",
+    icon: Truck,
+    section: "agents",
+  },
+  {
+    key: "postService.settle",
+    module: "postService",
+    labelKey: "members.permissions.postServiceSettle",
+    defaultLabel: "Settle delivery cash",
+    descriptionKey: "members.permissions.postServiceSettleDescription",
+    defaultDescription: "Record courier handovers and merchant payouts.",
+    icon: Wallet,
+    section: "cash-and-control",
+  },
   {
     key: "payment.access",
     module: "payment",
