@@ -568,6 +568,9 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
         const counterpartyName = kind === 'sales' ? (order as SalesOrder).customerName : (order as PurchaseOrder).supplierName
 
         return {
+            // This is a thermal document, not an A4 layout. The preview needs
+            // an explicit page size instead of its A4 fallback.
+            page: { widthMm: 80, heightMm: 200 },
             fields: [
                 { key: 'counterpartyName', label: counterpartyLabel, value: counterpartyName || '', type: 'text' },
                 { key: 'counterpartyPhone', label: t('common.phone', { defaultValue: 'Phone' }), value: counterpartyPhone || '', type: 'text' },

@@ -386,6 +386,8 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         const counterpartyName = kind === 'sales' ? order.customerName : order.supplierName
 
         return {
+            // Keep this thermal layout out of the preview's A4 fallback.
+            page: { widthMm: 80, heightMm: 200 },
             fields: [
                 { key: 'counterpartyName', label: counterpartyLabel, value: counterpartyName || '', type: 'text' },
                 { key: 'notes', label: t('common.notes') || 'Notes', value: order.notes || '', type: 'text' },
