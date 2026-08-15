@@ -31,6 +31,28 @@ describe('Agents workspace module access', () => {
     })
 })
 
+describe('Post Service workspace module access', () => {
+    it('is not included in any workspace subscription plan', () => {
+        for (const plan of WORKSPACE_PLANS) {
+            expect(planHasModule(plan, 'post_service')).toBe(false)
+        }
+    })
+
+    it('is enabled only by a workspace module grant override', () => {
+        const resolved = applyWorkspaceOverrides(getPlanCapabilities('enterprise'), [{
+            id: 'override-post-service',
+            workspace_id: 'workspace-1',
+            type: 'module',
+            key: 'post_service',
+            value: 'grant',
+            created_by: null,
+            created_at: new Date(0).toISOString()
+        }])
+
+        expect(resolved.modules).toContain('post_service')
+    })
+})
+
 describe('Instant POS and KDS workspace module access', () => {
     it('is not included in any workspace subscription plan', () => {
         for (const plan of WORKSPACE_PLANS) {

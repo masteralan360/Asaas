@@ -194,7 +194,7 @@ vi.mock('@/workspace/workspaceMode', () => ({
     isLocalWorkspaceMode: workspaceModeMock.isLocalWorkspaceMode
 }))
 
-import { fullSync, isRecoverablePriceBookMutation, shouldApplyRemoteItem } from './syncEngine'
+import { fullSync, isRecoverablePriceBookMutation, orderMutationsForSync, shouldApplyRemoteItem } from './syncEngine'
 import { inspectRemoteMutationPayload, prepareRemoteMutationPayload } from './syncPayloadContract'
 
 describe('Price Book sync recovery', () => {
@@ -273,6 +273,126 @@ describe('Price Book sync recovery', () => {
             updatedAt: '2026-07-12T08:00:00.000Z',
             syncStatus: 'conflict'
         }, remote)).toBe(false)
+    })
+})
+
+describe('delivery mutation ordering', () => {
+    it('replays a shipment before its event when parallel writes queued the event first', () => {
+        const ordered = orderMutationsForSync([
+            {
+                id: 'shipment-event-mutation',
+                workspaceId: 'workspace-1',
+                entityType: 'delivery_shipment_events',
+                entityId: 'shipment-event-1',
+                operation: 'create',
+                payload: { id: 'shipment-event-1', shipmentId: 'shipment-1' },
+                createdAt: '2026-08-15T10:00:00.000Z'
+            },
+            {
+                id: 'shipment-mutation',
+                workspaceId: 'workspace-1',
+                entityType: 'delivery_shipments',
+                entityId: 'shipment-1',
+                operation: 'create',
+                payload: { id: 'shipment-1', merchantProfileId: 'merchant-1' },
+                createdAt: '2026-08-15T10:00:01.000Z'
+            },
+            {
+                id: 'unrelated-mutation',
+                workspaceId: 'workspace-2',
+                entityType: 'products',
+                entityId: 'product-1',
+                operation: 'update',
+                payload: { id: 'product-1', name: 'Desk' },
+                createdAt: '2026-08-15T10:00:02.000Z'
+            }
+        ])
+
+        expect(ordered.map((mutation) => mutation.id)).toEqual([
+            'shipment-mutation',
+            'shipment-event-mutation',
+            'unrelated-mutation'
+        ])
+    })
+
+    it('puts recovered merchant prerequisites before the shipment and its event', () => {
+        const ordered = orderMutationsForSync([
+            {
+                id: 'shipment-event-mutation',
+                workspaceId: 'workspace-1',
+                entityType: 'delivery_shipment_events',
+                entityId: 'shipment-event-1',
+                operation: 'create',
+                payload: { id: 'shipment-event-1', shipmentId: 'shipment-1' },
+                createdAt: '2026-08-15T10:00:00.000Z'
+            },
+            {
+                id: 'shipment-mutation',
+                workspaceId: 'workspace-1',
+                entityType: 'delivery_shipments',
+                entityId: 'shipment-1',
+                operation: 'create',
+                payload: {
+                    id: 'shipment-1',
+                    merchantProfileId: 'merchant-profile-1',
+                    merchantBusinessPartnerId: 'partner-1'
+                },
+                createdAt: '2026-08-15T10:00:01.000Z'
+            },
+            {
+                id: 'merchant-profile-mutation',
+                workspaceId: 'workspace-1',
+                entityType: 'delivery_merchant_profiles',
+                entityId: 'merchant-profile-1',
+                operation: 'create',
+                payload: { id: 'merchant-profile-1', businessPartnerId: 'partner-1' },
+                createdAt: '2026-08-15T10:00:02.000Z'
+            },
+            {
+                id: 'partner-mutation',
+                workspaceId: 'workspace-1',
+                entityType: 'business_partners',
+                entityId: 'partner-1',
+                operation: 'create',
+                payload: { id: 'partner-1' },
+                createdAt: '2026-08-15T10:00:03.000Z'
+            }
+        ])
+
+        expect(ordered.map((mutation) => mutation.id)).toEqual([
+            'partner-mutation',
+            'merchant-profile-mutation',
+            'shipment-mutation',
+            'shipment-event-mutation'
+        ])
+    })
+
+    it('replays the payment transaction before the settlement update that references it', () => {
+        const ordered = orderMutationsForSync([
+            {
+                id: 'settlement-update',
+                workspaceId: 'workspace-1',
+                entityType: 'delivery_settlements',
+                entityId: 'settlement-1',
+                operation: 'update',
+                payload: { id: 'settlement-1', paymentTransactionId: 'payment-1' },
+                createdAt: '2026-08-15T10:00:00.000Z'
+            },
+            {
+                id: 'payment-create',
+                workspaceId: 'workspace-1',
+                entityType: 'payment_transactions',
+                entityId: 'payment-1',
+                operation: 'create',
+                payload: { id: 'payment-1' },
+                createdAt: '2026-08-15T10:00:01.000Z'
+            }
+        ])
+
+        expect(ordered.map((mutation) => mutation.id)).toEqual([
+            'payment-create',
+            'settlement-update'
+        ])
     })
 })
 

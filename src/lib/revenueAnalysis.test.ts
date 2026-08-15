@@ -2,9 +2,29 @@ import { describe, expect, it } from 'vitest'
 
 import type { SalesOrder } from '@/local-db'
 
-import { filterRevenueRecordsByStorage, getRevenueAnalysisTotals, getRevenueProductSalesSummary, getRevenueRecordReturnSummary, toRevenueRecordFromSalesOrder, type RevenueAnalysisRecord } from './revenueAnalysis'
+import { filterRevenueRecordsByStorage, getRevenueAnalysisTotals, getRevenueProductSalesSummary, getRevenueRecordReturnSummary, toRevenueRecordFromSale, toRevenueRecordFromSalesOrder, type RevenueAnalysisRecord } from './revenueAnalysis'
 
 describe('sales order revenue analysis', () => {
+  it('treats a post-service projection as fee revenue, not COD revenue', () => {
+    const record = toRevenueRecordFromSale({
+      id: 'shipment-1',
+      origin: 'post_service',
+      created_at: '2026-08-15T12:00:00.000Z',
+      settlement_currency: 'iqd',
+      cashier_name: 'Delivery service',
+      items: [{
+        product_id: 'delivery_service_fee',
+        product_name: 'Delivery service · PST-0001',
+        quantity: 1,
+        converted_unit_price: 5000,
+        converted_cost_price: 0,
+      }]
+    } as any)
+
+    expect(record.source).toBe('post_service')
+    expect(getRevenueAnalysisTotals(record)).toEqual({ revenue: 5000, cost: 0, profit: 5000, margin: 100 })
+  })
+
   it('charges revenue on paid quantity and cost on paid plus free bonus quantity', () => {
     const order = {
       id: 'order-1',

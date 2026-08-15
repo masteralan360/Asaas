@@ -2990,7 +2990,8 @@
         "loanReport": "تقرير القرض",
         "upload": "رفع",
         "exchange": "الصرافة",
-        "activities": "الأنشطة"
+        "activities": "الأنشطة",
+        "postService": "خدمة التوصيل"
       },
       "sourceChannels": {
         "manual": "يدوي",
@@ -4282,7 +4283,9 @@
       "directTransaction": "معاملة مباشرة",
       "clinicalAppointment": "موعد",
       "activityTransaction": "معاملة نشاط",
-      "activityRefund": "استرداد نشاط"
+      "activityRefund": "استرداد نشاط",
+      "deliveryCourierRemittance": "تسليم نقدي للمندوب",
+      "deliveryMerchantPayout": "دفعة للتاجر"
     },
     "status": {
       "reversal": "إلغاء",
@@ -4428,7 +4431,9 @@
       "directInflow": "وارد مباشر",
       "directOutflow": "صادر مباشر",
       "activityTransaction": "معاملة نشاط",
-      "activityRefund": "استرداد نشاط"
+      "activityRefund": "استرداد نشاط",
+      "deliveryCourierRemittance": "تسليم نقدي للمندوب",
+      "deliveryMerchantPayout": "دفعة للتاجر"
     },
     "sourceModule": {
       "pos": "نقطة البيع",
@@ -4438,7 +4443,13 @@
       "payroll": "الرواتب",
       "loans": "القروض",
       "manual": "يدوي",
-      "activities": "الأنشطة"
+      "activities": "الأنشطة",
+      "postService": "خدمة التوصيل"
+    },
+    "description": {
+      "deliveryCourierRemittance": "تسليم نقدي من المندوب",
+      "deliveryMerchantPayout": "دفعة للتاجر",
+      "deliverySettlementRelation": "تسوية خدمة التوصيل {{reference}}."
     },
     "paymentMethod": {
       "bankTransfer": "تحويل بنكي",
@@ -6003,12 +6014,12 @@
     "title": "خدمة التوصيل",
     "subtitle": "إدارة شحنات الدفع عند الاستلام من استلام التاجر حتى تسليم المندوب ودفع مستحقات التاجر.",
     "unknownCourier": "مندوب غير معروف", "unknownMerchant": "تاجر غير معروف", "active": "نشط", "inactive": "غير نشط",
-    "actions": { "enableMerchant": "تفعيل التاجر", "newPost": "شحنة جديدة", "assignSelected": "تعيين الشحنات المحددة", "closeRun": "إغلاق الجولة", "markDelivered": "تم التسليم", "postpone": "تأجيل", "return": "إرجاع", "recordHandover": "تسجيل التسليم", "payMerchant": "دفع التاجر", "cancel": "إلغاء", "createPost": "إنشاء الشحنة", "confirmStatus": "تأكيد {{status}}", "confirmSettlement": "تأكيد التسوية" },
+    "actions": { "enableMerchant": "تفعيل التاجر", "newPost": "شحنة جديدة", "assignSelected": "تعيين الشحنات المحددة", "closeRun": "إغلاق الجولة", "markDelivered": "تم التسليم", "postpone": "تأجيل", "return": "إرجاع", "recordHandover": "تسجيل التسليم", "payMerchant": "دفع التاجر", "editMerchant": "تعديل التاجر", "saveMerchant": "حفظ التاجر", "deleteMerchant": "حذف التاجر", "cancel": "إلغاء", "createPost": "إنشاء الشحنة", "confirmStatus": "تأكيد {{status}}", "confirmSettlement": "تأكيد التسوية" },
     "metrics": { "readyToDispatch": "جاهز للتوزيع", "withCourier": "لدى المندوب", "deliveredToday": "تم تسليمه اليوم", "courierCashBalances": "أرصدة نقد المندوبين", "merchantPayables": "مستحقات التجار", "openBalances": "أرصدة مفتوحة" },
     "tabs": { "posts": "الشحنات", "dispatch": "التوزيع", "myDeliveries": "توصيلاتي", "merchants": "التجار", "settlements": "التسويات" },
     "cards": { "allPosts": "كل الشحنات", "createManifest": "إنشاء كشف المندوب", "recentRuns": "جولات التوزيع الأخيرة", "myAssignedPosts": "الشحنات المعينة لي", "deliveryMerchants": "تجار التوصيل", "courierHandovers": "تسليمات نقد المندوبين", "merchantPayouts": "دفعات التجار", "settlementHistory": "سجل التسويات" },
     "selectedForDispatch": "{{count}} محددة للتوزيع", "selectedAndAvailable": "{{selected}} محددة · {{available}} متاحة",
-    "form": { "postsSelected": "الشحنات المحددة", "courier": "المندوب", "vehicleOptional": "المركبة (اختياري)", "manifestNote": "ملاحظة الكشف", "businessPartner": "شريك الأعمال", "defaultDeliveryFee": "أجرة التوصيل الافتراضية", "feePayer": "دافع الأجرة", "payoutSchedule": "جدول الدفع", "merchant": "التاجر", "recipientName": "اسم المستلم", "recipientPhone": "هاتف المستلم", "alternatePhone": "هاتف بديل", "deliveryAddress": "عنوان التوصيل", "cityZone": "المدينة / المنطقة", "description": "الوصف", "codAmount": "مبلغ الدفع عند الاستلام", "deliveryFee": "أجرة التوصيل", "currency": "العملة", "optionalNote": "ملاحظة اختيارية", "reason": "السبب", "amountReceivedPaid": "المبلغ المستلم / المدفوع", "paymentMethod": "طريقة الدفع", "noteVariance": "ملاحظة / توضيح الفرق" },
+    "form": { "postsSelected": "الشحنات المحددة", "courier": "المندوب", "vehicleOptional": "المركبة (اختياري)", "manifestNote": "ملاحظة الكشف", "businessPartner": "شريك الأعمال", "defaultDeliveryFee": "أجرة التوصيل الافتراضية", "feePayer": "دافع الأجرة", "payoutSchedule": "جدول الدفع", "merchant": "التاجر", "recipientName": "اسم المستلم", "recipientPhone": "هاتف المستلم", "alternatePhone": "هاتف بديل", "deliveryAddress": "عنوان التوصيل", "cityZone": "المدينة / المنطقة", "description": "الوصف", "codAmount": "مبلغ الدفع عند الاستلام", "deliveryFee": "أجرة التوصيل", "currency": "العملة", "optionalNote": "ملاحظة اختيارية", "reason": "السبب", "amountReceivedPaid": "المبلغ المستلم / المدفوع", "paymentMethod": "طريقة الدفع", "status": "الحالة", "noteVariance": "ملاحظة / توضيح الفرق" },
     "placeholders": { "selectCourier": "اختر المندوب", "manifestNote": "ملاحظة الطريق أو التسليم", "selectMerchantOrShop": "اختر متجراً أو تاجراً", "selectMerchant": "اختر التاجر", "parcelDescription": "وصف اختياري للطرد", "postponedReason": "طلب العميل الغد أو لم يجب…", "returnedReason": "العنوان غير صحيح أو رفض العميل…", "deliveryNote": "إثبات أو ملاحظة التوصيل", "varianceNote": "مطلوب عند دفع مبلغ أقل من الرصيد المستحق" },
     "options": { "noVehicle": "لا توجد مركبة" }, "permissionRequired": { "dispatch": "ليس لديك صلاحية إنشاء كشوفات التوزيع." },
     "table": { "tracking": "رقم التتبع", "merchantRecipient": "التاجر / المستلم", "cod": "الدفع عند الاستلام", "courier": "المندوب", "status": "الحالة", "actions": "الإجراءات", "noZone": "لا توجد منطقة", "run": "الجولة", "dispatched": "وقت التوزيع", "merchant": "التاجر", "defaultFee": "الأجرة الافتراضية", "feePayer": "دافع الأجرة", "payoutSchedule": "جدول الدفع", "reference": "المرجع", "type": "النوع", "amount": "المبلغ", "time": "الوقت", "party": "الطرف", "outstanding": "الرصيد المستحق" },
@@ -6017,9 +6028,10 @@
     "runStatus": { "open": "مفتوحة", "closed": "مغلقة" },
     "feePayer": { "merchant": "التاجر", "recipient": "المستلم", "merchantDeducted": "التاجر (تخصم من الدفعة)", "recipientCollected": "المستلم (تُحصّل عند الباب)" },
     "payoutSchedule": { "daily": "يومي", "weekly": "أسبوعي", "on_request": "عند الطلب" }, "settlementType": { "courierRemittance": "تسليم المندوب", "merchantPayout": "دفعة التاجر" },
-    "dialogs": { "enableMerchant": { "title": "تفعيل تاجر التوصيل", "description": "ينشئ هذا ملف توصيل لشريك أعمال موجود، ولا ينشئ عميلاً مكرراً." }, "newPost": { "title": "شحنة جديدة", "description": "تبقى بيانات المستلم في الشحنة. احفظها كشريك أعمال فقط عندما تحتاج إلى سجل CRM دائم." }, "status": { "title": "تحديد حالة الشحنة: {{status}}" }, "courierSettlement": { "title": "تسجيل تسليم المندوب" }, "merchantSettlement": { "title": "دفع التاجر" }, "settlementOutstanding": "لدى {{name}} رصيد مستحق قدره {{amount}}." },
+    "reporting": { "serviceName": "خدمة التوصيل", "serviceCategory": "خدمة التوصيل", "feePayerNote": "الأجرة محسوبة على {{payer}}" },
+    "dialogs": { "enableMerchant": { "title": "تفعيل تاجر التوصيل", "description": "ينشئ هذا ملف توصيل لشريك أعمال موجود، ولا ينشئ عميلاً مكرراً." }, "editMerchant": { "title": "تعديل تاجر التوصيل", "description": "حدّث إعدادات التوصيل لـ {{name}}." }, "deleteMerchant": { "title": "حذف تاجر التوصيل نهائياً", "description": "يزيل هذا ملف تاجر التوصيل فقط نهائياً. يبقى شريك الأعمال متاحاً في بقية النظام." }, "newPost": { "title": "شحنة جديدة", "description": "تبقى بيانات المستلم في الشحنة. احفظها كشريك أعمال فقط عندما تحتاج إلى سجل CRM دائم." }, "status": { "title": "تحديد حالة الشحنة: {{status}}" }, "courierSettlement": { "title": "تسجيل تسليم المندوب" }, "merchantSettlement": { "title": "دفع التاجر" }, "settlementOutstanding": "لدى {{name}} رصيد مستحق قدره {{amount}}." },
     "paymentMethods": { "cash": "نقداً", "bank_transfer": "تحويل بنكي", "fib": "FiB", "qicard": "QiCard", "zaincash": "ZainCash", "fastpay": "FastPay" },
-    "messages": { "merchantEnabled": "تم تفعيل التاجر", "merchantEnabledDescription": "يمكن لشريك الأعمال هذا الآن إرسال الشحنات.", "enableMerchantFailed": "تعذر تفعيل التاجر", "postCreated": "تم إنشاء الشحنة", "postCreatedDescription": "أصبحت جاهزة للتوزيع على مندوب.", "createPostFailed": "تعذر إنشاء الشحنة", "dispatchCreated": "تم إنشاء التوزيع", "dispatchCreatedDescription": "تم تعيين {{run}} إلى المندوب.", "dispatchFailed": "تعذر توزيع الشحنات", "postMarked": "تم تحديد حالة الشحنة: {{status}}", "updatePostFailed": "تعذر تحديث الشحنة", "courierHandoverRecorded": "تم تسجيل تسليم المندوب", "merchantPayoutRecorded": "تم تسجيل دفعة التاجر", "settlementFailed": "تعذر تسجيل التسوية", "runClosed": "تم إغلاق جولة التوزيع", "closeRunFailed": "تعذر إغلاق جولة التوزيع" },
-    "errors": { "generic": "يرجى المحاولة مرة أخرى.", "selectBusinessPartner": "اختر شريك أعمال في مساحة العمل هذه.", "selectMerchant": "اختر تاجر توصيل نشطاً.", "recipientRequired": "اسم المستلم وهاتفه وعنوانه مطلوبة.", "selectCourier": "اختر مندوباً نشطاً.", "selectShipment": "اختر شحنة واحدة على الأقل.", "shipmentNotDispatchable": "لا يمكن توزيع إلا الشحنات غير المعينة أو الجاهزة أو المؤجلة.", "shipmentNotFound": "لم يتم العثور على الشحنة.", "completedShipment": "لا يمكن تغيير شحنة مكتملة. سجل تسوية بدلاً من ذلك.", "reasonRequired": "السبب مطلوب لهذه الحالة.", "assignCourierFirst": "عيّن الشحنة إلى مندوب أولاً.", "courierAssignmentOnly": "لا يمكن للمندوب تحديث إلا الشحنات المعينة له.", "amountExceedsBalance": "لا يمكن أن يتجاوز مبلغ التسوية الرصيد المستحق.", "partialExplanationRequired": "اشرح التسوية الجزئية قبل تأكيدها.", "courierNotFound": "لم يتم العثور على المندوب.", "merchantNotFound": "لم يتم العثور على التاجر." }
+    "messages": { "merchantEnabled": "تم تفعيل التاجر", "merchantEnabledDescription": "يمكن لشريك الأعمال هذا الآن إرسال الشحنات.", "enableMerchantFailed": "تعذر تفعيل التاجر", "merchantUpdated": "تم تحديث التاجر", "updateMerchantFailed": "تعذر تحديث التاجر", "merchantDeleted": "تم حذف التاجر نهائياً", "deleteMerchantFailed": "تعذر حذف التاجر", "postCreated": "تم إنشاء الشحنة", "postCreatedDescription": "أصبحت جاهزة للتوزيع على مندوب.", "createPostFailed": "تعذر إنشاء الشحنة", "dispatchCreated": "تم إنشاء التوزيع", "dispatchCreatedDescription": "تم تعيين {{run}} إلى المندوب.", "dispatchFailed": "تعذر توزيع الشحنات", "postMarked": "تم تحديد حالة الشحنة: {{status}}", "updatePostFailed": "تعذر تحديث الشحنة", "courierHandoverRecorded": "تم تسجيل تسليم المندوب", "merchantPayoutRecorded": "تم تسجيل دفعة التاجر", "settlementFailed": "تعذر تسجيل التسوية", "runClosed": "تم إغلاق جولة التوزيع", "closeRunFailed": "تعذر إغلاق جولة التوزيع" },
+    "errors": { "generic": "يرجى المحاولة مرة أخرى.", "selectBusinessPartner": "اختر شريك أعمال في مساحة العمل هذه.", "selectMerchant": "اختر تاجر توصيل نشطاً.", "recipientRequired": "اسم المستلم وهاتفه وعنوانه مطلوبة.", "selectCourier": "اختر مندوباً نشطاً.", "selectShipment": "اختر شحنة واحدة على الأقل.", "shipmentNotDispatchable": "لا يمكن توزيع إلا الشحنات غير المعينة أو الجاهزة أو المؤجلة.", "shipmentNotFound": "لم يتم العثور على الشحنة.", "completedShipment": "لا يمكن تغيير شحنة مكتملة. سجل تسوية بدلاً من ذلك.", "reasonRequired": "السبب مطلوب لهذه الحالة.", "assignCourierFirst": "عيّن الشحنة إلى مندوب أولاً.", "courierAssignmentOnly": "لا يمكن للمندوب تحديث إلا الشحنات المعينة له.", "amountExceedsBalance": "لا يمكن أن يتجاوز مبلغ التسوية الرصيد المستحق.", "partialExplanationRequired": "اشرح التسوية الجزئية قبل تأكيدها.", "courierNotFound": "لم يتم العثور على المندوب.", "merchantNotFound": "لم يتم العثور على التاجر.", "merchantDeleteHistory": "لا يمكن حذف تاجر لديه سجل توصيل نهائياً. اجعله غير نشط بدلاً من ذلك." }
   }
 }

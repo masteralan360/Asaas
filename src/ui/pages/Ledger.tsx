@@ -23,6 +23,9 @@ import {
     usePurchaseOrders,
     useBusinessPartners,
     useExchangeTransactions,
+    useAgents,
+    useDeliveryMerchantProfiles,
+    useDeliverySettlements,
     type CurrencyCode,
     type IQDDisplayPreference,
     type Loan,
@@ -79,7 +82,7 @@ import { useWorkspace } from '@/workspace'
 import { useTheme } from '@/ui/components/theme-provider'
 
 type LedgerDirection = 'incoming' | 'outgoing'
-type LedgerSourceModule = 'pos' | 'instant_pos' | 'orders' | 'expenses' | 'payroll' | 'loans' | 'real_estate' | 'activities' | 'clinical_appointments' | 'manual' | 'exchange'
+type LedgerSourceModule = 'pos' | 'instant_pos' | 'orders' | 'expenses' | 'payroll' | 'loans' | 'real_estate' | 'activities' | 'clinical_appointments' | 'manual' | 'exchange' | 'post_service'
 type LedgerRelationRole = 'origin' | 'repayment' | 'settlement'
 type LedgerEntryType =
     | 'pos_sale'
@@ -103,6 +106,8 @@ type LedgerEntryType =
     | 'direct_inflow'
     | 'direct_outflow'
     | 'exchange_profit'
+    | 'delivery_courier_remittance'
+    | 'delivery_merchant_payout'
 
 interface LedgerEntry {
     id: string
@@ -330,6 +335,10 @@ function ledgerTypeLabel(type: LedgerEntryType, t: any) {
             return t('ledger.type.directOutflow', { defaultValue: 'Direct Outflow' })
         case 'exchange_profit':
             return t('ledger.type.exchangeProfit', { defaultValue: 'Exchange Profit' })
+        case 'delivery_courier_remittance':
+            return t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
+        case 'delivery_merchant_payout':
+            return t('ledger.type.deliveryMerchantPayout', { defaultValue: 'Merchant Payout' })
         default:
             return type
     }
@@ -359,6 +368,8 @@ function sourceModuleLabel(module: LedgerSourceModule, t: any) {
             return t('ledger.sourceModule.manual', { defaultValue: 'Manual' })
         case 'exchange':
             return t('ledger.sourceModule.exchange', { defaultValue: 'Exchange' })
+        case 'post_service':
+            return t('ledger.sourceModule.postService', { defaultValue: 'Post Service' })
         default:
             return module
     }
@@ -721,6 +732,11 @@ interface LedgerBuildContext {
     salesOrderById: Map<string, SalesOrder>
     purchaseOrderById: Map<string, PurchaseOrder>
     businessPartnerByName: Map<string, string>
+    deliverySettlementById: Map<string, { agentId?: string | null; merchantProfileId?: string | null; businessPartnerId?: string | null }>
+    agentNameById: Map<string, string>
+    agentBusinessPartnerIdById: Map<string, string>
+    merchantNameByProfileId: Map<string, string>
+    merchantBusinessPartnerIdByProfileId: Map<string, string>
 }
 
 function getSaleStorageIds(sale: Sale | undefined) {
@@ -807,6 +823,10 @@ function buildTransactionReference(transaction: PaymentTransaction) {
             return buildReferenceId('ACT', transaction.sourceRecordId)
         case 'clinical_appointment':
             return buildReferenceId('APT', transaction.sourceRecordId)
+        case 'delivery_courier_remittance':
+            return buildReferenceId('CR', transaction.sourceRecordId)
+        case 'delivery_merchant_payout':
+            return buildReferenceId('MP', transaction.sourceRecordId)
         default:
             return buildReferenceId('LOAN', transaction.sourceRecordId)
     }
@@ -1045,6 +1065,55 @@ function buildPaymentLedgerEntry(
     const relation = buildLedgerRelationDescriptor(transaction, context)
 
     switch (transaction.sourceType) {
+        case 'delivery_courier_remittance':
+        case 'delivery_merchant_payout': {
+            const isCourierRemittance = transaction.sourceType === 'delivery_courier_remittance'
+            const settlement = context.deliverySettlementById.get(transaction.sourceRecordId)
+            const metadataAgentId = typeof transaction.metadata?.deliveryAgentId === 'string'
+                ? transaction.metadata.deliveryAgentId
+                : null
+            const metadataProfileId = typeof transaction.metadata?.deliveryMerchantProfileId === 'string'
+                ? transaction.metadata.deliveryMerchantProfileId
+                : null
+            const agentId = settlement?.agentId || metadataAgentId
+            const merchantProfileId = settlement?.merchantProfileId || metadataProfileId
+            const linkedBusinessPartnerId = settlement?.businessPartnerId
+                || (typeof transaction.metadata?.businessPartnerId === 'string' ? transaction.metadata.businessPartnerId : null)
+                || (agentId ? context.agentBusinessPartnerIdById.get(agentId) : null)
+                || (merchantProfileId ? context.merchantBusinessPartnerIdByProfileId.get(merchantProfileId) : null)
+                || null
+            const partner = transaction.counterpartyName
+                || (agentId ? context.agentNameById.get(agentId) : null)
+                || (merchantProfileId ? context.merchantNameByProfileId.get(merchantProfileId) : null)
+                || null
+
+            return {
+                id: `payment:${transaction.id}`,
+                transactionId: transaction.id,
+                date: transaction.paidAt,
+                type: transaction.sourceType,
+                direction: transaction.direction,
+                amount: transaction.amount,
+                currency: transaction.currency,
+                sourceModule: 'post_service',
+                referenceId: buildTransactionReference(transaction),
+                partner,
+                businessPartnerId: linkedBusinessPartnerId,
+                paymentMethod: transaction.paymentMethod || 'unknown',
+                notes: transaction.note?.trim() || null,
+                description: buildTransactionDescription(transaction, t)
+                    || (isCourierRemittance
+                        ? t('ledger.description.deliveryCourierRemittance', { defaultValue: 'Courier cash handover' })
+                        : t('ledger.description.deliveryMerchantPayout', { defaultValue: 'Merchant payout' })),
+                routePath: getPaymentTransactionRoutePath(transaction),
+                relationKey: `delivery-settlement:${transaction.sourceRecordId}`,
+                relationRole: 'settlement',
+                relationTitle: isCourierRemittance
+                    ? t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
+                    : t('ledger.type.deliveryMerchantPayout', { defaultValue: 'Merchant Payout' }),
+                relationDescription: t('ledger.description.deliverySettlementRelation', { defaultValue: 'Post Service settlement {{reference}}.', reference: buildTransactionReference(transaction) })
+            }
+        }
         case 'loan_origination': {
             const originationLoan = context.loanById.get(transaction.sourceRecordId)
             return {
@@ -1307,6 +1376,7 @@ export function Ledger() {
         || features.real_estate
         || features.activities
         || features.clinical_appointments
+        || features.post_service
 
     const dateBounds = useMemo<{ startDate?: string; endDate?: string }>(() => {
         const now = new Date()
@@ -1344,7 +1414,10 @@ export function Ledger() {
     const paymentTransactions = usePaymentTransactions(workspaceId, { includeReversals: true })
     const salesOrders = useSalesOrders(workspaceId, dateBounds.startDate, dateBounds.endDate)
     const purchaseOrders = usePurchaseOrders(workspaceId)
-    const businessPartners = useBusinessPartners(workspaceId)
+    const businessPartners = useBusinessPartners(workspaceId, { includeAgentRoles: true })
+    const agents = useAgents(workspaceId)
+    const deliveryMerchantProfiles = useDeliveryMerchantProfiles(workspaceId)
+    const deliverySettlements = useDeliverySettlements(workspaceId)
     const rawExchangeTransactions = useExchangeTransactions(workspaceId)
     const activePaymentTransactions = useMemo(
         () => getRemainingPaymentTransactions(paymentTransactions),
@@ -1408,6 +1481,30 @@ export function Ledger() {
         ),
         [businessPartners]
     )
+    const businessPartnerNameById = useMemo(
+        () => new Map(businessPartners.map((partner) => [partner.id, partner.name] as const)),
+        [businessPartners]
+    )
+    const agentNameById = useMemo(
+        () => new Map(agents.map((agent) => [agent.id, businessPartnerNameById.get(agent.businessPartnerId) || ''] as const)),
+        [agents, businessPartnerNameById]
+    )
+    const agentBusinessPartnerIdById = useMemo(
+        () => new Map(agents.map((agent) => [agent.id, agent.businessPartnerId] as const)),
+        [agents]
+    )
+    const merchantNameByProfileId = useMemo(
+        () => new Map(deliveryMerchantProfiles.map((profile) => [profile.id, businessPartnerNameById.get(profile.businessPartnerId) || ''] as const)),
+        [businessPartnerNameById, deliveryMerchantProfiles]
+    )
+    const merchantBusinessPartnerIdByProfileId = useMemo(
+        () => new Map(deliveryMerchantProfiles.map((profile) => [profile.id, profile.businessPartnerId] as const)),
+        [deliveryMerchantProfiles]
+    )
+    const deliverySettlementById = useMemo(
+        () => new Map(deliverySettlements.map((settlement) => [settlement.id, settlement] as const)),
+        [deliverySettlements]
+    )
 
     const allEntries = useMemo(() => {
         const context: LedgerBuildContext = {
@@ -1417,7 +1514,12 @@ export function Ledger() {
             realEstateTransactionById,
             salesOrderById,
             purchaseOrderById,
-            businessPartnerByName
+            businessPartnerByName,
+            deliverySettlementById,
+            agentNameById,
+            agentBusinessPartnerIdById,
+            merchantNameByProfileId,
+            merchantBusinessPartnerIdByProfileId
         }
         const rows = [
             ...sales.map(s => buildSaleLedgerEntry(s, t)).filter((entry): entry is LedgerEntry => !!entry),
@@ -1430,7 +1532,7 @@ export function Ledger() {
         ]
 
         return rows.sort((left, right) => right.date.localeCompare(left.date) || right.transactionId.localeCompare(left.transactionId))
-    }, [activePaymentTransactions, loanById, loanOriginationIds, realEstateTransactionById, saleById, sales, salesOrderById, purchaseOrderById, businessPartnerByName, rawExchangeTransactions, t])
+    }, [activePaymentTransactions, loanById, loanOriginationIds, realEstateTransactionById, saleById, sales, salesOrderById, purchaseOrderById, businessPartnerByName, deliverySettlementById, agentNameById, agentBusinessPartnerIdById, merchantNameByProfileId, merchantBusinessPartnerIdByProfileId, rawExchangeTransactions, t])
 
     const typeOptions = useMemo(
         () => Array.from(new Set(allEntries.map((entry) => entry.type))).sort((left, right) => ledgerTypeLabel(left, t).localeCompare(ledgerTypeLabel(right, t))),

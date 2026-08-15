@@ -171,6 +171,158 @@ export function isRecoverablePriceBookMutation(mutation: {
     );
 }
 
+interface MutationSyncOrderItem {
+  id: string;
+  workspaceId: string;
+  entityType: string;
+  entityId: string;
+  operation: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+function compareMutationCreation(
+  left: Pick<MutationSyncOrderItem, "createdAt" | "id">,
+  right: Pick<MutationSyncOrderItem, "createdAt" | "id">,
+) {
+  return String(left.createdAt).localeCompare(String(right.createdAt)) ||
+    String(left.id).localeCompare(String(right.id));
+}
+
+function mutationEntityKey(workspaceId: string, entityType: string, entityId: string) {
+  return `${workspaceId}:${entityType}:${entityId}`;
+}
+
+function payloadReference(
+  payload: Record<string, unknown>,
+  ...fieldNames: string[]
+) {
+  for (const fieldName of fieldNames) {
+    const value = payload[fieldName];
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return null;
+}
+
+function getMutationParentKeys(mutation: MutationSyncOrderItem) {
+  const { workspaceId, entityType, payload } = mutation;
+  const parentKeys: string[] = [];
+  const addParent = (parentType: string, ...fieldNames: string[]) => {
+    const parentId = payloadReference(payload, ...fieldNames);
+    if (parentId) {
+      parentKeys.push(mutationEntityKey(workspaceId, parentType, parentId));
+    }
+  };
+
+  switch (entityType) {
+    case "delivery_merchant_profiles":
+      addParent("business_partners", "businessPartnerId", "business_partner_id");
+      break;
+    case "delivery_shipments":
+      addParent("delivery_merchant_profiles", "merchantProfileId", "merchant_profile_id");
+      addParent("business_partners", "merchantBusinessPartnerId", "merchant_business_partner_id");
+      addParent("agents", "assignedAgentId", "assigned_agent_id");
+      addParent("delivery_runs", "assignedRunId", "assigned_run_id");
+      break;
+    case "delivery_shipment_events":
+      addParent("delivery_shipments", "shipmentId", "shipment_id");
+      addParent("agents", "actorAgentId", "actor_agent_id");
+      break;
+    case "delivery_runs":
+      addParent("agents", "agentId", "agent_id");
+      addParent("fleet_vehicles", "vehicleId", "vehicle_id");
+      break;
+    case "delivery_run_items":
+      addParent("delivery_runs", "runId", "run_id");
+      addParent("delivery_shipments", "shipmentId", "shipment_id");
+      break;
+    case "delivery_settlements":
+      addParent("agents", "agentId", "agent_id");
+      addParent("delivery_merchant_profiles", "merchantProfileId", "merchant_profile_id");
+      addParent("business_partners", "businessPartnerId", "business_partner_id");
+      addParent("payment_transactions", "paymentTransactionId", "payment_transaction_id");
+      break;
+    case "delivery_ledger_entries":
+      addParent("delivery_shipments", "shipmentId", "shipment_id");
+      addParent("delivery_settlements", "settlementId", "settlement_id");
+      addParent("agents", "agentId", "agent_id");
+      addParent("delivery_merchant_profiles", "merchantProfileId", "merchant_profile_id");
+      addParent("business_partners", "businessPartnerId", "business_partner_id");
+      break;
+  }
+
+  return parentKeys;
+}
+
+/**
+ * Retain chronological queue order except where a queued record explicitly
+ * references another queued parent. This is a small topological sort, so a
+ * shipment is always pushed before its event even if parallel work created the
+ * event's offline mutation first.
+ */
+export function orderMutationsForSync<T extends MutationSyncOrderItem>(mutations: T[]): T[] {
+  const chronological = [...mutations].sort(compareMutationCreation);
+  const indicesByEntity = new Map<string, number[]>();
+  const edges = new Map<number, Set<number>>();
+  const indegree = new Array<number>(chronological.length).fill(0);
+
+  const addEdge = (parentIndex: number, childIndex: number) => {
+    if (parentIndex === childIndex) return;
+    const children = edges.get(parentIndex) ?? new Set<number>();
+    if (children.has(childIndex)) return;
+    children.add(childIndex);
+    edges.set(parentIndex, children);
+    indegree[childIndex]++;
+  };
+
+  chronological.forEach((mutation, index) => {
+    const key = mutationEntityKey(mutation.workspaceId, mutation.entityType, mutation.entityId);
+    const indices = indicesByEntity.get(key) ?? [];
+    if (indices.length > 0) addEdge(indices[indices.length - 1], index);
+    indices.push(index);
+    indicesByEntity.set(key, indices);
+  });
+
+  chronological.forEach((mutation, index) => {
+    for (const parentKey of getMutationParentKeys(mutation)) {
+      const parentIndices = indicesByEntity.get(parentKey);
+      if (!parentIndices) continue;
+
+      const activeParentIndices = parentIndices.filter(
+        (parentIndex) => chronological[parentIndex].operation !== "delete",
+      );
+      const parentIndex = activeParentIndices.find(
+        (candidateIndex) => chronological[candidateIndex].operation === "create",
+      ) ?? activeParentIndices[0];
+      if (parentIndex !== undefined) addEdge(parentIndex, index);
+    }
+  });
+
+  const available = chronological
+    .map((_, index) => index)
+    .filter((index) => indegree[index] === 0);
+  const orderedIndices: number[] = [];
+
+  while (available.length > 0) {
+    const index = available.shift()!;
+    orderedIndices.push(index);
+    for (const childIndex of edges.get(index) ?? []) {
+      indegree[childIndex]--;
+      if (indegree[childIndex] !== 0) continue;
+
+      const insertionIndex = available.findIndex((candidate) => candidate > childIndex);
+      if (insertionIndex === -1) available.push(childIndex);
+      else available.splice(insertionIndex, 0, childIndex);
+    }
+  }
+
+  // A cycle should not happen in the delivery graph. If a malformed queued
+  // payload creates one, preserve the original order instead of dropping work.
+  return orderedIndices.length === chronological.length
+    ? orderedIndices.map((index) => chronological[index])
+    : chronological;
+}
+
 // Convert snake_case to camelCase
 function toCamelCase(obj: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
@@ -473,17 +625,18 @@ export async function processMutationQueue(
     .sort((left, right) =>
       String(left.createdAt).localeCompare(String(right.createdAt)),
     );
+  const orderedMutations = orderMutationsForSync(mutations);
 
   let completedCount = 0;
   const reportCompleted = () => {
     completedCount++;
-    onProgress?.(completedCount, mutations.length);
+    onProgress?.(completedCount, orderedMutations.length);
   };
 
-  onProgress?.(0, mutations.length);
+  onProgress?.(0, orderedMutations.length);
 
   console.log(
-    `[Sync] processMutationQueue: Found ${mutations.length} pending mutations`,
+    `[Sync] processMutationQueue: Found ${orderedMutations.length} pending mutations`,
   );
 
   let successCount = 0;
@@ -492,7 +645,7 @@ export async function processMutationQueue(
   const failedPriceBookIds = new Set<string>();
   const integrityBlockedEntities = new Map<string, string>();
 
-  for (const mutation of mutations) {
+  for (const mutation of orderedMutations) {
     const mutationKey = `${mutation.entityType}:${mutation.entityId}`;
     const priorIntegrityIssue = integrityBlockedEntities.get(mutationKey);
     if (priorIntegrityIssue) {

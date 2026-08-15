@@ -16,6 +16,9 @@ let createDeliveryRun: typeof import("./postService").createDeliveryRun;
 let updateDeliveryShipmentStatus: typeof import("./postService").updateDeliveryShipmentStatus;
 let settleDeliveryCourier: typeof import("./postService").settleDeliveryCourier;
 let payDeliveryMerchant: typeof import("./postService").payDeliveryMerchant;
+let updateDeliveryMerchantProfile: typeof import("./postService").updateDeliveryMerchantProfile;
+let hardDeleteDeliveryMerchantProfile: typeof import("./postService").hardDeleteDeliveryMerchantProfile;
+let toUISaleFromDeliveryShipment: typeof import("./postService").toUISaleFromDeliveryShipment;
 
 function installBrowserEnvironment() {
   const rows = new Map<string, string>();
@@ -62,7 +65,7 @@ describe("Post Service COD accounting", () => {
   beforeAll(async () => {
     installBrowserEnvironment();
     const postService = await import("./postService");
-    ({ createDeliveryMerchantProfile, createDeliveryShipment, createDeliveryRun, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryMerchant } = postService);
+    ({ createDeliveryMerchantProfile, createDeliveryShipment, createDeliveryRun, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryMerchant, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment } = postService);
   });
 
   beforeEach(async () => {
@@ -137,5 +140,74 @@ describe("Post Service COD accounting", () => {
     });
     await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
     await expect(updateDeliveryShipmentStatus(shipment.id, { status: "postponed", actorAgentId: deliveryCourier.id })).rejects.toThrow("reason is required");
+  });
+
+  it("projects only the delivery fee, never the merchant COD, into sales reporting", async () => {
+    const merchant = partner(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, {
+      businessPartnerId: merchant.id,
+      defaultFeeAmount: 5,
+    });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientName: "Recipient",
+      recipientPhone: "07500000000",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      codAmount: 25000,
+      deliveryFee: 5000,
+    });
+
+    const sale = toUISaleFromDeliveryShipment({
+      ...shipment,
+      status: "delivered",
+      deliveredAt: "2026-08-15T12:00:00.000Z",
+    }, { merchantName: merchant.name, merchantBusinessPartnerId: merchant.id });
+
+    expect(sale).toMatchObject({
+      origin: "post_service",
+      total_amount: 5000,
+      partyName: merchant.name,
+      business_partner_id: merchant.id,
+      _trackingNumber: shipment.trackingNumber,
+    });
+    expect(sale.items).toEqual([expect.objectContaining({
+      product_id: "delivery_service_fee",
+      unit_price: 5000,
+      cost_price: 0,
+    })]);
+    expect(JSON.stringify(sale)).not.toContain("25000");
+  });
+
+  it("updates an unused merchant profile and permanently deletes it", async () => {
+    const merchant = partner(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id, defaultFeeAmount: 5 });
+
+    const updated = await updateDeliveryMerchantProfile(profile.id, {
+      defaultFeeAmount: 15,
+      defaultFeePayer: "recipient",
+      payoutSchedule: "weekly",
+      isActive: false,
+    });
+    expect(updated).toMatchObject({ defaultFeeAmount: 15, defaultFeePayer: "recipient", payoutSchedule: "weekly", isActive: false });
+
+    await hardDeleteDeliveryMerchantProfile(profile.id);
+    expect(await db.delivery_merchant_profiles.get(profile.id)).toBeUndefined();
+    expect(await db.business_partners.get(merchant.id)).toBeDefined();
+  });
+
+  it("does not permanently delete a merchant profile with delivery history", async () => {
+    const merchant = partner(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id });
+    await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id, recipientName: "Recipient", recipientPhone: "07500000000",
+      recipientAddress: "Baghdad", currency: "iqd", codAmount: 1,
+    });
+
+    await expect(hardDeleteDeliveryMerchantProfile(profile.id)).rejects.toThrow("delivery history");
+    expect(await db.delivery_merchant_profiles.get(profile.id)).toBeDefined();
   });
 });

@@ -1654,7 +1654,9 @@
       "directTransaction": "Direct Transaction",
       "clinicalAppointment": "Appointment",
       "activityTransaction": "Activity Transaction",
-      "activityRefund": "Activity Refund"
+      "activityRefund": "Activity Refund",
+      "deliveryCourierRemittance": "Courier Remittance",
+      "deliveryMerchantPayout": "Merchant Payout"
     },
     "status": {
       "reversal": "Reversal",
@@ -1808,7 +1810,9 @@
       "directInflow": "Direct Inflow",
       "directOutflow": "Direct Outflow",
       "activityTransaction": "Activity Transaction",
-      "activityRefund": "Activity Refund"
+      "activityRefund": "Activity Refund",
+      "deliveryCourierRemittance": "Courier Remittance",
+      "deliveryMerchantPayout": "Merchant Payout"
     },
     "sourceModule": {
       "pos": "POS",
@@ -1818,7 +1822,13 @@
       "payroll": "Payroll",
       "loans": "Loans",
       "manual": "Manual",
-      "activities": "Activities"
+      "activities": "Activities",
+      "postService": "Post Service"
+    },
+    "description": {
+      "deliveryCourierRemittance": "Courier cash handover",
+      "deliveryMerchantPayout": "Merchant payout",
+      "deliverySettlementRelation": "Post Service settlement {{reference}}."
     },
     "paymentMethod": {
       "bankTransfer": "Bank Transfer",
@@ -3912,7 +3922,8 @@
         "loanReport": "Loan Report",
         "upload": "Upload",
         "exchange": "Exchange",
-        "activities": "Activities"
+        "activities": "Activities",
+        "postService": "Post Service"
       },
       "sourceChannels": {
         "manual": "Manual",
@@ -6268,6 +6279,9 @@
       "return": "Return",
       "recordHandover": "Record handover",
       "payMerchant": "Pay merchant",
+      "editMerchant": "Edit merchant",
+      "saveMerchant": "Save merchant",
+      "deleteMerchant": "Delete merchant",
       "cancel": "Cancel",
       "createPost": "Create post",
       "confirmStatus": "Confirm {{status}}",
@@ -6317,6 +6331,7 @@
       "reason": "Reason",
       "amountReceivedPaid": "Amount received / paid",
       "paymentMethod": "Payment method",
+      "status": "Status",
       "noteVariance": "Note / variance explanation"
     },
     "placeholders": {
@@ -6379,8 +6394,11 @@
     },
     "payoutSchedule": { "daily": "Daily", "weekly": "Weekly", "on_request": "On request" },
     "settlementType": { "courierRemittance": "Courier handover", "merchantPayout": "Merchant payout" },
+    "reporting": { "serviceName": "Delivery service", "serviceCategory": "Delivery service", "feePayerNote": "Fee charged to {{payer}}" },
     "dialogs": {
       "enableMerchant": { "title": "Enable delivery merchant", "description": "This creates a delivery profile for an existing Business Partner; it does not create a duplicate customer." },
+      "editMerchant": { "title": "Edit delivery merchant", "description": "Update the delivery settings for {{name}}." },
+      "deleteMerchant": { "title": "Permanently delete delivery merchant", "description": "This permanently removes the delivery-merchant profile only. The Business Partner remains available elsewhere in the ERP." },
       "newPost": { "title": "New post", "description": "Recipient details stay on the post. Save them as a Business Partner only when you need a lasting CRM record." },
       "status": { "title": "Mark post {{status}}" },
       "courierSettlement": { "title": "Record courier handover" },
@@ -6392,6 +6410,10 @@
       "merchantEnabled": "Merchant enabled",
       "merchantEnabledDescription": "This business partner can now send posts.",
       "enableMerchantFailed": "Could not enable merchant",
+      "merchantUpdated": "Merchant updated",
+      "updateMerchantFailed": "Could not update merchant",
+      "merchantDeleted": "Merchant permanently deleted",
+      "deleteMerchantFailed": "Could not delete merchant",
       "postCreated": "Post created",
       "postCreatedDescription": "It is ready to dispatch to a courier.",
       "createPostFailed": "Could not create post",
@@ -6422,7 +6444,8 @@
       "amountExceedsBalance": "Settlement amount cannot exceed the outstanding balance.",
       "partialExplanationRequired": "Explain a partial settlement before confirming it.",
       "courierNotFound": "Courier not found.",
-      "merchantNotFound": "Merchant not found."
+      "merchantNotFound": "Merchant not found.",
+      "merchantDeleteHistory": "A merchant with delivery history cannot be permanently deleted. Make it inactive instead."
     }
   }
 }

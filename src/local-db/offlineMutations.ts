@@ -21,6 +21,72 @@ function isCloudInventoryTransactionMutation(
     return transactionType === 'stock_adjustment'
 }
 
+function payloadId(payload: Record<string, unknown>, camelCase: string, snakeCase: string) {
+    const value = payload[camelCase] ?? payload[snakeCase]
+    return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+/**
+ * A merchant profile may have been created while a workspace was local, then
+ * later be used to create a cloud shipment. When that shipment is explicitly
+ * retried, requeue its local prerequisites so the server can receive the
+ * profile, shipment, and event in dependency order.
+ */
+async function requeueDeliveryShipmentParents(
+    workspaceId: string,
+    mutations: OfflineMutation[]
+) {
+    const shipmentMutations = mutations.filter(
+        (mutation) => mutation.entityType === 'delivery_shipments'
+    )
+    if (shipmentMutations.length === 0) return
+
+    const profileIds = new Set<string>()
+    const partnerIds = new Set<string>()
+    for (const mutation of shipmentMutations) {
+        const profileId = payloadId(mutation.payload, 'merchantProfileId', 'merchant_profile_id')
+        const partnerId = payloadId(mutation.payload, 'merchantBusinessPartnerId', 'merchant_business_partner_id')
+        if (profileId) profileIds.add(profileId)
+        if (partnerId) partnerIds.add(partnerId)
+    }
+
+    const profiles = (await Promise.all(
+        [...profileIds].map((profileId) => db.delivery_merchant_profiles.get(profileId))
+    )).filter((profile) => (
+        profile
+        && !profile.isDeleted
+        && profile.workspaceId === workspaceId
+    ))
+    for (const profile of profiles) {
+        partnerIds.add(profile.businessPartnerId)
+    }
+
+    const partners = (await Promise.all(
+        [...partnerIds].map((partnerId) => db.business_partners.get(partnerId))
+    )).filter((partner) => (
+        partner
+        && !partner.isDeleted
+        && partner.workspaceId === workspaceId
+    ))
+
+    await Promise.all([
+        ...partners.map((partner) => addToOfflineMutations(
+            'business_partners',
+            partner.id,
+            partner.version > 1 ? 'update' : 'create',
+            partner as unknown as Record<string, unknown>,
+            workspaceId
+        )),
+        ...profiles.map((profile) => addToOfflineMutations(
+            'delivery_merchant_profiles',
+            profile.id,
+            profile.version > 1 ? 'update' : 'create',
+            profile as unknown as Record<string, unknown>,
+            workspaceId
+        ))
+    ])
+}
+
 export async function addToOfflineMutations(
     entityType: OfflineMutation['entityType'],
     entityId: string,
@@ -114,6 +180,8 @@ export async function retrySyncIntegrityMutations(workspaceId: string): Promise<
         .toArray()
 
     if (rows.length === 0) return 0
+
+    await requeueDeliveryShipmentParents(workspaceId, rows)
 
     await db.offline_mutations.bulkUpdate(rows.map((mutation) => ({
         key: mutation.id,

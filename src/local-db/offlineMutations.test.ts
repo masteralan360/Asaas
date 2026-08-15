@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mutationStore = vi.hoisted(() => {
     const rows: Array<Record<string, any>> = []
+    const deliveryMerchantProfiles: Array<Record<string, any>> = []
+    const businessPartners: Array<Record<string, any>> = []
 
     const table = {
         where: vi.fn((indexName: string) => ({
@@ -57,16 +59,32 @@ const mutationStore = vi.hoisted(() => {
         })
     }
 
+    const merchantProfilesTable = {
+        get: vi.fn(async (id: string) => deliveryMerchantProfiles.find((profile) => profile.id === id))
+    }
+
+    const businessPartnersTable = {
+        get: vi.fn(async (id: string) => businessPartners.find((partner) => partner.id === id))
+    }
+
     return {
         rows,
         table,
+        deliveryMerchantProfiles,
+        businessPartners,
+        merchantProfilesTable,
+        businessPartnersTable,
         reset() {
             rows.splice(0)
+            deliveryMerchantProfiles.splice(0)
+            businessPartners.splice(0)
             table.where.mockClear()
             table.add.mockClear()
             table.update.mockClear()
             table.delete.mockClear()
             table.bulkUpdate.mockClear()
+            merchantProfilesTable.get.mockClear()
+            businessPartnersTable.get.mockClear()
         }
     }
 })
@@ -90,7 +108,9 @@ const workspaceModeMock = vi.hoisted(() => ({
 
 vi.mock('./database', () => ({
     db: {
-        offline_mutations: mutationStore.table
+        offline_mutations: mutationStore.table,
+        delivery_merchant_profiles: mutationStore.merchantProfilesTable,
+        business_partners: mutationStore.businessPartnersTable
     }
 }))
 
@@ -339,5 +359,54 @@ describe('addToOfflineMutations', () => {
         expect(mutationStore.rows[0]).toMatchObject({ status: 'pending', error: undefined })
         expect(mutationStore.rows[1]).toMatchObject({ status: 'pending', error: undefined })
         expect(mutationStore.rows[2]).toMatchObject({ status: 'failed', error: 'network timeout' })
+    })
+
+    it('requeues the local merchant profile before retrying a failed shipment', async () => {
+        mutationStore.deliveryMerchantProfiles.push({
+            id: 'merchant-profile-1',
+            workspaceId: 'workspace-1',
+            businessPartnerId: 'partner-1',
+            version: 1,
+            isDeleted: false
+        })
+        mutationStore.businessPartners.push({
+            id: 'partner-1',
+            workspaceId: 'workspace-1',
+            version: 1,
+            isDeleted: false
+        })
+        mutationStore.rows.push({
+            id: 'shipment-failure',
+            workspaceId: 'workspace-1',
+            entityType: 'delivery_shipments',
+            entityId: 'shipment-1',
+            operation: 'create',
+            payload: {
+                id: 'shipment-1',
+                merchantProfileId: 'merchant-profile-1',
+                merchantBusinessPartnerId: 'partner-1'
+            },
+            createdAt: '2026-08-15T00:00:00.000Z',
+            status: 'failed',
+            error: 'Sync integrity issue: Shipment links must belong to the same workspace'
+        })
+
+        await expect(retrySyncIntegrityMutations('workspace-1')).resolves.toBe(1)
+
+        expect(mutationStore.rows).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                entityType: 'delivery_merchant_profiles',
+                entityId: 'merchant-profile-1',
+                operation: 'create',
+                status: 'pending'
+            }),
+            expect.objectContaining({
+                entityType: 'business_partners',
+                entityId: 'partner-1',
+                operation: 'create',
+                status: 'pending'
+            })
+        ]))
+        expect(mutationStore.rows[0]).toMatchObject({ status: 'pending', error: undefined })
     })
 })

@@ -221,6 +221,10 @@ function getTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceMo
         return `/activities?transaction=${transaction.sourceRecordId}`
     }
 
+    if (transaction.sourceModule === 'post_service') {
+        return '/post-service'
+    }
+
     if (transaction.sourceType === 'simple_loan') {
         return `/loans/${transaction.sourceRecordId}`
     }

@@ -54,6 +54,17 @@ type DeliveryEntity =
   | DeliverySettlement
   | DeliveryLedgerEntry;
 
+export type PostServiceTab = "posts" | "dispatch" | "my-deliveries" | "merchants" | "settlements";
+type PostServiceRefreshTableName = DeliveryTableName | "business_partners" | "agents" | "fleet_vehicles";
+
+const POST_SERVICE_TAB_REFRESH_TABLES: Record<PostServiceTab, readonly PostServiceRefreshTableName[]> = {
+  posts: ["business_partners", PROFILE_TABLE, SHIPMENT_TABLE],
+  dispatch: ["business_partners", "agents", "fleet_vehicles", SHIPMENT_TABLE, RUN_TABLE],
+  "my-deliveries": ["business_partners", "agents", SHIPMENT_TABLE],
+  merchants: ["business_partners", PROFILE_TABLE],
+  settlements: ["business_partners", "agents", PROFILE_TABLE, SETTLEMENT_TABLE, LEDGER_TABLE],
+};
+
 export interface DeliveryMerchantProfileInput {
   businessPartnerId: string;
   defaultFeeAmount?: number;
@@ -61,6 +72,14 @@ export interface DeliveryMerchantProfileInput {
   defaultPickupAddress?: string | null;
   payoutSchedule?: DeliveryPayoutSchedule;
   isActive?: boolean;
+}
+
+export interface UpdateDeliveryMerchantProfileInput {
+  defaultFeeAmount: number;
+  defaultFeePayer: DeliveryFeePayer;
+  defaultPickupAddress?: string | null;
+  payoutSchedule: DeliveryPayoutSchedule;
+  isActive: boolean;
 }
 
 export interface CreateDeliveryShipmentInput {
@@ -126,6 +145,82 @@ export interface DeliveryBalance {
   amount: number;
 }
 
+/**
+ * A display-only sale projection for the reporting surfaces. A delivery post
+ * is not a POS sale: the COD amount belongs to the merchant. Only the fee
+ * earned for a delivered shipment is exposed as revenue.
+ */
+export interface DeliverySaleProjectionOptions {
+  merchantName?: string | null;
+  merchantBusinessPartnerId?: string | null;
+  serviceName?: string;
+  serviceCategory?: string;
+  feePayerNote?: string | null;
+}
+
+export function toUISaleFromDeliveryShipment(
+  shipment: DeliveryShipment,
+  options: DeliverySaleProjectionOptions = {},
+): any {
+  const serviceName = options.serviceName?.trim() || "Delivery service";
+  const serviceCategory = options.serviceCategory?.trim() || serviceName;
+  const deliveryFee = Number(shipment.deliveryFee || 0);
+  const notes = [shipment.description?.trim(), options.feePayerNote?.trim()]
+    .filter((value): value is string => !!value)
+    .join(" | ") || null;
+
+  return {
+    id: shipment.id,
+    workspace_id: shipment.workspaceId,
+    cashier_id: shipment.createdBy || "",
+    total_amount: deliveryFee,
+    settlement_currency: shipment.currency,
+    created_at: shipment.deliveredAt || shipment.updatedAt,
+    updated_at: shipment.updatedAt,
+    origin: "post_service",
+    // Settlement methods can differ from one post to another, so the actual
+    // cash method stays on the settlement in the ledger rather than being
+    // guessed on this earned-revenue projection.
+    payment_method: null,
+    cashier_name: serviceName,
+    items: [{
+      id: `delivery-fee:${shipment.id}`,
+      sale_id: shipment.id,
+      product_id: "delivery_service_fee",
+      product_name: `${serviceName} · ${shipment.trackingNumber}`,
+      product_sku: "DELIVERY-FEE",
+      product_category: serviceCategory,
+      quantity: 1,
+      unit_price: deliveryFee,
+      total_price: deliveryFee,
+      cost_price: 0,
+      converted_cost_price: 0,
+      original_currency: shipment.currency,
+      original_unit_price: deliveryFee,
+      converted_unit_price: deliveryFee,
+      settlement_currency: shipment.currency,
+      returned_quantity: 0,
+      is_returned: false,
+      product: {
+        name: `${serviceName} · ${shipment.trackingNumber}`,
+        sku: "DELIVERY-FEE",
+        category: serviceCategory,
+        can_be_returned: false,
+      },
+    }],
+    is_returned: false,
+    has_partial_return: false,
+    sequenceId: shipment.trackingNumber,
+    notes,
+    partyName: options.merchantName?.trim() || null,
+    business_partner_id: options.merchantBusinessPartnerId ?? null,
+    _isPostService: true,
+    _deliveryShipmentId: shipment.id,
+    _trackingNumber: shipment.trackingNumber,
+    _deliveryFeePayer: shipment.feePayer,
+  };
+}
+
 function shouldUseCloudDeliveryData(workspaceId?: string | null) {
   return !!workspaceId && !isLocalWorkspaceMode(workspaceId);
 }
@@ -164,28 +259,42 @@ function getTable(tableName: DeliveryTableName) {
   }
 }
 
+function getPostServiceRefreshTable(tableName: PostServiceRefreshTableName) {
+  switch (tableName) {
+    case "business_partners":
+      return db.business_partners;
+    case "agents":
+      return db.agents;
+    case "fleet_vehicles":
+      return db.fleet_vehicles;
+    default:
+      return getTable(tableName);
+  }
+}
+
+/** Refresh only the records rendered by the selected Post Service tab. */
+export async function refreshPostServiceTab(workspaceId: string, tab: PostServiceTab) {
+  if (!shouldUseCloudDeliveryData(workspaceId)) return;
+
+  await Promise.all(
+    POST_SERVICE_TAB_REFRESH_TABLES[tab].map((tableName) =>
+      fetchTableFromSupabase(tableName, getPostServiceRefreshTable(tableName), workspaceId),
+    ),
+  );
+}
+
 async function syncEntities(
   tableName: DeliveryTableName,
   entities: DeliveryEntity[],
   workspaceId: string,
-) {
+): Promise<boolean> {
   if (entities.length === 0 || !shouldUseCloudDeliveryData(workspaceId)) {
-    return;
+    return true;
   }
 
   if (!isOnline(workspaceId)) {
-    await Promise.all(
-      entities.map((entity) =>
-        addToOfflineMutations(
-          tableName,
-          entity.id,
-          entity.version > 1 ? "update" : "create",
-          entity as unknown as Record<string, unknown>,
-          workspaceId,
-        ),
-      ),
-    );
-    return;
+    await queueSyncEntities(tableName, entities, workspaceId);
+    return false;
   }
 
   try {
@@ -202,19 +311,70 @@ async function syncEntities(
         changes: { syncStatus: "synced", lastSyncedAt: syncedAt },
       })) as never,
     );
+    return true;
   } catch (error) {
     console.error(`[Post Service] Failed to sync ${tableName}:`, error);
-    await Promise.all(
-      entities.map((entity) =>
-        addToOfflineMutations(
-          tableName,
-          entity.id,
-          entity.version > 1 ? "update" : "create",
-          entity as unknown as Record<string, unknown>,
-          workspaceId,
-        ),
+    await queueSyncEntities(tableName, entities, workspaceId);
+    return false;
+  }
+}
+
+async function queueSyncEntities(
+  tableName: DeliveryTableName,
+  entities: DeliveryEntity[],
+  workspaceId: string,
+) {
+  await Promise.all(
+    entities.map((entity) =>
+      addToOfflineMutations(
+        tableName,
+        entity.id,
+        entity.version > 1 ? "update" : "create",
+        entity as unknown as Record<string, unknown>,
+        workspaceId,
       ),
-    );
+    ),
+  );
+}
+
+/**
+ * Delivery rows have foreign-key links. Keep their cloud writes in the same
+ * order as the relationship graph, and queue dependants without attempting a
+ * server write when a parent could not be accepted yet.
+ */
+async function syncEntitiesInDependencyOrder(
+  workspaceId: string,
+  operations: Array<readonly [DeliveryTableName, DeliveryEntity[]]>,
+) {
+  let canSyncDependants = true;
+
+  for (const [tableName, entities] of operations) {
+    if (!canSyncDependants) {
+      await queueSyncEntities(tableName, entities, workspaceId);
+      continue;
+    }
+
+    canSyncDependants = await syncEntities(tableName, entities, workspaceId);
+  }
+}
+
+async function syncHardDeleteProfile(profileId: string, workspaceId: string) {
+  if (!shouldUseCloudDeliveryData(workspaceId)) return;
+
+  if (!isOnline(workspaceId)) {
+    await addToOfflineMutations(PROFILE_TABLE, profileId, "delete", { id: profileId, hardDelete: true }, workspaceId);
+    return;
+  }
+
+  try {
+    const client = getSupabaseClientForTable(PROFILE_TABLE);
+    const { error } = (await runSupabaseAction(`${PROFILE_TABLE}.hardDelete`, () =>
+      client.from(PROFILE_TABLE).delete().eq("id", profileId),
+    )) as { error?: unknown };
+    if (error) throw error;
+  } catch (error) {
+    console.error(`[Post Service] Failed to hard delete ${PROFILE_TABLE}:`, error);
+    await addToOfflineMutations(PROFILE_TABLE, profileId, "delete", { id: profileId, hardDelete: true }, workspaceId);
   }
 }
 
@@ -445,6 +605,46 @@ export async function createDeliveryMerchantProfile(
   return profile;
 }
 
+export async function updateDeliveryMerchantProfile(
+  profileId: string,
+  input: UpdateDeliveryMerchantProfileInput,
+) {
+  const profile = await db.delivery_merchant_profiles.get(profileId);
+  if (!profile || profile.isDeleted) throw new Error("Merchant not found");
+
+  const now = new Date().toISOString();
+  const updated: DeliveryMerchantProfile = {
+    ...profile,
+    defaultFeeAmount: positiveMoney(input.defaultFeeAmount, "Default delivery fee"),
+    defaultFeePayer: input.defaultFeePayer,
+    defaultPickupAddress: normalizeText(input.defaultPickupAddress),
+    payoutSchedule: input.payoutSchedule,
+    isActive: input.isActive,
+    updatedAt: now,
+    version: profile.version + 1,
+    ...getSyncMetadata(profile.workspaceId, now),
+  };
+  await db.delivery_merchant_profiles.put(updated);
+  await syncEntities(PROFILE_TABLE, [updated], profile.workspaceId);
+  return updated;
+}
+
+export async function hardDeleteDeliveryMerchantProfile(profileId: string) {
+  const profile = await db.delivery_merchant_profiles.get(profileId);
+  if (!profile || profile.isDeleted) return;
+
+  const [shipment, ledgerEntry] = await Promise.all([
+    db.delivery_shipments.where("merchantProfileId").equals(profile.id).first(),
+    db.delivery_ledger_entries.where("merchantProfileId").equals(profile.id).first(),
+  ]);
+  if (shipment || ledgerEntry) {
+    throw new Error("A merchant with delivery history cannot be permanently deleted. Make it inactive instead.");
+  }
+
+  await db.delivery_merchant_profiles.delete(profile.id);
+  await syncHardDeleteProfile(profile.id, profile.workspaceId);
+}
+
 export async function createDeliveryShipment(
   workspaceId: string,
   input: CreateDeliveryShipmentInput,
@@ -497,9 +697,10 @@ export async function createDeliveryShipment(
     await db.delivery_shipments.put(shipment);
     await db.delivery_shipment_events.put(event);
   });
-  await Promise.all([
-    syncEntities(SHIPMENT_TABLE, [shipment], workspaceId),
-    syncEntities(EVENT_TABLE, [event], workspaceId),
+  await syncEntitiesInDependencyOrder(workspaceId, [
+    [PROFILE_TABLE, [profile]],
+    [SHIPMENT_TABLE, [shipment]],
+    [EVENT_TABLE, [event]],
   ]);
   return shipment;
 }
@@ -565,11 +766,11 @@ export async function createDeliveryRun(workspaceId: string, input: CreateDelive
     await db.delivery_run_items.bulkPut(items);
     await db.delivery_shipment_events.bulkPut(events);
   });
-  await Promise.all([
-    syncEntities(RUN_TABLE, [run], workspaceId),
-    syncEntities(SHIPMENT_TABLE, updates, workspaceId),
-    syncEntities(RUN_ITEM_TABLE, items, workspaceId),
-    syncEntities(EVENT_TABLE, events, workspaceId),
+  await syncEntitiesInDependencyOrder(workspaceId, [
+    [RUN_TABLE, [run]],
+    [SHIPMENT_TABLE, updates],
+    [RUN_ITEM_TABLE, items],
+    [EVENT_TABLE, events],
   ]);
   return run;
 }
@@ -668,10 +869,10 @@ export async function updateDeliveryShipmentStatus(
     await db.delivery_shipment_events.put(event);
     if (ledgerEntries.length > 0) await db.delivery_ledger_entries.bulkPut(ledgerEntries);
   });
-  await Promise.all([
-    syncEntities(SHIPMENT_TABLE, [updated], original.workspaceId),
-    syncEntities(EVENT_TABLE, [event], original.workspaceId),
-    syncEntities(LEDGER_TABLE, ledgerEntries, original.workspaceId),
+  await syncEntitiesInDependencyOrder(original.workspaceId, [
+    [SHIPMENT_TABLE, [updated]],
+    [EVENT_TABLE, [event]],
+    [LEDGER_TABLE, ledgerEntries],
   ]);
   return updated;
 }
@@ -736,10 +937,19 @@ async function createSettlement(
     await db.delivery_settlements.put(settlement);
     await db.delivery_ledger_entries.put(ledgerEntry);
   });
-  await Promise.all([
-    syncEntities(SETTLEMENT_TABLE, [settlement], workspaceId),
-    syncEntities(LEDGER_TABLE, [ledgerEntry], workspaceId),
+  await syncEntitiesInDependencyOrder(workspaceId, [
+    [SETTLEMENT_TABLE, [settlement]],
+    [LEDGER_TABLE, [ledgerEntry]],
   ]);
+
+  const linkedBusinessPartnerId = type === "courier_remittance"
+    ? (options.agentId ? (await db.agents.get(options.agentId))?.businessPartnerId ?? null : null)
+    : options.businessPartnerId ?? (options.merchantProfileId
+      ? (await db.delivery_merchant_profiles.get(options.merchantProfileId))?.businessPartnerId ?? null
+      : null);
+  const counterparty = linkedBusinessPartnerId
+    ? await db.business_partners.get(linkedBusinessPartnerId)
+    : null;
 
   const payment = await appendPaymentTransaction(workspaceId, {
     sourceModule: "post_service",
@@ -750,12 +960,16 @@ async function createSettlement(
     currency: options.currency,
     paymentMethod: options.paymentMethod,
     paidAt: settledAt,
-    counterpartyName: null,
+    counterpartyName: counterparty?.name ?? null,
     referenceLabel: settlement.settlementNumber,
     note: normalizeText(options.note),
     createdBy: options.createdBy ?? null,
     metadata: {
       deliverySettlementId: settlement.id,
+      deliverySettlementType: type,
+      deliveryAgentId: options.agentId ?? null,
+      deliveryMerchantProfileId: options.merchantProfileId ?? null,
+      businessPartnerId: linkedBusinessPartnerId,
       expectedAmount: expected,
       varianceAmount: actual - expected,
     },
@@ -807,4 +1021,3 @@ export async function closeDeliveryRun(runId: string) {
   await syncEntities(RUN_TABLE, [updated], current.workspaceId);
   return updated;
 }
-

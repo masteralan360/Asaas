@@ -160,7 +160,6 @@ export const PLAN_DEFINITIONS: Record<WorkspacePlan, WorkspacePlanDefinition> = 
             'customers',
             'suppliers',
             'orders',
-            'post_service',
             'ecommerce',
             'loans',
             'installments',

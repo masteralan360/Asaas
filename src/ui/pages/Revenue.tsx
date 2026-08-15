@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { Sale } from '@/types'
-import { applySalesOrderReturnQuantities, useCategories, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, toUISale, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction } from '@/local-db'
+import { applySalesOrderReturnQuantities, useCategories, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, useBusinessPartners, useDeliveryMerchantProfiles, useDeliveryShipments, toUISale, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, toUISaleFromDeliveryShipment } from '@/local-db'
 import { formatCurrency, formatDateTime, formatDate, formatOriginLabel, formatTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
@@ -337,6 +337,8 @@ function revenueOriginLabel(origin: string | null | undefined, sourceChannel: st
             return t('revenue.filters.origins.upload', { defaultValue: 'Upload' })
         case 'exchange':
             return t('revenue.filters.origins.exchange', { defaultValue: 'Exchange' })
+        case 'post_service':
+            return t('revenue.filters.origins.postService', { defaultValue: 'Post Service' })
         default:
             return humanizeRevenueFilterValue(origin)
     }
@@ -606,6 +608,9 @@ export function Revenue() {
     const rawSalesOrders = useSalesOrders(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const salesOrderReturnItems = useSalesOrderReturnItemsForWorkspace(user?.workspaceId)
     const rawTravelSales = useTravelAgencySales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
+    const deliveryShipments = useDeliveryShipments(user?.workspaceId)
+    const deliveryMerchantProfiles = useDeliveryMerchantProfiles(user?.workspaceId)
+    const deliveryBusinessPartners = useBusinessPartners(user?.workspaceId)
     const rawExchangeTransactions = useExchangeTransactions(user?.workspaceId)
     const realEstateCommissionTransactions = usePaymentTransactions(user?.workspaceId, {
         direction: 'incoming',
@@ -630,6 +635,14 @@ export function Revenue() {
         () => new Map(workspaceUsers.map((member) => [member.id, member.name || member.email || member.id] as const)),
         [workspaceUsers]
     )
+    const deliveryMerchantNameByProfileId = useMemo(() => {
+        const partnerNameById = new Map(deliveryBusinessPartners.map((partner) => [partner.id, partner.name] as const))
+        return new Map(deliveryMerchantProfiles.map((profile) => [profile.id, partnerNameById.get(profile.businessPartnerId) || null] as const))
+    }, [deliveryBusinessPartners, deliveryMerchantProfiles])
+    const deliveryMerchantBusinessPartnerIdByProfileId = useMemo(
+        () => new Map(deliveryMerchantProfiles.map((profile) => [profile.id, profile.businessPartnerId] as const)),
+        [deliveryMerchantProfiles]
+    )
     const salesOrders = useMemo(
         () => applySalesOrderReturnQuantities(rawSalesOrders || [], salesOrderReturnItems),
         [rawSalesOrders, salesOrderReturnItems]
@@ -653,8 +666,22 @@ export function Revenue() {
                 activityTransactionLines.filter((line) => line.transactionId === transaction.id),
                 transaction.createdBy ? userNameById.get(transaction.createdBy) : undefined
             ))
-        return [...sales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales, ...activitySales]
-    }, [rawSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines, userNameById])
+        const deliverySales = deliveryShipments
+            .filter((shipment) => shipment.status === 'delivered' && !!shipment.deliveredAt)
+            .filter((shipment) => (!dateBounds.startDate || shipment.deliveredAt! >= dateBounds.startDate)
+                && (!dateBounds.endDate || shipment.deliveredAt! <= dateBounds.endDate))
+            .map((shipment) => toUISaleFromDeliveryShipment(shipment, {
+                merchantName: deliveryMerchantNameByProfileId.get(shipment.merchantProfileId),
+                merchantBusinessPartnerId: deliveryMerchantBusinessPartnerIdByProfileId.get(shipment.merchantProfileId),
+                serviceName: t('postService.reporting.serviceName', { defaultValue: 'Delivery service' }),
+                serviceCategory: t('postService.reporting.serviceCategory', { defaultValue: 'Delivery service' }),
+                feePayerNote: t('postService.reporting.feePayerNote', {
+                    payer: t(`postService.feePayer.${shipment.feePayer}`, { defaultValue: shipment.feePayer }),
+                    defaultValue: `Fee charged to ${shipment.feePayer}`
+                })
+            }))
+        return [...sales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales, ...activitySales, ...deliverySales]
+    }, [rawSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines, userNameById, dateBounds.endDate, dateBounds.startDate, deliveryMerchantBusinessPartnerIdByProfileId, deliveryMerchantNameByProfileId, deliveryShipments, t])
     const travelSales = useMemo<Sale[]>(() =>
         (rawTravelSales || [])
             .filter(s => s.isPaid && !s.isDeleted)

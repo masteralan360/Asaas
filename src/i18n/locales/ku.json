@@ -2986,7 +2986,8 @@
         "loanReport": "ڕاپۆرتی قەرز",
         "upload": "بارکردن",
         "exchange": "ئاڵوگۆڕ",
-        "activities": "چالاکییەکان"
+        "activities": "چالاکییەکان",
+        "postService": "خزمەتگوزاریی پۆست"
       },
       "sourceChannels": {
         "manual": "دەستی",
@@ -4286,7 +4287,9 @@
       "directTransaction": "مامەڵەی ڕاستەوخۆ",
       "clinicalAppointment": "نۆرە",
       "activityTransaction": "مامەڵەی چالاکی",
-      "activityRefund": "گەڕاندنەوەی پارەی چالاکی"
+      "activityRefund": "گەڕاندنەوەی پارەی چالاکی",
+      "deliveryCourierRemittance": "تەسلیمکردنی نەقدی مەندوب",
+      "deliveryMerchantPayout": "پارەدانی بازرگان"
     },
     "status": {
       "reversal": "هەڵوەشاندنەوە",
@@ -4432,7 +4435,9 @@
       "directInflow": "هاتووی ڕاستەوخۆ",
       "directOutflow": "چووی ڕاستەوخۆ",
       "activityTransaction": "مامەڵەی چالاکی",
-      "activityRefund": "گەڕاندنەوەی پارەی چالاکی"
+      "activityRefund": "گەڕاندنەوەی پارەی چالاکی",
+      "deliveryCourierRemittance": "تەسلیمکردنی نەقدی مەندوب",
+      "deliveryMerchantPayout": "پارەدانی بازرگان"
     },
     "sourceModule": {
       "pos": "خاڵی فڕۆشتن",
@@ -4442,7 +4447,13 @@
       "payroll": "مووچەکان",
       "loans": "قەرزەکان",
       "manual": "دەستی",
-      "activities": "چالاکییەکان"
+      "activities": "چالاکییەکان",
+      "postService": "خزمەتگوزاریی پۆست"
+    },
+    "description": {
+      "deliveryCourierRemittance": "تەسلیمکردنی نەقدی لەلایەن مەندوبەوە",
+      "deliveryMerchantPayout": "پارەدانی بازرگان",
+      "deliverySettlementRelation": "تەسویەی خزمەتگوزاریی پۆست {{reference}}."
     },
     "paymentMethod": {
       "bankTransfer": "گواستنەوەی بانکی",
@@ -6057,12 +6068,12 @@
     "title": "خزمەتگوزاریی پۆست",
     "subtitle": "پۆستەکانی پارە لە کاتی وەرگرتن بەڕێوەببە، لە وەرگرتنی بازرگانەوە تا تەسلیمکردنی مەندوب و پارەدانی بازرگان.",
     "unknownCourier": "مەندوبی نەناسراو", "unknownMerchant": "بازرگانی نەناسراو", "active": "چالاک", "inactive": "ناچالاک",
-    "actions": { "enableMerchant": "چالاککردنی بازرگان", "newPost": "پۆستی نوێ", "assignSelected": "دیاریکردنی پۆستە هەڵبژێردراوەکان", "closeRun": "داخستنی گەشت", "markDelivered": "گەیشت", "postpone": "دواخستن", "return": "گەڕاندنەوە", "recordHandover": "تۆمارکردنی تەسلیمکردن", "payMerchant": "پارەدانی بازرگان", "cancel": "هەڵوەشاندنەوە", "createPost": "دروستکردنی پۆست", "confirmStatus": "پشتڕاستکردنەوەی {{status}}", "confirmSettlement": "پشتڕاستکردنەوەی تەسویه" },
+    "actions": { "enableMerchant": "چالاککردنی بازرگان", "newPost": "پۆستی نوێ", "assignSelected": "دیاریکردنی پۆستە هەڵبژێردراوەکان", "closeRun": "داخستنی گەشت", "markDelivered": "گەیشت", "postpone": "دواخستن", "return": "گەڕاندنەوە", "recordHandover": "تۆمارکردنی تەسلیمکردن", "payMerchant": "پارەدانی بازرگان", "editMerchant": "دەستکاریکردنی بازرگان", "saveMerchant": "پاشەکەوتکردنی بازرگان", "deleteMerchant": "سڕینەوەی بازرگان", "cancel": "هەڵوەشاندنەوە", "createPost": "دروستکردنی پۆست", "confirmStatus": "پشتڕاستکردنەوەی {{status}}", "confirmSettlement": "پشتڕاستکردنەوەی تەسویه" },
     "metrics": { "readyToDispatch": "ئامادەی دابەشکردن", "withCourier": "لەلای مەندوب", "deliveredToday": "ئەمڕۆ گەیشتووە", "courierCashBalances": "باڵانسی نەقدی مەندوبان", "merchantPayables": "پارەدرای بازرگانان", "openBalances": "باڵانسی کراوە" },
     "tabs": { "posts": "پۆستەکان", "dispatch": "دابەشکردن", "myDeliveries": "گەیاندنەکانم", "merchants": "بازرگانان", "settlements": "تەسویەکان" },
     "cards": { "allPosts": "هەموو پۆستەکان", "createManifest": "دروستکردنی لیستی مەندوب", "recentRuns": "گەشتەکانی دابەشکردنی نوێ", "myAssignedPosts": "پۆستە دیاریکراوەکانم", "deliveryMerchants": "بازرگانانی گەیاندن", "courierHandovers": "تەسلیمکردنی نەقدی مەندوب", "merchantPayouts": "پارەدانی بازرگانان", "settlementHistory": "مێژووی تەسویە" },
     "selectedForDispatch": "{{count}} دانە بۆ دابەشکردن هەڵبژێردراون", "selectedAndAvailable": "{{selected}} هەڵبژێردراو · {{available}} بەردەست",
-    "form": { "postsSelected": "پۆستە هەڵبژێردراوەکان", "courier": "مەندوب", "vehicleOptional": "ئۆتۆمبێل (ئارەزوومەندانە)", "manifestNote": "تێبینی لیست", "businessPartner": "هاوبەشی بازرگانی", "defaultDeliveryFee": "کرێی بنەڕەتی گەیاندن", "feePayer": "پارەدەری کرێ", "payoutSchedule": "خشتەی پارەدان", "merchant": "بازرگان", "recipientName": "ناوی وەرگر", "recipientPhone": "تەلەفۆنی وەرگر", "alternatePhone": "تەلەفۆنی جێگرەوە", "deliveryAddress": "ناونیشانی گەیاندن", "cityZone": "شار / ناوچە", "description": "وەسف", "codAmount": "بڕی پارە لە کاتی وەرگرتن", "deliveryFee": "کرێی گەیاندن", "currency": "دراو", "optionalNote": "تێبینی ئارەزوومەندانە", "reason": "هۆکار", "amountReceivedPaid": "بڕی وەرگیراو / پارەدراو", "paymentMethod": "شێوازی پارەدان", "noteVariance": "تێبینی / ڕوونکردنەوەی جیاوازی" },
+    "form": { "postsSelected": "پۆستە هەڵبژێردراوەکان", "courier": "مەندوب", "vehicleOptional": "ئۆتۆمبێل (ئارەزوومەندانە)", "manifestNote": "تێبینی لیست", "businessPartner": "هاوبەشی بازرگانی", "defaultDeliveryFee": "کرێی بنەڕەتی گەیاندن", "feePayer": "پارەدەری کرێ", "payoutSchedule": "خشتەی پارەدان", "merchant": "بازرگان", "recipientName": "ناوی وەرگر", "recipientPhone": "تەلەفۆنی وەرگر", "alternatePhone": "تەلەفۆنی جێگرەوە", "deliveryAddress": "ناونیشانی گەیاندن", "cityZone": "شار / ناوچە", "description": "وەسف", "codAmount": "بڕی پارە لە کاتی وەرگرتن", "deliveryFee": "کرێی گەیاندن", "currency": "دراو", "optionalNote": "تێبینی ئارەزوومەندانە", "reason": "هۆکار", "amountReceivedPaid": "بڕی وەرگیراو / پارەدراو", "paymentMethod": "شێوازی پارەدان", "status": "دۆخ", "noteVariance": "تێبینی / ڕوونکردنەوەی جیاوازی" },
     "placeholders": { "selectCourier": "مەندوب هەڵبژێرە", "manifestNote": "تێبینی ڕێگا یان تەسلیمکردن", "selectMerchantOrShop": "دوکان یان بازرگان هەڵبژێرە", "selectMerchant": "بازرگان هەڵبژێرە", "parcelDescription": "وەسفی ئارەزوومەندانەی پاکەت", "postponedReason": "کڕیار داوای سبەی کرد یان وەڵامی نەدایەوە…", "returnedReason": "ناونیشان هەڵەیە یان کڕیار ڕەتی کردەوە…", "deliveryNote": "بەڵگە یان تێبینی گەیاندن", "varianceNote": "کاتێک کەمتر لە باڵانسی قەرزار پارەدەدرێت پێویستە" },
     "options": { "noVehicle": "هیچ ئۆتۆمبێلێک نییە" }, "permissionRequired": { "dispatch": "دەسەڵاتت نییە بۆ دروستکردنی لیستی دابەشکردن." },
     "table": { "tracking": "ژمارەی شوێنکەوتن", "merchantRecipient": "بازرگان / وەرگر", "cod": "پارە لە کاتی وەرگرتن", "courier": "مەندوب", "status": "دۆخ", "actions": "کردارەکان", "noZone": "هیچ ناوچەیەک نییە", "run": "گەشت", "dispatched": "کاتی دابەشکردن", "merchant": "بازرگان", "defaultFee": "کرێی بنەڕەتی", "feePayer": "پارەدەری کرێ", "payoutSchedule": "خشتەی پارەدان", "reference": "سەرچاوە", "type": "جۆر", "amount": "بڕ", "time": "کات", "party": "لایەن", "outstanding": "باڵانسی قەرزار" },
@@ -6071,9 +6082,10 @@
     "runStatus": { "open": "کراوە", "closed": "داخراوە" },
     "feePayer": { "merchant": "بازرگان", "recipient": "وەرگر", "merchantDeducted": "بازرگان (لە پارەدان کەم دەکرێتەوە)", "recipientCollected": "وەرگر (لە دەرگاکە وەردەگیرێت)" },
     "payoutSchedule": { "daily": "ڕۆژانە", "weekly": "هەفتانە", "on_request": "لە داواکاری" }, "settlementType": { "courierRemittance": "تەسلیمکردنی مەندوب", "merchantPayout": "پارەدانی بازرگان" },
-    "dialogs": { "enableMerchant": { "title": "چالاککردنی بازرگانی گەیاندن", "description": "ئەمە پڕۆفایلی گەیاندن بۆ هاوبەشێکی بازرگانیی هەبوو دروست دەکات؛ کڕیارێکی دووبارە دروست ناکات." }, "newPost": { "title": "پۆستی نوێ", "description": "زانیارییەکانی وەرگر لە پۆستەکە دەمێننەوە. تەنها کاتێک وەک هاوبەشی بازرگانی پاشەکەوتی بکە کە تۆمارێکی بەردەوامی CRMت پێویستە." }, "status": { "title": "دۆخی پۆست بکە بە {{status}}" }, "courierSettlement": { "title": "تۆمارکردنی تەسلیمکردنی مەندوب" }, "merchantSettlement": { "title": "پارەدانی بازرگان" }, "settlementOutstanding": "{{name}} {{amount}} باڵانسی قەرزاری هەیە." },
+    "reporting": { "serviceName": "خزمەتگوزاریی گەیاندن", "serviceCategory": "خزمەتگوزاریی گەیاندن", "feePayerNote": "کرێ لەسەر {{payer}} حساب کراوە" },
+    "dialogs": { "enableMerchant": { "title": "چالاککردنی بازرگانی گەیاندن", "description": "ئەمە پڕۆفایلی گەیاندن بۆ هاوبەشێکی بازرگانیی هەبوو دروست دەکات؛ کڕیارێکی دووبارە دروست ناکات." }, "editMerchant": { "title": "دەستکاریکردنی بازرگانی گەیاندن", "description": "ڕێکخستنەکانی گەیاندن بۆ {{name}} نوێ بکەرەوە." }, "deleteMerchant": { "title": "سڕینەوەی هەمیشەیی بازرگانی گەیاندن", "description": "ئەمە تەنها پڕۆفایلی بازرگانی گەیاندن بە هەمیشەیی دەسڕێتەوە. هاوبەشی بازرگانی لە بەشەکانی تری ERPدا دەمێنێتەوە." }, "newPost": { "title": "پۆستی نوێ", "description": "زانیارییەکانی وەرگر لە پۆستەکە دەمێننەوە. تەنها کاتێک وەک هاوبەشی بازرگانی پاشەکەوتی بکە کە تۆمارێکی بەردەوامی CRMت پێویستە." }, "status": { "title": "دۆخی پۆست بکە بە {{status}}" }, "courierSettlement": { "title": "تۆمارکردنی تەسلیمکردنی مەندوب" }, "merchantSettlement": { "title": "پارەدانی بازرگان" }, "settlementOutstanding": "{{name}} {{amount}} باڵانسی قەرزاری هەیە." },
     "paymentMethods": { "cash": "نەقد", "bank_transfer": "گواستنەوەی بانکی", "fib": "FiB", "qicard": "QiCard", "zaincash": "ZainCash", "fastpay": "FastPay" },
-    "messages": { "merchantEnabled": "بازرگان چالاک کرا", "merchantEnabledDescription": "ئەم هاوبەشەی بازرگانییە ئێستا دەتوانێت پۆست بنێرێت.", "enableMerchantFailed": "چالاککردنی بازرگان سەرکەوتوو نەبوو", "postCreated": "پۆست دروست کرا", "postCreatedDescription": "ئێستا ئامادەیە بۆ دیاریکردن بۆ مەندوب.", "createPostFailed": "دروستکردنی پۆست سەرکەوتوو نەبوو", "dispatchCreated": "دابەشکردن دروست کرا", "dispatchCreatedDescription": "{{run}} بۆ مەندوب دیاری کرا.", "dispatchFailed": "دابەشکردنی پۆستەکان سەرکەوتوو نەبوو", "postMarked": "دۆخی پۆست کرا بە {{status}}", "updatePostFailed": "نوێکردنەوەی پۆست سەرکەوتوو نەبوو", "courierHandoverRecorded": "تەسلیمکردنی مەندوب تۆمار کرا", "merchantPayoutRecorded": "پارەدانی بازرگان تۆمار کرا", "settlementFailed": "تۆمارکردنی تەسویە سەرکەوتوو نەبوو", "runClosed": "گەشتی دابەشکردن داخرا", "closeRunFailed": "داخستنی گەشتی دابەشکردن سەرکەوتوو نەبوو" },
-    "errors": { "generic": "تکایە دووبارە هەوڵ بدە.", "selectBusinessPartner": "هاوبەشێکی بازرگانی لەم شوێنی کارە هەڵبژێرە.", "selectMerchant": "بازرگانی گەیاندنی چالاک هەڵبژێرە.", "recipientRequired": "ناو، تەلەفۆن و ناونیشانی وەرگر پێویستن.", "selectCourier": "مەندوبی چالاک هەڵبژێرە.", "selectShipment": "لانیکەم یەک پۆست هەڵبژێرە.", "shipmentNotDispatchable": "تەنها پۆستە نادیاریکراوەکان، ئامادەکان یان دواخراوەکان دەتوانرێن دابەش بکرێن.", "shipmentNotFound": "پۆست نەدۆزرایەوە.", "completedShipment": "پۆستی تەواوبوو ناتوانرێت بگۆڕدرێت. لەبری ئەوە ڕێکخستن تۆمار بکە.", "reasonRequired": "هۆکار بۆ ئەم دۆخە پێویستە.", "assignCourierFirst": "سەرەتا پۆستەکە بۆ مەندوب دیاری بکە.", "courierAssignmentOnly": "مەندوب تەنها دەتوانێت پۆستە دیاریکراوەکان بۆ خۆی نوێ بکاتەوە.", "amountExceedsBalance": "بڕی تەسویە نابێت لە باڵانسی قەرزار زیاتر بێت.", "partialExplanationRequired": "پێش پشتڕاستکردنەوەی تەسویەی بەشەکی، ڕوونکردنەوەی بدە.", "courierNotFound": "مەندوب نەدۆزرایەوە.", "merchantNotFound": "بازرگان نەدۆزرایەوە." }
+    "messages": { "merchantEnabled": "بازرگان چالاک کرا", "merchantEnabledDescription": "ئەم هاوبەشەی بازرگانییە ئێستا دەتوانێت پۆست بنێرێت.", "enableMerchantFailed": "چالاککردنی بازرگان سەرکەوتوو نەبوو", "merchantUpdated": "بازرگان نوێکرایەوە", "updateMerchantFailed": "نوێکردنەوەی بازرگان سەرکەوتوو نەبوو", "merchantDeleted": "بازرگان بە هەمیشەیی سڕایەوە", "deleteMerchantFailed": "سڕینەوەی بازرگان سەرکەوتوو نەبوو", "postCreated": "پۆست دروست کرا", "postCreatedDescription": "ئێستا ئامادەیە بۆ دیاریکردن بۆ مەندوب.", "createPostFailed": "دروستکردنی پۆست سەرکەوتوو نەبوو", "dispatchCreated": "دابەشکردن دروست کرا", "dispatchCreatedDescription": "{{run}} بۆ مەندوب دیاری کرا.", "dispatchFailed": "دابەشکردنی پۆستەکان سەرکەوتوو نەبوو", "postMarked": "دۆخی پۆست کرا بە {{status}}", "updatePostFailed": "نوێکردنەوەی پۆست سەرکەوتوو نەبوو", "courierHandoverRecorded": "تەسلیمکردنی مەندوب تۆمار کرا", "merchantPayoutRecorded": "پارەدانی بازرگان تۆمار کرا", "settlementFailed": "تۆمارکردنی تەسویە سەرکەوتوو نەبوو", "runClosed": "گەشتی دابەشکردن داخرا", "closeRunFailed": "داخستنی گەشتی دابەشکردن سەرکەوتوو نەبوو" },
+    "errors": { "generic": "تکایە دووبارە هەوڵ بدە.", "selectBusinessPartner": "هاوبەشێکی بازرگانی لەم شوێنی کارە هەڵبژێرە.", "selectMerchant": "بازرگانی گەیاندنی چالاک هەڵبژێرە.", "recipientRequired": "ناو، تەلەفۆن و ناونیشانی وەرگر پێویستن.", "selectCourier": "مەندوبی چالاک هەڵبژێرە.", "selectShipment": "لانیکەم یەک پۆست هەڵبژێرە.", "shipmentNotDispatchable": "تەنها پۆستە نادیاریکراوەکان، ئامادەکان یان دواخراوەکان دەتوانرێن دابەش بکرێن.", "shipmentNotFound": "پۆست نەدۆزرایەوە.", "completedShipment": "پۆستی تەواوبوو ناتوانرێت بگۆڕدرێت. لەبری ئەوە ڕێکخستن تۆمار بکە.", "reasonRequired": "هۆکار بۆ ئەم دۆخە پێویستە.", "assignCourierFirst": "سەرەتا پۆستەکە بۆ مەندوب دیاری بکە.", "courierAssignmentOnly": "مەندوب تەنها دەتوانێت پۆستە دیاریکراوەکان بۆ خۆی نوێ بکاتەوە.", "amountExceedsBalance": "بڕی تەسویە نابێت لە باڵانسی قەرزار زیاتر بێت.", "partialExplanationRequired": "پێش پشتڕاستکردنەوەی تەسویەی بەشەکی، ڕوونکردنەوەی بدە.", "courierNotFound": "مەندوب نەدۆزرایەوە.", "merchantNotFound": "بازرگان نەدۆزرایەوە.", "merchantDeleteHistory": "بازرگانێک کە مێژووی گەیاندنی هەیە ناتوانرێت بە هەمیشەیی بسڕدرێتەوە. لەبری ئەوە ناچالاکی بکە." }
   }
 }

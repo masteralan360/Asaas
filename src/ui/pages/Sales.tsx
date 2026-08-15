@@ -13,7 +13,7 @@ import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, applySalesOrderReturnQuantities, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, usePriceBookCatalogState, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
+import { adjustInventoryQuantity, applySalesOrderReturnQuantities, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, usePriceBookCatalogState, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, useBusinessPartners, useDeliveryMerchantProfiles, useDeliveryShipments, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, toUISaleFromDeliveryShipment, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
@@ -173,6 +173,9 @@ function getExternalSaleDetailsPath(sale: Sale) {
     if (sale.origin === 'clinical_appointment') {
         return `/clinical-appointments/${sale._clinicalAppointmentId || sale.id}/edit`
     }
+    if (sale.origin === 'post_service') {
+        return '/post-service'
+    }
     return null
 }
 
@@ -186,6 +189,11 @@ function getSaleReferenceLabel(sale: Sale) {
         return (sale as Sale & { orderNumber?: string | null; _orderNumber?: string | null }).orderNumber
             || (sale as Sale & { _orderNumber?: string | null })._orderNumber
             || `#${sale.id.slice(0, 8)}`
+    }
+
+    if (sale.origin === 'post_service') {
+        return (sale as Sale & { _trackingNumber?: string | null })._trackingNumber
+            || String(sale.sequenceId || `PST-${sale.id.slice(0, 8)}`)
     }
 
     return sale.sequenceId ? `#${String(sale.sequenceId).padStart(5, '0')}` : `#${sale.id.slice(0, 8)}`
@@ -300,6 +308,9 @@ export function Sales() {
     const rawOrders = useSalesOrders(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const salesOrderReturnItems = useSalesOrderReturnItemsForWorkspace(user?.workspaceId)
     const rawTravelSales = useTravelAgencySales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
+    const deliveryShipments = useDeliveryShipments(user?.workspaceId)
+    const deliveryMerchantProfiles = useDeliveryMerchantProfiles(user?.workspaceId)
+    const deliveryBusinessPartners = useBusinessPartners(user?.workspaceId)
     const rawExchangeTransactions = useExchangeTransactions(user?.workspaceId)
     const products = useProducts(user?.workspaceId)
     const productImageUrls = useMemo(() => products.reduce<Record<string, string>>((imageUrls, product) => {
@@ -329,6 +340,14 @@ export function Sales() {
         () => new Map(workspaceUsers.map((member) => [member.id, member.name || member.email || 'Staff'] as const)),
         [workspaceUsers]
     )
+    const deliveryMerchantNameByProfileId = useMemo(() => {
+        const partnerNameById = new Map(deliveryBusinessPartners.map((partner) => [partner.id, partner.name] as const))
+        return new Map(deliveryMerchantProfiles.map((profile) => [profile.id, partnerNameById.get(profile.businessPartnerId) || null] as const))
+    }, [deliveryBusinessPartners, deliveryMerchantProfiles])
+    const deliveryMerchantBusinessPartnerIdByProfileId = useMemo(
+        () => new Map(deliveryMerchantProfiles.map((profile) => [profile.id, profile.businessPartnerId] as const)),
+        [deliveryMerchantProfiles]
+    )
     const loans = useLoans(user?.workspaceId)
     const allSales = useMemo(() => {
         const sales = (rawSales || []).map(toUISale)
@@ -354,8 +373,22 @@ export function Sales() {
                 activityTransactionLines.filter((line) => line.transactionId === transaction.id),
                 transaction.createdBy ? cashierNameById.get(transaction.createdBy) : undefined
             ))
-        return [...sales, ...orders, ...travelSales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales, ...activitySales]
-    }, [rawSales, rawOrders, salesOrderReturnItems, rawTravelSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines, cashierNameById])
+        const deliverySales = deliveryShipments
+            .filter((shipment) => shipment.status === 'delivered' && !!shipment.deliveredAt)
+            .filter((shipment) => (!dateBounds.startDate || shipment.deliveredAt! >= dateBounds.startDate)
+                && (!dateBounds.endDate || shipment.deliveredAt! <= dateBounds.endDate))
+            .map((shipment) => toUISaleFromDeliveryShipment(shipment, {
+                merchantName: deliveryMerchantNameByProfileId.get(shipment.merchantProfileId),
+                merchantBusinessPartnerId: deliveryMerchantBusinessPartnerIdByProfileId.get(shipment.merchantProfileId),
+                serviceName: t('postService.reporting.serviceName', { defaultValue: 'Delivery service' }),
+                serviceCategory: t('postService.reporting.serviceCategory', { defaultValue: 'Delivery service' }),
+                feePayerNote: t('postService.reporting.feePayerNote', {
+                    payer: t(`postService.feePayer.${shipment.feePayer}`, { defaultValue: shipment.feePayer }),
+                    defaultValue: `Fee charged to ${shipment.feePayer}`
+                })
+            }))
+        return [...sales, ...orders, ...travelSales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales, ...activitySales, ...deliverySales]
+    }, [rawSales, rawOrders, salesOrderReturnItems, rawTravelSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines, cashierNameById, dateBounds.endDate, dateBounds.startDate, deliveryMerchantBusinessPartnerIdByProfileId, deliveryMerchantNameByProfileId, deliveryShipments, t])
 
     const isLoading = rawSales === undefined || rawOrders === undefined || rawTravelSales === undefined || rawExchangeTransactions === undefined || realEstateCommissionTransactions === undefined || clinicalAppointments === undefined
     const [isDateLoading, setIsDateLoading] = useState(false)

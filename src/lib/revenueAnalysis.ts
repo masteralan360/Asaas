@@ -19,7 +19,7 @@ export interface RevenueAnalysisItem {
 export interface RevenueAnalysisRecord {
     key: string
     id: string
-    source: 'sale' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate' | 'activities' | 'clinical_appointment'
+    source: 'sale' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate' | 'activities' | 'clinical_appointment' | 'post_service'
     sourceRecordId?: string | null
     referenceCode: string
     date: string
@@ -79,6 +79,7 @@ function getSaleRevenueSource(sale: Sale) {
     if (sale.origin === 'real_estate') return 'real_estate'
     if (sale.origin === 'activities') return 'activities'
     if (sale.origin === 'clinical_appointment') return 'clinical_appointment'
+    if (sale.origin === 'post_service') return 'post_service'
     return 'sale'
 }
 
