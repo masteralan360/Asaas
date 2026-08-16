@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useLocation, useRoute } from 'wouter'
-import { ArrowLeft, FileText, Loader2, PackageSearch, RefreshCw, Search, ShoppingBag } from 'lucide-react'
+import { ArrowLeft, FileText, Loader2, PackageSearch, Pencil, RefreshCw, Search, ShoppingBag } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { useAuth } from '@/auth'
@@ -19,6 +19,7 @@ import {
     type WorkspacePaymentMethod
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
+import { EditMarketplaceOrderItemsDialog, type EditableMarketplaceOrderItem } from '@/ui/components/ecommerce/EditMarketplaceOrderItemsDialog'
 import {
     Button,
     Card,
@@ -46,18 +47,7 @@ type MarketplaceTransitionResponse = {
     business_partner_id?: string | null
 }
 
-type MarketplaceOrderItemRecord = {
-    product_id: string
-    name: string
-    sku: string
-    unit_price: number
-    currency: string
-    quantity: number
-    line_total: number
-    image_url?: string | null
-    storage_id?: string | null
-    allocation_group_id?: string | null
-}
+type MarketplaceOrderItemRecord = EditableMarketplaceOrderItem
 
 function getMarketplaceDisplayItems(items: MarketplaceOrderItemRecord[]) {
     const groupedItems = new Map<string, MarketplaceOrderItemRecord>()
@@ -465,7 +455,8 @@ function EcommerceDetailView({
     onBack,
     onAdvance,
     onCancel,
-    onRecordCollection
+    onRecordCollection,
+    onSaveItems
 }: {
     order: MarketplaceOrderRecord
     isSaving: boolean
@@ -473,14 +464,17 @@ function EcommerceDetailView({
     onAdvance: (nextStatus: MarketplaceOrderStatus) => Promise<void>
     onCancel: (reason: string) => Promise<void>
     onRecordCollection: (salesOrderId: string) => Promise<void>
+    onSaveItems: (orderId: string, items: EditableMarketplaceOrderItem[]) => Promise<void>
 }) {
     const { t } = useTranslation()
     const { features } = useWorkspace()
     const [, navigate] = useLocation()
     const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
     const [cancelReason, setCancelReason] = useState('')
+    const [editItemsOpen, setEditItemsOpen] = useState(false)
     const nextStatus = nextActionForStatus(order.status)
     const displayItems = getMarketplaceDisplayItems(order.items)
+    const canEditItems = order.status !== 'delivered' && order.status !== 'cancelled'
 
     const submitCancel = async () => {
         await onCancel(cancelReason)
@@ -634,6 +628,18 @@ function EcommerceDetailView({
                                 </div>
                             ) : null}
 
+                            {canEditItems && (
+                                <Button
+                                    variant="outline"
+                                    className="w-full gap-2 rounded-2xl"
+                                    disabled={isSaving}
+                                    onClick={() => setEditItemsOpen(true)}
+                                >
+                                    <Pencil className="h-4 w-4" />
+                                    {t('ecommerce.actions.editItems', { defaultValue: 'Edit Items' })}
+                                </Button>
+                            )}
+
                             {nextStatus && (
                                 <Button className="w-full rounded-2xl" disabled={isSaving} onClick={() => onAdvance(nextStatus)}>
                                     {isSaving ? (
@@ -702,6 +708,14 @@ function EcommerceDetailView({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <EditMarketplaceOrderItemsDialog
+                isOpen={editItemsOpen}
+                order={order}
+                isSaving={isSaving}
+                onOpenChange={setEditItemsOpen}
+                onSave={(items) => onSaveItems(order.id, items)}
+            />
         </div>
     )
 }
@@ -873,6 +887,36 @@ export function Ecommerce() {
         }
     }
 
+const editMarketplaceOrderItems = async (orderId: string, items: EditableMarketplaceOrderItem[]) => {
+        try {
+            const { data, error } = await runSupabaseAction('ecommerce.editOrderItems', () =>
+                supabase.rpc('edit_marketplace_order_items', {
+                    order_id: orderId,
+                    items
+                })
+            ) as { data: unknown; error: unknown | null }
+
+            if (error) {
+                throw error
+            }
+
+            await loadOrders()
+            window.dispatchEvent(new CustomEvent(MARKETPLACE_ORDER_REFRESH_EVENT))
+            toast({
+                title: t('common.success', { defaultValue: 'Success' }),
+                description: t('ecommerce.itemsEdited', { defaultValue: 'Order items updated.' })
+            })
+            return data
+        } catch (error) {
+            toast({
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: normalizeSupabaseActionError(error).message || 'Failed to update order items',
+                variant: 'destructive'
+            })
+            throw error
+        }
+    }
+
     if (!user?.workspaceId) {
         return null
     }
@@ -887,9 +931,10 @@ export function Ecommerce() {
                 order={activeOrder}
                 isSaving={isSaving}
                 onBack={() => navigate('/ecommerce')}
-                onAdvance={(nextStatus) => transitionOrder(activeOrder.id, nextStatus)}
+onAdvance={(nextStatus) => transitionOrder(activeOrder.id, nextStatus)}
                 onCancel={(reason) => transitionOrder(activeOrder.id, 'cancelled', reason)}
                 onRecordCollection={openRecordCollection}
+                onSaveItems={editMarketplaceOrderItems}
             />
         )
     }
