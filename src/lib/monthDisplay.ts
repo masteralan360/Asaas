@@ -2,6 +2,8 @@ export type MonthDisplayPreference = 'native' | 'en' | 'ar' | 'ku'
 
 export const MONTH_DISPLAY_PREFERENCE_KEY = 'month_display_preference'
 
+export const MONTH_DISPLAY_PREFERENCE_EVENT = 'atlas:month-display-preference-change'
+
 const ARABIC_MONTH_NAMES = [
     'كانون الثاني',
     'شباط',
@@ -59,6 +61,9 @@ export function getMonthDisplayPreference(): MonthDisplayPreference {
 export function setMonthDisplayPreference(preference: MonthDisplayPreference) {
     if (typeof window === 'undefined') return
     localStorage.setItem(MONTH_DISPLAY_PREFERENCE_KEY, preference)
+    window.dispatchEvent(new CustomEvent(MONTH_DISPLAY_PREFERENCE_EVENT, {
+        detail: preference
+    }))
 }
 
 function getMonthLocale(language: string, preference: MonthDisplayPreference) {

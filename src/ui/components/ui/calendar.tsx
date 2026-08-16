@@ -3,9 +3,15 @@
 import * as React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { DayPicker } from "react-day-picker";
+import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/ui/components/button";
+import {
+  MONTH_DISPLAY_PREFERENCE_EVENT,
+  formatLocalizedMonthYear,
+  getMonthDisplayPreference,
+} from "@/lib/monthDisplay";
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
@@ -15,6 +21,27 @@ function Calendar({
   showOutsideDays = true,
   ...props
 }: CalendarProps) {
+  const { i18n } = useTranslation()
+  const [preference, setPreference] = React.useState(getMonthDisplayPreference)
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined
+    }
+
+    const handlePreferenceChange = () => {
+      setPreference(getMonthDisplayPreference())
+    }
+
+    window.addEventListener(MONTH_DISPLAY_PREFERENCE_EVENT, handlePreferenceChange)
+    return () => window.removeEventListener(MONTH_DISPLAY_PREFERENCE_EVENT, handlePreferenceChange)
+  }, [])
+
+  const formatMonthCaption = React.useCallback(
+    (month: Date) => formatLocalizedMonthYear(month, i18n.language, preference),
+    [i18n.language, preference]
+  )
+
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
@@ -64,6 +91,10 @@ function Calendar({
         },
       }}
       {...props}
+      formatters={{
+        formatMonthCaption,
+        ...props.formatters,
+      }}
     />
   );
 }
