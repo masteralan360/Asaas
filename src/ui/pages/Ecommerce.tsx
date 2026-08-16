@@ -889,7 +889,7 @@ export function Ecommerce() {
 
 const editMarketplaceOrderItems = async (orderId: string, items: EditableMarketplaceOrderItem[]) => {
         try {
-            const { data, error } = await runSupabaseAction('ecommerce.editOrderItems', () =>
+            const { error } = await runSupabaseAction('ecommerce.editOrderItems', () =>
                 supabase.rpc('edit_marketplace_order_items', {
                     order_id: orderId,
                     items
@@ -906,7 +906,6 @@ const editMarketplaceOrderItems = async (orderId: string, items: EditableMarketp
                 title: t('common.success', { defaultValue: 'Success' }),
                 description: t('ecommerce.itemsEdited', { defaultValue: 'Order items updated.' })
             })
-            return data
         } catch (error) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
