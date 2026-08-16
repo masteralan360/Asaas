@@ -31,6 +31,12 @@ export function getLoanDirectionLabel(direction: LoanDirection, t: Translate) {
     return translate(t, `loans.directions.${direction}`, direction === 'borrowed' ? 'Borrowed' : 'Lent')
 }
 
+export function getLoanSourceLabel(source: string | null | undefined, t: Translate) {
+    if (source === 'order') return translate(t, 'loans.sources.order', 'Order')
+    if (source === 'pos') return translate(t, 'loans.sources.pos', 'POS')
+    return translate(t, 'loans.sources.manual', 'Manual')
+}
+
 export function getLoanCounterpartyLabel(loan: Pick<Loan, 'loanCategory' | 'direction'> | null | undefined, t: Translate) {
     if (isSimpleLoan(loan) && getLoanDirection(loan) === 'borrowed') {
         return translate(t, 'loans.lender', 'Lender')

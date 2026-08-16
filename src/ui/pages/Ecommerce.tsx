@@ -589,7 +589,7 @@ function marketplaceWorkflowFill(status: MarketplaceOrderStatus) {
         return { width: 100, background: 'linear-gradient(90deg, #f43f5e, #f43f5e)', backgroundSize: '100% 100%' }
     }
 
-    const colors = ['#3b82f6', '#f59e0b', '#f59e0b', 'hsl(var(--primary))', '#10b981']
+    const colors = ['#3b82f6', '#f59e0b', '#6366f1', 'hsl(var(--primary))', '#10b981']
     const reached = Math.max(1, Math.round(marketplaceWorkflowProgress(status) / 20))
     return buildWorkflowGradientFill(colors.map((color, index) => ({ color, reached: index < reached })))
 }
@@ -1455,8 +1455,10 @@ function EcommerceDetailView({
                                                 "absolute -start-[1.375rem] top-1.5 w-3 h-3 rounded-full border-2 border-background z-10 transition-transform group-hover:scale-125",
                                                 row.kind === 'cancelled'
                                                     ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]'
-                                                    : row.kind === 'confirmed' || row.kind === 'processing'
+                                                    : row.kind === 'confirmed'
                                                         ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]'
+                                                    : row.kind === 'processing'
+                                                        ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.4)]'
                                                     : row.kind === 'created'
                                                         ? "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]"
                                                         : row.kind === 'delivered'

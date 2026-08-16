@@ -79,6 +79,7 @@ import { LoanDetailsPrintTemplate, LoanListPrintTemplate } from '@/ui/components
 import { LoanNoDisplay } from '@/ui/components/loans/LoanNoDisplay'
 import { useLoanPaymentModal } from '@/ui/components/loans/LoanPaymentModalProvider'
 import { SimpleLoanListView } from '@/ui/components/loans/SimpleLoanListView'
+import { LoanSourceBadge } from '@/ui/components/loans/LoanSourceBadge'
 import { RealEstateInstallmentsMirror } from '@/ui/components/real-estate/RealEstateInstallmentsMirror'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
@@ -107,12 +108,6 @@ function statusClass(status: string) {
     if (status === 'cancelled') return 'bg-slate-500/15 text-slate-600 dark:text-slate-300'
     if (status === 'overdue') return 'bg-red-500/15 text-red-600 dark:text-red-300'
     return 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300'
-}
-
-function sourceClass(source: string) {
-    return source === 'pos'
-        ? 'bg-primary/15 text-primary'
-        : 'bg-sky-500/15 text-sky-600 dark:text-sky-300'
 }
 
 function isLoanOverdue(loan: Loan) {
@@ -592,9 +587,7 @@ function LoanListView({
                                                             loanNo={loan.loanNo}
                                                             className="text-sm text-primary"
                                                         />
-                                                        <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold uppercase', sourceClass(loan.source))}>
-                                                            {loan.source}
-                                                        </span>
+                                                        <LoanSourceBadge source={loan.source} className="text-[10px]" />
                                                     </div>
                                                     <div className="text-base font-bold text-foreground">
                                                         {loan.borrowerName}
@@ -737,9 +730,7 @@ function LoanListView({
                                                 <div className="text-xs text-muted-foreground">{loan.borrowerNationalId}</div>
                                             </TableCell>
                                             <TableCell>
-                                                <span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium uppercase', sourceClass(loan.source))}>
-                                                    {loan.source}
-                                                </span>
+                                                <LoanSourceBadge source={loan.source} />
                                             </TableCell>
                                             <TableCell className="text-end">{formatCurrency(loan.principalAmount, loan.settlementCurrency, iqdPreference)}</TableCell>
                                             <TableCell className="text-end">{formatCurrency(loan.totalPaidAmount, loan.settlementCurrency, iqdPreference)}</TableCell>
@@ -1217,6 +1208,9 @@ function LoanDetailsView({
                     </Link>
                     <span>/</span>
                     <LoanNoDisplay loanNo={loan.loanNo} className="text-foreground" />
+                    {loan.source === 'order' ? (
+                        <LoanSourceBadge source={loan.source} className="text-[10px] ms-2" />
+                    ) : null}
                 </div>
                 <div className="flex items-center gap-2">
                     {canOpenLinkedSale && (

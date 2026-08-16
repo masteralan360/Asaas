@@ -2703,6 +2703,11 @@
     "totalOutstanding": "إجمالي المستحق",
     "loanNo": "رقم القرض",
     "source": "المصدر",
+    "sources": {
+      "order": "طلب",
+      "pos": "نقطة البيع",
+      "manual": "يدوي"
+    },
     "direction": "الاتجاه",
     "status": "الحالة",
     "recordPayment": "تسجيل دفعة",

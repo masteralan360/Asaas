@@ -3629,6 +3629,11 @@
     "totalOutstanding": "Total Outstanding",
     "loanNo": "Loan No.",
     "source": "Source",
+    "sources": {
+      "order": "Order",
+      "pos": "POS",
+      "manual": "Manual"
+    },
     "direction": "Direction",
     "status": "Status",
     "recordPayment": "Record Payment",

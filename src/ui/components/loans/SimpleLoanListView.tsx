@@ -44,6 +44,7 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { CreateSimpleLoanModal } from './CreateSimpleLoanModal'
 import { LoanDetailsPrintTemplate, LoanListPrintTemplate } from './LoanPrintTemplates'
 import { LoanNoDisplay } from './LoanNoDisplay'
+import { LoanSourceBadge } from './LoanSourceBadge'
 
 type SimpleLoanFilter = 'all' | 'lent' | 'borrowed' | 'completed'
 
@@ -536,6 +537,9 @@ export function SimpleLoanListView({
                                                     <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', directionClass(direction))}>
                                                         {getLoanDirectionLabel(direction, t)}
                                                     </span>
+                                                    {loan.source === 'order' ? (
+                                                        <LoanSourceBadge source={loan.source} className="text-[10px]" />
+                                                    ) : null}
                                                     {getLoanLinkedPartySummary(loan, t) ? (
                                                         <span className="text-xs font-medium text-primary">{getLoanLinkedPartySummary(loan, t)}</span>
                                                     ) : null}
@@ -659,7 +663,12 @@ export function SimpleLoanListView({
                                             <ContextMenuTrigger asChild>
                                             <TableRow>
                                                 <TableCell>
-                                                    <LoanNoDisplay loanNo={loan.loanNo} className="text-primary" />
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <LoanNoDisplay loanNo={loan.loanNo} className="text-primary" />
+                                                        {loan.source === 'order' ? (
+                                                            <LoanSourceBadge source={loan.source} className="text-[10px]" />
+                                                        ) : null}
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell>
                                                     <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium uppercase', directionClass(direction))}>
