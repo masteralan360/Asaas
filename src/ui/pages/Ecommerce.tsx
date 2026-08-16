@@ -14,6 +14,7 @@ import {
     List,
     ListFilter,
     Loader2,
+    MapPin,
     Package,
     PackageCheck,
     PackageSearch,
@@ -39,6 +40,7 @@ import { ORDER_STATUS_ADVANCE_HOLD_DURATION_MS } from '@/lib/pressAndHold'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import { isMobile } from '@/lib/platform'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
+import { buildWorkflowGradientFill } from '@/lib/workflowProgressGradient'
 import { r2Service } from '@/services/r2Service'
 import { PdfJsViewer } from '@/ui/components/PdfJsViewer'
 import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
@@ -582,6 +584,16 @@ function marketplaceWorkflowProgress(status: MarketplaceOrderStatus) {
     return 100
 }
 
+function marketplaceWorkflowFill(status: MarketplaceOrderStatus) {
+    if (status === 'cancelled') {
+        return { width: 100, background: 'linear-gradient(90deg, #f43f5e, #f43f5e)', backgroundSize: '100% 100%' }
+    }
+
+    const colors = ['#3b82f6', '#f59e0b', '#f59e0b', 'hsl(var(--primary))', '#10b981']
+    const reached = Math.max(1, Math.round(marketplaceWorkflowProgress(status) / 20))
+    return buildWorkflowGradientFill(colors.map((color, index) => ({ color, reached: index < reached })))
+}
+
 function MarketplaceInquiryPdfCard({ order }: { order: MarketplaceOrderRecord }) {
     const { t } = useTranslation()
     const [isOpen, setIsOpen] = useState(false)
@@ -763,7 +775,7 @@ function EcommerceListView({
                                     <EcommerceStatusBadge status={order.status} />
                                 </TableCell>
                                 <TableCell>{formatCurrency(order.total, order.currency, features.iqd_display_preference)}</TableCell>
-                                <TableCell>{formatDate(order.created_at)}</TableCell>
+                                <TableCell className="whitespace-nowrap">{formatDateTime(order.created_at)}</TableCell>
                                 <TableCell className="text-end">
                                     <div className="flex flex-wrap justify-end gap-2">
                                         <Button variant="outline" size="sm" allowViewer={true} onClick={() => navigate(`/ecommerce/${order.id}`)}>
@@ -813,7 +825,7 @@ function EcommerceListView({
                                 <div className="mt-2 grid gap-1 text-[10px] font-medium text-muted-foreground">
                                     <div>
                                         <span className="me-1 uppercase tracking-tight">{t('orders.dateFilters.created', { defaultValue: 'Created' })}</span>
-                                        {formatDate(order.created_at)}
+                                        {formatDateTime(order.created_at)}
                                     </div>
                                 </div>
                             </div>
@@ -1053,7 +1065,17 @@ function EcommerceDetailView({
     const canEditItems = order.status !== 'delivered' && order.status !== 'cancelled'
     const AdvanceActionIcon = nextStatus ? transitionActionIcon(nextStatus) : null
     const workflowProgress = marketplaceWorkflowProgress(order.status)
-    const totalUnits = displayItems.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0)
+    const workflowFill = marketplaceWorkflowFill(order.status)
+    const activityRows = [
+        { id: 'created', date: order.created_at, label: t('ecommerce.timelineSubmitted', { defaultValue: 'Submitted' }), amount: order.total, kind: 'created' },
+        { id: 'confirmed', date: order.confirmed_at, label: t('ecommerce.status.confirmed', { defaultValue: 'Confirmed' }), amount: null, kind: 'confirmed' },
+        { id: 'processing', date: order.processing_at, label: t('ecommerce.status.processing', { defaultValue: 'Processing' }), amount: null, kind: 'processing' },
+        { id: 'shipped', date: order.shipped_at, label: t('ecommerce.status.shipped', { defaultValue: 'Shipped' }), amount: null, kind: 'shipped' },
+        { id: 'delivered', date: order.delivered_at, label: t('ecommerce.status.delivered', { defaultValue: 'Delivered' }), amount: null, kind: 'delivered' },
+        { id: 'cancelled', date: order.cancelled_at, label: t('ecommerce.status.cancelled', { defaultValue: 'Cancelled' }), amount: null, kind: 'cancelled' }
+    ]
+        .filter((row) => Boolean(row.date))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
     useEffect(() => {
         localStorage.setItem('ecommerce_details_view_mode', viewMode)
@@ -1205,7 +1227,142 @@ function EcommerceDetailView({
                 </div>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-3">
+            <Card className={cn(
+                'overflow-hidden border-sky-500/20',
+                order.status === 'cancelled'
+                    ? 'bg-gradient-to-br from-rose-500/15 via-background to-rose-500/10'
+                    : order.status === 'delivered'
+                        ? 'bg-gradient-to-br from-emerald-500/10 via-background to-primary/10'
+                        : 'bg-gradient-to-br from-sky-500/10 via-background to-primary/10'
+            )}>
+                <CardContent className="p-6">
+                    <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+                        <div className="flex items-start gap-4">
+                            <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-sky-500/30 bg-sky-500/10 sm:flex">
+                                <ShoppingBag className="h-6 w-6 text-sky-700 dark:text-sky-300" aria-hidden="true" />
+                            </div>
+                            <div className="space-y-4">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="inline-flex items-center rounded-full border border-sky-500/20 bg-sky-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-sky-700 dark:text-sky-300">
+                                        {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
+                                    </span>
+                                    <EcommerceStatusBadge status={order.status} />
+                                    {order.status === 'delivered' && (
+                                        <span className={cn(
+                                            'inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em]',
+                                            order.inventory_deducted
+                                                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                                : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                                        )}>
+                                            {order.inventory_deducted
+                                                ? t('ecommerce.inventoryDeducted', { defaultValue: 'Inventory Deducted' })
+                                                : t('ecommerce.inventoryWarning', { defaultValue: 'Not Fully Deducted' })}
+                                        </span>
+                                    )}
+                                </div>
+                                <div>
+                                    <div className="text-sm font-medium text-muted-foreground">{t('ecommerce.orderNumber', { defaultValue: 'E-commerce order number' })}</div>
+                                    <div className="mt-1 text-3xl font-black tracking-tight">{order.order_number}</div>
+                                    <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                                        <span className="inline-flex items-center gap-1.5"><UsersRound className="h-4 w-4" />{order.customer_name}</span>
+                                        <span className="h-1 w-1 rounded-full bg-muted-foreground/40" />
+                                        <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" />{formatDate(order.created_at)}</span>
+                                        {order.customer_city && (
+                                            <>
+                                                <span className="h-1 w-1 rounded-full bg-muted-foreground/40" />
+                                                <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4" />{order.customer_city}</span>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="rounded-3xl border border-border/50 bg-background/80 p-5 shadow-sm">
+                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">{t('common.total', { defaultValue: 'Total' })}</div>
+                            <div className="mt-2 text-4xl font-black tracking-tight">{formatCurrency(order.total, order.currency, features.iqd_display_preference)}</div>
+                            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                    <div className="text-xs text-muted-foreground">{t('orders.details.subtotal', { defaultValue: 'Subtotal' })}</div>
+                                    <div className="font-semibold">{formatCurrency(order.subtotal, order.currency, features.iqd_display_preference)}</div>
+                                </div>
+                                <div>
+                                    <div className="text-xs text-muted-foreground">{t('ecommerce.currency', { defaultValue: 'Currency' })}</div>
+                                    <div className="font-semibold">{order.currency.toUpperCase()}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        <div className="rounded-2xl border bg-background/70 p-4">
+                            <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('ecommerce.customer', { defaultValue: 'Customer' })}</div>
+                            <div className="mt-2 truncate text-2xl font-black">{order.customer_name}</div>
+                        </div>
+                        <div className="rounded-2xl border bg-background/70 p-4">
+                            <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('ecommerce.customerPhone', { defaultValue: 'Phone' })}</div>
+                            <div className="mt-2 truncate text-2xl font-black">{order.customer_phone}</div>
+                        </div>
+                        <div className="rounded-2xl border bg-background/70 p-4">
+                            <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('ecommerce.customer_city', { defaultValue: 'City' })}</div>
+                            <div className="mt-2 text-2xl font-black">{order.customer_city || '—'}</div>
+                        </div>
+                        <div className="rounded-2xl border bg-background/70 p-4">
+                            <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('ecommerce.customerAddress', { defaultValue: 'Delivery Address' })}</div>
+                            <div className="mt-2 truncate text-2xl font-black">{order.customer_address || '—'}</div>
+                        </div>
+                    </div>
+
+                    <div className="mt-6 space-y-2">
+                        <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                            <span>{t('orders.details.workflowProgress', { defaultValue: 'Workflow Progress' })}</span>
+                            <span>{workflowProgress}%</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-background/80">
+                            <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{
+                                    width: `${workflowFill.width}%`,
+                                    background: workflowFill.background,
+                                    backgroundSize: workflowFill.backgroundSize,
+                                    backgroundRepeat: 'no-repeat'
+                                }}
+                            />
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <div className="grid items-start gap-4 lg:grid-cols-3">
+                <div className="space-y-4 lg:col-span-2">
+                    <Card>
+                        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <CardTitle>{t('ecommerce.orderItems', { defaultValue: 'Order Items' })}</CardTitle>
+                            <div className="hidden items-center rounded-lg border bg-muted/30 p-1 md:flex">
+                                <Button variant="ghost" size="sm" onClick={() => setViewMode('table')} className={cn('h-8 gap-1.5 px-3 text-[10px] font-black uppercase tracking-[0.16em]', viewMode === 'table' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground')}>
+                                    <List className="h-3 w-3" />{t('common.table', { defaultValue: 'Table' })}
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => setViewMode('grid')} className={cn('h-8 gap-1.5 px-3 text-[10px] font-black uppercase tracking-[0.16em]', viewMode === 'grid' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground')}>
+                                    <LayoutGrid className="h-3 w-3" />{t('common.grid', { defaultValue: 'Grid' })}
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            {viewMode === 'grid' ? renderGrid() : renderTable()}
+                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/10 bg-primary/5 p-4">
+                                <div className="text-sm text-muted-foreground">
+                                    {t('orders.details.subtotal', { defaultValue: 'Subtotal' })}
+                                </div>
+                                <div className="text-sm font-bold">
+                                    {formatCurrency(order.subtotal, order.currency, features.iqd_display_preference)}
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <MarketplaceInquiryPdfCard order={order} />
+                </div>
+
                 <div className="space-y-4">
                     <Card>
                         <CardHeader><CardTitle>{t('ecommerce.customer', { defaultValue: 'Customer' })}</CardTitle></CardHeader>
@@ -1224,8 +1381,12 @@ function EcommerceDetailView({
                                 <div className="text-muted-foreground">{order.customer_city}</div>
                             )}
                             {order.customer_notes && (
-                                <div className="rounded-2xl border border-border/60 bg-card/60 p-4 text-muted-foreground">
-                                    {order.customer_notes}
+                                <div className="rounded-2xl border-2 border-amber-500/40 bg-amber-500/5 p-4">
+                                    <div className="mb-1 flex items-center gap-1.5 font-semibold text-amber-700 dark:text-amber-300">
+                                        <FileText className="h-4 w-4" aria-hidden="true" />
+                                        {t('ecommerce.customerNote', { defaultValue: 'Note' })}:
+                                    </div>
+                                    <div className="whitespace-pre-wrap">{order.customer_notes}</div>
                                 </div>
                             )}
                             {order.cancel_reason && (
@@ -1284,144 +1445,46 @@ function EcommerceDetailView({
                     </Card>
 
                     <Card>
-                        <CardHeader><CardTitle>{t('ecommerce.timeline', { defaultValue: 'Activity' })}</CardTitle></CardHeader>
+                        <CardHeader><CardTitle>{t('loans.recentActivity', { defaultValue: 'Recent Activity' })}</CardTitle></CardHeader>
                         <CardContent>
-                            <div className="relative space-y-5 ps-4 before:absolute before:bottom-2 before:start-0 before:top-2 before:w-0.5 before:bg-border/70">
-                                {[
-                                    { id: 'created', label: t('ecommerce.timelineSubmitted', { defaultValue: 'Submitted' }), date: order.created_at, dot: 'bg-slate-400' },
-                                    { id: 'confirmed', label: t('ecommerce.status.confirmed', { defaultValue: 'Confirmed' }), date: order.confirmed_at, dot: 'bg-amber-500' },
-                                    { id: 'processing', label: t('ecommerce.status.processing', { defaultValue: 'Processing' }), date: order.processing_at, dot: 'bg-amber-500' },
-                                    { id: 'shipped', label: t('ecommerce.status.shipped', { defaultValue: 'Shipped' }), date: order.shipped_at, dot: 'bg-primary' },
-                                    { id: 'delivered', label: t('ecommerce.status.delivered', { defaultValue: 'Delivered' }), date: order.delivered_at, dot: 'bg-emerald-500' },
-                                    { id: 'cancelled', label: t('ecommerce.status.cancelled', { defaultValue: 'Cancelled' }), date: order.cancelled_at, dot: 'bg-rose-500' }
-                                ].map((row) => row.date ? (
-                                    <div key={row.id} className="relative">
-                                        <div className={cn('absolute -start-[1.375rem] top-1.5 h-3 w-3 rounded-full border-2 border-background', row.dot)} />
-                                        <div className="space-y-1">
-                                            <div className="font-semibold leading-none">{row.label}</div>
-                                            <div className="text-xs text-muted-foreground">{formatDateTime(row.date)}</div>
+                            <div className="relative ps-4 space-y-6 before:absolute before:start-0 before:top-2 before:bottom-2 before:w-0.5 before:bg-border/60">
+                                {activityRows.slice(0, 8).map(row => {
+                                    return (
+                                        <div key={row.id} className="relative group">
+                                            <div className={cn(
+                                                "absolute -start-[1.375rem] top-1.5 w-3 h-3 rounded-full border-2 border-background z-10 transition-transform group-hover:scale-125",
+                                                row.kind === 'cancelled'
+                                                    ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]'
+                                                    : row.kind === 'confirmed' || row.kind === 'processing'
+                                                        ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]'
+                                                    : row.kind === 'created'
+                                                        ? "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]"
+                                                        : row.kind === 'delivered'
+                                                            ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
+                                                            : "bg-primary"
+                                            )} />
+                                            <div className="space-y-0.5">
+                                                <div className="font-bold text-sm leading-none transition-colors group-hover:text-primary">
+                                                    {row.label}
+                                                </div>
+                                                <div className="text-muted-foreground text-xs font-medium flex items-center gap-1.5 pt-1">
+                                                    <span>{formatDateTime(row.date)}</span>
+                                                    {row.amount !== null ? (
+                                                        <>
+                                                            <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+                                                            <span className="font-bold text-foreground/80">
+                                                                {formatCurrency(row.amount, order.currency, features.iqd_display_preference)}
+                                                            </span>
+                                                        </>
+                                                    ) : null}
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
-                                ) : null)}
+                                    )
+                                })}
                             </div>
                         </CardContent>
                     </Card>
-                </div>
-
-                <div className="space-y-4 lg:col-span-2">
-                    <Card className={cn(
-                        'overflow-hidden border-border/60',
-                        order.status === 'cancelled'
-                            ? 'bg-gradient-to-br from-rose-500/15 via-background to-rose-500/10'
-                            : order.status === 'delivered'
-                                ? 'bg-gradient-to-br from-primary/10 via-background to-emerald-500/10'
-                                : 'bg-gradient-to-br from-sky-500/10 via-background to-primary/10'
-                    )}>
-                        <CardContent className="p-6">
-                            <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-                                <div className="space-y-4">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <span className="inline-flex items-center rounded-full border border-sky-500/20 bg-sky-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-sky-700 dark:text-sky-300">
-                                            {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
-                                        </span>
-                                        <EcommerceStatusBadge status={order.status} />
-                                        {order.status === 'delivered' && (
-                                            <span className={cn(
-                                                'inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em]',
-                                                order.inventory_deducted
-                                                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                                                    : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                                            )}>
-                                                {order.inventory_deducted
-                                                    ? t('ecommerce.inventoryDeducted', { defaultValue: 'Inventory Deducted' })
-                                                    : t('ecommerce.inventoryWarning', { defaultValue: 'Not Fully Deducted' })}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div>
-                                        <div className="text-sm font-medium text-muted-foreground">{t('ecommerce.orderNumber', { defaultValue: 'E-commerce order number' })}</div>
-                                        <div className="mt-1 text-3xl font-black tracking-tight">{order.order_number}</div>
-                                        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                                            <span className="inline-flex items-center gap-1.5"><UsersRound className="h-4 w-4" />{order.customer_name}</span>
-                                            <span className="h-1 w-1 rounded-full bg-muted-foreground/40" />
-                                            <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" />{formatDate(order.created_at)}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="rounded-3xl border border-border/50 bg-background/80 p-5 shadow-sm">
-                                    <div className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">{t('common.total', { defaultValue: 'Total' })}</div>
-                                    <div className="mt-2 text-4xl font-black tracking-tight">{formatCurrency(order.total, order.currency, features.iqd_display_preference)}</div>
-                                    <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                                        <div>
-                                            <div className="text-xs text-muted-foreground">{t('orders.details.subtotal', { defaultValue: 'Subtotal' })}</div>
-                                            <div className="font-semibold">{formatCurrency(order.subtotal, order.currency, features.iqd_display_preference)}</div>
-                                        </div>
-                                        <div>
-                                            <div className="text-xs text-muted-foreground">{t('ecommerce.currency', { defaultValue: 'Currency' })}</div>
-                                            <div className="font-semibold">{order.currency.toUpperCase()}</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                                <div className="rounded-2xl border bg-background/70 p-4">
-                                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.items', { defaultValue: 'Items' })}</div>
-                                    <div className="mt-2 text-2xl font-black">{displayItems.length}</div>
-                                </div>
-                                <div className="rounded-2xl border bg-background/70 p-4">
-                                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.units', { defaultValue: 'Units' })}</div>
-                                    <div className="mt-2 text-2xl font-black">{totalUnits}</div>
-                                </div>
-                                <div className="rounded-2xl border bg-background/70 p-4">
-                                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('ecommerce.customer_city', { defaultValue: 'City' })}</div>
-                                    <div className="mt-2 text-2xl font-black">{order.customer_city || '—'}</div>
-                                </div>
-                                <div className="rounded-2xl border bg-background/70 p-4">
-                                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('ecommerce.customerPhone', { defaultValue: 'Phone' })}</div>
-                                    <div className="mt-2 truncate text-sm font-black">{order.customer_phone}</div>
-                                </div>
-                            </div>
-
-                            <div className="mt-6 space-y-2">
-                                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                                    <span>{t('orders.details.workflowProgress', { defaultValue: 'Workflow Progress' })}</span>
-                                    <span>{workflowProgress}%</span>
-                                </div>
-                                <div className="h-2 overflow-hidden rounded-full bg-background/80">
-                                    <div className={cn('h-full rounded-full transition-all duration-500', order.status === 'cancelled' ? 'bg-rose-500' : order.status === 'delivered' ? 'bg-emerald-500' : 'bg-primary')} style={{ width: `${workflowProgress}%` }} />
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                            <CardTitle>{t('ecommerce.orderItems', { defaultValue: 'Order Items' })}</CardTitle>
-                            <div className="hidden items-center rounded-lg border bg-muted/30 p-1 md:flex">
-                                <Button variant="ghost" size="sm" onClick={() => setViewMode('table')} className={cn('h-8 gap-1.5 px-3 text-[10px] font-black uppercase tracking-[0.16em]', viewMode === 'table' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground')}>
-                                    <List className="h-3 w-3" />{t('common.table', { defaultValue: 'Table' })}
-                                </Button>
-                                <Button variant="ghost" size="sm" onClick={() => setViewMode('grid')} className={cn('h-8 gap-1.5 px-3 text-[10px] font-black uppercase tracking-[0.16em]', viewMode === 'grid' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground')}>
-                                    <LayoutGrid className="h-3 w-3" />{t('common.grid', { defaultValue: 'Grid' })}
-                                </Button>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            {viewMode === 'grid' ? renderGrid() : renderTable()}
-                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/10 bg-primary/5 p-4">
-                                <div className="text-sm text-muted-foreground">
-                                    {t('orders.details.subtotal', { defaultValue: 'Subtotal' })}
-                                </div>
-                                <div className="text-sm font-bold">
-                                    {formatCurrency(order.subtotal, order.currency, features.iqd_display_preference)}
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <MarketplaceInquiryPdfCard order={order} />
                 </div>
             </div>
 

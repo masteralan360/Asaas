@@ -15,6 +15,7 @@ import { getOrderPrintReturnState } from '@/lib/orderPrintReturnState'
 import { createSalesOrderReturnPrintData } from '@/lib/orderReturnPrintData'
 import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { normalizeUnitCode } from '@/local-db/models'
+import { buildWorkflowGradientFill } from '@/lib/workflowProgressGradient'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import { setInvoicePreviewSource, type TemplatePreview, type TemplatePreviewRenderOptions } from '@/lib/pdfPreviewStore'
 import {
@@ -50,10 +51,8 @@ import {
     type OrderInstallment,
     type PurchaseOrder,
     type PurchaseOrderItem,
-    type PurchaseOrderStatus,
     type SalesOrder,
     type SalesOrderItem,
-    type SalesOrderStatus,
     type WorkspacePaymentMethod
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
@@ -114,14 +113,6 @@ function paymentLabel(t: (key: string) => string, method?: string | null) {
         case 'ecommerce': return 'E-Commerce'
         default: return method || '-'
     }
-}
-
-function workflowProgress(kind: 'sales' | 'purchase', status: SalesOrderStatus | PurchaseOrderStatus) {
-    if (kind === 'sales') {
-        return ({ draft: 18, pending: 62, completed: 100, cancelled: 100 } as const)[status as SalesOrderStatus] ?? 0
-    }
-
-    return ({ draft: 14, ordered: 46, received: 78, completed: 100, cancelled: 100 } as const)[status as PurchaseOrderStatus] ?? 0
 }
 
 function readViewMode() {
@@ -752,7 +743,6 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
         ? Math.max(0, getOrderLineInventoryQuantity(item) - (returnedQuantityByItemId.get(item.id) || 0))
         : getOrderLineInventoryQuantity(item)), 0)
     const totalFreeBonus = order.items.reduce((sum, item) => sum + getOrderLineFreeBonusQuantity(item), 0)
-    const progress = workflowProgress(resolved.kind, order.status)
     const paidAmount = getOrderPaidAmount(order)
     const outstanding = getOrderBalanceAmount(order)
     const paymentStatus = getOrderPaymentStatus(order)
@@ -774,15 +764,32 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
     const averageUnitCost = !isSales && totalUnits > 0 ? order.total / totalUnits : null
 
     const activity = [
-        { id: 'created', date: order.createdAt, label: t('orders.details.activity.created') || 'Order created' },
-        isApprovalRequested && order.approvalRequestedAt ? { id: 'approval-requested', date: order.approvalRequestedAt, label: t('orders.details.activity.approvalRequested', { defaultValue: 'Approval requested' }) } : null,
-        order.approvalReviewedAt ? { id: 'approval-reviewed', date: order.approvalReviewedAt, label: t('orders.details.activity.approvalReviewed', { defaultValue: 'Request approved' }) } : null,
-        order.expectedDeliveryDate ? { id: 'expected', date: order.expectedDeliveryDate, label: t('orders.details.activity.expected') || 'Expected delivery' } : null,
-        isSales && (order as SalesOrder).reservedAt ? { id: 'reserved', date: (order as SalesOrder).reservedAt as string, label: t('orders.details.activity.reserved') || 'Inventory reserved' } : null,
-        order.actualDeliveryDate ? { id: 'actual', date: order.actualDeliveryDate, label: isSales ? (t('orders.details.activity.completed') || 'Order completed') : (t('orders.details.activity.received') || 'Stock received') } : null,
-        order.paidAt ? { id: 'paid', date: order.paidAt, label: t('orders.details.activity.paid') || 'Payment recorded' } : null,
-        isSales && salesOrderReturns[0] ? { id: 'returned', date: salesOrderReturns[0].returnedAt, label: t('sales.return.returnedStatus') || 'Returned' } : null
-    ].filter(Boolean).sort((a, b) => new Date((b as any).date).getTime() - new Date((a as any).date).getTime()) as Array<{ id: string; date: string; label: string }>
+        { id: 'created', date: order.createdAt, label: t('orders.details.activity.created') || 'Order created', amount: order.total },
+        isApprovalRequested && order.approvalRequestedAt ? { id: 'approval-requested', date: order.approvalRequestedAt, label: t('orders.details.activity.approvalRequested', { defaultValue: 'Approval requested' }), amount: null } : null,
+        order.approvalReviewedAt ? { id: 'approval-reviewed', date: order.approvalReviewedAt, label: t('orders.details.activity.approvalReviewed', { defaultValue: 'Request approved' }), amount: null } : null,
+        order.expectedDeliveryDate ? { id: 'expected', date: order.expectedDeliveryDate, label: t('orders.details.activity.expected') || 'Expected delivery', amount: null } : null,
+        isSales && (order as SalesOrder).reservedAt ? { id: 'reserved', date: (order as SalesOrder).reservedAt as string, label: t('orders.details.activity.reserved') || 'Inventory reserved', amount: null } : null,
+        order.actualDeliveryDate ? { id: 'actual', date: order.actualDeliveryDate, label: isSales ? (t('orders.details.activity.completed') || 'Order completed') : (t('orders.details.activity.received') || 'Stock received'), amount: null } : null,
+        order.paidAt ? { id: 'paid', date: order.paidAt, label: t('orders.details.activity.paid') || 'Payment recorded', amount: paidAmount } : null,
+        isSales && salesOrderReturns[0] ? { id: 'returned', date: salesOrderReturns[0].returnedAt, label: t('sales.return.returnedStatus') || 'Returned', amount: null } : null
+    ].filter(Boolean).sort((a, b) => new Date((b as any).date).getTime() - new Date((a as any).date).getTime()) as Array<{ id: string; date: string; label: string; amount: number | null }>
+
+    const workflowSegments = [
+        { id: 'created', color: '#3b82f6', reached: true },
+        isApprovalRequested ? { id: 'approval-requested', color: '#94a3b8', reached: Boolean(order.approvalRequestedAt) } : null,
+        isApprovalRequested ? { id: 'approval-reviewed', color: '#94a3b8', reached: Boolean(order.approvalReviewedAt) } : null,
+        isSales ? { id: 'reserved', color: '#f59e0b', reached: Boolean((order as SalesOrder).reservedAt) } : null,
+        { id: 'actual', color: 'hsl(var(--primary))', reached: Boolean(order.actualDeliveryDate) },
+        { id: 'paid', color: '#10b981', reached: Boolean(order.paidAt) },
+        isSales && salesOrderReturns[0] ? { id: 'returned', color: '#f59e0b', reached: true } : null
+    ].filter(Boolean) as Array<{ id: string; color: string; reached: boolean }>
+
+    const workflowFill = order.status === 'cancelled'
+        ? { width: 100, background: 'linear-gradient(90deg, #f43f5e, #f43f5e)', backgroundSize: '100% 100%' }
+        : buildWorkflowGradientFill(workflowSegments.map((segment) => ({ color: segment.color, reached: segment.reached })))
+    const workflowPercent = order.status === 'cancelled'
+        ? 100
+        : Math.round((workflowSegments.filter((segment) => segment.reached).length / workflowSegments.length) * 100)
 
     const actions = isSales
         ? [
@@ -1314,21 +1321,46 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                     </Card>
 
                     <Card>
-                        <CardHeader><CardTitle>{t('orders.details.activity.title') || 'Activity'}</CardTitle></CardHeader>
+                        <CardHeader><CardTitle>{t('loans.recentActivity', { defaultValue: 'Recent Activity' })}</CardTitle></CardHeader>
                         <CardContent>
-                            <div className="relative space-y-5 ps-4 before:absolute before:bottom-2 before:start-0 before:top-2 before:w-0.5 before:bg-border/70">
-                                {activity.map((row) => (
-                                    <div key={row.id} className="relative">
-                                        <div className={cn(
-                                            'absolute -start-[1.375rem] top-1.5 h-3 w-3 rounded-full border-2 border-background',
-                                            row.id === 'paid' ? 'bg-emerald-500' : row.id === 'actual' ? 'bg-primary' : row.id === 'reserved' ? 'bg-amber-500' : 'bg-slate-400'
-                                        )} />
-                                        <div className="space-y-1">
-                                            <div className="font-semibold leading-none">{row.label}</div>
-                                            <div className="text-xs text-muted-foreground">{formatDateTime(row.date)}</div>
+                            <div className="relative ps-4 space-y-6 before:absolute before:start-0 before:top-2 before:bottom-2 before:w-0.5 before:bg-border/60">
+                                {activity.slice(0, 8).map(row => {
+                                    const isCreated = row.id === 'created'
+                                    return (
+                                        <div key={row.id} className="relative group">
+                                            <div className={cn(
+                                                "absolute -start-[1.375rem] top-1.5 w-3 h-3 rounded-full border-2 border-background z-10 transition-transform group-hover:scale-125",
+                                                row.id === 'paid'
+                                                    ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]'
+                                                    : row.id === 'returned'
+                                                        ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]'
+                                                    : row.id === 'reserved'
+                                                        ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]'
+                                                    : isCreated
+                                                        ? "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]"
+                                                        : row.id === 'actual'
+                                                            ? "bg-primary"
+                                                            : "bg-slate-400"
+                                            )} />
+                                            <div className="space-y-0.5">
+                                                <div className="font-bold text-sm leading-none transition-colors group-hover:text-primary">
+                                                    {row.label}
+                                                </div>
+                                                <div className="text-muted-foreground text-xs font-medium flex items-center gap-1.5 pt-1">
+                                                    <span>{formatDateTime(row.date)}</span>
+                                                    {row.amount !== null ? (
+                                                        <>
+                                                            <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+                                                            <span className="font-bold text-foreground/80">
+                                                                {formatCurrency(row.amount, currency, iqd)}
+                                                            </span>
+                                                        </>
+                                                    ) : null}
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    )
+                                })}
                             </div>
                         </CardContent>
                     </Card>
@@ -1455,10 +1487,18 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                             <div className="mt-6 space-y-2">
                                 <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
                                     <span>{order.status === 'cancelled' ? (t('orders.details.workflowStopped') || 'Workflow Stopped') : (t('orders.details.workflowProgress') || 'Workflow Progress')}</span>
-                                    <span>{progress}%</span>
+                                    <span>{workflowPercent}%</span>
                                 </div>
                                 <div className="h-2 overflow-hidden rounded-full bg-background/80">
-                                    <div className={cn('h-full rounded-full transition-all duration-500', order.status === 'cancelled' ? 'bg-rose-500' : order.status === 'completed' ? 'bg-emerald-500' : isSales ? 'bg-primary' : 'bg-sky-500')} style={{ width: `${progress}%` }} />
+                                    <div
+                                        className="h-full rounded-full transition-all duration-500"
+                                        style={{
+                                            width: `${workflowFill.width}%`,
+                                            background: workflowFill.background,
+                                            backgroundSize: workflowFill.backgroundSize,
+                                            backgroundRepeat: 'no-repeat'
+                                        }}
+                                    />
                                 </div>
                             </div>
                         </CardContent>

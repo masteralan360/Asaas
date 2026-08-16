@@ -663,6 +663,7 @@
     "inventoryDeducted": "تم خصم المخزون",
     "inventoryWarning": "يحتاج المخزون إلى متابعة يدوية لعنصر واحد أو أكثر.",
     "cancelReason": "سبب الإلغاء",
+    "customerNote": "ملاحظة",
     "transitionSuccess": "تم تحديث طلب السوق بنجاح.",
     "status": {
       "pending": "قيد الانتظار",

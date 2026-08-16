@@ -677,6 +677,7 @@
     "inventoryDeducted": "Inventory deducted",
     "inventoryWarning": "Inventory needs a manual follow-up for one or more items.",
     "cancelReason": "Cancellation reason",
+    "customerNote": "Note",
     "transitionSuccess": "Marketplace order updated successfully.",
     "status": {
       "pending": "Pending",

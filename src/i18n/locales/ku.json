@@ -665,6 +665,7 @@
     "inventoryDeducted": "کۆگا کەمکرایەوە",
     "inventoryWarning": "کۆگا پێویستی بە دواداچوونی دەستی هەیە بۆ یەک یان چەند بەرهەم.",
     "cancelReason": "هۆکاری هەڵوەشاندنەوە",
+    "customerNote": "تێبینی",
     "transitionSuccess": "داواکاریی بازاڕ بە سەرکەوتوویی نوێکرایەوە.",
     "status": {
       "pending": "چاوەڕوان",
