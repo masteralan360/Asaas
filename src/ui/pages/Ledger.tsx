@@ -550,9 +550,9 @@ function applyLedgerFilters(entries: LedgerEntry[], filters: LedgerFilterState) 
 function formatAmountSummary(
     rows: Array<{ amount: number; currency: CurrencyCode }>,
     iqdPreference: IQDDisplayPreference
-) {
+): string[] {
     if (rows.length === 0) {
-        return '0'
+        return ['0']
     }
 
     const totals = new Map<string, number>()
@@ -563,12 +563,11 @@ function formatAmountSummary(
     return Array.from(totals.entries())
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([currency, amount]) => formatCurrency(amount, currency as CurrencyCode, iqdPreference))
-        .join(' | ')
 }
 
-function formatNetSummary(entries: LedgerEntry[], iqdPreference: IQDDisplayPreference) {
+function formatNetSummary(entries: LedgerEntry[], iqdPreference: IQDDisplayPreference): string[] {
     if (entries.length === 0) {
-        return '0'
+        return ['0']
     }
 
     const totals = new Map<string, number>()
@@ -583,7 +582,6 @@ function formatNetSummary(entries: LedgerEntry[], iqdPreference: IQDDisplayPrefe
             const sign = amount < 0 ? '-' : ''
             return `${sign}${formatCurrency(Math.abs(amount), currency as CurrencyCode, iqdPreference)}`
         })
-        .join(' | ')
 }
 
 interface LedgerTrendPoint {
@@ -2322,9 +2320,11 @@ export function Ledger() {
                     </CardHeader>
                     <CardContent className="z-10 relative space-y-4">
                         <div className="space-y-1">
-                            <div className="text-2xl font-black tabular-nums tracking-tighter text-emerald-600">
-                                {totalInflow}
-                            </div>
+                            {totalInflow.map((value, index) => (
+                                <div key={index} className="text-2xl font-black tabular-nums tracking-tighter text-emerald-600 leading-none">
+                                    {value}
+                                </div>
+                            ))}
                             <div className="flex items-center gap-2">
                                 <span className={cn(
                                     "flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-full border",
@@ -2357,9 +2357,11 @@ export function Ledger() {
                     </CardHeader>
                     <CardContent className="z-10 relative space-y-4">
                         <div className="space-y-1">
-                            <div className="text-2xl font-black tabular-nums tracking-tighter text-amber-600">
-                                {totalOutflow}
-                            </div>
+                            {totalOutflow.map((value, index) => (
+                                <div key={index} className="text-2xl font-black tabular-nums tracking-tighter text-amber-600 leading-none">
+                                    {value}
+                                </div>
+                            ))}
                             <div className="flex items-center gap-2">
                                 <span className={cn(
                                     "flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-full border",
@@ -2394,9 +2396,11 @@ export function Ledger() {
                     </CardHeader>
                     <CardContent className="z-10 relative space-y-4">
                         <div className="space-y-1">
-                            <div className={cn("text-2xl font-black tabular-nums tracking-tighter", netFlowIsNegative ? "text-rose-600" : "text-sky-600")}>
-                                {netFlow}
-                            </div>
+                            {netFlow.map((value, index) => (
+                                <div key={index} className={cn("text-2xl font-black tabular-nums tracking-tighter leading-none", netFlowIsNegative ? "text-rose-600" : "text-sky-600")}>
+                                    {value}
+                                </div>
+                            ))}
                             <div className="flex items-center gap-2">
                                 <span className={cn(
                                     "flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-full border",
