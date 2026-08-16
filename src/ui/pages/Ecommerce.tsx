@@ -1,12 +1,40 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useLocation, useRoute } from 'wouter'
-import { ArrowLeft, FileText, Loader2, PackageSearch, Pencil, RefreshCw, Search, ShoppingBag } from 'lucide-react'
+import {
+    ArrowLeft,
+    BadgeCheck,
+    ChevronDown,
+    CircleDollarSign,
+    Clock3,
+    Eye,
+    FileText,
+    LayoutGrid,
+    List,
+    ListFilter,
+    Loader2,
+    Package,
+    PackageCheck,
+    PackageSearch,
+    Pencil,
+    RefreshCw,
+    Search,
+    ShoppingBag,
+    Truck,
+    XCircle,
+    type LucideIcon
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
-import { formatCurrency, formatDateTime } from '@/lib/utils'
+import { useDateRange, type DateRangeType } from '@/context/DateRangeContext'
+import { useExchangeRate } from '@/context/ExchangeRateContext'
+import { getLanguageDirection } from '@/lib/i18nRouting'
+import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
+import { convertCurrencyAmountWithLiveRates } from '@/lib/orderCurrency'
+import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
+import { isMobile } from '@/lib/platform'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { r2Service } from '@/services/r2Service'
 import { PdfJsViewer } from '@/ui/components/PdfJsViewer'
@@ -14,6 +42,7 @@ import {
     db,
     fetchTableFromSupabase,
     recordObligationSettlement,
+    type CurrencyCode,
     type PaymentObligation,
     type SalesOrder,
     type WorkspacePaymentMethod
@@ -26,14 +55,29 @@ import {
     CardContent,
     CardHeader,
     CardTitle,
+    DateRangeFilters,
     Dialog,
     DialogContent,
     DialogFooter,
     DialogHeader,
     DialogTitle,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
     Input,
     SettlementDialog,
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
     Textarea,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
     useToast
 } from '@/ui/components'
 
@@ -140,6 +184,98 @@ const MARKETPLACE_ORDER_SELECT = `
 
 const MARKETPLACE_ORDER_REFRESH_EVENT = 'marketplace-orders:changed'
 
+function filterEcommerceOrdersByDate<T>(
+    orders: T[],
+    dateRange: DateRangeType,
+    customDates: { start: string; end: string },
+    getDate: (order: T) => string | null | undefined
+) {
+    const now = new Date()
+
+    if (dateRange === 'today') {
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+        return orders.filter((order) => {
+            const date = getDate(order)
+            return Boolean(date && new Date(date) >= startOfDay)
+        })
+    }
+
+    if (dateRange === 'month') {
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+        return orders.filter((order) => {
+            const date = getDate(order)
+            return Boolean(date && new Date(date) >= startOfMonth)
+        })
+    }
+
+    if (dateRange === 'lastMonth') {
+        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+        return orders.filter((order) => {
+            const date = getDate(order)
+            if (!date) return false
+            const orderDate = new Date(date)
+            return orderDate >= startOfLastMonth && orderDate < startOfMonth
+        })
+    }
+
+    if (dateRange === 'custom' && (customDates.start || customDates.end)) {
+        const start = customDates.start ? new Date(customDates.start) : null
+        if (start) start.setHours(0, 0, 0, 0)
+        const end = customDates.end ? new Date(customDates.end) : null
+        if (end) end.setHours(23, 59, 59, 999)
+        return orders.filter((order) => {
+            const date = getDate(order)
+            if (!date) return false
+            const orderDate = new Date(date)
+            if (start && orderDate < start) return false
+            if (end && orderDate > end) return false
+            return true
+        })
+    }
+
+    return orders
+}
+
+function getPreviousDateRange(dateRange: DateRangeType, customDates: { start: string; end: string }) {
+    const now = new Date()
+
+    if (dateRange === 'today') {
+        const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+        const start = new Date(end)
+        start.setDate(start.getDate() - 1)
+        return { start, end }
+    }
+
+    if (dateRange === 'month') {
+        return {
+            start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+            end: new Date(now.getFullYear(), now.getMonth(), 1)
+        }
+    }
+
+    if (dateRange === 'lastMonth') {
+        return {
+            start: new Date(now.getFullYear(), now.getMonth() - 2, 1),
+            end: new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        }
+    }
+
+    if (dateRange === 'custom' && customDates.start && customDates.end) {
+        const currentStart = new Date(customDates.start)
+        currentStart.setHours(0, 0, 0, 0)
+        const currentEnd = new Date(customDates.end)
+        currentEnd.setHours(23, 59, 59, 999)
+        const duration = currentEnd.getTime() - currentStart.getTime() + 1
+        return {
+            start: new Date(currentStart.getTime() - duration),
+            end: new Date(currentStart.getTime() - 1)
+        }
+    }
+
+    return null
+}
+
 async function hydrateMarketplaceCollectionDependencies(workspaceId: string, salesOrderId: string) {
     await Promise.all([
         fetchTableFromSupabase('sales_orders', db.sales_orders, workspaceId, { includeDeleted: true }),
@@ -197,28 +333,219 @@ function EcommerceStatusBadge({ status }: { status: MarketplaceOrderStatus }) {
     )
 }
 
-function EcommerceStats({ orders }: { orders: MarketplaceOrderRecord[] }) {
-    const { t } = useTranslation()
-    const stats: Array<{ key: MarketplaceOrderStatus; count: number }> = [
-        { key: 'pending', count: orders.filter((order) => order.status === 'pending').length },
-        { key: 'confirmed', count: orders.filter((order) => order.status === 'confirmed').length },
-        { key: 'processing', count: orders.filter((order) => order.status === 'processing').length },
-        { key: 'shipped', count: orders.filter((order) => order.status === 'shipped').length },
-        { key: 'delivered', count: orders.filter((order) => order.status === 'delivered').length }
-    ]
+const statusFilterIcons = {
+    all: ListFilter,
+    pending: Clock3,
+    confirmed: BadgeCheck,
+    processing: Package,
+    shipped: Truck,
+    delivered: PackageCheck,
+    cancelled: XCircle
+} satisfies Record<MarketplaceOrderFilter, LucideIcon>
+
+function getEcommerceOrderSummary(items: MarketplaceOrderItemRecord[]) {
+    const displayItems = getMarketplaceDisplayItems(items)
+    const firstItems = displayItems.slice(0, 2).map((item) => item.name)
+    if (displayItems.length <= 2) return firstItems.join(', ')
+    return `${firstItems.join(', ')} +${displayItems.length - 2}`
+}
+
+function EcommerceProductMosaic({ items }: { items: MarketplaceOrderItemRecord[] }) {
+    const [failedProductIds, setFailedProductIds] = useState<Set<string>>(() => new Set())
+    const products = Array.from(new Map(items.map((item) => [item.product_id, item])).values()).slice(0, 4)
+    const layoutClass = products.length === 1
+        ? 'grid-cols-1 grid-rows-1'
+        : products.length === 2
+            ? 'grid-cols-2 grid-rows-1'
+            : 'grid-cols-2 grid-rows-2'
 
     return (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            {stats.map((stat) => (
-                <Card key={stat.key} className="border-border/60 bg-card/80">
-                    <CardContent className="space-y-1 p-5">
-                        <div className="text-3xl font-black">{stat.count}</div>
-                        <div className="text-sm text-muted-foreground">
-                            {t(`ecommerce.status.${stat.key}`, { defaultValue: stat.key })}
-                        </div>
-                    </CardContent>
-                </Card>
-            ))}
+        <div
+            className={cn('grid h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-border bg-muted/40', layoutClass)}
+            title={products.map((item) => item.name).join(', ')}
+            aria-label={products.map((item) => item.name).join(', ')}
+        >
+            {products.map((item, index) => {
+                const hasImage = Boolean(item.image_url && !failedProductIds.has(item.product_id))
+                const hasStartDivider = products.length === 2
+                    ? index === 1
+                    : products.length === 3
+                        ? index > 0
+                        : index === 1 || index === 3
+                const hasTopDivider = products.length > 2 && index >= 2
+
+                return (
+                    <div
+                        key={item.product_id}
+                        className={cn(
+                            'relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden bg-muted',
+                            products.length === 3 && index === 0 && 'row-span-2',
+                            hasStartDivider && 'border-s border-border',
+                            hasTopDivider && 'border-t border-border'
+                        )}
+                    >
+                        {hasImage ? (
+                            <img
+                                src={item.image_url as string}
+                                alt={item.name}
+                                loading="lazy"
+                                decoding="async"
+                                className="h-full w-full object-cover"
+                                onError={() => setFailedProductIds((current) => new Set(current).add(item.product_id))}
+                            />
+                        ) : (
+                            <Package className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                        )}
+                    </div>
+                )
+            })}
+        </div>
+    )
+}
+
+function EcommerceSummaryCards({ orders, totalOrdersTrend }: { orders: MarketplaceOrderRecord[]; totalOrdersTrend: number | null }) {
+    const { t } = useTranslation()
+    const { features } = useWorkspace()
+    const { exchangeData, eurRates, tryRates } = useExchangeRate()
+    const liveRates = useMemo(() => ({
+        exchangeData,
+        eurRates,
+        tryRates
+    }), [exchangeData, eurRates, tryRates])
+    const workspaceCurrency = (features.default_currency || 'usd') as CurrencyCode
+    const orderValueOrders = orders.filter((order) => order.status !== 'cancelled')
+    const orderValueByCurrency = orderValueOrders.reduce<Record<string, number>>((totals, order) => {
+        totals[order.currency] = (totals[order.currency] || 0) + order.total
+        return totals
+    }, {})
+    const orderValueEntries = Object.entries(orderValueByCurrency).sort(([left], [right]) => {
+        if (left === workspaceCurrency) return -1
+        if (right === workspaceCurrency) return 1
+        return left.localeCompare(right)
+    })
+    const orderValueInWorkspaceCurrency = orderValueOrders.reduce(
+        (total, order) => total + convertCurrencyAmountWithLiveRates(order.total, order.currency, workspaceCurrency, liveRates),
+        0
+    )
+    const pendingCount = orders.filter((order) => order.status === 'pending').length
+    const pendingFulfillmentCount = orders.filter((order) =>
+        order.status === 'pending' || order.status === 'confirmed' || order.status === 'processing'
+    ).length
+    const deliveredCount = orders.filter((order) => order.status === 'delivered').length
+    const cancelledCount = orders.filter((order) => order.status === 'cancelled').length
+
+    return (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Card className="rounded-2xl border-border/80 shadow-none">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                    <CardTitle className="text-sm font-semibold text-muted-foreground">
+                        {t('ecommerce.summary.totalOrders', { defaultValue: 'Total orders' })}
+                    </CardTitle>
+                    <span className="rounded-xl bg-muted/60 p-2 text-muted-foreground">
+                        <ShoppingBag className="h-4 w-4" />
+                    </span>
+                </CardHeader>
+                <CardContent className="pt-0">
+                    <div className="flex items-center gap-2">
+                        <div className="text-3xl font-black tracking-tight">{orders.length}</div>
+                        {totalOrdersTrend !== null ? (
+                            <span className={cn(
+                                'rounded-full px-2 py-1 text-xs font-bold',
+                                totalOrdersTrend >= 0
+                                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                    : 'bg-rose-500/10 text-rose-700 dark:text-rose-300'
+                            )}>
+                                {totalOrdersTrend >= 0 ? '+' : ''}{totalOrdersTrend.toFixed(1)}%
+                            </span>
+                        ) : null}
+                    </div>
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                        {pendingCount} {t('ecommerce.summary.pending', { defaultValue: 'pending' })}
+                        <span className="px-1.5">·</span>
+                        {deliveredCount} {t('ecommerce.summary.delivered', { defaultValue: 'delivered' })}
+                    </p>
+                </CardContent>
+            </Card>
+
+            <Card className="rounded-2xl border-border/80 shadow-none">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                    <CardTitle className="text-sm font-semibold text-muted-foreground">
+                        {t('orders.summary.orderValue', { defaultValue: 'Order value' })}
+                    </CardTitle>
+                    <span className="rounded-xl bg-muted/60 p-2 text-muted-foreground">
+                        <CircleDollarSign className="h-4 w-4" />
+                    </span>
+                </CardHeader>
+                <CardContent className="pt-0">
+                    <TooltipProvider delayDuration={300}>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="cursor-help">
+                                    {orderValueEntries.length > 0 ? orderValueEntries.map(([currency, value], index) => (
+                                        <div
+                                            key={currency}
+                                            className={cn(
+                                                'font-black leading-tight tracking-tight',
+                                                index === 0 ? 'text-3xl' : 'mt-1 text-base text-muted-foreground'
+                                            )}
+                                        >
+                                            {formatCurrency(value, currency, features.iqd_display_preference)}
+                                        </div>
+                                    )) : (
+                                        <div className="text-3xl font-black tracking-tight">
+                                            {formatCurrency(0, workspaceCurrency, features.iqd_display_preference)}
+                                        </div>
+                                    )}
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" align="start" className="space-y-1 p-3">
+                                <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                                    {t('orders.summary.totalIn', {
+                                        defaultValue: 'Total in {{currency}}',
+                                        currency: workspaceCurrency.toUpperCase()
+                                    })}
+                                </div>
+                                <div className="text-base font-black">
+                                    {formatCurrency(orderValueInWorkspaceCurrency, workspaceCurrency, features.iqd_display_preference)}
+                                </div>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                </CardContent>
+            </Card>
+
+            <Card className="rounded-2xl border-border/80 shadow-none">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                    <CardTitle className="text-sm font-semibold text-muted-foreground">
+                        {t('orders.summary.pendingFulfillment', { defaultValue: 'Pending fulfillment' })}
+                    </CardTitle>
+                    <span className="rounded-xl bg-muted/60 p-2 text-muted-foreground">
+                        <Clock3 className="h-4 w-4" />
+                    </span>
+                </CardHeader>
+                <CardContent className="pt-0">
+                    <div className="text-3xl font-black tracking-tight">{pendingFulfillmentCount}</div>
+                </CardContent>
+            </Card>
+
+            <Card className="rounded-2xl border-border/80 shadow-none">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                    <CardTitle className="text-sm font-semibold text-muted-foreground">
+                        {t('ecommerce.summary.delivered', { defaultValue: 'Delivered' })}
+                    </CardTitle>
+                    <span className="rounded-xl bg-muted/60 p-2 text-muted-foreground">
+                        <PackageCheck className="h-4 w-4" />
+                    </span>
+                </CardHeader>
+                <CardContent className="pt-0">
+                    <div className="text-3xl font-black tracking-tight">{deliveredCount}</div>
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                        {cancelledCount > 0
+                            ? `${cancelledCount} ${t('ecommerce.summary.cancelled', { defaultValue: 'cancelled' })}`
+                            : t('ecommerce.summary.noCancellations', { defaultValue: 'No cancellations' })}
+                    </p>
+                </CardContent>
+            </Card>
         </div>
     )
 }
@@ -313,43 +640,250 @@ function EcommerceListView({
     isLoading: boolean
     onRefresh: () => Promise<void>
 }) {
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
+    const pageDirection = getLanguageDirection(i18n.resolvedLanguage || i18n.language)
     const [, navigate] = useLocation()
     const { features } = useWorkspace()
+    const { dateRange, customDates, setDateRange, setCustomDates } = useDateRange()
+    const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => (localStorage.getItem('ecommerce_view_mode') as 'table' | 'grid') || 'table')
     const [search, setSearch] = useState('')
     const [statusFilter, setStatusFilter] = useState<MarketplaceOrderFilter>('all')
 
-    const filteredOrders = orders.filter((order) => {
-        if (statusFilter !== 'all' && order.status !== statusFilter) {
-            return false
+    useEffect(() => {
+        localStorage.setItem('ecommerce_view_mode', viewMode)
+    }, [viewMode])
+
+    const dateFilteredOrders = useMemo(
+        () => filterEcommerceOrdersByDate(orders, dateRange, customDates, (order) => order.created_at),
+        [orders, dateRange, customDates]
+    )
+
+    const filteredOrders = useMemo(() => {
+        let items = [...dateFilteredOrders]
+
+        if (statusFilter !== 'all') {
+            items = items.filter((order) => order.status === statusFilter)
         }
 
         const query = search.trim().toLowerCase()
-        if (!query) {
-            return true
-        }
+        if (!query) return items
 
-        return `${order.order_number} ${order.customer_name} ${order.customer_phone} ${order.customer_city || ''}`
-            .toLowerCase()
-            .includes(query)
-    })
+        return items.filter((order) =>
+            `${order.order_number} ${order.customer_name} ${order.customer_phone} ${order.customer_city || ''}`
+                .toLowerCase()
+                .includes(query)
+        )
+    }, [dateFilteredOrders, search, statusFilter])
+
+    const previousDateRange = useMemo(
+        () => getPreviousDateRange(dateRange, customDates),
+        [dateRange, customDates]
+    )
+    const previousOrderCount = useMemo(() => {
+        if (!previousDateRange) return null
+        return orders.filter((order) => {
+            const createdAt = new Date(order.created_at)
+            return createdAt >= previousDateRange.start && createdAt < previousDateRange.end
+        }).length
+    }, [previousDateRange, orders])
+    const totalOrdersTrend = previousOrderCount && previousOrderCount > 0
+        ? ((dateFilteredOrders.length - previousOrderCount) / previousOrderCount) * 100
+        : null
+
+    const StatusFilterIcon = statusFilterIcons[statusFilter]
+
+    const getDateDisplay = () => {
+        if (dateRange === 'today') {
+            return formatDate(new Date())
+        }
+        if (dateRange === 'month') {
+            return formatLocalizedMonthYear(new Date(), i18n.language)
+        }
+        if (dateRange === 'lastMonth') {
+            return formatLocalizedMonthYear(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1), i18n.language)
+        }
+        if (dateRange === 'custom') {
+            if (dateFilteredOrders.length > 0) {
+                const dates = dateFilteredOrders.map((order) => new Date(order.created_at).getTime())
+                const minDate = new Date(Math.min(...dates))
+                const maxDate = new Date(Math.max(...dates))
+                return `${t('performance.filters.from')} ${formatDate(minDate)} ${t('performance.filters.to')} ${formatDate(maxDate)}`
+            }
+            if (customDates.start || customDates.end) {
+                const parts = []
+                if (customDates.start) parts.push(`${t('performance.filters.from')} ${formatDate(customDates.start)}`)
+                if (customDates.end) parts.push(`${t('performance.filters.to')} ${formatDate(customDates.end)}`)
+                return parts.join(' ')
+            }
+        }
+        if (dateRange === 'allTime') {
+            if (dateFilteredOrders.length > 0) {
+                const dates = dateFilteredOrders.map((order) => new Date(order.created_at).getTime())
+                const minDate = new Date(Math.min(...dates))
+                const maxDate = new Date(Math.max(...dates))
+                return `${t('performance.filters.from')} ${formatDate(minDate)} ${t('performance.filters.to')} ${formatDate(maxDate)}`
+            }
+            return t('performance.filters.allTime') || 'All Time'
+        }
+        return ''
+    }
+
+    function renderOrderTable() {
+        return (
+            <div className="overflow-x-auto">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>{t('orders.table.orderNumber') || 'Order #'}</TableHead>
+                            <TableHead>{t('ecommerce.customer', { defaultValue: 'Customer' })}</TableHead>
+                            <TableHead>{t('orders.table.items') || 'Items'}</TableHead>
+                            <TableHead>{t('common.status') || 'Status'}</TableHead>
+                            <TableHead>{t('common.total') || 'Total'}</TableHead>
+                            <TableHead>{t('orders.form.date') || 'Date'}</TableHead>
+                            <TableHead className="text-end">{t('common.actions') || 'Actions'}</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {filteredOrders.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
+                                    {t('common.noData') || 'No data available'}
+                                </TableCell>
+                            </TableRow>
+                        ) : filteredOrders.map((order) => (
+                            <TableRow key={order.id} className="hover:bg-muted/40">
+                                <TableCell className="font-semibold">
+                                    <div className="flex min-w-[11rem] items-center gap-3">
+                                        <EcommerceProductMosaic items={order.items} />
+                                        <div className="min-w-0">
+                                            <span>{order.order_number}</span>
+                                            <div className="truncate text-xs text-muted-foreground">
+                                                {getEcommerceOrderSummary(order.items)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </TableCell>
+                                <TableCell>{order.customer_name}</TableCell>
+                                <TableCell>{getMarketplaceDisplayItems(order.items).length}</TableCell>
+                                <TableCell>
+                                    <EcommerceStatusBadge status={order.status} />
+                                </TableCell>
+                                <TableCell>{formatCurrency(order.total, order.currency, features.iqd_display_preference)}</TableCell>
+                                <TableCell>{formatDate(order.created_at)}</TableCell>
+                                <TableCell className="text-end">
+                                    <div className="flex flex-wrap justify-end gap-2">
+                                        <Button variant="outline" size="sm" allowViewer={true} onClick={() => navigate(`/ecommerce/${order.id}`)}>
+                                            <Eye className="me-1 h-3.5 w-3.5" />
+                                            {t('common.view') || 'View'}
+                                        </Button>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
+        )
+    }
+
+    function renderOrderGrid() {
+        return (
+            <div className={cn(
+                "grid gap-4 p-4 bg-muted/5",
+                viewMode === 'grid' && !isMobile() ? "md:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"
+            )}>
+                {filteredOrders.length === 0 ? (
+                    <div className="text-center text-muted-foreground py-12 bg-background rounded-lg border">
+                        {t('common.noData') || 'No data available'}
+                    </div>
+                ) : filteredOrders.map((order) => (
+                    <div
+                        key={order.id}
+                        className="p-4 border shadow-sm space-y-4 transition-all active:scale-[0.98] rounded-2xl bg-background"
+                    >
+                        <div className="flex justify-between items-start">
+                            <div className="flex min-w-0 items-start gap-3">
+                                <EcommerceProductMosaic items={order.items} />
+                                <div className="min-w-0 space-y-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-sm font-bold text-primary">{order.order_number}</span>
+                                    </div>
+                                    <div className="text-base font-bold text-foreground">{order.customer_name}</div>
+                                    <div className="text-xs text-muted-foreground truncate max-w-[200px]">
+                                        {getEcommerceOrderSummary(order.items)}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1.5 text-end">
+                                <EcommerceStatusBadge status={order.status} />
+                                <div className="mt-2 grid gap-1 text-[10px] font-medium text-muted-foreground">
+                                    <div>
+                                        <span className="me-1 uppercase tracking-tight">{t('orders.dateFilters.created', { defaultValue: 'Created' })}</span>
+                                        {formatDate(order.created_at)}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 py-3 border-y border-border/50">
+                            <div className="text-center">
+                                <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('orders.table.items') || 'Items'}</div>
+                                <div className="text-[11px] font-bold">{getMarketplaceDisplayItems(order.items).length}</div>
+                            </div>
+                            <div className="text-center border-s border-border/50">
+                                <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('common.total') || 'Total'}</div>
+                                <div className="text-[11px] font-bold text-primary">{formatCurrency(order.total, order.currency, features.iqd_display_preference)}</div>
+                            </div>
+                            <div className="text-center border-s border-border/50">
+                                <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('ecommerce.city', { defaultValue: 'City' })}</div>
+                                <div className="text-[11px] font-bold">{order.customer_city || '—'}</div>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                            <Button variant="outline" size="sm" allowViewer={true} className="flex-1 h-9 rounded-xl font-bold gap-2 text-xs" onClick={() => navigate(`/ecommerce/${order.id}`)}>
+                                <Eye className="w-3.5 h-3.5" />
+                                {t('common.view') || 'View'}
+                            </Button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        )
+    }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6" dir={pageDirection}>
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <h1 className="flex items-center gap-2 text-2xl font-bold">
+                    <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold">
                         <ShoppingBag className="h-6 w-6 text-primary" />
                         {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
+                        {getDateDisplay() && (
+                            <span className="animate-pop-in rounded-lg bg-primary px-3 py-1 text-sm font-bold text-primary-foreground shadow-sm">
+                                {getDateDisplay()}
+                            </span>
+                        )}
                     </h1>
                     <p className="text-muted-foreground">
                         {t('ecommerce.subtitle', { defaultValue: 'Track and manage marketplace orders' })} <ModulePageFreshness className="ms-2" />
                     </p>
                 </div>
-                <Button variant="outline" className="gap-2 self-start rounded-xl" onClick={onRefresh}>
-                    <RefreshCw className="h-4 w-4" />
-                    {t('common.refresh', { defaultValue: 'Refresh' })}
-                </Button>
+                <div className="flex flex-col sm:flex-row lg:items-center gap-4 self-start lg:self-auto w-full lg:w-auto">
+                    <div className="relative w-full lg:w-auto">
+                        <DateRangeFilters
+                            label={t('orders.dateFilters.created', { defaultValue: 'Created date' })}
+                            dateRange={dateRange}
+                            customDates={customDates}
+                            onDateRangeChange={setDateRange}
+                            onCustomDatesChange={setCustomDates}
+                        />
+                    </div>
+                    <Button variant="outline" className="gap-2 self-start rounded-xl sm:self-auto" onClick={onRefresh}>
+                        <RefreshCw className="h-4 w-4" />
+                        {t('common.refresh', { defaultValue: 'Refresh' })}
+                    </Button>
+                </div>
             </div>
 
             {(features.data_mode === 'local' || features.data_mode === 'demo') && (
@@ -362,44 +896,120 @@ function EcommerceListView({
                 </Card>
             )}
 
-            <EcommerceStats orders={orders} />
+            <EcommerceSummaryCards orders={dateFilteredOrders} totalOrdersTrend={totalOrdersTrend} />
 
-            <Card className="border-border/60 bg-card/80">
+            <Card>
                 <CardHeader className="gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <CardTitle>{t('ecommerce.orders', { defaultValue: 'Orders' })}</CardTitle>
-                    <div className="relative w-full max-w-sm">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                            value={search}
-                            onChange={(event) => setSearch(event.target.value)}
-                            placeholder={t('marketplace.searchOrders', { defaultValue: 'Search orders...' })}
-                            className="pl-9"
-                        />
+                    <div className="w-full space-y-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                <CardTitle>{t('ecommerce.orders', { defaultValue: 'Orders' })}</CardTitle>
+
+                                {!isMobile() && (
+                                    <div className="flex items-center self-start rounded-xl border border-border/60 bg-muted/30 p-1 sm:self-auto">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            allowViewer={true}
+                                            onClick={() => setViewMode('table')}
+                                            className={cn(
+                                                'h-8 gap-1.5 rounded-lg px-3 text-[10px] font-bold uppercase tracking-wide transition-all',
+                                                viewMode === 'table'
+                                                    ? 'bg-primary text-primary-foreground shadow-sm'
+                                                    : 'text-muted-foreground hover:bg-background hover:text-foreground'
+                                            )}
+                                        >
+                                            <List className="h-3.5 w-3.5" />
+                                            {t('orders.view.table') || 'Details'}
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            allowViewer={true}
+                                            onClick={() => setViewMode('grid')}
+                                            className={cn(
+                                                'h-8 gap-1.5 rounded-lg px-3 text-[10px] font-bold uppercase tracking-wide transition-all',
+                                                viewMode === 'grid'
+                                                    ? 'bg-primary text-primary-foreground shadow-sm'
+                                                    : 'text-muted-foreground hover:bg-background hover:text-foreground'
+                                            )}
+                                        >
+                                            <LayoutGrid className="h-3.5 w-3.5" />
+                                            {t('orders.view.grid') || 'Grid'}
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+                            <div className="relative min-w-0 flex-1">
+                                <Search className="pointer-events-none absolute start-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input
+                                    value={search}
+                                    onChange={(event) => setSearch(event.target.value)}
+                                    allowViewer={true}
+                                    placeholder={t('marketplace.searchOrders', { defaultValue: 'Search orders...' })}
+                                    className="h-10 rounded-xl border-border/70 bg-background ps-10 shadow-sm transition-shadow focus-visible:shadow-md"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+                                <DropdownMenu dir={pageDirection}>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            allowViewer={true}
+                                            className={cn(
+                                                'h-10 justify-between gap-2 rounded-xl border-border/70 bg-background px-3 font-semibold shadow-sm hover:border-primary/30 hover:bg-primary/5',
+                                                statusFilter !== 'all' && 'border-primary/30 bg-primary/5 text-primary'
+                                            )}
+                                        >
+                                            <span className="flex min-w-0 items-center gap-2">
+                                                <StatusFilterIcon className="h-4 w-4 shrink-0" />
+                                                <span className="hidden text-xs text-muted-foreground sm:inline">{t('common.status') || 'Status'}</span>
+                                                <span className="truncate text-sm">
+                                                    {statusFilter === 'all'
+                                                        ? (t('common.all') || 'All')
+                                                        : t(`ecommerce.status.${statusFilter}`, { defaultValue: statusFilter })}
+                                                </span>
+                                            </span>
+                                            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="min-w-44 rounded-xl border-border/70 p-1.5">
+                                        {(['all', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] as MarketplaceOrderFilter[]).map((value) => {
+                                            const StatusOptionIcon = statusFilterIcons[value]
+                                            return (
+                                                <DropdownMenuItem
+                                                    key={value}
+                                                    onSelect={() => setStatusFilter(value)}
+                                                    className={cn(
+                                                        'rounded-lg px-3 py-2 text-sm font-medium',
+                                                        statusFilter === value && 'bg-primary/10 text-primary focus:bg-primary/10 focus:text-primary'
+                                                    )}
+                                                >
+                                                    <StatusOptionIcon className="me-2 h-4 w-4" />
+                                                    {value === 'all'
+                                                        ? (t('common.all') || 'All')
+                                                        : t(`ecommerce.status.${value}`, { defaultValue: value })}
+                                                </DropdownMenuItem>
+                                            )
+                                        })}
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </div>
+                        </div>
                     </div>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="flex flex-wrap gap-2">
-                        {(['all', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] as MarketplaceOrderFilter[]).map((status) => (
-                            <Button
-                                key={status}
-                                type="button"
-                                variant={statusFilter === status ? 'default' : 'outline'}
-                                className="rounded-full"
-                                onClick={() => setStatusFilter(status)}
-                            >
-                                {status === 'all'
-                                    ? t('common.all', { defaultValue: 'All' })
-                                    : t(`ecommerce.status.${status}`, { defaultValue: status })}
-                            </Button>
-                        ))}
-                    </div>
 
-                    {isLoading ? (
-                        <div className="flex items-center gap-3 rounded-2xl border border-border/60 bg-card/70 p-5 text-muted-foreground">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            {t('common.loading', { defaultValue: 'Loading...' })}
-                        </div>
-                    ) : filteredOrders.length === 0 ? (
+                {isLoading ? (
+                    <div className="flex items-center gap-3 rounded-2xl border border-border/60 bg-card/70 p-5 text-muted-foreground mx-5 mb-5">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {t('common.loading', { defaultValue: 'Loading...' })}
+                    </div>
+                ) : filteredOrders.length === 0 ? (
+                    <div className="px-5 pb-5">
                         <Card className="border-dashed border-border/60 bg-card/50">
                             <CardContent className="flex flex-col items-center gap-3 p-10 text-center">
                                 <PackageSearch className="h-10 w-10 text-muted-foreground/50" />
@@ -411,39 +1021,8 @@ function EcommerceListView({
                                 </div>
                             </CardContent>
                         </Card>
-                    ) : (
-                        <div className="space-y-3">
-                            {filteredOrders.map((order) => (
-                                <Card key={order.id} className="border-border/60 bg-card/70 transition-colors hover:border-primary/30">
-                                    <CardContent className="space-y-4 p-5">
-                                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                                            <div className="space-y-1">
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <span className="text-lg font-black">{order.order_number}</span>
-                                                    <EcommerceStatusBadge status={order.status} />
-                                                </div>
-                                                <p className="text-sm text-muted-foreground">
-                                                    {order.customer_name} • {getMarketplaceDisplayItems(order.items).length} {t('common.items', { defaultValue: 'Items' })}
-                                                </p>
-                                            </div>
-                                            <div className="text-sm text-muted-foreground">
-                                                {formatDateTime(order.created_at)}
-                                            </div>
-                                        </div>
-                                        <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-                                            <div>
-                                                {formatCurrency(order.total, order.currency, features.iqd_display_preference)} • {order.customer_city || t('common.noData', { defaultValue: 'No data available' })}
-                                            </div>
-                                            <Button className="self-start rounded-xl" onClick={() => navigate(`/ecommerce/${order.id}`)}>
-                                                {t('common.view', { defaultValue: 'View' })}
-                                            </Button>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
-                    )}
-                </CardContent>
+                    </div>
+                ) : (isMobile() || viewMode === 'grid') ? renderOrderGrid() : renderOrderTable()}
             </Card>
         </div>
     )
