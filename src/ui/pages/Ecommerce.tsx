@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
-import { useLocation, useRoute } from 'wouter'
+import { Link, useLocation, useRoute } from 'wouter'
 import {
     ArrowLeft,
     BadgeCheck,
+    CalendarDays,
     ChevronDown,
     CircleDollarSign,
     Clock3,
@@ -21,6 +22,7 @@ import {
     Search,
     ShoppingBag,
     Truck,
+    UsersRound,
     XCircle,
     type LucideIcon
 } from 'lucide-react'
@@ -33,11 +35,13 @@ import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { getLanguageDirection } from '@/lib/i18nRouting'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { convertCurrencyAmountWithLiveRates } from '@/lib/orderCurrency'
+import { ORDER_STATUS_ADVANCE_HOLD_DURATION_MS } from '@/lib/pressAndHold'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import { isMobile } from '@/lib/platform'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { r2Service } from '@/services/r2Service'
 import { PdfJsViewer } from '@/ui/components/PdfJsViewer'
+import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
 import {
     db,
     fetchTableFromSupabase,
@@ -277,11 +281,7 @@ function getPreviousDateRange(dateRange: DateRangeType, customDates: { start: st
 }
 
 async function hydrateMarketplaceCollectionDependencies(workspaceId: string, salesOrderId: string) {
-    await Promise.all([
-        fetchTableFromSupabase('sales_orders', db.sales_orders, workspaceId, { includeDeleted: true }),
-        fetchTableFromSupabase('customers', db.customers, workspaceId, { includeDeleted: true }),
-        fetchTableFromSupabase('business_partners', db.business_partners, workspaceId, { includeDeleted: true })
-    ])
+    await fetchTableFromSupabase('sales_orders', db.sales_orders, workspaceId, { includeDeleted: true })
 
     const order = await db.sales_orders.get(salesOrderId)
     return order as SalesOrder | undefined
@@ -566,26 +566,20 @@ function transitionActionLabel(t: (key: string, options?: Record<string, unknown
     return ''
 }
 
-function TimelineRow({
-    label,
-    value,
-    complete
-}: {
-    label: string
-    value: string | null
-    complete: boolean
-}) {
-    return (
-        <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card/60 px-4 py-3">
-            <div className="flex items-center gap-3">
-                <span className={`h-3 w-3 rounded-full ${complete ? 'bg-primary' : 'bg-muted-foreground/30'}`} />
-                <span className="font-medium">{label}</span>
-            </div>
-            <span className="text-sm text-muted-foreground">
-                {value ? formatDateTime(value) : '—'}
-            </span>
-        </div>
-    )
+function transitionActionIcon(nextStatus: MarketplaceOrderStatus | null): LucideIcon {
+    if (nextStatus === 'confirmed') return BadgeCheck
+    if (nextStatus === 'processing') return Package
+    if (nextStatus === 'shipped') return Truck
+    if (nextStatus === 'delivered') return PackageCheck
+    return PackageSearch
+}
+
+function marketplaceWorkflowProgress(status: MarketplaceOrderStatus) {
+    if (status === 'pending') return 20
+    if (status === 'confirmed') return 40
+    if (status === 'processing') return 60
+    if (status === 'shipped') return 80
+    return 100
 }
 
 function MarketplaceInquiryPdfCard({ order }: { order: MarketplaceOrderRecord }) {
@@ -1031,7 +1025,7 @@ function EcommerceListView({
 function EcommerceDetailView({
     order,
     isSaving,
-    onBack,
+    isOpeningCollection,
     onAdvance,
     onCancel,
     onRecordCollection,
@@ -1039,7 +1033,7 @@ function EcommerceDetailView({
 }: {
     order: MarketplaceOrderRecord
     isSaving: boolean
-    onBack: () => void
+    isOpeningCollection: boolean
     onAdvance: (nextStatus: MarketplaceOrderStatus) => Promise<void>
     onCancel: (reason: string) => Promise<void>
     onRecordCollection: (salesOrderId: string) => Promise<void>
@@ -1051,9 +1045,19 @@ function EcommerceDetailView({
     const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
     const [cancelReason, setCancelReason] = useState('')
     const [editItemsOpen, setEditItemsOpen] = useState(false)
+    const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => (
+        localStorage.getItem('ecommerce_details_view_mode') === 'grid' ? 'grid' : 'table'
+    ))
     const nextStatus = nextActionForStatus(order.status)
     const displayItems = getMarketplaceDisplayItems(order.items)
     const canEditItems = order.status !== 'delivered' && order.status !== 'cancelled'
+    const AdvanceActionIcon = nextStatus ? transitionActionIcon(nextStatus) : null
+    const workflowProgress = marketplaceWorkflowProgress(order.status)
+    const totalUnits = displayItems.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0)
+
+    useEffect(() => {
+        localStorage.setItem('ecommerce_details_view_mode', viewMode)
+    }, [viewMode])
 
     const submitCancel = async () => {
         await onCancel(cancelReason)
@@ -1061,28 +1065,150 @@ function EcommerceDetailView({
         setCancelDialogOpen(false)
     }
 
-    return (
-        <div className="space-y-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="space-y-2">
-                    <Button variant="ghost" className="gap-2 px-0" onClick={onBack}>
-                        <ArrowLeft className="h-4 w-4" />
-                        {t('common.back', { defaultValue: 'Back' })}
-                    </Button>
-                    <div className="flex flex-wrap items-center gap-3">
-                        <h1 className="text-2xl font-bold">{order.order_number}</h1>
-                        <EcommerceStatusBadge status={order.status} />
+    const renderTable = () => (
+        <div className="overflow-x-auto rounded-2xl border">
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>{t('products.title', { defaultValue: 'Product' })}</TableHead>
+                        <TableHead className="text-end">{t('orders.form.table.qty', { defaultValue: 'Qty' })}</TableHead>
+                        <TableHead className="text-end">{t('orders.details.lineTotal', { defaultValue: 'Line Total' })}</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {displayItems.map((item, index) => (
+                        <TableRow key={`${item.product_id}-${index}`}>
+                            <TableCell>
+                                <div className="flex items-center gap-3">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-muted/40">
+                                        {item.image_url ? (
+                                            <img
+                                                src={item.image_url}
+                                                alt=""
+                                                className="h-full w-full object-contain p-1"
+                                                loading="lazy"
+                                            />
+                                        ) : (
+                                            <PackageSearch className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                                        )}
+                                    </div>
+                                    <div>
+                                        <div className="font-semibold">{item.name}</div>
+                                        <div className="text-xs text-muted-foreground">{item.sku}</div>
+                                    </div>
+                                </div>
+                            </TableCell>
+                            <TableCell className="text-end">× {item.quantity}</TableCell>
+                            <TableCell className="text-end font-semibold">
+                                {formatCurrency(item.line_total, item.currency, features.iqd_display_preference)}
+                            </TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        </div>
+    )
+
+    const renderGrid = () => (
+        <div className="grid gap-4 md:grid-cols-2">
+            {displayItems.map((item, index) => (
+                <div key={`${item.product_id}-${index}`} className="rounded-3xl border bg-background/80 p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-muted/40">
+                                {item.image_url ? (
+                                    <img
+                                        src={item.image_url}
+                                        alt=""
+                                        className="h-full w-full object-contain p-1"
+                                        loading="lazy"
+                                    />
+                                ) : (
+                                    <PackageSearch className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                                )}
+                            </div>
+                            <div className="min-w-0">
+                                <div className="truncate text-lg font-semibold">{item.name}</div>
+                                <div className="truncate text-xs text-muted-foreground">{item.sku}</div>
+                            </div>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-primary">
+                            × {item.quantity}
+                        </span>
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-2xl border bg-muted/20 p-3">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.units', { defaultValue: 'Units' })}</div>
+                            <div className="mt-1 font-medium">× {item.quantity}</div>
+                        </div>
+                        <div className="rounded-2xl border bg-muted/20 p-3">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.lineTotal', { defaultValue: 'Line Total' })}</div>
+                            <div className="mt-1 font-medium">{formatCurrency(item.line_total, item.currency, features.iqd_display_preference)}</div>
+                        </div>
                     </div>
                 </div>
-                <div className="text-sm text-muted-foreground">{formatDateTime(order.created_at)}</div>
+            ))}
+        </div>
+    )
+
+    return (
+        <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Link href="/ecommerce" className="inline-flex items-center gap-1 hover:text-foreground">
+                        <ArrowLeft className="h-4 w-4" />
+                        {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
+                    </Link>
+                    <span>/</span>
+                    <span className="font-semibold text-foreground">{order.order_number}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    {canEditItems && (
+                        <Button variant="outline" disabled={isSaving} onClick={() => setEditItemsOpen(true)}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            {t('ecommerce.actions.editItems', { defaultValue: 'Edit Items' })}
+                        </Button>
+                    )}
+                    {nextStatus && AdvanceActionIcon ? (
+                        <PressAndHoldButton
+                            icon={<AdvanceActionIcon className="mr-2 h-4 w-4" aria-hidden="true" />}
+                            disabled={isSaving}
+                            onComplete={() => onAdvance(nextStatus)}
+                            idleLabel={transitionActionLabel(t as any, nextStatus)}
+                            holdingLabel={t('orders.actions.keepHolding', { defaultValue: 'Keep holding…' })}
+                            loadingLabel={transitionActionLabel(t as any, nextStatus)}
+                            isLoading={isSaving}
+                            durationMs={ORDER_STATUS_ADVANCE_HOLD_DURATION_MS}
+                        />
+                    ) : null}
+                    {(order.status === 'pending' || order.status === 'confirmed' || order.status === 'processing') && (
+                        <Button
+                            variant="outline"
+                            className="border-rose-500/30 bg-rose-500/10 text-rose-700 hover:bg-rose-500/20 hover:text-rose-800"
+                            disabled={isSaving}
+                            onClick={() => setCancelDialogOpen(true)}
+                        >
+                            <XCircle className="mr-2 h-4 w-4" />
+                            {t('ecommerce.actions.cancel', { defaultValue: 'Cancel Order' })}
+                        </Button>
+                    )}
+                    {order.status === 'delivered' && order.sales_order_id ? (
+                        <Button variant="outline" disabled={isSaving || isOpeningCollection} onClick={() => onRecordCollection(order.sales_order_id as string)}>
+                            {isOpeningCollection
+                                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                                : <CircleDollarSign className="mr-2 h-4 w-4" aria-hidden="true" />}
+                            {isOpeningCollection
+                                ? t('common.loading', { defaultValue: 'Loading…' })
+                                : t('ecommerce.actions.collect', { defaultValue: 'Record Collection' })}
+                        </Button>
+                    ) : null}
+                </div>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-                <div className="space-y-6">
-                    <Card className="border-border/60 bg-card/80">
-                        <CardHeader>
-                            <CardTitle>{t('ecommerce.customer', { defaultValue: 'Customer' })}</CardTitle>
-                        </CardHeader>
+            <div className="grid gap-4 lg:grid-cols-3">
+                <div className="space-y-4">
+                    <Card>
+                        <CardHeader><CardTitle>{t('ecommerce.customer', { defaultValue: 'Customer' })}</CardTitle></CardHeader>
                         <CardContent className="space-y-3 text-sm">
                             <div>
                                 <div className="font-semibold">{order.customer_name}</div>
@@ -1110,159 +1236,192 @@ function EcommerceDetailView({
                         </CardContent>
                     </Card>
 
-                    <Card className="border-border/60 bg-card/80">
-                        <CardHeader>
-                            <CardTitle>{t('common.items', { defaultValue: 'Items' })}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            {displayItems.map((item, index) => (
-                                <div key={`${item.product_id}-${index}`} className="rounded-2xl border border-border/60 bg-card/60 p-4">
-                                    <div className="flex items-center justify-between gap-3">
-                                        <div className="flex min-w-0 items-center gap-3">
-                                            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-muted/40">
-                                                {item.image_url ? (
-                                                    <img
-                                                        src={item.image_url}
-                                                        alt=""
-                                                        className="h-full w-full object-contain p-1"
-                                                        loading="lazy"
-                                                    />
-                                                ) : (
-                                                    <PackageSearch className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-                                                )}
-                                            </div>
-                                            <div className="min-w-0">
-                                                <div className="truncate font-semibold">{item.name}</div>
-                                                <div className="truncate text-sm text-muted-foreground">{item.sku}</div>
-                                            </div>
+                    {order.sales_order_id || order.customer_id || order.business_partner_id ? (
+                        <Card className="border-sky-500/20 bg-sky-500/5">
+                            <CardHeader className="pb-3"><CardTitle className="text-sky-700 dark:text-sky-300">{t('ecommerce.erpRegistration', { defaultValue: 'Registered in ERP' })}</CardTitle></CardHeader>
+                            <CardContent className="flex flex-wrap gap-2">
+                                {order.sales_order_id ? (
+                                    <Button variant="outline" className="rounded-xl" onClick={() => navigate(`/orders/${order.sales_order_id}`)}>
+                                        {t('orders.title', { defaultValue: 'Orders' })}
+                                    </Button>
+                                ) : null}
+                                {order.customer_id ? (
+                                    <Button variant="outline" className="rounded-xl" onClick={() => navigate(`/customers/${order.customer_id}`)}>
+                                        {t('customers.title', { defaultValue: 'Customers' })}
+                                    </Button>
+                                ) : null}
+                                {order.business_partner_id ? (
+                                    <Button variant="outline" className="rounded-xl" onClick={() => navigate(`/business-partners/${order.business_partner_id}`)}>
+                                        {t('businessPartners.title', { defaultValue: 'Business Partners' })}
+                                    </Button>
+                                ) : null}
+                            </CardContent>
+                        </Card>
+                    ) : null}
+
+                    <Card>
+                        <CardHeader><CardTitle>{t('orders.details.commercials', { defaultValue: 'Commercials' })}</CardTitle></CardHeader>
+                        <CardContent className="grid gap-3 text-sm">
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                                <div className="rounded-2xl border bg-muted/20 p-3">
+                                    <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{t('orders.details.created', { defaultValue: 'Created' })}</div>
+                                    <div className="mt-1 font-medium">{formatDateTime(order.created_at)}</div>
+                                </div>
+                                <div className="rounded-2xl border bg-muted/20 p-3">
+                                    <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{t('orders.details.lastUpdated', { defaultValue: 'Last Updated' })}</div>
+                                    <div className="mt-1 font-medium">{formatDateTime(order.updated_at)}</div>
+                                </div>
+                                <div className="rounded-2xl border bg-muted/20 p-3">
+                                    <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{t('pos.currency', { defaultValue: 'Currency' })}</div>
+                                    <div className="mt-1 font-medium">{order.currency.toUpperCase()}</div>
+                                </div>
+                                <div className="rounded-2xl border bg-muted/20 p-3">
+                                    <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{t('orders.details.items', { defaultValue: 'Items' })}</div>
+                                    <div className="mt-1 font-medium">{displayItems.length}</div>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader><CardTitle>{t('ecommerce.timeline', { defaultValue: 'Activity' })}</CardTitle></CardHeader>
+                        <CardContent>
+                            <div className="relative space-y-5 ps-4 before:absolute before:bottom-2 before:start-0 before:top-2 before:w-0.5 before:bg-border/70">
+                                {[
+                                    { id: 'created', label: t('ecommerce.timelineSubmitted', { defaultValue: 'Submitted' }), date: order.created_at, dot: 'bg-slate-400' },
+                                    { id: 'confirmed', label: t('ecommerce.status.confirmed', { defaultValue: 'Confirmed' }), date: order.confirmed_at, dot: 'bg-amber-500' },
+                                    { id: 'processing', label: t('ecommerce.status.processing', { defaultValue: 'Processing' }), date: order.processing_at, dot: 'bg-amber-500' },
+                                    { id: 'shipped', label: t('ecommerce.status.shipped', { defaultValue: 'Shipped' }), date: order.shipped_at, dot: 'bg-primary' },
+                                    { id: 'delivered', label: t('ecommerce.status.delivered', { defaultValue: 'Delivered' }), date: order.delivered_at, dot: 'bg-emerald-500' },
+                                    { id: 'cancelled', label: t('ecommerce.status.cancelled', { defaultValue: 'Cancelled' }), date: order.cancelled_at, dot: 'bg-rose-500' }
+                                ].map((row) => row.date ? (
+                                    <div key={row.id} className="relative">
+                                        <div className={cn('absolute -start-[1.375rem] top-1.5 h-3 w-3 rounded-full border-2 border-background', row.dot)} />
+                                        <div className="space-y-1">
+                                            <div className="font-semibold leading-none">{row.label}</div>
+                                            <div className="text-xs text-muted-foreground">{formatDateTime(row.date)}</div>
                                         </div>
-                                        <div className="shrink-0 text-right">
-                                            <div className="font-semibold">× {item.quantity}</div>
-                                            <div className="text-sm text-muted-foreground">
-                                                {formatCurrency(item.line_total, item.currency, features.iqd_display_preference)}
-                                            </div>
+                                    </div>
+                                ) : null)}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div className="space-y-4 lg:col-span-2">
+                    <Card className={cn(
+                        'overflow-hidden border-border/60',
+                        order.status === 'cancelled'
+                            ? 'bg-gradient-to-br from-rose-500/15 via-background to-rose-500/10'
+                            : order.status === 'delivered'
+                                ? 'bg-gradient-to-br from-primary/10 via-background to-emerald-500/10'
+                                : 'bg-gradient-to-br from-sky-500/10 via-background to-primary/10'
+                    )}>
+                        <CardContent className="p-6">
+                            <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+                                <div className="space-y-4">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="inline-flex items-center rounded-full border border-sky-500/20 bg-sky-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-sky-700 dark:text-sky-300">
+                                            {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
+                                        </span>
+                                        <EcommerceStatusBadge status={order.status} />
+                                        {order.status === 'delivered' && (
+                                            <span className={cn(
+                                                'inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em]',
+                                                order.inventory_deducted
+                                                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                                    : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                                            )}>
+                                                {order.inventory_deducted
+                                                    ? t('ecommerce.inventoryDeducted', { defaultValue: 'Inventory Deducted' })
+                                                    : t('ecommerce.inventoryWarning', { defaultValue: 'Not Fully Deducted' })}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <div className="text-sm font-medium text-muted-foreground">{t('ecommerce.orderNumber', { defaultValue: 'E-commerce order number' })}</div>
+                                        <div className="mt-1 text-3xl font-black tracking-tight">{order.order_number}</div>
+                                        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                                            <span className="inline-flex items-center gap-1.5"><UsersRound className="h-4 w-4" />{order.customer_name}</span>
+                                            <span className="h-1 w-1 rounded-full bg-muted-foreground/40" />
+                                            <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" />{formatDate(order.created_at)}</span>
                                         </div>
                                     </div>
                                 </div>
-                            ))}
 
-                            <div className="rounded-2xl border border-border/60 bg-primary/5 p-4">
-                                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                                    <span>{t('common.total', { defaultValue: 'Total' })}</span>
-                                    <span className="text-lg font-black text-foreground">
-                                        {formatCurrency(order.total, order.currency, features.iqd_display_preference)}
-                                    </span>
+                                <div className="rounded-3xl border border-border/50 bg-background/80 p-5 shadow-sm">
+                                    <div className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">{t('common.total', { defaultValue: 'Total' })}</div>
+                                    <div className="mt-2 text-4xl font-black tracking-tight">{formatCurrency(order.total, order.currency, features.iqd_display_preference)}</div>
+                                    <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                                        <div>
+                                            <div className="text-xs text-muted-foreground">{t('orders.details.subtotal', { defaultValue: 'Subtotal' })}</div>
+                                            <div className="font-semibold">{formatCurrency(order.subtotal, order.currency, features.iqd_display_preference)}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-xs text-muted-foreground">{t('ecommerce.currency', { defaultValue: 'Currency' })}</div>
+                                            <div className="font-semibold">{order.currency.toUpperCase()}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                <div className="rounded-2xl border bg-background/70 p-4">
+                                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.items', { defaultValue: 'Items' })}</div>
+                                    <div className="mt-2 text-2xl font-black">{displayItems.length}</div>
+                                </div>
+                                <div className="rounded-2xl border bg-background/70 p-4">
+                                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.units', { defaultValue: 'Units' })}</div>
+                                    <div className="mt-2 text-2xl font-black">{totalUnits}</div>
+                                </div>
+                                <div className="rounded-2xl border bg-background/70 p-4">
+                                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('ecommerce.customer_city', { defaultValue: 'City' })}</div>
+                                    <div className="mt-2 text-2xl font-black">{order.customer_city || '—'}</div>
+                                </div>
+                                <div className="rounded-2xl border bg-background/70 p-4">
+                                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('ecommerce.customerPhone', { defaultValue: 'Phone' })}</div>
+                                    <div className="mt-2 truncate text-sm font-black">{order.customer_phone}</div>
+                                </div>
+                            </div>
+
+                            <div className="mt-6 space-y-2">
+                                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                                    <span>{t('orders.details.workflowProgress', { defaultValue: 'Workflow Progress' })}</span>
+                                    <span>{workflowProgress}%</span>
+                                </div>
+                                <div className="h-2 overflow-hidden rounded-full bg-background/80">
+                                    <div className={cn('h-full rounded-full transition-all duration-500', order.status === 'cancelled' ? 'bg-rose-500' : order.status === 'delivered' ? 'bg-emerald-500' : 'bg-primary')} style={{ width: `${workflowProgress}%` }} />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <CardTitle>{t('ecommerce.orderItems', { defaultValue: 'Order Items' })}</CardTitle>
+                            <div className="hidden items-center rounded-lg border bg-muted/30 p-1 md:flex">
+                                <Button variant="ghost" size="sm" onClick={() => setViewMode('table')} className={cn('h-8 gap-1.5 px-3 text-[10px] font-black uppercase tracking-[0.16em]', viewMode === 'table' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground')}>
+                                    <List className="h-3 w-3" />{t('common.table', { defaultValue: 'Table' })}
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => setViewMode('grid')} className={cn('h-8 gap-1.5 px-3 text-[10px] font-black uppercase tracking-[0.16em]', viewMode === 'grid' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground')}>
+                                    <LayoutGrid className="h-3 w-3" />{t('common.grid', { defaultValue: 'Grid' })}
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            {viewMode === 'grid' ? renderGrid() : renderTable()}
+                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/10 bg-primary/5 p-4">
+                                <div className="text-sm text-muted-foreground">
+                                    {t('orders.details.subtotal', { defaultValue: 'Subtotal' })}
+                                </div>
+                                <div className="text-sm font-bold">
+                                    {formatCurrency(order.subtotal, order.currency, features.iqd_display_preference)}
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
 
                     <MarketplaceInquiryPdfCard order={order} />
-                </div>
-
-                <div className="space-y-6">
-                    <Card className="border-border/60 bg-card/80">
-                        <CardHeader>
-                            <CardTitle>{t('ecommerce.timeline', { defaultValue: 'Status Timeline' })}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            <TimelineRow label={t('ecommerce.timelineSubmitted', { defaultValue: 'Submitted' })} value={order.created_at} complete={true} />
-                            <TimelineRow label={t('ecommerce.status.confirmed', { defaultValue: 'Confirmed' })} value={order.confirmed_at} complete={Boolean(order.confirmed_at)} />
-                            <TimelineRow label={t('ecommerce.status.processing', { defaultValue: 'Processing' })} value={order.processing_at} complete={Boolean(order.processing_at)} />
-                            <TimelineRow label={t('ecommerce.status.shipped', { defaultValue: 'Shipped' })} value={order.shipped_at} complete={Boolean(order.shipped_at)} />
-                            <TimelineRow label={t('ecommerce.status.delivered', { defaultValue: 'Delivered' })} value={order.delivered_at} complete={Boolean(order.delivered_at)} />
-                            {order.cancelled_at && (
-                                <TimelineRow label={t('ecommerce.status.cancelled', { defaultValue: 'Cancelled' })} value={order.cancelled_at} complete={true} />
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    <Card className="border-border/60 bg-card/80">
-                        <CardHeader>
-                            <CardTitle>{t('common.actions', { defaultValue: 'Actions' })}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            {order.sales_order_id || order.customer_id || order.business_partner_id ? (
-                                <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4">
-                                    <div className="mb-3 text-sm font-semibold text-sky-700 dark:text-sky-300">
-                                        {t('ecommerce.erpRegistration', { defaultValue: 'Registered in ERP' })}
-                                    </div>
-                                    <div className="flex flex-wrap gap-2">
-                                        {order.sales_order_id ? (
-                                            <Button variant="outline" className="rounded-xl" onClick={() => navigate(`/orders/${order.sales_order_id}`)}>
-                                                {t('orders.title', { defaultValue: 'Orders' })}
-                                            </Button>
-                                        ) : null}
-                                        {order.customer_id ? (
-                                            <Button variant="outline" className="rounded-xl" onClick={() => navigate(`/customers/${order.customer_id}`)}>
-                                                {t('customers.title', { defaultValue: 'Customers' })}
-                                            </Button>
-                                        ) : null}
-                                        {order.business_partner_id ? (
-                                            <Button variant="outline" className="rounded-xl" onClick={() => navigate(`/business-partners/${order.business_partner_id}`)}>
-                                                {t('businessPartners.title', { defaultValue: 'Business Partners' })}
-                                            </Button>
-                                        ) : null}
-                                    </div>
-                                </div>
-                            ) : null}
-
-                            {canEditItems && (
-                                <Button
-                                    variant="outline"
-                                    className="w-full gap-2 rounded-2xl"
-                                    disabled={isSaving}
-                                    onClick={() => setEditItemsOpen(true)}
-                                >
-                                    <Pencil className="h-4 w-4" />
-                                    {t('ecommerce.actions.editItems', { defaultValue: 'Edit Items' })}
-                                </Button>
-                            )}
-
-                            {nextStatus && (
-                                <Button className="w-full rounded-2xl" disabled={isSaving} onClick={() => onAdvance(nextStatus)}>
-                                    {isSaving ? (
-                                        <>
-                                            <Loader2 className="me-2 h-4 w-4 animate-spin" />
-                                            {t('common.loading', { defaultValue: 'Loading...' })}
-                                        </>
-                                    ) : transitionActionLabel(t as any, nextStatus)}
-                                </Button>
-                            )}
-
-                            {(order.status === 'pending' || order.status === 'confirmed' || order.status === 'processing') && (
-                                <Button
-                                    variant="outline"
-                                    className="w-full rounded-2xl border-rose-500/30 text-rose-700 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-300"
-                                    disabled={isSaving}
-                                    onClick={() => setCancelDialogOpen(true)}
-                                >
-                                    {t('ecommerce.actions.cancel', { defaultValue: 'Cancel Order' })}
-                                </Button>
-                            )}
-
-                            {order.status === 'delivered' && (
-                                <>
-                                    {order.sales_order_id ? (
-                                        <Button
-                                            variant="outline"
-                                            className="w-full rounded-2xl"
-                                            disabled={isSaving}
-                                            onClick={() => onRecordCollection(order.sales_order_id as string)}
-                                        >
-                                            {t('ecommerce.actions.collect', { defaultValue: 'Record Collection' })}
-                                        </Button>
-                                    ) : null}
-                                    <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-emerald-700 dark:text-emerald-300">
-                                        {order.inventory_deducted
-                                            ? t('ecommerce.inventoryDeducted', { defaultValue: 'Inventory deducted' })
-                                            : t('ecommerce.inventoryWarning', { defaultValue: 'Some products may not have enough stock' })}
-                                    </div>
-                                </>
-                            )}
-                        </CardContent>
-                    </Card>
-
                 </div>
             </div>
 
@@ -1304,12 +1463,13 @@ export function Ecommerce() {
     const { toast } = useToast()
     const { user } = useAuth()
     const [detailMatch, params] = useRoute('/ecommerce/:orderId')
-    const [, navigate] = useLocation()
     const [orders, setOrders] = useState<MarketplaceOrderRecord[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [isSaving, setIsSaving] = useState(false)
     const [settlementTarget, setSettlementTarget] = useState<PaymentObligation | null>(null)
     const [isSubmittingSettlement, setIsSubmittingSettlement] = useState(false)
+    const [isOpeningCollection, setIsOpeningCollection] = useState(false)
+    const isOpeningCollectionRef = useRef(false)
 
     const loadOrders = async () => {
         if (!user?.workspaceId) {
@@ -1353,8 +1513,20 @@ export function Ecommerce() {
             return
         }
 
+        if (isOpeningCollectionRef.current) {
+            return
+        }
+
+        isOpeningCollectionRef.current = true
+        setIsOpeningCollection(true)
+
         try {
-            const salesOrder = await hydrateMarketplaceCollectionDependencies(user.workspaceId, salesOrderId)
+            let salesOrder = await db.sales_orders.get(salesOrderId)
+
+            if (!salesOrder || salesOrder.isDeleted) {
+                await hydrateMarketplaceCollectionDependencies(user.workspaceId, salesOrderId)
+                salesOrder = await db.sales_orders.get(salesOrderId)
+            }
 
             if (!salesOrder || salesOrder.isDeleted) {
                 toast({
@@ -1380,6 +1552,9 @@ export function Ecommerce() {
                 description: error instanceof Error ? error.message : 'Failed to open collection dialog',
                 variant: 'destructive'
             })
+        } finally {
+            isOpeningCollectionRef.current = false
+            setIsOpeningCollection(false)
         }
     }
 
@@ -1505,15 +1680,29 @@ const editMarketplaceOrderItems = async (orderId: string, items: EditableMarketp
 
     if (detailMatch && params?.orderId && activeOrder) {
         return (
-            <EcommerceDetailView
-                order={activeOrder}
-                isSaving={isSaving}
-                onBack={() => navigate('/ecommerce')}
-onAdvance={(nextStatus) => transitionOrder(activeOrder.id, nextStatus)}
-                onCancel={(reason) => transitionOrder(activeOrder.id, 'cancelled', reason)}
-                onRecordCollection={openRecordCollection}
-                onSaveItems={editMarketplaceOrderItems}
-            />
+            <>
+                <EcommerceDetailView
+                    order={activeOrder}
+                    isSaving={isSaving}
+                    isOpeningCollection={isOpeningCollection}
+                    onAdvance={(nextStatus) => transitionOrder(activeOrder.id, nextStatus)}
+                    onCancel={(reason) => transitionOrder(activeOrder.id, 'cancelled', reason)}
+                    onRecordCollection={openRecordCollection}
+                    onSaveItems={editMarketplaceOrderItems}
+                />
+
+                <SettlementDialog
+                    open={!!settlementTarget}
+                    onOpenChange={(open) => {
+                        if (!open) {
+                            setSettlementTarget(null)
+                        }
+                    }}
+                    obligation={settlementTarget}
+                    isSubmitting={isSubmittingSettlement}
+                    onSubmit={handleCollectionSettlement}
+                />
+            </>
         )
     }
 
