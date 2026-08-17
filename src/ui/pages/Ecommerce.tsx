@@ -426,7 +426,7 @@ function EcommerceSummaryCards({ orders, totalOrdersTrend }: { orders: Marketpla
         return left.localeCompare(right)
     })
     const orderValueInWorkspaceCurrency = orderValueOrders.reduce(
-        (total, order) => total + convertCurrencyAmountWithLiveRates(order.total, order.currency, workspaceCurrency, liveRates),
+        (total, order) => total + convertCurrencyAmountWithLiveRates(order.total, order.currency as CurrencyCode, workspaceCurrency, liveRates),
         0
     )
     const pendingCount = orders.filter((order) => order.status === 'pending').length
@@ -1075,7 +1075,7 @@ function EcommerceDetailView({
         { id: 'cancelled', date: order.cancelled_at, label: t('ecommerce.status.cancelled', { defaultValue: 'Cancelled' }), amount: null, kind: 'cancelled' }
     ]
         .filter((row) => Boolean(row.date))
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .sort((a, b) => new Date(b.date ?? '').getTime() - new Date(a.date ?? '').getTime())
 
     useEffect(() => {
         localStorage.setItem('ecommerce_details_view_mode', viewMode)
@@ -1470,7 +1470,7 @@ function EcommerceDetailView({
                                                     {row.label}
                                                 </div>
                                                 <div className="text-muted-foreground text-xs font-medium flex items-center gap-1.5 pt-1">
-                                                    <span>{formatDateTime(row.date)}</span>
+                                                    <span>{formatDateTime(row.date ?? '')}</span>
                                                     {row.amount !== null ? (
                                                         <>
                                                             <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
