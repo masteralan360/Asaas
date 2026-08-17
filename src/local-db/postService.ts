@@ -503,6 +503,17 @@ function sumLedger(rows: DeliveryLedgerEntry[], predicate: (row: DeliveryLedgerE
   return rows.filter((row) => !row.isDeleted && predicate(row)).reduce((sum, row) => sum + Number(row.amount || 0), 0);
 }
 
+async function refreshDeliveryPartnerBalances(workspaceId: string, partnerIds: Array<string | null | undefined>) {
+  const ids = [...new Set(partnerIds.filter((id): id is string => Boolean(id)))];
+  if (ids.length === 0) return;
+  const { recalculateBusinessPartnerSummary } = await import("./businessPartners");
+  await Promise.all(ids.map((id) =>
+    recalculateBusinessPartnerSummary(workspaceId, id).catch((error) =>
+      console.error("[Post Service] Failed to refresh partner balance:", error),
+    ),
+  ));
+}
+
 function assertSettlementAmount(expectedAmount: number, actualAmount: number, varianceNote?: string | null) {
   const expected = Math.max(0, Number(expectedAmount || 0));
   const actual = positiveMoney(actualAmount, "Settlement amount", false);
@@ -902,34 +913,40 @@ export async function updateDeliveryShipmentStatus(
   const ledgerEntries: DeliveryLedgerEntry[] = [];
   if (input.status === "delivered") {
     const collected = original.codAmount + (original.feePayer === "recipient" ? original.deliveryFee : 0);
-    ledgerEntries.push(
-      makeLedgerEntry(original.workspaceId, {
-        kind: "courier_collection",
-        shipmentId: original.id,
-        settlementId: null,
-        agentId: original.assignedAgentId,
-        merchantProfileId: null,
-        businessPartnerId: null,
-        amount: collected,
-        currency: original.currency,
-        occurredAt: now,
-        note: `Collected on ${original.trackingNumber}`,
-        createdBy: input.actorUserId ?? null,
-      }),
-      makeLedgerEntry(original.workspaceId, {
-        kind: "merchant_cod_payable",
-        shipmentId: original.id,
-        settlementId: null,
-        agentId: null,
-        merchantProfileId: original.merchantProfileId,
-        businessPartnerId: original.merchantBusinessPartnerId,
-        amount: original.codAmount,
-        currency: original.currency,
-        occurredAt: now,
-        note: `COD from ${original.trackingNumber}`,
-        createdBy: input.actorUserId ?? null,
-      }),
-    );
+    if (collected > 0) {
+      ledgerEntries.push(
+        makeLedgerEntry(original.workspaceId, {
+          kind: "courier_collection",
+          shipmentId: original.id,
+          settlementId: null,
+          agentId: original.assignedAgentId,
+          merchantProfileId: null,
+          businessPartnerId: null,
+          amount: collected,
+          currency: original.currency,
+          occurredAt: now,
+          note: `Collected on ${original.trackingNumber}`,
+          createdBy: input.actorUserId ?? null,
+        }),
+      );
+    }
+    if (original.codAmount > 0) {
+      ledgerEntries.push(
+        makeLedgerEntry(original.workspaceId, {
+          kind: "merchant_cod_payable",
+          shipmentId: original.id,
+          settlementId: null,
+          agentId: null,
+          merchantProfileId: original.merchantProfileId,
+          businessPartnerId: original.merchantBusinessPartnerId,
+          amount: original.codAmount,
+          currency: original.currency,
+          occurredAt: now,
+          note: `COD from ${original.trackingNumber}`,
+          createdBy: input.actorUserId ?? null,
+        }),
+      );
+    }
     if (original.feePayer === "merchant" && original.deliveryFee > 0) {
       ledgerEntries.push(makeLedgerEntry(original.workspaceId, {
         kind: "merchant_fee",
@@ -957,6 +974,13 @@ export async function updateDeliveryShipmentStatus(
     [EVENT_TABLE, [event]],
     [LEDGER_TABLE, ledgerEntries],
   ]);
+  if (input.status === "delivered") {
+    const courierAgent = original.assignedAgentId ? await db.agents.get(original.assignedAgentId) : null;
+    await refreshDeliveryPartnerBalances(original.workspaceId, [
+      original.merchantBusinessPartnerId,
+      courierAgent?.businessPartnerId,
+    ]);
+  }
   return updated;
 }
 
@@ -1081,6 +1105,7 @@ async function createSettlement(
   };
   await db.delivery_settlements.put(settlementWithPayment);
   await syncEntities(SETTLEMENT_TABLE, [settlementWithPayment], workspaceId);
+  await refreshDeliveryPartnerBalances(workspaceId, [linkedBusinessPartnerId]);
   return settlementWithPayment;
 }
 

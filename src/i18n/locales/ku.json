@@ -4019,6 +4019,9 @@
     "allTime": "هەموو کاتێک",
     "providedByYou": "پێشکەشکراوە لەلایەن ئێوە",
     "providedByPartner": "پێشکەشکراوە لەلایەن هاوبەش",
+    "sources": {
+      "settlement": "ڕێکخستن"
+    },
     "moneyIn": "پارەی هاتوو (وەرگیراو)",
     "moneyOut": "پارەی ڕۆیشتوو (دراو)",
     "receivableCreditLimit": "سنووری قەرزی سەر ئەوان",

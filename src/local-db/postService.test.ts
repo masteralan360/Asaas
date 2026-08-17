@@ -128,6 +128,68 @@ describe("Post Service COD accounting", () => {
     ]));
   });
 
+  it("does not write zero-amount ledger entries when a COD-0 post is delivered", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const deliveryCourier = courier(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, {
+      businessPartnerId: merchant.id,
+      defaultFeeAmount: 5000,
+      defaultFeePayer: "recipient",
+    });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id, recipientName: "Recipient", recipientPhone: "07500000000",
+      recipientAddress: "Baghdad", currency: "iqd", codAmount: 0,
+      deliveryFee: 5000,
+    });
+    await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
+    await updateDeliveryShipmentStatus(shipment.id, { status: "delivered", actorAgentId: deliveryCourier.id });
+
+    const entries = await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray();
+    expect(entries).toEqual([expect.objectContaining({
+      kind: "courier_collection",
+      shipmentId: shipment.id,
+      amount: 5000,
+    })]);
+    expect(entries.some((entry) => entry.amount === 0)).toBe(false);
+  });
+
+  it("includes unpaid merchant payout posts and courier custody in partner balances", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const deliveryCourier = courier(crypto.randomUUID());
+    const courierPartner: BusinessPartner = { ...partner(deliveryCourier.businessPartnerId), agentFacetId: deliveryCourier.id }
+    await db.business_partners.put(merchant);
+    await db.business_partners.put(courierPartner);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, {
+      businessPartnerId: merchant.id,
+      defaultFeeAmount: 10,
+      defaultFeePayer: "merchant",
+    });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id, recipientName: "Recipient", recipientPhone: "07500000000",
+      recipientAddress: "Baghdad", currency: "iqd", codAmount: 100,
+      deliveryFee: 10,
+    });
+    await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
+    await updateDeliveryShipmentStatus(shipment.id, { status: "delivered", actorAgentId: deliveryCourier.id });
+
+    const { recalculateBusinessPartnerSummary } = await import("./businessPartners");
+
+    const merchantWithOutstanding = await recalculateBusinessPartnerSummary(WORKSPACE_ID, merchant.id);
+    expect(merchantWithOutstanding?.payableBalance).toBe(90);
+
+    const courierWithCustody = await recalculateBusinessPartnerSummary(WORKSPACE_ID, deliveryCourier.businessPartnerId);
+    expect(courierWithCustody?.receivableBalance).toBe(100);
+
+    await payDeliveryMerchant(WORKSPACE_ID, {
+      merchantProfileId: profile.id, currency: "iqd", actualAmount: 90, paymentMethod: "cash",
+    });
+    const settledMerchant = await recalculateBusinessPartnerSummary(WORKSPACE_ID, merchant.id);
+    expect(settledMerchant?.payableBalance).toBe(0);
+  });
+
   it("requires a reason when a courier postpones a post", async () => {
     const merchant = partner(crypto.randomUUID());
     const deliveryCourier = courier(crypto.randomUUID());

@@ -4020,6 +4020,9 @@
     "allTime": "كل الأوقات",
     "providedByYou": "قدمته أنت",
     "providedByPartner": "قدمه الشريك",
+    "sources": {
+      "settlement": "تسوية"
+    },
     "form": {
       "role": "الدور",
       "contactName": "اسم جهة الاتصال"

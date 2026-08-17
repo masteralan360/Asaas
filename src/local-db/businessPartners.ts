@@ -902,17 +902,63 @@ function convertLoanAmountForPartner(loan: Pick<Loan, 'balanceAmount' | 'settlem
     return converted ?? 0
 }
 
+async function getDeliveryOutstandingBalances(workspaceId: string, partner: BusinessPartner) {
+    const payable = new Map<CurrencyCode, number>()
+    const receivable = new Map<CurrencyCode, number>()
+
+    const [profiles, entries] = await Promise.all([
+        db.delivery_merchant_profiles
+            .where('workspaceId').equals(workspaceId)
+            .and((profile) => !profile.isDeleted && profile.businessPartnerId === partner.id)
+            .toArray(),
+        db.delivery_ledger_entries
+            .where('workspaceId').equals(workspaceId)
+            .and((entry) => !entry.isDeleted)
+            .toArray()
+    ])
+    const profileIds = new Set(profiles.map((profile) => profile.id))
+
+    if (profileIds.size > 0) {
+        for (const entry of entries) {
+            if (entry.merchantProfileId && profileIds.has(entry.merchantProfileId)) {
+                payable.set(entry.currency, (payable.get(entry.currency) ?? 0) + Number(entry.amount || 0))
+            }
+        }
+    }
+
+    if (partner.agentFacetId) {
+        const agent = await db.agents.get(partner.agentFacetId)
+        if (agent && !agent.isDeleted) {
+            for (const entry of entries) {
+                if (entry.agentId === agent.id) {
+                    receivable.set(entry.currency, (receivable.get(entry.currency) ?? 0) + Number(entry.amount || 0))
+                }
+            }
+        }
+    }
+
+    for (const currency of new Set<CurrencyCode>([...payable.keys(), ...receivable.keys()])) {
+        const payableAmount = payable.get(currency) ?? 0
+        const receivableAmount = receivable.get(currency) ?? 0
+        if (payableAmount < 0) payable.set(currency, 0)
+        if (receivableAmount < 0) receivable.set(currency, 0)
+    }
+
+    return { payable, receivable }
+}
+
 export async function recalculateBusinessPartnerSummary(workspaceId: string, partnerId: string) {
     const partner = await db.business_partners.get(partnerId)
     if (!partner || partner.isDeleted) {
         return partner
     }
 
-    const [salesOrders, purchaseOrders, travelSales, loans] = await Promise.all([
+    const [salesOrders, purchaseOrders, travelSales, loans, deliveryBalances] = await Promise.all([
         getPartnerSalesOrders(partner),
         getPartnerPurchaseOrders(partner),
         getPartnerTravelSales(partner),
-        getPartnerLoans(partner)
+        getPartnerLoans(partner),
+        getDeliveryOutstandingBalances(workspaceId, partner)
     ])
 
     const activeSalesOrders = salesOrders.filter((order) => order.status !== 'cancelled')
@@ -955,7 +1001,11 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
                 ),
                 0
             )
-            + activeLentLoans.reduce((sum, loan) => sum + convertLoanAmountForPartner(loan, partner.defaultCurrency), 0),
+            + activeLentLoans.reduce((sum, loan) => sum + convertLoanAmountForPartner(loan, partner.defaultCurrency), 0)
+            + Array.from(deliveryBalances.receivable.entries()).reduce(
+                (sum, [currency, amount]) => sum + convertCurrencyAmountWithSnapshot(amount, currency, partner.defaultCurrency, undefined),
+                0
+            ),
         partner.defaultCurrency
     )
 
@@ -1005,6 +1055,10 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
                 )
             + activeBorrowedLoans.reduce(
                 (sum, loan) => sum + convertLoanAmountForPartner(loan, partner.defaultCurrency),
+                0
+            )
+            + Array.from(deliveryBalances.payable.entries()).reduce(
+                (sum, [currency, amount]) => sum + convertCurrencyAmountWithSnapshot(amount, currency, partner.defaultCurrency, undefined),
                 0
             ),
         partner.defaultCurrency

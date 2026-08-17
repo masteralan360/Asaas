@@ -1383,6 +1383,9 @@
     "allTime": "All Time",
     "providedByYou": "Provided by you",
     "providedByPartner": "Provided by partner",
+    "sources": {
+      "settlement": "Settlement"
+    },
     "moneyIn": "Money In",
     "moneyOut": "Money Out",
     "form": {
