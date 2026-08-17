@@ -220,6 +220,48 @@ describe("Post Service COD accounting", () => {
     expect(await db.business_partners.get(merchant.id)).toBeDefined();
   });
 
+  it("settles a single post when shipmentId is provided", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const deliveryCourier = courier(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, {
+      businessPartnerId: merchant.id,
+      defaultFeeAmount: 0,
+      defaultFeePayer: "recipient",
+    });
+    const first = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id, recipientName: "Recipient", recipientPhone: "07500000000",
+      recipientAddress: "Baghdad", currency: "iqd", codAmount: 100,
+    });
+    const second = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id, recipientName: "Recipient", recipientPhone: "07500000000",
+      recipientAddress: "Baghdad", currency: "iqd", codAmount: 50,
+    });
+    await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [first.id, second.id] });
+    await updateDeliveryShipmentStatus(first.id, { status: "delivered", actorAgentId: deliveryCourier.id });
+    await updateDeliveryShipmentStatus(second.id, { status: "delivered", actorAgentId: deliveryCourier.id });
+
+    const settlement = await settleDeliveryCourier(WORKSPACE_ID, {
+      agentId: deliveryCourier.id, currency: "iqd", actualAmount: 50, paymentMethod: "cash",
+      shipmentId: second.id,
+    });
+    expect(settlement.shipmentId).toBe(second.id);
+    expect(settlement.expectedAmount).toBe(50);
+
+    const entries = await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray();
+    const remittances = entries.filter((entry) => entry.kind === "courier_remittance");
+    expect(remittances).toEqual([expect.objectContaining({ shipmentId: second.id, amount: -50 })]);
+
+    const courierBalance = entries.filter((entry) => entry.agentId === deliveryCourier.id).reduce((sum, entry) => sum + entry.amount, 0);
+    expect(courierBalance).toBe(100);
+
+    await expect(settleDeliveryCourier(WORKSPACE_ID, {
+      agentId: deliveryCourier.id, currency: "iqd", actualAmount: 50, paymentMethod: "cash",
+      shipmentId: second.id,
+    })).rejects.toThrow("no outstanding amount");
+  });
+
   it("does not permanently delete a merchant profile with delivery history", async () => {
     const merchant = partner(crypto.randomUUID());
     await db.business_partners.put(merchant);

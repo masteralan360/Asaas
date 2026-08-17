@@ -6350,7 +6350,8 @@
       "postponedReason": "Customer asked for tomorrow, did not answer…",
       "returnedReason": "Address incorrect, customer refused…",
       "deliveryNote": "Proof or delivery note",
-      "varianceNote": "Required when paying less than the outstanding balance"
+      "varianceNote": "Required when paying less than the outstanding balance",
+      "searchPosts": "Search tracking number, recipient, merchant, or courier..."
     },
     "options": { "noVehicle": "No vehicle" },
     "permissionRequired": { "dispatch": "You do not have permission to create dispatch manifests." },
@@ -6371,9 +6372,15 @@
       "reference": "Reference",
       "type": "Type",
       "amount": "Amount",
-      "time": "Time",
+"time": "Time",
       "party": "Party",
-      "outstanding": "Outstanding"
+      "outstanding": "Outstanding",
+      "cashHandover": "Cash handover",
+      "merchantPayout": "Merchant payout",
+      "paid": "Paid",
+      "collected": "Collected",
+      "payable": "Payable",
+      "principal": "Principal"
     },
     "empty": {
       "noPosts": "No posts match this view.",
@@ -6389,10 +6396,11 @@
       "ready_for_dispatch": "Ready for dispatch",
       "assigned": "Assigned",
       "delivered": "Delivered",
-      "postponed": "Postponed",
+"postponed": "Postponed",
       "returned": "Returned",
       "cancelled": "Cancelled"
     },
+    "settlementStatus": { "handedOver": "Handed over", "paid": "Paid", "partial": "Partial", "outstanding": "Outstanding" },
     "runStatus": { "open": "Open", "closed": "Closed" },
     "feePayer": {
       "merchant": "Merchant",
@@ -6451,8 +6459,9 @@
       "courierAssignmentOnly": "A courier can only update shipments assigned to them.",
       "amountExceedsBalance": "Settlement amount cannot exceed the outstanding balance.",
       "partialExplanationRequired": "Explain a partial settlement before confirming it.",
-      "courierNotFound": "Courier not found.",
+"courierNotFound": "Courier not found.",
       "merchantNotFound": "Merchant not found.",
+      "postNoOutstanding": "This post has no outstanding amount to settle.",
       "merchantDeleteHistory": "A merchant with delivery history cannot be permanently deleted. Make it inactive instead."
     }
   }

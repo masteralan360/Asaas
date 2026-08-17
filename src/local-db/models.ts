@@ -593,6 +593,7 @@ export interface DeliverySettlement extends BaseEntity {
   agentId?: string | null;
   merchantProfileId?: string | null;
   businessPartnerId?: string | null;
+  shipmentId?: string | null;
   currency: CurrencyCode;
   expectedAmount: number;
   actualAmount: number;

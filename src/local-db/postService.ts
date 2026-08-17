@@ -6,6 +6,7 @@ import { isOnline } from "@/lib/network";
 import { getSupabaseClientForTable } from "@/lib/supabaseSchema";
 import { runSupabaseAction } from "@/lib/supabaseRequest";
 import { generateId, toSnakeCase } from "@/lib/utils";
+import { courierSettlementBreakdownByParty, merchantSettlementBreakdownByParty } from "@/lib/postServiceSettlementStatus";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 
 import { db } from "./database";
@@ -122,6 +123,8 @@ export interface SettleCourierInput {
   currency: CurrencyCode;
   actualAmount: number;
   paymentMethod: WorkspacePaymentMethod;
+  /** When set, settles exactly this post's remaining outstanding amount. */
+  shipmentId?: string | null;
   settledAt?: string;
   note?: string | null;
   varianceNote?: string | null;
@@ -133,6 +136,8 @@ export interface PayDeliveryMerchantInput {
   currency: CurrencyCode;
   actualAmount: number;
   paymentMethod: WorkspacePaymentMethod;
+  /** When set, pays exactly this post's remaining outstanding amount. */
+  shipmentId?: string | null;
   settledAt?: string;
   note?: string | null;
   varianceNote?: string | null;
@@ -143,6 +148,8 @@ export interface DeliveryBalance {
   id: string;
   currency: CurrencyCode;
   amount: number;
+  /** Total amount already settled (handed over / paid out) in this currency. */
+  paid: number;
 }
 
 /**
@@ -612,15 +619,19 @@ export function useCourierDeliveryBalances(workspaceId?: string) {
   const entries = useDeliveryLedgerEntries(workspaceId);
   return useMemo<DeliveryBalance[]>(() => {
     const totals = new Map<string, number>();
+    const settled = new Map<string, number>();
     for (const entry of entries) {
       if (!entry.agentId) continue;
       const key = `${entry.agentId}:${entry.currency}`;
       totals.set(key, (totals.get(key) ?? 0) + Number(entry.amount || 0));
+      if (entry.kind === "courier_remittance") {
+        settled.set(key, (settled.get(key) ?? 0) - Number(entry.amount || 0));
+      }
     }
     return [...totals.entries()]
       .map(([key, amount]) => {
         const [id, currency] = key.split(":");
-        return { id, currency: currency as CurrencyCode, amount };
+        return { id, currency: currency as CurrencyCode, amount, paid: settled.get(key) ?? 0 };
       })
       .filter((item) => Math.abs(item.amount) > 0.000001);
   }, [entries]);
@@ -630,15 +641,19 @@ export function useMerchantDeliveryBalances(workspaceId?: string) {
   const entries = useDeliveryLedgerEntries(workspaceId);
   return useMemo<DeliveryBalance[]>(() => {
     const totals = new Map<string, number>();
+    const settled = new Map<string, number>();
     for (const entry of entries) {
       if (!entry.merchantProfileId) continue;
       const key = `${entry.merchantProfileId}:${entry.currency}`;
       totals.set(key, (totals.get(key) ?? 0) + Number(entry.amount || 0));
+      if (entry.kind === "merchant_payout") {
+        settled.set(key, (settled.get(key) ?? 0) - Number(entry.amount || 0));
+      }
     }
     return [...totals.entries()]
       .map(([key, amount]) => {
         const [id, currency] = key.split(":");
-        return { id, currency: currency as CurrencyCode, amount };
+        return { id, currency: currency as CurrencyCode, amount, paid: settled.get(key) ?? 0 };
       })
       .filter((item) => Math.abs(item.amount) > 0.000001);
   }, [entries]);
@@ -955,6 +970,7 @@ async function createSettlement(
     currency: CurrencyCode;
     actualAmount: number;
     paymentMethod: WorkspacePaymentMethod;
+    shipmentId?: string | null;
     settledAt?: string;
     note?: string | null;
     varianceNote?: string | null;
@@ -962,9 +978,21 @@ async function createSettlement(
   },
 ) {
   const entries = await db.delivery_ledger_entries.where("workspaceId").equals(workspaceId).toArray();
-  const expectedAmount = type === "courier_remittance"
-    ? sumLedger(entries, (entry) => entry.agentId === options.agentId && entry.currency === options.currency)
-    : sumLedger(entries, (entry) => entry.merchantProfileId === options.merchantProfileId && entry.currency === options.currency);
+  let expectedAmount: number;
+  if (options.shipmentId) {
+    const breakdown = type === "courier_remittance"
+      ? courierSettlementBreakdownByParty(entries).get(`${options.agentId}:${options.currency}`)
+      : merchantSettlementBreakdownByParty(entries).get(`${options.merchantProfileId}:${options.currency}`);
+    const post = breakdown?.find((row) => row.shipmentId === options.shipmentId);
+    if (!post || post.outstanding <= 0.000001) {
+      throw new Error("The post has no outstanding amount to settle");
+    }
+    expectedAmount = post.outstanding;
+  } else {
+    expectedAmount = type === "courier_remittance"
+      ? sumLedger(entries, (entry) => entry.agentId === options.agentId && entry.currency === options.currency)
+      : sumLedger(entries, (entry) => entry.merchantProfileId === options.merchantProfileId && entry.currency === options.currency);
+  }
   const { expected, actual } = assertSettlementAmount(expectedAmount, options.actualAmount, options.varianceNote);
   const settledAt = options.settledAt ? new Date(options.settledAt).toISOString() : new Date().toISOString();
   const settlement = makeBase(workspaceId, {
@@ -973,6 +1001,7 @@ async function createSettlement(
     agentId: options.agentId ?? null,
     merchantProfileId: options.merchantProfileId ?? null,
     businessPartnerId: options.businessPartnerId ?? null,
+    shipmentId: options.shipmentId ?? null,
     currency: options.currency,
     expectedAmount: expected,
     actualAmount: actual,
@@ -989,7 +1018,7 @@ async function createSettlement(
     : "merchant_payout";
   const ledgerEntry = makeLedgerEntry(workspaceId, {
     kind: entryKind,
-    shipmentId: null,
+    shipmentId: options.shipmentId ?? null,
     settlementId: settlement.id,
     agentId: type === "courier_remittance" ? options.agentId ?? null : null,
     merchantProfileId: type === "merchant_payout" ? options.merchantProfileId ?? null : null,
@@ -1037,6 +1066,7 @@ async function createSettlement(
       deliverySettlementType: type,
       deliveryAgentId: options.agentId ?? null,
       deliveryMerchantProfileId: options.merchantProfileId ?? null,
+      deliveryShipmentId: options.shipmentId ?? null,
       businessPartnerId: linkedBusinessPartnerId,
       expectedAmount: expected,
       varianceAmount: actual - expected,
