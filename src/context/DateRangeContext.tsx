@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 
-export type DateRangeType = 'today' | 'month' | 'lastMonth' | 'allTime' | 'custom'
+export type DateRangeType = 'today' | 'yesterday' | 'month' | 'lastMonth' | 'allTime' | 'custom'
 
 interface CustomDates {
     start: string

@@ -3056,6 +3056,7 @@
     "subtitle": "تتبع مبيعات وأهداف الموظفين",
     "filters": {
       "today": "اليوم",
+      "yesterday": "أمس",
       "thisMonth": "هذا الشهر",
       "lastMonth": "الشهر الماضي",
       "allTime": "كل الوقت",
@@ -6030,6 +6031,7 @@
     "options": { "noVehicle": "لا توجد مركبة" }, "permissionRequired": { "dispatch": "ليس لديك صلاحية إنشاء كشوفات التوزيع." },
     "table": { "tracking": "رقم التتبع", "merchantRecipient": "التاجر / المستلم", "cod": "الدفع عند الاستلام", "courier": "المندوب", "status": "الحالة", "actions": "الإجراءات", "noZone": "لا توجد منطقة", "run": "الجولة", "dispatched": "وقت التوزيع", "merchant": "التاجر", "defaultFee": "الأجرة الافتراضية", "feePayer": "دافع الأجرة", "payoutSchedule": "جدول الدفع", "reference": "المرجع", "type": "النوع", "amount": "المبلغ", "time": "الوقت", "party": "الطرف", "outstanding": "الرصيد المستحق" },
     "empty": { "noPosts": "لا توجد شحنات مطابقة لهذا العرض.", "noRuns": "لا توجد جولات توزيع بعد.", "noLinkedCourier": "مستخدم مساحة العمل غير مرتبط بمندوب نشط. يمكن للمسؤول ربطه من دليل المندوبين.", "noMerchants": "لم يتم تفعيل تجار توصيل بعد.", "noBalances": "لا توجد أرصدة مفتوحة.", "noSettlements": "لم يتم تسجيل تسويات بعد." },
+    "filters": { "all": "الكل" },
     "status": { "received": "تم الاستلام", "ready_for_dispatch": "جاهز للتوزيع", "assigned": "معين", "delivered": "تم التسليم", "postponed": "مؤجل", "returned": "مرتجع", "cancelled": "ملغى" },
     "runStatus": { "open": "مفتوحة", "closed": "مغلقة" },
     "feePayer": { "merchant": "التاجر", "recipient": "المستلم", "merchantDeducted": "التاجر (تخصم من الدفعة)", "recipientCollected": "المستلم (تُحصّل عند الباب)" },

@@ -3052,6 +3052,7 @@
     "subtitle": "چاودێری فرۆشتن و ئامانجەکانی کارمەندان بکە",
     "filters": {
       "today": "ئەمڕۆ",
+      "yesterday": "دوێنێ",
       "thisMonth": "ئەم مانگە",
       "lastMonth": "مانگی ڕابردوو",
       "modernBusiness": "کارە مۆدێرنەکان",
@@ -6198,6 +6199,7 @@
       "noBalances": "هیچ باڵانسێکی کراوە نییە.",
       "noSettlements": "هێشتا هیچ تەسویەیەک تۆمار نەکراوە."
     },
+    "filters": { "all": "هەموو" },
     "status": {
       "received": "وەرگیراو",
       "ready_for_dispatch": "ئامادەی دابەشکردن",

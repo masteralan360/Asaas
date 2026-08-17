@@ -41,6 +41,12 @@ export function isDateInDateRange(
         return date >= startOfDay
     }
 
+    if (dateRange === 'yesterday') {
+        const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0)
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+        return date >= startOfYesterday && date < startOfToday
+    }
+
     if (dateRange === 'month') {
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
         return date >= startOfMonth

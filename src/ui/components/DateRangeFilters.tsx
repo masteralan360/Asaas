@@ -16,6 +16,7 @@ interface DateRangeFiltersProps {
     labelDotClassName?: string
     allTimeButtonClassName?: string
     showAllTime?: boolean
+    showYesterday?: boolean
     dateRange?: DateRangeType
     customDates?: CustomDates
     onDateRangeChange?: (range: DateRangeType) => void
@@ -28,6 +29,7 @@ export function DateRangeFilters({
     labelDotClassName,
     allTimeButtonClassName,
     showAllTime = true,
+    showYesterday = false,
     dateRange: controlledDateRange,
     customDates: controlledCustomDates,
     onDateRangeChange,
@@ -69,8 +71,20 @@ export function DateRangeFilters({
                         className={cn("text-xs h-8 px-4 transition-all duration-200", dateRange === 'today' && "shadow-sm")}
                         type="button"
                     >
-                        {t('performance.filters.today')}
+{t('performance.filters.today')}
                     </Button>
+                    {showYesterday && (
+                        <Button
+                            variant={dateRange === 'yesterday' ? 'default' : 'ghost'}
+                            size="sm"
+                            allowViewer={true}
+                            onClick={() => setDateRange('yesterday')}
+                            className={cn("text-xs h-8 px-4 transition-all duration-200", dateRange === 'yesterday' && "shadow-sm")}
+                            type="button"
+                        >
+                            {t('performance.filters.yesterday')}
+                        </Button>
+                    )}
                     <Button
                         variant={dateRange === 'month' ? 'default' : 'ghost'}
                         size="sm"

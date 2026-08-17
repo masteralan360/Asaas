@@ -3988,6 +3988,7 @@
     "subtitle": "Track staff sales and targets",
     "filters": {
       "today": "Today",
+      "yesterday": "Yesterday",
       "thisMonth": "This Month",
       "lastMonth": "Last Month",
       "allTime": "All Time",
@@ -6382,6 +6383,7 @@
       "noBalances": "No open balances.",
       "noSettlements": "No settlements recorded yet."
     },
+    "filters": { "all": "All" },
     "status": {
       "received": "Received",
       "ready_for_dispatch": "Ready for dispatch",
