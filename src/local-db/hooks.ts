@@ -68,6 +68,7 @@ import {
 } from './productBarcodes'
 import { DuplicateProductSkuError, normalizeProductSku, trimProductSku } from './productSku'
 import { replaceProductPriceBookItems } from './priceBooks'
+import { isService } from '@/lib/catalogItem'
 import { generateId, toSnakeCase, toCamelCase } from '@/lib/utils'
 import { supabase } from '@/auth/supabase'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
@@ -155,6 +156,15 @@ function toSupabaseProductPayload(product: Partial<Product>) {
         storageName: undefined,
         barcode: undefined,
         barcodes: undefined
+    }
+
+    if (product.isService === true) {
+        payload.sku = null
+        payload.unit = null
+        payload.quantity = null
+        payload.minStockLevel = null
+        payload.storageId = null
+        payload.parentProductId = null
     }
 
     if (hasCategoryId && product.categoryId == null && (!hasCategory || product.category === undefined)) {
@@ -742,6 +752,10 @@ async function assertCanUseProductAsVariantParent(
         throw new ProductVariantRelationshipError('The selected parent product is not available in this workspace.')
     }
 
+    if (isService(parent)) {
+        throw new ProductVariantRelationshipError('Services cannot be variant parents or variants.')
+    }
+
     if (parent.parentProductId) {
         throw new ProductVariantRelationshipError('A variant cannot be used as a parent product.')
     }
@@ -775,6 +789,10 @@ export async function linkProductVariant(parentProductId: string, variantProduct
         throw new ProductVariantRelationshipError('The selected product is no longer available.')
     }
 
+    if (isService(variant)) {
+        throw new ProductVariantRelationshipError('Services cannot be variant parents or variants.')
+    }
+
     await assertCanUseProductAsVariantParent(
         variant.workspaceId,
         parentProductId,
@@ -800,27 +818,38 @@ export async function unlinkProductVariant(variantProductId: string) {
 export async function createProduct(workspaceId: string, data: Omit<Product, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted'>): Promise<Product> {
     const now = new Date().toISOString()
     const id = generateId()
-    const sku = trimProductSku(data.sku)
+    const service = isService(data)
+    const sku = service ? '' : trimProductSku(data.sku)
     const isSavingOnline = isOnline(workspaceId)
-    const initialQuantity = Number(data.quantity) || 0
-    const initialStorageId = data.storageId ?? null
+    const initialQuantity = service ? 0 : Number(data.quantity) || 0
+    const initialStorageId = service ? null : data.storageId ?? null
+
+    if (service && data.parentProductId) {
+        throw new ProductVariantRelationshipError('Services cannot be variant parents or variants.')
+    }
 
     if (data.parentProductId) {
         await assertCanUseProductAsVariantParent(workspaceId, data.parentProductId)
     }
 
-    await ensureProductSkuIsAvailable(workspaceId, sku, {
-        productId: id,
-        parentProductId: data.parentProductId ?? null
-    })
+    if (!service) {
+        await ensureProductSkuIsAvailable(workspaceId, sku, {
+            productId: id,
+            parentProductId: data.parentProductId ?? null
+        })
+    }
 
     const product: Product = {
         ...data,
+        isService: service,
         sku,
         skuKey: normalizeProductSku(sku),
         // The initial quantity is written as inventory below.  Keeping the
         // product snapshot empty prevents it racing the inventory sync.
         quantity: 0,
+        minStockLevel: service ? 0 : data.minStockLevel,
+        unit: service ? '' : data.unit,
+        parentProductId: service ? null : data.parentProductId ?? null,
         storageId: null,
         storageName: undefined,
         id,
@@ -855,13 +884,15 @@ export async function createProduct(workspaceId: string, data: Omit<Product, 'id
         await addToOfflineMutations('products', id, 'create', product as unknown as Record<string, unknown>, workspaceId)
     }
 
-    const normalizedProduct = await setProductInventoryFromLegacyInput({
-        workspaceId,
-        productId: id,
-        storageId: initialStorageId,
-        quantity: initialQuantity,
-        timestamp: now
-    })
+    const normalizedProduct = service
+        ? product
+        : await setProductInventoryFromLegacyInput({
+            workspaceId,
+            productId: id,
+            storageId: initialStorageId,
+            quantity: initialQuantity,
+            timestamp: now
+        })
 
     return normalizedProduct || product
 }
@@ -877,10 +908,20 @@ export async function updateProduct(id: string, data: Partial<Product>): Promise
         storageName: _ignoredStorageName,
         ...productData
     } = data
+    const hasIsServiceUpdate = Object.prototype.hasOwnProperty.call(productData, 'isService')
+    const nextIsService = hasIsServiceUpdate ? productData.isService === true : isService(existing)
     const hasSkuUpdate = Object.prototype.hasOwnProperty.call(productData, 'sku')
     const hasParentProductIdUpdate = Object.prototype.hasOwnProperty.call(productData, 'parentProductId')
     const hasIsDeletedUpdate = Object.prototype.hasOwnProperty.call(productData, 'isDeleted')
-    const sku = hasSkuUpdate ? trimProductSku(productData.sku ?? '') : existing.sku
+    const sku = nextIsService ? '' : hasSkuUpdate ? trimProductSku(productData.sku ?? '') : existing.sku
+
+    if (isService(existing) && hasIsServiceUpdate && !nextIsService) {
+        throw new Error('Services cannot be converted into inventory products.')
+    }
+
+    if (nextIsService && (productData.parentProductId || existing.parentProductId)) {
+        throw new ProductVariantRelationshipError('Services cannot be variant parents or variants.')
+    }
 
     if (hasParentProductIdUpdate && productData.parentProductId) {
         await assertCanUseProductAsVariantParent(
@@ -896,7 +937,7 @@ export async function updateProduct(id: string, data: Partial<Product>): Promise
         : existing.parentProductId ?? null
 
     const remainsActive = hasIsDeletedUpdate ? !productData.isDeleted : !existing.isDeleted
-    if (remainsActive && (hasSkuUpdate || hasParentProductIdUpdate || (hasIsDeletedUpdate && productData.isDeleted === false))) {
+    if (!nextIsService && remainsActive && (hasSkuUpdate || hasParentProductIdUpdate || (hasIsDeletedUpdate && productData.isDeleted === false))) {
         await ensureProductSkuIsAvailable(existing.workspaceId, sku, {
             productId: id,
             parentProductId
@@ -906,6 +947,17 @@ export async function updateProduct(id: string, data: Partial<Product>): Promise
     const updated = {
         ...existing,
         ...productData,
+        ...(nextIsService ? {
+            isService: true,
+            sku: '',
+            skuKey: '',
+            unit: '',
+            quantity: 0,
+            minStockLevel: 0,
+            storageId: null,
+            storageName: undefined,
+            parentProductId: null
+        } : {}),
         ...(hasSkuUpdate ? { sku, skuKey: normalizeProductSku(sku) } : {}),
         updatedAt: now,
         syncStatus: (isSavingOnline ? 'synced' : 'pending') as any,
@@ -1645,7 +1697,7 @@ export function useDiscountPriceResolver(workspaceId: string | undefined, option
             categoryDiscounts,
             inventoryRows: inventory,
             context,
-            stockTotal: inventoryTotals.get(product.id) ?? 0
+            stockTotal: isService(product) ? Number.MAX_SAFE_INTEGER : (inventoryTotals.get(product.id) ?? 0)
         })
     }, [categoryDiscounts, inventory, inventoryTotals, productDiscounts])
 }
@@ -1736,6 +1788,14 @@ async function fetchTableFromSupabaseInternal<T extends { id: string, syncStatus
         const localItem = toCamelCase(remoteItem as any) as unknown as T
         if (tableName === 'products') {
             const product = localItem as unknown as Product
+            product.isService = product.isService === true
+            // Service-only NULL fields are valid in Supabase but legacy client
+            // presentation code expects strings. Keep the local representation
+            // safe without ever writing these values back for services.
+            product.sku = product.sku ?? ''
+            product.unit = product.unit ?? ''
+            product.quantity = Number(product.quantity ?? 0)
+            product.minStockLevel = Number(product.minStockLevel ?? 0)
             product.skuKey = normalizeProductSku(product.sku)
         }
         localItem.syncStatus = 'synced'
@@ -2879,7 +2939,7 @@ export function useDashboardStats(workspaceId: string | undefined) {
                 || invoice.createdBy === invoicesViewOwnScope.userId
                 || invoice.userId === invoicesViewOwnScope.userId
             )).reverse().sortBy('createdAt').then(invoices => invoices.slice(0, 4)),
-            db.products.where('workspaceId').equals(workspaceId).and(p => !p.isDeleted && p.quantity <= p.minStockLevel).toArray(),
+            db.products.where('workspaceId').equals(workspaceId).and(p => !p.isDeleted && !isService(p) && p.quantity <= p.minStockLevel).toArray(),
             db.sales.where('workspaceId').equals(workspaceId).and((sale) => !sale.isDeleted && sale.createdAt >= thirtyDaysAgoStr && (
                 !salesViewOwnScope.isRestricted || sale.cashierId === salesViewOwnScope.userId
             )).toArray()

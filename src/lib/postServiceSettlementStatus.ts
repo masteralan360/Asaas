@@ -80,10 +80,11 @@ function computeSettlementBreakdown(
     const remaining = new Map(obligations.map((obligation) => [obligation.shipmentId, obligation.amount]));
     for (const clearance of clearances) {
       let credit = clearance.amount;
-      const byShipment = clearance.shipmentId ? remaining.get(clearance.shipmentId) : undefined;
-      if (byShipment !== undefined && byShipment > EPSILON) {
+      const clearanceShipmentId = clearance.shipmentId;
+      const byShipment = clearanceShipmentId ? remaining.get(clearanceShipmentId) : undefined;
+      if (clearanceShipmentId && byShipment !== undefined && byShipment > EPSILON) {
         const consume = Math.min(byShipment, credit);
-        remaining.set(clearance.shipmentId, byShipment - consume);
+        remaining.set(clearanceShipmentId, byShipment - consume);
         credit -= consume;
       }
       for (const obligation of obligations) {

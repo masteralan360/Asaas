@@ -4,6 +4,7 @@ import {
   BarChart3,
   Boxes,
   Building2,
+  BriefcaseBusiness,
   Calculator,
   CalendarClock,
   CircleHelp,
@@ -505,6 +506,15 @@ export function buildWorkspaceNavigation({
               icon: Ruler,
             },
           ],
+        },
+      ]
+      : []),
+    ...(hasFeature("services") && canAccessPermission("products.access")
+      ? [
+        {
+          name: t("nav.services", { defaultValue: "Services" }),
+          href: "/services",
+          icon: BriefcaseBusiness,
         },
       ]
       : []),

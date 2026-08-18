@@ -15,6 +15,7 @@ import {
   type SalesOrder,
 } from "@/local-db";
 import { convertToStoreBase } from "@/lib/currency";
+import { isService } from "@/lib/catalogItem";
 import {
   buildRevenueAnalysisRecords,
   getRevenueAnalysisTotals,
@@ -528,7 +529,7 @@ async function loadProductQuantities(context: AssistantAnswerContext) {
     inventoryByProduct.set(row.productId, (inventoryByProduct.get(row.productId) ?? 0) + (row.quantity || 0));
   });
 
-  return active(products).map((product: Product) => ({
+  return active(products).filter((product: Product) => !isService(product)).map((product: Product) => ({
     product,
     quantity: inventoryByProduct.has(product.id)
       ? inventoryByProduct.get(product.id) ?? 0

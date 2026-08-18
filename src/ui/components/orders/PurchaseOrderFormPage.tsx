@@ -24,6 +24,7 @@ import {
 } from '@/lib/utils'
 import { getOrderLineFreeBonusQuantity } from '@/lib/orderLineItems'
 import { ORDER_DECIMAL_STEP, roundOrderValue } from '@/lib/orderPrecision'
+import { canBePurchased } from '@/lib/catalogItem'
 import {
     createPurchaseOrder,
     findPartnerProductPriceBookItem,
@@ -193,6 +194,7 @@ export function PurchaseOrderFormPage({
     const demoTutorial = useDemoTutorial()
 
     const products = useProducts(workspaceId)
+    const purchasableProducts = useMemo(() => products.filter(canBePurchased), [products])
     const storages = useStorages(workspaceId)
     const { isDynamicUnit, options: unitOptions } = useUnitRegistry(workspaceId)
     const supplierPartners = useBusinessPartners(workspaceId, { roles: ['supplier'] })
@@ -912,7 +914,7 @@ export function PurchaseOrderFormPage({
                                                                 value={item.productSearch}
                                                                 onChange={(value) => updateItem(index, { productSearch: value, productId: '' })}
                                                                 onSelectProduct={(product) => updateItem(index, { productId: product.id, productSearch: product.name })}
-                                                                products={products}
+                                                                products={purchasableProducts}
                                                                 disabled={priceBooksEnabled && (!isPriceBookCatalogReady || !selectedSupplier)}
                                                                 placeholder={priceBooksEnabled && !selectedSupplier
                                                                     ? t('priceBooks.selectPartnerFirst', { defaultValue: 'Select a business partner first' })
@@ -1340,7 +1342,7 @@ export function PurchaseOrderFormPage({
                 onOpenChange={(open) => {
                     if (!open) setProductsViewItemIndex(null)
                 }}
-                products={products}
+                products={purchasableProducts}
                 storages={storages}
                 initialStorageId={productsViewItemIndex === null
                     ? ''

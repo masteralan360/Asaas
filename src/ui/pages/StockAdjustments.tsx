@@ -43,6 +43,7 @@ import {
   sanitizeNumericInput,
 } from "@/lib/utils";
 import { isPositiveQuantity } from "@/lib/quantity";
+import { isService } from "@/lib/catalogItem";
 import {
     Button,
     Card,
@@ -192,6 +193,10 @@ export function StockAdjustments() {
   const canManageStockBatches = hasCapability("stockBatches");
 
   const products = useProducts(workspaceId);
+  const inventoryProducts = useMemo(
+    () => products.filter((product) => !isService(product)),
+    [products],
+  );
   const storages = useStorages(workspaceId);
   const inventory = useInventory(workspaceId);
   const adjustments = useStockAdjustments(workspaceId);
@@ -264,14 +269,14 @@ export function StockAdjustments() {
   }, [batchForm.productId, inventory, storages]);
 
   const batchProductOptions = useMemo(() => {
-    if (!batchForm.storageId) return products;
+    if (!batchForm.storageId) return inventoryProducts;
     const productIdsInStorage = new Set(
       inventory
         .filter((row) => row.storageId === batchForm.storageId)
         .map((row) => row.productId),
     );
-    return products.filter((product) => productIdsInStorage.has(product.id));
-  }, [products, inventory, batchForm.storageId]);
+    return inventoryProducts.filter((product) => productIdsInStorage.has(product.id));
+  }, [inventoryProducts, inventory, batchForm.storageId]);
 
   useEffect(() => {
     if (!batchDialogOpen) {
@@ -981,7 +986,7 @@ export function StockAdjustments() {
       <StockAdjustmentDialog
         open={adjustmentDialogOpen}
         onOpenChange={setAdjustmentDialogOpen}
-        products={products}
+        products={inventoryProducts}
         storages={storages}
         inventory={inventory}
         workspaceId={workspaceId ?? ""}
@@ -1251,7 +1256,7 @@ export function StockAdjustments() {
         <ProductsViewModal
           open={batchProductsViewOpen}
           onOpenChange={setBatchProductsViewOpen}
-          products={products}
+          products={inventoryProducts}
           storages={storages}
           initialStorageId={batchForm.storageId}
           filterProducts={(availableProducts, storageId) => {

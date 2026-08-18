@@ -9,6 +9,7 @@ export type PlanModuleKey =
     | 'kds'
     | 'sales_history'
     | 'products'
+    | 'services'
     | 'storages'
     | 'inventory_transfer'
     | 'inventory_transactions'
@@ -64,6 +65,7 @@ export type WorkspaceFeatureKey =
     | 'monthly_comparison'
     | 'team_performance'
     | 'products'
+    | 'services'
     | 'discounts'
     | 'storages'
     | 'inventory_transfer'
@@ -251,6 +253,7 @@ export const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModul
     monthly_comparison: 'revenue_analytics',
     team_performance: 'team_performance',
     products: 'products',
+    services: 'services',
     discounts: 'discounts',
     storages: 'storages',
     inventory_transfer: 'inventory_transfer',

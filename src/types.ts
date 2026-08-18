@@ -172,6 +172,8 @@ export interface CartItem {
     negotiated_price?: number
     imageUrl?: string
     unit?: string
+    /** Service lines use the UI-only Services virtual location and never affect stock. */
+    is_service?: boolean
     price_book_id?: string
     price_book_name?: string
 }

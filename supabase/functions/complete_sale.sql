@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION public.complete_sale(payload jsonb)
+﻿CREATE OR REPLACE FUNCTION public.complete_sale(payload jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -42,6 +42,7 @@ DECLARE
     v_allocated_quantity NUMERIC := 0;
     v_batch_allocations JSONB := '[]'::jsonb;
     v_plan TEXT;
+    v_is_service BOOLEAN := false;
 BEGIN
     v_requested_workspace_id := NULLIF(payload->>'workspace_id', '')::UUID;
 
@@ -157,17 +158,27 @@ BEGIN
             v_has_mixed_currency := true;
         END IF;
 
-        v_inventory_snapshot := COALESCE((item->>'inventory_snapshot')::NUMERIC, 0);
-        IF v_quantity > v_inventory_snapshot THEN
-            v_flags := array_append(
-                v_flags,
-                format(
-                    'Item %s: Quantity %s exceeds inventory snapshot %s',
-                    v_item_index,
-                    v_quantity,
-                    v_inventory_snapshot
-                )
-            );
+        SELECT is_service
+        INTO v_is_service
+        FROM public.products
+        WHERE id = NULLIF(item->>'product_id', '')::uuid
+          AND workspace_id = p_workspace_id;
+
+        v_is_service := COALESCE(v_is_service, false);
+
+        IF NOT v_is_service THEN
+            v_inventory_snapshot := COALESCE((item->>'inventory_snapshot')::NUMERIC, 0);
+            IF v_quantity > v_inventory_snapshot THEN
+                v_flags := array_append(
+                    v_flags,
+                    format(
+                        'Item %s: Quantity %s exceeds inventory snapshot %s',
+                        v_item_index,
+                        v_quantity,
+                        v_inventory_snapshot
+                    )
+                );
+            END IF;
         END IF;
     END LOOP;
 
@@ -260,7 +271,8 @@ BEGIN
     LOOP
         v_product_id := (item->>'product_id')::UUID;
         v_quantity := COALESCE((item->>'quantity')::NUMERIC, 0);
-        v_storage_id := NULLIF(item->>'storage_id', '')::UUID;
+        v_is_service := false;
+        v_storage_id := NULL;
         v_has_active_batches := false;
         v_batch_remaining := v_quantity;
         v_batch_allocations := '[]'::jsonb;
@@ -269,78 +281,94 @@ BEGIN
             RAISE EXCEPTION 'Invalid sale item payload';
         END IF;
 
-        IF v_storage_id IS NULL THEN
-            SELECT CASE WHEN COUNT(*) = 1 THEN MIN(storage_id::text)::uuid ELSE NULL END
-            INTO v_storage_id
-            FROM public.inventory
-            WHERE workspace_id = p_workspace_id
-              AND product_id = v_product_id
-              AND COALESCE(is_deleted, false) = false;
+        SELECT is_service
+        INTO v_is_service
+        FROM public.products
+        WHERE id = v_product_id
+          AND workspace_id = p_workspace_id;
+
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Product not found for sale item %', v_product_id;
         END IF;
 
-        IF v_storage_id IS NULL THEN
-            SELECT storage_id
-            INTO v_storage_id
-            FROM public.products
-            WHERE id = v_product_id
-              AND workspace_id = p_workspace_id;
-        END IF;
+        v_is_service := COALESCE(v_is_service, false);
 
-        IF v_storage_id IS NULL THEN
-            RAISE EXCEPTION 'Storage not found for product %', v_product_id;
-        END IF;
+        IF NOT v_is_service THEN
+            v_storage_id := NULLIF(item->>'storage_id', '')::UUID;
 
-        SELECT EXISTS (
-            SELECT 1
-            FROM public.stock_batches
-            WHERE workspace_id = p_workspace_id
-              AND product_id = v_product_id
-              AND storage_id = v_storage_id
-              AND COALESCE(is_deleted, false) = false
-        )
-        INTO v_has_active_batches;
+            IF v_storage_id IS NULL THEN
+                SELECT CASE WHEN COUNT(*) = 1 THEN MIN(storage_id::text)::uuid ELSE NULL END
+                INTO v_storage_id
+                FROM public.inventory
+                WHERE workspace_id = p_workspace_id
+                  AND product_id = v_product_id
+                  AND COALESCE(is_deleted, false) = false;
+            END IF;
 
-        IF v_has_active_batches THEN
-            FOR v_batch_record IN
-                SELECT *
+            IF v_storage_id IS NULL THEN
+                SELECT storage_id
+                INTO v_storage_id
+                FROM public.products
+                WHERE id = v_product_id
+                  AND workspace_id = p_workspace_id;
+            END IF;
+
+            IF v_storage_id IS NULL THEN
+                RAISE EXCEPTION 'Storage not found for product %', v_product_id;
+            END IF;
+
+            SELECT EXISTS (
+                SELECT 1
                 FROM public.stock_batches
                 WHERE workspace_id = p_workspace_id
                   AND product_id = v_product_id
                   AND storage_id = v_storage_id
                   AND COALESCE(is_deleted, false) = false
-                ORDER BY expiry_date ASC NULLS LAST, manufacturing_date ASC NULLS LAST, created_at ASC, batch_number ASC
-                FOR UPDATE
-            LOOP
-                EXIT WHEN v_batch_remaining <= 0;
+            )
+            INTO v_has_active_batches;
 
-                v_allocated_quantity := LEAST(v_batch_remaining, COALESCE(v_batch_record.quantity, 0));
-                IF v_allocated_quantity <= 0 THEN
-                    CONTINUE;
-                END IF;
+            IF v_has_active_batches THEN
+                FOR v_batch_record IN
+                    SELECT *
+                    FROM public.stock_batches
+                    WHERE workspace_id = p_workspace_id
+                      AND product_id = v_product_id
+                      AND storage_id = v_storage_id
+                      AND COALESCE(is_deleted, false) = false
+                    ORDER BY expiry_date ASC NULLS LAST, manufacturing_date ASC NULLS LAST, created_at ASC, batch_number ASC
+                    FOR UPDATE
+                LOOP
+                    EXIT WHEN v_batch_remaining <= 0;
 
-                UPDATE public.stock_batches
-                SET
-                    quantity = v_batch_record.quantity - v_allocated_quantity,
-                    updated_at = NOW(),
-                    version = COALESCE(version, 0) + 1,
-                    is_deleted = (v_batch_record.quantity - v_allocated_quantity) <= 0
-                WHERE id = v_batch_record.id;
+                    v_allocated_quantity := LEAST(v_batch_remaining, COALESCE(v_batch_record.quantity, 0));
+                    IF v_allocated_quantity <= 0 THEN
+                        CONTINUE;
+                    END IF;
 
-                v_batch_allocations := v_batch_allocations || jsonb_build_array(
-                    jsonb_build_object(
-                        'batch_id', v_batch_record.id,
-                        'batch_number', v_batch_record.batch_number,
-                        'quantity', v_allocated_quantity,
-                        'price', v_batch_record.price,
-                        'cost_price', v_batch_record.cost_price,
-                        'currency', lower(v_batch_record.currency),
-                        'expiry_date', v_batch_record.expiry_date,
-                        'manufacturing_date', v_batch_record.manufacturing_date
-                    )
-                );
-                v_batch_remaining := v_batch_remaining - v_allocated_quantity;
-            END LOOP;
+                    UPDATE public.stock_batches
+                    SET
+                        quantity = v_batch_record.quantity - v_allocated_quantity,
+                        updated_at = NOW(),
+                        version = COALESCE(version, 0) + 1,
+                        is_deleted = (v_batch_record.quantity - v_allocated_quantity) <= 0
+                    WHERE id = v_batch_record.id;
 
+                    v_batch_allocations := v_batch_allocations || jsonb_build_array(
+                        jsonb_build_object(
+                            'batch_id', v_batch_record.id,
+                            'batch_number', v_batch_record.batch_number,
+                            'quantity', v_allocated_quantity,
+                            'price', v_batch_record.price,
+                            'cost_price', v_batch_record.cost_price,
+                            'currency', lower(v_batch_record.currency),
+                            'expiry_date', v_batch_record.expiry_date,
+                            'manufacturing_date', v_batch_record.manufacturing_date
+                        )
+                    );
+                    v_batch_remaining := v_batch_remaining - v_allocated_quantity;
+                END LOOP;
+
+            END IF;
         END IF;
 
         INSERT INTO public.sale_items (
@@ -376,32 +404,34 @@ BEGIN
             COALESCE((item->>'converted_unit_price')::NUMERIC, (item->>'unit_price')::NUMERIC),
             COALESCE(item->>'settlement_currency', 'usd'),
             (item->>'negotiated_price')::NUMERIC,
-            COALESCE((item->>'inventory_snapshot')::NUMERIC, 0),
+            CASE WHEN v_is_service THEN NULL ELSE COALESCE((item->>'inventory_snapshot')::NUMERIC, 0) END,
             CASE
-                WHEN v_has_active_batches AND jsonb_array_length(v_batch_allocations) > 0 THEN v_batch_allocations
+                WHEN NOT v_is_service AND v_has_active_batches AND jsonb_array_length(v_batch_allocations) > 0 THEN v_batch_allocations
                 ELSE NULL
             END,
             CASE
-                WHEN v_has_active_batches AND jsonb_array_length(v_batch_allocations) > 0 THEN v_batch_allocations
+                WHEN NOT v_is_service AND v_has_active_batches AND jsonb_array_length(v_batch_allocations) > 0 THEN v_batch_allocations
                 ELSE NULL
             END,
             (item->>'price_book_id')::uuid
         );
 
-        UPDATE public.inventory
-        SET
-            quantity = quantity - v_quantity,
-            updated_at = NOW(),
-            version = COALESCE(version, 0) + 1,
-            is_deleted = (quantity - v_quantity) <= 0
-        WHERE workspace_id = p_workspace_id
-          AND product_id = v_product_id
-          AND storage_id = v_storage_id
-          AND COALESCE(is_deleted, false) = false
-          AND quantity >= v_quantity;
+        IF NOT v_is_service THEN
+            UPDATE public.inventory
+            SET
+                quantity = quantity - v_quantity,
+                updated_at = NOW(),
+                version = COALESCE(version, 0) + 1,
+                is_deleted = (quantity - v_quantity) <= 0
+            WHERE workspace_id = p_workspace_id
+              AND product_id = v_product_id
+              AND storage_id = v_storage_id
+              AND COALESCE(is_deleted, false) = false
+              AND quantity >= v_quantity;
 
-        IF NOT FOUND THEN
-            RAISE EXCEPTION 'Insufficient inventory for product % in storage %', v_product_id, v_storage_id;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Insufficient inventory for product % in storage %', v_product_id, v_storage_id;
+            END IF;
         END IF;
     END LOOP;
 
@@ -415,3 +445,9 @@ BEGIN
     );
 END;
 $function$;
+
+-- ---------------------------------------------------------------------------
+-- process_sale_return: service lines are refunded like any other line but
+-- never restore stock (no storage resolution, no inventory upsert, no batch
+-- restore). restored_storage_id stays NULL for service lines.
+-- ---------------------------------------------------------------------------;

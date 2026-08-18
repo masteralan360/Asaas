@@ -326,6 +326,11 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     description: "Maintain product catalog, stock rules, and pricing.",
     badge: "Catalog",
   },
+  "/services": {
+    section: "stock-and-supply",
+    description: "Manage the service catalog offered to customers.",
+    badge: "Services",
+  },
   "/discounts": {
     section: "stock-and-supply",
     description:

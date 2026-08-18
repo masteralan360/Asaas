@@ -528,13 +528,14 @@ export function InventoryTransactionsPage() {
       ...mirroredSalesOrderRecords,
       ...mirroredPurchaseRecords,
       ...mirroredSalesOrderReturnRecords,
-    ].sort(
+    ].filter((record) => !productsById.get(record.productId)?.isService).sort(
       (left, right) =>
         right.createdAt.localeCompare(left.createdAt) ||
         right.id.localeCompare(left.id),
     );
   }, [
     purchaseOrders,
+    productsById,
     sales,
     salesOrderReturnItems,
     salesOrders,

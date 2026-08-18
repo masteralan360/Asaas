@@ -26,7 +26,7 @@ export interface VerificationItem {
     convertedTotalPrice: number
     originalUnitPrice: number
     negotiatedPrice?: number | null
-    inventorySnapshot: number
+    inventorySnapshot: number | null
     originalCurrency: string
     settlementCurrency: string
 }
@@ -113,7 +113,7 @@ export function verifySale(
     // 5. Inventory Integrity: quantity sold should not exceed snapshot
     for (let i = 0; i < sale.items.length; i++) {
         const item = sale.items[i]
-        if (item.quantity > item.inventorySnapshot) {
+        if (item.inventorySnapshot != null && item.quantity > item.inventorySnapshot) {
             flags.push(`Item ${i + 1}: Quantity ${item.quantity} exceeds inventory snapshot ${item.inventorySnapshot}`)
         }
     }
@@ -150,7 +150,7 @@ export function createVerificationSale(
         total: number // Converted total in settlement currency
         original_unit_price: number
         negotiated_price?: number | null
-        inventory_snapshot: number
+        inventory_snapshot: number | null
         original_currency: string
         settlement_currency: string
     }>,

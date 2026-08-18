@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
-import { addToOfflineMutations, adjustInventoryQuantity, calculateStockBatchUnitCost, commitStockBatchAllocations, generateLocalSaleSequenceId, getPrimaryStorageFromList, getStockBatchSalePlans, refreshStockBatchesFromSupabase, useActiveDiscountMap, useBatchAwareInventoryProducts, useCategories, useProductSelectionAccess, useStorages } from '@/local-db'
+import { addToOfflineMutations, adjustInventoryQuantity, calculateStockBatchUnitCost, commitStockBatchAllocations, generateLocalSaleSequenceId, getPrimaryStorageFromList, getStockBatchSalePlans, refreshStockBatchesFromSupabase, useActiveDiscountMap, useBatchAwareInventoryProducts, useCategories, useProductSelectionAccess, useProducts, useStorages } from '@/local-db'
+import { isService, SERVICES_VIRTUAL_STORAGE_ID } from '@/lib/catalogItem'
 import { db } from '@/local-db/database'
 import type { CurrencyCode } from '@/local-db/models'
 import { useWorkspace } from '@/workspace'
@@ -156,6 +157,7 @@ interface MobileTicketPanelProps {
     extendPendingExpiry: (id: string) => void
     clearActiveTicket: () => void
     updateItemQuantity: (productId: string, storageId: string | undefined, delta: number) => void
+    setItemQuantity: (productId: string, storageId: string | undefined, quantity: number) => void
     removeItem: (productId: string, storageId: string | undefined) => void
     setNoteItem: (item: { productId: string, storageId?: string, name: string, note: string } | null) => void
     closeTicket: (id: string) => void
@@ -165,7 +167,7 @@ function MobileTicketPanel({
     activeTicket, activeTicketTotals, settlementCurrency, features, t,
     statusLabels, statusAction, activePendingTimeLeftMs, isCheckoutLoading,
     getStorageLabel, checkoutTicket, setTicketStatus, extendPendingExpiry, clearActiveTicket,
-    updateItemQuantity, removeItem, setNoteItem, closeTicket
+    updateItemQuantity, setItemQuantity, removeItem, setNoteItem, closeTicket
 }: MobileTicketPanelProps) {
     const [isExpanded, setIsExpanded] = useState(false)
     const [isDragging, setIsDragging] = useState(false)
@@ -409,6 +411,7 @@ function MobileTicketPanel({
                                             <div className="mt-4 flex items-center justify-between">
                                                 <div className="flex items-center gap-3">
                                                     <button onClick={() => updateItemQuantity(item.productId, item.storageId, -1)} className="p-2 bg-background rounded-full border border-border/60"><Minus className="w-3 h-3" /></button>
+                                                    {item.storageId === SERVICES_VIRTUAL_STORAGE_ID && <Input type="number" min="0.001" step="0.001" value={item.quantity} onChange={(event) => setItemQuantity(item.productId, item.storageId, Number(event.target.value))} className="h-8 w-20 text-center" aria-label="Service quantity" />}
                                                     <button onClick={() => updateItemQuantity(item.productId, item.storageId, 1)} className="p-2 bg-background rounded-full border border-border/60"><Plus className="w-3 h-3" /></button>
                                                     <button
                                                         onClick={() => setNoteItem({ productId: item.productId, storageId: item.storageId, name: item.name, note: item.note || '' })}
@@ -491,13 +494,24 @@ export function InstantPOS() {
         enabled: !!selectedStorageId,
         storageId: selectedStorageId || undefined
     })
+    const catalogProducts = useProducts(user?.workspaceId, { syncBarcodeCache: false })
     const { canSelectProduct, filterProducts: filterSelectableProducts } = useProductSelectionAccess(user?.workspaceId, user?.id)
+    const serviceProducts = useMemo(() => {
+        if (!hasFeature('services')) return []
+        return filterSelectableProducts(catalogProducts.filter(isService)).map((service) => ({
+            ...service,
+            sku: '', unit: '', storageId: SERVICES_VIRTUAL_STORAGE_ID, storageName: 'Services',
+            quantity: Number.MAX_SAFE_INTEGER, minStockLevel: 0,
+            inventoryId: `service:${service.id}`, inventoryQuantity: Number.MAX_SAFE_INTEGER,
+            hasBatches: false, batchCount: 0, nextBatchNumber: null, nextBatchExpiryDate: null, nextBatchQuantity: null
+        }))
+    }, [catalogProducts, filterSelectableProducts, hasFeature])
     const selectableProducts = useMemo(
-        () => filterSelectableProducts(products),
-        [filterSelectableProducts, products]
+        () => [...filterSelectableProducts(products), ...serviceProducts],
+        [filterSelectableProducts, products, serviceProducts]
     )
     const activeDiscountMap = useActiveDiscountMap(user?.workspaceId, {
-        products,
+        products: [...products, ...catalogProducts.filter(isService)],
         inventoryRows: selectedStorageId ? undefined : [],
         storageId: selectedStorageId || undefined,
         syncRemote: false
@@ -609,6 +623,9 @@ export function InstantPOS() {
     )
 
     const getStorageLabel = useCallback((storageId?: string | null) => {
+        if (storageId === SERVICES_VIRTUAL_STORAGE_ID) {
+            return t('services.title', { defaultValue: 'Services' })
+        }
         if (!storageId) {
             return null
         }
@@ -636,7 +653,7 @@ export function InstantPOS() {
         const term = search.trim().toLowerCase()
         const normalizedSettlement = settlementCurrency?.toLowerCase()
         return selectableProducts.filter(product => {
-            if (!product.storageId || !selectedStorageId || product.storageId !== selectedStorageId) return false
+            if (!isService(product) && (!product.storageId || !selectedStorageId || product.storageId !== selectedStorageId)) return false
             const matchesSearch = !term
                 || (product.name || '').toLowerCase().includes(term)
                 || (product.sku || '').toLowerCase().includes(term)
@@ -653,7 +670,7 @@ export function InstantPOS() {
 
     useEffect(() => {
         const excludedProductIds = new Set(
-            products
+            selectableProducts
                 .filter((product) => !canSelectProduct(product))
                 .map((product) => product.id)
         )
@@ -666,7 +683,7 @@ export function InstantPOS() {
             const items = ticket.items.filter((item) => !excludedProductIds.has(item.productId))
             return items.length === ticket.items.length ? ticket : { ...ticket, items }
         }))
-    }, [canSelectProduct, products])
+    }, [canSelectProduct, selectableProducts])
 
     const activeTicketTotals = useMemo(() => {
         if (!activeTicket) {
@@ -705,7 +722,10 @@ export function InstantPOS() {
     }
 
     const addItemToTicket = (productId: string) => {
-        if (!selectedStorageId) {
+        const product = selectableProducts.find(item => item.id === productId && (isService(item) || item.storageId === selectedStorageId))
+        const activeDiscount = activeDiscountMap.get(productId)
+        if (!product) return
+        if (!selectedStorageId && !isService(product)) {
             toast({
                 title: t('common.error') || 'Error',
                 description: t('storages.selectStorage') || 'Select a storage first.',
@@ -713,10 +733,6 @@ export function InstantPOS() {
             })
             return
         }
-
-        const product = selectableProducts.find(item => item.id === productId && item.storageId === selectedStorageId)
-        const activeDiscount = activeDiscountMap.get(productId)
-        if (!product) return
         if (!hasValidProductCost(product.costPrice)) {
             toast({
                 title: t('common.error') || 'Error',
@@ -725,7 +741,7 @@ export function InstantPOS() {
             })
             return
         }
-        if (product.quantity <= 0) {
+        if (!isService(product) && product.quantity <= 0) {
             toast({
                 title: t('common.error') || 'Error',
                 description: t('instantPos.outOfStock') || 'This product is out of stock.',
@@ -767,7 +783,7 @@ export function InstantPOS() {
                 item.productId === product.id && item.storageId === product.storageId
             )
             if (existing) {
-                if (existing.quantity >= product.quantity) {
+                if (!isService(product) && existing.quantity >= product.quantity) {
                     toast({
                         title: t('common.error') || 'Error',
                         description: t('instantPos.outOfStock') || 'This product is out of stock.',
@@ -810,7 +826,7 @@ export function InstantPOS() {
                 .map(item => {
                     if (item.productId !== productId || item.storageId !== storageId) return item
                     const nextQuantity = Math.max(1, item.quantity + delta)
-                    const maxStock = product?.quantity ?? nextQuantity
+                    const maxStock = isService(product) ? Number.MAX_SAFE_INTEGER : (product?.quantity ?? nextQuantity)
                     const boundedQuantity = maxStock > 0 ? Math.min(nextQuantity, maxStock) : 1
                     return {
                         ...item,
@@ -819,6 +835,16 @@ export function InstantPOS() {
                 })
             return { ...ticket, items }
         })
+    }
+
+    const setItemQuantity = (productId: string, storageId: string | undefined, quantity: number) => {
+        if (!activeTicket || !Number.isFinite(quantity) || quantity <= 0) return
+        updateTicket(activeTicket.id, (ticket) => ({
+            ...ticket,
+            items: ticket.items.map((item) => item.productId === productId && item.storageId === storageId
+                ? { ...item, quantity: isService(resolveTicketProduct(item)) ? quantity : Math.min(quantity, resolveTicketProduct(item)?.quantity ?? quantity) }
+                : item)
+        }))
     }
 
     const removeItem = (productId: string, storageId: string | undefined) => {
@@ -914,7 +940,7 @@ export function InstantPOS() {
         for (const item of activeTicket.items) {
             const product = resolveTicketProduct(item)
             const resolvedStorageId = item.storageId || product?.storageId
-            if (!product || !resolvedStorageId) {
+            if (!product || (!isService(product) && !resolvedStorageId)) {
                 toast({
                     title: t('common.error') || 'Error',
                     description: t('instantPos.storageRequired') || 'This product is stocked in multiple storages. Use the full POS flow to choose a storage.',
@@ -924,7 +950,7 @@ export function InstantPOS() {
                 return
             }
 
-            if (item.quantity > product.quantity) {
+            if (!isService(product) && item.quantity > product.quantity) {
                 toast({
                     title: t('common.error') || 'Error',
                     description: `${product.name} ${t('instantPos.outOfStock') || 'is out of stock.'}`,
@@ -935,9 +961,10 @@ export function InstantPOS() {
             }
         }
 
+        const physicalItems = activeTicket.items.filter((item) => !isService(resolveTicketProduct(item)))
         let batchSalePlans: Awaited<ReturnType<typeof getStockBatchSalePlans>>
         try {
-            batchSalePlans = await getStockBatchSalePlans(activeTicket.items.map((item) => {
+            batchSalePlans = await getStockBatchSalePlans(physicalItems.map((item) => {
                 const resolvedStorageId = item.storageId || resolveTicketProduct(item)?.storageId
                 if (!resolvedStorageId) {
                     throw new Error('Storage is required for batched sale items')
@@ -960,28 +987,33 @@ export function InstantPOS() {
             return
         }
 
-        const itemsWithMetadata = activeTicket.items.map((item, index) => {
+        const batchPlanByItemKey = new Map(
+            physicalItems.map((item, index) => [buildInstantPosItemKey(item.productId, item.storageId), batchSalePlans[index]] as const)
+        )
+
+        const itemsWithMetadata = activeTicket.items.map((item) => {
             const product = resolveTicketProduct(item)
-            const inventorySnapshot = product?.quantity ?? 0
-            const batchPlan = batchSalePlans[index]
-            const resolvedStorageId = item.storageId || product?.storageId || null
+            const service = isService(product)
+            const inventorySnapshot = service ? null : (product?.quantity ?? 0)
+            const batchPlan = batchPlanByItemKey.get(buildInstantPosItemKey(item.productId, item.storageId))
+            const resolvedStorageId = service ? null : (item.storageId || product?.storageId || null)
             const originalCurrency = item.currency as CurrencyCode
             const targetCurrency = settlementCurrency as CurrencyCode
             const convertBatchCost = (amount: number, from: CurrencyCode, to: CurrencyCode) =>
                 convertCurrencyAmountWithAvailableSnapshot(amount, from, to) ?? amount
             const costPrice = calculateStockBatchUnitCost(
-                batchPlan.allocations,
+                batchPlan?.allocations ?? [],
                 product?.costPrice || 0,
                 originalCurrency,
                 convertBatchCost,
-                batchPlan.requestedQuantity
+                batchPlan?.requestedQuantity ?? item.quantity
             )
             const convertedCostPrice = calculateStockBatchUnitCost(
-                batchPlan.allocations,
+                batchPlan?.allocations ?? [],
                 convertBatchCost(product?.costPrice || 0, originalCurrency, targetCurrency),
                 targetCurrency,
                 convertBatchCost,
-                batchPlan.requestedQuantity
+                batchPlan?.requestedQuantity ?? item.quantity
             )
             return {
                 product_id: item.productId,
@@ -1002,8 +1034,8 @@ export function InstantPOS() {
                 negotiated_price: null,
                 total: item.unitPrice * item.quantity,
                 inventory_snapshot: inventorySnapshot,
-                batch_allocations: batchPlan.allocations.length > 0
-                    ? batchPlan.allocations.map((allocation) => ({
+                batch_allocations: !service && (batchPlan?.allocations.length ?? 0) > 0
+                    ? batchPlan!.allocations.map((allocation) => ({
                         batch_id: allocation.batchId,
                         batch_number: allocation.batchNumber,
                         quantity: allocation.quantity,
@@ -1062,7 +1094,7 @@ export function InstantPOS() {
             const sequenceId = serverResult?.sequence_id
             const formattedInvoiceId = sequenceId ? `#${String(sequenceId).padStart(5, '0')}` : `#${saleId.slice(0, 8)}`
 
-            await Promise.all(activeTicket.items.map(async (item) => {
+            await Promise.all(physicalItems.map(async (item) => {
                 const resolvedStorageId = item.storageId || resolveTicketProduct(item)?.storageId
                 if (resolvedStorageId) {
                     await adjustInventoryQuantity({
@@ -1197,7 +1229,7 @@ export function InstantPOS() {
                         }
                     })
 
-                    await Promise.all(activeTicket.items.map(async (item) => {
+                    await Promise.all(physicalItems.map(async (item) => {
                         const resolvedStorageId = item.storageId || resolveTicketProduct(item)?.storageId
                         if (resolvedStorageId) {
                             await adjustInventoryQuantity({
@@ -1513,6 +1545,7 @@ export function InstantPOS() {
                             extendPendingExpiry={extendPendingExpiry}
                             clearActiveTicket={clearActiveTicket}
                             updateItemQuantity={updateItemQuantity}
+                            setItemQuantity={setItemQuantity}
                             removeItem={removeItem}
                             setNoteItem={setNoteItem}
                             closeTicket={closeTicket}
@@ -1635,6 +1668,7 @@ export function InstantPOS() {
                                                     >
                                                         <Minus className="h-3 w-3" />
                                                     </button>
+                                                    {item.storageId === SERVICES_VIRTUAL_STORAGE_ID && <Input type="number" min="0.001" step="0.001" value={item.quantity} onChange={(event) => setItemQuantity(item.productId, item.storageId, Number(event.target.value))} className="h-7 w-20 text-center" aria-label="Service quantity" />}
                                                     <button
                                                         onClick={() => updateItemQuantity(item.productId, item.storageId, 1)}
                                                         className="flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-background text-foreground hover:bg-muted/60"

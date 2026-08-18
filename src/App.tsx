@@ -74,6 +74,12 @@ const Products = isTauri
   : lazy(() =>
       import("@/ui/pages/Products").then((m) => ({ default: m.Products })),
     );
+const Services = lazy(() =>
+  import("@/ui/pages/Services").then((m) => ({ default: m.Services })),
+);
+const ServiceFormPage = lazy(() =>
+  import("@/ui/pages/Services").then((m) => ({ default: m.ServiceFormPage })),
+);
 const ProductCreatePage = isTauri
   ? ProductCreatePageEager
   : lazy(() =>
@@ -2068,6 +2074,21 @@ function App() {
                           <Layout>
                             <ProductCreatePage />
                           </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/services/new">
+                        <ProtectedRoute requiredFeature="services" requiredPermission="products.access">
+                          <Layout><ServiceFormPage /></Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/services/:serviceId">
+                        <ProtectedRoute requiredFeature="services" requiredPermission="products.access">
+                          <Layout><ServiceFormPage /></Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/services">
+                        <ProtectedRoute requiredFeature="services" requiredPermission="products.access">
+                          <Layout><Services /></Layout>
                         </ProtectedRoute>
                       </Route>
                       <Route path="/products/:productId/clone">

@@ -7,6 +7,7 @@ import type {
     Product,
     ProductDiscount
 } from '@/local-db/models'
+import { isService } from '@/lib/catalogItem'
 
 type DiscountRecord = ProductDiscount | CategoryDiscount
 
@@ -229,7 +230,7 @@ export function resolveActiveDiscountMap(input: {
                 basePrice: product.price,
                 currency: product.currency
             },
-            stockTotal: inventoryTotals.get(product.id) ?? 0,
+            stockTotal: isService(product) ? Number.MAX_SAFE_INTEGER : (inventoryTotals.get(product.id) ?? 0),
             now
         })
 

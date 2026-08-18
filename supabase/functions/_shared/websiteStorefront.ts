@@ -339,6 +339,7 @@ export async function loadVisibleModeProducts(
         .select('id, parent_product_id, name, sku, description, price, cost_price, currency, unit, category_id, image_url, created_at')
         .eq('workspace_id', context.workspace.id)
         .eq('is_deleted', false)
+        .eq('is_service', false)
         .in('id', visibleProductIds)
         .order('name', { ascending: true })
 

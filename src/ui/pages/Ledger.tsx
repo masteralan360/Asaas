@@ -194,7 +194,7 @@ function getStartOfMonth(now: Date) {
 
 function isEntryInDateRange(
     date: string,
-    dateRange: 'today' | 'month' | 'lastMonth' | 'allTime' | 'custom',
+    dateRange: 'today' | 'yesterday' | 'month' | 'lastMonth' | 'allTime' | 'custom',
     customDates: { start: string; end: string },
     now = new Date()
 ) {
@@ -202,6 +202,12 @@ function isEntryInDateRange(
 
     if (dateRange === 'today') {
         return value >= getStartOfToday(now)
+    }
+
+    if (dateRange === 'yesterday') {
+        const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0)
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+        return value >= startOfYesterday && value < startOfToday
     }
 
     if (dateRange === 'month') {

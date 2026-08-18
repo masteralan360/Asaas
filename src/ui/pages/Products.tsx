@@ -41,6 +41,7 @@ import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
 import { useHideCosts } from '@/permissions'
 import { hasValidProductCost } from '@/lib/productCost'
+import { isService } from '@/lib/catalogItem'
 import { UiAccessGate, useUiAccess } from '@/context/UiAccessContext'
 import { getBarcodeLabelData } from '@/lib/barcodeLabel'
 import { type TemplatePreview } from '@/lib/pdfPreviewStore'
@@ -167,7 +168,7 @@ function countActiveProductFilters(filters: ProductFilterState) {
 export function Products() {
     const { user, session } = useAuth()
     const hideCosts = useHideCosts()
-    const { features, branchInfo, hasCapability } = useWorkspace()
+    const { features, branchInfo, hasCapability, hasFeature } = useWorkspace()
     const { t } = useTranslation()
     const { toast } = useToast()
     const { isAccessKeyHeld } = useUiAccess()
@@ -294,6 +295,7 @@ export function Products() {
     const isBranchWorkspace = Boolean(branchInfo?.isBranch)
 
     const [search, setSearch] = useState('')
+    const [catalogType, setCatalogType] = useState<'all' | 'products' | 'services'>('all')
     const [filters, setFilters] = useState<ProductFilterState>(DEFAULT_PRODUCT_FILTERS)
     const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false)
     const [draftFilters, setDraftFilters] = useState<ProductFilterState>(filters)
@@ -606,10 +608,14 @@ export function Products() {
 
     const filteredProducts = useMemo(() => {
         let result = products.filter((product) =>
-            product.name.toLowerCase().includes(search.toLowerCase()) ||
-            product.sku.toLowerCase().includes(search.toLowerCase()) ||
-            getCategoryName(product.categoryId).toLowerCase().includes(search.toLowerCase()) ||
-            getStorageName(product.storageId).toLowerCase().includes(search.toLowerCase())
+            (hasFeature('services') || !isService(product))
+            && (catalogType === 'all' || (catalogType === 'services' ? isService(product) : !isService(product)))
+            && (
+                product.name.toLowerCase().includes(search.toLowerCase()) ||
+                product.sku.toLowerCase().includes(search.toLowerCase()) ||
+                getCategoryName(product.categoryId).toLowerCase().includes(search.toLowerCase()) ||
+                getStorageName(product.storageId).toLowerCase().includes(search.toLowerCase())
+            )
         )
 
         if (filters.category !== 'all') {
@@ -655,7 +661,7 @@ export function Products() {
         })
 
         return result
-    }, [products, search, getCategoryName, getStorageName, filters])
+    }, [products, search, getCategoryName, getStorageName, filters, catalogType, hasFeature])
 
     const productById = useMemo(
         () => new Map(products.map((product) => [product.id, product] as const)),
@@ -752,21 +758,26 @@ export function Products() {
         setCurrentPage(1)
     }
 
-    const selectedProductsCount = selectedProductIds.size
-    const allWorkspaceProductsSelected = products.length > 0 && selectedProductsCount === products.length
-    const allFilteredProductsSelected = filteredProducts.length > 0
-        && filteredProducts.every((product) => selectedProductIds.has(product.id))
+    const selectionEligibleProducts = useMemo(
+        () => products.filter((product) => !isService(product)),
+        [products]
+    )
+    const selectedProductsCount = selectionEligibleProducts.filter((product) => selectedProductIds.has(product.id)).length
+    const allWorkspaceProductsSelected = selectionEligibleProducts.length > 0 && selectedProductsCount === selectionEligibleProducts.length
+    const selectableFilteredProducts = filteredProducts.filter((product) => !isService(product))
+    const allFilteredProductsSelected = selectableFilteredProducts.length > 0
+        && selectableFilteredProducts.every((product) => selectedProductIds.has(product.id))
     const isProductSelectionMode = isBranchCloneSelectionMode || isBarcodeSelectionMode
     const selectedBarcodeProducts = useMemo(() => {
         const selectedIds = selectedProductIds
-        const visibleProducts = filteredProducts.filter((product) => selectedIds.has(product.id))
+        const visibleProducts = selectableFilteredProducts.filter((product) => selectedIds.has(product.id))
         const visibleProductIds = new Set(visibleProducts.map((product) => product.id))
 
         return [
             ...visibleProducts,
-            ...products.filter((product) => selectedIds.has(product.id) && !visibleProductIds.has(product.id))
+            ...selectionEligibleProducts.filter((product) => selectedIds.has(product.id) && !visibleProductIds.has(product.id))
         ]
-    }, [filteredProducts, products, selectedProductIds])
+    }, [selectableFilteredProducts, selectionEligibleProducts, selectedProductIds])
     const barcodeLabels = useMemo(
         () => getBarcodeLabelData(barcodePrintProducts, features.iqd_display_preference),
         [barcodePrintProducts, features.iqd_display_preference]
@@ -824,7 +835,7 @@ export function Products() {
         })
 
     const openProductForm = (product?: Product) => {
-        navigate(product ? `/products/${product.id}` : '/products/new')
+        navigate(product ? (isService(product) ? `/services/${product.id}` : `/products/${product.id}`) : '/products/new')
     }
 
     const handleCloneProduct = (product: Product) => {
@@ -875,6 +886,7 @@ export function Products() {
     }
 
     const toggleProductSelection = (productId: string) => {
+        if (isService(products.find((product) => product.id === productId))) return
         setSelectedProductIds((previous) => {
             const next = new Set(previous)
             if (next.has(productId)) {
@@ -892,7 +904,7 @@ export function Products() {
             return
         }
 
-        setSelectedProductIds(new Set(products.map((product) => product.id)))
+        setSelectedProductIds(new Set(selectionEligibleProducts.map((product) => product.id)))
     }
 
     const toggleSelectAllFilteredProducts = () => {
@@ -900,9 +912,9 @@ export function Products() {
             const next = new Set(previous)
 
             if (allFilteredProductsSelected) {
-                filteredProducts.forEach((product) => next.delete(product.id))
+                selectableFilteredProducts.forEach((product) => next.delete(product.id))
             } else {
-                filteredProducts.forEach((product) => next.add(product.id))
+                selectableFilteredProducts.forEach((product) => next.add(product.id))
             }
 
             return next
@@ -1361,6 +1373,20 @@ export function Products() {
                         className="pl-10"
                     />
                 </div>
+                <div className="inline-flex h-11 rounded-2xl border border-border/60 bg-muted/30 p-1 text-sm">
+                    {(['all', 'products', ...(hasFeature('services') ? ['services'] as const : [])] as const).map((type) => (
+                        <Button
+                            key={type}
+                            type="button"
+                            size="sm"
+                            variant={catalogType === type ? 'secondary' : 'ghost'}
+                            className="h-9 rounded-xl px-3 capitalize"
+                            onClick={() => { setCatalogType(type); setCurrentPage(1) }}
+                        >
+                            {type === 'all' ? t('common.all', { defaultValue: 'All' }) : type === 'services' ? t('services.title', { defaultValue: 'Services' }) : t('products.title', { defaultValue: 'Products' })}
+                        </Button>
+                    ))}
+                </div>
                 <Button
                     type="button"
                     variant="outline"
@@ -1383,7 +1409,7 @@ export function Products() {
                 ) : null}
             </div>
 
-            {isProductSelectionMode && products.length > 0 && (
+            {isProductSelectionMode && selectionEligibleProducts.length > 0 && (
                 <Card className="border-primary/15 bg-primary/5">
                     <CardContent className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
                         <div className="space-y-2">
@@ -1399,7 +1425,7 @@ export function Products() {
                                 >
                                     {isBarcodeSelectionMode
                                         ? `Select All Products (${filteredProducts.length})`
-                                        : `${t('products.branchClone.selectAllWorkspace', { defaultValue: 'Select all workspace products' })} (${products.length})`}
+                                        : `${t('products.branchClone.selectAllWorkspace', { defaultValue: 'Select all workspace products' })} (${selectionEligibleProducts.length})`}
                                 </Label>
                             </div>
                             <p className="text-sm text-muted-foreground">
@@ -1531,7 +1557,7 @@ export function Products() {
                                                         hasProductCostWarning(product) && 'border-destructive/40 bg-destructive/10'
                                                     )}
                                                 >
-                                            {isProductSelectionMode && (
+                                            {isProductSelectionMode && !isService(product) && (
                                                 <div className="flex items-center gap-2">
                                                     <Checkbox
                                                         id={`product-select-mobile-${product.id}`}
@@ -1564,6 +1590,7 @@ export function Products() {
                                                 <div className="flex min-w-0 flex-1 flex-col justify-center">
                                                     <div className={cn('text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground', isLinkedVariant && 'text-[9px]')}>{product.sku}</div>
                                                     <div className={cn('truncate text-base font-black leading-tight text-foreground', isLinkedVariant && 'text-sm')}>{product.name}</div>
+                                                    {isService(product) && <span className="mt-1 inline-flex w-fit rounded-md border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">{t('services.title', { defaultValue: 'Service' })}</span>}
                                                     <div className={cn('mt-0.5 text-[11px] font-bold uppercase tracking-wide text-primary/80', isLinkedVariant && 'text-[10px]')}>
                                                         {getCategoryName(product.categoryId)}
                                                     </div>
@@ -1590,7 +1617,7 @@ export function Products() {
                                                         isLinkedVariant && 'text-[10px]',
                                                         product.quantity <= product.minStockLevel ? 'text-amber-500' : 'text-muted-foreground/60'
                                                     )}>
-                                                        {product.quantity} {t(`products.units.${product.unit}`, product.unit)}
+                                                        {isService(product) ? t('services.noInventory', { defaultValue: 'No inventory' }) : `${product.quantity} ${t(`products.units.${product.unit}`, product.unit)}`}
                                                     </div>
                                                 </div>
                                             </div>
@@ -1605,7 +1632,7 @@ export function Products() {
                                                     {canEdit ? <Pencil className="h-4 w-4" /> : <Info className="h-4 w-4" />}
                                                     {canEdit ? t('common.edit') : (t('common.view') || 'View')}
                                                 </Button>
-                                                {canEdit && (
+                                                {canEdit && !isService(product) && (
                                                     <Button
                                                         variant="secondary"
                                                         size="sm"
@@ -1619,7 +1646,7 @@ export function Products() {
                                                         {t('products.addStock', { defaultValue: 'Add Stock' })}
                                                     </Button>
                                                 )}
-                                                {canEdit && (
+                                                {canEdit && !isService(product) && (
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
@@ -1645,7 +1672,7 @@ export function Products() {
                                         </div>
                                         </ContextMenuTrigger>
                                         <ContextMenuContent>
-                                            {canEdit && (
+                                            {canEdit && !isService(product) && (
                                                 <ContextMenuItem className="gap-2" onSelect={() => { setSelectedProductForStock(product.id); setAdjustmentDialogOpen(true); }}>
                                                     <Boxes className="h-4 w-4" />
                                                     {t('products.addStock', { defaultValue: 'Add Stock' })}
@@ -1676,7 +1703,7 @@ export function Products() {
                                                                 hasProductCostWarning(product) && 'border-destructive/40 bg-destructive/10 hover:bg-destructive/15'
                                                             )}
                                                         >
-                                                    {isProductSelectionMode && (
+                                                    {isProductSelectionMode && !isService(product) && (
                                                         <div className="flex items-center gap-2">
                                                             <Checkbox
                                                                 id={`product-select-grid-${product.id}`}
@@ -1696,12 +1723,12 @@ export function Products() {
                                                                 <Package className="h-12 w-12 text-muted-foreground/10" />
                                                             </div>
                                                         )}
-                                                        <div className={cn(
+                                                        {!isService(product) && <div className={cn(
                                                             'absolute right-2 top-2 rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-tighter shadow-sm',
                                                             product.quantity <= product.minStockLevel ? 'bg-amber-500 text-white' : 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-600'
                                                         )}>
                                                             {product.quantity <= product.minStockLevel ? (t('products.lowStock') || 'Low Stock') : (t('products.inStock') || 'In Stock')}
-                                                        </div>
+                                                        </div>}
                                                         {hasProductCostWarning(product) && (
                                                             <TooltipProvider>
                                                                 <Tooltip delayDuration={150}>
@@ -1716,9 +1743,9 @@ export function Products() {
 
                                                     <div className="flex-1 space-y-1">
                                                         <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground/60">{product.sku}</div>
-                                                        <div className="flex items-start gap-2"><h3 className="line-clamp-2 text-sm font-bold leading-snug text-foreground transition-colors group-hover:text-primary">{product.name}</h3>{isPrimaryProduct(product) && <span className="shrink-0 rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-primary">{t('products.variants.primary', { defaultValue: 'Primary' })}</span>}</div>
+                                                        <div className="flex items-start gap-2"><h3 className="line-clamp-2 text-sm font-bold leading-snug text-foreground transition-colors group-hover:text-primary">{product.name}</h3>{isService(product) && <span className="shrink-0 rounded-md border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">{t('services.title', { defaultValue: 'Service' })}</span>}{isPrimaryProduct(product) && <span className="shrink-0 rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-primary">{t('products.variants.primary', { defaultValue: 'Primary' })}</span>}</div>
                                                         <div className="text-[11px] font-bold uppercase tracking-wide text-primary/70">{getCategoryName(product.categoryId)}</div>
-                                                        <div className="text-[10px] font-medium text-muted-foreground/80">{renderStorage(product.id) ?? getStorageName(product.storageId)}</div>
+                                                        <div className="text-[10px] font-medium text-muted-foreground/80">{isService(product) ? t('services.noInventory', { defaultValue: 'No inventory' }) : (renderStorage(product.id) ?? getStorageName(product.storageId))}</div>
                                                     </div>
 
                                                     <div className="flex items-center justify-between border-t border-border/40 pt-3">
@@ -1727,7 +1754,7 @@ export function Products() {
                                                                 {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
                                                             </div>
                                                             <div className="text-[11px] font-medium text-muted-foreground">
-                                                                {product.quantity} {t(`products.units.${product.unit}`, product.unit)}
+                                                                {isService(product) ? t('services.noInventory', { defaultValue: 'No inventory' }) : `${product.quantity} ${t(`products.units.${product.unit}`, product.unit)}`}
                                                             </div>
                                                         </div>
 
@@ -1742,7 +1769,7 @@ export function Products() {
                                                             >
                                                                 {canEdit ? <Pencil className="h-3.5 w-3.5" /> : <Info className="h-3.5 w-3.5" />}
                                                             </Button>
-                                                            {canEdit && (
+                                                            {canEdit && !isService(product) && (
                                                                 <Button
                                                                     variant="ghost"
                                                                     size="icon"
@@ -1769,7 +1796,7 @@ export function Products() {
                                                 </div>
                                                     </ContextMenuTrigger>
                                                 <ContextMenuContent>
-                                                    {canEdit && (
+                                                    {canEdit && !isService(product) && (
                                                         <ContextMenuItem className="gap-2" onSelect={() => { setSelectedProductForStock(product.id); setAdjustmentDialogOpen(true); }}>
                                                             <Boxes className="h-4 w-4" />
                                                             {t('products.addStock', { defaultValue: 'Add Stock' })}
@@ -1863,13 +1890,11 @@ export function Products() {
                                                         hasProductCostWarning(product) && 'bg-destructive/10 hover:bg-destructive/15'
                                                     )}>
                                                         {isProductSelectionMode && (
-                                                            <TableCell>
-                                                                <Checkbox
+                                                            <TableCell>{!isService(product) && <Checkbox
                                                                     id={`product-select-table-${product.id}`}
                                                                     checked={selectedProductIds.has(product.id)}
                                                                     onCheckedChange={() => toggleProductSelection(product.id)}
-                                                                />
-                                                            </TableCell>
+                                                                />}</TableCell>
                                                         )}
                                                         <TableCell>
                                                             <div className="flex items-center gap-1">
@@ -1921,16 +1946,16 @@ export function Products() {
                                                             </div>
                                                         </TableCell>
                                                         <TableCell className="font-mono text-sm">{product.sku}</TableCell>
-                                                        <TableCell className="font-medium"><div className="flex items-center gap-2"><span>{product.name}</span>{isPrimary && <span className="inline-flex rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-primary">{t('products.variants.primary', { defaultValue: 'Primary' })}</span>}{isVariant && <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground"><GitBranch className="h-3 w-3" />{t('products.variants.variant', { defaultValue: 'Variant' })}</span>}</div></TableCell>
+                                                        <TableCell className="font-medium"><div className="flex items-center gap-2"><span>{product.name}</span>{isService(product) && <span className="inline-flex rounded-md border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">{t('services.title', { defaultValue: 'Service' })}</span>}{isPrimary && <span className="inline-flex rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-primary">{t('products.variants.primary', { defaultValue: 'Primary' })}</span>}{isVariant && <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground"><GitBranch className="h-3 w-3" />{t('products.variants.variant', { defaultValue: 'Variant' })}</span>}</div></TableCell>
                                                         <TableCell>{getCategoryName(product.categoryId)}</TableCell>
-                                                        <TableCell>{renderStorage(product.id) ?? getStorageName(product.storageId)}</TableCell>
+                                                        <TableCell>{isService(product) ? '—' : (renderStorage(product.id) ?? getStorageName(product.storageId))}</TableCell>
                                                         {priceBooksEnabled && <TableCell>{renderPriceBooks(product.id)}</TableCell>}
                                                         <TableCell className="text-right">
                                                             {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
                                                         </TableCell>
                                                         <TableCell className="text-right">
                                                             <span className={product.quantity <= product.minStockLevel ? 'font-medium text-amber-500' : ''}>
-                                                                {product.quantity} {t(`products.units.${product.unit}`, product.unit)}
+                                                                {isService(product) ? '—' : `${product.quantity} ${t(`products.units.${product.unit}`, product.unit)}`}
                                                             </span>
                                                         </TableCell>
                                                         {(canEdit || canDelete || user?.role === 'viewer') && (
@@ -1945,7 +1970,7 @@ export function Products() {
                                                                     >
                                                                         {canEdit ? <Pencil className="h-4 w-4" /> : <Info className="h-4 w-4 text-primary" />}
                                                                     </Button>
-                                                                    {canEdit && (
+                                                                    {canEdit && !isService(product) && (
                                                                         <Button variant="ghost" size="icon" aria-label={t('common.clone') || 'Clone'} onClick={() => handleCloneProduct(product)}>
                                                                             <Copy className="h-4 w-4 text-primary" />
                                                                         </Button>
@@ -1961,7 +1986,7 @@ export function Products() {
                                                     </TableRow>
                                                         </ContextMenuTrigger>
                                                         <ContextMenuContent>
-                                                            {canEdit && (
+                                                            {canEdit && !isService(product) && (
                                                                 <ContextMenuItem className="gap-2" onSelect={() => { setSelectedProductForStock(product.id); setAdjustmentDialogOpen(true); }}>
                                                                     <Boxes className="h-4 w-4" />
                                                                     {t('products.addStock', { defaultValue: 'Add Stock' })}
@@ -2368,7 +2393,7 @@ export function Products() {
                 }}
                 preselectedProductId={selectedProductForStock}
                 allowAnyStorage
-                products={products}
+                products={products.filter((product) => !isService(product))}
                 storages={storages}
                 inventory={inventoryRows}
                 workspaceId={workspaceId}

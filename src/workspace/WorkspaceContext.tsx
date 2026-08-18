@@ -79,6 +79,7 @@ export interface WorkspaceFeatures {
     monthly_comparison: boolean
     team_performance: boolean
     products: boolean
+    services: boolean
     discounts: boolean
     storages: boolean
     inventory_transfer: boolean
@@ -179,6 +180,7 @@ const PLAN_DERIVED_FEATURE_KEYS: ModuleFeatureKey[] = [
     'monthly_comparison',
     'team_performance',
     'products',
+    'services',
     'discounts',
     'storages',
     'inventory_transfer',
@@ -543,6 +545,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             monthly_comparison: nextFeatures.monthly_comparison,
             team_performance: nextFeatures.team_performance,
             products: nextFeatures.products,
+            services: nextFeatures.services,
             discounts: nextFeatures.discounts,
             storages: nextFeatures.storages,
             inventory_transfer: nextFeatures.inventory_transfer,

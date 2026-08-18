@@ -24,6 +24,7 @@ import {
     updateActivityTransactionNotes,
     useActivityCatalog,
     usePriceBookCatalogState,
+    useProducts,
     toUISaleFromActivityTransaction,
     type BatchAwareInventoryProduct,
     type Category,
@@ -35,6 +36,7 @@ import {
     type SalesOrder,
     type SalesOrderItem
 } from '@/local-db'
+import { isService, SERVICES_VIRTUAL_STORAGE_ID } from '@/lib/catalogItem'
 import { db } from '@/local-db/database'
 import { formatCurrency, generateId, cn } from '@/lib/utils'
 import { roundOrderValue } from '@/lib/orderPrecision'
@@ -423,12 +425,13 @@ export function POS() {
         return localStorage.getItem('pos_selected_storage') || ''
     })
     const isActivitiesStorage = selectedStorageId === ACTIVITIES_STORAGE_ID
+    const isServicesStorage = selectedStorageId === SERVICES_VIRTUAL_STORAGE_ID
     const priceBooksEnabled = hasCapability('priceBooks')
     // A Quick Order is still a Sales Order, so it requires the existing Orders
     // module in addition to the opt-in Quick Order capability.
     const quickOrderEnabled = hasCapability('quickOrder') && hasFeature('orders')
     const priceBookCatalog = usePriceBookCatalogState(user?.workspaceId, {
-        enabled: priceBooksEnabled && !!selectedStorageId && !isActivitiesStorage && !isLocalMode
+        enabled: priceBooksEnabled && !!selectedStorageId && !isActivitiesStorage && !isServicesStorage && !isLocalMode
     })
     const [selectedPriceBookId, setSelectedPriceBookId] = useState<string>(() => {
         return localStorage.getItem('pos_selected_price_book') || ''
@@ -464,9 +467,10 @@ export function POS() {
         return map
     }, [priceBookCatalog.priceBookItems, priceBookById, selectedPriceBookId])
     const products = useBatchAwareInventoryProducts(user?.workspaceId, {
-        enabled: !!selectedStorageId && !isActivitiesStorage,
-        storageId: !isActivitiesStorage ? selectedStorageId || undefined : undefined
+        enabled: !!selectedStorageId && !isActivitiesStorage && !isServicesStorage,
+        storageId: !isActivitiesStorage && !isServicesStorage ? selectedStorageId || undefined : undefined
     })
+    const catalogProducts = useProducts(user?.workspaceId, { syncBarcodeCache: false })
     const { canSelectProduct, filterProducts: filterSelectableProducts } = useProductSelectionAccess(user?.workspaceId, user?.id)
     const activityCatalog = useActivityCatalog(canSellActivities ? user?.workspaceId : undefined)
     const infiniteActivityIds = useMemo(
@@ -477,8 +481,8 @@ export function POS() {
         syncProductCache: false
     })
     const resolveDiscountForPrice = useDiscountPriceResolver(user?.workspaceId, {
-        inventoryRows: selectedStorageId && !isActivitiesStorage ? undefined : [],
-        storageId: !isActivitiesStorage ? selectedStorageId || undefined : undefined,
+        inventoryRows: selectedStorageId && !isActivitiesStorage && !isServicesStorage ? undefined : [],
+        storageId: !isActivitiesStorage && !isServicesStorage ? selectedStorageId || undefined : undefined,
         syncRemote: false
     })
     const [crossStorageWarning, setCrossStorageWarning] = useState<{
@@ -589,17 +593,25 @@ export function POS() {
     }, [priceBookById, selectedPriceBookId])
 
     const posStorages = useMemo<StorageSelectorOption[]>(() => {
-        if (!canSellActivities) return storages
-        return [
-            ...storages,
-            {
+        const virtualStorages: StorageSelectorOption[] = []
+        if (canSellActivities) {
+            virtualStorages.push({
                 id: ACTIVITIES_STORAGE_ID,
                 name: t('activities.title', { defaultValue: 'Activities' }),
                 isSystem: false,
                 isVirtual: true
-            }
-        ]
-    }, [canSellActivities, storages, t])
+            })
+        }
+        if (hasFeature('services')) {
+            virtualStorages.push({
+                id: SERVICES_VIRTUAL_STORAGE_ID,
+                name: t('services.title', { defaultValue: 'Services' }),
+                isSystem: false,
+                isVirtual: true
+            })
+        }
+        return [...storages, ...virtualStorages]
+    }, [canSellActivities, hasFeature, storages, t])
 
     const activityProducts = useMemo<PosCatalogProduct[]>(() => activityCatalog
         .filter((activity) => activity.isActive && !activity.isDeleted && activity.currency === features.default_currency)
@@ -649,7 +661,21 @@ export function POS() {
         () => filterSelectableProducts(products),
         [filterSelectableProducts, products]
     )
-    const sellableProducts: PosCatalogProduct[] = isActivitiesStorage ? activityProducts : selectableInventoryProducts
+    const serviceProducts = useMemo<PosCatalogProduct[]>(() => {
+        if (!hasFeature('services')) return []
+        return filterSelectableProducts(catalogProducts.filter(isService)).map((service) => ({
+            ...service,
+            sku: '', unit: '', storageId: SERVICES_VIRTUAL_STORAGE_ID, storageName: 'Services',
+            quantity: Number.MAX_SAFE_INTEGER, minStockLevel: 0,
+            inventoryId: `service:${service.id}`, inventoryQuantity: Number.MAX_SAFE_INTEGER,
+            hasBatches: false, batchCount: 0, nextBatchNumber: null, nextBatchExpiryDate: null, nextBatchQuantity: null
+        }))
+    }, [catalogProducts, filterSelectableProducts, hasFeature])
+    const sellableProducts: PosCatalogProduct[] = isActivitiesStorage
+        ? activityProducts
+        : isServicesStorage
+            ? serviceProducts
+            : selectableInventoryProducts
 
     useEffect(() => {
         const excludedProductIds = new Set(
@@ -895,12 +921,12 @@ export function POS() {
     }, [isTutorialPosTask, paymentType])
 
     useEffect(() => {
-        if (isActivitiesStorage) {
+        if (isActivitiesStorage || isServicesStorage) {
             setSelectedCategory('all')
             setShowExchangeTicker(false)
             if (paymentType === 'loan' || paymentType === 'order') setPaymentType('cash')
         }
-    }, [isActivitiesStorage, paymentType])
+    }, [isActivitiesStorage, isServicesStorage, paymentType])
 
     useEffect(() => {
         if (!showOrderFreeBonus) {
@@ -1177,10 +1203,10 @@ export function POS() {
         : cartCurrencies[0]) as CurrencyCode
 
     const openCurrencyConversionSettings = useCallback(() => {
-        if (!isAdmin || isActivitiesStorage) return
+        if (!isAdmin || isActivitiesStorage || isServicesStorage) return
         setCurrencyConversionDraft(features.pos_convert_to_workspace_currency)
         setIsCurrencyConversionDialogOpen(true)
-    }, [features.pos_convert_to_workspace_currency, isActivitiesStorage, isAdmin])
+    }, [features.pos_convert_to_workspace_currency, isActivitiesStorage, isServicesStorage, isAdmin])
 
     const saveCurrencyConversionSettings = useCallback(async () => {
         if (!isAdmin || !user) return
@@ -1665,16 +1691,17 @@ export function POS() {
         setCart((prev) => {
             const itemKey = buildCartItemKey(product.id, product.storageId)
             const existing = prev.find((item) => buildCartItemKey(item.product_id, item.storageId) === itemKey)
+            const isNonInventoryService = isService(product)
             if (existing) {
                 // Check stock limit
-                if (!isInfiniteActivity && existing.quantity >= product.inventoryQuantity) return prev
+                if (!isInfiniteActivity && !isNonInventoryService && existing.quantity >= product.inventoryQuantity) return prev
 
                 return prev.map((item) =>
                     buildCartItemKey(item.product_id, item.storageId) === itemKey
                         ? {
                             ...item,
                             quantity: item.quantity + 1,
-                            max_stock: isInfiniteActivity ? ACTIVITY_POS_QUANTITY_LIMIT : product.inventoryQuantity
+                            max_stock: (isInfiniteActivity || isNonInventoryService) ? ACTIVITY_POS_QUANTITY_LIMIT : product.inventoryQuantity
                         }
                         : item
                 )
@@ -1693,9 +1720,10 @@ export function POS() {
                     discount_source: activeDiscount?.source,
                     discount_ends_at: activeDiscount?.endsAt,
                     quantity: 1,
-                    max_stock: isInfiniteActivity ? ACTIVITY_POS_QUANTITY_LIMIT : product.inventoryQuantity,
+                    max_stock: (isInfiniteActivity || isNonInventoryService) ? ACTIVITY_POS_QUANTITY_LIMIT : product.inventoryQuantity,
                     imageUrl: product.imageUrl,
                     unit: product.unit,
+                    is_service: isNonInventoryService,
                     price_book_id: priceBookPricing?.priceBookId,
                     price_book_name: priceBookPricing?.priceBookName
                 }
@@ -2394,6 +2422,10 @@ export function POS() {
             const product = findStockProduct(item.product_id, item.storageId)
             const storageId = item.storageId || selectedStorageId
 
+            if (isService(product)) {
+                continue
+            }
+
             if (!product || !storageId) {
                 toast({
                     variant: 'destructive',
@@ -2448,8 +2480,9 @@ export function POS() {
         const salesExchangePayload = exchangeSnapshotsToPayloads(exchangeRatesPayload)
 
         let batchSalePlans: Awaited<ReturnType<typeof getStockBatchSalePlans>>
+        const physicalCart = cart.filter((item) => !isService(findStockProduct(item.product_id, item.storageId)))
         try {
-            batchSalePlans = await getStockBatchSalePlans(cart.map((item) => {
+            batchSalePlans = await getStockBatchSalePlans(physicalCart.map((item) => {
                 const storageId = item.storageId || selectedStorageId
                 if (!storageId) {
                     throw new Error('Storage is required for batched sale items')
@@ -2472,32 +2505,37 @@ export function POS() {
             return
         }
 
-        const itemsWithMetadata = cart.map((item, index) => {
+        const batchPlanByCartKey = new Map(
+            physicalCart.map((item, index) => [getCartItemKey(item), batchSalePlans[index]] as const)
+        )
+
+        const itemsWithMetadata = cart.map((item) => {
             const product = findStockProduct(item.product_id, item.storageId)
+            const service = isService(product)
             const originalCurrency = getEffectiveProductCurrency(product)
             const priceBookPricing = product ? getPriceBookPricing(product) : null
             const fallbackCostPrice = priceBookPricing?.costPrice ?? product?.costPrice ?? 0
             const effectivePrice = getCartEffectivePrice(item)
             const convertedUnitPrice = convertPrice(effectivePrice, originalCurrency, settlementCurrency)
-            const batchPlan = batchSalePlans[index]
+            const batchPlan = batchPlanByCartKey.get(getCartItemKey(item))
             const costPrice = calculateStockBatchUnitCost(
-                batchPlan.allocations,
+                batchPlan?.allocations ?? [],
                 fallbackCostPrice,
                 originalCurrency,
                 convertPrice,
-                batchPlan.requestedQuantity
+                batchPlan?.requestedQuantity ?? item.quantity
             )
             const convertedCostPrice = calculateStockBatchUnitCost(
-                batchPlan.allocations,
+                batchPlan?.allocations ?? [],
                 convertPrice(fallbackCostPrice, originalCurrency, settlementCurrency),
                 settlementCurrency,
                 convertPrice,
-                batchPlan.requestedQuantity
+                batchPlan?.requestedQuantity ?? item.quantity
             )
 
             return {
                 product_id: item.product_id,
-                storage_id: item.storageId || selectedStorageId || null,
+                storage_id: service ? null : item.storageId || selectedStorageId || null,
                 product_name: product?.name || 'Unknown',
                 product_sku: product?.sku || '',
                 created_at: checkoutTimestamp,
@@ -2515,9 +2553,9 @@ export function POS() {
                 price_book_id: item.price_book_id ?? null,
                 total: convertedUnitPrice * item.quantity,
                 // Immutable inventory snapshot at checkout time
-                inventory_snapshot: product?.inventoryQuantity ?? 0,
-                batch_allocations: batchPlan.allocations.length > 0
-                    ? batchPlan.allocations.map((allocation) => ({
+                inventory_snapshot: service ? null : product?.inventoryQuantity ?? 0,
+                batch_allocations: !service && (batchPlan?.allocations.length ?? 0) > 0
+                    ? batchPlan!.allocations.map((allocation) => ({
                         batch_id: allocation.batchId,
                         batch_number: allocation.batchNumber,
                         quantity: allocation.quantity,
@@ -2569,7 +2607,7 @@ export function POS() {
             const formattedInvoiceId = sequenceId ? `#${String(sequenceId).padStart(5, '0')}` : `#${saleId.slice(0, 8)}`
 
             // 1. Update local inventory
-            await Promise.all(cart.map(async (item) => {
+            await Promise.all(physicalCart.map(async (item) => {
                 const storageId = item.storageId || selectedStorageId
                 if (!storageId) return
 
@@ -2796,7 +2834,7 @@ export function POS() {
                     })
 
                     // 3. Update Local Inventory
-                    await Promise.all(cart.map(async (item) => {
+                    await Promise.all(physicalCart.map(async (item) => {
                         const storageId = item.storageId || selectedStorageId
                         if (!storageId) return
 
@@ -3307,7 +3345,8 @@ export function POS() {
                                     const cartItem = cart.find((item) => getCartItemKey(item) === buildCartItemKey(product.id, product.storageId))
                                     const inCartQuantity = cartItem?.quantity || 0
                                     const isInfiniteActivity = product.isInfiniteActivity === true
-                                    const remainingQuantity = isInfiniteActivity ? ACTIVITY_POS_QUANTITY_LIMIT : product.quantity - inCartQuantity
+                                    const isServiceProduct = isService(product)
+                                    const remainingQuantity = (isInfiniteActivity || isServiceProduct) ? ACTIVITY_POS_QUANTITY_LIMIT : product.quantity - inCartQuantity
                                     const minStock = product.minStockLevel || 5
                                     const isLowStock = remainingQuantity <= minStock
                                     const isCriticalStock = remainingQuantity <= (minStock / 2)
@@ -3323,11 +3362,11 @@ export function POS() {
                                             ref={el => productRefs.current[index] = el}
                                             data-tour-id={demoTutorial.state?.productId === product.id ? 'tutorial-pos-product-card' : undefined}
                                             onClick={() => addToCart(product)}
-                                            disabled={!isInfiniteActivity && remainingQuantity <= 0}
+                                            disabled={!isInfiniteActivity && !isServiceProduct && remainingQuantity <= 0}
                                             className={cn(
                                                 "group relative bg-card hover:bg-accent/5 rounded-[1.5rem] border border-border/50 p-4 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/5 hover:-translate-y-1 flex flex-col gap-4 overflow-hidden text-left outline-none",
                                                 product.hasBatches && "border-sky-300/70 bg-gradient-to-br from-sky-50/70 via-card to-card shadow-[0_10px_30px_rgba(14,165,233,0.08)] dark:border-sky-500/25 dark:from-sky-500/10",
-                                                !isInfiniteActivity && remainingQuantity <= 0 ? 'opacity-60 cursor-not-allowed' : '',
+                                                !isInfiniteActivity && !isServiceProduct && remainingQuantity <= 0 ? 'opacity-60 cursor-not-allowed' : '',
                                                 // Keyboard focus highlight (Electron only)
                                                 (isPosKeyboardSelectionEnabled && focusedSection === 'grid' && focusedProductIndex === index) ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-[1.02] shadow-lg z-10 box-shadow-[0_0_0_2px_hsl(var(--primary))]" : ""
                                             )}
@@ -3349,7 +3388,8 @@ export function POS() {
                                                     </div>
                                                 )}
 
-                                                {showQuantityIndicator && !isInfiniteActivity && <div className={cn(
+                                                {isServiceProduct && <div className="absolute top-2 right-2 rounded-full bg-primary/10 px-2 py-1 text-[10px] font-black uppercase text-primary">Service</div>}
+                                                {showQuantityIndicator && !isInfiniteActivity && !isServiceProduct && <div className={cn(
                                                     "absolute top-2 right-2 px-2.5 py-1.5 rounded-2xl text-[12px] font-black uppercase tracking-tighter shadow-md z-10",
                                                     remainingQuantity <= 0
                                                         ? "bg-destructive text-destructive-foreground"
@@ -3627,7 +3667,7 @@ export function POS() {
                                                                 onClick={() => openFreeBonusEditor(item)}
                                                             />
                                                         )}
-                                                        {unitRegistry.isDynamicUnit(item.unit) ? (
+                                        {isService(findStockProduct(item.product_id, item.storageId)) || unitRegistry.isDynamicUnit(item.unit) ? (
                                                             <>
                                                                 <div className="flex items-center gap-1 bg-muted/30 rounded-md border border-border/50 px-1.5">
                                                                     <Input
@@ -5090,7 +5130,8 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                     const cartItem = cart.find((item) => buildCartItemKey(item.product_id, item.storageId) === buildCartItemKey(product.id, product.storageId))
                     const inCartQuantity = cartItem?.quantity || 0
                     const isInfiniteActivity = product.isInfiniteActivity === true
-                    const remainingQuantity = isInfiniteActivity ? ACTIVITY_POS_QUANTITY_LIMIT : product.quantity - inCartQuantity
+                    const isServiceProduct = isService(product)
+                    const remainingQuantity = (isInfiniteActivity || isServiceProduct) ? ACTIVITY_POS_QUANTITY_LIMIT : product.quantity - inCartQuantity
                     const minStock = product.minStockLevel || 5
                     const isLowStock = remainingQuantity <= minStock
                     const isCriticalStock = remainingQuantity <= (minStock / 2)
@@ -5110,7 +5151,7 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                             )}
                             onClick={(e) => {
                                 if ((e.target as HTMLElement).closest('button')) return;
-                                if (isInfiniteActivity || remainingQuantity > 0) addToCart(product);
+                                if (isInfiniteActivity || isServiceProduct || remainingQuantity > 0) addToCart(product);
                             }}
                         >
                             <div className="aspect-square bg-muted/30 rounded-[1.5rem] overflow-hidden relative">
@@ -5499,7 +5540,7 @@ function MobileCart({
                                                 onClick={() => onOpenFreeBonusEditor(item)}
                                             />
                                         )}
-                                        {unitRegistry.isDynamicUnit(item.unit) ? (
+                                        {isService(product) || unitRegistry.isDynamicUnit(item.unit) ? (
                                             <div className="flex items-center gap-2 bg-muted/50 rounded-xl p-1.5 border border-border/50">
                                                 <Input
                                                     type="text"

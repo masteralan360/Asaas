@@ -11,6 +11,7 @@ import { isOnline } from '@/lib/network'
 import { getOrderLineInventoryQuantity } from '@/lib/orderLineItems'
 import { isPositiveQuantity, roundQuantity } from '@/lib/quantity'
 import { getMissingPriceBookCostMessage, hasValidProductCost } from '@/lib/productCost'
+import { canBePurchased, isService } from '@/lib/catalogItem'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { generateId } from '@/lib/utils'
@@ -714,6 +715,8 @@ async function getReservedQuantityMaps(workspaceId: string, excludeOrderId?: str
     const reservedWithoutStorage = new Map<string, number>()
     for (const order of orders) {
         for (const item of order.items) {
+            const product = await db.products.get(item.productId)
+            if (isService(product)) continue
             const storageId = resolveSalesOrderItemStorageId(order, item)
             const reservedQuantity = getOrderLineInventoryQuantity(item)
             if (storageId) {
@@ -745,6 +748,10 @@ async function assertSalesStockAvailable(order: SalesOrder, excludeOrderId?: str
         }
         if (!hasValidProductCost(product.costPrice)) {
             throw new Error(`${product.name} cannot be sold until a cost is added.`)
+        }
+
+        if (isService(product)) {
+            continue
         }
 
         const storageId = resolveSalesOrderItemStorageId(order, item)
@@ -808,14 +815,34 @@ async function assertSalesProductsHaveCosts(order: SalesOrder) {
     }
 }
 
+async function assertPurchaseOrderItemsAreInventoryProducts(order: PurchaseOrder) {
+    const products = await db.products.where('id').anyOf(order.items.map((item) => item.productId)).toArray()
+    const productMap = new Map(products.map((product) => [product.id, product]))
+
+    for (const item of order.items) {
+        const product = productMap.get(item.productId)
+        if (!product || product.isDeleted) {
+            throw new Error(`Product not found: ${item.productName}`)
+        }
+        if (!canBePurchased(product)) {
+            throw new Error(`${product.name} is a service and cannot be added to a purchase order.`)
+        }
+    }
+}
+
 async function deductInventoryForSalesOrder(order: SalesOrder) {
     const now = new Date().toISOString()
     const changedInventoryRows: Inventory[] = []
     const changedBatches: StockBatch[] = []
     const updatedItems = [...order.items]
+    const products = await db.products.where('id').anyOf(order.items.map((item) => item.productId)).toArray()
+    const productMap = new Map(products.map((product) => [product.id, product]))
+    const physicalItems = order.items
+        .map((item, index) => ({ item, index, product: productMap.get(item.productId) }))
+        .filter((entry) => entry.product && !entry.product.isDeleted && !isService(entry.product))
 
     await refreshStockBatchesFromSupabase(order.workspaceId)
-    await Promise.all(order.items.map(async (item) => {
+    await Promise.all(physicalItems.map(async ({ item }) => {
         const storageId = resolveSalesOrderItemStorageId(order, item)
         if (!storageId) {
             throw new Error(`Select a source storage for ${item.productName}`)
@@ -827,7 +854,7 @@ async function deductInventoryForSalesOrder(order: SalesOrder) {
             [storageId]
         )
     }))
-    const salePlans = await getStockBatchSalePlans(order.items.map((item) => ({
+    const salePlans = await getStockBatchSalePlans(physicalItems.map(({ item }) => ({
         productId: item.productId,
         storageId: resolveSalesOrderItemStorageId(order, item) as string,
         quantity: getOrderLineInventoryQuantity(item),
@@ -843,8 +870,8 @@ async function deductInventoryForSalesOrder(order: SalesOrder) {
         'rw',
         [db.inventory, db.products, db.storages, db.stock_batches],
         async () => {
-            for (const [itemIndex, item] of order.items.entries()) {
-                const product = await db.products.get(item.productId)
+            for (const [physicalItemIndex, { item, index: itemIndex }] of physicalItems.entries()) {
+                const product = productMap.get(item.productId)
                 if (!product || product.isDeleted) {
                     throw new Error(`Product not found: ${item.productName}`)
                 }
@@ -854,7 +881,7 @@ async function deductInventoryForSalesOrder(order: SalesOrder) {
                     throw new Error(`Select a source storage for ${item.productName}`)
                 }
 
-                const salePlan = salePlans[itemIndex]
+                const salePlan = salePlans[physicalItemIndex]
                 const costPrice = calculateStockBatchUnitCost(
                     salePlan.allocations,
                     item.costPrice,
@@ -932,7 +959,7 @@ async function deductInventoryForSalesOrder(order: SalesOrder) {
     ])
 
     const { evaluateReorderTransferRulesForProduct } = await import('./reorderTransferRules')
-    await Promise.all(Array.from(new Set(order.items.map((item) => item.productId))).map((productId) =>
+    await Promise.all(Array.from(new Set(physicalItems.map(({ item }) => item.productId))).map((productId) =>
         evaluateReorderTransferRulesForProduct(order.workspaceId, productId)
     ))
 
@@ -3230,6 +3257,8 @@ export async function createPurchaseOrder(
     else delete order.orderAdjustments
     order.nextDueDate = isOrderFinancingMethod(order.paymentMethod) ? order.firstDueDate || null : null
 
+    await assertPurchaseOrderItemsAreInventoryProducts(order)
+
     if (status !== 'draft' && isOrderFinancingMethod(order.paymentMethod)) {
         throw new Error('Financed orders must be activated from draft')
     }
@@ -3322,6 +3351,7 @@ export async function updatePurchaseOrder(id: string, data: Partial<PurchaseOrde
     if (confirmedAdjustments.length === 0) delete updated.orderAdjustments
 
     updated.nextDueDate = isOrderFinancingMethod(updated.paymentMethod) ? updated.firstDueDate || null : null
+    await assertPurchaseOrderItemsAreInventoryProducts(updated)
     await db.purchase_orders.put(updated)
     const orderForSync = hasOrderAdjustmentsUpdate && confirmedAdjustments.length === 0
         ? { ...updated, orderAdjustments: null }

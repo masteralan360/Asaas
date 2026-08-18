@@ -59,6 +59,8 @@ export interface ProductBarcode extends BaseEntity {
 }
 
 export interface Product extends BaseEntity {
+  /** Services are sellable catalog items but never inventory-backed. */
+  isService?: boolean;
   sku: string;
   /** Local-only normalized SKU key used by indexed catalog lookups. */
   skuKey?: string;
@@ -1589,8 +1591,8 @@ export interface SaleItem {
   negotiatedPrice?: number;
   /** Price Book that priced this line at checkout, when one was selected in POS. */
   priceBookId?: string | null;
-  // Immutable inventory snapshot at checkout
-  inventorySnapshot: number;
+  // Immutable inventory snapshot at checkout (null for service items)
+  inventorySnapshot: number | null;
   batchAllocations?: StockBatchAllocation[] | null;
   originalBatchAllocations?: StockBatchAllocation[] | null;
   returnedQuantity?: number;
@@ -1920,6 +1922,7 @@ export interface Workspace extends BaseEntity {
   monthly_comparison?: boolean;
   team_performance?: boolean;
   products?: boolean;
+  services?: boolean;
   discounts?: boolean;
   storages?: boolean;
   inventory_transfer?: boolean;

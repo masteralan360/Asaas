@@ -23,6 +23,7 @@ import {
 } from '@/lib/utils'
 import { getOrderLineFreeBonusQuantity } from '@/lib/orderLineItems'
 import { ORDER_DECIMAL_STEP, roundOrderValue } from '@/lib/orderPrecision'
+import { isService, SERVICES_VIRTUAL_STORAGE_ID } from '@/lib/catalogItem'
 import {
     createSalesOrder,
     findPartnerProductPriceBookItem,
@@ -457,7 +458,7 @@ export function SalesOrderFormPage({
     const getSalesProductOptions = (storageId: string, selectedProductId: string) => {
         const availableIds = availableSalesProductIdsByStorage.get(storageId) ?? new Set<string>()
         return products.filter((product) => (
-            (product.id === selectedProductId || availableIds.has(product.id))
+            (product.id === selectedProductId || availableIds.has(product.id) || (hasFeature('services') && isService(product)))
             && hasValidProductCost(product.costPrice)
             && !hasMissingPartnerPriceBookCost(selectedCustomer, product.id)
         ))
@@ -602,6 +603,13 @@ export function SalesOrderFormPage({
                         next.priceSourceCurrency = ''
                         next.priceBookCostPrice = ''
                     } else {
+                        const selectedProduct = products.find((product) => product.id === changes.productId)
+                        if (isService(selectedProduct)) {
+                            next.storageId = SERVICES_VIRTUAL_STORAGE_ID
+                            next.batchId = ''
+                            Object.assign(next, resolveItemPricing(changes.productId, '', currency, selectedCustomer))
+                            return next
+                        }
                         const preferredBatchId = changes.batchId === undefined
                             ? getBatchesForPosition(changes.productId, next.storageId)[0]?.id || ''
                             : changes.batchId
@@ -626,7 +634,7 @@ export function SalesOrderFormPage({
         setItems((current) => {
             let changed = false
             const next = current.map((item) => {
-                if (!item.productId || !item.storageId || item.batchId) return item
+                if (!item.productId || !item.storageId || item.batchId || isService(products.find((product) => product.id === item.productId))) return item
                 const preferredBatch = getBatchesForPosition(item.productId, item.storageId)[0]
                 if (!preferredBatch) return item
                 changed = true
@@ -717,7 +725,8 @@ export function SalesOrderFormPage({
                     if (hasMissingPartnerPriceBookCost(customer, product.id)) {
                         throw new Error(getMissingPriceBookCostMessage(product.name, getPartnerPriceBookName(customer)))
                     }
-                    if (!item.storageId) {
+                    const service = isService(product)
+                    if (!service && !item.storageId) {
                         throw new Error(t('orders.form.errors.sourceStorageRequired', {
                             productName: product.name,
                             defaultValue: `Select a source storage for ${product.name}.`
@@ -741,7 +750,7 @@ export function SalesOrderFormPage({
                     }
                     const freeBonusQuantity = freeBonusQuantityValue
                     const inventoryQuantity = quantity + freeBonusQuantity
-                    const selectedBatch = item.batchId && item.batchId !== PRODUCT_STOCK_SELECTION
+                    const selectedBatch = !service && item.batchId && item.batchId !== PRODUCT_STOCK_SELECTION
                         ? stockBatchesById.get(item.batchId)
                         : null
                     if (item.batchId && item.batchId !== PRODUCT_STOCK_SELECTION) {
@@ -766,7 +775,7 @@ export function SalesOrderFormPage({
                         note: item.note.trim() || null,
                         priceBookId: hasPriceBookProvenance ? item.priceBookId : null,
                         priceBookItemId: hasPriceBookProvenance ? item.priceBookItemId : null,
-                        storageId: item.storageId,
+                        storageId: service ? SERVICES_VIRTUAL_STORAGE_ID : item.storageId,
                         productName: product.name,
                         productSku: product.sku,
                         unit: product.unit,
@@ -785,7 +794,7 @@ export function SalesOrderFormPage({
                         settlementCurrency: currency,
                         costPrice: sourceCostPrice,
                         convertedCostPrice,
-                        ...(item.batchId === ''
+                        ...(service || item.batchId === ''
                             ? { batchAllocations: null }
                             : item.batchId === PRODUCT_STOCK_SELECTION
                                 ? { batchAllocations: [] }
@@ -831,7 +840,7 @@ export function SalesOrderFormPage({
                 businessPartnerId: customer.id,
                 customerId: customer.id,
                 customerName: customer.name,
-                sourceStorageId: commonStorageId,
+                sourceStorageId: commonStorageId === SERVICES_VIRTUAL_STORAGE_ID ? null : commonStorageId,
                 items: orderItems,
                 subtotal,
                 discount: discountNum,
@@ -1161,7 +1170,11 @@ export function SalesOrderFormPage({
                                                                     })
                                                                     return
                                                                 }
-                                                                updateItem(index, { productId: product.id, productSearch: product.name })
+                                                                updateItem(index, {
+                                                                    productId: product.id,
+                                                                    productSearch: product.name,
+                                                                    ...(isService(product) ? { storageId: SERVICES_VIRTUAL_STORAGE_ID, batchId: '' } : {})
+                                                                })
                                                             }}
                                                             products={getSalesProductOptions(item.storageId, item.productId)}
                                                             disabled={priceBooksEnabled && (!isPriceBookCatalogReady || !selectedCustomer)}
@@ -1177,7 +1190,7 @@ export function SalesOrderFormPage({
                                                             onStorageMissingClick={() => handleStorageMissing(index)}
                                                         />
                                                     </div>
-                                                    {item.productId && item.storageId ? (
+                                                    {item.productId && item.storageId && !isService(product) ? (
                                                         <div className="space-y-1.5 pt-1">
                                                             <Label className="text-xs">{t('orders.form.stockSource', { defaultValue: 'Stock source' })}</Label>
                                                             <Select value={batchSelectionValue} onValueChange={(value) => updateItem(index, { batchId: value })}>
@@ -1209,31 +1222,40 @@ export function SalesOrderFormPage({
                                                         </div>
                                                     ) : null}
                                                 </div>
-                                                <div id={`sales-storage-${index}`} className={cn('space-y-2', highlightedStorageIndex === index && 'animate-pulse')} data-tour-id={index === 0 ? 'tutorial-order-storage' : undefined}>
-                                                    <Label className={cn(highlightedStorageIndex === index && 'text-destructive font-bold')}>{t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}</Label>
-                                                    <Select value={item.storageId} onValueChange={(value) => { setHighlightedStorageIndex(null); updateItem(index, { storageId: value }) }}>
-                                                        <SelectTrigger className={cn(highlightedStorageIndex === index && 'ring-2 ring-destructive')}><SelectValue placeholder={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })} /></SelectTrigger>
-                                                        <SelectContent>
-                                                            {storages.map((storage) => (
-                                                                <SelectItem key={storage.id} value={storage.id}>
-                                                                    {storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {item.storageId && item.productId
-                                                            ? t('orders.form.availableQuantity', {
-                                                                quantity: getAvailableQuantity(item.productId, item.storageId),
-                                                                defaultValue: `Available: ${getAvailableQuantity(item.productId, item.storageId)}`
-                                                            })
-                                                            : t('orders.form.chooseSourceStorageForLine', { defaultValue: 'Choose a source storage for this line.' })}
-                                                    </p>
-                                                </div>
+                                                {isService(product) ? (
+                                                    <div className="space-y-2">
+                                                        <Label>{t('services.title', { defaultValue: 'Services' })}</Label>
+                                                        <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+                                                            {t('services.noInventory', { defaultValue: 'Service sale — no stock or storage movement.' })}
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    <div id={`sales-storage-${index}`} className={cn('space-y-2', highlightedStorageIndex === index && 'animate-pulse')} data-tour-id={index === 0 ? 'tutorial-order-storage' : undefined}>
+                                                        <Label className={cn(highlightedStorageIndex === index && 'text-destructive font-bold')}>{t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}</Label>
+                                                        <Select value={item.storageId} onValueChange={(value) => { setHighlightedStorageIndex(null); updateItem(index, { storageId: value }) }}>
+                                                            <SelectTrigger className={cn(highlightedStorageIndex === index && 'ring-2 ring-destructive')}><SelectValue placeholder={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })} /></SelectTrigger>
+                                                            <SelectContent>
+                                                                {storages.map((storage) => (
+                                                                    <SelectItem key={storage.id} value={storage.id}>
+                                                                        {storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {item.storageId && item.productId
+                                                                ? t('orders.form.availableQuantity', {
+                                                                    quantity: getAvailableQuantity(item.productId, item.storageId),
+                                                                    defaultValue: `Available: ${getAvailableQuantity(item.productId, item.storageId)}`
+                                                                })
+                                                                : t('orders.form.chooseSourceStorageForLine', { defaultValue: 'Choose a source storage for this line.' })}
+                                                        </p>
+                                                    </div>
+                                                )}
                                                 <div className="space-y-2" data-tour-id={index === 0 ? 'tutorial-order-quantity' : undefined}>
                                                     <Label>{t('common.quantity', { defaultValue: 'Quantity' })}</Label>
                                                     <div className="flex items-center gap-1">
-                                                        <Input type="number" min={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : "1"} step={isDynamicUnit(product?.unit) ? ORDER_DECIMAL_STEP : "1"} value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} placeholder={t('common.quantity', { defaultValue: 'Quantity' })} />
+                                                        <Input type="number" min={(isService(product) || isDynamicUnit(product?.unit)) ? ORDER_DECIMAL_STEP : "1"} step={(isService(product) || isDynamicUnit(product?.unit)) ? ORDER_DECIMAL_STEP : "1"} value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} placeholder={t('common.quantity', { defaultValue: 'Quantity' })} />
                                                         {product?.unit && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${product.unit}`, product.unit)}</span>}
                                                     </div>
                                                 </div>
@@ -1702,8 +1724,8 @@ export function SalesOrderFormPage({
                     updateItem(productsViewItemIndex, {
                         productId: product.id,
                         productSearch: product.name,
-                        storageId,
-                        batchId
+                        storageId: isService(product) ? SERVICES_VIRTUAL_STORAGE_ID : storageId,
+                        batchId: isService(product) ? '' : batchId
                     })
                     setProductsViewItemIndex(null)
                 }}
