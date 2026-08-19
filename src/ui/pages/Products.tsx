@@ -550,9 +550,9 @@ export function Products() {
             <TooltipProvider>
                 <Tooltip delayDuration={200}>
                     <TooltipTrigger asChild>
-                            <span className="cursor-help border-b-2 border-dotted border-foreground/30 text-foreground/80">
-                                {t('products.form.mixedStorages') || 'Mixed'}
-                            </span>
+                        <span className="cursor-help border-b-2 border-dotted border-foreground/30 text-foreground/80">
+                            {t('products.form.mixedStorages') || 'Mixed'}
+                        </span>
                     </TooltipTrigger>
                     <TooltipContent side="top" align="start" className="max-w-[240px] space-y-1.5 p-3">
                         {sorted.map((entry) => (
@@ -611,8 +611,8 @@ export function Products() {
             (hasFeature('services') || !isService(product))
             && (catalogType === 'all' || (catalogType === 'services' ? isService(product) : !isService(product)))
             && (
-                product.name.toLowerCase().includes(search.toLowerCase()) ||
-                product.sku.toLowerCase().includes(search.toLowerCase()) ||
+                (product.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
+                (product.sku ?? '').toLowerCase().includes(search.toLowerCase()) ||
                 getCategoryName(product.categoryId).toLowerCase().includes(search.toLowerCase()) ||
                 getStorageName(product.storageId).toLowerCase().includes(search.toLowerCase())
             )
@@ -1546,140 +1546,140 @@ export function Products() {
                                                                 isLinkedVariant && !isAttachedVariant && 'mx-6 pt-3'
                                                             )}
                                                         >
-                                        <ContextMenu>
-                                            <ContextMenuTrigger asChild>
-                                                <div
-                                                    className={cn(
-                                                        'space-y-4 rounded-[2rem] border border-border bg-card p-4 shadow-sm',
-                                                        isLinkedVariant && 'rounded-[1.5rem] p-3',
-                                                        isAttachedVariant && 'relative z-10 rounded-t-none border-t-0 shadow-none',
-                                                        isProductSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5',
-                                                        hasProductCostWarning(product) && 'border-destructive/40 bg-destructive/10'
-                                                    )}
-                                                >
-                                            {isProductSelectionMode && !isService(product) && (
-                                                <div className="flex items-center gap-2">
-                                                    <Checkbox
-                                                        id={`product-select-mobile-${product.id}`}
-                                                        checked={selectedProductIds.has(product.id)}
-                                                        onCheckedChange={() => toggleProductSelection(product.id)}
-                                                    />
-                                                    <Label htmlFor={`product-select-mobile-${product.id}`} className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                                        {t('products.branchClone.selectProduct', { defaultValue: 'Select Product' })}
-                                                    </Label>
-                                                </div>
-                                            )}
-                                            <div className={cn('flex gap-4', isLinkedVariant && 'gap-3')}>
-                                                {hasProductCostWarning(product) && (
-                                                    <TooltipProvider>
-                                                        <Tooltip delayDuration={150}>
-                                                            <TooltipTrigger asChild>
-                                                                <span className="shrink-0 cursor-help text-destructive" aria-label="Product cannot be sold without a cost"><CircleAlert className="h-5 w-5" /></span>
-                                                            </TooltipTrigger>
-                                                            <TooltipContent>{getProductCostWarningMessage(product)}</TooltipContent>
-                                                        </Tooltip>
-                                                    </TooltipProvider>
-                                                )}
-                                                <div className={cn('flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem] border border-border/50 bg-muted/30', isLinkedVariant && 'h-14 w-14 rounded-2xl')}>
-                                                    {product.imageUrl ? (
-                                                        <img src={getDisplayImageUrl(product.imageUrl)} alt="" className="h-full w-full object-cover" />
-                                                    ) : (
-                                                        <Package className="h-8 w-8 text-muted-foreground/20" />
-                                                    )}
-                                                </div>
-                                                <div className="flex min-w-0 flex-1 flex-col justify-center">
-                                                    <div className={cn('text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground', isLinkedVariant && 'text-[9px]')}>{product.sku}</div>
-                                                    <div className={cn('truncate text-base font-black leading-tight text-foreground', isLinkedVariant && 'text-sm')}>{product.name}</div>
-                                                    {isService(product) && <span className="mt-1 inline-flex w-fit rounded-md border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">{t('services.title', { defaultValue: 'Service' })}</span>}
-                                                    <div className={cn('mt-0.5 text-[11px] font-bold uppercase tracking-wide text-primary/80', isLinkedVariant && 'text-[10px]')}>
-                                                        {getCategoryName(product.categoryId)}
-                                                    </div>
-                                                    <div className={cn('mt-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60', isLinkedVariant && 'text-[9px]')}>
-                                                        {renderStorage(product.id) ?? getStorageName(product.storageId)}
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col justify-center text-right">
-                                                    {product.parentProductId ? (
-                                                        <span className="mb-1 inline-flex self-end items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-muted-foreground">
-                                                            <GitBranch className="h-3 w-3" />
-                                                            {t('products.variants.variant', { defaultValue: 'Variant' })}
-                                                        </span>
-                                                    ) : isPrimaryProduct(product) ? (
-                                                        <span className="mb-1 self-end rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-primary">
-                                                            {t('products.variants.primary', { defaultValue: 'Primary' })}
-                                                        </span>
-                                                    ) : null}
-                                                    <div className={cn('text-lg font-black leading-tight text-primary', isLinkedVariant && 'text-base')}>
-                                                        {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
-                                                    </div>
-                                                    <div className={cn(
-                                                        'mt-0.5 text-[11px] font-black uppercase tracking-widest',
-                                                        isLinkedVariant && 'text-[10px]',
-                                                        product.quantity <= product.minStockLevel ? 'text-amber-500' : 'text-muted-foreground/60'
-                                                    )}>
-                                                        {isService(product) ? t('services.noInventory', { defaultValue: 'No inventory' }) : `${product.quantity} ${t(`products.units.${product.unit}`, product.unit)}`}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className={cn('flex justify-end gap-2 border-t border-border/50 pt-3', isLinkedVariant && 'gap-1.5 pt-2')}>
-                                                <Button
-                                                    variant="secondary"
-                                                    size="sm"
-                                                    allowViewer={!canEdit}
-                                                    className={cn('h-10 gap-2 rounded-xl px-6 font-bold', isLinkedVariant && 'h-9 gap-1.5 rounded-lg px-4 text-xs')}
-                                                    onClick={() => openProductForm(product)}
-                                                >
-                                                    {canEdit ? <Pencil className="h-4 w-4" /> : <Info className="h-4 w-4" />}
-                                                    {canEdit ? t('common.edit') : (t('common.view') || 'View')}
-                                                </Button>
-                                                {canEdit && !isService(product) && (
-                                                    <Button
-                                                        variant="secondary"
-                                                        size="sm"
-                                                        className={cn('h-10 gap-2 rounded-xl px-4 font-bold text-primary', isLinkedVariant && 'h-9 gap-1.5 rounded-lg px-3 text-xs')}
-                                                        onClick={() => {
-                                                            setSelectedProductForStock(product.id)
-                                                            setAdjustmentDialogOpen(true)
-                                                        }}
-                                                    >
-                                                        <Boxes className="h-4 w-4" />
-                                                        {t('products.addStock', { defaultValue: 'Add Stock' })}
-                                                    </Button>
-                                                )}
-                                                {canEdit && !isService(product) && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        aria-label={t('common.clone') || 'Clone'}
-                                                        className={cn('h-10 w-10 rounded-xl text-primary hover:bg-primary/5', isLinkedVariant && 'h-9 w-9 rounded-lg')}
-                                                        onClick={() => handleCloneProduct(product)}
-                                                    >
-                                                        <Copy className="h-4 w-4" />
-                                                    </Button>
-                                                )}
-                                                {canDelete && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        aria-label={t('common.delete') || 'Delete'}
-                                                        className={cn('h-10 w-10 rounded-xl text-destructive hover:bg-destructive/5', isLinkedVariant && 'h-9 w-9 rounded-lg')}
-                                                        onClick={() => handleDeleteProduct(product)}
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        </div>
-                                        </ContextMenuTrigger>
-                                        <ContextMenuContent>
-                                            {canEdit && !isService(product) && (
-                                                <ContextMenuItem className="gap-2" onSelect={() => { setSelectedProductForStock(product.id); setAdjustmentDialogOpen(true); }}>
-                                                    <Boxes className="h-4 w-4" />
-                                                    {t('products.addStock', { defaultValue: 'Add Stock' })}
-                                                </ContextMenuItem>
-                                            )}
-                                        </ContextMenuContent>
-                                    </ContextMenu>
+                                                            <ContextMenu>
+                                                                <ContextMenuTrigger asChild>
+                                                                    <div
+                                                                        className={cn(
+                                                                            'space-y-4 rounded-[2rem] border border-border bg-card p-4 shadow-sm',
+                                                                            isLinkedVariant && 'rounded-[1.5rem] p-3',
+                                                                            isAttachedVariant && 'relative z-10 rounded-t-none border-t-0 shadow-none',
+                                                                            isProductSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5',
+                                                                            hasProductCostWarning(product) && 'border-destructive/40 bg-destructive/10'
+                                                                        )}
+                                                                    >
+                                                                        {isProductSelectionMode && !isService(product) && (
+                                                                            <div className="flex items-center gap-2">
+                                                                                <Checkbox
+                                                                                    id={`product-select-mobile-${product.id}`}
+                                                                                    checked={selectedProductIds.has(product.id)}
+                                                                                    onCheckedChange={() => toggleProductSelection(product.id)}
+                                                                                />
+                                                                                <Label htmlFor={`product-select-mobile-${product.id}`} className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                                                                    {t('products.branchClone.selectProduct', { defaultValue: 'Select Product' })}
+                                                                                </Label>
+                                                                            </div>
+                                                                        )}
+                                                                        <div className={cn('flex gap-4', isLinkedVariant && 'gap-3')}>
+                                                                            {hasProductCostWarning(product) && (
+                                                                                <TooltipProvider>
+                                                                                    <Tooltip delayDuration={150}>
+                                                                                        <TooltipTrigger asChild>
+                                                                                            <span className="shrink-0 cursor-help text-destructive" aria-label="Product cannot be sold without a cost"><CircleAlert className="h-5 w-5" /></span>
+                                                                                        </TooltipTrigger>
+                                                                                        <TooltipContent>{getProductCostWarningMessage(product)}</TooltipContent>
+                                                                                    </Tooltip>
+                                                                                </TooltipProvider>
+                                                                            )}
+                                                                            <div className={cn('flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem] border border-border/50 bg-muted/30', isLinkedVariant && 'h-14 w-14 rounded-2xl')}>
+                                                                                {product.imageUrl ? (
+                                                                                    <img src={getDisplayImageUrl(product.imageUrl)} alt="" className="h-full w-full object-cover" />
+                                                                                ) : (
+                                                                                    <Package className="h-8 w-8 text-muted-foreground/20" />
+                                                                                )}
+                                                                            </div>
+                                                                            <div className="flex min-w-0 flex-1 flex-col justify-center">
+                                                                                <div className={cn('text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground', isLinkedVariant && 'text-[9px]')}>{product.sku}</div>
+                                                                                <div className={cn('truncate text-base font-black leading-tight text-foreground', isLinkedVariant && 'text-sm')}>{product.name}</div>
+                                                                                {isService(product) && <span className="mt-1 inline-flex w-fit rounded-md border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">{t('services.title', { defaultValue: 'Service' })}</span>}
+                                                                                <div className={cn('mt-0.5 text-[11px] font-bold uppercase tracking-wide text-primary/80', isLinkedVariant && 'text-[10px]')}>
+                                                                                    {getCategoryName(product.categoryId)}
+                                                                                </div>
+                                                                                <div className={cn('mt-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60', isLinkedVariant && 'text-[9px]')}>
+                                                                                    {renderStorage(product.id) ?? getStorageName(product.storageId)}
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="flex flex-col justify-center text-right">
+                                                                                {product.parentProductId ? (
+                                                                                    <span className="mb-1 inline-flex self-end items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-muted-foreground">
+                                                                                        <GitBranch className="h-3 w-3" />
+                                                                                        {t('products.variants.variant', { defaultValue: 'Variant' })}
+                                                                                    </span>
+                                                                                ) : isPrimaryProduct(product) ? (
+                                                                                    <span className="mb-1 self-end rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-primary">
+                                                                                        {t('products.variants.primary', { defaultValue: 'Primary' })}
+                                                                                    </span>
+                                                                                ) : null}
+                                                                                <div className={cn('text-lg font-black leading-tight text-primary', isLinkedVariant && 'text-base')}>
+                                                                                    {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
+                                                                                </div>
+                                                                                <div className={cn(
+                                                                                    'mt-0.5 text-[11px] font-black uppercase tracking-widest',
+                                                                                    isLinkedVariant && 'text-[10px]',
+                                                                                    product.quantity <= product.minStockLevel ? 'text-amber-500' : 'text-muted-foreground/60'
+                                                                                )}>
+                                                                                    {isService(product) ? t('services.noInventory', { defaultValue: 'No inventory' }) : `${product.quantity} ${t(`products.units.${product.unit}`, product.unit)}`}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className={cn('flex justify-end gap-2 border-t border-border/50 pt-3', isLinkedVariant && 'gap-1.5 pt-2')}>
+                                                                            <Button
+                                                                                variant="secondary"
+                                                                                size="sm"
+                                                                                allowViewer={!canEdit}
+                                                                                className={cn('h-10 gap-2 rounded-xl px-6 font-bold', isLinkedVariant && 'h-9 gap-1.5 rounded-lg px-4 text-xs')}
+                                                                                onClick={() => openProductForm(product)}
+                                                                            >
+                                                                                {canEdit ? <Pencil className="h-4 w-4" /> : <Info className="h-4 w-4" />}
+                                                                                {canEdit ? t('common.edit') : (t('common.view') || 'View')}
+                                                                            </Button>
+                                                                            {canEdit && !isService(product) && (
+                                                                                <Button
+                                                                                    variant="secondary"
+                                                                                    size="sm"
+                                                                                    className={cn('h-10 gap-2 rounded-xl px-4 font-bold text-primary', isLinkedVariant && 'h-9 gap-1.5 rounded-lg px-3 text-xs')}
+                                                                                    onClick={() => {
+                                                                                        setSelectedProductForStock(product.id)
+                                                                                        setAdjustmentDialogOpen(true)
+                                                                                    }}
+                                                                                >
+                                                                                    <Boxes className="h-4 w-4" />
+                                                                                    {t('products.addStock', { defaultValue: 'Add Stock' })}
+                                                                                </Button>
+                                                                            )}
+                                                                            {canEdit && !isService(product) && (
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="icon"
+                                                                                    aria-label={t('common.clone') || 'Clone'}
+                                                                                    className={cn('h-10 w-10 rounded-xl text-primary hover:bg-primary/5', isLinkedVariant && 'h-9 w-9 rounded-lg')}
+                                                                                    onClick={() => handleCloneProduct(product)}
+                                                                                >
+                                                                                    <Copy className="h-4 w-4" />
+                                                                                </Button>
+                                                                            )}
+                                                                            {canDelete && (
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="icon"
+                                                                                    aria-label={t('common.delete') || 'Delete'}
+                                                                                    className={cn('h-10 w-10 rounded-xl text-destructive hover:bg-destructive/5', isLinkedVariant && 'h-9 w-9 rounded-lg')}
+                                                                                    onClick={() => handleDeleteProduct(product)}
+                                                                                >
+                                                                                    <Trash2 className="h-4 w-4" />
+                                                                                </Button>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                </ContextMenuTrigger>
+                                                                <ContextMenuContent>
+                                                                    {canEdit && !isService(product) && (
+                                                                        <ContextMenuItem className="gap-2" onSelect={() => { setSelectedProductForStock(product.id); setAdjustmentDialogOpen(true); }}>
+                                                                            <Boxes className="h-4 w-4" />
+                                                                            {t('products.addStock', { defaultValue: 'Add Stock' })}
+                                                                        </ContextMenuItem>
+                                                                    )}
+                                                                </ContextMenuContent>
+                                                            </ContextMenu>
                                                         </div>
                                                     )
                                                 })}
@@ -1698,111 +1698,111 @@ export function Products() {
                                                     <ContextMenuTrigger asChild>
                                                         <div
                                                             className={cn(
-                                                            'group relative flex flex-col gap-4 overflow-hidden rounded-[1.5rem] border border-border/50 bg-card p-4 transition-all duration-300 hover:-translate-y-1 hover:bg-accent/5 hover:shadow-2xl hover:shadow-primary/5',
+                                                                'group relative flex flex-col gap-4 overflow-hidden rounded-[1.5rem] border border-border/50 bg-card p-4 transition-all duration-300 hover:-translate-y-1 hover:bg-accent/5 hover:shadow-2xl hover:shadow-primary/5',
                                                                 isProductSelectionMode && selectedProductIds.has(product.id) && 'border-primary/50 bg-primary/5 shadow-lg shadow-primary/10',
                                                                 hasProductCostWarning(product) && 'border-destructive/40 bg-destructive/10 hover:bg-destructive/15'
                                                             )}
                                                         >
-                                                    {isProductSelectionMode && !isService(product) && (
-                                                        <div className="flex items-center gap-2">
-                                                            <Checkbox
-                                                                id={`product-select-grid-${product.id}`}
-                                                                checked={selectedProductIds.has(product.id)}
-                                                                onCheckedChange={() => toggleProductSelection(product.id)}
-                                                            />
-                                                            <Label htmlFor={`product-select-grid-${product.id}`} className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                                                {t('products.branchClone.selectProduct', { defaultValue: 'Select Product' })}
-                                                            </Label>
-                                                        </div>
-                                                    )}
-                                                    <div className="relative aspect-square overflow-hidden rounded-2xl border border-border/20 bg-muted/30">
-                                                        {product.imageUrl ? (
-                                                            <img src={getDisplayImageUrl(product.imageUrl)} alt={product.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
-                                                        ) : (
-                                                            <div className="flex h-full items-center justify-center">
-                                                                <Package className="h-12 w-12 text-muted-foreground/10" />
-                                                            </div>
-                                                        )}
-                                                        {!isService(product) && <div className={cn(
-                                                            'absolute right-2 top-2 rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-tighter shadow-sm',
-                                                            product.quantity <= product.minStockLevel ? 'bg-amber-500 text-white' : 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-600'
-                                                        )}>
-                                                            {product.quantity <= product.minStockLevel ? (t('products.lowStock') || 'Low Stock') : (t('products.inStock') || 'In Stock')}
-                                                        </div>}
-                                                        {hasProductCostWarning(product) && (
-                                                            <TooltipProvider>
-                                                                <Tooltip delayDuration={150}>
-                                                                    <TooltipTrigger asChild>
-                                                                        <span className="absolute left-2 top-2 cursor-help text-destructive"><CircleAlert className="h-5 w-5 fill-background" /></span>
-                                                                    </TooltipTrigger>
-                                                                    <TooltipContent>{getProductCostWarningMessage(product)}</TooltipContent>
-                                                                </Tooltip>
-                                                            </TooltipProvider>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="flex-1 space-y-1">
-                                                        <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground/60">{product.sku}</div>
-                                                        <div className="flex items-start gap-2"><h3 className="line-clamp-2 text-sm font-bold leading-snug text-foreground transition-colors group-hover:text-primary">{product.name}</h3>{isService(product) && <span className="shrink-0 rounded-md border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">{t('services.title', { defaultValue: 'Service' })}</span>}{isPrimaryProduct(product) && <span className="shrink-0 rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-primary">{t('products.variants.primary', { defaultValue: 'Primary' })}</span>}</div>
-                                                        <div className="text-[11px] font-bold uppercase tracking-wide text-primary/70">{getCategoryName(product.categoryId)}</div>
-                                                        <div className="text-[10px] font-medium text-muted-foreground/80">{isService(product) ? t('services.noInventory', { defaultValue: 'No inventory' }) : (renderStorage(product.id) ?? getStorageName(product.storageId))}</div>
-                                                    </div>
-
-                                                    <div className="flex items-center justify-between border-t border-border/40 pt-3">
-                                                        <div>
-                                                            <div className="text-lg font-black text-primary">
-                                                                {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
-                                                            </div>
-                                                            <div className="text-[11px] font-medium text-muted-foreground">
-                                                                {isService(product) ? t('services.noInventory', { defaultValue: 'No inventory' }) : `${product.quantity} ${t(`products.units.${product.unit}`, product.unit)}`}
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="flex gap-1">
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                allowViewer={!canEdit}
-                                                                aria-label={canEdit ? (t('common.edit') || 'Edit') : (t('common.view') || 'View')}
-                                                                className="h-8 w-8 rounded-lg transition-colors hover:bg-primary/10 hover:text-primary"
-                                                                onClick={() => openProductForm(product)}
-                                                            >
-                                                                {canEdit ? <Pencil className="h-3.5 w-3.5" /> : <Info className="h-3.5 w-3.5" />}
-                                                            </Button>
-                                                            {canEdit && !isService(product) && (
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    aria-label={t('common.clone') || 'Clone'}
-                                                                    className="h-8 w-8 rounded-lg transition-colors hover:bg-primary/10 hover:text-primary"
-                                                                    onClick={() => handleCloneProduct(product)}
-                                                                >
-                                                                    <Copy className="h-3.5 w-3.5" />
-                                                                </Button>
+                                                            {isProductSelectionMode && !isService(product) && (
+                                                                <div className="flex items-center gap-2">
+                                                                    <Checkbox
+                                                                        id={`product-select-grid-${product.id}`}
+                                                                        checked={selectedProductIds.has(product.id)}
+                                                                        onCheckedChange={() => toggleProductSelection(product.id)}
+                                                                    />
+                                                                    <Label htmlFor={`product-select-grid-${product.id}`} className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                                                        {t('products.branchClone.selectProduct', { defaultValue: 'Select Product' })}
+                                                                    </Label>
+                                                                </div>
                                                             )}
-                                                            {canDelete && (
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    aria-label={t('common.delete') || 'Delete'}
-                                                                    className="h-8 w-8 rounded-lg transition-colors hover:bg-destructive/10 hover:text-destructive"
-                                                                    onClick={() => handleDeleteProduct(product)}
-                                                                >
-                                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                                </Button>
-                                                            )}
+                                                            <div className="relative aspect-square overflow-hidden rounded-2xl border border-border/20 bg-muted/30">
+                                                                {product.imageUrl ? (
+                                                                    <img src={getDisplayImageUrl(product.imageUrl)} alt={product.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                                                                ) : (
+                                                                    <div className="flex h-full items-center justify-center">
+                                                                        <Package className="h-12 w-12 text-muted-foreground/10" />
+                                                                    </div>
+                                                                )}
+                                                                {!isService(product) && <div className={cn(
+                                                                    'absolute right-2 top-2 rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-tighter shadow-sm',
+                                                                    product.quantity <= product.minStockLevel ? 'bg-amber-500 text-white' : 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-600'
+                                                                )}>
+                                                                    {product.quantity <= product.minStockLevel ? (t('products.lowStock') || 'Low Stock') : (t('products.inStock') || 'In Stock')}
+                                                                </div>}
+                                                                {hasProductCostWarning(product) && (
+                                                                    <TooltipProvider>
+                                                                        <Tooltip delayDuration={150}>
+                                                                            <TooltipTrigger asChild>
+                                                                                <span className="absolute left-2 top-2 cursor-help text-destructive"><CircleAlert className="h-5 w-5 fill-background" /></span>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent>{getProductCostWarningMessage(product)}</TooltipContent>
+                                                                        </Tooltip>
+                                                                    </TooltipProvider>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="flex-1 space-y-1">
+                                                                <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground/60">{product.sku}</div>
+                                                                <div className="flex items-start gap-2"><h3 className="line-clamp-2 text-sm font-bold leading-snug text-foreground transition-colors group-hover:text-primary">{product.name}</h3>{isService(product) && <span className="shrink-0 rounded-md border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">{t('services.title', { defaultValue: 'Service' })}</span>}{isPrimaryProduct(product) && <span className="shrink-0 rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-primary">{t('products.variants.primary', { defaultValue: 'Primary' })}</span>}</div>
+                                                                <div className="text-[11px] font-bold uppercase tracking-wide text-primary/70">{getCategoryName(product.categoryId)}</div>
+                                                                <div className="text-[10px] font-medium text-muted-foreground/80">{isService(product) ? t('services.noInventory', { defaultValue: 'No inventory' }) : (renderStorage(product.id) ?? getStorageName(product.storageId))}</div>
+                                                            </div>
+
+                                                            <div className="flex items-center justify-between border-t border-border/40 pt-3">
+                                                                <div>
+                                                                    <div className="text-lg font-black text-primary">
+                                                                        {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
+                                                                    </div>
+                                                                    <div className="text-[11px] font-medium text-muted-foreground">
+                                                                        {isService(product) ? t('services.noInventory', { defaultValue: 'No inventory' }) : `${product.quantity} ${t(`products.units.${product.unit}`, product.unit)}`}
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="flex gap-1">
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        allowViewer={!canEdit}
+                                                                        aria-label={canEdit ? (t('common.edit') || 'Edit') : (t('common.view') || 'View')}
+                                                                        className="h-8 w-8 rounded-lg transition-colors hover:bg-primary/10 hover:text-primary"
+                                                                        onClick={() => openProductForm(product)}
+                                                                    >
+                                                                        {canEdit ? <Pencil className="h-3.5 w-3.5" /> : <Info className="h-3.5 w-3.5" />}
+                                                                    </Button>
+                                                                    {canEdit && !isService(product) && (
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            aria-label={t('common.clone') || 'Clone'}
+                                                                            className="h-8 w-8 rounded-lg transition-colors hover:bg-primary/10 hover:text-primary"
+                                                                            onClick={() => handleCloneProduct(product)}
+                                                                        >
+                                                                            <Copy className="h-3.5 w-3.5" />
+                                                                        </Button>
+                                                                    )}
+                                                                    {canDelete && (
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            aria-label={t('common.delete') || 'Delete'}
+                                                                            className="h-8 w-8 rounded-lg transition-colors hover:bg-destructive/10 hover:text-destructive"
+                                                                            onClick={() => handleDeleteProduct(product)}
+                                                                        >
+                                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                                        </Button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                </div>
                                                     </ContextMenuTrigger>
-                                                <ContextMenuContent>
-                                                    {canEdit && !isService(product) && (
-                                                        <ContextMenuItem className="gap-2" onSelect={() => { setSelectedProductForStock(product.id); setAdjustmentDialogOpen(true); }}>
-                                                            <Boxes className="h-4 w-4" />
-                                                            {t('products.addStock', { defaultValue: 'Add Stock' })}
-                                                        </ContextMenuItem>
-                                                    )}
-                                                </ContextMenuContent>
+                                                    <ContextMenuContent>
+                                                        {canEdit && !isService(product) && (
+                                                            <ContextMenuItem className="gap-2" onSelect={() => { setSelectedProductForStock(product.id); setAdjustmentDialogOpen(true); }}>
+                                                                <Boxes className="h-4 w-4" />
+                                                                {t('products.addStock', { defaultValue: 'Add Stock' })}
+                                                            </ContextMenuItem>
+                                                        )}
+                                                    </ContextMenuContent>
                                                 </ContextMenu>
                                             ))}
                                         </div>
@@ -1884,106 +1884,106 @@ export function Products() {
                                                 {tableProductRows.map(({ product, isPrimary, isVariant, hasVisibleVariants, isLastVariant }) => (
                                                     <ContextMenu key={product.id}>
                                                         <ContextMenuTrigger asChild>
-                                                    <TableRow className={cn(
-                                                        isProductSelectionMode && selectedProductIds.has(product.id) && 'bg-primary/5',
-                                                        isVariant && 'bg-primary/[0.02] hover:bg-primary/[0.05]',
-                                                        hasProductCostWarning(product) && 'bg-destructive/10 hover:bg-destructive/15'
-                                                    )}>
-                                                        {isProductSelectionMode && (
-                                                            <TableCell>{!isService(product) && <Checkbox
-                                                                    id={`product-select-table-${product.id}`}
-                                                                    checked={selectedProductIds.has(product.id)}
-                                                                    onCheckedChange={() => toggleProductSelection(product.id)}
-                                                                />}</TableCell>
-                                                        )}
-                                                        <TableCell>
-                                                            <div className="flex items-center gap-1">
-                                                                {isPrimary && hasVisibleVariants && (
-                                                                    <Button
-                                                                        type="button"
-                                                                        variant="ghost"
-                                                                        size="icon"
-                                                                        className="h-7 w-7 rounded-lg"
-                                                                        aria-label={collapsedPrimaryProductIds.has(product.id)
-                                                                            ? t('products.variants.expand', { defaultValue: 'Show variants' })
-                                                                            : t('products.variants.collapse', { defaultValue: 'Hide variants' })}
-                                                                        aria-expanded={!collapsedPrimaryProductIds.has(product.id)}
-                                                                        onClick={() => setCollapsedPrimaryProductIds((current) => {
-                                                                            const next = new Set(current)
-                                                                            if (next.has(product.id)) {
-                                                                                next.delete(product.id)
-                                                                            } else {
-                                                                                next.add(product.id)
-                                                                            }
-                                                                            return next
-                                                                        })}
-                                                                    >
-                                                                        {collapsedPrimaryProductIds.has(product.id) ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                                                                    </Button>
+                                                            <TableRow className={cn(
+                                                                isProductSelectionMode && selectedProductIds.has(product.id) && 'bg-primary/5',
+                                                                isVariant && 'bg-primary/[0.02] hover:bg-primary/[0.05]',
+                                                                hasProductCostWarning(product) && 'bg-destructive/10 hover:bg-destructive/15'
+                                                            )}>
+                                                                {isProductSelectionMode && (
+                                                                    <TableCell>{!isService(product) && <Checkbox
+                                                                        id={`product-select-table-${product.id}`}
+                                                                        checked={selectedProductIds.has(product.id)}
+                                                                        onCheckedChange={() => toggleProductSelection(product.id)}
+                                                                    />}</TableCell>
                                                                 )}
-                                                            {hasProductCostWarning(product) && (
-                                                                <TooltipProvider>
-                                                                    <Tooltip delayDuration={150}>
-                                                                        <TooltipTrigger asChild>
-                                                                            <span className="inline-flex cursor-help text-destructive" aria-label="Product cannot be sold without a cost">
-                                                                                <CircleAlert className="h-5 w-5" />
-                                                                            </span>
-                                                                        </TooltipTrigger>
-                                                                        <TooltipContent>{getProductCostWarningMessage(product)}</TooltipContent>
-                                                                    </Tooltip>
-                                                                </TooltipProvider>
-                                                            )}
-                                                            </div>
-                                                        </TableCell>
-                                                        <TableCell className={cn('relative', isVariant && 'pl-9')}>
-                                                            {isVariant && <span aria-hidden="true" className={cn('pointer-events-none absolute start-3 top-0 w-4 border-b border-s border-border/60', isLastVariant ? 'h-1/2' : 'bottom-0')} />}
-                                                            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-muted">
-                                                                {product.imageUrl ? (
-                                                                    <img src={getDisplayImageUrl(product.imageUrl)} alt={product.name} className="h-full w-full object-cover" />
-                                                                ) : (
-                                                                    <Package className="h-5 w-5 text-muted-foreground/30" />
+                                                                <TableCell>
+                                                                    <div className="flex items-center gap-1">
+                                                                        {isPrimary && hasVisibleVariants && (
+                                                                            <Button
+                                                                                type="button"
+                                                                                variant="ghost"
+                                                                                size="icon"
+                                                                                className="h-7 w-7 rounded-lg"
+                                                                                aria-label={collapsedPrimaryProductIds.has(product.id)
+                                                                                    ? t('products.variants.expand', { defaultValue: 'Show variants' })
+                                                                                    : t('products.variants.collapse', { defaultValue: 'Hide variants' })}
+                                                                                aria-expanded={!collapsedPrimaryProductIds.has(product.id)}
+                                                                                onClick={() => setCollapsedPrimaryProductIds((current) => {
+                                                                                    const next = new Set(current)
+                                                                                    if (next.has(product.id)) {
+                                                                                        next.delete(product.id)
+                                                                                    } else {
+                                                                                        next.add(product.id)
+                                                                                    }
+                                                                                    return next
+                                                                                })}
+                                                                            >
+                                                                                {collapsedPrimaryProductIds.has(product.id) ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                                                            </Button>
+                                                                        )}
+                                                                        {hasProductCostWarning(product) && (
+                                                                            <TooltipProvider>
+                                                                                <Tooltip delayDuration={150}>
+                                                                                    <TooltipTrigger asChild>
+                                                                                        <span className="inline-flex cursor-help text-destructive" aria-label="Product cannot be sold without a cost">
+                                                                                            <CircleAlert className="h-5 w-5" />
+                                                                                        </span>
+                                                                                    </TooltipTrigger>
+                                                                                    <TooltipContent>{getProductCostWarningMessage(product)}</TooltipContent>
+                                                                                </Tooltip>
+                                                                            </TooltipProvider>
+                                                                        )}
+                                                                    </div>
+                                                                </TableCell>
+                                                                <TableCell className={cn('relative', isVariant && 'pl-9')}>
+                                                                    {isVariant && <span aria-hidden="true" className={cn('pointer-events-none absolute start-3 top-0 w-4 border-b border-s border-border/60', isLastVariant ? 'h-1/2' : 'bottom-0')} />}
+                                                                    <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-muted">
+                                                                        {product.imageUrl ? (
+                                                                            <img src={getDisplayImageUrl(product.imageUrl)} alt={product.name} className="h-full w-full object-cover" />
+                                                                        ) : (
+                                                                            <Package className="h-5 w-5 text-muted-foreground/30" />
+                                                                        )}
+                                                                    </div>
+                                                                </TableCell>
+                                                                <TableCell className="font-mono text-sm">{product.sku}</TableCell>
+                                                                <TableCell className="font-medium"><div className="flex items-center gap-2"><span>{product.name}</span>{isService(product) && <span className="inline-flex rounded-md border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">{t('services.title', { defaultValue: 'Service' })}</span>}{isPrimary && <span className="inline-flex rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-primary">{t('products.variants.primary', { defaultValue: 'Primary' })}</span>}{isVariant && <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground"><GitBranch className="h-3 w-3" />{t('products.variants.variant', { defaultValue: 'Variant' })}</span>}</div></TableCell>
+                                                                <TableCell>{getCategoryName(product.categoryId)}</TableCell>
+                                                                <TableCell>{isService(product) ? '—' : (renderStorage(product.id) ?? getStorageName(product.storageId))}</TableCell>
+                                                                {priceBooksEnabled && <TableCell>{renderPriceBooks(product.id)}</TableCell>}
+                                                                <TableCell className="text-right">
+                                                                    {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
+                                                                </TableCell>
+                                                                <TableCell className="text-right">
+                                                                    <span className={product.quantity <= product.minStockLevel ? 'font-medium text-amber-500' : ''}>
+                                                                        {isService(product) ? '—' : `${product.quantity} ${t(`products.units.${product.unit}`, product.unit)}`}
+                                                                    </span>
+                                                                </TableCell>
+                                                                {(canEdit || canDelete || user?.role === 'viewer') && (
+                                                                    <TableCell className="text-right">
+                                                                        <div className="flex justify-end gap-2">
+                                                                            <Button
+                                                                                variant="ghost"
+                                                                                size="icon"
+                                                                                allowViewer={!canEdit}
+                                                                                aria-label={canEdit ? (t('common.edit') || 'Edit') : (t('common.view') || 'View')}
+                                                                                onClick={() => openProductForm(product)}
+                                                                            >
+                                                                                {canEdit ? <Pencil className="h-4 w-4" /> : <Info className="h-4 w-4 text-primary" />}
+                                                                            </Button>
+                                                                            {canEdit && !isService(product) && (
+                                                                                <Button variant="ghost" size="icon" aria-label={t('common.clone') || 'Clone'} onClick={() => handleCloneProduct(product)}>
+                                                                                    <Copy className="h-4 w-4 text-primary" />
+                                                                                </Button>
+                                                                            )}
+                                                                            {canDelete && (
+                                                                                <Button variant="ghost" size="icon" aria-label={t('common.delete') || 'Delete'} onClick={() => handleDeleteProduct(product)}>
+                                                                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                                                                </Button>
+                                                                            )}
+                                                                        </div>
+                                                                    </TableCell>
                                                                 )}
-                                                            </div>
-                                                        </TableCell>
-                                                        <TableCell className="font-mono text-sm">{product.sku}</TableCell>
-                                                        <TableCell className="font-medium"><div className="flex items-center gap-2"><span>{product.name}</span>{isService(product) && <span className="inline-flex rounded-md border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">{t('services.title', { defaultValue: 'Service' })}</span>}{isPrimary && <span className="inline-flex rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-primary">{t('products.variants.primary', { defaultValue: 'Primary' })}</span>}{isVariant && <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground"><GitBranch className="h-3 w-3" />{t('products.variants.variant', { defaultValue: 'Variant' })}</span>}</div></TableCell>
-                                                        <TableCell>{getCategoryName(product.categoryId)}</TableCell>
-                                                        <TableCell>{isService(product) ? '—' : (renderStorage(product.id) ?? getStorageName(product.storageId))}</TableCell>
-                                                        {priceBooksEnabled && <TableCell>{renderPriceBooks(product.id)}</TableCell>}
-                                                        <TableCell className="text-right">
-                                                            {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
-                                                        </TableCell>
-                                                        <TableCell className="text-right">
-                                                            <span className={product.quantity <= product.minStockLevel ? 'font-medium text-amber-500' : ''}>
-                                                                {isService(product) ? '—' : `${product.quantity} ${t(`products.units.${product.unit}`, product.unit)}`}
-                                                            </span>
-                                                        </TableCell>
-                                                        {(canEdit || canDelete || user?.role === 'viewer') && (
-                                                            <TableCell className="text-right">
-                                                                <div className="flex justify-end gap-2">
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="icon"
-                                                                        allowViewer={!canEdit}
-                                                                        aria-label={canEdit ? (t('common.edit') || 'Edit') : (t('common.view') || 'View')}
-                                                                        onClick={() => openProductForm(product)}
-                                                                    >
-                                                                        {canEdit ? <Pencil className="h-4 w-4" /> : <Info className="h-4 w-4 text-primary" />}
-                                                                    </Button>
-                                                                    {canEdit && !isService(product) && (
-                                                                        <Button variant="ghost" size="icon" aria-label={t('common.clone') || 'Clone'} onClick={() => handleCloneProduct(product)}>
-                                                                            <Copy className="h-4 w-4 text-primary" />
-                                                                        </Button>
-                                                                    )}
-                                                                    {canDelete && (
-                                                                        <Button variant="ghost" size="icon" aria-label={t('common.delete') || 'Delete'} onClick={() => handleDeleteProduct(product)}>
-                                                                            <Trash2 className="h-4 w-4 text-destructive" />
-                                                                        </Button>
-                                                                    )}
-                                                                </div>
-                                                            </TableCell>
-                                                        )}
-                                                    </TableRow>
+                                                            </TableRow>
                                                         </ContextMenuTrigger>
                                                         <ContextMenuContent>
                                                             {canEdit && !isService(product) && (
