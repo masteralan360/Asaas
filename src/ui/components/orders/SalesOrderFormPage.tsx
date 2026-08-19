@@ -220,6 +220,27 @@ export function SalesOrderFormPage({
     const customerPartners = useBusinessPartners(workspaceId, { roles: ['customer'] })
     const editingOrder = useSalesOrder(editingOrderId)
     const defaultStorageId = getPrimaryStorageFromList(storages)?.id || ''
+    const storageOptionsForModal = useMemo(() => {
+        if (!hasFeature('services')) return storages
+        return [
+            ...storages,
+            {
+                id: SERVICES_VIRTUAL_STORAGE_ID,
+                workspaceId,
+                name: t('services.title', { defaultValue: 'Services' }),
+                isSystem: false,
+                isProtected: true,
+                isPrimary: false,
+                isMarketplace: false,
+                createdAt: '',
+                updatedAt: '',
+                syncStatus: 'synced' as const,
+                lastSyncedAt: null,
+                version: 1,
+                isDeleted: false
+            }
+        ]
+    }, [hasFeature, storages, t, workspaceId])
     const priceBooksEnabled = hasCapability('priceBooks')
     const {
         priceBooks,
@@ -457,8 +478,11 @@ export function SalesOrderFormPage({
 
     const getSalesProductOptions = (storageId: string, selectedProductId: string) => {
         const availableIds = availableSalesProductIdsByStorage.get(storageId) ?? new Set<string>()
+        const isServicesSource = storageId === SERVICES_VIRTUAL_STORAGE_ID
         return products.filter((product) => (
-            (product.id === selectedProductId || availableIds.has(product.id) || (hasFeature('services') && isService(product)))
+            (product.id === selectedProductId
+                || availableIds.has(product.id)
+                || (isServicesSource && hasFeature('services') && isService(product)))
             && hasValidProductCost(product.costPrice)
             && !hasMissingPartnerPriceBookCost(selectedCustomer, product.id)
         ))
@@ -1240,6 +1264,11 @@ export function SalesOrderFormPage({
                                                                         {storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name}
                                                                     </SelectItem>
                                                                 ))}
+                                                                {hasFeature('services') && (
+                                                                    <SelectItem value={SERVICES_VIRTUAL_STORAGE_ID}>
+                                                                        {t('services.title', { defaultValue: 'Services' })}
+                                                                    </SelectItem>
+                                                                )}
                                                             </SelectContent>
                                                         </Select>
                                                         <p className="text-xs text-muted-foreground">
@@ -1662,7 +1691,7 @@ export function SalesOrderFormPage({
                     if (!open) setProductsViewItemIndex(null)
                 }}
                 products={products}
-                storages={storages}
+                storages={storageOptionsForModal}
                 initialStorageId={productsViewItemIndex === null
                     ? ''
                     : (items[productsViewItemIndex]?.storageId || sourceStorageId)}
@@ -1673,10 +1702,12 @@ export function SalesOrderFormPage({
                 getStorageLabel={(storage) => storage.isSystem
                     ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name)
                     : storage.name}
-                getProductMeta={(product, storageId) => t('orders.form.availableQuantity', {
-                    quantity: getAvailableQuantity(product.id, storageId),
-                    defaultValue: `Available: ${getAvailableQuantity(product.id, storageId)}`
-                })}
+                getProductMeta={(product, storageId) => isService(product)
+                    ? null
+                    : t('orders.form.availableQuantity', {
+                        quantity: getAvailableQuantity(product.id, storageId),
+                        defaultValue: `Available: ${getAvailableQuantity(product.id, storageId)}`
+                    })}
                 getProductStockOption={(product, storageId) => {
                     const quantity = getRegularStockQuantity(product.id, storageId)
                     if (quantity <= 0) return null
