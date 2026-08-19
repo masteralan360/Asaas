@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Hold-Pitch Ramp Simulator (440Hz → 1320Hz)</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --border: #2a2f3a;
+    --text: #e6e9ef;
+    --muted: #8b93a3;
+    --accent: #4f9cf7;
+    --accent-strong: #2f7fe0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    font-family: -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+    background: radial-gradient(1200px 600px at 50% -10%, #1b2230, var(--bg) 60%);
+    color: var(--text);
+  }
+  .card {
+    width: min(420px, 92vw);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.45);
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+  .readout {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 12px;
+  }
+  .freq { font-size: 40px; font-weight: 700; letter-spacing: .5px; font-variant-numeric: tabular-nums; }
+  .freq small { font-size: 14px; color: var(--muted); font-weight: 400; }
+  .pct { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .track {
+    position: relative;
+    height: 14px;
+    background: #0b0d12;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+  .fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 0%;
+    background: linear-gradient(90deg, #4f9cf7, #b06efa);
+    transition: width .04s linear;
+  }
+  .ticks {
+    display: flex;
+    justify-content: space-between;
+    color: var(--muted);
+    font-size: 11px;
+    margin-bottom: 18px;
+  }
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+    margin-bottom: 20px;
+  }
+  .actions { display: flex; gap: 10px; }
+  .params {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .params label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .params input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+    padding: 8px;
+  }
+  .params input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  .btn {
+    flex: 1;
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    padding: 12px 10px;
+    border-radius: 12px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    transition: background .15s, transform .05s;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn.primary { background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }
+  .btn.primary:disabled { opacity: .45; cursor: not-allowed; }
+  .status { min-height: 18px; font-size: 12px; color: var(--muted); margin-top: 12px; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <h1>Hold-pitch ramp simulator</h1>
+    <p class="sub">Sine tone, exponential ramp. Defaults match the app (440&nbsp;Hz → 1320&nbsp;Hz over 1500&nbsp;ms) — edit below.</p>
+
+    <div class="params">
+      <label>Min (Hz) <input id="minHz" type="number" min="20" max="20000" step="1" value="440" /></label>
+      <label>Max (Hz) <input id="maxHz" type="number" min="20" max="20000" step="1" value="1320" /></label>
+      <label>Duration (ms) <input id="durMs" type="number" min="100" max="30000" step="50" value="1500" /></label>
+    </div>
+
+    <div class="readout">
+      <div class="freq" id="freq">220.0 <small>Hz</small></div>
+      <div class="pct" id="pct">0%</div>
+    </div>
+    <div class="track"><div class="fill" id="fill"></div></div>
+    <div class="ticks"><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>
+
+    <label for="slider" class="status" style="margin-top:0; margin-bottom:6px;">Manual progress preview</label>
+    <input type="range" id="slider" min="0" max="100" step="0.1" value="0" />
+
+    <div class="actions">
+      <button class="btn primary" id="hold" type="button">Hold to sweep</button>
+      <button class="btn" id="preview" type="button">Play preview</button>
+    </div>
+    <div class="status" id="status">Ready. Slider, or press and hold the sweep button.</div>
+  </main>
+
+<script>
+  const MIN_FREQ = 440;
+  const MAX_FREQ = 1320;
+  const DURATION_MS = 1500;
+  const VOLUME = 0.08;
+
+  const minHzEl = document.getElementById('minHz');
+  const maxHzEl = document.getElementById('maxHz');
+  const durMsEl = document.getElementById('durMs');
+
+  function curMin() { return Math.max(20, Number(minHzEl.value) || MIN_FREQ); }
+  function curMax() { return Math.max(21, Number(maxHzEl.value) || MAX_FREQ); }
+  function curDur() { return Math.max(100, Number(durMsEl.value) || DURATION_MS); }
+
+  function freqForProgress(progress) {
+    const min = curMin();
+    const max = Math.max(min + 1, curMax());
+    const clamped = Math.min(100, Math.max(0, progress)) / 100;
+    return min * Math.pow(max / min, clamped);
+  }
+  function validateParams() {
+    if (parseFloat(maxHzEl.value) <= parseFloat(minHzEl.value)) {
+      statusEl.textContent = 'Max (Hz) must be greater than Min (Hz).';
+      return false;
+    }
+    if (active === 'none' && !Number.isNaN(parseFloat(sliderEl.value))) {
+      setProgress(parseFloat(sliderEl.value));
+    }
+    return true;
+  }
+  minHzEl.addEventListener('input', validateParams);
+  maxHzEl.addEventListener('input', validateParams);
+  durMsEl.addEventListener('input', validateParams);
+
+  const freqEl = document.getElementById('freq');
+  const pctEl = document.getElementById('pct');
+  const fillEl = document.getElementById('fill');
+  const sliderEl = document.getElementById('slider');
+  const holdBtn = document.getElementById('hold');
+  const previewBtn = document.getElementById('preview');
+  const statusEl = document.getElementById('status');
+
+  let ctx = null;
+  let osc = null;
+  let gain = null;
+  let active = 'none'; // 'hold' | 'preview' | 'none'
+  let rafId = null;
+  let holdStart = 0;
+  let timerId = null;
+
+  function ensureCtx() {
+    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  function startTone(progress) {
+    const c = ensureCtx();
+    stopTone(false);
+    osc = c.createOscillator();
+    gain = c.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freqForProgress(progress), c.currentTime);
+    gain.gain.setValueAtTime(0, c.currentTime);
+    gain.gain.linearRampToValueAtTime(VOLUME, c.currentTime + 0.02);
+    osc.connect(gain);
+    gain.connect(c.destination);
+    osc.start();
+  }
+
+  function updateTone(progress) {
+    if (!osc || !ctx) return;
+    const f = freqForProgress(progress);
+    const t = ctx.currentTime;
+    osc.frequency.cancelScheduledValues(t);
+    osc.frequency.setValueAtTime(Math.max(0.01, osc.frequency.value), t);
+    osc.frequency.exponentialRampToValueAtTime(f, t + 0.03);
+  }
+
+  function stopTone(withFade) {
+    if (osc && gain && ctx) {
+      const t = ctx.currentTime;
+      if (withFade) {
+        gain.gain.cancelScheduledValues(t);
+        gain.gain.setValueAtTime(gain.gain.value, t);
+        gain.gain.linearRampToValueAtTime(0, t + 0.04);
+        try { osc.stop(t + 0.06); } catch {}
+        osc.addEventListener('ended', () => { osc.disconnect(); gain.disconnect(); });
+      } else {
+        try { osc.stop(); } catch {}
+        osc.disconnect();
+        gain.disconnect();
+      }
+    }
+    osc = null;
+    gain = null;
+  }
+
+  function playChime() {
+    const c = ensureCtx();
+    const peak = freqForProgress(100);
+    [0, 90].forEach((offset, i) => {
+      const at = c.currentTime + offset / 1000;
+      const o = c.createOscillator();
+      const g = c.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(i === 0 ? peak : peak * 1.5, at);
+      g.gain.setValueAtTime(0, at);
+      g.gain.linearRampToValueAtTime(i === 0 ? VOLUME : VOLUME * 0.8, at + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + (i === 0 ? 0.14 : 0.18));
+      o.connect(g);
+      g.connect(c.destination);
+      o.start(at);
+      o.stop(at + 0.2);
+      o.addEventListener('ended', () => { o.disconnect(); g.disconnect(); });
+    });
+  }
+
+  function setProgress(p) {
+    const clamped = Math.min(100, Math.max(0, p));
+    pctEl.textContent = Math.round(clamped) + '%';
+    freqEl.innerHTML = freqForProgress(clamped).toFixed(1) + ' <small>Hz</small>';
+    fillEl.style.width = clamped + '%';
+    if (clamped !== parseFloat(sliderEl.value)) sliderEl.value = clamped;
+  }
+
+  function stopHold() {
+    if (active === 'hold') {
+      active = 'none';
+      stopTone(true);
+      holdBtn.disabled = false;
+      previewBtn.disabled = false;
+      statusEl.textContent = 'Released at ' + Math.round(progressNow()) + '%.';
+    }
+    if (rafId !== null) cancelAnimationFrame(rafId);
+    rafId = null;
+    if (timerId !== null) clearTimeout(timerId);
+    timerId = null;
+  }
+
+  function progressNow() {
+    return ((performance.now() - holdStart) / curDur()) * 100;
+  }
+
+  const tick = (now) => {
+    const p = Math.min(100, progressNow());
+    setProgress(p);
+    if (active === 'hold') updateTone(p);
+    if (p >= 100) {
+      active = 'none';
+      stopTone(true);
+      playChime();
+      rafId = null;
+      holdBtn.disabled = false;
+      previewBtn.disabled = false;
+      statusEl.textContent = 'Complete! Reached ' + freqForProgress(100).toFixed(1) + ' Hz + chime.';
+      return;
+    }
+    rafId = requestAnimationFrame(tick);
+  };
+
+  holdBtn.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    stopHold();
+    active = 'hold';
+    holdStart = performance.now();
+    holdBtn.disabled = true;
+    previewBtn.disabled = true;
+    setProgress(0);
+    startTone(0);
+    statusEl.textContent = 'Holding… pitch rising.';
+    rafId = requestAnimationFrame(tick);
+  });
+  holdBtn.addEventListener('pointerup', stopHold);
+  holdBtn.addEventListener('pointercancel', stopHold);
+  holdBtn.addEventListener('pointerleave', stopHold);
+
+  sliderEl.addEventListener('input', () => {
+    if (active === 'hold') return;
+    active = 'none';
+    setProgress(parseFloat(sliderEl.value));
+    stopTone(false);
+    statusEl.textContent = 'Preview at ' + Math.round(parseFloat(sliderEl.value)) + '% → ' +
+      freqForProgress(parseFloat(sliderEl.value)).toFixed(1) + ' Hz (use Play preview to hear it).';
+  });
+
+  previewBtn.addEventListener('click', () => {
+    if (active !== 'none') return;
+    active = 'preview';
+    previewBtn.disabled = true;
+    holdBtn.disabled = true;
+    const p = parseFloat(sliderEl.value);
+    setProgress(p);
+    startTone(p);
+    statusEl.textContent = 'Previewing ' + Math.round(p) + '% → ' +
+      freqForProgress(p).toFixed(1) + ' Hz.';
+    timerId = setTimeout(() => {
+      active = 'none';
+      stopTone(true);
+      previewBtn.disabled = false;
+      holdBtn.disabled = false;
+      statusEl.textContent = 'Preview finished.';
+      timerId = null;
+    }, curDur() + 50);
+  });
+</script>
+</body>
+</html>

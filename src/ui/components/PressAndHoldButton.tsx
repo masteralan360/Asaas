@@ -5,6 +5,12 @@ import {
     getPressAndHoldProgress,
     WORKSPACE_PAYMENT_HOLD_DURATION_MS
 } from '@/lib/pressAndHold'
+import {
+    playHoldFeedbackComplete,
+    startHoldFeedback,
+    stopHoldFeedback,
+    updateHoldFeedback
+} from '@/lib/holdFeedbackAudio'
 
 interface PressAndHoldButtonProps extends Omit<ButtonProps, 'onClick' | 'onSubmit'> {
     onComplete: () => void
@@ -16,6 +22,7 @@ interface PressAndHoldButtonProps extends Omit<ButtonProps, 'onClick' | 'onSubmi
     isLoading?: boolean
     durationMs?: number
     showProgress?: boolean
+    soundEnabled?: boolean
 }
 
 export function PressAndHoldButton({
@@ -28,6 +35,7 @@ export function PressAndHoldButton({
     isLoading = false,
     durationMs = WORKSPACE_PAYMENT_HOLD_DURATION_MS,
     showProgress = true,
+    soundEnabled = true,
     disabled,
     className,
     ...buttonProps
@@ -48,11 +56,12 @@ export function PressAndHoldButton({
             window.cancelAnimationFrame(animationFrameRef.current)
             animationFrameRef.current = null
         }
+        if (soundEnabled) stopHoldFeedback()
         if (!completedRef.current) {
             setIsHolding(false)
             setOverlayWidth(0)
         }
-    }, [setOverlayWidth])
+    }, [setOverlayWidth, soundEnabled])
 
     const beginHold = useCallback(() => {
         if (disabled || isLoading || animationFrameRef.current !== null || completedRef.current) {
@@ -61,6 +70,8 @@ export function PressAndHoldButton({
 
         onPressStart?.()
 
+        if (soundEnabled) startHoldFeedback()
+
         const startedAt = performance.now()
         setIsHolding(true)
         setOverlayWidth(0)
@@ -68,11 +79,13 @@ export function PressAndHoldButton({
         const updateProgress = (now: number) => {
             const next = getPressAndHoldProgress(startedAt, now, durationMs)
             setOverlayWidth(next.progress)
+            if (soundEnabled) updateHoldFeedback(next.progress)
 
             if (next.complete) {
                 animationFrameRef.current = null
                 if (completedRef.current) return
                 completedRef.current = true
+                if (soundEnabled) playHoldFeedbackComplete()
                 onComplete()
                 return
             }
@@ -81,7 +94,7 @@ export function PressAndHoldButton({
         }
 
         animationFrameRef.current = window.requestAnimationFrame(updateProgress)
-    }, [disabled, durationMs, isLoading, onComplete, onPressStart, setOverlayWidth])
+    }, [disabled, durationMs, isLoading, onComplete, onPressStart, setOverlayWidth, soundEnabled])
 
     useEffect(() => {
         if (!isLoading) {
@@ -89,7 +102,8 @@ export function PressAndHoldButton({
             setIsHolding(false)
             setOverlayWidth(0)
         }
-    }, [isLoading, setOverlayWidth])
+        if (soundEnabled) stopHoldFeedback()
+    }, [isLoading, setOverlayWidth, soundEnabled])
 
     useEffect(() => cancelHold, [cancelHold])
 

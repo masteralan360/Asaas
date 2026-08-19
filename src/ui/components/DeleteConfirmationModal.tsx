@@ -3,6 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { Trash2, AlertTriangle, Loader2, Copy, Check, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
+    playHoldFeedbackComplete,
+    startHoldFeedback,
+    stopHoldFeedback,
+    updateHoldFeedback
+} from '@/lib/holdFeedbackAudio'
+import {
     Dialog,
     DialogContent,
     DialogHeader,
@@ -65,6 +71,17 @@ export function DeleteConfirmationModal({
     const holdCompletedRef = useRef(false)
     const isDeleteEnabled = typedText === 'delete'
 
+    const cancelHold = useCallback(() => {
+        if (animationFrameRef.current !== null) {
+            cancelAnimationFrame(animationFrameRef.current)
+            animationFrameRef.current = null
+        }
+        stopHoldFeedback()
+        if (!holdCompletedRef.current) {
+            setHoldProgress(0)
+        }
+    }, [])
+
     useEffect(() => {
         if (isOpen) {
             setIsQuickDeleteActive(getQuickDeleteActive())
@@ -75,32 +92,25 @@ export function DeleteConfirmationModal({
             cancelHold()
             setHoldProgress(0)
         }
-    }, [isOpen])
-
-    const cancelHold = useCallback(() => {
-        if (animationFrameRef.current !== null) {
-            cancelAnimationFrame(animationFrameRef.current)
-            animationFrameRef.current = null
-        }
-        if (!holdCompletedRef.current) {
-            setHoldProgress(0)
-        }
-    }, [])
+    }, [cancelHold, isOpen])
 
     const beginHold = useCallback(() => {
         if (!isDeleteEnabled || isLoading || animationFrameRef.current !== null) return
 
+        startHoldFeedback()
         holdCompletedRef.current = false
         const startedAt = performance.now()
-        const holdDuration = 500
+        const holdDuration = 1500
 
         const updateProgress = (now: number) => {
             const progress = Math.min(((now - startedAt) / holdDuration) * 100, 100)
             setHoldProgress(progress)
+            updateHoldFeedback(progress)
 
             if (progress >= 100) {
                 animationFrameRef.current = null
                 holdCompletedRef.current = true
+                playHoldFeedbackComplete()
                 if (enableQuickDelete) {
                     saveQuickDelete()
                 }
