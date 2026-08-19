@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
-import { ArrowDownLeft, ArrowUpRight, RotateCcw, Search } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, HandCoins, RotateCcw, Search } from 'lucide-react'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 
@@ -13,11 +13,16 @@ import {
     isReversiblePaymentSourceType,
     recordObligationSettlement,
     reversePaymentTransaction,
+    settlePartnerBalance,
     useLockedPaymentSourceKeys,
     usePaymentObligations,
     usePaymentTransactions,
+    type BusinessPartner,
+    type CurrencySettlementAmount,
     type PaymentObligation,
-    type PaymentTransaction
+    type PaymentTransaction,
+    type PaymentTransactionDirection,
+    type PartnerSettlementProgress
 } from '@/local-db'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
@@ -45,6 +50,7 @@ import {
     useToast
 } from '@/ui/components'
 import { SettlementDialog } from '@/ui/components/payments/SettlementDialog'
+import { PartnerSettlementDialog } from '@/ui/components/payments/PartnerSettlementDialog'
 import { useWorkspace } from '@/workspace'
 import { useWorkspacePermissions } from '@/permissions'
 
@@ -190,6 +196,26 @@ export function Payments() {
     const [selectedObligation, setSelectedObligation] = useState<PaymentObligation | null>(null)
     const [isSubmittingSettlement, setIsSubmittingSettlement] = useState(false)
     const [reversingTransactionId, setReversingTransactionId] = useState<string | null>(null)
+    const [isPartnerSettlementOpen, setIsPartnerSettlementOpen] = useState(false)
+
+    const settlementAction = useMemo(() => {
+        if (activeTab === 'payable') {
+            return {
+                label: t('payments.actions.payPartner', { defaultValue: 'Pay Partner' }),
+                direction: 'outgoing' as const
+            }
+        }
+        if (activeTab === 'collectable') {
+            return {
+                label: t('payments.actions.collectFromPartner', { defaultValue: 'Collect from Partner' }),
+                direction: 'incoming' as const
+            }
+        }
+        return {
+            label: t('payments.actions.settleBalance', { defaultValue: 'Settle Balance' }),
+            direction: null
+        }
+    }, [activeTab, t])
 
     const obligations = usePaymentObligations(workspaceId, {
         direction: directionFilter,
@@ -296,6 +322,65 @@ export function Payments() {
         }
     }
 
+    const handlePartnerSettlement = async (input: {
+        partner: BusinessPartner
+        direction: PaymentTransactionDirection
+        paymentMethod: PaymentTransaction['paymentMethod']
+        paidAt: string
+        note?: string
+        amountsByCurrency?: CurrencySettlementAmount[]
+        onProgress?: (progress: PartnerSettlementProgress) => void
+    }) => {
+        if (!workspaceId) {
+            return
+        }
+
+        setIsSubmittingSettlement(true)
+        try {
+            const result = await settlePartnerBalance(workspaceId, {
+                partnerId: input.partner.id,
+                direction: input.direction,
+                paymentMethod: input.paymentMethod,
+                paidAt: input.paidAt,
+                note: input.note,
+                createdBy: user?.id || null,
+                amountsByCurrency: input.amountsByCurrency,
+                onProgress: input.onProgress
+            })
+            const summaryText = result.groups
+                .map((group) => formatCurrency(group.total, group.currency, features.iqd_display_preference))
+                .join(' • ')
+            const isCollect = result.direction === 'incoming'
+            toast({
+                title: isCollect
+                    ? t('partnerSettlement.collectionCompleted', { defaultValue: 'Collection completed' })
+                    : t('partnerSettlement.paymentCompleted', { defaultValue: 'Payment completed' }),
+                description: isCollect
+                    ? t('partnerSettlement.collectedFromAndApplied', {
+                        defaultValue: '{{amount}} collected from {{partner}} and applied to {{count}} open items.',
+                        amount: summaryText,
+                        partner: result.partnerName,
+                        count: result.items
+                    })
+                    : t('partnerSettlement.paidToAndApplied', {
+                        defaultValue: '{{amount}} paid to {{partner}} and applied to {{count}} open items.',
+                        amount: summaryText,
+                        partner: result.partnerName,
+                        count: result.items
+                    })
+            })
+            setIsPartnerSettlementOpen(false)
+        } catch (error: any) {
+            toast({
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: error?.message || t('payments.settlementFailed', { defaultValue: 'Failed to record settlement.' }),
+                variant: 'destructive'
+            })
+        } finally {
+            setIsSubmittingSettlement(false)
+        }
+    }
+
     const handleReverse = async (transaction: PaymentTransaction) => {
         if (!workspaceId) {
             return
@@ -341,11 +426,17 @@ export function Payments() {
                     <p className="text-sm text-muted-foreground">
                         {t('payments.subtitle', { defaultValue: 'Unified open obligations and central transaction history across loans, orders, appointments, payroll, expenses, and Real Estate commissions.' })} <ModulePageFreshness className="ms-2" />
                     </p>
-                    {hasPermission('directTransaction.access') && (
-                        <Button type="button" variant="outline" onClick={() => setLocation('/direct-transactions')} className="w-fit">
-                            {t('payments.directTransactions', { defaultValue: 'Direct Transactions' })}
+                    <div className="flex flex-wrap items-center gap-2">
+                        {hasPermission('directTransaction.access') && (
+                            <Button type="button" variant="outline" onClick={() => setLocation('/direct-transactions')} className="w-fit">
+                                {t('payments.directTransactions', { defaultValue: 'Direct Transactions' })}
+                            </Button>
+                        )}
+                        <Button type="button" onClick={() => setIsPartnerSettlementOpen(true)} className="w-fit">
+                            <HandCoins className="me-1.5 h-4 w-4" />
+                            {settlementAction.label}
                         </Button>
-                    )}
+                    </div>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -668,6 +759,17 @@ export function Payments() {
                 isSubmitting={isSubmittingSettlement}
                 onSubmit={handleSettle}
             />
+
+            {workspaceId ? (
+                <PartnerSettlementDialog
+                    open={isPartnerSettlementOpen}
+                    onOpenChange={setIsPartnerSettlementOpen}
+                    workspaceId={workspaceId}
+                    defaultDirection={settlementAction.direction}
+                    isSubmitting={isSubmittingSettlement}
+                    onSubmit={handlePartnerSettlement}
+                />
+            ) : null}
         </div>
     )
 }

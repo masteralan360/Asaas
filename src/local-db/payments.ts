@@ -81,6 +81,52 @@ export interface RecordDirectTransactionInput {
     createdBy?: string | null
 }
 
+export interface PartnerSettlementBalanceGroup {
+    currency: CurrencyCode
+    total: number
+    items: number
+}
+
+export interface PartnerSettlementBalance {
+    partnerId: string
+    direction: PaymentTransactionDirection
+    groups: PartnerSettlementBalanceGroup[]
+    total: number
+    items: number
+    eligibleObligations: PaymentObligation[]
+}
+
+export interface PartnerSettlementProgress {
+    settledItems: number
+    totalItems: number
+}
+
+export interface CurrencySettlementAmount {
+    currency: CurrencyCode
+    amount: number
+}
+
+export interface SettlePartnerBalanceInput {
+    partnerId: string
+    direction: PaymentTransactionDirection
+    paymentMethod: WorkspacePaymentMethod
+    paidAt?: string
+    note?: string
+    createdBy?: string | null
+    amount?: number
+    amountsByCurrency?: CurrencySettlementAmount[]
+    onProgress?: (progress: PartnerSettlementProgress) => void
+}
+
+export interface SettlePartnerBalanceResult {
+    partnerId: string
+    partnerName: string
+    direction: PaymentTransactionDirection
+    totalSettled: number
+    items: number
+    groups: PartnerSettlementBalanceGroup[]
+}
+
 const PASS_THROUGH_REAL_ESTATE_SOURCE_TYPES = new Set<PaymentTransactionSourceType>([
     'real_estate_payment',
     'real_estate_installment'
@@ -482,6 +528,7 @@ function buildSalesOrderObligation(order: SalesOrder, todayKey: string): Payment
         amount: balanceAmount,
         currency: order.currency,
         dueDate,
+        createdAt: order.createdAt,
         counterpartyName: order.customerName,
         referenceLabel: order.orderNumber,
         title: order.customerName,
@@ -520,6 +567,7 @@ function buildPurchaseOrderObligation(order: PurchaseOrder, todayKey: string): P
         amount: balanceAmount,
         currency: order.currency,
         dueDate,
+        createdAt: order.createdAt,
         counterpartyName: order.supplierName,
         referenceLabel: order.orderNumber,
         title: order.supplierName,
@@ -576,6 +624,7 @@ function buildOrderInstallmentObligations(
                 amount: installment.balanceAmount,
                 currency: order.currency,
                 dueDate,
+                createdAt: installment.createdAt,
                 counterpartyName,
                 referenceLabel: `${order.orderNumber} / ${installmentLabel}`,
                 title: counterpartyName,
@@ -609,6 +658,7 @@ function buildExpenseObligation(item: ExpenseItem, series: ExpenseSeries | undef
         amount: item.amount,
         currency: item.currency,
         dueDate: normalizeDateKey(item.dueDate),
+        createdAt: item.createdAt,
         counterpartyName: null,
         referenceLabel: series?.name || 'Expense',
         title: series?.name || 'Expense',
@@ -650,6 +700,7 @@ function buildPayrollObligation(
         amount: employee.salary || 0,
         currency: employee.salaryCurrency || 'usd',
         dueDate,
+        createdAt: status?.createdAt || '',
         counterpartyName: employee.name,
         referenceLabel: `Payroll ${month}`,
         title: employee.name,
@@ -696,6 +747,7 @@ function buildStandardLoanInstallmentObligations(
             amount: installment.balanceAmount,
             currency: loan.settlementCurrency,
             dueDate,
+            createdAt: installment.createdAt,
             counterpartyName: loan.borrowerName,
             referenceLabel: `${loan.loanNo} / ${installmentLabel}`,
             title: loan.borrowerName,
@@ -742,6 +794,7 @@ function buildSimpleLoanObligations(
             amount: loan.balanceAmount,
             currency: loan.settlementCurrency,
             dueDate,
+            createdAt: loan.createdAt,
             counterpartyName: loan.borrowerName,
             referenceLabel: loan.loanNo,
             title: loan.borrowerName,
@@ -812,6 +865,7 @@ function buildRealEstateCommissionObligations(
             amount: balanceAmount,
             currency: transaction.currency,
             dueDate: normalizeDateKey(transaction.createdAt),
+            createdAt: transaction.createdAt,
             counterpartyName: transaction.buyerName || transaction.sellerName,
             referenceLabel: `${transaction.transactionNo} / Commission`,
             title: transaction.location,
@@ -952,12 +1006,7 @@ export async function buildPaymentObligations(workspaceId: string, filters: Paym
             return left.status === 'overdue' ? -1 : 1
         }
 
-        const dueDateCompare = !left.dueDate || !right.dueDate
-            ? (!left.dueDate && !right.dueDate ? 0 : left.dueDate ? -1 : 1)
-            : left.dueDate.localeCompare(right.dueDate)
-
-        return dueDateCompare
-            || left.referenceLabel?.localeCompare(right.referenceLabel || '') || 0
+        return compareObligationAllocationOrder(left, right)
     })
 }
 
@@ -1608,6 +1657,337 @@ export async function recordDirectTransaction(
             businessPartnerId
         }
     })
+}
+
+const PARTNER_SETTLEMENT_SOURCE_TYPES = new Set<PaymentTransactionSourceType>([
+    'loan_installment',
+    'simple_loan',
+    'real_estate_commission',
+    'sales_order',
+    'purchase_order'
+])
+
+async function resolveSettlementPartner(workspaceId: string, partnerId: string) {
+    const partner = await db.business_partners.get(partnerId)
+    if (!partner || partner.isDeleted || partner.mergedIntoBusinessPartnerId || partner.workspaceId !== workspaceId) {
+        throw new Error('Business partner not found')
+    }
+    return partner
+}
+
+async function collectLockedOrderSourceKeys(workspaceId: string) {
+    const [salesOrders, purchaseOrders] = await Promise.all([
+        db.sales_orders.where('workspaceId').equals(workspaceId).toArray(),
+        db.purchase_orders.where('workspaceId').equals(workspaceId).toArray()
+    ])
+
+    return new Set([
+        ...salesOrders
+            .filter((item) => !item.isDeleted && !!item.isLocked)
+            .map((item) => getPaymentSourceKey({
+                sourceType: 'sales_order',
+                sourceRecordId: item.id,
+                sourceSubrecordId: null
+            })),
+        ...purchaseOrders
+            .filter((item) => !item.isDeleted && !!item.isLocked)
+            .map((item) => getPaymentSourceKey({
+                sourceType: 'purchase_order',
+                sourceRecordId: item.id,
+                sourceSubrecordId: null
+            }))
+    ])
+}
+
+function isEligiblePartnerObligation(obligation: PaymentObligation, partnerId: string, direction: PaymentTransactionDirection) {
+    return obligation.direction === direction
+        && PARTNER_SETTLEMENT_SOURCE_TYPES.has(obligation.sourceType)
+        && getMetadataString(obligation.metadata, 'businessPartnerId') === partnerId
+}
+
+/**
+ * Deterministic obligation ordering: oldest due date first (missing due dates
+ * last), then oldest source-record creation first (missing creation dates
+ * last), then reference label for stability.
+ */
+function compareObligationAllocationOrder(left: PaymentObligation, right: PaymentObligation): number {
+    const dueDateCompare = !left.dueDate && !right.dueDate
+        ? 0
+        : !left.dueDate
+            ? 1
+            : !right.dueDate
+                ? -1
+                : left.dueDate.localeCompare(right.dueDate)
+    if (dueDateCompare !== 0) {
+        return dueDateCompare
+    }
+
+    const createdAtCompare = !left.createdAt && !right.createdAt
+        ? 0
+        : !left.createdAt
+            ? 1
+            : !right.createdAt
+                ? -1
+                : left.createdAt.localeCompare(right.createdAt)
+    if (createdAtCompare !== 0) {
+        return createdAtCompare
+    }
+
+    return (left.referenceLabel || '').localeCompare(right.referenceLabel || '')
+}
+
+/**
+ * Returns the outstanding settlement balance for a business partner in a
+ * single direction. Collect (`incoming`) covers obligations where the partner
+ * owes us money; Pay (`outgoing`) covers obligations we owe the partner.
+ * Obligations are returned oldest-due-first so settlements can be allocated
+ * deterministically across them.
+ */
+export async function getPartnerSettlementBalance(
+    workspaceId: string,
+    partnerId: string,
+    direction: PaymentTransactionDirection
+): Promise<PartnerSettlementBalance> {
+    const partner = await resolveSettlementPartner(workspaceId, partnerId)
+    const [obligations, lockedSourceKeys] = await Promise.all([
+        buildPaymentObligations(workspaceId, { direction }),
+        collectLockedOrderSourceKeys(workspaceId)
+    ])
+
+    const eligibleObligations = obligations
+        .filter((item) => isEligiblePartnerObligation(item, partner.id, direction))
+        .filter((item) => item.amount > PAYMENT_AMOUNT_EPSILON)
+        .filter((item) => !lockedSourceKeys.has(getPaymentSourceKey(item)))
+        .sort(compareObligationAllocationOrder)
+
+    const totalsByCurrency = new Map<CurrencyCode, { total: number; items: number }>()
+    eligibleObligations.forEach((item) => {
+        const current = totalsByCurrency.get(item.currency) || { total: 0, items: 0 }
+        current.total += item.amount
+        current.items += 1
+        totalsByCurrency.set(item.currency, current)
+    })
+
+    const groups = Array.from(totalsByCurrency.entries())
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([currency, value]) => ({
+            currency,
+            total: value.total,
+            items: value.items
+        }))
+
+    return {
+        partnerId: partner.id,
+        direction,
+        groups,
+        total: groups.reduce((sum, group) => sum + group.total, 0),
+        items: groups.reduce((sum, group) => sum + group.items, 0),
+        eligibleObligations
+    }
+}
+
+/**
+ * Settles all (or part of) the outstanding balance of a business partner in
+ * a single direction. The amount is allocated oldest-due-first across the
+ * partner's eligible open obligations using the existing per-source payment
+ * flows, so each obligation keeps its correct remaining balance and every
+ * generated payment transaction is linked to the obligation it settled.
+ */
+export async function settlePartnerBalance(
+    workspaceId: string,
+    input: SettlePartnerBalanceInput
+): Promise<SettlePartnerBalanceResult> {
+    const partner = await resolveSettlementPartner(workspaceId, input.partnerId)
+    assertStandardSettlementPaymentMethod(input.paymentMethod)
+    const paymentMethod = input.paymentMethod
+
+    const balance = await getPartnerSettlementBalance(workspaceId, partner.id, input.direction)
+    if (balance.total <= PAYMENT_AMOUNT_EPSILON || balance.items === 0) {
+        throw new Error(input.direction === 'incoming'
+            ? 'This partner has no outstanding collectable balance'
+            : 'There are no outstanding payables for this partner')
+    }
+
+    const requestedAmount = Number(input.amount || 0)
+    const remainingByCurrency = new Map<CurrencyCode, number>()
+    const useScalarRemaining = !input.amountsByCurrency || input.amountsByCurrency.length === 0
+
+    if (input.amountsByCurrency && input.amountsByCurrency.length > 0) {
+        let requestedTotal = 0
+        for (const entry of input.amountsByCurrency) {
+            const entryAmount = Number(entry.amount || 0)
+            if (!Number.isFinite(entryAmount) || entryAmount < -PAYMENT_AMOUNT_EPSILON) {
+                throw new Error('Settlement amount cannot exceed the outstanding balance')
+            }
+
+            const group = balance.groups.find((item) => item.currency === entry.currency)
+            if (!group || entryAmount - group.total > PAYMENT_AMOUNT_EPSILON) {
+                throw new Error('Settlement amount cannot exceed the outstanding balance')
+            }
+
+            remainingByCurrency.set(entry.currency, Math.max(0, entryAmount))
+            requestedTotal += Math.max(0, entryAmount)
+        }
+        if (requestedTotal <= PAYMENT_AMOUNT_EPSILON) {
+            throw new Error('Settlement could not be allocated to any open obligation')
+        }
+    } else if (requestedAmount > PAYMENT_AMOUNT_EPSILON && requestedAmount - balance.total > PAYMENT_AMOUNT_EPSILON) {
+        throw new Error('Settlement amount cannot exceed the outstanding balance')
+    }
+
+    const paidAt = input.paidAt ? new Date(input.paidAt).toISOString() : new Date().toISOString()
+    const note = input.note?.trim() || null
+    const createdBy = input.createdBy || null
+    let remaining = useScalarRemaining
+        ? (requestedAmount > PAYMENT_AMOUNT_EPSILON ? requestedAmount : balance.total)
+        : 0
+
+    const appliedByCurrency = new Map<CurrencyCode, { total: number; items: number }>()
+    const settledObligationCount = new Map<string, number>()
+
+    const touchedItems = (() => {
+        let touched = 0
+        let scalarRemaining = remaining
+        const perCurrencyRemaining = useScalarRemaining ? null : new Map(remainingByCurrency)
+        for (const obligation of balance.eligibleObligations) {
+            const cap = useScalarRemaining
+                ? scalarRemaining
+                : (perCurrencyRemaining!.get(obligation.currency) ?? 0)
+            if (cap <= PAYMENT_AMOUNT_EPSILON) {
+                if (useScalarRemaining) {
+                    break
+                }
+                continue
+            }
+
+            const applied = Math.min(obligation.amount, cap)
+            if (applied <= PAYMENT_AMOUNT_EPSILON) {
+                continue
+            }
+
+            touched += 1
+            if (useScalarRemaining) {
+                scalarRemaining = Math.max(scalarRemaining - applied, 0)
+            } else {
+                perCurrencyRemaining!.set(obligation.currency, cap - applied)
+            }
+        }
+        return touched
+    })()
+
+    let settledItems = 0
+    input.onProgress?.({ settledItems: 0, totalItems: touchedItems })
+
+    for (const obligation of balance.eligibleObligations) {
+        const cap = useScalarRemaining
+            ? remaining
+            : (remainingByCurrency.get(obligation.currency) ?? 0)
+        if (useScalarRemaining) {
+            if (remaining <= PAYMENT_AMOUNT_EPSILON) {
+                break
+            }
+        } else if (cap <= PAYMENT_AMOUNT_EPSILON) {
+            continue
+        }
+
+        const applied = Math.min(obligation.amount, cap)
+        if (applied <= PAYMENT_AMOUNT_EPSILON) {
+            continue
+        }
+
+        switch (obligation.sourceType) {
+            case 'loan_installment':
+            case 'simple_loan': {
+                const { recordLoanPayment } = await import('./hooks')
+                await recordLoanPayment(workspaceId, {
+                    loanId: obligation.sourceRecordId,
+                    installmentId: obligation.sourceType === 'loan_installment'
+                        ? (obligation.sourceSubrecordId || undefined)
+                        : undefined,
+                    amount: applied,
+                    paymentMethod,
+                    note: note || undefined,
+                    paidAt,
+                    createdBy: createdBy || undefined
+                })
+                break
+            }
+
+            case 'sales_order':
+            case 'purchase_order': {
+                const { recordOrderPayment } = await import('./orders')
+                await recordOrderPayment(workspaceId, {
+                    orderType: obligation.sourceType === 'sales_order' ? 'sales' : 'purchase',
+                    orderId: obligation.sourceRecordId,
+                    installmentId: obligation.sourceSubrecordId,
+                    amount: applied,
+                    paymentMethod,
+                    paidAt,
+                    note,
+                    createdBy
+                })
+                break
+            }
+
+            case 'real_estate_commission': {
+                const { recordRealEstateCommissionPayment } = await import('./realEstate')
+                await recordRealEstateCommissionPayment(workspaceId, {
+                    transactionId: obligation.sourceRecordId,
+                    amount: applied,
+                    paymentMethod,
+                    counterpartyName: obligation.counterpartyName || partner.name,
+                    businessPartnerId: partner.id,
+                    note,
+                    paidAt,
+                    createdBy
+                })
+                break
+            }
+
+            default:
+                continue
+        }
+
+        const currencyTotal = appliedByCurrency.get(obligation.currency) || { total: 0, items: 0 }
+        currencyTotal.total += applied
+        currencyTotal.items += 1
+        appliedByCurrency.set(obligation.currency, currencyTotal)
+        settledObligationCount.set(obligation.id, applied)
+        if (useScalarRemaining) {
+            remaining = Math.max(remaining - applied, 0)
+        } else {
+            remainingByCurrency.set(obligation.currency, cap - applied)
+        }
+        settledItems += 1
+        input.onProgress?.({ settledItems, totalItems: touchedItems })
+    }
+
+    const totalSettled = Array.from(appliedByCurrency.values()).reduce((sum, group) => sum + group.total, 0)
+    if (totalSettled <= PAYMENT_AMOUNT_EPSILON) {
+        throw new Error('Settlement could not be allocated to any open obligation')
+    }
+
+    try {
+        const { recalculateBusinessPartnerSummary } = await import('./businessPartners')
+        await recalculateBusinessPartnerSummary(workspaceId, partner.id)
+    } catch (error) {
+        console.error('[Payments] Failed to refresh partner summary after settlement:', error)
+    }
+
+    return {
+        partnerId: partner.id,
+        partnerName: partner.name,
+        direction: input.direction,
+        totalSettled,
+        items: settledObligationCount.size,
+        groups: Array.from(appliedByCurrency.entries())
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([currency, group]) => ({
+                currency,
+                total: group.total,
+                items: group.items
+            }))
+    }
 }
 
 export async function findLatestUnreversedPaymentTransaction(

@@ -124,6 +124,7 @@ export function buildClinicalAppointmentPaymentObligation(
     amount: summary.balanceAmount,
     currency: resolveClinicalAppointmentCurrency(appointment, fallbackCurrency),
     dueDate: appointment.appointmentDate,
+    createdAt: appointment.createdAt,
     counterpartyName: appointment.patientName,
     referenceLabel: reference,
     title: appointment.patientName,

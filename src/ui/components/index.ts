@@ -118,6 +118,7 @@ export type { AdminContact } from './modals/RegisterWorkspaceContactsModal'
 export { PatchNoteModal } from './modals/PatchNoteModal'
 export { DirectTransactionDialog } from './payments/DirectTransactionDialog'
 export { SettlementDialog } from './payments/SettlementDialog'
+export { PartnerSettlementDialog } from './payments/PartnerSettlementDialog'
 export { PaymentMethodSelect } from './payments/PaymentMethodSelect'
 export {
     ACTIVITY_PAYMENT_METHODS,

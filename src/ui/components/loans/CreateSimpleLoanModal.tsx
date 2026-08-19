@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Users, X } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Users, X } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
@@ -259,8 +259,18 @@ export function CreateSimpleLoanModal({
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="lent">{getLoanDirectionLabel('lent', t)}</SelectItem>
-                                                <SelectItem value="borrowed">{getLoanDirectionLabel('borrowed', t)}</SelectItem>
+                                                <SelectItem value="lent">
+                                                    <span className="flex items-center gap-2">
+                                                        <ArrowUpRight className="h-4 w-4" />
+                                                        {getLoanDirectionLabel('lent', t)}
+                                                    </span>
+                                                </SelectItem>
+                                                <SelectItem value="borrowed">
+                                                    <span className="flex items-center gap-2">
+                                                        <ArrowDownLeft className="h-4 w-4" />
+                                                        {getLoanDirectionLabel('borrowed', t)}
+                                                    </span>
+                                                </SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>

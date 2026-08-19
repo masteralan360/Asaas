@@ -1807,6 +1807,7 @@ export interface PaymentObligation {
   amount: number;
   currency: CurrencyCode;
   dueDate: string;
+  createdAt?: string;
   counterpartyName?: string | null;
   referenceLabel?: string | null;
   title: string;
