@@ -78,7 +78,7 @@ const Services = lazy(() =>
   import("@/ui/pages/Services").then((m) => ({ default: m.Services })),
 );
 const ServiceFormPage = lazy(() =>
-  import("@/ui/pages/Services").then((m) => ({ default: m.ServiceFormPage })),
+  import("@/ui/pages/ServiceFormPage").then((m) => ({ default: m.ServiceFormPage })),
 );
 const ProductCreatePage = isTauri
   ? ProductCreatePageEager

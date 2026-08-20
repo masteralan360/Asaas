@@ -253,6 +253,7 @@
         "help": "Help",
         "products": "Products",
         "units": "Units",
+        "services": "Services",
         "customers": "Customers",
         "orders": "Orders",
         "invoices": "Invoices",
@@ -1117,6 +1118,47 @@
             "title": "No Storage Found",
             "description": "You need to create a storage location before adding products.",
             "goToStorage": "Go to Storage Settings"
+        }
+    },
+    "services": {
+        "title": "Services",
+        "subtitle": "Manage non-inventory items that can be sold and returned.",
+        "addService": "Add Service",
+        "searchPlaceholder": "Search services",
+        "empty": "No services yet.",
+        "badge": "Service",
+        "backToList": "Back to Services",
+        "notFoundTitle": "Service not found",
+        "notFoundDescription": "This service could not be found. It may have been deleted or is no longer available.",
+        "loadingDescription": "Fetching the service details for this page.",
+        "readOnlyNotice": "Viewing this service in read-only mode.",
+        "editSubtitle": "Update service details, pricing, and return rules.",
+        "createSubtitle": "Services have no SKU, unit, stock, or physical storage.",
+        "confirmDelete": "Delete Service",
+        "deleteDescription": "This removes the service from the catalog. Existing sale history is kept.",
+        "messages": {
+            "saveError": "Failed to save the service",
+            "deleteError": "Failed to delete the service"
+        },
+        "form": {
+            "serviceDetailsTitle": "Service Details",
+            "serviceDetailsDesc": "Capture the core identity, description, and category for this service.",
+            "name": "Service name",
+            "description": "Service description...",
+            "visuals": "Visuals",
+            "visualsDesc": "Upload or link a service image and keep the preview synced with the current record.",
+            "noImage": "Add image",
+            "noImagePreview": "No Preview",
+            "imageError": "Image Error",
+            "pricingDesc": "Set the selling price, cost basis, and active currency for this service.",
+            "returnsTitle": "Returns",
+            "returnsDesc": "Define whether this service can be returned and any return conditions.",
+            "canBeReturnedDesc": "Customers can return this service.",
+            "cannotBeReturnedDesc": "This service is non-returnable.",
+            "noReturnRules": "No custom return guidance yet.",
+            "noInventoryNotice": "Services don't track stock, units, or storage. This form only manages pricing and return behavior.",
+            "additionalImages": "Additional Images",
+            "additionalImagesDisabled": "Save this service before managing additional images."
         }
     },
     "priceBooks": {
