@@ -9,6 +9,7 @@ import { Button } from '@/ui/components/button'
 import { exportToExcel, mapFinanceForExport, mapSalesForExport, mapRevenueForExport } from '@/lib/excelExport'
 import { supabase } from '@/auth/supabase'
 import { useHideCosts, useViewOwnRecordScope } from '@/permissions'
+import { getDateRangeBounds } from '@/lib/dateRangeFilters'
 
 const SpreadsheetPreview = lazy(() =>
     import('react-spreadsheet').then((module) => ({ default: module.default }))
@@ -116,35 +117,23 @@ export function ExportPreviewModal({
                     return acc
                 }, {})
 
-                const now = new Date()
                 const { dateRange, customDates, selectedCashier } = filters || {
                     dateRange: 'today',
                     customDates: { start: null, end: null },
                     selectedCashier: 'all'
                 }
+                const { start, end } = getDateRangeBounds(dateRange as Parameters<typeof getDateRangeBounds>[0], {
+                    start: customDates.start || '',
+                    end: customDates.end || ''
+                })
 
                 const filteredSales = localSales.filter((sale) => {
                     if (salesViewOwnScope.isRestricted && sale.cashierId !== salesViewOwnScope.userId) {
                         return false
                     }
                     const saleDate = new Date(sale.createdAt)
-                    if (dateRange === 'today') {
-                        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-                        if (saleDate < startOfDay) return false
-                    } else if (dateRange === 'month') {
-                        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-                        if (saleDate < startOfMonth) return false
-                    } else if (dateRange === 'lastMonth') {
-                        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-                        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-                        if (saleDate < startOfLastMonth || saleDate >= startOfMonth) return false
-                    } else if (dateRange === 'custom' && customDates.start && customDates.end) {
-                        const start = new Date(customDates.start)
-                        start.setHours(0, 0, 0, 0)
-                        const end = new Date(customDates.end)
-                        end.setHours(23, 59, 59, 999)
-                        if (saleDate < start || saleDate > end) return false
-                    }
+                    if (start && saleDate < start) return false
+                    if (end && saleDate >= end) return false
                     if (selectedCashier && selectedCashier !== 'all' && sale.cashierId !== selectedCashier) {
                         return false
                     }
@@ -203,34 +192,22 @@ export function ExportPreviewModal({
                         )
                     `)
 
-            const now = new Date()
             const { dateRange, customDates, selectedCashier } = filters || {
                 dateRange: 'today',
                 customDates: { start: null, end: null },
                 selectedCashier: 'all'
             }
+            const { start, end } = getDateRangeBounds(dateRange as Parameters<typeof getDateRangeBounds>[0], {
+                start: customDates.start || '',
+                end: customDates.end || ''
+            })
 
             if (activeWorkspace?.id) {
                 query = query.eq('workspace_id', activeWorkspace.id)
             }
 
-            if (dateRange === 'today') {
-                const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString()
-                query = query.gte('created_at', startOfDay)
-            } else if (dateRange === 'month') {
-                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-                query = query.gte('created_at', startOfMonth)
-            } else if (dateRange === 'lastMonth') {
-                const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
-                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-                query = query.gte('created_at', startOfLastMonth).lt('created_at', startOfMonth)
-            } else if (dateRange === 'custom' && customDates.start && customDates.end) {
-                const start = new Date(customDates.start)
-                start.setHours(0, 0, 0, 0)
-                const end = new Date(customDates.end)
-                end.setHours(23, 59, 59, 999)
-                query = query.gte('created_at', start.toISOString()).lte('created_at', end.toISOString())
-            }
+            if (start) query = query.gte('created_at', start.toISOString())
+            if (end) query = query.lt('created_at', end.toISOString())
 
             if (selectedCashier && selectedCashier !== 'all') {
                 query = query.eq('cashier_id', selectedCashier)

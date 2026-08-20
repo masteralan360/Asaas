@@ -189,6 +189,33 @@ describe('Sales History custom A4 templates', () => {
     })
 })
 
+describe('Instant History receipt custom print template', () => {
+    it('registers a separate Instant History target with the Sales History receipt editor and fields', () => {
+        const salesTarget = customTemplates.getCustomTemplateTarget(customTemplates.SALES_HISTORY_RECEIPT_TEMPLATE_KEY)
+        const instantTarget = customTemplates.getCustomTemplateTarget(customTemplates.INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY)
+
+        expect(instantTarget).toMatchObject({
+            moduleTypeKey: customTemplates.INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY,
+            workspaceModuleKey: 'instant_pos',
+            moduleLabel: 'Instant History',
+            typeLabel: 'Receipt Print',
+            nativeTemplateAvailable: true,
+            printFormat: 'receipt',
+            page: { widthMm: 80, heightMm: 200 }
+        })
+
+        expect(salesTarget).toBeDefined()
+        expect(instantTarget).toBeDefined()
+
+        const salesPreview = customTemplates.createCustomTemplatePreview(salesTarget!, { printLang: 'en' })
+        const instantPreview = customTemplates.createCustomTemplatePreview(instantTarget!, { printLang: 'en' })
+
+        expect(instantPreview.fields).toEqual(salesPreview.fields)
+        expect(instantPreview.movableComponents).toEqual(salesPreview.movableComponents)
+        expect(instantPreview.page).toEqual(salesPreview.page)
+    })
+})
+
 describe('Partner Details custom print template', () => {
     it('stores and validates the resolved workspace print language', () => {
         const layout = customTemplates.stampCustomTemplatePrintLanguage({

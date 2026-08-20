@@ -1,6 +1,7 @@
 import type { SalesOrder } from '@/local-db'
 import type { Sale } from '@/types'
 import { convertToStoreBase } from '@/lib/currency'
+import { isDateInDateRange } from '@/lib/dateRangeFilters'
 import { getOrderLineInventoryQuantity, getOrderLinePaidQuantity } from '@/lib/orderLineItems'
 
 export interface RevenueAnalysisItem {
@@ -59,14 +60,6 @@ export type RevenueCategoryLookup = {
 type CustomDates = {
     start: string | null
     end: string | null
-}
-
-function getStartOfToday(now: Date) {
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-}
-
-function getStartOfMonth(now: Date) {
-    return new Date(now.getFullYear(), now.getMonth(), 1)
 }
 
 function getOrderRevenueDate(order: SalesOrder) {
@@ -238,32 +231,12 @@ export function isRecordInDateRange(
     customDates: CustomDates,
     now = new Date()
 ) {
-    const value = new Date(date)
-
-    if (dateRange === 'today') {
-        return value >= getStartOfToday(now)
-    }
-
-    if (dateRange === 'month') {
-        return value >= getStartOfMonth(now)
-    }
-
-    if (dateRange === 'lastMonth') {
-        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-        return value >= startOfLastMonth && value < getStartOfMonth(now)
-    }
-
-    if (dateRange === 'custom' && (customDates.start || customDates.end)) {
-        const start = customDates.start ? new Date(customDates.start) : null
-        if (start) start.setHours(0, 0, 0, 0)
-        const end = customDates.end ? new Date(customDates.end) : null
-        if (end) end.setHours(23, 59, 59, 999)
-        if (start && value < start) return false
-        if (end && value > end) return false
-        return true
-    }
-
-    return true
+    return isDateInDateRange(
+        date,
+        dateRange as Parameters<typeof isDateInDateRange>[1],
+        { start: customDates.start || '', end: customDates.end || '' },
+        now
+    )
 }
 
 export function filterRevenueAnalysisRecords(

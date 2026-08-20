@@ -9,6 +9,7 @@ import {
   cn,
   formatDate,
   formatDateTime,
+  formatTime,
   getHourDisplayPreference,
 } from "@/lib/utils"
 import { Button } from "@/ui/components/button"
@@ -25,7 +26,7 @@ interface DateTimePickerProps {
   id?: string
   date: Date | undefined
   setDate: (date: Date | undefined) => void
-  mode?: "date" | "date-time"
+  mode?: "date" | "date-time" | "time"
   placeholder?: string
   disabled?: boolean
   open?: boolean
@@ -65,14 +66,16 @@ export function DateTimePicker({
     return () => window.removeEventListener(HOUR_DISPLAY_PREFERENCE_EVENT, handlePreferenceChange)
   }, [])
 
-  const hasTime = mode === "date-time"
+  const hasDate = mode !== "time"
+  const hasTime = mode !== "date"
   const formattedValue = React.useMemo(() => {
     if (!date) {
       return null
     }
 
+    if (!hasDate) return formatTime(date, { preference: hourDisplayPreference })
     return hasTime ? formatDateTime(date) : formatDate(date)
-  }, [date, hasTime, hourDisplayPreference])
+  }, [date, hasDate, hasTime, hourDisplayPreference])
 
   const handleSelectDate = (selectedDate: Date | undefined) => {
     if (!selectedDate) {
@@ -103,7 +106,7 @@ export function DateTimePicker({
             buttonClassName
           )}
         >
-          <CalendarIcon className="mr-2 h-4 w-4" />
+          {hasDate ? <CalendarIcon className="mr-2 h-4 w-4" /> : <Clock className="mr-2 h-4 w-4" />}
           {formattedValue ? <span className="truncate">{formattedValue}</span> : <span>{placeholder}</span>}
         </Button>
       </PopoverTrigger>
@@ -114,12 +117,14 @@ export function DateTimePicker({
         collisionPadding={isTauri() ? { top: 56, bottom: 8, left: 8, right: 8 } : 8}
       >
         <div className="flex flex-col items-center">
-          <Calendar
-            mode="single"
-            selected={date}
-            onSelect={handleSelectDate}
-            initialFocus
-          />
+          {hasDate ? (
+            <Calendar
+              mode="single"
+              selected={date}
+              onSelect={handleSelectDate}
+              initialFocus
+            />
+          ) : null}
           {hasTime ? (
             <div className="flex w-full items-center justify-center gap-3 border-t bg-secondary/5 p-3">
               <Clock className="h-4 w-4 text-muted-foreground/60" />
@@ -175,9 +180,11 @@ export function DateTimePicker({
               variant="secondary"
               size="sm"
               className="h-7 px-3 text-xs font-medium bg-background border shadow-sm"
-              onClick={() => handleSelectDate(new Date())}
+              onClick={() => hasDate ? handleSelectDate(new Date()) : setDate(new Date())}
             >
-              {t("common.today", { defaultValue: "Today" })}
+              {hasDate
+                ? t("common.today", { defaultValue: "Today" })
+                : t("common.now", { defaultValue: "Now" })}
             </Button>
           </div>
         </div>

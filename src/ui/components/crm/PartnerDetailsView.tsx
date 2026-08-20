@@ -77,6 +77,7 @@ import {
 import { useWorkspace } from '@/workspace'
 import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
+import { getDateRangeBounds } from '@/lib/dateRangeFilters'
 import type { PartnerDetailsPrintData } from '@/ui/components/crm/PartnerDetailsPrintTemplate'
 import type { PartnerOrderItemsPrintData } from '@/ui/components/crm/PartnerOrderItemsPrintTemplate'
 import type { PrintFormat } from '@/services/pdfGenerator'
@@ -624,29 +625,8 @@ export function PartnerDetailsView({
     }, [isLocalMode, workspaceId])
 
     const dateBounds = useMemo(() => {
-        const now = new Date()
-        if (dateRange === 'today') {
-            const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-            const end = new Date(start)
-            end.setDate(end.getDate() + 1)
-            return { startDate: start.toISOString(), endDate: end.toISOString() }
-        }
-        if (dateRange === 'month') {
-            const start = new Date(now.getFullYear(), now.getMonth(), 1)
-            const end = new Date(now.getFullYear(), now.getMonth() + 1, 1)
-            return { startDate: start.toISOString(), endDate: end.toISOString() }
-        }
-        if (dateRange === 'lastMonth') {
-            const start = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-            const end = new Date(now.getFullYear(), now.getMonth(), 1)
-            return { startDate: start.toISOString(), endDate: end.toISOString() }
-        }
-        if (dateRange === 'custom' && (customDates.start || customDates.end)) {
-            const start = customDates.start ? new Date(customDates.start) : undefined
-            const end = customDates.end ? new Date(customDates.end) : undefined
-            return { startDate: start?.toISOString(), endDate: end?.toISOString() }
-        }
-        return { startDate: undefined, endDate: undefined }
+        const { start, end } = getDateRangeBounds(dateRange, customDates)
+        return { startDate: start?.toISOString(), endDate: end?.toISOString() }
     }, [dateRange, customDates])
 
     const partnerLoans = useMemo(

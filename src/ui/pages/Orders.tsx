@@ -17,6 +17,7 @@ import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getReportOriginId } from '@/lib/printIdentity'
 import { buildOrderExchangeRatesSnapshot, convertCurrencyAmountWithLiveRates, getPrimaryExchangeDetails } from '@/lib/orderCurrency'
 import { ORDER_DECIMAL_STEP, roundOrderValue } from '@/lib/orderPrecision'
+import { getDateRangeBounds } from '@/lib/dateRangeFilters'
 import { formatCurrency, formatDate, formatLocalDateTimeValue, generateId, parseLocalDateTimeValue } from '@/lib/utils'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import { platformService } from '@/services/platformService'
@@ -289,90 +290,28 @@ function filterOrdersByDate<T>(
     customDates: { start: string; end: string },
     getDate: (order: T) => string | null | undefined
 ) {
-    const now = new Date()
+    const { start, end } = getDateRangeBounds(dateRange, customDates)
+    if (!start && !end) return orders
 
-    if (dateRange === 'today') {
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-        return orders.filter((order) => {
-            const date = getDate(order)
-            return Boolean(date && new Date(date) >= startOfDay)
-        })
-    }
-
-    if (dateRange === 'month') {
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-        return orders.filter((order) => {
-            const date = getDate(order)
-            return Boolean(date && new Date(date) >= startOfMonth)
-        })
-    }
-
-    if (dateRange === 'lastMonth') {
-        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-        return orders.filter((order) => {
-            const date = getDate(order)
-            if (!date) return false
-            const orderDate = new Date(date)
-            return orderDate >= startOfLastMonth && orderDate < startOfMonth
-        })
-    }
-
-    if (dateRange === 'custom' && (customDates.start || customDates.end)) {
-        const start = customDates.start ? new Date(customDates.start) : null
-        if (start) start.setHours(0, 0, 0, 0)
-        const end = customDates.end ? new Date(customDates.end) : null
-        if (end) end.setHours(23, 59, 59, 999)
-        return orders.filter((order) => {
-            const date = getDate(order)
-            if (!date) return false
-            const orderDate = new Date(date)
-            if (start && orderDate < start) return false
-            if (end && orderDate > end) return false
-            return true
-        })
-    }
-
-    return orders
+    return orders.filter((order) => {
+        const date = getDate(order)
+        if (!date) return false
+        const orderDate = new Date(date)
+        if (start && orderDate < start) return false
+        if (end && orderDate >= end) return false
+        return true
+    })
 }
 
 function getPreviousDateRange(dateRange: DateRangeType, customDates: { start: string; end: string }) {
-    const now = new Date()
+    const { start, end } = getDateRangeBounds(dateRange, customDates)
+    if (!start || !end) return null
 
-    if (dateRange === 'today') {
-        const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-        const start = new Date(end)
-        start.setDate(start.getDate() - 1)
-        return { start, end }
+    const duration = end.getTime() - start.getTime()
+    return {
+        start: new Date(start.getTime() - duration),
+        end: start
     }
-
-    if (dateRange === 'month') {
-        return {
-            start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
-            end: new Date(now.getFullYear(), now.getMonth(), 1)
-        }
-    }
-
-    if (dateRange === 'lastMonth') {
-        return {
-            start: new Date(now.getFullYear(), now.getMonth() - 2, 1),
-            end: new Date(now.getFullYear(), now.getMonth() - 1, 1)
-        }
-    }
-
-    if (dateRange === 'custom' && customDates.start && customDates.end) {
-        const currentStart = new Date(customDates.start)
-        currentStart.setHours(0, 0, 0, 0)
-        const currentEnd = new Date(customDates.end)
-        currentEnd.setHours(23, 59, 59, 999)
-        const duration = currentEnd.getTime() - currentStart.getTime() + 1
-        return {
-            start: new Date(currentStart.getTime() - duration),
-            end: new Date(currentStart.getTime() - 1)
-        }
-    }
-
-    return null
 }
 
 function getOrderSummary(items: Array<{ productName: string }>) {

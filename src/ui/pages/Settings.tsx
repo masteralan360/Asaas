@@ -24,6 +24,8 @@ import { Image as ImageIcon } from 'lucide-react'
 import { assetManager } from '@/lib/assetManager'
 import { downloadWorkspaceResources } from '@/lib/workspaceResourceSync'
 import { getMonthDisplayPreference, setMonthDisplayPreference, type MonthDisplayPreference } from '@/lib/monthDisplay'
+import { getDateFilterDayBoundary, setDateFilterDayBoundary } from '@/lib/dateRangeFilters'
+import { DateTimePicker } from '@/ui/components/ui/date-time-picker'
 import { useWorkspaceContacts } from '@/local-db/hooks'
 import { getManualRateSource, getManualRateValue, setExchangeRateSource as setStoredExchangeRateSource } from '@/lib/manualExchangeRates'
 import type { ExchangeRateSource } from '@/lib/exchangeRate'
@@ -50,6 +52,18 @@ import {
 } from '@/lib/updatePreference'
 import { requestPwaDeploymentUpdate } from '@/lib/pwaUpdateControl'
 import { enrollLocalAccountCredential } from '@/auth/localAccountAuth'
+
+function getDateFilterDayBoundaryDate(value: string) {
+    const [hours, minutes] = value.split(':').map(Number)
+    const date = new Date()
+    date.setHours(hours || 0, minutes || 0, 0, 0)
+    return date
+}
+
+function formatDateFilterDayBoundary(date: Date | undefined) {
+    if (!date) return '00:00'
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
 
 export function Settings() {
     const { user, signOut, isSupabaseConfigured, updateUser } = useAuth()
@@ -98,6 +112,7 @@ export function Settings() {
     const [whatsappAutoLaunch, setWhatsappAutoLaunch] = useState(localStorage.getItem('whatsapp_auto_launch') === 'true')
     const [hourDisplayPreference, setHourDisplayPreferenceState] = useState<HourDisplayPreference>(getHourDisplayPreference())
     const [monthDisplayPreference, setMonthDisplayPreferenceState] = useState<MonthDisplayPreference>(getMonthDisplayPreference())
+    const [dateFilterDayBoundary, setDateFilterDayBoundaryState] = useState(getDateFilterDayBoundary)
     const [hasFxAccountingData, setHasFxAccountingData] = useState(false)
     const [isClinicalRegistrySaving, setIsClinicalRegistrySaving] = useState(false)
     const clinicalRegistryType = useClinicalRegistryType(user?.workspaceId)
@@ -2470,6 +2485,46 @@ export function Settings() {
                         </DialogContent>
                     </Dialog>
 
+
+                    {/* Local Date Filter Boundary */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <CalendarClock className="w-5 h-5" />
+                                {t('settings.dateFilterDayBoundary.title', { defaultValue: 'Date Filter Day Boundary' })}
+                            </CardTitle>
+                            <CardDescription>
+                                {t('settings.dateFilterDayBoundary.description', {
+                                    defaultValue: 'Choose when daily date filters roll over on this device.'
+                                })}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                <Label htmlFor="date-filter-day-boundary" className="shrink-0">
+                                    {t('settings.dateFilterDayBoundary.startTime', { defaultValue: 'Daily filters start at' })}
+                                </Label>
+                                <DateTimePicker
+                                    id="date-filter-day-boundary"
+                                    mode="time"
+                                    date={getDateFilterDayBoundaryDate(dateFilterDayBoundary)}
+                                    setDate={(date) => {
+                                        const nextValue = formatDateFilterDayBoundary(date)
+                                        setDateFilterDayBoundaryState(nextValue)
+                                        void setDateFilterDayBoundary(nextValue).catch((error) => {
+                                            console.error('[Settings] Failed to save date filter day boundary:', error)
+                                        })
+                                    }}
+                                    buttonClassName="h-10 w-40 font-mono"
+                                />
+                                <p className="text-sm text-muted-foreground">
+                                    {t('settings.dateFilterDayBoundary.note', {
+                                        defaultValue: 'Affects filters only. It never changes stored transaction dates or records.'
+                                    })}
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
 
                     {/* POS Settings */}
                     <Card>

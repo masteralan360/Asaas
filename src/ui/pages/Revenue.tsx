@@ -8,6 +8,7 @@ import { applySalesOrderReturnQuantities, useCategories, useProducts, useSales, 
 import { formatCurrency, formatDateTime, formatDate, formatOriginLabel, formatTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
+import { getDateRangeBounds } from '@/lib/dateRangeFilters'
 import { isMobile } from '@/lib/platform'
 import { getReportOriginId } from '@/lib/printIdentity'
 import { useWorkspace } from '@/workspace'
@@ -571,32 +572,11 @@ export function Revenue() {
     const { style } = useTheme()
 
     const dateBounds = useMemo<{ startDate?: string; endDate?: string }>(() => {
-        const now = new Date()
-        if (dateRange === 'today') {
-            const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-            return { startDate: startOfDay.toISOString() }
+        const { start, end } = getDateRangeBounds(dateRange, customDates)
+        return {
+            startDate: start?.toISOString(),
+            endDate: end ? new Date(end.getTime() - 1).toISOString() : undefined
         }
-        if (dateRange === 'month') {
-            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-            return { startDate: startOfMonth.toISOString() }
-        }
-        if (dateRange === 'lastMonth') {
-            const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-            const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-            endOfLastMonth.setMilliseconds(-1)
-            return { startDate: startOfLastMonth.toISOString(), endDate: endOfLastMonth.toISOString() }
-        }
-        if (dateRange === 'custom' && (customDates.start || customDates.end)) {
-            const start = customDates.start ? new Date(customDates.start) : undefined
-            if (start) start.setHours(0, 0, 0, 0)
-            const end = customDates.end ? new Date(customDates.end) : undefined
-            if (end) end.setHours(23, 59, 59, 999)
-            return {
-                startDate: start?.toISOString(),
-                endDate: end?.toISOString()
-            }
-        }
-        return {}
     }, [dateRange, customDates])
     const revenueReportOriginId = useMemo(() => getReportOriginId(
         user?.workspaceId,

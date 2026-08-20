@@ -75,6 +75,7 @@ import {
 } from '@/ui/components/ProfessionalA4InvoiceTemplate'
 
 export const SALES_HISTORY_RECEIPT_TEMPLATE_KEY = 'salesHistory.Receipt'
+export const INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY = 'instantHistory.Receipt'
 export const SALES_HISTORY_MODERN_A4_TEMPLATE_KEY = 'salesHistory.ModernA4'
 export const SALES_HISTORY_PROFESSIONAL_A4_TEMPLATE_KEY = 'salesHistory.ProfessionalA4'
 export const SALES_HISTORY_A4_TEMPLATE_KEYS = [
@@ -105,7 +106,7 @@ export const PARTNER_ORDER_ITEMS_TEMPLATE_FIELD_KEYS = {
 
 export type CustomTemplateTarget = {
     moduleTypeKey: string
-    workspaceModuleKey: 'real_estate' | 'sales_history' | 'crm'
+    workspaceModuleKey: 'instant_pos' | 'real_estate' | 'sales_history' | 'crm'
     moduleLabel: string
     typeLabel: string
     description: string
@@ -178,6 +179,17 @@ export const CUSTOM_TEMPLATE_TARGETS: CustomTemplateTarget[] = [
         typeLabel: 'Receipt Print',
         description: 'Sales History thermal receipt print layout.',
         nativeTemplateKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
+        nativeTemplateAvailable: true,
+        printFormat: 'receipt',
+        page: { widthMm: 80, heightMm: 200 }
+    },
+    {
+        moduleTypeKey: INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY,
+        workspaceModuleKey: 'instant_pos',
+        moduleLabel: 'Instant History',
+        typeLabel: 'Receipt Print',
+        description: 'Instant History thermal receipt print layout.',
+        nativeTemplateKey: INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY,
         nativeTemplateAvailable: true,
         printFormat: 'receipt',
         page: { widthMm: 80, heightMm: 200 }
@@ -1644,7 +1656,10 @@ export function createCustomTemplatePreview(
     target: CustomTemplateTarget,
     options: CustomTemplatePreviewOptions = {}
 ): TemplatePreview {
-    if (target.moduleTypeKey === SALES_HISTORY_RECEIPT_TEMPLATE_KEY) {
+    if (
+        target.moduleTypeKey === SALES_HISTORY_RECEIPT_TEMPLATE_KEY
+        || target.moduleTypeKey === INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY
+    ) {
         return createSalesHistoryReceiptPreview(options)
     }
 

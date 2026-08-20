@@ -16,6 +16,7 @@ import { supabase } from '@/auth/supabase'
 import { db } from '@/local-db'
 import { useDebounce } from '@/lib/hooks'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
+import { SALES_HISTORY_RECEIPT_TEMPLATE_KEY } from '@/lib/customTemplates'
 import { usePosReceiptPrinter } from './usePosReceiptPrinter'
 
 interface CheckoutSuccessModalProps {
@@ -26,6 +27,8 @@ interface CheckoutSuccessModalProps {
     tutorialDisablePrint?: boolean
     /** Uses a source-specific receipt while retaining the normal POS direct-print flow. */
     receiptPdfBuilder?: () => Promise<Blob>
+    /** Custom Template target used for the receipt's primary-layout lookup. */
+    receiptTemplateKey?: string
     /** Persists the note to the underlying source record instead of the POS sales table. */
     onSaveNote?: (note: string) => Promise<void> | void
 }
@@ -37,6 +40,7 @@ export function CheckoutSuccessModal({
     features,
     tutorialDisablePrint = false,
     receiptPdfBuilder,
+    receiptTemplateKey = SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
     onSaveNote
 }: CheckoutSuccessModalProps) {
     const { t } = useTranslation()
@@ -61,6 +65,7 @@ export function CheckoutSuccessModal({
         features,
         enabled: isOpen,
         receiptPdfBuilder,
+        receiptTemplateKey,
     })
 
     useEffect(() => {

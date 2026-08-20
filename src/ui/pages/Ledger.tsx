@@ -81,6 +81,7 @@ import {
 } from '@/ui/components'
 import { useWorkspace } from '@/workspace'
 import { useTheme } from '@/ui/components/theme-provider'
+import { getDateRangeBounds, isDateInDateRange } from '@/lib/dateRangeFilters'
 
 type LedgerDirection = 'incoming' | 'outgoing'
 type LedgerSourceModule = 'pos' | 'instant_pos' | 'orders' | 'expenses' | 'payroll' | 'loans' | 'real_estate' | 'activities' | 'clinical_appointments' | 'manual' | 'exchange' | 'post_service'
@@ -185,52 +186,13 @@ function countActiveLedgerFilters(filters: LedgerFilterState) {
     ].filter(Boolean).length
 }
 
-function getStartOfToday(now: Date) {
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-}
-
-function getStartOfMonth(now: Date) {
-    return new Date(now.getFullYear(), now.getMonth(), 1)
-}
-
 function isEntryInDateRange(
     date: string,
     dateRange: 'today' | 'yesterday' | 'month' | 'lastMonth' | 'allTime' | 'custom',
     customDates: { start: string; end: string },
     now = new Date()
 ) {
-    const value = new Date(date)
-
-    if (dateRange === 'today') {
-        return value >= getStartOfToday(now)
-    }
-
-    if (dateRange === 'yesterday') {
-        const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0)
-        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-        return value >= startOfYesterday && value < startOfToday
-    }
-
-    if (dateRange === 'month') {
-        return value >= getStartOfMonth(now)
-    }
-
-    if (dateRange === 'lastMonth') {
-        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-        return value >= startOfLastMonth && value < getStartOfMonth(now)
-    }
-
-    if (dateRange === 'custom' && (customDates.start || customDates.end)) {
-        const start = customDates.start ? new Date(customDates.start) : null
-        if (start) start.setHours(0, 0, 0, 0)
-        const end = customDates.end ? new Date(customDates.end) : null
-        if (end) end.setHours(23, 59, 59, 999)
-        if (start && value < start) return false
-        if (end && value > end) return false
-        return true
-    }
-
-    return true
+    return isDateInDateRange(date, dateRange, customDates, now)
 }
 
 function paymentMethodLabel(value: string | null | undefined, t: any) {
@@ -1417,32 +1379,11 @@ export function Ledger() {
         || features.post_service
 
     const dateBounds = useMemo<{ startDate?: string; endDate?: string }>(() => {
-        const now = new Date()
-        if (dateRange === 'today') {
-            const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-            return { startDate: startOfDay.toISOString() }
+        const { start, end } = getDateRangeBounds(dateRange, customDates)
+        return {
+            startDate: start?.toISOString(),
+            endDate: end ? new Date(end.getTime() - 1).toISOString() : undefined
         }
-        if (dateRange === 'month') {
-            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-            return { startDate: startOfMonth.toISOString() }
-        }
-        if (dateRange === 'lastMonth') {
-            const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-            const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-            endOfLastMonth.setMilliseconds(-1)
-            return { startDate: startOfLastMonth.toISOString(), endDate: endOfLastMonth.toISOString() }
-        }
-        if (dateRange === 'custom' && (customDates.start || customDates.end)) {
-            const start = customDates.start ? new Date(customDates.start) : undefined
-            if (start) start.setHours(0, 0, 0, 0)
-            const end = customDates.end ? new Date(customDates.end) : undefined
-            if (end) end.setHours(23, 59, 59, 999)
-            return {
-                startDate: start?.toISOString(),
-                endDate: end?.toISOString()
-            }
-        }
-        return {}
     }, [dateRange, customDates])
 
     const loans = useLoans(workspaceId)

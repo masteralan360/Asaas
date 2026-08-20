@@ -17,6 +17,7 @@ import { createVerificationSale, verifySale } from '@/lib/saleVerification'
 import { convertCurrencyAmountWithAvailableSnapshot } from '@/lib/orderCurrency'
 import { getMissingProductCostMessage, hasValidProductCost } from '@/lib/productCost'
 import { mapSaleToUniversal } from '@/lib/mappings'
+import { INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY } from '@/lib/customTemplates'
 import { CheckoutSuccessModal } from '@/ui/components/pos/CheckoutSuccessModal'
 import { usePosReceiptPrinter } from '@/ui/components/pos/usePosReceiptPrinter'
 
@@ -837,6 +838,7 @@ export function InstantPOS() {
         saleData: preprintReceiptData,
         features,
         enabled: canPreprintReceipt,
+        receiptTemplateKey: INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY,
     })
 
     const handlePreprintReceipt = useCallback(async () => {
@@ -2033,6 +2035,7 @@ export function InstantPOS() {
                 }}
                 saleData={completedSaleData}
                 features={features}
+                receiptTemplateKey={INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY}
             />
         </div>
     )

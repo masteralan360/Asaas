@@ -12,14 +12,7 @@ import { useWorkspace } from '@/workspace/WorkspaceContext'
 import { DashboardSalesOverview } from '@/ui/components/DashboardSalesOverview'
 import { useDateRange } from '@/context/DateRangeContext'
 import { useWorkspacePermissions } from '@/permissions'
-
-function getStartOfToday(now: Date) {
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-}
-
-function getStartOfMonth(now: Date) {
-    return new Date(now.getFullYear(), now.getMonth(), 1)
-}
+import { isDateInDateRange } from '@/lib/dateRangeFilters'
 
 function isEntryInDateRange(
     date: string,
@@ -27,38 +20,7 @@ function isEntryInDateRange(
     customDates: { start: string; end: string },
     now = new Date()
 ) {
-    const value = new Date(date)
-
-    if (dateRange === 'today') {
-        return value >= getStartOfToday(now)
-    }
-
-    if (dateRange === 'yesterday') {
-        const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0)
-        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-        return value >= startOfYesterday && value < startOfToday
-    }
-
-    if (dateRange === 'month') {
-        return value >= getStartOfMonth(now)
-    }
-
-    if (dateRange === 'lastMonth') {
-        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-        return value >= startOfLastMonth && value < getStartOfMonth(now)
-    }
-
-    if (dateRange === 'custom' && (customDates.start || customDates.end)) {
-        const start = customDates.start ? new Date(customDates.start) : null
-        if (start) start.setHours(0, 0, 0, 0)
-        const end = customDates.end ? new Date(customDates.end) : null
-        if (end) end.setHours(23, 59, 59, 999)
-        if (start && value < start) return false
-        if (end && value > end) return false
-        return true
-    }
-
-    return true
+    return isDateInDateRange(date, dateRange, customDates, now)
 }
 
 export function Dashboard() {

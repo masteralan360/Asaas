@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isDateInDateRange } from './dateRangeFilters'
+import { getDateRangeBounds, isDateInDateRange } from './dateRangeFilters'
 
 const now = new Date(2026, 6, 6, 12)
 const emptyCustomDates = { start: '', end: '' }
@@ -40,5 +40,36 @@ describe('isDateInDateRange', () => {
         expect(isDateInDateRange('2026-07-10', 'custom', { start: '2026-07-05', end: '' }, now)).toBe(true)
         expect(isDateInDateRange('2026-07-04', 'custom', { start: '2026-07-05', end: '' }, now)).toBe(false)
         expect(isDateInDateRange('2026-07-10', 'custom', { start: '', end: '2026-07-09' }, now)).toBe(false)
+    })
+
+    it('uses the configured local boundary for daily filters', () => {
+        const morning = new Date(2026, 6, 6, 9, 30)
+        const bounds = getDateRangeBounds('today', emptyCustomDates, morning, '10:00')
+
+        expect(bounds.start).toEqual(new Date(2026, 6, 5, 10))
+        expect(bounds.end).toEqual(new Date(2026, 6, 6, 10))
+    })
+
+    it('uses an exclusive end at the next configured daily boundary', () => {
+        const nowAtNoon = new Date(2026, 6, 6, 12)
+        const bounds = getDateRangeBounds('today', emptyCustomDates, nowAtNoon, '10:00')
+
+        expect(bounds.start).toEqual(new Date(2026, 6, 6, 10))
+        expect(bounds.end).toEqual(new Date(2026, 6, 7, 10))
+        expect(isDateInDateRange(new Date(2026, 6, 6, 9, 59), 'today', emptyCustomDates, nowAtNoon, '10:00')).toBe(false)
+        expect(isDateInDateRange(new Date(2026, 6, 6, 10), 'today', emptyCustomDates, nowAtNoon, '10:00')).toBe(true)
+        expect(isDateInDateRange(new Date(2026, 6, 7, 10), 'today', emptyCustomDates, nowAtNoon, '10:00')).toBe(false)
+    })
+
+    it('applies the local boundary to the full custom end date', () => {
+        const bounds = getDateRangeBounds(
+            'custom',
+            { start: '2026-07-05', end: '2026-07-06' },
+            now,
+            '10:00'
+        )
+
+        expect(bounds.start).toEqual(new Date(2026, 6, 5, 10))
+        expect(bounds.end).toEqual(new Date(2026, 6, 7, 10))
     })
 })

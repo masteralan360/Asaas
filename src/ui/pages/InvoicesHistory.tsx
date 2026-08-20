@@ -41,6 +41,7 @@ import { setInvoicePreviewSource } from '@/lib/pdfPreviewStore'
 import { loadInvoiceVersions } from '@/services/invoiceVersionService'
 import { getReadableFileSize } from '@/components/application/file-upload/file-upload-base'
 import { getWorkspaceUsageLimitMessage, isWorkspaceUsageLimitError } from '@/lib/workspaceUsage'
+import { isDateInDateRange } from '@/lib/dateRangeFilters'
 
 const UPLOAD_FILES_ROUTE = '/invoices-history/upload-files'
 
@@ -91,6 +92,7 @@ export function InvoicesHistory() {
     const uploadedFilesCount = invoices.length - historyInvoices.length
 
     const filteredInvoices = useMemo(() => {
+        const now = new Date()
         return historyInvoices
             .filter((invoice) => {
                 const normalizedSearch = search.trim().toLowerCase()
@@ -100,39 +102,10 @@ export function InvoicesHistory() {
                     invoice.origin,
                     invoice.createdByName,
                 ].some((value) => value?.toLowerCase().includes(normalizedSearch))
-                const invoiceDate = new Date(invoice.createdAt)
-                const now = new Date()
-
-                if (dateRange === 'today') {
-                    const startOfDay = new Date(now.setHours(0, 0, 0, 0))
-                    return matchesSearch && invoiceDate >= startOfDay
-                }
-
-                if (dateRange === 'month') {
-                    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-                    return matchesSearch && invoiceDate >= startOfMonth
-                }
-
-                if (dateRange === 'lastMonth') {
-                    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-                    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-                    return matchesSearch && invoiceDate >= startOfLastMonth && invoiceDate < startOfMonth
-                }
-
-                if (dateRange === 'custom' && (customDates.start || customDates.end)) {
-                    const start = customDates.start ? new Date(customDates.start) : null
-                    if (start) start.setHours(0, 0, 0, 0)
-                    const end = customDates.end ? new Date(customDates.end) : null
-                    if (end) end.setHours(23, 59, 59, 999)
-                    if (start && invoiceDate < start) return false
-                    if (end && invoiceDate > end) return false
-                    return matchesSearch
-                }
-
-                return matchesSearch
+                return matchesSearch && isDateInDateRange(invoice.createdAt, dateRange, customDates, now)
             })
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    }, [customDates.end, customDates.start, dateRange, historyInvoices, search])
+    }, [customDates, dateRange, historyInvoices, search])
 
     const getDateDisplay = () => {
         if (dateRange === 'today') {

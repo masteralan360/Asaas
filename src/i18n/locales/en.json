@@ -2597,6 +2597,12 @@
             "barcodeHotkey": "Barcode Shortcut Key",
             "barcodeHotkeyDesc": "Press this key to open the Barcode Scanner in POS."
         },
+        "dateFilterDayBoundary": {
+            "title": "Date Filter Day Boundary",
+            "description": "Choose when daily date filters roll over on this device.",
+            "startTime": "Daily filters start at",
+            "note": "Affects filters only. It never changes stored transaction dates or records."
+        },
         "currency": {
             "title": "Currency",
             "desc": "Set the default currency for your workspace.",

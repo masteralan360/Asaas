@@ -9,6 +9,7 @@ import { Sale } from '@/types'
 import { formatCurrency, formatDateTime, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
+import { getDateRangeBounds } from '@/lib/dateRangeFilters'
 import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { salesExchangeRowsToSnapshots } from '@/lib/salesExchange'
 import { useWorkspace } from '@/workspace'
@@ -119,37 +120,14 @@ export function TeamPerformance() {
                     } as User] : [])
 
                 const localSales = await db.sales.where('workspaceId').equals(workspaceId).toArray()
+                const { start: localRangeStart, end: localRangeEnd } = getDateRangeBounds(dateRange, customDates)
                 const filteredLocalSales = localSales.filter((sale) => {
                     if (salesViewOwnScope.isRestricted && sale.cashierId !== salesViewOwnScope.userId) {
                         return false
                     }
                     const saleDate = new Date(sale.createdAt)
-                    const now = new Date()
-
-                    if (dateRange === 'today') {
-                        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-                        return saleDate >= startOfDay
-                    }
-
-                    if (dateRange === 'month') {
-                        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-                        return saleDate >= startOfMonth
-                    }
-
-                    if (dateRange === 'lastMonth') {
-                        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-                        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-                        return saleDate >= startOfLastMonth && saleDate < startOfMonth
-                    }
-
-                    if (dateRange === 'custom' && customDates.start && customDates.end) {
-                        const start = new Date(customDates.start)
-                        start.setHours(0, 0, 0, 0)
-                        const end = new Date(customDates.end)
-                        end.setHours(23, 59, 59, 999)
-                        return saleDate >= start && saleDate <= end
-                    }
-
+                    if (localRangeStart && saleDate < localRangeStart) return false
+                    if (localRangeEnd && saleDate >= localRangeEnd) return false
                     return true
                 })
 
@@ -229,26 +207,9 @@ export function TeamPerformance() {
                 .select('*, sales_exchange(*), sale_items(*)')
                 .eq('workspace_id', user?.workspaceId)
 
-            const now = new Date()
-            if (dateRange === 'today') {
-                const startOfDay = new Date(now.setHours(0, 0, 0, 0)).toISOString()
-                query = query.gte('created_at', startOfDay)
-            } else if (dateRange === 'month') {
-                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-                query = query.gte('created_at', startOfMonth)
-            } else if (dateRange === 'lastMonth') {
-                const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
-                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-                query = query.gte('created_at', startOfLastMonth).lt('created_at', startOfMonth)
-            } else if (dateRange === 'custom' && customDates.start && customDates.end) {
-                const start = new Date(customDates.start)
-                start.setHours(0, 0, 0, 0)
-                const end = new Date(customDates.end)
-                end.setHours(23, 59, 59, 999)
-                query = query.gte('created_at', start.toISOString()).lte('created_at', end.toISOString())
-            } else if (dateRange === 'allTime') {
-                // No date filtering needed
-            }
+            const { start, end } = getDateRangeBounds(dateRange, customDates)
+            if (start) query = query.gte('created_at', start.toISOString())
+            if (end) query = query.lt('created_at', end.toISOString())
 
             const { data: salesData, error: sError } = await query.order('created_at', { ascending: true })
             if (sError) throw sError

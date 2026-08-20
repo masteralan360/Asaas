@@ -27,6 +27,8 @@ interface UsePosReceiptPrinterOptions {
     enabled: boolean
     /** Uses a source-specific receipt while retaining the normal POS direct-print flow. */
     receiptPdfBuilder?: () => Promise<Blob>
+    /** Custom Template target used to resolve the active primary receipt layout. */
+    receiptTemplateKey?: string
 }
 
 interface PrintPosReceiptOptions {
@@ -43,7 +45,8 @@ export function usePosReceiptPrinter({
     saleData,
     features,
     enabled,
-    receiptPdfBuilder
+    receiptPdfBuilder,
+    receiptTemplateKey = SALES_HISTORY_RECEIPT_TEMPLATE_KEY
 }: UsePosReceiptPrinterOptions) {
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
@@ -67,7 +70,7 @@ export function usePosReceiptPrinter({
         && enabled
         && !!workspaceId
         && (isLocalMode || isSupabaseConfigured)
-    const primaryTemplateLookupKey = `${workspaceId}:${currentTemplatePrintLanguage}`
+    const primaryTemplateLookupKey = `${receiptTemplateKey}:${workspaceId}:${currentTemplatePrintLanguage}`
 
     useEffect(() => {
         if (!shouldLoadPrimaryReceiptTemplate) {
@@ -82,7 +85,7 @@ export function usePosReceiptPrinter({
         void (async () => {
             try {
                 const templates = await fetchCachedCustomTemplates(workspaceId, {
-                    moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
+                    moduleTypeKey: receiptTemplateKey,
                     activeOnly: true,
                     primaryOnly: true,
                 })
@@ -107,11 +110,11 @@ export function usePosReceiptPrinter({
         return () => {
             cancelled = true
         }
-    }, [currentTemplatePrintLanguage, primaryTemplateLookupKey, shouldLoadPrimaryReceiptTemplate, workspaceId])
+    }, [currentTemplatePrintLanguage, primaryTemplateLookupKey, receiptTemplateKey, shouldLoadPrimaryReceiptTemplate, workspaceId])
 
     const primaryReceiptTarget = useMemo(
-        () => getCustomTemplateTarget(SALES_HISTORY_RECEIPT_TEMPLATE_KEY),
-        []
+        () => getCustomTemplateTarget(receiptTemplateKey),
+        [receiptTemplateKey]
     )
     const primaryReceiptLayout = useMemo(
         () => primaryReceiptTemplate
