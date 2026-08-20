@@ -9,13 +9,16 @@ import type { CurrencyCode } from '@/local-db/models'
 import { useWorkspace } from '@/workspace'
 import { formatCompactDateTime, formatCurrency, generateId, cn, stylizeText } from '@/lib/utils'
 import { Button, Input, useToast, Textarea, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, StorageSelector } from '@/ui/components'
-import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Loader2, Menu, Minus, Plus, Receipt, Search, StickyNote, Trash2 } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Loader2, Menu, Minus, Package, Plus, Receipt, Search, ShoppingCart, StickyNote, Trash2 } from 'lucide-react'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { platformService } from '@/services/platformService'
 import { useKdsStream } from '@/hooks/useKdsStream'
 import { createVerificationSale, verifySale } from '@/lib/saleVerification'
 import { convertCurrencyAmountWithAvailableSnapshot } from '@/lib/orderCurrency'
 import { getMissingProductCostMessage, hasValidProductCost } from '@/lib/productCost'
+import { mapSaleToUniversal } from '@/lib/mappings'
+import { CheckoutSuccessModal } from '@/ui/components/pos/CheckoutSuccessModal'
+import { usePosReceiptPrinter } from '@/ui/components/pos/usePosReceiptPrinter'
 
 const TICKETS_STORAGE_KEY = 'instant_pos_tickets'
 const TICKET_COUNTER_KEY = 'instant_pos_ticket_counter'
@@ -68,6 +71,15 @@ function formatDiscountBadge(
     }
 
     return `-${formatCurrency(discount.discountValue, currency, iqdPreference)}`
+}
+
+function getTicketNotes(items: InstantPosItem[]) {
+    const notes = items
+        .filter((item) => item.note)
+        .map((item) => `${item.name} --${stylizeText(item.note || '')}`)
+        .join('\n')
+
+    return notes || null
 }
 
 
@@ -151,8 +163,12 @@ interface MobileTicketPanelProps {
     statusAction: { label: string, status: InstantPosStatus } | null
     activePendingTimeLeftMs: number | null
     isCheckoutLoading: boolean
+    canPreprintReceipt: boolean
+    isPreprinting: boolean
+    isLoadingPreprintTemplate: boolean
     getStorageLabel: (storageId?: string | null) => string | null
     checkoutTicket: () => void
+    handlePreprintReceipt: () => Promise<void>
     setTicketStatus: (status: InstantPosStatus) => void
     extendPendingExpiry: (id: string) => void
     clearActiveTicket: () => void
@@ -166,7 +182,8 @@ interface MobileTicketPanelProps {
 function MobileTicketPanel({
     activeTicket, activeTicketTotals, settlementCurrency, features, t,
     statusLabels, statusAction, activePendingTimeLeftMs, isCheckoutLoading,
-    getStorageLabel, checkoutTicket, setTicketStatus, extendPendingExpiry, clearActiveTicket,
+    canPreprintReceipt, isPreprinting, isLoadingPreprintTemplate,
+    getStorageLabel, checkoutTicket, handlePreprintReceipt, setTicketStatus, extendPendingExpiry, clearActiveTicket,
     updateItemQuantity, setItemQuantity, removeItem, setNoteItem, closeTicket
 }: MobileTicketPanelProps) {
     const [isExpanded, setIsExpanded] = useState(false)
@@ -280,6 +297,25 @@ function MobileTicketPanel({
                             pointerEvents: progress > 0.3 ? 'none' : 'auto'
                         }}
                     >
+                        <div className="flex items-center gap-2">
+                        {canPreprintReceipt && (
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-12 w-12 rounded-2xl border-2"
+                                onClick={(event) => {
+                                    event.stopPropagation()
+                                    void handlePreprintReceipt()
+                                }}
+                                disabled={isCheckoutLoading || isPreprinting || isLoadingPreprintTemplate}
+                                title={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
+                                aria-label={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
+                            >
+                                {isPreprinting || isLoadingPreprintTemplate
+                                    ? <Loader2 className="h-5 w-5 animate-spin" />
+                                    : <Receipt className="h-5 w-5" />}
+                            </Button>
+                        )}
                         <Button
                             className="h-12 px-6 rounded-2xl font-black shadow-lg shadow-primary/20 active:scale-95 transition-all text-primary-foreground"
                             onClick={(e) => {
@@ -295,6 +331,7 @@ function MobileTicketPanel({
                                 </div>
                             )}
                         </Button>
+                        </div>
                     </div>
                 </div>
 
@@ -454,9 +491,22 @@ function MobileTicketPanel({
                                             {statusAction.label}
                                         </Button>
                                     )}
-                                    <Button className={cn("h-14 rounded-2xl font-black text-lg gap-2", !statusAction && "col-span-2")} onClick={checkoutTicket} disabled={activeTicket.items.length === 0 || isCheckoutLoading || activeTicketTotals.hasMixedCurrency}>
+                                    <Button className={cn("h-14 rounded-2xl font-black text-lg gap-2", !statusAction && !canPreprintReceipt && "col-span-2")} onClick={checkoutTicket} disabled={activeTicket.items.length === 0 || isCheckoutLoading || activeTicketTotals.hasMixedCurrency}>
                                         {isCheckoutLoading ? <Loader2 className="animate-spin" /> : <><CheckCircle2 className="w-5 h-5" /> {t('instantPos.checkout')}</>}
                                     </Button>
+                                    {canPreprintReceipt && (
+                                        <Button
+                                            variant="outline"
+                                            className="h-14 rounded-2xl border-2"
+                                            onClick={() => void handlePreprintReceipt()}
+                                            disabled={isCheckoutLoading || isPreprinting || isLoadingPreprintTemplate}
+                                            title={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
+                                        >
+                                            {isPreprinting || isLoadingPreprintTemplate
+                                                ? <Loader2 className="h-5 w-5 animate-spin" />
+                                                : <Receipt className="h-5 w-5" />}
+                                        </Button>
+                                    )}
                                     <Button variant="outline" className="h-14 rounded-2xl font-bold col-span-2" onClick={() => closeTicket(activeTicket.id)} disabled={isCheckoutLoading}>
                                         {t('instantPos.closeTicket')}
                                     </Button>
@@ -490,9 +540,19 @@ export function InstantPOS() {
     const [selectedStorageId, setSelectedStorageId] = useState<string>(() => {
         return localStorage.getItem('instant_pos_selected_storage') || ''
     })
+    const isServicesStorage = selectedStorageId === SERVICES_VIRTUAL_STORAGE_ID
+    const instantPosStorages = useMemo(() => [
+        ...storages,
+        ...(hasFeature('services') ? [{
+            id: SERVICES_VIRTUAL_STORAGE_ID,
+            name: t('services.title', { defaultValue: 'Services' }),
+            isSystem: false,
+            isVirtual: true
+        }] : [])
+    ], [hasFeature, storages, t])
     const products = useBatchAwareInventoryProducts(user?.workspaceId, {
-        enabled: !!selectedStorageId,
-        storageId: selectedStorageId || undefined
+        enabled: !!selectedStorageId && !isServicesStorage,
+        storageId: isServicesStorage ? undefined : selectedStorageId || undefined
     })
     const catalogProducts = useProducts(user?.workspaceId, { syncBarcodeCache: false })
     const { canSelectProduct, filterProducts: filterSelectableProducts } = useProductSelectionAccess(user?.workspaceId, user?.id)
@@ -506,14 +566,22 @@ export function InstantPOS() {
             hasBatches: false, batchCount: 0, nextBatchNumber: null, nextBatchExpiryDate: null, nextBatchQuantity: null
         }))
     }, [catalogProducts, filterSelectableProducts, hasFeature])
+    const inventoryProducts = useMemo(
+        () => filterSelectableProducts(products),
+        [filterSelectableProducts, products]
+    )
     const selectableProducts = useMemo(
-        () => [...filterSelectableProducts(products), ...serviceProducts],
-        [filterSelectableProducts, products, serviceProducts]
+        () => isServicesStorage ? serviceProducts : inventoryProducts,
+        [inventoryProducts, isServicesStorage, serviceProducts]
+    )
+    const ticketProducts = useMemo(
+        () => [...inventoryProducts, ...serviceProducts],
+        [inventoryProducts, serviceProducts]
     )
     const activeDiscountMap = useActiveDiscountMap(user?.workspaceId, {
-        products: [...products, ...catalogProducts.filter(isService)],
-        inventoryRows: selectedStorageId ? undefined : [],
-        storageId: selectedStorageId || undefined,
+        products: isServicesStorage ? catalogProducts.filter(isService) : products,
+        inventoryRows: selectedStorageId && !isServicesStorage ? undefined : [],
+        storageId: isServicesStorage ? undefined : selectedStorageId || undefined,
         syncRemote: false
     })
     const categories = useCategories(user?.workspaceId)
@@ -532,6 +600,9 @@ export function InstantPOS() {
     const [search, setSearch] = useState('')
     const [selectedCategory, setSelectedCategory] = useState<string>('all')
     const [isCheckoutLoading, setIsCheckoutLoading] = useState(false)
+    const [isPreprinting, setIsPreprinting] = useState(false)
+    const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false)
+    const [completedSaleData, setCompletedSaleData] = useState<any>(null)
     const [now, setNow] = useState(() => Date.now())
     const [noteItem, setNoteItem] = useState<{ productId: string, storageId?: string, name: string, note: string } | null>(null)
 
@@ -544,13 +615,17 @@ export function InstantPOS() {
     }, [selectedStorageId])
 
     useEffect(() => {
-        if (storages.length > 0 && (!selectedStorageId || !storages.find(storage => storage.id === selectedStorageId))) {
+        if (selectedStorageId && instantPosStorages.some(storage => storage.id === selectedStorageId)) {
+            return
+        }
+
+        if (storages.length > 0) {
             const mainStorage = getPrimaryStorageFromList(storages)
             if (mainStorage) {
                 setSelectedStorageId(mainStorage.id)
             }
         }
-    }, [storages, selectedStorageId])
+    }, [instantPosStorages, selectedStorageId, storages])
 
     useEffect(() => {
         saveTickets(tickets)
@@ -558,7 +633,7 @@ export function InstantPOS() {
         if (hasFeature('kds') && kdsStatus === 'host') {
             broadcast('TICKET_UPDATED', tickets)
         }
-    }, [tickets, kdsStatus, hasFeature])
+    }, [broadcast, tickets, kdsStatus, hasFeature])
 
     useEffect(() => {
         const timer = setInterval(() => setNow(Date.now()), 1000)
@@ -622,6 +697,18 @@ export function InstantPOS() {
         [tickets, activeTicketId]
     )
 
+    const handleStorageSelect = useCallback((storageId: string) => {
+        if (storageId !== selectedStorageId && tickets.some((ticket) => ticket.items.length > 0)) {
+            toast({
+                title: t('common.error') || 'Error',
+                description: t('pos.switchStorageBlocked') || 'Finish or clear open tickets before switching storage.',
+                variant: 'destructive'
+            })
+            return
+        }
+        setSelectedStorageId(storageId)
+    }, [selectedStorageId, t, tickets, toast])
+
     const getStorageLabel = useCallback((storageId?: string | null) => {
         if (storageId === SERVICES_VIRTUAL_STORAGE_ID) {
             return t('services.title', { defaultValue: 'Services' })
@@ -642,18 +729,18 @@ export function InstantPOS() {
 
     const resolveTicketProduct = useCallback((item: Pick<InstantPosItem, 'productId' | 'storageId'>) => {
         if (item.storageId) {
-            return selectableProducts.find(product => product.id === item.productId && product.storageId === item.storageId)
+            return ticketProducts.find(product => product.id === item.productId && product.storageId === item.storageId)
         }
 
-        const matches = selectableProducts.filter(product => product.id === item.productId)
+        const matches = ticketProducts.filter(product => product.id === item.productId)
         return matches.length === 1 ? matches[0] : undefined
-    }, [selectableProducts])
+    }, [ticketProducts])
 
     const filteredProducts = useMemo(() => {
         const term = search.trim().toLowerCase()
         const normalizedSettlement = settlementCurrency?.toLowerCase()
         return selectableProducts.filter(product => {
-            if (!isService(product) && (!product.storageId || !selectedStorageId || product.storageId !== selectedStorageId)) return false
+            if (!selectedStorageId || product.storageId !== selectedStorageId) return false
             const matchesSearch = !term
                 || (product.name || '').toLowerCase().includes(term)
                 || (product.sku || '').toLowerCase().includes(term)
@@ -670,7 +757,7 @@ export function InstantPOS() {
 
     useEffect(() => {
         const excludedProductIds = new Set(
-            selectableProducts
+            ticketProducts
                 .filter((product) => !canSelectProduct(product))
                 .map((product) => product.id)
         )
@@ -683,7 +770,7 @@ export function InstantPOS() {
             const items = ticket.items.filter((item) => !excludedProductIds.has(item.productId))
             return items.length === ticket.items.length ? ticket : { ...ticket, items }
         }))
-    }, [canSelectProduct, selectableProducts])
+    }, [canSelectProduct, ticketProducts])
 
     const activeTicketTotals = useMemo(() => {
         if (!activeTicket) {
@@ -694,6 +781,83 @@ export function InstantPOS() {
         const count = activeTicket.items.reduce((sum, item) => sum + item.quantity, 0)
         return { count, total, hasMixedCurrency }
     }, [activeTicket, settlementCurrency])
+
+    const activeTicketQuantityByItemKey = useMemo(() => new Map(
+        activeTicket?.items.map((item) => [buildInstantPosItemKey(item.productId, item.storageId), item.quantity]) ?? []
+    ), [activeTicket])
+
+    const preprintReceiptData = useMemo(() => {
+        if (!user || !activeTicket || activeTicket.items.length === 0 || activeTicketTotals.hasMixedCurrency) {
+            return null
+        }
+
+        const printedAt = new Date().toISOString()
+        return mapSaleToUniversal({
+            id: generateId(),
+            workspace_id: user.workspaceId,
+            cashier_id: user.id,
+            cashier_name: user.name || 'System',
+            created_at: printedAt,
+            items: activeTicket.items.map((item) => {
+                const product = resolveTicketProduct(item)
+                const service = isService(product)
+                return {
+                    product_id: item.productId,
+                    storage_id: service ? null : item.storageId || product?.storageId || null,
+                    product_name: item.name,
+                    product_sku: item.sku,
+                    created_at: printedAt,
+                    updated_at: printedAt,
+                    quantity: item.quantity,
+                    unit_price: item.unitPrice,
+                    total_price: item.unitPrice * item.quantity,
+                    cost_price: product?.costPrice ?? 0,
+                    converted_cost_price: product?.costPrice ?? 0,
+                    original_currency: item.currency,
+                    original_unit_price: item.baseUnitPrice,
+                    converted_unit_price: item.unitPrice,
+                    settlement_currency: settlementCurrency,
+                    inventory_snapshot: service ? null : product?.quantity ?? 0,
+                }
+            }),
+            total_amount: activeTicketTotals.total,
+            settlement_currency: settlementCurrency,
+            sales_exchange: [],
+            origin: 'instant_pos',
+            payment_method: 'cash',
+            notes: getTicketNotes(activeTicket.items)
+        } as any)
+    }, [activeTicket, activeTicketTotals.hasMixedCurrency, activeTicketTotals.total, resolveTicketProduct, settlementCurrency, user])
+
+    const canPreprintReceipt = !!preprintReceiptData
+    const {
+        isLoadingPrimaryReceiptTemplate: isLoadingPreprintTemplate,
+        printReceipt: printPreprintReceipt,
+    } = usePosReceiptPrinter({
+        saleData: preprintReceiptData,
+        features,
+        enabled: canPreprintReceipt,
+    })
+
+    const handlePreprintReceipt = useCallback(async () => {
+        if (!preprintReceiptData || isPreprinting) return
+
+        setIsPreprinting(true)
+        try {
+            await printPreprintReceipt({
+                title: `Receipt_${preprintReceiptData.invoiceid || preprintReceiptData.id}`
+            })
+        } catch (error) {
+            console.error('[Instant POS] Failed to print receipt pre-print:', error)
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: t('pos.preprintReceiptFailed', { defaultValue: 'Could not print the receipt pre-print.' })
+            })
+        } finally {
+            setIsPreprinting(false)
+        }
+    }, [isPreprinting, preprintReceiptData, printPreprintReceipt, t, toast])
 
     const statusLabels = useMemo(() => ({
         pending: t('instantPos.status.pending') || 'Pending',
@@ -722,7 +886,7 @@ export function InstantPOS() {
     }
 
     const addItemToTicket = (productId: string) => {
-        const product = selectableProducts.find(item => item.id === productId && (isService(item) || item.storageId === selectedStorageId))
+        const product = selectableProducts.find(item => item.id === productId && item.storageId === selectedStorageId)
         const activeDiscount = activeDiscountMap.get(productId)
         if (!product) return
         if (!selectedStorageId && !isService(product)) {
@@ -733,7 +897,7 @@ export function InstantPOS() {
             })
             return
         }
-        if (!hasValidProductCost(product.costPrice)) {
+        if (!isService(product) && !hasValidProductCost(product.costPrice)) {
             toast({
                 title: t('common.error') || 'Error',
                 description: getMissingProductCostMessage(product.name),
@@ -1062,10 +1226,7 @@ export function InstantPOS() {
             maxDiscountPercent: features.max_discount_percent
         })
 
-        const consolidatedNotes = activeTicket.items
-            .filter(item => item.note)
-            .map(item => `${item.name} --${stylizeText(item.note || '')}`)
-            .join('\n')
+        const consolidatedNotes = getTicketNotes(activeTicket.items)
 
         const checkoutPayload = {
             id: saleId,
@@ -1076,7 +1237,7 @@ export function InstantPOS() {
             sales_exchange: [],
             origin: 'instant_pos',
             payment_method: 'cash',
-            notes: consolidatedNotes || null
+            notes: consolidatedNotes
         }
 
         try {
@@ -1144,7 +1305,18 @@ export function InstantPOS() {
                 isDeleted: false
             })
 
+            const saleData = mapSaleToUniversal({
+                ...checkoutPayload,
+                sequenceId,
+                created_at: snapshotTimestamp,
+                workspace_id: user.workspaceId,
+                cashier_id: user.id,
+                cashier_name: user.name || 'System'
+            } as any)
+
             closeTicket(activeTicket.id)
+            setCompletedSaleData(saleData)
+            setIsSuccessModalOpen(true)
 
             toast({
                 title: t('instantPos.checkoutComplete') || 'Order closed',
@@ -1274,9 +1446,20 @@ export function InstantPOS() {
                         })
                     }
 
+                    const saleDataOffline = mapSaleToUniversal({
+                        ...checkoutPayload,
+                        sequenceId: localSequenceId,
+                        created_at: snapshotTimestamp,
+                        workspace_id: user.workspaceId,
+                        cashier_id: user.id,
+                        cashier_name: user.name || 'System'
+                    } as any)
+
                     await addToOfflineMutations('sales', saleId, 'create', checkoutPayload, user.workspaceId)
 
                     closeTicket(activeTicket.id)
+                    setCompletedSaleData(saleDataOffline)
+                    setIsSuccessModalOpen(true)
 
                     toast({
                         title: isLocalMode
@@ -1348,49 +1531,53 @@ export function InstantPOS() {
     }
 
     return (
-        <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
-            <header className="flex flex-col gap-4 border-b border-border/60 bg-card/70 px-6 py-5 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-4">
+        <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden bg-background p-4 text-foreground xl:flex-row xl:m-0">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+                <div className="flex flex-wrap items-center gap-4 rounded-xl border border-border bg-card p-4 shadow-sm">
                     <button
-                        className="lg:hidden p-2 -ms-2 rounded-lg hover:bg-secondary transition-colors"
+                        className="-ms-2 rounded-lg p-2 transition-colors hover:bg-secondary xl:hidden"
                         onClick={() => window.dispatchEvent(new CustomEvent('open-mobile-sidebar'))}
                     >
                         <Menu className="w-5 h-5" />
                     </button>
-                    <div>
-                        <h1 className="text-2xl font-black gradient-text">
+                    <div className="min-w-0 shrink-0">
+                        <h1 className="text-lg font-bold">
                             {t('instantPos.title') || 'Instant POS'}
                         </h1>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="max-w-48 truncate text-xs text-muted-foreground">
                             {t('instantPos.serverTicket', {
                                 server: user?.name || (t('instantPos.staffFallback') || 'Staff'),
                                 ticket: activeTicket?.number || '--'
                             }) || `Server: ${user?.name || 'Staff'} | Ticket ${activeTicket?.number || '--'}`}
                         </p>
                     </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
                     <StorageSelector
-                        storages={storages}
+                        storages={instantPosStorages}
                         selectedStorageId={selectedStorageId}
-                        onSelect={setSelectedStorageId}
-                        className="h-11 w-full bg-background/80 sm:w-[220px]"
+                        onSelect={handleStorageSelect}
+                        className="h-12 w-full bg-background/80 sm:w-[220px]"
                     />
+                    <div className="relative min-w-[13rem] flex-1">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder={t('instantPos.search') || 'Search menu items...'}
+                            className="h-12 pl-10 text-base"
+                        />
+                    </div>
                     <Button
                         onClick={createTicket}
                         variant="secondary"
-                        className="gap-2 rounded-full"
+                        className="h-12 gap-2 rounded-xl px-4"
                     >
                         <Receipt className="w-4 h-4" />
                         {t('instantPos.newTicket') || 'New Ticket'}
                     </Button>
                 </div>
-            </header>
 
-            <div className="flex flex-1 min-h-0 flex-col xl:flex-row">
-                <section className="flex min-h-0 flex-1 flex-col gap-4 p-6">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-sm">
+                        <div className="flex max-w-full flex-1 items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
                             {tickets.length === 0 ? (
                                 <div className="text-xs text-muted-foreground">
                                     {t('instantPos.noTickets') || 'No open tickets yet.'}
@@ -1419,25 +1606,16 @@ export function InstantPOS() {
                             )}
                         </div>
 
-                        <div className="relative w-full max-w-[280px]">
-                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                placeholder={t('instantPos.search') || 'Search menu items...'}
-                                className="h-11 w-full rounded-full pl-10 text-sm"
-                            />
-                        </div>
-                    </div>
+                </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none no-scrollbar">
                         <button
                             onClick={() => setSelectedCategory('all')}
                             className={cn(
-                                'rounded-full px-4 py-2 text-xs font-semibold transition',
+                                'whitespace-nowrap rounded-full px-6 py-2.5 text-sm font-bold transition-all',
                                 selectedCategory === 'all'
-                                    ? 'bg-primary text-primary-foreground shadow-sm'
-                                    : 'bg-muted/40 text-muted-foreground hover:bg-muted/60'
+                                    ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                                    : 'border border-border bg-card text-muted-foreground'
                             )}
                         >
                             {t('instantPos.allCategories') || 'All Items'}
@@ -1447,10 +1625,10 @@ export function InstantPOS() {
                                 key={category.id}
                                 onClick={() => setSelectedCategory(category.id)}
                                 className={cn(
-                                    'rounded-full px-4 py-2 text-xs font-semibold transition',
+                                    'whitespace-nowrap rounded-full px-6 py-2.5 text-sm font-bold transition-all',
                                     selectedCategory === category.id
-                                        ? 'bg-primary text-primary-foreground shadow-sm'
-                                        : 'bg-muted/40 text-muted-foreground hover:bg-muted/60'
+                                        ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                                        : 'border border-border bg-card text-muted-foreground'
                                 )}
                             >
                                 {category.name}
@@ -1459,10 +1637,10 @@ export function InstantPOS() {
                         <button
                             onClick={() => setSelectedCategory('none')}
                             className={cn(
-                                'rounded-full px-4 py-2 text-xs font-semibold transition',
+                                'whitespace-nowrap rounded-full px-6 py-2.5 text-sm font-bold transition-all',
                                 selectedCategory === 'none'
-                                    ? 'bg-primary text-primary-foreground shadow-sm'
-                                    : 'bg-muted/40 text-muted-foreground hover:bg-muted/60'
+                                    ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                                    : 'border border-border bg-card text-muted-foreground'
                             )}
                         >
                             {t('instantPos.uncategorized') || 'Uncategorized'}
@@ -1482,41 +1660,81 @@ export function InstantPOS() {
                                     const imageUrl = getDisplayImageUrl(product.imageUrl)
                                     const activeDiscount = activeDiscountMap.get(product.id)
                                     const displayPrice = activeDiscount?.discountPrice ?? product.price
+                                    const inTicketQuantity = activeTicketQuantityByItemKey.get(
+                                        buildInstantPosItemKey(product.id, product.storageId)
+                                    ) ?? 0
+                                    const service = isService(product)
+                                    const remainingQuantity = service ? null : Math.max(0, product.quantity - inTicketQuantity)
+                                    const isOutOfStock = !service && remainingQuantity === 0
                                     return (
                                         <button
                                             key={buildInstantPosItemKey(product.id, product.storageId)}
                                             onClick={() => addItemToTicket(product.id)}
-                                            className="group flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card/80 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-md"
+                                            disabled={isOutOfStock}
+                                            className={cn(
+                                                'group relative flex flex-col gap-4 overflow-hidden rounded-[1.5rem] border border-border/50 bg-card p-4 text-left outline-none transition-all duration-300 hover:-translate-y-1 hover:bg-accent/5 hover:shadow-2xl hover:shadow-primary/5',
+                                                isOutOfStock && 'cursor-not-allowed opacity-60'
+                                            )}
                                         >
-                                            <div className="relative h-32 w-full overflow-hidden">
+                                            <div className="relative aspect-square overflow-hidden rounded-2xl border border-border/20 bg-muted/30">
                                                 {imageUrl ? (
                                                     <img
                                                         src={imageUrl}
                                                         alt={product.name}
-                                                        className="h-full w-full object-cover"
+                                                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                                                     />
                                                 ) : (
-                                                    <div className="h-full w-full bg-muted/60" />
+                                                    <div className="flex h-full w-full items-center justify-center bg-muted/60">
+                                                        <Package className="h-10 w-10 text-muted-foreground/20 transition-transform duration-500 group-hover:scale-110" />
+                                                    </div>
+                                                )}
+                                                {inTicketQuantity > 0 && (
+                                                    <div className="absolute left-2 top-2 rounded-2xl border border-emerald-400 bg-emerald-500 px-2.5 py-1.5 text-[12px] font-black text-white shadow-md">
+                                                        +{inTicketQuantity}
+                                                    </div>
+                                                )}
+                                                {service ? (
+                                                    <div className="absolute right-2 top-2 rounded-full bg-primary/10 px-2 py-1 text-[10px] font-black uppercase text-primary">
+                                                        {t('services.badge', { defaultValue: 'Service' })}
+                                                    </div>
+                                                ) : (
+                                                    <div className={cn(
+                                                        'absolute right-2 top-2 rounded-2xl px-2.5 py-1.5 text-[12px] font-black shadow-md',
+                                                        isOutOfStock
+                                                            ? 'bg-destructive text-destructive-foreground'
+                                                            : remainingQuantity !== null && remainingQuantity <= (product.minStockLevel || 5)
+                                                                ? 'bg-amber-400 text-amber-950'
+                                                                : 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 backdrop-blur-md'
+                                                    )}>
+                                                        {remainingQuantity}
+                                                    </div>
                                                 )}
                                                 {activeDiscount && (
-                                                    <div className="absolute left-3 top-3 rounded-full bg-emerald-500 px-3 py-1 text-[11px] font-black text-white shadow-md">
+                                                    <div className="absolute bottom-2 left-2 rounded-2xl bg-emerald-500 px-2.5 py-1 text-[11px] font-black text-white shadow-md">
                                                         {formatDiscountBadge(activeDiscount, product.currency, features.iqd_display_preference)}
                                                     </div>
                                                 )}
                                             </div>
-                                            <div className="flex flex-1 flex-col gap-1 p-3">
-                                                <div className="text-sm font-semibold text-foreground line-clamp-1">{product.name}</div>
+                                            <div className="flex flex-1 flex-col space-y-2">
+                                                <div className="truncate text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground/60">
+                                                    {product.sku || (service ? t('services.title', { defaultValue: 'Services' }) : '---')}
+                                                </div>
+                                                <h3 className="line-clamp-2 text-sm font-bold leading-snug text-foreground transition-colors group-hover:text-primary">
+                                                    {product.name}
+                                                </h3>
+                                            </div>
+                                            <div className="border-t border-border/40 pt-2">
                                                 {activeDiscount ? (
                                                     <div className="space-y-0.5">
-                                                        <div className="text-[11px] font-semibold text-muted-foreground line-through">
+                                                        <div className="text-xs font-semibold text-muted-foreground line-through">
                                                             {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
                                                         </div>
-                                                        <div className="text-xs font-semibold text-emerald-600">
+                                                        <div className="text-lg font-black text-emerald-600">
                                                             {formatCurrency(displayPrice, product.currency, features.iqd_display_preference)}
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="text-xs font-semibold text-primary">
+                                                    <div className="text-lg font-black text-primary">
                                                         {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
                                                     </div>
                                                 )}
@@ -1539,8 +1757,12 @@ export function InstantPOS() {
                             statusAction={statusAction}
                             activePendingTimeLeftMs={activePendingTimeLeftMs}
                             isCheckoutLoading={isCheckoutLoading}
+                            canPreprintReceipt={canPreprintReceipt}
+                            isPreprinting={isPreprinting}
+                            isLoadingPreprintTemplate={isLoadingPreprintTemplate}
                             getStorageLabel={getStorageLabel}
                             checkoutTicket={checkoutTicket}
+                            handlePreprintReceipt={handlePreprintReceipt}
                             setTicketStatus={setTicketStatus}
                             extendPendingExpiry={extendPendingExpiry}
                             clearActiveTicket={clearActiveTicket}
@@ -1551,21 +1773,26 @@ export function InstantPOS() {
                             closeTicket={closeTicket}
                         />
                     )}
-                </section>
+            </div>
 
-                <aside className="hidden w-full max-w-full flex-col border-t border-border/60 bg-card/70 px-6 py-5 backdrop-blur xl:flex xl:w-[360px] xl:border-l xl:border-t-0">
+                <aside className="hidden w-[380px] shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xl xl:flex">
                     {!activeTicket ? (
-                        <div className="text-sm text-muted-foreground">
-                            {t('instantPos.selectTicket') || 'Select a ticket to begin.'}
+                        <div className="flex h-full flex-col items-center justify-center space-y-2 p-8 text-center text-muted-foreground opacity-60">
+                            <ShoppingCart className="h-12 w-12" />
+                            <p>{t('instantPos.selectTicket') || 'Select a ticket to begin.'}</p>
                         </div>
                     ) : (
                         <div className="flex h-full flex-col">
-                            <div className="flex items-center justify-between">
+                            <div className="border-b border-border bg-muted/5 p-4">
+                                <div className="flex items-center justify-between gap-3">
                                 <div>
-                                    <div className="text-lg font-semibold">
+                                    <h2 className="flex items-center gap-2 text-xl font-bold">
+                                        <ShoppingCart className="h-5 w-5" />
                                         {t('instantPos.ticketLabel', { number: activeTicket.number }) || `Ticket ${activeTicket.number}`}
+                                    </h2>
+                                    <div className="mt-1 text-xs text-muted-foreground">
+                                        {activeTicket.items.length} {activeTicket.items.length === 1 ? t('common.item') : t('common.items')} · {formatCompactDateTime(activeTicket.createdAt)}
                                     </div>
-                                    <div className="text-xs text-muted-foreground">{formatCompactDateTime(activeTicket.createdAt)}</div>
                                 </div>
                                 <button
                                     onClick={clearActiveTicket}
@@ -1573,10 +1800,11 @@ export function InstantPOS() {
                                 >
                                     {t('instantPos.clearAll') || 'Clear All'}
                                 </button>
+                                </div>
                             </div>
 
                             {activePendingTimeLeftMs !== null && (
-                                <div className="mt-3 flex items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
+                                <div className="mx-4 mt-3 flex items-center justify-between rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
                                     <div className="flex flex-col">
                                         <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                                             {t('instantPos.pendingTimeout') || 'Pending Timeout'}
@@ -1592,15 +1820,15 @@ export function InstantPOS() {
                                         variant="outline"
                                         size="sm"
                                         onClick={() => extendPendingExpiry(activeTicket.id)}
-                                        className="h-8 rounded-full px-3"
+                                        className="h-8 rounded-lg px-3"
                                     >
                                         {t('instantPos.extendTimeout', { minutes: PENDING_TICKET_EXTENSION_MINUTES }) || `+${PENDING_TICKET_EXTENSION_MINUTES} min`}
                                     </Button>
                                 </div>
                             )}
 
-                            <div className="mt-4 space-y-2">
-                                <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground text-center">
+                            <div className="mt-4 space-y-2 px-4">
+                                <div className="text-center text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
                                     {t('instantPos.orderStatus') || 'Order Status'}
                                 </div>
                                 <div className="grid grid-cols-5 gap-2">
@@ -1609,10 +1837,10 @@ export function InstantPOS() {
                                             key={status}
                                             onClick={() => setTicketStatus(status)}
                                             className={cn(
-                                                'flex items-center justify-center text-center rounded-xl px-2 py-1.5 text-[10px] font-semibold uppercase transition',
+                                                'flex items-center justify-center rounded-lg border px-2 py-1.5 text-center text-[10px] font-semibold uppercase transition',
                                                 activeTicket.status === status
                                                     ? 'bg-primary/90 text-primary-foreground shadow-sm'
-                                                    : 'bg-muted/30 text-muted-foreground hover:bg-muted/50 border border-border/40'
+                                                    : 'border-border/40 bg-muted/30 text-muted-foreground hover:bg-muted/50'
                                             )}
                                         >
                                             {statusLabels[status]}
@@ -1621,21 +1849,18 @@ export function InstantPOS() {
                                 </div>
                             </div>
 
-                            <div className="mt-4 flex-1 space-y-3 overflow-y-auto custom-scrollbar pr-1">
+                            <div className="mt-4 flex-1 space-y-3 overflow-y-auto p-4 pt-0 custom-scrollbar">
                                 {activeTicket.items.length === 0 ? (
-                                    <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
+                                    <div className="flex flex-col items-center justify-center space-y-2 rounded-lg border border-dashed border-border/60 bg-muted/30 px-4 py-12 text-center text-sm text-muted-foreground">
+                                        <ShoppingCart className="h-10 w-10 opacity-50" />
                                         {t('instantPos.emptyTicket') || 'Add items to start this ticket.'}
                                     </div>
                                 ) : (
                                     activeTicket.items.map(item => (
-                                        <div key={buildInstantPosItemKey(item.productId, item.storageId)} className="rounded-2xl border border-border/60 bg-muted/30 p-3">
+                                        <div key={buildInstantPosItemKey(item.productId, item.storageId)} className="group flex flex-col rounded-lg border border-border bg-background p-3 transition-all duration-200">
                                             <div className="flex items-start justify-between gap-3">
-                                                <div className="flex items-start gap-3">
-                                                    <div className="rounded-lg bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
-                                                        {item.quantity}x
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-sm font-semibold text-foreground">{item.name}</div>
+                                                <div className="min-w-0 flex-1">
+                                                        <div className="truncate text-sm font-medium text-foreground">{item.name}</div>
                                                         {item.note && (
                                                             <div className="text-[10px] italic text-primary/80 font-medium">
                                                                 --{stylizeText(item.note)}
@@ -1643,11 +1868,10 @@ export function InstantPOS() {
                                                         )}
                                                         <div className="text-xs text-muted-foreground">{item.sku || '---'}</div>
                                                         {getStorageLabel(item.storageId) && (
-                                                            <div className="mt-1 inline-flex rounded-full border border-border/60 bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                                            <div className="mt-1 inline-flex rounded-md border border-border/60 bg-muted/30 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                                                                 {getStorageLabel(item.storageId)}
                                                             </div>
                                                         )}
-                                                    </div>
                                                 </div>
                                                 <div className="text-right">
                                                     {item.unitPrice < item.baseUnitPrice && (
@@ -1664,22 +1888,22 @@ export function InstantPOS() {
                                                 <div className="flex items-center gap-2">
                                                     <button
                                                         onClick={() => updateItemQuantity(item.productId, item.storageId, -1)}
-                                                        className="flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-background text-foreground hover:bg-muted/60"
+                                                        className="flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-muted/60"
                                                     >
                                                         <Minus className="h-3 w-3" />
                                                     </button>
-                                                    {item.storageId === SERVICES_VIRTUAL_STORAGE_ID && <Input type="number" min="0.001" step="0.001" value={item.quantity} onChange={(event) => setItemQuantity(item.productId, item.storageId, Number(event.target.value))} className="h-7 w-20 text-center" aria-label="Service quantity" />}
+                                                    {item.storageId === SERVICES_VIRTUAL_STORAGE_ID && <Input type="number" min="0.001" step="0.001" value={item.quantity} onChange={(event) => setItemQuantity(item.productId, item.storageId, Number(event.target.value))} className="h-7 w-14 border-0 bg-transparent p-0 text-center text-xs" aria-label="Service quantity" />}
                                                     <button
                                                         onClick={() => updateItemQuantity(item.productId, item.storageId, 1)}
-                                                        className="flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-background text-foreground hover:bg-muted/60"
+                                                        className="flex h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-muted/60"
                                                     >
                                                         <Plus className="h-3 w-3" />
                                                     </button>
                                                     <button
                                                         onClick={() => setNoteItem({ productId: item.productId, storageId: item.storageId, name: item.name, note: item.note || '' })}
                                                         className={cn(
-                                                            "flex h-7 px-2 items-center justify-center rounded-full border border-border/60 text-[10px] font-bold uppercase transition",
-                                                            item.note ? "bg-primary/10 border-primary/40 text-primary" : "bg-background text-muted-foreground hover:bg-muted/60"
+                                                            "flex h-7 items-center justify-center rounded-md border px-2 text-[10px] font-bold uppercase transition",
+                                                            item.note ? "border-primary/40 bg-primary/10 text-primary" : "border-border bg-background text-muted-foreground hover:bg-muted/60"
                                                         )}
                                                     >
                                                         <StickyNote className="h-3 w-3 mr-1" />
@@ -1688,7 +1912,7 @@ export function InstantPOS() {
                                                 </div>
                                                 <button
                                                     onClick={() => removeItem(item.productId, item.storageId)}
-                                                    className="text-xs text-destructive hover:text-destructive/80"
+                                                    className="ml-1 flex h-7 w-7 items-center justify-center rounded-md border border-destructive/20 bg-destructive/10 text-destructive transition-opacity hover:bg-destructive/20"
                                                 >
                                                     <Trash2 className="h-4 w-4" />
                                                 </button>
@@ -1698,7 +1922,7 @@ export function InstantPOS() {
                                 )}
                             </div>
 
-                            <div className="mt-4 space-y-3 border-t border-border/60 pt-4">
+                            <div className="space-y-3 border-t border-border bg-muted/10 p-4">
                                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                                     <span>{t('instantPos.subtotal') || 'Subtotal'}</span>
                                     <span>
@@ -1707,7 +1931,7 @@ export function InstantPOS() {
                                             : formatCurrency(activeTicketTotals.total, settlementCurrency, features.iqd_display_preference)}
                                     </span>
                                 </div>
-                                <div className="flex items-center justify-between text-lg font-semibold">
+                                <div className="flex items-center justify-between border-t border-border/50 pt-1 text-xl font-bold text-primary">
                                     <span>{t('common.total') || 'Total'}</span>
                                     <span className="text-primary">
                                         {activeTicketTotals.hasMixedCurrency
@@ -1723,7 +1947,7 @@ export function InstantPOS() {
                                 )}
                             </div>
 
-                            <div className="mt-4 flex flex-col gap-2">
+                            <div className="flex flex-col gap-2 px-4 pb-4">
                                 {statusAction && (
                                     <Button
                                         onClick={() => setTicketStatus(statusAction.status)}
@@ -1733,20 +1957,37 @@ export function InstantPOS() {
                                         {statusAction.label}
                                     </Button>
                                 )}
-                                <Button
-                                    className="h-11 w-full rounded-xl"
-                                    onClick={checkoutTicket}
-                                    disabled={
-                                        isCheckoutLoading
-                                        || activeTicket.items.length === 0
-                                        || activeTicketTotals.hasMixedCurrency
-                                    }
-                                >
-                                    <CheckCircle2 className="w-4 h-4" />
-                                    {isCheckoutLoading
-                                        ? (t('instantPos.checkoutLoading') || 'Closing...')
-                                        : (t('instantPos.checkout') || 'Checkout')}
-                                </Button>
+                                <div className="flex gap-2">
+                                    <Button
+                                        className="h-11 flex-1 rounded-xl"
+                                        onClick={checkoutTicket}
+                                        disabled={
+                                            isCheckoutLoading
+                                            || activeTicket.items.length === 0
+                                            || activeTicketTotals.hasMixedCurrency
+                                        }
+                                    >
+                                        <CheckCircle2 className="w-4 h-4" />
+                                        {isCheckoutLoading
+                                            ? (t('instantPos.checkoutLoading') || 'Closing...')
+                                            : (t('instantPos.checkout') || 'Checkout')}
+                                    </Button>
+                                    {canPreprintReceipt && (
+                                        <Button
+                                            variant="outline"
+                                            size="icon"
+                                            className="h-11 w-11 rounded-xl border-2"
+                                            onClick={() => void handlePreprintReceipt()}
+                                            disabled={isCheckoutLoading || isPreprinting || isLoadingPreprintTemplate}
+                                            title={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
+                                            aria-label={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
+                                        >
+                                            {isPreprinting || isLoadingPreprintTemplate
+                                                ? <Loader2 className="h-4 w-4 animate-spin" />
+                                                : <Receipt className="h-4 w-4" />}
+                                        </Button>
+                                    )}
+                                </div>
                                 <Button
                                     variant="outline"
                                     onClick={() => closeTicket(activeTicket.id)}
@@ -1759,7 +2000,6 @@ export function InstantPOS() {
                         </div>
                     )}
                 </aside>
-            </div>
 
             <Dialog open={!!noteItem} onOpenChange={(open) => !open && setNoteItem(null)}>
                 <DialogContent className="sm:max-w-[425px]">
@@ -1784,6 +2024,16 @@ export function InstantPOS() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <CheckoutSuccessModal
+                isOpen={isSuccessModalOpen}
+                onClose={() => {
+                    setIsSuccessModalOpen(false)
+                    setCompletedSaleData(null)
+                }}
+                saleData={completedSaleData}
+                features={features}
+            />
         </div>
     )
 }
