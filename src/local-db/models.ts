@@ -426,6 +426,8 @@ export interface Agent extends BaseEntity {
   businessPartnerId: string;
   zone: string;
   agentType: AgentType;
+  /** Fee the courier keeps for each successfully delivered post. */
+  courierDeliveryFee?: number;
   carModel?: string | null;
   plateNumber?: string | null;
   linkedUserId?: string | null;
@@ -441,6 +443,7 @@ export interface AgentExcludedCategory extends BaseEntity {
 export interface AgentFacetInput {
   zone: string;
   agentType: AgentType;
+  courierDeliveryFee?: number;
   carModel?: string | null;
   plateNumber?: string | null;
   linkedUserId?: string | null;
@@ -543,6 +546,8 @@ export interface DeliveryShipment extends BaseEntity {
   currency: CurrencyCode;
   codAmount: number;
   deliveryFee: number;
+  /** Courier fee snapshot from the manifest; charged only on delivery. */
+  courierDeliveryFee?: number;
   feePayer: DeliveryFeePayer;
   status: DeliveryShipmentStatus;
   assignedAgentId?: string | null;
@@ -569,6 +574,8 @@ export interface DeliveryShipmentEvent extends BaseEntity {
 export interface DeliveryRun extends BaseEntity {
   runNumber: string;
   agentId: string;
+  /** Per-delivered-post courier fee captured when the manifest was created. */
+  courierDeliveryFee?: number;
   vehicleId?: string | null;
   status: DeliveryRunStatus;
   dispatchedAt: string;
@@ -597,6 +604,8 @@ export interface DeliverySettlement extends BaseEntity {
   businessPartnerId?: string | null;
   shipmentId?: string | null;
   currency: CurrencyCode;
+  /** Per-post courier cost snapshot; zero for legacy or whole-party settlements. */
+  courierDeliveryFee?: number;
   expectedAmount: number;
   actualAmount: number;
   varianceAmount: number;
@@ -610,6 +619,7 @@ export interface DeliverySettlement extends BaseEntity {
 
 export type DeliveryLedgerEntryKind =
   | "courier_collection"
+  | "courier_delivery_fee"
   | "courier_remittance"
   | "merchant_cod_payable"
   | "merchant_fee"

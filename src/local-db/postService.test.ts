@@ -128,6 +128,65 @@ describe("Post Service COD accounting", () => {
     ]));
   });
 
+  it("snapshots the manifest courier fee and deducts it from the courier handover", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const deliveryCourier = { ...courier(crypto.randomUUID()), courierDeliveryFee: 15 };
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, {
+      businessPartnerId: merchant.id,
+      defaultFeeAmount: 30,
+      defaultFeePayer: "merchant",
+    });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientName: "Recipient",
+      recipientPhone: "07500000000",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      codAmount: 100,
+    });
+
+    const run = await createDeliveryRun(WORKSPACE_ID, {
+      agentId: deliveryCourier.id,
+      shipmentIds: [shipment.id],
+      courierDeliveryFee: 12,
+    });
+    const dispatchedShipment = await db.delivery_shipments.get(shipment.id);
+    expect(run.courierDeliveryFee).toBe(12);
+    expect(dispatchedShipment?.courierDeliveryFee).toBe(12);
+
+    await updateDeliveryShipmentStatus(shipment.id, { status: "delivered", actorAgentId: deliveryCourier.id });
+    const entries = await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray();
+    expect(entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "courier_collection", amount: 100, shipmentId: shipment.id }),
+      expect.objectContaining({ kind: "courier_delivery_fee", amount: -12, shipmentId: shipment.id }),
+    ]));
+    const expectedHandover = entries.filter((entry) => entry.agentId === deliveryCourier.id).reduce((sum, entry) => sum + entry.amount, 0);
+    expect(expectedHandover).toBe(88);
+
+    const courierSettlement = await settleDeliveryCourier(WORKSPACE_ID, {
+      agentId: deliveryCourier.id,
+      currency: "iqd",
+      actualAmount: 88,
+      paymentMethod: "cash",
+      shipmentId: shipment.id,
+    });
+    expect(courierSettlement.courierDeliveryFee).toBe(12);
+    const merchantSettlement = await payDeliveryMerchant(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      currency: "iqd",
+      actualAmount: 70,
+      paymentMethod: "cash",
+      shipmentId: shipment.id,
+    });
+    expect(merchantSettlement.courierDeliveryFee).toBe(12);
+    const finalBalance = (await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray())
+      .filter((entry) => entry.agentId === deliveryCourier.id)
+      .reduce((sum, entry) => sum + entry.amount, 0);
+    expect(finalBalance).toBe(0);
+  });
+
   it("does not write zero-amount ledger entries when a COD-0 post is delivered", async () => {
     const merchant = partner(crypto.randomUUID());
     const deliveryCourier = courier(crypto.randomUUID());

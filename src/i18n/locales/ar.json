@@ -4033,6 +4033,8 @@
             "type": "نوع الوكيل",
             "carModel": "موديل السيارة",
             "plateNumber": "رقم اللوحة",
+            "courierDeliveryFee": "أجرة توصيل المندوب",
+            "courierDeliveryFeeHint": "يحتفظ المندوب بهذا المبلغ عن كل شحنة مُسلّمة، ويُخصم من تسليم النقد المتوقع.",
             "linkedUser": "المستخدم المرتبط",
             "status": "الحالة",
             "image": "صورة البروفايل",
@@ -4514,6 +4516,8 @@
         "description": {
             "deliveryCourierRemittance": "تسليم نقدي من المندوب",
             "deliveryMerchantPayout": "دفعة للتاجر",
+            "deliveryPostCourierRelation": "الشحنة {{tracking}} · تسليم نقد المندوب للمستلم {{recipient}}.",
+            "deliveryPostMerchantRelation": "الشحنة {{tracking}} · دفعة التاجر الخاصة بالمستلم {{recipient}}.",
             "deliverySettlementRelation": "تسوية خدمة التوصيل {{reference}}."
         },
         "paymentMethod": {
@@ -6090,6 +6094,7 @@
             "markDelivered": "تم التسليم",
             "postpone": "تأجيل",
             "return": "إرجاع",
+            "settlements": "التسويات",
             "recordHandover": "تسجيل التسليم",
             "payMerchant": "دفع التاجر",
             "editMerchant": "تعديل التاجر",
@@ -6130,6 +6135,8 @@
         "form": {
             "postsSelected": "الشحنات المحددة",
             "courier": "المندوب",
+            "courierDeliveryFee": "أجرة توصيل المندوب",
+            "courierDeliveryFeeHint": "تُؤخذ تلقائياً من المندوب ويمكن تعديلها لهذا الكشف، وتُخصم من تسليم النقد لكل شحنة مُسلّمة.",
             "vehicleOptional": "المركبة (اختياري)",
             "manifestNote": "ملاحظة الكشف",
             "businessPartner": "شريك الأعمال",
@@ -6163,7 +6170,8 @@
             "returnedReason": "العنوان غير صحيح أو رفض العميل…",
             "deliveryNote": "إثبات أو ملاحظة التوصيل",
             "varianceNote": "مطلوب عند دفع مبلغ أقل من الرصيد المستحق",
-            "searchPosts": "ابحث برقم التتبع أو المستلم أو التاجر أو المندوب..."
+            "searchPosts": "ابحث برقم التتبع أو المستلم أو التاجر أو المندوب...",
+            "searchMerchants": "ابحث عن التجار..."
         },
         "options": {
             "noVehicle": "لا توجد مركبة"
@@ -6175,7 +6183,9 @@
             "tracking": "رقم التتبع",
             "merchantRecipient": "التاجر / المستلم",
             "cod": "الدفع عند الاستلام",
+            "settlementNet": "صافي التسوية",
             "courier": "المندوب",
+            "courierDeliveryFee": "أجرة المندوب",
             "status": "الحالة",
             "actions": "الإجراءات",
             "noZone": "لا توجد منطقة",
@@ -6203,6 +6213,7 @@
             "noRuns": "لا توجد جولات توزيع بعد.",
             "noLinkedCourier": "مستخدم مساحة العمل غير مرتبط بمندوب نشط. يمكن للمسؤول ربطه من دليل المندوبين.",
             "noMerchants": "لم يتم تفعيل تجار توصيل بعد.",
+            "noMerchantSearchResults": "لا يوجد تجار يطابقون بحثك.",
             "noBalances": "لا توجد أرصدة مفتوحة.",
             "noSettlements": "لم يتم تسجيل تسويات بعد."
         },
@@ -6273,6 +6284,24 @@
             },
             "merchantSettlement": {
                 "title": "دفع التاجر"
+            },
+            "postSettlement": {
+                "title": "التسويات",
+                "courierHandover": "تسليم المندوب",
+                "merchantPayout": "دفعة التاجر",
+                "result": "نتيجة التسوية",
+                "settled": "تمت التسوية",
+                "noCourier": "لا يوجد مندوب معين لهذه الشحنة.",
+                "courierFeeDeducted": "تم خصم {{amount}} كأجرة للمندوب"
+            },
+            "settlementNet": {
+                "title": "صافي تسوية الشحنة",
+                "cashHandover": "تسليم نقد المندوب",
+                "merchantPayout": "دفعة التاجر",
+                "profit": "ربح التوصيل",
+                "noSettlements": "لم يتم تسجيل تسويات خاصة بهذه الشحنة بعد.",
+                "partial": "هذه الحسبة مؤقتة إلى أن يُسجل تسليم المندوب ودفعة التاجر معاً.",
+                "courierFeeIncluded": "احتفظ المندوب بـ {{amount}}، وهي مخصومة بالفعل من تسليم نقد المندوب."
             },
             "settlementOutstanding": "لدى {{name}} رصيد مستحق قدره {{amount}}."
         },

@@ -772,6 +772,11 @@ function normalizeAgentFacetInput(input: Partial<AgentFacetInput> | undefined, e
     const linkedUserId = String(
         input?.linkedUserId === undefined ? existing?.linkedUserId ?? '' : input.linkedUserId ?? ''
     ).trim() || null
+    const courierDeliveryFee = Number(
+        input?.courierDeliveryFee === undefined
+            ? existing?.courierDeliveryFee ?? 0
+            : input.courierDeliveryFee ?? 0
+    )
 
     if (agentType !== 'driver' && agentType !== 'field_agent' && agentType !== 'courier') {
         throw new Error('Agent type is required')
@@ -785,6 +790,9 @@ function normalizeAgentFacetInput(input: Partial<AgentFacetInput> | undefined, e
     if (status !== 'active' && status !== 'inactive' && status !== 'blocked') {
         throw new Error('Agent status is invalid')
     }
+    if (!Number.isFinite(courierDeliveryFee) || courierDeliveryFee < 0) {
+        throw new Error('Courier delivery fee must be zero or greater')
+    }
 
     return {
         zone,
@@ -792,7 +800,10 @@ function normalizeAgentFacetInput(input: Partial<AgentFacetInput> | undefined, e
         carModel: agentType === 'driver' ? carModel : null,
         plateNumber: agentType === 'driver' ? plateNumber : null,
         linkedUserId,
-        status
+        status,
+        // Keep non-courier agent records compatible with the database rule
+        // and avoid retaining an old fee after the role changes.
+        courierDeliveryFee: agentType === 'courier' ? courierDeliveryFee : 0
     }
 }
 

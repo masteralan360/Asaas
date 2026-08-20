@@ -65,6 +65,7 @@ type BusinessPartnerFormState = {
     agentType: AgentType
     agentCarModel: string
     agentPlateNumber: string
+    agentCourierDeliveryFee: string
     agentLinkedUserId: string
     agentStatus: AgentStatus
 }
@@ -92,6 +93,7 @@ function createEmptyState(defaultCurrency: CurrencyCode, role: BusinessPartnerRo
         agentType: 'field_agent',
         agentCarModel: '',
         agentPlateNumber: '',
+        agentCourierDeliveryFee: '',
         agentLinkedUserId: '',
         agentStatus: 'active'
     }
@@ -122,6 +124,7 @@ function mapPartnerToState(partner: BusinessPartner, agent?: Agent): BusinessPar
         agentType: agent?.agentType || 'field_agent',
         agentCarModel: agent?.carModel || '',
         agentPlateNumber: agent?.plateNumber || '',
+        agentCourierDeliveryFee: agent?.courierDeliveryFee === undefined ? '' : String(agent.courierDeliveryFee),
         agentLinkedUserId: agent?.linkedUserId || '',
         agentStatus: agent?.status || 'active'
     }
@@ -316,6 +319,9 @@ export function BusinessPartnerFormDialog({
                 agentType: formState.agentType,
                 carModel: formState.agentType === 'driver' ? formState.agentCarModel.trim() : null,
                 plateNumber: formState.agentType === 'driver' ? formState.agentPlateNumber.trim() : null,
+                courierDeliveryFee: formState.agentType === 'courier'
+                    ? Number(formState.agentCourierDeliveryFee || 0)
+                    : 0,
                 linkedUserId: formState.agentLinkedUserId || null,
                 status: formState.agentStatus
             } : undefined
@@ -517,6 +523,26 @@ export function BusinessPartnerFormDialog({
                                                 />
                                             </div>
                                         </>
+                                    ) : null}
+                                    {formState.agentType === 'courier' ? (
+                                        <div className="space-y-2">
+                                            <Label htmlFor="business-partner-agent-courier-delivery-fee">
+                                                {t('businessPartners.agent.courierDeliveryFee', { defaultValue: 'Courier delivery fee' })}
+                                            </Label>
+                                            <Input
+                                                id="business-partner-agent-courier-delivery-fee"
+                                                type="number"
+                                                min="0"
+                                                step="any"
+                                                inputMode="decimal"
+                                                value={formState.agentCourierDeliveryFee}
+                                                onChange={(event) => setFormState((current) => ({ ...current, agentCourierDeliveryFee: event.target.value }))}
+                                                placeholder="0"
+                                            />
+                                            <p className="text-xs text-muted-foreground">
+                                                {t('businessPartners.agent.courierDeliveryFeeHint', { defaultValue: 'The courier keeps this amount per delivered post. It is deducted from the expected cash handover.' })}
+                                            </p>
+                                        </div>
                                     ) : null}
                                     <div className="space-y-2">
                                         <Label>{t('businessPartners.agent.linkedUser', { defaultValue: 'Workspace User' })}</Label>

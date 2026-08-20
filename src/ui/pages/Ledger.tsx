@@ -26,6 +26,7 @@ import {
     useAgents,
     useDeliveryMerchantProfiles,
     useDeliverySettlements,
+    useDeliveryShipments,
     type CurrencyCode,
     type IQDDisplayPreference,
     type Loan,
@@ -736,7 +737,8 @@ interface LedgerBuildContext {
     salesOrderById: Map<string, SalesOrder>
     purchaseOrderById: Map<string, PurchaseOrder>
     businessPartnerByName: Map<string, string>
-    deliverySettlementById: Map<string, { agentId?: string | null; merchantProfileId?: string | null; businessPartnerId?: string | null }>
+    deliverySettlementById: Map<string, { agentId?: string | null; merchantProfileId?: string | null; businessPartnerId?: string | null; shipmentId?: string | null }>
+    deliveryShipmentById: Map<string, { trackingNumber: string; recipientName: string }>
     agentNameById: Map<string, string>
     agentBusinessPartnerIdById: Map<string, string>
     merchantNameByProfileId: Map<string, string>
@@ -1079,8 +1081,13 @@ function buildPaymentLedgerEntry(
             const metadataProfileId = typeof transaction.metadata?.deliveryMerchantProfileId === 'string'
                 ? transaction.metadata.deliveryMerchantProfileId
                 : null
+            const metadataShipmentId = typeof transaction.metadata?.deliveryShipmentId === 'string'
+                ? transaction.metadata.deliveryShipmentId
+                : null
             const agentId = settlement?.agentId || metadataAgentId
             const merchantProfileId = settlement?.merchantProfileId || metadataProfileId
+            const shipmentId = settlement?.shipmentId || metadataShipmentId
+            const shipment = shipmentId ? context.deliveryShipmentById.get(shipmentId) : null
             const linkedBusinessPartnerId = settlement?.businessPartnerId
                 || (typeof transaction.metadata?.businessPartnerId === 'string' ? transaction.metadata.businessPartnerId : null)
                 || (agentId ? context.agentBusinessPartnerIdById.get(agentId) : null)
@@ -1090,6 +1097,38 @@ function buildPaymentLedgerEntry(
                 || (agentId ? context.agentNameById.get(agentId) : null)
                 || (merchantProfileId ? context.merchantNameByProfileId.get(merchantProfileId) : null)
                 || null
+            const relation = shipmentId
+                ? {
+                    // The two real cash movements for one post belong to the
+                    // same visual chain in Ledger, even when each is settled
+                    // in several partial payments.
+                    relationKey: `delivery-shipment:${shipmentId}`,
+                    relationRole: isCourierRemittance ? 'origin' as const : 'settlement' as const,
+                    relationTitle: isCourierRemittance
+                        ? t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
+                        : t('ledger.type.deliveryMerchantPayout', { defaultValue: 'Merchant Payout' }),
+                    relationDescription: isCourierRemittance
+                        ? t('ledger.description.deliveryPostCourierRelation', {
+                            defaultValue: 'Post {{tracking}} · courier cash handover for {{recipient}}.',
+                            tracking: shipment?.trackingNumber || shipmentId,
+                            recipient: shipment?.recipientName || t('common.unknown', { defaultValue: 'Unknown recipient' })
+                        })
+                        : t('ledger.description.deliveryPostMerchantRelation', {
+                            defaultValue: 'Post {{tracking}} · merchant payout for {{recipient}}.',
+                            tracking: shipment?.trackingNumber || shipmentId,
+                            recipient: shipment?.recipientName || t('common.unknown', { defaultValue: 'Unknown recipient' })
+                        })
+                }
+                : {
+                    // A party-level settlement has no truthful per-post
+                    // relation, so retain an isolated settlement descriptor.
+                    relationKey: `delivery-settlement:${transaction.sourceRecordId}`,
+                    relationRole: 'settlement' as const,
+                    relationTitle: isCourierRemittance
+                        ? t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
+                        : t('ledger.type.deliveryMerchantPayout', { defaultValue: 'Merchant Payout' }),
+                    relationDescription: t('ledger.description.deliverySettlementRelation', { defaultValue: 'Post Service settlement {{reference}}.', reference: buildTransactionReference(transaction) })
+                }
 
             return {
                 id: `payment:${transaction.id}`,
@@ -1110,12 +1149,7 @@ function buildPaymentLedgerEntry(
                         ? t('ledger.description.deliveryCourierRemittance', { defaultValue: 'Courier cash handover' })
                         : t('ledger.description.deliveryMerchantPayout', { defaultValue: 'Merchant payout' })),
                 routePath: getPaymentTransactionRoutePath(transaction),
-                relationKey: `delivery-settlement:${transaction.sourceRecordId}`,
-                relationRole: 'settlement',
-                relationTitle: isCourierRemittance
-                    ? t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
-                    : t('ledger.type.deliveryMerchantPayout', { defaultValue: 'Merchant Payout' }),
-                relationDescription: t('ledger.description.deliverySettlementRelation', { defaultValue: 'Post Service settlement {{reference}}.', reference: buildTransactionReference(transaction) })
+                ...relation
             }
         }
         case 'loan_origination': {
@@ -1422,6 +1456,7 @@ export function Ledger() {
     const agents = useAgents(workspaceId)
     const deliveryMerchantProfiles = useDeliveryMerchantProfiles(workspaceId)
     const deliverySettlements = useDeliverySettlements(workspaceId)
+    const deliveryShipments = useDeliveryShipments(workspaceId)
     const rawExchangeTransactions = useExchangeTransactions(workspaceId)
     const activePaymentTransactions = useMemo(
         () => getRemainingPaymentTransactions(paymentTransactions),
@@ -1509,6 +1544,10 @@ export function Ledger() {
         () => new Map(deliverySettlements.map((settlement) => [settlement.id, settlement] as const)),
         [deliverySettlements]
     )
+    const deliveryShipmentById = useMemo(
+        () => new Map(deliveryShipments.map((shipment) => [shipment.id, shipment] as const)),
+        [deliveryShipments]
+    )
 
     const allEntries = useMemo(() => {
         const context: LedgerBuildContext = {
@@ -1520,6 +1559,7 @@ export function Ledger() {
             purchaseOrderById,
             businessPartnerByName,
             deliverySettlementById,
+            deliveryShipmentById,
             agentNameById,
             agentBusinessPartnerIdById,
             merchantNameByProfileId,
@@ -1536,7 +1576,7 @@ export function Ledger() {
         ]
 
         return rows.sort((left, right) => right.date.localeCompare(left.date) || right.transactionId.localeCompare(left.transactionId))
-    }, [activePaymentTransactions, loanById, loanOriginationIds, realEstateTransactionById, saleById, sales, salesOrderById, purchaseOrderById, businessPartnerByName, deliverySettlementById, agentNameById, agentBusinessPartnerIdById, merchantNameByProfileId, merchantBusinessPartnerIdByProfileId, rawExchangeTransactions, t])
+    }, [activePaymentTransactions, loanById, loanOriginationIds, realEstateTransactionById, saleById, sales, salesOrderById, purchaseOrderById, businessPartnerByName, deliverySettlementById, deliveryShipmentById, agentNameById, agentBusinessPartnerIdById, merchantNameByProfileId, merchantBusinessPartnerIdByProfileId, rawExchangeTransactions, t])
 
     const typeOptions = useMemo(
         () => Array.from(new Set(allEntries.map((entry) => entry.type))).sort((left, right) => ledgerTypeLabel(left, t).localeCompare(ledgerTypeLabel(right, t))),

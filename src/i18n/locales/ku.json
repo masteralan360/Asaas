@@ -4037,6 +4037,8 @@
             "type": "جۆری بریکار",
             "carModel": "مودێلی ئۆتۆمبێل",
             "plateNumber": "ژمارەی تابلۆ",
+            "courierDeliveryFee": "کرێی گەیاندنی مەندوب",
+            "courierDeliveryFeeHint": "مەندوب ئەم بڕەیە بۆ هەر پۆستێکی گەیشتوو لەخۆی دەهێڵێتەوە؛ لە پارەی تەسلیمی چاوەڕوانکراو کەم دەکرێتەوە.",
             "linkedUser": "بەکارهێنەری پەیوەستکراو",
             "status": "ڕەوش",
             "image": "وێنەی پرۆفایل",
@@ -4518,6 +4520,8 @@
         "description": {
             "deliveryCourierRemittance": "تەسلیمکردنی نەقدی لەلایەن مەندوبەوە",
             "deliveryMerchantPayout": "پارەدانی بازرگان",
+            "deliveryPostCourierRelation": "پۆستی {{tracking}} · تەسلیمی نەقدی مەندوب بۆ {{recipient}}.",
+            "deliveryPostMerchantRelation": "پۆستی {{tracking}} · پارەدانی بازرگان بۆ {{recipient}}.",
             "deliverySettlementRelation": "تەسویەی خزمەتگوزاریی پۆست {{reference}}."
         },
         "paymentMethod": {
@@ -6144,6 +6148,7 @@
             "markDelivered": "گەیشت",
             "postpone": "دواخستن",
             "return": "گەڕاندنەوە",
+            "settlements": "تەسویەکان",
             "recordHandover": "تۆمارکردنی تەسلیمکردن",
             "payMerchant": "پارەدانی بازرگان",
             "editMerchant": "دەستکاریکردنی بازرگان",
@@ -6184,6 +6189,8 @@
         "form": {
             "postsSelected": "پۆستە هەڵبژێردراوەکان",
             "courier": "مەندوب",
+            "courierDeliveryFee": "کرێی گەیاندنی مەندوب",
+            "courierDeliveryFeeHint": "لە مەندوبەکەوە بە شێوەی خۆکار دێت، بۆ ئەم لیستە دەکرێت بگۆڕدرێت، و لە پارەی تەسلیمکردنی هەر پۆستێکی گەیشتوو کەم دەکرێتەوە.",
             "vehicleOptional": "ئۆتۆمبێل (ئارەزوومەندانە)",
             "manifestNote": "تێبینی لیست",
             "businessPartner": "هاوبەشی بازرگانی",
@@ -6217,7 +6224,8 @@
             "returnedReason": "ناونیشان هەڵەیە یان کڕیار ڕەتی کردەوە…",
             "deliveryNote": "بەڵگە یان تێبینی گەیاندن",
             "varianceNote": "کاتێک کەمتر لە باڵانسی قەرزار پارەدەدرێت پێویستە",
-            "searchPosts": "بە ژمارەی شوێنکەوتن، وەرگر، بازرگان یان پەیامبەر بگەڕێ..."
+            "searchPosts": "بە ژمارەی شوێنکەوتن، وەرگر، بازرگان یان پەیامبەر بگەڕێ...",
+            "searchMerchants": "بە دوای بازرگاناندا بگەڕێ..."
         },
         "options": {
             "noVehicle": "هیچ ئۆتۆمبێلێک نییە"
@@ -6229,7 +6237,9 @@
             "tracking": "ژمارەی شوێنکەوتن",
             "merchantRecipient": "بازرگان / وەرگر",
             "cod": "پارە لە کاتی وەرگرتن",
+            "settlementNet": "صافی تەسویە",
             "courier": "مەندوب",
+            "courierDeliveryFee": "کرێی مەندوب",
             "status": "دۆخ",
             "actions": "کردارەکان",
             "noZone": "هیچ ناوچەیەک نییە",
@@ -6257,6 +6267,7 @@
             "noRuns": "هێشتا هیچ گەشتێکی دابەشکردن نییە.",
             "noLinkedCourier": "بەکارهێنەری شوێنی کارت بە هیچ مەندوبێکی چالاکەوە نەبەستراوە. بەڕێوەبەر دەتوانێت لە بەشی مەندوبانەوە بیبەستێت.",
             "noMerchants": "هێشتا هیچ بازرگانی گەیاندن چالاک نەکراوە.",
+            "noMerchantSearchResults": "هیچ بازرگانێک نەدۆزرایەوە لەگەڵ گەڕانەکەدا.",
             "noBalances": "هیچ باڵانسێکی کراوە نییە.",
             "noSettlements": "هێشتا هیچ تەسویەیەک تۆمار نەکراوە."
         },
@@ -6327,6 +6338,24 @@
             },
             "merchantSettlement": {
                 "title": "پارەدانی بازرگان"
+            },
+            "postSettlement": {
+                "title": "تەسویەکان",
+                "courierHandover": "تەسلیمکردنی مەندوب",
+                "merchantPayout": "پارەدانی بازرگان",
+                "result": "ئەنجامی تەسویە",
+                "settled": "تەسویە کرا",
+                "noCourier": "هیچ مەندوبێک بۆ ئەم پۆستە دیاری نەکراوە.",
+                "courierFeeDeducted": "{{amount}} کرێی مەندوب کەم کراوەتەوە"
+            },
+            "settlementNet": {
+                "title": "صافی تەسویەی پۆست",
+                "cashHandover": "تەسلیمی نەقدی مەندوب",
+                "merchantPayout": "پارەدانی بازرگان",
+                "profit": "قازانجی گەیاندن",
+                "noSettlements": "هێشتا هیچ تەسویەیەکی تایبەت بەم پۆستە تۆمار نەکراوە.",
+                "partial": "ئەم حیسابە کاتییە تا کاتێک تەسلیمی مەندوب و پارەدانی بازرگان هەردووکیان تۆمار بکرێن.",
+                "courierFeeIncluded": "مەندوب {{amount}}ی لەخۆی هێشتووەتەوە؛ پێشتر لە پارەی تەسلیمی مەندوب کەم کراوەتەوە."
             },
             "settlementOutstanding": "{{name}} {{amount}} باڵانسی قەرزاری هەیە."
         },

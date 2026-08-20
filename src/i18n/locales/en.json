@@ -1398,6 +1398,8 @@
             "type": "Agent Type",
             "carModel": "Car Model",
             "plateNumber": "Plate Number",
+            "courierDeliveryFee": "Courier delivery fee",
+            "courierDeliveryFeeHint": "The courier keeps this amount per delivered post. It is deducted from the expected cash handover.",
             "linkedUser": "Linked User",
             "status": "Status",
             "image": "Profile Picture",
@@ -1890,6 +1892,8 @@
         "description": {
             "deliveryCourierRemittance": "Courier cash handover",
             "deliveryMerchantPayout": "Merchant payout",
+            "deliveryPostCourierRelation": "Post {{tracking}} · courier cash handover for {{recipient}}.",
+            "deliveryPostMerchantRelation": "Post {{tracking}} · merchant payout for {{recipient}}.",
             "deliverySettlementRelation": "Post Service settlement {{reference}}."
         },
         "paymentMethod": {
@@ -6344,6 +6348,7 @@
             "markDelivered": "Delivered",
             "postpone": "Postpone",
             "return": "Return",
+            "settlements": "Settlements",
             "recordHandover": "Record handover",
             "payMerchant": "Pay merchant",
             "editMerchant": "Edit merchant",
@@ -6384,6 +6389,8 @@
         "form": {
             "postsSelected": "Posts selected",
             "courier": "Courier",
+            "courierDeliveryFee": "Courier delivery fee",
+            "courierDeliveryFeeHint": "Defaulted from the courier, editable for this manifest, and deducted from each delivered post's cash handover.",
             "vehicleOptional": "Vehicle (optional)",
             "manifestNote": "Manifest note",
             "businessPartner": "Business Partner",
@@ -6417,7 +6424,8 @@
             "returnedReason": "Address incorrect, customer refused…",
             "deliveryNote": "Proof or delivery note",
             "varianceNote": "Required when paying less than the outstanding balance",
-            "searchPosts": "Search tracking number, recipient, merchant, or courier..."
+            "searchPosts": "Search tracking number, recipient, merchant, or courier...",
+            "searchMerchants": "Search merchants..."
         },
         "options": {
             "noVehicle": "No vehicle"
@@ -6429,7 +6437,9 @@
             "tracking": "Tracking",
             "merchantRecipient": "Merchant / recipient",
             "cod": "COD",
+            "settlementNet": "Settlement net",
             "courier": "Courier",
+            "courierDeliveryFee": "Courier fee",
             "status": "Status",
             "actions": "Actions",
             "noZone": "No zone",
@@ -6457,6 +6467,7 @@
             "noRuns": "No dispatch runs yet.",
             "noLinkedCourier": "Your workspace user is not linked to an active courier. An administrator can link one from the Agents directory.",
             "noMerchants": "No delivery merchants enabled yet.",
+            "noMerchantSearchResults": "No merchants match your search.",
             "noBalances": "No open balances.",
             "noSettlements": "No settlements recorded yet."
         },
@@ -6527,6 +6538,24 @@
             },
             "merchantSettlement": {
                 "title": "Pay merchant"
+            },
+            "postSettlement": {
+                "title": "Settlements",
+                "courierHandover": "Courier handover",
+                "merchantPayout": "Merchant payout",
+                "result": "Settlement result",
+                "settled": "Settled",
+                "noCourier": "No courier is assigned to this post.",
+                "courierFeeDeducted": "{{amount}} courier fee deducted"
+            },
+            "settlementNet": {
+                "title": "Post settlement net",
+                "cashHandover": "Courier cash handover",
+                "merchantPayout": "Merchant payout",
+                "profit": "Delivery profit",
+                "noSettlements": "No per-post settlements have been recorded yet.",
+                "partial": "This calculation is provisional until both the courier handover and merchant payout are recorded.",
+                "courierFeeIncluded": "The courier retained {{amount}}; it is already deducted from the courier cash handover."
             },
             "settlementOutstanding": "{{name}} has {{amount}} outstanding."
         },

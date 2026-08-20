@@ -479,13 +479,14 @@ export function SalesOrderFormPage({
     const getSalesProductOptions = (storageId: string, selectedProductId: string) => {
         const availableIds = availableSalesProductIdsByStorage.get(storageId) ?? new Set<string>()
         const isServicesSource = storageId === SERVICES_VIRTUAL_STORAGE_ID
-        return products.filter((product) => (
-            (product.id === selectedProductId
+        return products.filter((product) => {
+            const serviceInServicesSource = isServicesSource && hasFeature('services') && isService(product)
+            return (product.id === selectedProductId
                 || availableIds.has(product.id)
-                || (isServicesSource && hasFeature('services') && isService(product)))
-            && hasValidProductCost(product.costPrice)
-            && !hasMissingPartnerPriceBookCost(selectedCustomer, product.id)
-        ))
+                || serviceInServicesSource)
+                && (serviceInServicesSource || hasValidProductCost(product.costPrice))
+                && (serviceInServicesSource || !hasMissingPartnerPriceBookCost(selectedCustomer, product.id))
+        })
     }
 
     const resolveItemPricing = useCallback((
@@ -1178,7 +1179,7 @@ export function SalesOrderFormPage({
                                                             value={item.productSearch}
                                                             onChange={(value) => updateItem(index, { productSearch: value, productId: '' })}
                                                             onSelectProduct={(product) => {
-                                                                if (!hasValidProductCost(product.costPrice)) {
+                                                                if (!isService(product) && !hasValidProductCost(product.costPrice)) {
                                                                     toast({
                                                                         title: t('common.error') || 'Error',
                                                                         description: getMissingProductCostMessage(product.name),
@@ -1735,7 +1736,7 @@ export function SalesOrderFormPage({
                 }}
                 onSelectProduct={(product, storageId, batchId) => {
                     if (productsViewItemIndex === null) return
-                    if (!hasValidProductCost(product.costPrice)) {
+                    if (!isService(product) && !hasValidProductCost(product.costPrice)) {
                         toast({
                             title: t('common.error') || 'Error',
                             description: getMissingProductCostMessage(product.name),

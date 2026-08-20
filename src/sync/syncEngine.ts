@@ -237,6 +237,7 @@ function getMutationParentKeys(mutation: MutationSyncOrderItem) {
       addParent("delivery_shipments", "shipmentId", "shipment_id");
       break;
     case "delivery_settlements":
+      addParent("delivery_shipments", "shipmentId", "shipment_id");
       addParent("agents", "agentId", "agent_id");
       addParent("delivery_merchant_profiles", "merchantProfileId", "merchant_profile_id");
       addParent("business_partners", "businessPartnerId", "business_partner_id");

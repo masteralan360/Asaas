@@ -102,6 +102,7 @@ export interface CreateDeliveryShipmentInput {
 export interface CreateDeliveryRunInput {
   agentId: string;
   shipmentIds: string[];
+  courierDeliveryFee?: number;
   vehicleId?: string | null;
   dispatchedAt?: string;
   notes?: string | null;
@@ -172,6 +173,10 @@ export function toUISaleFromDeliveryShipment(
   const serviceName = options.serviceName?.trim() || "Delivery service";
   const serviceCategory = options.serviceCategory?.trim() || serviceName;
   const deliveryFee = Number(shipment.deliveryFee || 0);
+  // A courier fee is the direct service cost for this delivered post. It is
+  // independent from COD, which remains merchant money and never enters sales
+  // reporting.
+  const courierDeliveryFee = Number(shipment.courierDeliveryFee || 0);
   const notes = [shipment.description?.trim(), options.feePayerNote?.trim()]
     .filter((value): value is string => !!value)
     .join(" | ") || null;
@@ -200,8 +205,8 @@ export function toUISaleFromDeliveryShipment(
       quantity: 1,
       unit_price: deliveryFee,
       total_price: deliveryFee,
-      cost_price: 0,
-      converted_cost_price: 0,
+      cost_price: courierDeliveryFee,
+      converted_cost_price: courierDeliveryFee,
       original_currency: shipment.currency,
       original_unit_price: deliveryFee,
       converted_unit_price: deliveryFee,
@@ -801,9 +806,13 @@ export async function createDeliveryShipment(
 
 export async function createDeliveryRun(workspaceId: string, input: CreateDeliveryRunInput) {
   const agent = await db.agents.get(input.agentId);
-  if (!agent || agent.isDeleted || agent.workspaceId !== workspaceId || agent.status !== "active") {
+  if (!agent || agent.isDeleted || agent.workspaceId !== workspaceId || agent.status !== "active" || agent.agentType !== "courier") {
     throw new Error("Select an active courier");
   }
+  const courierDeliveryFee = positiveMoney(
+    input.courierDeliveryFee ?? agent.courierDeliveryFee ?? 0,
+    "Courier delivery fee",
+  );
   const shipmentIds = [...new Set(input.shipmentIds.filter(Boolean))];
   if (shipmentIds.length === 0) throw new Error("Select at least one shipment");
   const shipments = await db.delivery_shipments.bulkGet(shipmentIds);
@@ -815,6 +824,7 @@ export async function createDeliveryRun(workspaceId: string, input: CreateDelive
   const run = makeBase(workspaceId, {
     runNumber: makeReference("RUN", new Date(now)),
     agentId: agent.id,
+    courierDeliveryFee,
     vehicleId: input.vehicleId ?? null,
     status: "open" as const,
     dispatchedAt: now,
@@ -831,6 +841,7 @@ export async function createDeliveryRun(workspaceId: string, input: CreateDelive
       status: "assigned",
       assignedAgentId: agent.id,
       assignedRunId: run.id,
+      courierDeliveryFee,
       statusNote: null,
       updatedAt: now,
       version: original.version + 1,
@@ -930,6 +941,24 @@ export async function updateDeliveryShipmentStatus(
         }),
       );
     }
+    const courierDeliveryFee = positiveMoney(original.courierDeliveryFee ?? 0, "Courier delivery fee");
+    if (courierDeliveryFee > 0) {
+      ledgerEntries.push(
+        makeLedgerEntry(original.workspaceId, {
+          kind: "courier_delivery_fee",
+          shipmentId: original.id,
+          settlementId: null,
+          agentId: original.assignedAgentId,
+          merchantProfileId: null,
+          businessPartnerId: null,
+          amount: -courierDeliveryFee,
+          currency: original.currency,
+          occurredAt: now,
+          note: `Courier delivery fee for ${original.trackingNumber}`,
+          createdBy: input.actorUserId ?? null,
+        }),
+      );
+    }
     if (original.codAmount > 0) {
       ledgerEntries.push(
         makeLedgerEntry(original.workspaceId, {
@@ -1002,6 +1031,9 @@ async function createSettlement(
   },
 ) {
   const entries = await db.delivery_ledger_entries.where("workspaceId").equals(workspaceId).toArray();
+  const settlementShipment = options.shipmentId
+    ? await db.delivery_shipments.get(options.shipmentId)
+    : null;
   let expectedAmount: number;
   if (options.shipmentId) {
     const breakdown = type === "courier_remittance"
@@ -1027,6 +1059,12 @@ async function createSettlement(
     businessPartnerId: options.businessPartnerId ?? null,
     shipmentId: options.shipmentId ?? null,
     currency: options.currency,
+    // A per-post settlement keeps the courier fee that was snapshotted on
+    // dispatch. Whole-party settlements have no single shipment fee, so they
+    // retain the explicit zero default instead of guessing an allocation.
+    courierDeliveryFee: settlementShipment && !settlementShipment.isDeleted && settlementShipment.workspaceId === workspaceId
+      ? positiveMoney(settlementShipment.courierDeliveryFee ?? 0, "Courier delivery fee")
+      : 0,
     expectedAmount: expected,
     actualAmount: actual,
     varianceAmount: actual - expected,
