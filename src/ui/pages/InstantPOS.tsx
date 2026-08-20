@@ -9,7 +9,7 @@ import type { CurrencyCode } from '@/local-db/models'
 import { useWorkspace } from '@/workspace'
 import { formatCompactDateTime, formatCurrency, generateId, cn, stylizeText } from '@/lib/utils'
 import { Button, Input, useToast, Textarea, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, StorageSelector } from '@/ui/components'
-import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Loader2, Menu, Minus, Package, Plus, Receipt, Search, ShoppingCart, StickyNote, Trash2 } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Loader2, Menu, Minus, Package, Plus, Receipt, Search, ShoppingCart, StickyNote, Table2, Trash2 } from 'lucide-react'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { platformService } from '@/services/platformService'
 import { useKdsStream } from '@/hooks/useKdsStream'
@@ -27,6 +27,7 @@ const PENDING_TICKET_TTL_MINUTES = 15
 const PENDING_TICKET_EXTENSION_MINUTES = 5
 const PENDING_TICKET_TTL_MS = PENDING_TICKET_TTL_MINUTES * 60 * 1000
 const PENDING_TICKET_EXTENSION_MS = PENDING_TICKET_EXTENSION_MINUTES * 60 * 1000
+const TABLE_NUMBER_PRESETS = Array.from({ length: 20 }, (_, index) => String(index + 1))
 
 type InstantPosStatus = 'pending' | 'preparing' | 'ready' | 'served' | 'paid'
 
@@ -52,6 +53,7 @@ type InstantPosTicket = {
     createdAt: string
     status: InstantPosStatus
     items: InstantPosItem[]
+    tableNumber?: string
     kitchenRoutedAt?: string
     expiresAt?: string
 }
@@ -72,6 +74,16 @@ function formatDiscountBadge(
     }
 
     return `-${formatCurrency(discount.discountValue, currency, iqdPreference)}`
+}
+
+function normalizeTableNumber(value: string) {
+    const trimmed = value.trim()
+    if (!/^\d{1,4}$/.test(trimmed)) return null
+
+    const numeric = Number(trimmed)
+    if (!Number.isInteger(numeric) || numeric < 1) return null
+
+    return String(numeric)
 }
 
 function getTicketNotes(items: InstantPosItem[]) {
@@ -177,6 +189,7 @@ interface MobileTicketPanelProps {
     setItemQuantity: (productId: string, storageId: string | undefined, quantity: number) => void
     removeItem: (productId: string, storageId: string | undefined) => void
     setNoteItem: (item: { productId: string, storageId?: string, name: string, note: string } | null) => void
+    openTablePicker: () => void
     closeTicket: (id: string) => void
 }
 
@@ -185,7 +198,7 @@ function MobileTicketPanel({
     statusLabels, statusAction, activePendingTimeLeftMs, isCheckoutLoading,
     canPreprintReceipt, isPreprinting, isLoadingPreprintTemplate,
     getStorageLabel, checkoutTicket, handlePreprintReceipt, setTicketStatus, extendPendingExpiry, clearActiveTicket,
-    updateItemQuantity, setItemQuantity, removeItem, setNoteItem, closeTicket
+    updateItemQuantity, setItemQuantity, removeItem, setNoteItem, openTablePicker, closeTicket
 }: MobileTicketPanelProps) {
     const [isExpanded, setIsExpanded] = useState(false)
     const [isDragging, setIsDragging] = useState(false)
@@ -287,7 +300,7 @@ function MobileTicketPanel({
                             <span className="text-[10px] font-bold text-muted-foreground uppercase">{settlementCurrency}</span>
                         </div>
                         <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider -mt-1">
-                            {activeTicket.number} • {activeTicket.items.length} {activeTicket.items.length === 1 ? t('common.item') : t('common.items')} • {statusLabels[activeTicket.status]}
+                            {activeTicket.number}{activeTicket.tableNumber ? ` • ${t('instantPos.table', { defaultValue: 'Table' })} ${activeTicket.tableNumber}` : ''} • {activeTicket.items.length} {activeTicket.items.length === 1 ? t('common.item') : t('common.items')} • {statusLabels[activeTicket.status]}
                         </span>
                     </div>
 
@@ -299,6 +312,20 @@ function MobileTicketPanel({
                         }}
                     >
                         <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-12 w-12 rounded-2xl border-2"
+                            onClick={(event) => {
+                                event.stopPropagation()
+                                openTablePicker()
+                            }}
+                            disabled={isCheckoutLoading}
+                            title={t('instantPos.assignTable', { defaultValue: 'Assign table' })}
+                            aria-label={t('instantPos.assignTable', { defaultValue: 'Assign table' })}
+                        >
+                            <Table2 className="h-5 w-5" />
+                        </Button>
                         {canPreprintReceipt && (
                             <Button
                                 variant="outline"
@@ -405,6 +432,21 @@ function MobileTicketPanel({
                                     </button>
                                 ))}
                             </div>
+
+                            <button
+                                type="button"
+                                onClick={openTablePicker}
+                                disabled={isCheckoutLoading}
+                                className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-3 py-3 text-left transition hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                <span className="flex items-center gap-2 text-sm font-semibold">
+                                    <Table2 className="h-4 w-4 text-primary" />
+                                    {t('instantPos.table', { defaultValue: 'Table' })}
+                                </span>
+                                <span className="text-sm text-muted-foreground">
+                                    {activeTicket.tableNumber || t('instantPos.assignTable', { defaultValue: 'Assign table' })}
+                                </span>
+                            </button>
 
                             {/* Items List */}
                             <div className="space-y-3">
@@ -606,6 +648,8 @@ export function InstantPOS() {
     const [completedSaleData, setCompletedSaleData] = useState<any>(null)
     const [now, setNow] = useState(() => Date.now())
     const [noteItem, setNoteItem] = useState<{ productId: string, storageId?: string, name: string, note: string } | null>(null)
+    const [isTablePickerOpen, setIsTablePickerOpen] = useState(false)
+    const [tableNumberInput, setTableNumberInput] = useState('')
 
     const settlementCurrency = features.default_currency || 'usd'
 
@@ -826,6 +870,7 @@ export function InstantPOS() {
             sales_exchange: [],
             origin: 'instant_pos',
             payment_method: 'cash',
+            instant_table_number: activeTicket.tableNumber || null,
             notes: getTicketNotes(activeTicket.items)
         } as any)
     }, [activeTicket, activeTicketTotals.hasMixedCurrency, activeTicketTotals.total, resolveTicketProduct, settlementCurrency, user])
@@ -886,6 +931,36 @@ export function InstantPOS() {
     const updateTicket = (ticketId: string, updater: (ticket: InstantPosTicket) => InstantPosTicket) => {
         setTickets(prev => prev.map(ticket => (ticket.id === ticketId ? updater(ticket) : ticket)))
     }
+
+    const openTablePicker = useCallback(() => {
+        if (!activeTicket) return
+        setTableNumberInput(activeTicket.tableNumber || '')
+        setIsTablePickerOpen(true)
+    }, [activeTicket])
+
+    const applyTableNumber = useCallback((value: string) => {
+        if (!activeTicket) return
+
+        const tableNumber = normalizeTableNumber(value)
+        if (!tableNumber) {
+            toast({
+                title: t('common.error') || 'Error',
+                description: t('instantPos.invalidTableNumber', { defaultValue: 'Enter a table number from 1 to 9999.' }),
+                variant: 'destructive'
+            })
+            return
+        }
+
+        updateTicket(activeTicket.id, ticket => ({ ...ticket, tableNumber }))
+        setIsTablePickerOpen(false)
+    }, [activeTicket, t, toast])
+
+    const clearTableNumber = useCallback(() => {
+        if (!activeTicket) return
+        updateTicket(activeTicket.id, ticket => ({ ...ticket, tableNumber: undefined }))
+        setTableNumberInput('')
+        setIsTablePickerOpen(false)
+    }, [activeTicket])
 
     const addItemToTicket = (productId: string) => {
         const product = selectableProducts.find(item => item.id === productId && item.storageId === selectedStorageId)
@@ -1239,6 +1314,7 @@ export function InstantPOS() {
             sales_exchange: [],
             origin: 'instant_pos',
             payment_method: 'cash',
+            instant_table_number: activeTicket.tableNumber || null,
             notes: consolidatedNotes
         }
 
@@ -1386,6 +1462,7 @@ export function InstantPOS() {
                         settlementCurrency: settlementCurrency,
                         origin: 'instant_pos',
                         payment_method: 'cash',
+                        tableNumber: activeTicket.tableNumber || null,
                         sequenceId: localSequenceId,
                         createdAt: snapshotTimestamp,
                         updatedAt: snapshotTimestamp,
@@ -1599,6 +1676,11 @@ export function InstantPOS() {
                                             )}
                                         >
                                             <span>{ticket.number}</span>
+                                            {ticket.tableNumber && (
+                                                <span className="rounded-full bg-background/20 px-1.5 py-0.5 text-[10px] font-bold">
+                                                    {t('instantPos.table', { defaultValue: 'Table' })} {ticket.tableNumber}
+                                                </span>
+                                            )}
                                             <span className="text-[10px] uppercase tracking-widest opacity-70">
                                                 {statusLabels[ticket.status]}
                                             </span>
@@ -1772,6 +1854,7 @@ export function InstantPOS() {
                             setItemQuantity={setItemQuantity}
                             removeItem={removeItem}
                             setNoteItem={setNoteItem}
+                            openTablePicker={openTablePicker}
                             closeTicket={closeTicket}
                         />
                     )}
@@ -1803,6 +1886,19 @@ export function InstantPOS() {
                                     {t('instantPos.clearAll') || 'Clear All'}
                                 </button>
                                 </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={openTablePicker}
+                                    disabled={isCheckoutLoading}
+                                    className="mt-3 flex w-full items-center justify-between rounded-lg"
+                                >
+                                    <span className="flex items-center gap-2">
+                                        <Table2 className="h-4 w-4" />
+                                        {t('instantPos.table', { defaultValue: 'Table' })}
+                                    </span>
+                                    <span>{activeTicket.tableNumber || t('instantPos.assignTable', { defaultValue: 'Assign table' })}</span>
+                                </Button>
                             </div>
 
                             {activePendingTimeLeftMs !== null && (
@@ -2023,6 +2119,60 @@ export function InstantPOS() {
                         <Button onClick={() => noteItem && updateItemNote(noteItem.productId, noteItem.storageId, noteItem.note)}>
                             {t('common.save') || 'Save Note'}
                         </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isTablePickerOpen} onOpenChange={setIsTablePickerOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>{t('instantPos.assignTable', { defaultValue: 'Assign table' })}</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        <Input
+                            autoFocus
+                            inputMode="numeric"
+                            maxLength={4}
+                            value={tableNumberInput}
+                            onChange={(event) => setTableNumberInput(event.target.value.replace(/\D/g, ''))}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter') applyTableNumber(tableNumberInput)
+                            }}
+                            placeholder={t('instantPos.tableNumberPlaceholder', { defaultValue: 'Enter table number' })}
+                        />
+                        <div className="grid grid-cols-5 gap-2">
+                            {TABLE_NUMBER_PRESETS.map((tableNumber) => (
+                                <Button
+                                    key={tableNumber}
+                                    type="button"
+                                    variant={tableNumberInput === tableNumber ? 'default' : 'outline'}
+                                    className="h-10"
+                                    onClick={() => {
+                                        setTableNumberInput(tableNumber)
+                                        applyTableNumber(tableNumber)
+                                    }}
+                                >
+                                    {tableNumber}
+                                </Button>
+                            ))}
+                        </div>
+                    </div>
+                    <DialogFooter className="gap-2 sm:justify-between">
+                        <Button
+                            variant="ghost"
+                            onClick={clearTableNumber}
+                            disabled={!activeTicket?.tableNumber}
+                        >
+                            {t('instantPos.clearTable', { defaultValue: 'Clear table' })}
+                        </Button>
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => setIsTablePickerOpen(false)}>
+                                {t('common.cancel') || 'Cancel'}
+                            </Button>
+                            <Button onClick={() => applyTableNumber(tableNumberInput)}>
+                                {t('common.save') || 'Save'}
+                            </Button>
+                        </div>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

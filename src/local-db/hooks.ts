@@ -2555,7 +2555,7 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
           supabase
             .from('sales')
             .select(`
-              *, sale_items(*, product:product_id(name, sku, category, category_id, can_be_returned, return_rules, unit, is_deleted)),
+              *, instant_sale_tables(table_number), sale_items(*, product:product_id(name, sku, category, category_id, can_be_returned, return_rules, unit, is_deleted)),
               sale_returns(*, sale_return_items(*)),
               sale_product_exchanges(*)
             `)
@@ -2611,9 +2611,14 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
       sale_items: remoteItems,
       sale_returns: remoteReturns,
       sale_product_exchanges: remoteProductExchanges,
+      instant_sale_tables: remoteInstantSaleTables,
       ...saleData
     } = remoteSale as any
     const localSale = toCamelCase(saleData) as unknown as Sale
+    const remoteInstantSaleTable = Array.isArray(remoteInstantSaleTables)
+      ? remoteInstantSaleTables[0]
+      : remoteInstantSaleTables
+    localSale.tableNumber = remoteInstantSaleTable?.table_number ?? null
     localSale.syncStatus = 'synced'
     localSale.lastSyncedAt = syncedAt
 
@@ -2836,6 +2841,7 @@ export function toUISale(localSale: any): any {
         system_verified: localSale.systemVerified,
         system_review_status: localSale.systemReviewStatus,
         system_review_reason: localSale.systemReviewReason,
+        table_number: localSale.tableNumber ?? null,
         notes: localSale.notes
     }
 }

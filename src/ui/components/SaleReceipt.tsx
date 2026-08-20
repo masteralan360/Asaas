@@ -15,6 +15,7 @@ import type { ReactNode } from 'react'
 export const SALE_RECEIPT_TEMPLATE_FIELD_KEYS = {
     showExchangeRateSnapshots: 'receipt.showExchangeRateSnapshots',
     showOriginalCurrencyPrice: 'receipt.showOriginalCurrencyPrice',
+    showTableNumber: 'receipt.showTableNumber',
     thankYou: 'receipt.thankYou',
     keepRecord: 'receipt.keepRecord',
     labelOpacity: 'receipt.labelOpacity',
@@ -26,6 +27,7 @@ export const RECEIPT_MOVABLE_COMPONENT_KEYS = {
     qrCode: 'receiptQrCode',
     date: 'receiptDate',
     saleId: 'receiptSaleId',
+    tableNumber: 'receiptTableNumber',
     cashier: 'receiptCashier',
     paymentMethod: 'receiptPaymentMethod',
     exchangeRateSnapshots: 'receiptExchangeRateSnapshots',
@@ -73,6 +75,8 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
         const isFieldEnabled = (key: string) => fieldValue(key) !== 'false'
         const showExchangeRateSnapshots = isFieldEnabled(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showExchangeRateSnapshots)
         const showOriginalCurrencyPrice = isFieldEnabled(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showOriginalCurrencyPrice)
+        const showTableNumber = isFieldEnabled(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showTableNumber)
+        const tableNumber = typeof data.table_number === 'string' ? data.table_number.trim() : ''
         const thankYouText = fieldValue(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.thankYou)?.trim()
             || t('sales.receipt.thankYou')
         const keepRecordText = fieldValue(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord)?.trim()
@@ -179,6 +183,15 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                             <div className="mt-2">
                                 <span className={cn("font-semibold text-[10px] text-black block", !isRTL && "uppercase tracking-wider")} style={{ opacity: labelOpacity / 100 }}>{t('sales.id')}: </span>
                                 <span className="font-mono">{data.invoiceid}</span>
+                            </div>,
+                            'w-full', 'left'
+                        )}
+                        {showTableNumber && tableNumber && mp(RECEIPT_MOVABLE_COMPONENT_KEYS.tableNumber, 'Table Number',
+                            <div className="mt-2">
+                                <span className={cn("font-semibold text-[10px] text-black block", !isRTL && "uppercase tracking-wider")} style={{ opacity: labelOpacity / 100 }}>
+                                    {t('instantPos.table', { defaultValue: 'Table' })}:
+                                </span>
+                                <span className="font-mono font-bold">{tableNumber}</span>
                             </div>,
                             'w-full', 'left'
                         )}

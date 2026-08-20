@@ -1573,6 +1573,8 @@ export interface Sale extends BaseEntity {
   returnedAt?: string | null;
   returnedBy?: string | null;
   notes?: string;
+  /** Local cache of the related Instant POS table-assignment record. */
+  tableNumber?: string | null;
 }
 
 export interface SaleItem {

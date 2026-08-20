@@ -86,6 +86,10 @@ export function mapSaleToUniversal(sale: Sale, options: MapSaleToUniversalOption
         status: 'paid',
         customer_id: (sale as any).customerId || (sale as any).customer_id || '',
         order_id: (sale as any).orderId || (sale as any).order_id || '',
+        table_number: (sale as any).table_number
+            ?? (sale as any).instant_table_number
+            ?? (sale as any).tableNumber
+            ?? null,
         notes: sale.notes
     }
 

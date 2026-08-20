@@ -314,6 +314,7 @@ export interface UniversalInvoice {
     status?: string
     customer_id?: string
     order_id?: string
+    table_number?: string | null
     workspaceId?: string
     is_refund_invoice?: boolean
     attached_images?: {

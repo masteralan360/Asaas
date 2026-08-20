@@ -28,6 +28,7 @@ type InstantPosTicket = {
     createdAt: string
     status: InstantPosStatus
     items: InstantPosItem[]
+    tableNumber?: string
     kitchenRoutedAt?: string
 }
 
@@ -432,6 +433,11 @@ export function KDSDashboard() {
                                                                 <div className="mt-1 text-2xl font-black text-[#1A1A1A]">
                                                                     {t('kdsDashboard.ticketPrefix', { number: ticket.number })}
                                                                 </div>
+                                                                {ticket.tableNumber && (
+                                                                    <div className="mt-2 inline-flex rounded-md bg-[#7A5C33]/10 px-2 py-1 text-xs font-black uppercase tracking-wide text-[#7A5C33]">
+                                                                        {t('instantPos.table', { defaultValue: 'Table' })} {ticket.tableNumber}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                             <div className="text-right">
                                                                 <div className="text-2xl font-black text-[#7A5C33]">

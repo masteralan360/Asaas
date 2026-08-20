@@ -1033,6 +1033,16 @@ const SALES_HISTORY_RECEIPT_FIELDS = [
     }
 ]
 
+const INSTANT_HISTORY_RECEIPT_FIELDS = [
+    ...SALES_HISTORY_RECEIPT_FIELDS,
+    {
+        key: SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showTableNumber,
+        label: 'Show table number',
+        value: 'true',
+        type: 'boolean' as const
+    }
+]
+
 const REAL_ESTATE_BUY_FIELD_PLACEHOLDERS = {
     sellerWitnessName: 'ناوی شاهیدی فرۆشیار بنووسە',
     sellerWitnessAddress: 'ناونیشانی شاهیدی فرۆشیار بنووسە',
@@ -1312,17 +1322,20 @@ function createSalesHistoryProfessionalA4Preview(options: CustomTemplatePreviewO
     }
 }
 
-function createSalesHistoryReceiptPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
-    const receiptData = options.receiptData || SAMPLE_RECEIPT_DATA
+function createSalesHistoryReceiptPreview(options: CustomTemplatePreviewOptions, includeTableNumber = false): TemplatePreview {
+    const receiptData = options.receiptData || (includeTableNumber
+        ? { ...SAMPLE_RECEIPT_DATA, table_number: '12' }
+        : SAMPLE_RECEIPT_DATA)
 
     return {
-        fields: SALES_HISTORY_RECEIPT_FIELDS,
+        fields: includeTableNumber ? INSTANT_HISTORY_RECEIPT_FIELDS : SALES_HISTORY_RECEIPT_FIELDS,
         movableComponents: [
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.logo, label: 'Logo' },
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.workspaceName, label: 'Workspace Name' },
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.qrCode, label: 'QR Code' },
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.date, label: 'Date' },
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.saleId, label: 'Sale ID' },
+            ...(includeTableNumber ? [{ key: RECEIPT_MOVABLE_COMPONENT_KEYS.tableNumber, label: 'Table Number' }] : []),
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.cashier, label: 'Cashier' },
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.paymentMethod, label: 'Payment Method' },
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.exchangeRateSnapshots, label: 'Exchange Rate Snapshots' },
@@ -1656,11 +1669,12 @@ export function createCustomTemplatePreview(
     target: CustomTemplateTarget,
     options: CustomTemplatePreviewOptions = {}
 ): TemplatePreview {
-    if (
-        target.moduleTypeKey === SALES_HISTORY_RECEIPT_TEMPLATE_KEY
-        || target.moduleTypeKey === INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY
-    ) {
+    if (target.moduleTypeKey === SALES_HISTORY_RECEIPT_TEMPLATE_KEY) {
         return createSalesHistoryReceiptPreview(options)
+    }
+
+    if (target.moduleTypeKey === INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY) {
+        return createSalesHistoryReceiptPreview(options, true)
     }
 
     if (target.moduleTypeKey === SALES_HISTORY_MODERN_A4_TEMPLATE_KEY) {

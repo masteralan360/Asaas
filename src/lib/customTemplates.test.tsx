@@ -16,6 +16,7 @@ vi.mock('@/ui/components/SaleReceipt', () => ({
     SALE_RECEIPT_TEMPLATE_FIELD_KEYS: {
         showExchangeRateSnapshots: 'showExchangeRateSnapshots',
         showOriginalCurrencyPrice: 'showOriginalCurrencyPrice',
+        showTableNumber: 'showTableNumber',
         thankYou: 'thankYou',
         keepRecord: 'keepRecord',
         labelOpacity: 'labelOpacity'
@@ -26,6 +27,7 @@ vi.mock('@/ui/components/SaleReceipt', () => ({
         qrCode: 'receiptQrCode',
         date: 'receiptDate',
         saleId: 'receiptSaleId',
+        tableNumber: 'receiptTableNumber',
         cashier: 'receiptCashier',
         paymentMethod: 'receiptPaymentMethod',
         exchangeRateSnapshots: 'receiptExchangeRateSnapshots',
@@ -190,7 +192,7 @@ describe('Sales History custom A4 templates', () => {
 })
 
 describe('Instant History receipt custom print template', () => {
-    it('registers a separate Instant History target with the Sales History receipt editor and fields', () => {
+    it('registers a separate Instant History target with Sales History receipt editing and a table field', () => {
         const salesTarget = customTemplates.getCustomTemplateTarget(customTemplates.SALES_HISTORY_RECEIPT_TEMPLATE_KEY)
         const instantTarget = customTemplates.getCustomTemplateTarget(customTemplates.INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY)
 
@@ -210,8 +212,17 @@ describe('Instant History receipt custom print template', () => {
         const salesPreview = customTemplates.createCustomTemplatePreview(salesTarget!, { printLang: 'en' })
         const instantPreview = customTemplates.createCustomTemplatePreview(instantTarget!, { printLang: 'en' })
 
-        expect(instantPreview.fields).toEqual(salesPreview.fields)
-        expect(instantPreview.movableComponents).toEqual(salesPreview.movableComponents)
+        expect(instantPreview.fields).toEqual([
+            ...salesPreview.fields,
+            expect.objectContaining({ key: 'showTableNumber', value: 'true', type: 'boolean' })
+        ])
+        expect(instantPreview.movableComponents).toEqual([
+            ...salesPreview.movableComponents!.slice(0, 5),
+            expect.objectContaining({ key: 'receiptTableNumber', label: 'Table Number' }),
+            ...salesPreview.movableComponents!.slice(5)
+        ])
+        const previewElement = instantPreview.createElement({}, 'instant-receipt-preview') as any
+        expect(previewElement.props.children.props.data.table_number).toBe('12')
         expect(instantPreview.page).toEqual(salesPreview.page)
     })
 })
