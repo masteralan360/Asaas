@@ -88,6 +88,9 @@ export function Settings() {
     const [posShowCategories, setPosShowCategories] = useState<boolean>(() => {
         return localStorage.getItem('pos_show_categories') === 'true'
     })
+    const [posShowPreprintReceipt, setPosShowPreprintReceipt] = useState<boolean>(() => {
+        return localStorage.getItem('pos_show_preprint_receipt') === 'true'
+    })
     const [exchangeRateSource, setExchangeRateSource] = useState(getManualRateSource('USD'))
     const [eurExchangeRateSource, setEurExchangeRateSource] = useState(getManualRateSource('EUR'))
     const [tryExchangeRateSource, setTryExchangeRateSource] = useState(getManualRateSource('TRY'))
@@ -2539,6 +2542,11 @@ export function Settings() {
                         onShowCategoriesChange={(value) => {
                             setPosShowCategories(value)
                             localStorage.setItem('pos_show_categories', value.toString())
+                        }}
+                        showPreprintReceipt={posShowPreprintReceipt}
+                        onShowPreprintReceiptChange={(value) => {
+                            setPosShowPreprintReceipt(value)
+                            localStorage.setItem('pos_show_preprint_receipt', value.toString())
                         }}
                     />
 

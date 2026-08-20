@@ -1,37 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
     Dialog,
     DialogContent,
     DialogTitle,
-    Button,
-    useToast
+    Button
 } from '@/ui/components'
 import { CheckCircle2, Printer, Coins } from 'lucide-react'
 import { formatCurrency, cn } from '@/lib/utils'
 import { triggerInvoiceSync } from '@/services/invoiceSyncService'
-import { disableInvoiceQrInLocalMode } from '@/services/localInvoiceStorage'
-import { generateInvoicePdf } from '@/services/pdfGenerator'
-import { printPdfBlob } from '@/services/pdfPrintService'
-import { renderPdfPageToPngDataUrl } from '@/services/pdfRasterizer'
-import { printService } from '@/services/printService'
-import { isSupabaseConfigured, useAuth } from '@/auth'
+import { useAuth } from '@/auth'
 import { useWorkspace, type WorkspaceFeatures } from '@/workspace'
 import { Textarea } from '@/ui/components/textarea'
 import { supabase } from '@/auth/supabase'
 import { db } from '@/local-db'
-import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { useDebounce } from '@/lib/hooks'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
-import {
-    SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
-    buildCustomTemplateLayoutPdf,
-    getCustomTemplateTarget,
-    isCustomTemplatePrintLanguageCompatible,
-    readCustomTemplateLayout,
-    resolveCustomTemplatePrintLanguage,
-    type StoredCustomTemplateRow
-} from '@/lib/customTemplates'
+import { usePosReceiptPrinter } from './usePosReceiptPrinter'
 
 interface CheckoutSuccessModalProps {
     isOpen: boolean
@@ -54,10 +39,9 @@ export function CheckoutSuccessModal({
     receiptPdfBuilder,
     onSaveNote
 }: CheckoutSuccessModalProps) {
-    const { t, i18n } = useTranslation()
+    const { t } = useTranslation()
     const { user } = useAuth()
-    const { workspaceName, activeWorkspace, isLocalMode } = useWorkspace()
-    const { toast } = useToast()
+    const { isLocalMode } = useWorkspace()
 
     const [timeLeft, setTimeLeft] = useState(15)
     const [isPaused, setIsPaused] = useState(false)
@@ -65,100 +49,19 @@ export function CheckoutSuccessModal({
     const [note, setNote] = useState(saleData?.notes || '')
     const [noteSourceId, setNoteSourceId] = useState<string | null>(saleData?.id || null)
     const debouncedNote = useDebounce(note, 1000)
-    const [primaryReceiptTemplate, setPrimaryReceiptTemplate] = useState<StoredCustomTemplateRow | null>(null)
-    const [isLoadingPrimaryReceiptTemplate, setIsLoadingPrimaryReceiptTemplate] = useState(false)
-    const printFeatures = useMemo(
-        () => disableInvoiceQrInLocalMode(activeWorkspace?.id || user?.workspaceId, features),
-        [activeWorkspace?.id, features, user?.workspaceId]
-    )
-    const currentTemplatePrintLanguage = resolveCustomTemplatePrintLanguage(
-        printFeatures.print_lang,
-        i18n.language
-    )
-
-    useEffect(() => {
-        const workspaceId = activeWorkspace?.id || user?.workspaceId
-        if (receiptPdfBuilder || !isOpen || !workspaceId || (!isLocalMode && !isSupabaseConfigured)) {
-            setPrimaryReceiptTemplate(null)
-            setIsLoadingPrimaryReceiptTemplate(false)
-            return
-        }
-
-        let cancelled = false
-        setIsLoadingPrimaryReceiptTemplate(true)
-        void (async () => {
-            try {
-                const templates = await fetchCachedCustomTemplates(workspaceId, {
-                    moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
-                    activeOnly: true,
-                    primaryOnly: true,
-                })
-                const primaryTemplate = templates.find((template) =>
-                    isCustomTemplatePrintLanguageCompatible(
-                        template as StoredCustomTemplateRow,
-                        currentTemplatePrintLanguage,
-                    )
-                ) || null
-                if (!cancelled) setPrimaryReceiptTemplate(primaryTemplate as StoredCustomTemplateRow | null)
-            } catch (templateError) {
-                console.error('[CheckoutSuccessModal] Failed to load primary receipt template:', templateError)
-                if (!cancelled) setPrimaryReceiptTemplate(null)
-            } finally {
-                if (!cancelled) setIsLoadingPrimaryReceiptTemplate(false)
-            }
-        })()
-
-        return () => {
-            cancelled = true
-        }
-    }, [activeWorkspace?.id, currentTemplatePrintLanguage, isLocalMode, isOpen, receiptPdfBuilder, user?.workspaceId])
-
-    const primaryReceiptTarget = useMemo(
-        () => getCustomTemplateTarget(SALES_HISTORY_RECEIPT_TEMPLATE_KEY),
-        []
-    )
-    const primaryReceiptLayout = useMemo(
-        () => primaryReceiptTemplate
-            && isCustomTemplatePrintLanguageCompatible(primaryReceiptTemplate, currentTemplatePrintLanguage)
-            ? readCustomTemplateLayout(primaryReceiptTemplate)
-            : null,
-        [currentTemplatePrintLanguage, primaryReceiptTemplate]
-    )
-    const buildCheckoutReceiptPdf = useCallback(async () => {
-        if (!saleData) {
-            throw new Error('Receipt data is not available.')
-        }
-
-        if (receiptPdfBuilder) {
-            return receiptPdfBuilder()
-        }
-
-        const workspaceId = activeWorkspace?.id || user?.workspaceId || ''
-        const resolvedWorkspaceName = workspaceName || workspaceId || 'Atlas'
-
-        if (primaryReceiptTarget && primaryReceiptLayout) {
-            return buildCustomTemplateLayoutPdf({
-                target: primaryReceiptTarget,
-                layout: primaryReceiptLayout,
-                values: {},
-                options: {
-                    workspaceId,
-                    workspaceName,
-                    features: printFeatures,
-                    receiptData: saleData
-                },
-                effectiveId: saleData.id
-            })
-        }
-
-        return generateInvoicePdf({
-            data: { ...saleData },
-            format: 'receipt',
-            features: printFeatures,
-            workspaceName: resolvedWorkspaceName,
-            workspaceId
-        })
-    }, [activeWorkspace?.id, primaryReceiptLayout, primaryReceiptTarget, printFeatures, receiptPdfBuilder, saleData, user?.workspaceId, workspaceName])
+    const {
+        buildReceiptPdf,
+        isLoadingPrimaryReceiptTemplate,
+        printFeatures,
+        printReceipt,
+        resolvedWorkspaceName,
+        workspaceId,
+    } = usePosReceiptPrinter({
+        saleData,
+        features,
+        enabled: isOpen,
+        receiptPdfBuilder,
+    })
 
     useEffect(() => {
         if (!isOpen) {
@@ -240,11 +143,9 @@ export function CheckoutSuccessModal({
                 return
             }
 
-            const workspaceId = activeWorkspace?.id || user.workspaceId
-            const resolvedWorkspaceName = workspaceName || workspaceId || 'Atlas'
             let receiptPdfPromise: Promise<Blob> | null = null
             const getReceiptPdf = () => {
-                receiptPdfPromise ||= buildCheckoutReceiptPdf()
+                receiptPdfPromise ||= buildReceiptPdf()
                 return receiptPdfPromise
             }
 
@@ -262,37 +163,11 @@ export function CheckoutSuccessModal({
                 pdfBuilder: getReceiptPdf
             });
 
-            // 2. Prefer native thermal printing when enabled and configured on this device.
-            let handledByThermalPrinter = false
-            if (features.thermal_printing) {
-                try {
-                    const maxWidth = await printService.getThermalPrinterMaxWidth(workspaceId)
-                    const receiptPdf = await getReceiptPdf()
-                    const imageBase64 = await renderPdfPageToPngDataUrl(receiptPdf, { maxWidthPx: maxWidth })
-
-                    handledByThermalPrinter = await printService.silentPrintImage({
-                        imageBase64,
-                        workspaceId,
-                        maxWidth
-                    })
-                } catch (thermalError) {
-                    console.error('[CheckoutSuccessModal] Thermal print failed:', thermalError)
-                    toast({
-                        title: t('settings.printing.thermalPrintErrorTitle', { defaultValue: 'Thermal printing failed' }),
-                        description: t('settings.printing.thermalPrintErrorDesc', {
-                            defaultValue: 'Falling back to the regular receipt print flow for this sale.'
-                        }),
-                        variant: 'destructive'
-                    })
-                }
-            }
-
-            // 3. Fall back to regular PDF printing when thermal printing is disabled or unavailable.
-            if (!handledByThermalPrinter) {
-                await printPdfBlob(await getReceiptPdf(), {
-                    title: `Receipt_${saleData?.invoiceid || saleData?.id || 'Sale'}`
-                })
-            }
+            // 2. Print with the same thermal-printer-first fallback used by cart pre-prints.
+            await printReceipt({
+                pdfBuilder: getReceiptPdf,
+                title: `Receipt_${saleData?.invoiceid || saleData?.id || 'Sale'}`
+            })
 
             // Keep the success modal open; the timer or manual New Sale action closes it.
         } catch (error) {

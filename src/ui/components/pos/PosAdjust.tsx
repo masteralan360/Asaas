@@ -25,6 +25,8 @@ interface PosAdjustProps {
     onShowQuantityIndicatorChange: (value: boolean) => void
     showCategories: boolean
     onShowCategoriesChange: (value: boolean) => void
+    showPreprintReceipt: boolean
+    onShowPreprintReceiptChange: (value: boolean) => void
 }
 
 export function PosAdjust({
@@ -36,6 +38,8 @@ export function PosAdjust({
     onShowQuantityIndicatorChange,
     showCategories,
     onShowCategoriesChange,
+    showPreprintReceipt,
+    onShowPreprintReceiptChange,
 }: PosAdjustProps) {
     const { t } = useTranslation()
 
@@ -93,6 +97,22 @@ export function PosAdjust({
                         id="pos-show-quantity-indicator"
                         checked={showQuantityIndicator}
                         onCheckedChange={onShowQuantityIndicatorChange}
+                    />
+                </div>
+
+                <div className="mx-6 my-2 flex items-center justify-between gap-4 rounded-xl border border-border bg-muted/30 p-4">
+                    <div className="space-y-1">
+                        <Label htmlFor="pos-show-preprint-receipt" className="font-semibold">
+                            {t('pos.showPreprintReceipt', 'Show pre-print receipt')}
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                            {t('pos.showPreprintReceiptDescription', 'Show a receipt action beside Checkout before confirming the sale.')}
+                        </p>
+                    </div>
+                    <Switch
+                        id="pos-show-preprint-receipt"
+                        checked={showPreprintReceipt}
+                        onCheckedChange={onShowPreprintReceiptChange}
                     />
                 </div>
 

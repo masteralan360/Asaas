@@ -116,7 +116,8 @@ import {
     Banknote,
     BadgePercent,
     ClipboardCheck,
-    Gift
+    Gift,
+    Receipt
 } from 'lucide-react'
 import { isDesktop, isMobile } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
@@ -124,6 +125,7 @@ import { ExchangeRateList } from '@/ui/components'
 import { CheckoutSuccessModal, HeldSalesModal, type HeldSale, StorageSelector, CrossStorageWarningModal } from '@/ui/components'
 import { BarcodeScannerModal } from '@/ui/components/pos/BarcodeScannerModal'
 import { PosAdjust } from '@/ui/components/pos/PosAdjust'
+import { usePosReceiptPrinter } from '@/ui/components/pos/usePosReceiptPrinter'
 import type { StorageSelectorOption } from '@/ui/components/pos/StorageSelector'
 import { PosPriceBookSelector } from '@/ui/components/pos/PosPriceBookSelector'
 import { CameraBarcodeScanner } from '@/ui/components/pos/CameraBarcodeScanner'
@@ -500,6 +502,7 @@ export function POS() {
     const categories = useCategories(user?.workspaceId)
     const [skuInput, setSkuInput] = useState('')
     const [isLoading, setIsLoading] = useState(false)
+    const [isPreprinting, setIsPreprinting] = useState(false)
     const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false)
     const [isPosAdjustOpen, setIsPosAdjustOpen] = useState(false)
     const [isCameraScannerAutoEnabled, setIsCameraScannerAutoEnabled] = useState(() => {
@@ -867,6 +870,14 @@ export function POS() {
     useEffect(() => {
         localStorage.setItem('pos_show_categories', showCategories.toString())
     }, [showCategories])
+
+    const [showPreprintReceipt, setShowPreprintReceipt] = useState<boolean>(() => {
+        return localStorage.getItem('pos_show_preprint_receipt') === 'true'
+    })
+
+    useEffect(() => {
+        localStorage.setItem('pos_show_preprint_receipt', showPreprintReceipt.toString())
+    }, [showPreprintReceipt])
 
     // Calculate grid columns for ArrowUp/Down navigation
     const getGridColumns = () => {
@@ -1375,6 +1386,124 @@ export function POS() {
     })()
 
     const { hasTrulyMissingRates, hasLoadingRates } = rateCheck
+
+    // A pre-print is a receipt-only snapshot. It deliberately does not call
+    // checkout, reserve inventory, or create a sales-history record.
+    const preprintReceiptData = useMemo(() => {
+        if (!user || cart.length === 0 || isActivitiesStorage || paymentType === 'order') {
+            return null
+        }
+
+        const printedAt = new Date().toISOString()
+        const previewId = generateId()
+        const usedCurrencies = new Set(cart.map((item) =>
+            getEffectiveProductCurrency(findStockProduct(item.product_id, item.storageId))
+        ))
+        const knownRates = {
+            usdIqd: exchangeData ? { rate: exchangeData.rate, source: exchangeData.source, timestamp: exchangeData.timestamp || printedAt } : null,
+            eurIqd: eurRates.eur_iqd ? { rate: eurRates.eur_iqd.rate, source: eurRates.eur_iqd.source, timestamp: eurRates.eur_iqd.timestamp } : null,
+            tryIqd: tryRates.try_iqd ? { rate: tryRates.try_iqd.rate, source: tryRates.try_iqd.source, timestamp: tryRates.try_iqd.timestamp } : null,
+            usdEur: eurRates.usd_eur ? { rate: eurRates.usd_eur.rate, source: eurRates.usd_eur.source, timestamp: eurRates.usd_eur.timestamp } : null,
+            usdTry: tryRates.usd_try ? { rate: tryRates.usd_try.rate, source: tryRates.usd_try.source, timestamp: tryRates.usd_try.timestamp } : null,
+        }
+        const exchangeRatesSnapshot = currencyConversionEnabled
+            ? buildCheckoutRatesSnapshot(usedCurrencies, settlementCurrency, knownRates)
+            : []
+        const paymentMethod = paymentType === 'cash'
+            ? 'cash'
+            : paymentType === 'loan'
+                ? 'loan'
+                : digitalProvider
+
+        const receiptData = mapSaleToUniversal({
+            id: previewId,
+            workspace_id: user.workspaceId,
+            cashier_id: user.id,
+            cashier_name: user.name || '',
+            created_at: printedAt,
+            total_amount: totalAmount,
+            settlement_currency: settlementCurrency,
+            currency_conversion_applied: currencyConversionEnabled,
+            sales_exchange: exchangeSnapshotsToPayloads(exchangeRatesSnapshot),
+            origin: 'pos',
+            payment_method: paymentMethod,
+            items: cart.map((item) => {
+                const product = findStockProduct(item.product_id, item.storageId)
+                const originalCurrency = getEffectiveProductCurrency(product)
+                const effectivePrice = getCartEffectivePrice(item)
+                const convertedUnitPrice = convertPrice(effectivePrice, originalCurrency, settlementCurrency)
+
+                return {
+                    id: generateId(),
+                    sale_id: previewId,
+                    created_at: printedAt,
+                    updated_at: printedAt,
+                    product_id: item.product_id,
+                    storage_id: item.storageId || selectedStorageId || null,
+                    product_name: product?.name || item.name || 'Unknown',
+                    product_sku: product?.sku || '',
+                    product: product ? { ...product, can_be_returned: true } : undefined,
+                    quantity: item.quantity,
+                    unit_price: effectivePrice,
+                    total_price: effectivePrice * item.quantity,
+                    original_currency: originalCurrency,
+                    original_unit_price: item.price,
+                    converted_unit_price: convertedUnitPrice,
+                    settlement_currency: settlementCurrency,
+                    negotiated_price: item.negotiated_price,
+                }
+            })
+        } as any)
+
+        return {
+            ...receiptData,
+            invoiceid: `PRE-${previewId.slice(0, 8).toUpperCase()}`
+        }
+    }, [
+        cart,
+        convertPrice,
+        currencyConversionEnabled,
+        digitalProvider,
+        eurRates,
+        exchangeData,
+        findStockProduct,
+        getEffectiveProductCurrency,
+        isActivitiesStorage,
+        paymentType,
+        selectedStorageId,
+        settlementCurrency,
+        totalAmount,
+        tryRates,
+        user,
+    ])
+    const canPreprintReceipt = showPreprintReceipt && !!preprintReceiptData
+    const {
+        isLoadingPrimaryReceiptTemplate: isLoadingPreprintTemplate,
+        printReceipt: printPreprintReceipt,
+    } = usePosReceiptPrinter({
+        saleData: preprintReceiptData,
+        features,
+        enabled: canPreprintReceipt,
+    })
+    const handlePreprintReceipt = useCallback(async () => {
+        if (!preprintReceiptData || isPreprinting) return
+
+        setIsPreprinting(true)
+        try {
+            await printPreprintReceipt({
+                title: `Receipt_${preprintReceiptData.invoiceid || preprintReceiptData.id}`
+            })
+        } catch (error) {
+            console.error('[POS] Failed to print receipt pre-print:', error)
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: t('pos.preprintReceiptFailed', { defaultValue: 'Could not print the receipt pre-print.' })
+            })
+        } finally {
+            setIsPreprinting(false)
+        }
+    }, [isPreprinting, preprintReceiptData, printPreprintReceipt, t, toast])
 
     // Track originalSubtotal in a ref so the bulk discount effect doesn't
     // re-run (and wipe per-item negotiated prices) when the cart changes.
@@ -3210,6 +3339,10 @@ export function POS() {
                                 handleCheckout={handleCheckout}
                                 handleHoldSale={handleHoldSale}
                                 isLoading={isLoading}
+                                canPreprintReceipt={canPreprintReceipt}
+                                handlePreprintReceipt={handlePreprintReceipt}
+                                isPreprinting={isPreprinting}
+                                isLoadingPreprintTemplate={isLoadingPreprintTemplate}
                                 getDisplayImageUrl={getDisplayImageUrl}
                                 products={sellableProducts}
                                 convertPrice={convertPrice}
@@ -4044,6 +4177,21 @@ export function POS() {
                                             ? t('pos.processLoan') || 'Process Loan'
                                             : t('pos.checkout') || 'Checkout'}
                                 </Button>
+                                {canPreprintReceipt && (
+                                    <Button
+                                        variant="outline"
+                                        size="lg"
+                                        className="w-14 h-14 rounded-2xl border-2 hover:bg-primary/5 hover:text-primary transition-all group flex-none px-0"
+                                        onClick={handlePreprintReceipt}
+                                        disabled={cart.length === 0 || isLoading || isPreprinting || isLoadingPreprintTemplate}
+                                        title={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
+                                        aria-label={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
+                                    >
+                                        {isPreprinting || isLoadingPreprintTemplate
+                                            ? <Loader2 className="w-5 h-5 animate-spin" />
+                                            : <Receipt className="w-5 h-5 group-hover:scale-110 transition-transform" />}
+                                    </Button>
+                                )}
                                 {!showExchangeTicker && (
                                     <PosDiscountButton
                                         discountValue={discountValue}
@@ -4108,6 +4256,8 @@ export function POS() {
                 onShowQuantityIndicatorChange={setShowQuantityIndicator}
                 showCategories={showCategories}
                 onShowCategoriesChange={setShowCategories}
+                showPreprintReceipt={showPreprintReceipt}
+                onShowPreprintReceiptChange={setShowPreprintReceipt}
             />
 
             <Dialog
@@ -5301,6 +5451,10 @@ interface MobileCartProps {
     handleCheckout: (loanRegistrationData?: LoanRegistrationData) => void
     handleHoldSale: () => void
     isLoading: boolean
+    canPreprintReceipt: boolean
+    handlePreprintReceipt: () => Promise<void>
+    isPreprinting: boolean
+    isLoadingPreprintTemplate: boolean
     getDisplayImageUrl: (url?: string) => string
     products: InventoryProduct[]
     convertPrice: (amount: number, from: CurrencyCode, to: CurrencyCode) => number
@@ -5326,6 +5480,7 @@ function MobileCart({
     cart, removeFromCart, updateQuantity, features, totalAmount,
     settlementCurrency, paymentType, setPaymentType, isTutorialPosTask, tutorialProductId, digitalProvider,
     setDigitalProvider, quickOrderEnabled, handleCheckout, handleHoldSale, isLoading,
+    canPreprintReceipt, handlePreprintReceipt, isPreprinting, isLoadingPreprintTemplate,
     getDisplayImageUrl, products, convertPrice, openPriceEdit,
     clearNegotiatedPrice, isAdmin,
     discountValue, setDiscountValue, discountType, setDiscountType,
@@ -5632,39 +5787,59 @@ function MobileCart({
                             pointerEvents: progress > 0.3 ? 'none' : 'auto'
                         }}
                     >
-                        <Button
-                            data-tour-id="tutorial-pos-checkout"
-                            className="h-12 px-6 rounded-2xl font-black shadow-lg shadow-primary/20 active:scale-95 transition-all text-primary-foreground"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleCheckout();
-                            }}
-                            disabled={cart.length === 0 || isLoading || hasTrulyMissingRates}
-                        >
-                            {isLoading ? <Loader2 className="animate-spin w-5 h-5" /> : (
-                                <div className="flex items-center gap-2">
-                                    {paymentType === 'order' ? (
-                                        <ClipboardCheck className="w-5 h-5" />
-                                    ) : paymentType === 'digital' ? (
-                                        <Zap className="w-5 h-5" />
-                                    ) : paymentType === 'loan' ? (
-                                        <Coins className="w-5 h-5" />
-                                    ) : (
-                                        <Banknote className="w-5 h-5" />
-                                    )}
-                                    <span>
-                                        {paymentType === 'order'
-                                            ? t('orders.actions.order', { defaultValue: 'Order' })
-                                            : paymentType === 'digital'
-                                            ? t('pos.digitalCheckout') || 'Digital Checkout'
-                                            : paymentType === 'loan'
-                                                ? t('pos.processLoan') || 'Process Loan'
-                                                : t('pos.checkout') || 'Checkout'}
-                                    </span>
-                                    <ChevronRight className="w-4 h-4" />
-                                </div>
+                        <div className="flex items-center gap-2">
+                            {canPreprintReceipt && (
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-12 w-12 rounded-2xl border-2 hover:bg-primary/5 hover:text-primary transition-all group flex-none"
+                                    onClick={(event) => {
+                                        event.stopPropagation()
+                                        void handlePreprintReceipt()
+                                    }}
+                                    disabled={cart.length === 0 || isLoading || isPreprinting || isLoadingPreprintTemplate}
+                                    title={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
+                                    aria-label={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
+                                >
+                                    {isPreprinting || isLoadingPreprintTemplate
+                                        ? <Loader2 className="w-5 h-5 animate-spin" />
+                                        : <Receipt className="w-5 h-5 group-hover:scale-110 transition-transform" />}
+                                </Button>
                             )}
-                        </Button>
+                            <Button
+                                data-tour-id="tutorial-pos-checkout"
+                                className="h-12 px-6 rounded-2xl font-black shadow-lg shadow-primary/20 active:scale-95 transition-all text-primary-foreground"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCheckout();
+                                }}
+                                disabled={cart.length === 0 || isLoading || hasTrulyMissingRates}
+                            >
+                                {isLoading ? <Loader2 className="animate-spin w-5 h-5" /> : (
+                                    <div className="flex items-center gap-2">
+                                        {paymentType === 'order' ? (
+                                            <ClipboardCheck className="w-5 h-5" />
+                                        ) : paymentType === 'digital' ? (
+                                            <Zap className="w-5 h-5" />
+                                        ) : paymentType === 'loan' ? (
+                                            <Coins className="w-5 h-5" />
+                                        ) : (
+                                            <Banknote className="w-5 h-5" />
+                                        )}
+                                        <span>
+                                            {paymentType === 'order'
+                                                ? t('orders.actions.order', { defaultValue: 'Order' })
+                                                : paymentType === 'digital'
+                                                ? t('pos.digitalCheckout') || 'Digital Checkout'
+                                                : paymentType === 'loan'
+                                                    ? t('pos.processLoan') || 'Process Loan'
+                                                    : t('pos.checkout') || 'Checkout'}
+                                        </span>
+                                        <ChevronRight className="w-4 h-4" />
+                                    </div>
+                                )}
+                            </Button>
+                        </div>
                     </div>
                 </div>
 
@@ -5854,6 +6029,20 @@ function MobileCart({
                                         </div>
                                     )}
                                 </Button>
+                                {canPreprintReceipt && (
+                                    <Button
+                                        variant="outline"
+                                        className="h-14 w-14 rounded-2xl border-2 hover:bg-primary/5 hover:text-primary transition-all group flex-none px-0"
+                                        onClick={handlePreprintReceipt}
+                                        disabled={cart.length === 0 || isLoading || isPreprinting || isLoadingPreprintTemplate}
+                                        title={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
+                                        aria-label={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
+                                    >
+                                        {isPreprinting || isLoadingPreprintTemplate
+                                            ? <Loader2 className="w-5 h-5 animate-spin" />
+                                            : <Receipt className="w-5 h-5 group-hover:scale-110 transition-transform" />}
+                                    </Button>
+                                )}
                                 <Button
                                     variant="outline"
                                     className="flex-1 h-14 rounded-2xl border-2 hover:bg-primary/5 hover:text-primary transition-all group px-0"
