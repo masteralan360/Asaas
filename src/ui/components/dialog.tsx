@@ -152,6 +152,38 @@ const DialogFooter = ({
 )
 DialogFooter.displayName = "DialogFooter"
 
+/**
+ * Atlas's standard dialog façade. Use these components for workflow, form,
+ * and detail dialogs so their shell, header, and footer stay consistent.
+ *
+ * Use the base Dialog primitives only for an intentional compact or custom
+ * interaction (for example, a one-purpose confirmation dialog).
+ */
+type AppDialogContentProps = Omit<DialogContentProps, "layout">
+type AppDialogRegionProps = Omit<React.ComponentPropsWithoutRef<typeof DialogHeader>, "layout">
+
+const AppDialog = Dialog
+
+const AppDialogContent = React.forwardRef<
+    React.ElementRef<typeof DialogContent>,
+    AppDialogContentProps
+>(({ className, ...props }, ref) => (
+    <DialogContent ref={ref} className={className} {...props} layout="structured" />
+))
+AppDialogContent.displayName = "AppDialogContent"
+
+const AppDialogHeader = ({ className, ...props }: AppDialogRegionProps) => (
+    <DialogHeader className={className} {...props} layout="structured" />
+)
+AppDialogHeader.displayName = "AppDialogHeader"
+
+const AppDialogBody = DialogBody
+
+const AppDialogFooter = ({ className, ...props }: AppDialogRegionProps) => (
+    <DialogFooter className={className} {...props} layout="structured" />
+)
+AppDialogFooter.displayName = "AppDialogFooter"
+
 const DialogTitle = React.forwardRef<
     React.ElementRef<typeof DialogPrimitive.Title>,
     React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
@@ -179,6 +211,9 @@ const DialogDescription = React.forwardRef<
 ))
 DialogDescription.displayName = DialogPrimitive.Description.displayName
 
+const AppDialogTitle = DialogTitle
+const AppDialogDescription = DialogDescription
+
 export {
     Dialog,
     DialogPortal,
@@ -191,5 +226,12 @@ export {
     DialogFooter,
     DialogTitle,
     DialogDescription,
+    AppDialog,
+    AppDialogContent,
+    AppDialogHeader,
+    AppDialogBody,
+    AppDialogFooter,
+    AppDialogTitle,
+    AppDialogDescription,
     ScrollIndicator,
 }

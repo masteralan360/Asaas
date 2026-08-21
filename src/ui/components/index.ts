@@ -14,6 +14,13 @@ export {
     DialogFooter,
     DialogTitle,
     DialogDescription,
+    AppDialog,
+    AppDialogContent,
+    AppDialogHeader,
+    AppDialogBody,
+    AppDialogFooter,
+    AppDialogTitle,
+    AppDialogDescription,
     ScrollIndicator
 } from './dialog'
 export {

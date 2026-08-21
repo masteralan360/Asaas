@@ -11,6 +11,7 @@ import {
     type Product
 } from '@/local-db'
 import { isService } from '@/lib/catalogItem'
+import { getProductImageDisplayUrl } from '@/lib/productImageStorage'
 import { formatCurrency } from '@/lib/utils'
 import { useWorkspace } from '@/workspace'
 import {
@@ -64,7 +65,7 @@ export function Services() {
                             {services.map((service) => (
                                 <div key={service.id} className="flex items-center gap-4 p-4">
                                     <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/10 text-primary">
-                                        {service.imageUrl ? <img src={service.imageUrl} alt="" className="h-full w-full object-cover" /> : <BriefcaseBusiness className="h-5 w-5" />}
+                                        {service.imageUrl ? <img src={getProductImageDisplayUrl(service.imageUrl)} alt="" className="h-full w-full object-cover" /> : <BriefcaseBusiness className="h-5 w-5" />}
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center gap-2"><span className="truncate font-semibold">{service.name}</span><span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">{t('services.badge')}</span></div>

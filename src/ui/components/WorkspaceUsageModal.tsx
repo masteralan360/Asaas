@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts'
-import { Activity, ArrowDownUp, CalendarDays, Database, Gauge, HardDrive, TrendingUp } from 'lucide-react'
+import { Activity, CalendarDays, Database, Gauge, HardDrive, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { WorkspaceUsageInsights } from '@/lib/workspaceUsageHistory'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './dialog'
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './dialog'
 
 export type WorkspaceUsageMeterSegment = {
     key: 'storage' | 'chargedUsage'
@@ -246,25 +246,25 @@ export function WorkspaceUsageModal({ open, onOpenChange, usageMeter }: Workspac
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] max-h-[calc(100vh-var(--titlebar-height)-var(--safe-area-top)-1rem)] w-[calc(100vw-1rem)] max-w-5xl gap-0 overflow-y-auto rounded-2xl border-border/60 p-0 shadow-2xl">
-                <div className="border-b border-border/60 bg-gradient-to-br from-muted/70 via-background to-amber-500/5 px-5 py-5 sm:px-7">
-                    <DialogHeader className="pe-10">
-                        <div className="flex items-center gap-3">
-                            <div className="rounded-2xl bg-amber-500/10 p-3 text-amber-600 ring-1 ring-amber-500/20 dark:text-amber-300">
-                                <Activity className="h-5 w-5" />
-                            </div>
-                            <div>
-                                <DialogTitle className="text-xl">
-                                    {t('workspaceUsage.modalTitle')}
-                                </DialogTitle>
-                                <DialogDescription className="mt-1 max-w-2xl">
-                                    {t('workspaceUsage.modalDescription')}
-                                </DialogDescription>
-                            </div>
+            <DialogContent layout="structured" className="max-w-5xl">
+                <DialogHeader layout="structured">
+                    <div className="flex items-center gap-3">
+                        <div className="rounded-2xl bg-amber-500/10 p-3 text-amber-600 ring-1 ring-amber-500/20 dark:text-amber-300">
+                            <Activity className="h-5 w-5" />
                         </div>
-                    </DialogHeader>
+                        <div>
+                            <DialogTitle>
+                                {t('workspaceUsage.modalTitle')}
+                            </DialogTitle>
+                            <DialogDescription>
+                                {t('workspaceUsage.modalDescription')}
+                            </DialogDescription>
+                        </div>
+                    </div>
+                </DialogHeader>
 
-                    <div className="mt-5 rounded-2xl border border-border/60 bg-background/80 p-4 shadow-sm backdrop-blur">
+                <DialogBody className="space-y-5">
+                    <div className="rounded-2xl border border-border/60 bg-background/80 p-4 shadow-sm backdrop-blur">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
                                 <p className="text-xs font-semibold text-muted-foreground">
@@ -296,23 +296,14 @@ export function WorkspaceUsageModal({ open, onOpenChange, usageMeter }: Workspac
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <div className="space-y-5 px-4 py-5 sm:px-7 sm:py-6">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                         <UsageStatCard
                             icon={<Database className="h-4 w-4" />}
                             label={t('workspaceUsage.currentChargedUsage')}
                             value={formatBytes(details.chargedUsageBytes, locale)}
                             detail={chargedUsageRemainingLabel}
                             toneClassName="bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                        />
-                        <UsageStatCard
-                            icon={<ArrowDownUp className="h-4 w-4" />}
-                            label={t('workspaceUsage.actualTransfer')}
-                            value={formatBytes(details.actualTransferBytes, locale)}
-                            detail={t('workspaceUsage.actualTransferDetail')}
-                            toneClassName="bg-teal-500/10 text-teal-700 dark:text-teal-300"
                         />
                         <UsageStatCard
                             icon={<Activity className="h-4 w-4" />}
@@ -337,14 +328,6 @@ export function WorkspaceUsageModal({ open, onOpenChange, usageMeter }: Workspac
                         />
                     </div>
 
-                    <div className="flex items-start gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/5 px-4 py-3 text-sm leading-6 text-foreground">
-                        <Gauge className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-300" />
-                        <p>
-                            <span className="font-bold">{t('workspaceUsage.chargingRuleTitle')}</span>{' '}
-                            {t('workspaceUsage.chargingRule', { multiplier: details.chargeMultiplier })}
-                        </p>
-                    </div>
-
                     <div className="grid gap-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(260px,0.75fr)]">
                         <section className="min-w-0 rounded-2xl border border-border/60 bg-background p-4 shadow-sm sm:p-5">
                             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -355,10 +338,6 @@ export function WorkspaceUsageModal({ open, onOpenChange, usageMeter }: Workspac
                                     <p className="mt-1 text-xs text-muted-foreground">
                                         {t('workspaceUsage.consumptionDescription')}
                                     </p>
-                                    <div className="mt-2 flex flex-wrap gap-3 text-[11px] font-semibold text-muted-foreground">
-                                        <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-teal-500" />{t('workspaceUsage.actualTransfer')}</span>
-                                        <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" />{t('workspaceUsage.chargedUsage')}</span>
-                                    </div>
                                 </div>
                                 <div className="rounded-full bg-amber-500/10 px-3 py-1.5 text-xs font-bold tabular-nums text-amber-700 ring-1 ring-amber-500/20 dark:text-amber-300">
                                     {t('workspaceUsage.peakChargedDayValue', {
@@ -406,22 +385,13 @@ export function WorkspaceUsageModal({ open, onOpenChange, usageMeter }: Workspac
                                                 month: 'long',
                                                 day: 'numeric'
                                             })}
-                                            formatter={(value, name) => [
+                                            formatter={(value) => [
                                                 formatBytes(Number(value), locale),
-                                                name === 'actualTransferBytes'
-                                                    ? t('workspaceUsage.actualTransfer')
-                                                    : t('workspaceUsage.chargedUsage')
+                                                t('workspaceUsage.chargedUsage')
                                             ]}
                                         />
                                         <Bar
-                                            dataKey="actualTransferBytes"
-                                            fill="#14b8a6"
-                                            radius={[5, 5, 1, 1]}
-                                            maxBarSize={18}
-                                            isAnimationActive={false}
-                                        />
-                                        <Bar
-                                            dataKey="chargedUsageBytes"
+                                            dataKey="cumulativeChargedUsageBytes"
                                             fill="#f59e0b"
                                             radius={[5, 5, 1, 1]}
                                             maxBarSize={18}
@@ -529,7 +499,7 @@ export function WorkspaceUsageModal({ open, onOpenChange, usageMeter }: Workspac
                             })}
                         </div>
                     </section>
-                </div>
+                </DialogBody>
             </DialogContent>
         </Dialog>
     )
