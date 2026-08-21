@@ -1,4 +1,4 @@
-import { type FormEvent, Fragment, useCallback, useMemo, useState } from "react";
+import { type FormEvent, Fragment, type ReactNode, useCallback, useMemo, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Banknote, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, Clock, History, Inbox, LayoutGrid, List, ListFilter, Package, PackageCheck, Pencil, Plus, Route, Search, Send, Store, Trash2, Truck, Undo2, Users, WalletCards, X, XCircle, type LucideIcon } from "lucide-react";
@@ -23,7 +23,7 @@ import { DeleteConfirmationModal } from "@/ui/components/DeleteConfirmationModal
 import {
   Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, CurrencySelector, Dialog, DialogBody, DialogContent, DialogDescription,
   DialogFooter, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Label, Select, SelectContent, SelectItem, SelectTrigger,
-  SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tabs, TabsContent, TabsList,
+  SelectValue, Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow, Tabs, TabsContent, TabsList,
   TabsTrigger, Textarea, useToast,
 } from "@/ui/components";
 import { useWorkspace } from "@/workspace";
@@ -259,6 +259,50 @@ export function PostService() {
     if (!query) return merchantProfiles;
     return merchantProfiles.filter((profile) => (profileNameById.get(profile.id) ?? "").toLowerCase().includes(query));
   }, [merchantProfiles, merchantSearchQuery, profileNameById]);
+  // Footer aggregates mirror the Post settlement net dialog: gross courier cash
+  // handover (net remitted + retained fee) for posts with a recorded handover,
+  // the retained courier delivery fees, and FIFO-paid merchant payouts.
+  const postsFooterTotals = useMemo(() => {
+    const totals = new Map<CurrencyCode, { collected: number; courierFees: number; merchantPayouts: number }>();
+    for (const shipment of searchedShipments) {
+      const current = totals.get(shipment.currency) ?? { collected: 0, courierFees: 0, merchantPayouts: 0 };
+      const net = perShipmentSettlementNet.get(shipment.id);
+      if (net?.hasCourierHandover) {
+        const courierFee = shipment.courierDeliveryFee ?? 0;
+        current.collected += net.courierHandover + courierFee;
+        current.courierFees += courierFee;
+      }
+      current.merchantPayouts += Math.max(0, net?.merchantPayout ?? 0);
+      totals.set(shipment.currency, current);
+    }
+    return totals;
+  }, [searchedShipments, perShipmentSettlementNet]);
+  const postsFooterSegments = useMemo(() => {
+    const currencies = [...postsFooterTotals.keys()].sort((left, right) => left.localeCompare(right));
+    const formatTotal = (pick: (row: { collected: number; courierFees: number; merchantPayouts: number }) => number) =>
+      (currencies.length === 0 ? [features.default_currency] : currencies)
+        .map((currency) => formatCurrency(pick(postsFooterTotals.get(currency) ?? { collected: 0, courierFees: 0, merchantPayouts: 0 }), currency, features.iqd_display_preference))
+        .join(" + ");
+    let profitSum = 0;
+    for (const row of postsFooterTotals.values()) profitSum += row.collected - row.courierFees - row.merchantPayouts;
+    return [
+      { label: t("postService.dialogs.settlementNet.cashHandover"), value: formatTotal((row) => row.collected), tone: "positive" as const },
+      { label: t("postService.form.courierDeliveryFee"), value: formatTotal((row) => row.courierFees), tone: "negative" as const },
+      { label: t("postService.dialogs.settlementNet.merchantPayout"), value: formatTotal((row) => row.merchantPayouts), tone: "negative" as const },
+      { label: t("postService.dialogs.settlementNet.profit"), value: formatTotal((row) => row.collected - row.courierFees - row.merchantPayouts), tone: profitSum >= -0.000001 ? ("positive" as const) : ("negative" as const), emphasized: true },
+    ];
+  }, [postsFooterTotals, t, features.default_currency, features.iqd_display_preference]);
+  const postsTotalsFooter = (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+      {postsFooterSegments.map((segment, index) => (
+        <Fragment key={segment.label}>
+          {index > 0 ? <span aria-hidden className="mx-1 h-4 w-px bg-border" /> : null}
+          <span className="whitespace-nowrap text-muted-foreground">{segment.label}:</span>
+          <span className={cn("whitespace-nowrap font-semibold tabular-nums", segment.emphasized && "text-base", segment.tone === "positive" ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300")}>{segment.value}</span>
+        </Fragment>
+      ))}
+    </div>
+  );
   const linkedCourier = agents.find((agent) => agent.linkedUserId === user?.id && agent.status === "active" && agent.agentType === "courier");
   const assignableShipments = shipments.filter((shipment) => ["received", "ready_for_dispatch", "postponed"].includes(shipment.status));
   const selectedCount = selectedShipmentIds.size;
@@ -485,7 +529,7 @@ export function PostService() {
             <div className={cn("grid grid-cols-1 gap-4", postsViewMode === "grid" ? "md:grid-cols-2 2xl:grid-cols-3" : "md:hidden")}>
               <ShipmentGrid t={t} shipments={searchedShipments} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} canSettle={canSettle} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} />
             </div>
-            {postsViewMode === "details" && <div className="hidden overflow-x-auto md:block"><ShipmentTable t={t} shipments={searchedShipments} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} canSettle={canSettle} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} /></div>}
+            {postsViewMode === "details" && <div className="hidden overflow-x-auto md:block"><ShipmentTable t={t} shipments={searchedShipments} footer={postsTotalsFooter} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} canSettle={canSettle} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} /></div>}
           </CardContent>
         </Card>
       </TabsContent>
@@ -748,7 +792,7 @@ function PostsViewModeToggle({ t, value, onChange }: { t: TFunction; value: Post
     <Button type="button" size="sm" variant={value === "grid" ? "secondary" : "ghost"} className="gap-1.5" aria-pressed={value === "grid"} onClick={() => onChange("grid")}><LayoutGrid className="h-4 w-4" />{t("postService.view.grid")}</Button>
   </div>;
 }
-function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onOpenSettlementNet, onOpenPostSettlements, canSettle, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, settlementNetByShipment }: {
+function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onOpenSettlementNet, onOpenPostSettlements, canSettle, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, settlementNetByShipment, footer }: {
   t: TFunction;
   shipments: DeliveryShipment[];
   selectedIds: Set<string>;
@@ -765,8 +809,9 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
   handoverStatusByShipment: ReadonlyMap<string, ShipmentSettlementStatus>;
   payoutStatusByShipment: ReadonlyMap<string, ShipmentSettlementStatus>;
   settlementNetByShipment: ReadonlyMap<string, ShipmentSettlementNet>;
+  footer?: ReactNode;
 }) {
-  return <Table><TableHeader><TableRow>{canSelect && <TableHead className="w-10" />}<TableHead>{t("postService.table.tracking")}</TableHead><TableHead>{t("postService.table.dateTime")}</TableHead><TableHead>{t("postService.table.merchantRecipient")}</TableHead><TableHead>{t("postService.table.cod")}</TableHead><TableHead>{t("postService.table.settlementNet")}</TableHead><TableHead>{t("postService.table.courier")}</TableHead><TableHead>{t("postService.table.status")}</TableHead><TableHead>{t("postService.table.cashHandover")}</TableHead><TableHead>{t("postService.table.merchantPayout")}</TableHead><TableHead className="text-end">{t("postService.table.actions")}</TableHead></TableRow></TableHeader><TableBody>{shipments.length === 0 ? <EmptyRow columns={canSelect ? 11 : 10} label={t("postService.empty.noPosts")} /> : shipments.map((shipment) => <TableRow key={shipment.id}>{canSelect && <TableCell><Checkbox className="h-5 w-5 rounded-[6px]" checked={selectedIds.has(shipment.id)} disabled={!['received', 'ready_for_dispatch', 'postponed'].includes(shipment.status)} onCheckedChange={(checked) => onToggle(shipment.id, checked === true)} /></TableCell>}<TableCell><div className="font-medium">{shipment.trackingNumber}</div><div className="text-xs text-muted-foreground">{shipment.recipientCity || t("postService.table.noZone")}</div></TableCell><TableCell className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">{formatDateTime(shipment.createdAt)}</TableCell><TableCell><div>{profileNameById.get(shipment.merchantProfileId)}</div><div className="text-xs text-muted-foreground">{shipment.recipientName} · {shipment.recipientPhone}</div></TableCell><TableCell>{formatCurrency(shipment.codAmount, shipment.currency, iqdPreference)}</TableCell><TableCell><SettlementNetButton t={t} shipment={shipment} settlementNet={settlementNetByShipment.get(shipment.id)} iqdPreference={iqdPreference} onClick={() => onOpenSettlementNet(shipment)} /></TableCell><TableCell>{shipment.assignedAgentId ? agentNameById.get(shipment.assignedAgentId) : "—"}</TableCell><TableCell><Badge variant="outline" className={shipmentStatusClass(shipment.status)}>{shipmentStatusLabel(t, shipment.status)}</Badge></TableCell><TableCell><SettlementStatusBadge t={t} kind="handover" status={handoverStatusByShipment.get(shipment.id) ?? "none"} /></TableCell><TableCell><SettlementStatusBadge t={t} kind="payout" status={payoutStatusByShipment.get(shipment.id) ?? "none"} /></TableCell><TableCell className="text-end"><div className="flex justify-end gap-1">{canUpdate && shipment.status === "assigned" && <><Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "delivered")} title={t("postService.actions.markDelivered")}><CheckCircle2 className="h-4 w-4 text-emerald-600" /></Button><Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "postponed")} title={t("postService.actions.postpone")}><History className="h-4 w-4 text-amber-600" /></Button><Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "returned")} title={t("postService.actions.return")}><Undo2 className="h-4 w-4 text-rose-600" /></Button></>}{canSettle && shipment.status === "delivered" && <Button size="sm" variant="outline" onClick={() => onOpenPostSettlements(shipment)}><Banknote className="me-1.5 h-4 w-4" />{t("postService.actions.settlements")}</Button>}</div></TableCell></TableRow>)}</TableBody></Table>;
+  return <Table><TableHeader><TableRow>{canSelect && <TableHead className="w-10" />}<TableHead>{t("postService.table.tracking")}</TableHead><TableHead>{t("postService.table.dateTime")}</TableHead><TableHead>{t("postService.table.merchantRecipient")}</TableHead><TableHead>{t("postService.table.cod")}</TableHead><TableHead>{t("postService.table.settlementNet")}</TableHead><TableHead>{t("postService.table.courier")}</TableHead><TableHead>{t("postService.table.status")}</TableHead><TableHead>{t("postService.table.cashHandover")}</TableHead><TableHead>{t("postService.table.merchantPayout")}</TableHead><TableHead className="text-end">{t("postService.table.actions")}</TableHead></TableRow></TableHeader><TableBody>{shipments.length === 0 ? <EmptyRow columns={canSelect ? 11 : 10} label={t("postService.empty.noPosts")} /> : shipments.map((shipment) => <TableRow key={shipment.id}>{canSelect && <TableCell><Checkbox className="h-5 w-5 rounded-[6px]" checked={selectedIds.has(shipment.id)} disabled={!['received', 'ready_for_dispatch', 'postponed'].includes(shipment.status)} onCheckedChange={(checked) => onToggle(shipment.id, checked === true)} /></TableCell>}<TableCell><div className="font-medium">{shipment.trackingNumber}</div><div className="text-xs text-muted-foreground">{shipment.recipientCity || t("postService.table.noZone")}</div></TableCell><TableCell className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">{formatDateTime(shipment.createdAt)}</TableCell><TableCell><div>{profileNameById.get(shipment.merchantProfileId)}</div><div className="text-xs text-muted-foreground">{shipment.recipientName} · {shipment.recipientPhone}</div></TableCell><TableCell>{formatCurrency(shipment.codAmount, shipment.currency, iqdPreference)}</TableCell><TableCell><SettlementNetButton t={t} shipment={shipment} settlementNet={settlementNetByShipment.get(shipment.id)} iqdPreference={iqdPreference} onClick={() => onOpenSettlementNet(shipment)} /></TableCell><TableCell>{shipment.assignedAgentId ? agentNameById.get(shipment.assignedAgentId) : "—"}</TableCell><TableCell><Badge variant="outline" className={shipmentStatusClass(shipment.status)}>{shipmentStatusLabel(t, shipment.status)}</Badge></TableCell><TableCell><SettlementStatusBadge t={t} kind="handover" status={handoverStatusByShipment.get(shipment.id) ?? "none"} /></TableCell><TableCell><SettlementStatusBadge t={t} kind="payout" status={payoutStatusByShipment.get(shipment.id) ?? "none"} /></TableCell><TableCell className="text-end"><div className="flex justify-end gap-1">{canUpdate && shipment.status === "assigned" && <><Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "delivered")} title={t("postService.actions.markDelivered")}><CheckCircle2 className="h-4 w-4 text-emerald-600" /></Button><Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "postponed")} title={t("postService.actions.postpone")}><History className="h-4 w-4 text-amber-600" /></Button><Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "returned")} title={t("postService.actions.return")}><Undo2 className="h-4 w-4 text-rose-600" /></Button></>}{canSettle && shipment.status === "delivered" && <Button size="sm" variant="outline" onClick={() => onOpenPostSettlements(shipment)}><Banknote className="me-1.5 h-4 w-4" />{t("postService.actions.settlements")}</Button>}</div></TableCell></TableRow>)}</TableBody>{footer ? <TableFooter><TableRow className="hover:bg-transparent"><TableCell colSpan={canSelect ? 11 : 10} className="bg-muted/40 py-3">{footer}</TableCell></TableRow></TableFooter> : null}</Table>;
 }
 function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onOpenSettlementNet, onOpenPostSettlements, canSettle, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, settlementNetByShipment }: {
   t: TFunction;
