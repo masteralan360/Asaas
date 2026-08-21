@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import {
@@ -132,11 +132,15 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
     const { t } = useTranslation()
     const [usageStatus, setUsageStatus] = useState<WorkspaceUsageStatus | null>(null)
     const [usageHistory, setUsageHistory] = useState<WorkspaceUsageLocalHistory | null>(null)
+    const [isRefreshingWorkspaceUsage, setIsRefreshingWorkspaceUsage] = useState(false)
+    const refreshUsageRef = useRef<(() => Promise<void>) | null>(null)
 
     useEffect(() => {
         if (!enabled || !workspaceId) {
             setUsageStatus(null)
             setUsageHistory(null)
+            setIsRefreshingWorkspaceUsage(false)
+            refreshUsageRef.current = null
             return
         }
 
@@ -181,6 +185,19 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
             }
         }
 
+        const refreshWorkspaceUsage = async () => {
+            setIsRefreshingWorkspaceUsage(true)
+            try {
+                await fetchUsageStatus()
+            } finally {
+                if (!cancelled) {
+                    setIsRefreshingWorkspaceUsage(false)
+                }
+            }
+        }
+
+        refreshUsageRef.current = refreshWorkspaceUsage
+
         const scheduleUsageRefresh = (event?: Event) => {
             const detail = event instanceof CustomEvent
                 ? event.detail as { workspaceId?: string } | undefined
@@ -204,6 +221,9 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
 
         return () => {
             cancelled = true
+            if (refreshUsageRef.current === refreshWorkspaceUsage) {
+                refreshUsageRef.current = null
+            }
             window.clearInterval(intervalId)
             if (refreshTimeout) {
                 window.clearTimeout(refreshTimeout)
@@ -213,5 +233,11 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
         }
     }, [enabled, workspaceId])
 
-    return buildWorkspaceUsageMeter(usageStatus, usageHistory, t)
+    return {
+        usageMeter: buildWorkspaceUsageMeter(usageStatus, usageHistory, t),
+        isRefreshingWorkspaceUsage,
+        refreshWorkspaceUsage: async () => {
+            await refreshUsageRef.current?.()
+        }
+    }
 }

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts'
-import { Activity, CalendarDays, Database, Gauge, HardDrive, TrendingUp } from 'lucide-react'
+import { Activity, CalendarDays, Database, Gauge, HardDrive, RefreshCw, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { WorkspaceUsageInsights } from '@/lib/workspaceUsageHistory'
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './dialog'
@@ -44,6 +44,8 @@ type WorkspaceUsageModalProps = {
     open: boolean
     onOpenChange: (open: boolean) => void
     usageMeter: WorkspaceUsageMeter | null
+    onRefresh: () => void | Promise<void>
+    isRefreshing: boolean
 }
 
 type WorkspaceUsageButtonProps = {
@@ -219,7 +221,13 @@ export function WorkspaceUsageCircleButton({ usageMeter, onClick, className }: W
     )
 }
 
-export function WorkspaceUsageModal({ open, onOpenChange, usageMeter }: WorkspaceUsageModalProps) {
+export function WorkspaceUsageModal({
+    open,
+    onOpenChange,
+    usageMeter,
+    onRefresh,
+    isRefreshing
+}: WorkspaceUsageModalProps) {
     const { t, i18n } = useTranslation()
 
     if (!usageMeter) return null
@@ -245,18 +253,31 @@ export function WorkspaceUsageModal({ open, onOpenChange, usageMeter }: Workspac
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent layout="structured" className="max-w-5xl">
                 <DialogHeader layout="structured">
-                    <div className="flex items-center gap-3">
-                        <div className="rounded-2xl bg-amber-500/10 p-3 text-amber-600 ring-1 ring-amber-500/20 dark:text-amber-300">
-                            <Activity className="h-5 w-5" />
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                            <div className="rounded-2xl bg-amber-500/10 p-3 text-amber-600 ring-1 ring-amber-500/20 dark:text-amber-300">
+                                <Activity className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0">
+                                <DialogTitle>
+                                    {t('workspaceUsage.modalTitle')}
+                                </DialogTitle>
+                                <DialogDescription>
+                                    {t('workspaceUsage.modalDescription')}
+                                </DialogDescription>
+                            </div>
                         </div>
-                        <div>
-                            <DialogTitle>
-                                {t('workspaceUsage.modalTitle')}
-                            </DialogTitle>
-                            <DialogDescription>
-                                {t('workspaceUsage.modalDescription')}
-                            </DialogDescription>
-                        </div>
+                        <button
+                            type="button"
+                            onClick={() => void onRefresh()}
+                            disabled={isRefreshing}
+                            className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-border/70 bg-background px-3 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                            title={t('common.refresh', { defaultValue: 'Refresh' })}
+                            aria-label={t('common.refresh', { defaultValue: 'Refresh' })}
+                        >
+                            <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
+                            <span className="hidden sm:inline">{t('common.refresh', { defaultValue: 'Refresh' })}</span>
+                        </button>
                     </div>
                 </DialogHeader>
 

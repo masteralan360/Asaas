@@ -25,7 +25,11 @@ export function TitleBar() {
         isTauri && !isDemoMode ? features.subscription_expires_at : null
     )
     const { canGoBack, canGoForward, back, forward } = useNavigationHistory()
-    const usageMeter = useWorkspaceUsageMeter({
+    const {
+        usageMeter,
+        refreshWorkspaceUsage,
+        isRefreshingWorkspaceUsage
+    } = useWorkspaceUsageMeter({
         enabled: isTauri && !isLocalMode && !isDemoMode,
         workspaceId: activeWorkspace?.id
     })
@@ -299,6 +303,8 @@ export function TitleBar() {
             open={usageModalOpen}
             onOpenChange={setUsageModalOpen}
             usageMeter={usageMeter}
+            onRefresh={refreshWorkspaceUsage}
+            isRefreshing={isRefreshingWorkspaceUsage}
         />
         </>
     )

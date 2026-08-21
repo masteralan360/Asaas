@@ -166,7 +166,11 @@ export function Layout({ children }: LayoutProps) {
     const { t, i18n } = useTranslation()
     // @ts-ignore
     const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__
-    const webUsageMeter = useWorkspaceUsageMeter({
+    const {
+        usageMeter: webUsageMeter,
+        refreshWorkspaceUsage: refreshWebWorkspaceUsage,
+        isRefreshingWorkspaceUsage: isRefreshingWebWorkspaceUsage
+    } = useWorkspaceUsageMeter({
         enabled: !isTauri && !isLocalMode && !isDemoMode,
         workspaceId: activeWorkspace?.id
     })
@@ -1596,6 +1600,8 @@ export function Layout({ children }: LayoutProps) {
                         open={usageModalOpen}
                         onOpenChange={setUsageModalOpen}
                         usageMeter={webUsageMeter}
+                        onRefresh={refreshWebWorkspaceUsage}
+                        isRefreshing={isRefreshingWebWorkspaceUsage}
                     />
                     <AtlasAssistantPopup
                         open={assistantOpen}
