@@ -6170,6 +6170,10 @@
             "merchants": "التجار",
             "settlements": "التسويات"
         },
+        "view": {
+            "details": "تفاصيل الشحنات",
+            "grid": "شبكة الشحنات"
+        },
         "cards": {
             "allPosts": "كل الشحنات",
             "createManifest": "إنشاء كشف المندوب",
@@ -6231,6 +6235,7 @@
         },
         "table": {
             "tracking": "رقم التتبع",
+            "dateTime": "التاريخ والوقت",
             "merchantRecipient": "التاجر / المستلم",
             "cod": "الدفع عند الاستلام",
             "settlementNet": "صافي التسوية",

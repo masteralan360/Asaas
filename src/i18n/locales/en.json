@@ -6424,6 +6424,10 @@
             "merchants": "Merchants",
             "settlements": "Settlements"
         },
+        "view": {
+            "details": "Posts details",
+            "grid": "Posts grid"
+        },
         "cards": {
             "allPosts": "All posts",
             "createManifest": "Create courier manifest",
@@ -6485,6 +6489,7 @@
         },
         "table": {
             "tracking": "Tracking",
+            "dateTime": "Date & Time",
             "merchantRecipient": "Merchant / recipient",
             "cod": "COD",
             "settlementNet": "Settlement net",
