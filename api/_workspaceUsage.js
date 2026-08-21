@@ -58,8 +58,12 @@ export function requestHeadersForUpstream(req, body) {
     const headers = new Headers()
     const passThrough = [
         'accept',
+        // Supabase uses these PostgREST headers to select non-public schemas
+        // such as crm, budget, clinics, and real_estate.
+        'accept-profile',
         'accept-language',
         'authorization',
+        'content-profile',
         'content-type',
         'if-match',
         'if-none-match',
