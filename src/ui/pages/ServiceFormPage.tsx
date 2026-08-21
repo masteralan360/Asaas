@@ -801,7 +801,6 @@ function ServiceEditor({ mode, serviceId }: { mode: ServiceFormMode; serviceId?:
                                                 })}
                                                 placeholder="0.000"
                                                 readOnly={isReadOnly}
-                                                required={!hideCosts}
                                                 className="h-12 rounded-xl border-border/80 bg-background/80 pr-16 font-bold shadow-sm shadow-black/[0.03] transition-all hover:border-primary/45 hover:bg-background focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-background/50"
                                             />
                                             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">

@@ -746,12 +746,12 @@ async function assertSalesStockAvailable(order: SalesOrder, excludeOrderId?: str
         if (!product || product.isDeleted) {
             throw new Error(`Product not found: ${item.productName}`)
         }
-        if (!hasValidProductCost(product.costPrice)) {
-            throw new Error(`${product.name} cannot be sold until a cost is added.`)
-        }
-
         if (isService(product)) {
             continue
+        }
+
+        if (!hasValidProductCost(product.costPrice)) {
+            throw new Error(`${product.name} cannot be sold until a cost is added.`)
         }
 
         const storageId = resolveSalesOrderItemStorageId(order, item)
@@ -780,7 +780,7 @@ async function assertSalesProductsHaveCosts(order: SalesOrder) {
         if (!product || product.isDeleted) {
             throw new Error(`Product not found: ${item.productName}`)
         }
-        if (!hasValidProductCost(product.costPrice)) {
+        if (!isService(product) && !hasValidProductCost(product.costPrice)) {
             throw new Error(`${product.name} cannot be sold until a cost is added.`)
         }
     }
@@ -809,7 +809,7 @@ async function assertSalesProductsHaveCosts(order: SalesOrder) {
     for (const item of order.items) {
         const product = productMap.get(item.productId)
         const priceBookItem = itemsByProductId.get(item.productId)
-        if (priceBookItem && !hasValidProductCost(priceBookItem.costPrice)) {
+        if (priceBookItem && !isService(product) && !hasValidProductCost(priceBookItem.costPrice)) {
             throw new Error(getMissingPriceBookCostMessage(product?.name || item.productName, priceBook.name))
         }
     }

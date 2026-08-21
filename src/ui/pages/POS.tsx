@@ -1761,6 +1761,7 @@ export function POS() {
 
     const addToCart = useCallback((product: PosCatalogProduct) => {
         const isInfiniteActivity = product.isInfiniteActivity === true
+        const isNonInventoryService = isService(product)
         const priceBookPricing = isInfiniteActivity ? null : getPriceBookPricing(product)
         const effectivePrice = priceBookPricing?.price ?? product.price
         const effectiveCurrency = (priceBookPricing?.currency ?? product.currency) as CurrencyCode
@@ -1774,7 +1775,7 @@ export function POS() {
             hapticTrigger('error')
             return
         }
-        if (!isInfiniteActivity && !hasValidProductCost(effectiveCostPrice)) {
+        if (!isInfiniteActivity && !isNonInventoryService && !hasValidProductCost(effectiveCostPrice)) {
             toast({
                 variant: 'destructive',
                 title: t('messages.error'),
@@ -1820,7 +1821,6 @@ export function POS() {
         setCart((prev) => {
             const itemKey = buildCartItemKey(product.id, product.storageId)
             const existing = prev.find((item) => buildCartItemKey(item.product_id, item.storageId) === itemKey)
-            const isNonInventoryService = isService(product)
             if (existing) {
                 // Check stock limit
                 if (!isInfiniteActivity && !isNonInventoryService && existing.quantity >= product.inventoryQuantity) return prev
@@ -2462,7 +2462,7 @@ export function POS() {
 
         const missingCostCartItem = cart.find((item) => {
             const product = findStockProduct(item.product_id, item.storageId)
-            return product ? !hasValidProductCost(product.costPrice) : false
+            return product ? !isService(product) && !hasValidProductCost(product.costPrice) : false
         })
         if (missingCostCartItem) {
             const product = findStockProduct(missingCostCartItem.product_id, missingCostCartItem.storageId)

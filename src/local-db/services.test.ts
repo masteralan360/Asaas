@@ -54,7 +54,7 @@ describe('service catalog items', () => {
     afterEach(() => clearWorkspaceModeSnapshot(WORKSPACE_ID))
     afterAll(async () => { await db.delete() })
 
-    it('creates a sellable service without SKU, storage, or inventory', async () => {
+    it('creates a sellable service without SKU, storage, inventory, or a cost', async () => {
         const service = await createProduct(WORKSPACE_ID, {
             isService: true,
             name: 'Consultation',
@@ -63,7 +63,7 @@ describe('service catalog items', () => {
             category: null,
             sku: 'IGNORED',
             price: 25,
-            costPrice: 10,
+            costPrice: null,
             quantity: 50,
             minStockLevel: 5,
             unit: 'hour',
@@ -81,6 +81,7 @@ describe('service catalog items', () => {
             quantity: 0,
             minStockLevel: 0,
             storageId: null,
+            costPrice: null,
         })
         expect(await db.inventory.where('productId').equals(service.id).count()).toBe(0)
     })

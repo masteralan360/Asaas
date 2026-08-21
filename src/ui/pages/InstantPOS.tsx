@@ -1153,11 +1153,11 @@ export function InstantPOS() {
         }
 
         const missingCostItem = activeTicket.items.find((item) => {
-            const product = products.find((candidate) => candidate.id === item.productId && candidate.storageId === item.storageId)
-            return product ? !hasValidProductCost(product.costPrice) : false
+            const product = resolveTicketProduct(item)
+            return product ? !isService(product) && !hasValidProductCost(product.costPrice) : false
         })
         if (missingCostItem) {
-            const product = products.find((candidate) => candidate.id === missingCostItem.productId && candidate.storageId === missingCostItem.storageId)
+            const product = resolveTicketProduct(missingCostItem)
             toast({
                 title: t('common.error') || 'Error',
                 description: getMissingProductCostMessage(product?.name || missingCostItem.name),
