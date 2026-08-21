@@ -5,11 +5,8 @@ export interface WorkspaceUsageStatus {
     has_limits: boolean
     storage_units: number
     storage_unit_limit: number | null
-    /** Real measured upload/download bytes. This value is never weighted. */
-    actual_data_transfer_bytes: number
-    /** Charged usage used for quota enforcement after applying the multiplier. */
-    data_transfer_bytes: number
-    transfer_charge_multiplier: number
+    /** The one persisted plan-consumption total used for quota enforcement. */
+    charged_usage_bytes: number
     /** Charged-usage allowance, not a raw network-transfer limit. */
     monthly_data_transfer_limit_bytes: number | null
     transfer_period_start: string
@@ -18,11 +15,7 @@ export interface WorkspaceUsageStatus {
 export interface WorkspaceTransferUsage {
     workspace_id: string
     transfer_period_start: string
-    /** Real measured upload/download bytes. This value is never weighted. */
-    actual_data_transfer_bytes: number
-    /** Charged usage used for quota enforcement after applying the multiplier. */
-    data_transfer_bytes: number
-    transfer_charge_multiplier: number
+    charged_usage_bytes: number
     /** Charged-usage allowance, not a raw network-transfer limit. */
     monthly_data_transfer_limit_bytes: number | null
 }
@@ -95,13 +88,21 @@ export function parseContentLength(value: string | null): number | null {
     return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : null
 }
 
+/** Returns a safe client-side representation of the one charged counter. */
+export function getChargedWorkspaceUsageBytes(
+    usage: Pick<WorkspaceUsageStatus, 'charged_usage_bytes'>
+): number {
+    const value = Number(usage.charged_usage_bytes ?? 0)
+    return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0
+}
+
 export async function recordWorkspaceDataTransfer(
     workspaceId: string,
     actualBytes: number,
     source?: string
 ): Promise<WorkspaceTransferUsage | null> {
-    // IMPORTANT: p_bytes is ACTUAL measured transfer. The database applies the
-    // commercial multiplier exactly once and stores charged usage separately.
+    // p_bytes is measured for this request only. The database applies the Tauri
+    // channel rate and persists charged usage rather than raw bytes.
     const normalizedBytes = Math.trunc(actualBytes)
     if (!workspaceId || normalizedBytes <= 0) return null
 
@@ -109,7 +110,8 @@ export async function recordWorkspaceDataTransfer(
         .rpc('record_workspace_data_transfer', {
             p_workspace_id: workspaceId,
             p_bytes: normalizedBytes,
-            p_source: source ?? null
+            p_source: source ?? null,
+            p_channel: 'tauri'
         })
         .maybeSingle()
 

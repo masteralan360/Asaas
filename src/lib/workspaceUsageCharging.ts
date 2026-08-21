@@ -1,9 +1,10 @@
 /**
- * Actual transfer is the real request/response or file payload measured in bytes.
- * Charged usage is the plan-consumption value after applying the commercial weight.
+ * This is a planning-only estimate for the Monthly Usage Calculator. It is not
+ * a usage meter and does not write a database counter.
  *
- * IMPORTANT: callers must always report ACTUAL bytes to the backend. The database is
- * the source of truth that applies this same factor once and stores both counters.
+ * Production metering selects the rate at the trusted request boundary: Tauri
+ * currently uses 10× and Web Live currently uses 20×. This helper retains the
+ * desktop baseline so estimates remain understandable without storing channels.
  */
 export const WORKSPACE_USAGE_CHARGE_MULTIPLIER = 10
 

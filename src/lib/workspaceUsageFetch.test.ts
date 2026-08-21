@@ -79,7 +79,39 @@ describe('workspace usage fetch metering', () => {
         expect(JSON.parse(String(usageCall.init?.body)).p_bytes).toBeGreaterThan(0)
     })
 
-    it('sends successful table-write bytes as actual transfer without client weighting', async () => {
+    it('routes Web Live table requests through the gateway without a client-side usage RPC', async () => {
+        testState.activeWorkspaceId = workspaceId
+        const calls: Array<{ url: string; init?: RequestInit }> = []
+        const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            calls.push({ url: String(input), init })
+            return new Response(JSON.stringify([{ id: 'product-1' }]), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            })
+        }) as unknown as typeof fetch
+
+        const meteredFetch = createWorkspaceUsageFetch({
+            supabaseUrl: 'https://example.supabase.co',
+            supabaseAnonKey: 'anon-key',
+            webGatewayUrl: 'https://app.example.com/api-workspace-data',
+            fetchImpl
+        })
+
+        const response = await meteredFetch(
+            `https://example.supabase.co/rest/v1/products?workspace_id=eq.${workspaceId}&select=id`,
+            { headers: { Authorization: 'Bearer token' } }
+        )
+
+        expect(response.ok).toBe(true)
+        expect(calls).toHaveLength(1)
+        expect(calls[0].url).toBe(
+            `https://app.example.com/api-workspace-data/products?workspace_id=eq.${workspaceId}&select=id`
+        )
+        expect(calls[0].init?.headers).toBeInstanceOf(Headers)
+        expect((calls[0].init?.headers as Headers).get('Authorization')).toBe('Bearer token')
+    })
+
+    it('sends successful table-write bytes for server-side charging', async () => {
         testState.activeWorkspaceId = workspaceId
         const requestBody = JSON.stringify([
             { workspace_id: workspaceId, name: 'Coffee' },

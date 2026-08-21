@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getAppSettingSync } from '@/local-db/settings'
 import { decrypt, encrypt } from '@/lib/encryption'
 import { createWorkspaceUsageFetch } from '@/lib/workspaceUsageFetch'
+import { isTauri } from '@/lib/platform'
 
 // Custom storage adapter that encrypts everything in local storage
 const EncryptedStorage = {
@@ -48,12 +49,19 @@ export const isSupabaseConfigured = Boolean(isUrlValid && isKeyValid)
 // The app will redirect to configuration page if isSupabaseConfigured is false
 const clientUrl = isUrlValid ? resolvedSupabaseUrl : 'https://placeholder.supabase.co'
 const clientKey = isKeyValid ? resolvedSupabaseAnonKey : 'placeholder-key'
+// Browser REST traffic is sent through the same-origin Vercel gateway so the
+// server, not the browser, chooses the Web Live (20x) charge rate. Desktop
+// clients retain their direct Tauri (10x) metering path.
+const webUsageGatewayUrl = !isTauri() && !isBackendConfigurationRequired
+    ? (import.meta.env.VITE_WEB_USAGE_GATEWAY_URL || (import.meta.env.PROD ? '/api-workspace-data' : ''))
+    : ''
 
 export const supabase = createClient(clientUrl, clientKey, {
     global: {
         fetch: createWorkspaceUsageFetch({
             supabaseUrl: clientUrl,
-            supabaseAnonKey: clientKey
+            supabaseAnonKey: clientKey,
+            webGatewayUrl: webUsageGatewayUrl
         })
     },
     auth: {

@@ -67,12 +67,8 @@ type UpdateWorkspaceUsageRequest = {
     passkey?: string
     workspaceId?: string
     storageUnits?: string | number | null
-    /** Real measured upload/download payload bytes. Never weighted. */
-    actualTransferBytes?: string | number | null
-    /** Charged plan usage after applying the workspace transfer multiplier. */
+    /** Charged plan usage. This is the only editable transfer counter. */
     chargedUsageBytes?: string | number | null
-    /** @deprecated Historical alias for actualTransferBytes. */
-    dataTransferBytes?: string | number | null
     transferPeriodStart?: string | null
     storageUnitLimit?: string | number | null
     /** Monthly allowance compared with chargedUsageBytes. */
@@ -154,7 +150,6 @@ type AdminPasskeyAccess =
     | { ok: true; response: null }
     | { ok: false; response: Response }
 
-const WORKSPACE_TRANSFER_CHARGE_MULTIPLIER = 10n
 const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const PAYMENT_TRANSACTION_STATUSES = new Set(['pending', 'approved', 'rejected', 'expired'])
@@ -291,48 +286,17 @@ function resolveNullableBigintAlias(
     }
 }
 
-function reconcileTransferCounters(
-    actualValue: string | null,
-    chargedValue: string | null
-): { actualValue: string; chargedValue: string; error?: string } {
-    if (actualValue === null && chargedValue === null) {
-        return { actualValue: '0', chargedValue: '0', error: 'Actual transfer or charged usage is required' }
+function reconcileChargedUsage(chargedValue: string | null): { chargedValue: string; error?: string } {
+    if (chargedValue === null) {
+        return { chargedValue: '0', error: 'Monthly charged usage is required' }
     }
 
-    const actual = actualValue === null ? null : BigInt(actualValue)
-    const charged = chargedValue === null ? null : BigInt(chargedValue)
-
-    if (actual !== null) {
-        const derivedCharged = actual * WORKSPACE_TRANSFER_CHARGE_MULTIPLIER
-        if (derivedCharged > POSTGRES_BIGINT_MAX) {
-            return { actualValue: '0', chargedValue: '0', error: 'Actual transfer is too large to charge safely' }
-        }
-        if (charged !== null && charged !== derivedCharged) {
-            return {
-                actualValue: '0',
-                chargedValue: '0',
-                error: 'Charged usage must equal actual transfer multiplied by 10'
-            }
-        }
-        return { actualValue: actual.toString(), chargedValue: derivedCharged.toString() }
+    const charged = BigInt(chargedValue)
+    if (charged > POSTGRES_BIGINT_MAX) {
+        return { chargedValue: '0', error: 'Charged usage is too large to store safely' }
     }
 
-    if (charged! > POSTGRES_BIGINT_MAX) {
-        return { actualValue: '0', chargedValue: '0', error: 'Charged usage is too large to store safely' }
-    }
-
-    if (charged! % WORKSPACE_TRANSFER_CHARGE_MULTIPLIER !== 0n) {
-        return {
-            actualValue: '0',
-            chargedValue: '0',
-            error: 'Charged usage must be divisible by 10 when actual transfer is omitted'
-        }
-    }
-
-    return {
-        actualValue: (charged! / WORKSPACE_TRANSFER_CHARGE_MULTIPLIER).toString(),
-        chargedValue: charged!.toString()
-    }
+    return { chargedValue: charged.toString() }
 }
 
 function normalizeUsagePeriodStart(value: unknown): { value: string; error?: string } {
@@ -813,7 +777,7 @@ async function listWorkspaceUsage(adminClient: ReturnType<typeof createAdminClie
 
         const { data: usageRows, error: usageError } = await adminClient
             .from('workspace_usage')
-            .select('workspace_id, storage_units, actual_data_transfer_bytes, data_transfer_bytes, transfer_period_start, storage_updated_at, transfer_updated_at, updated_at')
+            .select('workspace_id, storage_units, data_transfer_bytes, transfer_period_start, storage_updated_at, transfer_updated_at, updated_at')
             .in('workspace_id', limitedWorkspaceIds)
 
         if (usageError) {
@@ -834,9 +798,6 @@ async function listWorkspaceUsage(adminClient: ReturnType<typeof createAdminClie
         return jsonResponse(limitedWorkspaceIds.map((workspaceId) => {
             const usage = usageByWorkspaceId.get(workspaceId)
             const limits = limitsByWorkspaceId.get(workspaceId)
-            const actualTransferBytes = String(usage?.actual_data_transfer_bytes ?? 0)
-            // The database keeps data_transfer_bytes as the compatibility/enforcement
-            // column. It is CHARGED usage, not real network transfer.
             const chargedUsageBytes = String(usage?.data_transfer_bytes ?? 0)
             const monthlyChargedUsageLimitBytes = limits?.monthly_data_transfer_limit_bytes === null
                 || limits?.monthly_data_transfer_limit_bytes === undefined
@@ -846,13 +807,7 @@ async function listWorkspaceUsage(adminClient: ReturnType<typeof createAdminClie
             return {
                 workspace_id: workspaceId,
                 storage_units: String(usage?.storage_units ?? 0),
-                actual_data_transfer_bytes: actualTransferBytes,
                 charged_usage_bytes: chargedUsageBytes,
-                transfer_charge_multiplier: Number(WORKSPACE_TRANSFER_CHARGE_MULTIPLIER),
-                // Deprecated ADMIN API response alias. Before weighted charging,
-                // this API field meant actual transfer, so preserve that meaning
-                // even though the same-named database column is now charged usage.
-                data_transfer_bytes: actualTransferBytes,
                 transfer_period_start: String(usage?.transfer_period_start ?? currentUsagePeriodStart()),
                 storage_updated_at: usage?.storage_updated_at ?? null,
                 transfer_updated_at: usage?.transfer_updated_at ?? null,
@@ -907,12 +862,6 @@ async function updateWorkspaceUsage(
     }
 
     const storageUnits = normalizeNullableBigint(body.storageUnits, 'Storage usage')
-    const actualTransferBytes = resolveNullableBigintAlias(
-        body.actualTransferBytes,
-        body.dataTransferBytes,
-        'Monthly actual transfer',
-        'Deprecated dataTransferBytes'
-    )
     const chargedUsageBytes = normalizeNullableBigint(body.chargedUsageBytes, 'Monthly charged usage')
     const storageUnitLimit = normalizeNullableBigint(body.storageUnitLimit, 'Storage limit')
     const monthlyChargedUsageLimitBytes = resolveNullableBigintAlias(
@@ -924,7 +873,6 @@ async function updateWorkspaceUsage(
     const periodStart = normalizeUsagePeriodStart(body.transferPeriodStart)
 
     const validationError = storageUnits.error
-        ?? actualTransferBytes.error
         ?? chargedUsageBytes.error
         ?? storageUnitLimit.error
         ?? monthlyChargedUsageLimitBytes.error
@@ -938,12 +886,9 @@ async function updateWorkspaceUsage(
         return errorResponse('Storage usage counter is required')
     }
 
-    // Admin writes must preserve the same invariant as the metering RPC: actual
-    // transfer is raw payload, while charged usage is exactly actual * 10.
-    const reconciledTransfer = reconcileTransferCounters(
-        actualTransferBytes.value,
-        chargedUsageBytes.value
-    )
+    // A manual edit replaces the one charged-total counter. It intentionally
+    // does not try to reverse an in-flight request rate.
+    const reconciledTransfer = reconcileChargedUsage(chargedUsageBytes.value)
     if (reconciledTransfer.error) {
         return errorResponse(reconciledTransfer.error)
     }
@@ -1007,9 +952,8 @@ async function updateWorkspaceUsage(
             .upsert({
                 workspace_id: usageWorkspaceId,
                 storage_units: storageUnits.value,
-                // This legacy-named database column stores CHARGED usage.
+                // This schema-level name stores the one canonical charged total.
                 data_transfer_bytes: reconciledTransfer.chargedValue,
-                actual_data_transfer_bytes: reconciledTransfer.actualValue,
                 transfer_period_start: effectivePeriodStart,
                 storage_updated_at: now,
                 transfer_updated_at: now,

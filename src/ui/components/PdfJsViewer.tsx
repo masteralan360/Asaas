@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { isTauri } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
 import { printPdfBlob } from '@/services/pdfPrintService'
+import { r2Service } from '@/services/r2Service'
 
 let isPdfWorkerConfigured = false
 
@@ -25,6 +26,9 @@ async function resolvePdfBytes(url: string): Promise<Uint8Array> {
         for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
         return bytes
     }
+
+    const r2Bytes = await r2Service.downloadFromUrl(url)
+    if (r2Bytes !== undefined) return new Uint8Array(r2Bytes)
 
     const response = await fetch(url)
     if (!response.ok) throw new Error(`Failed to load PDF (${response.status}).`)

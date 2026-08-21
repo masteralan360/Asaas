@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
-import { getWorkspaceUsageStatus, type WorkspaceUsageStatus } from '@/lib/workspaceUsage'
+import {
+    getChargedWorkspaceUsageBytes,
+    getWorkspaceUsageStatus,
+    type WorkspaceUsageStatus
+} from '@/lib/workspaceUsage'
 import {
     buildWorkspaceUsageInsights,
     saveWorkspaceUsageSnapshot,
@@ -63,9 +67,8 @@ function buildWorkspaceUsageMeter(
         }
     }
 
-    // data_transfer_bytes is the CHARGED counter. Actual network transfer is
-    // status.actual_data_transfer_bytes and must never be compared to the allowance.
-    const chargedUsagePercent = getMetricPercent(status.data_transfer_bytes, status.monthly_data_transfer_limit_bytes)
+    const chargedUsageBytes = getChargedWorkspaceUsageBytes(status)
+    const chargedUsagePercent = getMetricPercent(chargedUsageBytes, status.monthly_data_transfer_limit_bytes)
     if (chargedUsagePercent !== null) {
         titleParts.push(`${chargedUsageLabel}: ${Math.round(chargedUsagePercent)}%`)
         const chargedUsageMetric: WorkspaceUsageMeterMetric = {
@@ -110,12 +113,10 @@ function buildWorkspaceUsageMeter(
             storageUnitLimit: status.storage_unit_limit === null
                 ? null
                 : Number(status.storage_unit_limit),
-            actualTransferBytes: Number(status.actual_data_transfer_bytes ?? 0),
-            chargedUsageBytes: Number(status.data_transfer_bytes ?? 0),
+            chargedUsageBytes,
             chargedUsageLimitBytes: status.monthly_data_transfer_limit_bytes === null
                 ? null
                 : Number(status.monthly_data_transfer_limit_bytes),
-            chargeMultiplier: Number(status.transfer_charge_multiplier ?? 10),
             transferPeriodStart: status.transfer_period_start,
             insights: buildWorkspaceUsageInsights(status, history)
         }

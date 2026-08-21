@@ -31,13 +31,10 @@ export type WorkspaceUsageMeter = {
     details: {
         storageUnits: number
         storageUnitLimit: number | null
-        /** Real network/file payload before commercial weighting. */
-        actualTransferBytes: number
         /** Plan consumption after commercial weighting; used for quota progress. */
         chargedUsageBytes: number
         /** Allowance compared only with chargedUsageBytes. */
         chargedUsageLimitBytes: number | null
-        chargeMultiplier: number
         transferPeriodStart: string
         insights: WorkspaceUsageInsights
     }

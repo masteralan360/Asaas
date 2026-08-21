@@ -483,7 +483,6 @@ SELECT is(
       )
       UPDATE public.workspace_usage AS usage_state
       SET
-        actual_data_transfer_bytes = usage_state.actual_data_transfer_bytes + 1,
         data_transfer_bytes = usage_state.data_transfer_bytes + 10,
         transfer_updated_at = now(),
         updated_at = now()
@@ -543,7 +542,7 @@ SELECT lives_ok(
     FROM dblink_get_result('billing_concurrent_reviewer')
       AS remote_result(result uuid)
   $$,
-  'the racing meter commits its charged and actual counters'
+  'the racing meter commits its charged counter'
 );
 
 SELECT is(
@@ -569,22 +568,12 @@ SELECT is(
 
 SELECT is(
   (
-    SELECT actual_data_transfer_bytes
-    FROM public.workspace_usage
-    WHERE workspace_id = '93000000-0000-0000-0000-000000000001'
-  ),
-  1::bigint,
-  'the racing meter preserves the actual transfer counter'
-);
-
-SELECT is(
-  (
     SELECT data_transfer_bytes
     FROM public.workspace_usage
     WHERE workspace_id = '93000000-0000-0000-0000-000000000001'
   ),
   10::bigint,
-  'the racing meter preserves the weighted charged transfer counter'
+  'the racing meter preserves the charged transfer counter'
 );
 
 -- A reconciler that reads an overdue value and then waits on the workspace row

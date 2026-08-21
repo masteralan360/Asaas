@@ -255,6 +255,21 @@ VALUES ('p2p-sync', 'p2p-sync', false);
 Add in Vercel dashboard:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+- `SUPABASE_URL` — server-only; the same project URL
+- `SUPABASE_ANON_KEY` — server-only copy of the public anon key
+- `SUPABASE_SERVICE_ROLE_KEY` — server-only; never prefix this with `VITE_`
+- `R2_WORKER_URL` — server-only URL of the authenticated Cloudflare R2 worker
+
+### Web Live usage charging
+
+The browser build routes metered Supabase REST and authenticated R2 CRUD through
+the Vercel functions at `/api-workspace-data/*` and `/api-workspace-r2/*`.
+Those functions record Web Live at 20×, while the Tauri app records at 10×.
+
+Keep the server variables above restricted to Vercel Functions. Do not publish
+the service-role key in the Vite build. `VITE_WEB_USAGE_GATEWAY_URL` and
+`VITE_WEB_R2_USAGE_GATEWAY_URL` are optional overrides for the two same-origin
+paths when using a custom Vercel domain or routing layer.
 
 ### 3. Build Settings
 

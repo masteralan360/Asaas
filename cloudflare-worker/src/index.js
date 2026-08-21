@@ -101,6 +101,10 @@ async function recordWorkspaceDataTransfer(env, workspaceId, bytes, source) {
       p_workspace_id: workspaceId,
       p_bytes: byteCount,
       p_source: source,
+      // This fallback is used by direct desktop/public-worker traffic. Web
+      // Live requests are marked usage_client_recorded and are charged by the
+      // trusted Vercel gateway at the web_live rate instead.
+      p_channel: "tauri",
     }),
   });
 

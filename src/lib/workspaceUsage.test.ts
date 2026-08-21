@@ -48,13 +48,11 @@ describe('workspace usage helpers', () => {
         expect(isWorkspaceUsageLimitError(new Error('Other failure'))).toBe(false)
     })
 
-    it('sends actual bytes unchanged and receives separate actual and charged counters', async () => {
+    it('sends measured bytes unchanged for server-side Tauri charging', async () => {
         const row = {
             workspace_id: 'workspace-1',
             transfer_period_start: '2026-06-01',
-            actual_data_transfer_bytes: 128,
-            data_transfer_bytes: 1280,
-            transfer_charge_multiplier: 10,
+            charged_usage_bytes: 1280,
             monthly_data_transfer_limit_bytes: 1024
         }
 
@@ -66,7 +64,8 @@ describe('workspace usage helpers', () => {
         expect(testState.rpc).toHaveBeenCalledWith('record_workspace_data_transfer', {
             p_workspace_id: 'workspace-1',
             p_bytes: 128,
-            p_source: 'test_source'
+            p_source: 'test_source',
+            p_channel: 'tauri'
         })
     })
 

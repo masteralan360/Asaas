@@ -30,7 +30,14 @@ const WORKSPACE_FILTER_KEYS = [
 type WorkspaceUsageFetchOptions = {
     supabaseUrl: string
     supabaseAnonKey: string
+    /** Same-origin Vercel REST gateway used only by the Web Live build. */
+    webGatewayUrl?: string
     fetchImpl?: typeof fetch
+}
+
+type NormalizedWorkspaceUsageFetchOptions = Omit<WorkspaceUsageFetchOptions, 'fetchImpl' | 'webGatewayUrl'> & {
+    fetchImpl: typeof fetch
+    webGatewayUrl: string
 }
 
 type UsageRecordResult = {
@@ -375,7 +382,7 @@ async function getResponseTransferBytes(response: Response): Promise<number> {
 }
 
 async function recordSupabaseDataTransfer(
-    options: Required<WorkspaceUsageFetchOptions>,
+    options: NormalizedWorkspaceUsageFetchOptions,
     workspaceId: string,
     actualBytes: number,
     authHeader: string | null,
@@ -395,10 +402,11 @@ async function recordSupabaseDataTransfer(
         },
         body: JSON.stringify({
             p_workspace_id: workspaceId,
-            // p_bytes is ACTUAL request/response payload. Never apply the plan
-            // multiplier here; the database derives charged usage exactly once.
+            // p_bytes is measured only for this request. The database applies
+            // the trusted Tauri channel rate and persists charged usage only.
             p_bytes: actualBytes,
-            p_source: source
+            p_source: source,
+            p_channel: 'tauri'
         })
     })
 
@@ -412,6 +420,73 @@ async function recordSupabaseDataTransfer(
         ok: false,
         limitExceeded: message.includes(WORKSPACE_TRANSFER_LIMIT_MESSAGE),
         message
+    }
+}
+
+function getGatewayUrl(
+    input: RequestInfo | URL,
+    supabaseUrl: string,
+    webGatewayUrl: string
+): URL | null {
+    const sourceUrl = getRequestUrl(input)
+    if (!sourceUrl || !webGatewayUrl) return null
+
+    let supabaseBase: URL
+    let gatewayBase: URL
+    try {
+        supabaseBase = new URL(supabaseUrl)
+        gatewayBase = new URL(
+            webGatewayUrl,
+            typeof window === 'undefined' ? undefined : window.location.origin
+        )
+    } catch {
+        return null
+    }
+
+    const basePath = supabaseBase.pathname.replace(/\/+$/, '')
+    const restPrefix = `${basePath}/rest/v1/`.replace(/\/{2,}/g, '/')
+    if (!sourceUrl.pathname.startsWith(restPrefix)) return null
+
+    const restPath = sourceUrl.pathname.slice(restPrefix.length)
+    if (!restPath || restPath.split('/').some((segment) => segment === '..')) return null
+
+    gatewayBase.pathname = `${gatewayBase.pathname.replace(/\/+$/, '')}/${restPath}`
+    gatewayBase.search = sourceUrl.search
+    return gatewayBase
+}
+
+function buildGatewayFetchArgs(
+    input: RequestInfo | URL,
+    init: RequestInit | undefined,
+    gatewayUrl: URL
+): { input: RequestInfo | URL; init?: RequestInit } {
+    if (!(input instanceof Request)) {
+        return {
+            input: gatewayUrl.toString(),
+            init: {
+                ...init,
+                headers: getRequestHeaders(input, init)
+            }
+        }
+    }
+
+    const original = init ? new Request(input, init) : input
+    const method = original.method.toUpperCase()
+    return {
+        input: new Request(gatewayUrl, {
+            method,
+            headers: getRequestHeaders(input, init),
+            body: method === 'GET' || method === 'HEAD' ? undefined : original.clone().body,
+            cache: original.cache,
+            credentials: original.credentials,
+            integrity: original.integrity,
+            keepalive: original.keepalive,
+            mode: original.mode,
+            redirect: original.redirect,
+            referrer: original.referrer,
+            referrerPolicy: original.referrerPolicy,
+            signal: original.signal
+        })
     }
 }
 
@@ -433,21 +508,37 @@ function usageErrorResponse(result: UsageRecordResult) {
 }
 
 export function createWorkspaceUsageFetch(options: WorkspaceUsageFetchOptions): typeof fetch {
-    const normalizedOptions: Required<WorkspaceUsageFetchOptions> = {
+    const normalizedOptions: NormalizedWorkspaceUsageFetchOptions = {
         ...options,
+        webGatewayUrl: options.webGatewayUrl?.trim() ?? '',
         fetchImpl: options.fetchImpl ?? fetch.bind(globalThis)
     }
 
     return async (input, init) => {
         const countContext = getWorkspaceTransferContext(input, init, normalizedOptions.supabaseUrl)
+        const gatewayUrl = countContext
+            ? getGatewayUrl(input, normalizedOptions.supabaseUrl, normalizedOptions.webGatewayUrl)
+            : null
+        const gatewayRequest = gatewayUrl ? buildGatewayFetchArgs(input, init, gatewayUrl) : null
         const requestBytesPromise = countContext?.countRequestBody
             ? getRequestTransferBytes(input, init)
             : Promise.resolve(0)
 
-        const response = await normalizedOptions.fetchImpl(input, init)
+        const response = await normalizedOptions.fetchImpl(
+            gatewayRequest?.input ?? input,
+            gatewayRequest?.init ?? init
+        )
         refreshOfflineLeaseFromFetch(input, init, response, normalizedOptions.supabaseUrl)
 
         if (!countContext || !response.ok) {
+            return response
+        }
+
+        // The Vercel gateway has already metered this exact Web Live request
+        // with its server-held credentials. Never report it a second time from
+        // an untrusted browser client.
+        if (gatewayRequest) {
+            notifyWorkspaceUsageUpdated(countContext.workspaceId)
             return response
         }
 

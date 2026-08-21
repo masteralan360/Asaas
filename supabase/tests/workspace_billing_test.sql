@@ -1099,7 +1099,6 @@ VALUES (
 SELECT public.ensure_workspace_usage_row('91000000-0000-0000-0000-000000000004');
 UPDATE public.workspace_usage
 SET
-  actual_data_transfer_bytes = 100000000,
   data_transfer_bytes = 1000000000
 WHERE workspace_id = '91000000-0000-0000-0000-000000000004';
 
