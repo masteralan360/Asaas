@@ -1342,9 +1342,14 @@
             "successPartial": "کاڵاکانی داواکاری گەڕێندرانەوە و پارەدانەکە ڕێکخرا.",
             "itemConfirmation": "دەتەوێت {{itemName}} لەم داواکارییە تەواوکراوە بگەڕێنیتەوە؟",
             "wholeConfirmation": "دەتەوێت هەموو کاڵاکانی ماوەی ئەم داواکارییە تەواوکراوە بگەڕێنیتەوە؟",
-            "returnedQuantity": "گەڕێندراوەتەوە: {{returned}} / {{total}}",
-            "returnedStatus": "گەڕێندراوەتەوە",
-            "history": "گەڕاندنەوەکان ({{count}})"
+      "returnedQuantity": "گەڕێندراوەتەوە: {{returned}} / {{total}}",
+      "returnedStatus": "گەڕێندراوەتەوە",
+      "returnsReflected": "گەڕاندنەوەکان هەژمارکراون",
+      "printVersion": "جۆری چاپ",
+      "adjustedPrint": "گەڕاندنەوەکان هەژمارکراون",
+      "originalPrint": "ڕەسەن",
+      "returnedPrint": "گەڕێندراوەتەوە",
+      "history": "گەڕاندنەوەکان ({{count}})"
         },
         "table": {
             "orderNumber": "داواکاری #",
@@ -1464,6 +1469,7 @@
         },
         "adjustments": {
             "title": "ڕێکخستنەکانی داواکاری",
+            "printRow": "ڕێکخستنی داواکاری",
             "description": "هەر ڕیزێک پشتڕاست بکەرەوە پێش ئەوەی کاریگەری لە کۆی داواکاری بکات.",
             "type": "جۆری ڕێکخستن",
             "addition": "زیادکردن (+)",

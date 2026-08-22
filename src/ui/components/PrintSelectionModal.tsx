@@ -1,7 +1,9 @@
 import { AlertTriangle, FileText, Printer, Receipt } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { StoredCustomTemplateRow } from '@/lib/customTemplates'
+import type { OrderPrintVersion } from '@/lib/orderPrintReturnState'
 import type { PrintFormat } from '@/services/pdfGenerator'
 import { useWorkspace } from '@/workspace'
 import { Button } from '@/ui/components/button'
@@ -20,6 +22,8 @@ export type PrintSelectionNativeOption = {
     nativeTemplateKey?: string
     /** Marks an option that prints returned items only. */
     returned?: boolean
+    /** Marks a normal order print whose rows include return adjustments. */
+    returnsReflected?: boolean
 }
 
 export type PrintSelectionTemplateOption = {
@@ -30,6 +34,8 @@ export type PrintSelectionTemplateOption = {
     primary?: boolean
     /** Marks a saved layout dedicated to partial and fully returned orders. */
     returned?: boolean
+    /** Marks a normal order print whose rows include return adjustments. */
+    returnsReflected?: boolean
     disabled?: boolean
     warning?: string
 }
@@ -37,7 +43,7 @@ export type PrintSelectionTemplateOption = {
 interface PrintSelectionModalProps {
     isOpen: boolean
     onClose: () => void
-    onSelect: (format: PrintFormat, template?: StoredCustomTemplateRow, nativeTemplateKey?: string) => void
+    onSelect: (format: PrintFormat, template?: StoredCustomTemplateRow, nativeTemplateKey?: string, printVersion?: OrderPrintVersion) => void
     nativeOptions: PrintSelectionNativeOption[]
     templateOptions?: PrintSelectionTemplateOption[]
     onCreateReturnTemplate?: () => void
@@ -51,20 +57,40 @@ function PrintOptionIcon({ format, custom = false }: { format: PrintFormat; cust
     return <FileText className={`h-6 w-6 ${custom ? 'text-primary' : 'text-foreground'}`} />
 }
 
-function PrintOptionBadges({ primary = false, returned = false }: { primary?: boolean; returned?: boolean }) {
+function PrintOptionBadges({
+    primary = false,
+    returned = false,
+    returnsReflected = false,
+    original = false
+}: {
+    primary?: boolean
+    returned?: boolean
+    returnsReflected?: boolean
+    original?: boolean
+}) {
     const { t } = useTranslation()
-    if (!primary && !returned) return null
+    if (!primary && !returned && !returnsReflected && !original) return null
 
     return (
-        <span className="absolute end-2 top-2 flex flex-col items-end gap-1">
+        <span className="flex w-full flex-wrap items-start justify-end gap-1">
             {primary ? (
-                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold leading-tight text-primary">
                     {t('customTemplates.primary', { defaultValue: 'Primary' })}
                 </span>
             ) : null}
             {returned ? (
-                <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
+                <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[10px] font-bold leading-tight text-rose-700 dark:text-rose-300">
                     {t('orders.return.returnedStatus', { defaultValue: 'Returned' })}
+                </span>
+            ) : null}
+            {returnsReflected ? (
+                <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold leading-tight text-amber-800 dark:text-amber-200">
+                    {t('orders.return.returnsReflected', { defaultValue: 'Returns reflected' })}
+                </span>
+            ) : null}
+            {original ? (
+                <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-bold leading-tight text-sky-700 dark:text-sky-300">
+                    {t('orders.return.originalPrint', { defaultValue: 'Original' })}
                 </span>
             ) : null}
         </span>
@@ -82,15 +108,31 @@ export function PrintSelectionModal({
     const { t } = useTranslation()
     const { hasCapability } = useWorkspace()
     const canUseA4Invoices = hasCapability('a4PdfInvoices')
+    const hasPrintVersionSelector = nativeOptions.some((option) => option.returned)
+        || templateOptions.some((option) => option.returned)
+    const hasNormalPrintOptions = nativeOptions.some((option) => !option.returned)
+        || templateOptions.some((option) => !option.returned)
+    const [printVersion, setPrintVersion] = useState<OrderPrintVersion>(() =>
+        hasPrintVersionSelector && !hasNormalPrintOptions ? 'returned' : 'adjusted'
+    )
+
+    useEffect(() => {
+        if (!isOpen) setPrintVersion('adjusted')
+    }, [isOpen])
+
+    const isReturnedVersion = printVersion === 'returned'
     const visibleNativeOptions = nativeOptions.filter((option) =>
-        option.format !== 'a4' || canUseA4Invoices
+        (option.format !== 'a4' || canUseA4Invoices)
+        && (isReturnedVersion ? option.returned : !option.returned)
     )
     const visibleTemplateOptions = templateOptions.filter((option) =>
-        option.format !== 'a4' || canUseA4Invoices
+        (option.format !== 'a4' || canUseA4Invoices)
+        && (isReturnedVersion ? option.returned : !option.returned)
     )
     // A saved return layout is the destination of the creation action, so do not
     // offer to create another one once the workspace already has one available.
-    const shouldShowCreateReturnTemplate = Boolean(onCreateReturnTemplate)
+    const shouldShowCreateReturnTemplate = isReturnedVersion
+        && Boolean(onCreateReturnTemplate)
         && !templateOptions.some((option) => option.returned)
     const visibleOptionCount = visibleNativeOptions.length
         + visibleTemplateOptions.length
@@ -98,13 +140,40 @@ export function PrintSelectionModal({
 
     return (
         <SmallDialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <SmallDialogContent>
+            <SmallDialogContent className="sm:max-w-lg">
                 <SmallDialogHeader>
                     <SmallDialogTitle className="flex items-center gap-2">
                         <Printer className="h-5 w-5 text-primary" />
                         {t('common.print', { defaultValue: 'Select Print' })}
                     </SmallDialogTitle>
                 </SmallDialogHeader>
+
+                {hasPrintVersionSelector ? (
+                    <div className="space-y-2 pt-2">
+                        <div className="text-xs font-semibold text-muted-foreground">
+                            {t('orders.return.printVersion', { defaultValue: 'Print version' })}
+                        </div>
+                        <div className="flex flex-wrap gap-1 rounded-lg border bg-muted/30 p-1">
+                            {([
+                                ['adjusted', 'orders.return.adjustedPrint', 'Returns reflected', 'bg-amber-400/20 text-amber-800 dark:text-amber-200'],
+                                ['original', 'orders.return.originalPrint', 'Original', 'bg-sky-500/10 text-sky-700 dark:text-sky-300'],
+                                ['returned', 'orders.return.returnedPrint', 'Returned', 'bg-rose-500/10 text-rose-700 dark:text-rose-300']
+                            ] as const).map(([version, labelKey, fallbackLabel, activeClassName]) => (
+                                <Button
+                                    key={version}
+                                    type="button"
+                                    variant="ghost"
+                                    className={`min-h-8 min-w-fit flex-1 basis-[calc(33.333%-0.25rem)] whitespace-normal px-2 py-1.5 text-[10px] font-bold leading-tight sm:py-1 sm:text-xs ${
+                                        printVersion === version ? activeClassName : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                                    onClick={() => setPrintVersion(version)}
+                                >
+                                    {t(labelKey, { defaultValue: fallbackLabel })}
+                                </Button>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
 
                 <div className="grid max-h-[65vh] grid-cols-1 gap-4 overflow-y-auto py-4 sm:grid-cols-2">
                     {visibleNativeOptions.length === 0 && visibleTemplateOptions.length === 0 ? (
@@ -118,17 +187,21 @@ export function PrintSelectionModal({
                         <Button
                             key={`native-${option.format}-${option.label}`}
                             variant="outline"
-                            className={`relative flex h-32 min-w-0 flex-col gap-3 overflow-hidden whitespace-normal px-3 py-3 text-center transition-all hover:border-primary hover:bg-primary/5 ${
+                            className={`relative flex min-h-32 min-w-0 flex-col gap-2 whitespace-normal px-3 py-3 text-center transition-all hover:border-primary hover:bg-primary/5 ${
                                 visibleOptionCount === 1 ? 'sm:col-span-2' : ''
                             }`}
-                            onClick={() => onSelect(option.format, undefined, option.nativeTemplateKey)}
+                            onClick={() => onSelect(option.format, undefined, option.nativeTemplateKey, printVersion)}
                         >
-                            <PrintOptionBadges returned={option.returned} />
+                            <PrintOptionBadges
+                                returned={option.returned}
+                                returnsReflected={printVersion === 'adjusted' && option.returnsReflected}
+                                original={printVersion === 'original'}
+                            />
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
                                 <PrintOptionIcon format={option.format} />
                             </div>
-                            <div className="w-full min-w-0 space-y-1 overflow-hidden">
-                                <div className="truncate font-bold">{option.label}</div>
+                            <div className="w-full min-w-0 space-y-1">
+                                <div className="font-bold">{option.label}</div>
                                 <div className="line-clamp-2 break-words text-center text-xs leading-4 text-muted-foreground">
                                     {option.description}
                                 </div>
@@ -139,7 +212,7 @@ export function PrintSelectionModal({
                     {shouldShowCreateReturnTemplate ? (
                         <Button
                             variant="outline"
-                            className={`relative flex h-32 min-w-0 flex-col gap-3 overflow-hidden whitespace-normal border-dashed px-3 py-3 text-center transition-all hover:border-primary hover:bg-primary/5 ${
+                            className={`relative flex min-h-32 min-w-0 flex-col gap-2 whitespace-normal border-dashed px-3 py-3 text-center transition-all hover:border-primary hover:bg-primary/5 ${
                                 visibleOptionCount === 1 ? 'sm:col-span-2' : ''
                             }`}
                             onClick={onCreateReturnTemplate}
@@ -148,8 +221,8 @@ export function PrintSelectionModal({
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-500/10">
                                 <FileText className="h-6 w-6 text-rose-700 dark:text-rose-300" />
                             </div>
-                            <div className="w-full min-w-0 space-y-1 overflow-hidden">
-                                <div className="truncate font-bold">
+                            <div className="w-full min-w-0 space-y-1">
+                                <div className="font-bold">
                                     {t('orders.print.createReturnTemplate', { defaultValue: 'Create return template' })}
                                 </div>
                                 <div className="line-clamp-2 break-words text-center text-xs leading-4 text-muted-foreground">
@@ -161,22 +234,27 @@ export function PrintSelectionModal({
                         </Button>
                     ) : null}
 
-                    {visibleTemplateOptions.map(({ format, template, label, description, primary, returned, disabled, warning }) => (
+                    {visibleTemplateOptions.map(({ format, template, label, description, primary, returned, returnsReflected, disabled, warning }) => (
                         <Button
                             key={template.id}
                             variant="outline"
-                            className={`relative flex min-h-32 min-w-0 flex-col gap-2 overflow-hidden whitespace-normal px-3 py-3 text-center transition-all hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-70 ${
+                            className={`relative flex min-h-32 min-w-0 flex-col gap-2 whitespace-normal px-3 py-3 text-center transition-all hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-70 ${
                                 visibleOptionCount === 1 ? 'sm:col-span-2' : ''
                             }`}
-                            onClick={() => onSelect(format, template)}
+                            onClick={() => onSelect(format, template, undefined, printVersion)}
                             disabled={disabled}
                         >
-                            <PrintOptionBadges primary={primary} returned={returned} />
+                            <PrintOptionBadges
+                                primary={primary}
+                                returned={returned}
+                                returnsReflected={printVersion === 'adjusted' && returnsReflected}
+                                original={printVersion === 'original'}
+                            />
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
                                 <PrintOptionIcon format={format} custom />
                             </div>
-                            <div className="w-full min-w-0 space-y-1 overflow-hidden">
-                                <div className="truncate font-bold">
+                            <div className="w-full min-w-0 space-y-1">
+                                <div className="font-bold">
                                     {label}
                                 </div>
                                 <div className="line-clamp-2 break-words text-center text-xs leading-4 text-muted-foreground">

@@ -1339,9 +1339,14 @@
             "successPartial": "تم إرجاع عناصر الطلب وتعديل الدفعة.",
             "itemConfirmation": "هل تريد إرجاع {{itemName}} من هذا الطلب المكتمل؟",
             "wholeConfirmation": "هل تريد إرجاع جميع العناصر المتبقية من هذا الطلب المكتمل؟",
-            "returnedQuantity": "تم إرجاع: {{returned}} / {{total}}",
-            "returnedStatus": "مرتجع",
-            "history": "المرتجعات ({{count}})"
+      "returnedQuantity": "تم إرجاع: {{returned}} / {{total}}",
+      "returnedStatus": "مرتجع",
+      "returnsReflected": "تم احتساب المرتجعات",
+      "printVersion": "نسخة الطباعة",
+      "adjustedPrint": "تم احتساب المرتجعات",
+      "originalPrint": "الأصلي",
+      "returnedPrint": "مرتجع",
+      "history": "المرتجعات ({{count}})"
         },
         "table": {
             "orderNumber": "رقم الطلب",
@@ -1461,6 +1466,7 @@
         },
         "adjustments": {
             "title": "تعديلات الطلب",
+            "printRow": "تعديل الطلب",
             "description": "قم بتأكيد كل صف قبل أن يؤثر في إجمالي الطلب.",
             "type": "نوع التعديل",
             "addition": "إضافة (+)",

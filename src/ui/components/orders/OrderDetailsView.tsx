@@ -11,7 +11,7 @@ import { useDemoTutorial } from '@/demo'
 import { useProfileData } from '@/hooks/useProfileData'
 import { getOrderLineFreeBonusQuantity, getOrderLineInventoryQuantity, getOrderLinePaidQuantity, hasOrderLineFreeBonus } from '@/lib/orderLineItems'
 import { getOrderAdjustmentTotals, normalizeOrderAdjustments } from '@/lib/orderAdjustments'
-import { getOrderPrintReturnState } from '@/lib/orderPrintReturnState'
+import { getOrderPrintOriginalTotal, getOrderPrintReturnState } from '@/lib/orderPrintReturnState'
 import { createSalesOrderReturnPrintData } from '@/lib/orderReturnPrintData'
 import { isPositiveQuantity } from '@/lib/quantity'
 import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
@@ -357,6 +357,23 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
         ? createSalesOrderReturnPrintData(salesOrder, salesOrderReturns, salesOrderReturnItems)
         : null, [salesOrder, salesOrderReturnItems, salesOrderReturns])
 
+    const customOrderPrint = useOrderCustomPrint({
+        workspaceId,
+        workspaceName,
+        features,
+        isLocalMode,
+        isOpen: showPrintPreview,
+        printLanguage: i18n.language,
+        order: resolved?.order,
+        orderKind: resolved?.kind,
+        returnPrintData,
+        installments,
+        productUnits,
+        productImageUrls,
+        printedBy: creatorName,
+        t
+    })
+
     const getReturnableQuantity = useCallback((item: SalesOrderItem) => Math.max(
         0,
         getOrderLineInventoryQuantity(item) - (returnedQuantityByItemId.get(item.id) || 0)
@@ -537,6 +554,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                         hiddenFields={renderOptions?.hiddenFields}
                         onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
                         workspaceFooterContacts={renderOptions?.workspaceFooterContacts || workspaceFooterContacts}
+                        printVersion={customOrderPrint.selectedPrintVersion}
                     />
                 )
             },
@@ -550,7 +568,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                 })
             },
         }
-    }, [resolved, features, installments, workspaceName, t, i18n, workspaceId, workspaceFooterContacts, counterpartyPhone, counterpartyAddress, productUnits])
+    }, [resolved, features, installments, workspaceName, t, i18n, workspaceId, workspaceFooterContacts, counterpartyPhone, counterpartyAddress, productUnits, customOrderPrint.selectedPrintVersion])
 
     const orderReceiptPreview = useMemo<TemplatePreview | undefined>(() => {
         if (!resolved) return undefined
@@ -606,6 +624,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                         componentPositions={renderOptions?.componentPositions}
                         editableComponents={renderOptions?.editableComponents}
                         onComponentPositionChange={renderOptions?.onComponentPositionChange}
+                        printVersion={customOrderPrint.selectedPrintVersion}
                     />
                 )
             },
@@ -618,7 +637,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                 })
             },
         }
-    }, [resolved, features, installments, workspaceName, t, i18n, workspaceId, workspaceFooterContacts, counterpartyPhone, productUnits])
+    }, [resolved, features, installments, workspaceName, t, i18n, workspaceId, workspaceFooterContacts, counterpartyPhone, productUnits, customOrderPrint.selectedPrintVersion])
 
     const orderAtlasStandardPreview = useMemo<TemplatePreview | undefined>(() => {
         if (!resolved) return undefined
@@ -648,6 +667,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                         fieldDisplayModes={renderOptions?.fieldDisplayModes}
                         onFieldDisplayModeChange={renderOptions?.onFieldDisplayModeChange}
                         background={renderOptions?.background}
+                        printVersion={customOrderPrint.selectedPrintVersion}
                     />
                 )
             },
@@ -656,7 +676,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                 return generateTemplatePdf({ element, format: 'a4', printLang: printLangOverride || baseLang })
             }
         }
-    }, [resolved, features, installments, workspaceName, i18n, bizPartner, workspaceFooterContacts, creatorName, productImageUrls])
+    }, [resolved, features, installments, workspaceName, i18n, bizPartner, workspaceFooterContacts, creatorName, productImageUrls, customOrderPrint.selectedPrintVersion])
 
     const orderAtlasStandardReturnPreview = useMemo<TemplatePreview | undefined>(() => {
         if (!resolved || resolved.kind !== 'sales' || !returnPrintData) return undefined
@@ -687,6 +707,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                         onFieldDisplayModeChange={renderOptions?.onFieldDisplayModeChange}
                         background={renderOptions?.background}
                         returnPrintData={returnPrintData}
+                        printVersion="returned"
                     />
                 )
             },
@@ -696,23 +717,6 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
             }
         }
     }, [resolved, features, installments, workspaceName, i18n, bizPartner, workspaceFooterContacts, creatorName, productImageUrls, returnPrintData])
-
-    const customOrderPrint = useOrderCustomPrint({
-        workspaceId,
-        workspaceName,
-        features,
-        isLocalMode,
-        isOpen: showPrintPreview,
-        printLanguage: i18n.language,
-        order: resolved?.order,
-        orderKind: resolved?.kind,
-        returnPrintData,
-        installments,
-        productUnits,
-        productImageUrls,
-        printedBy: creatorName,
-        t
-    })
 
     if (!resolved) {
         return (
@@ -1985,7 +1989,9 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                     invoiceid: order.orderNumber,
                     totalAmount: customOrderPrint.isReturnPrintSelected
                         ? returnPrintData?.totalRefundAmount || 0
-                        : order.total,
+                        : customOrderPrint.isOriginalPrintSelected
+                            ? getOrderPrintOriginalTotal(order)
+                            : order.total,
                     settlementCurrency: order.currency,
                     origin: isSales ? 'sales_order' as const : 'purchase_order' as const,
                     createdByName: creatorName || 'Unknown',
@@ -2013,6 +2019,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                         productUnits={productUnits}
                                         counterpartyPhone={counterpartyPhone}
                                         workspaceFooterContacts={workspaceFooterContacts}
+                                        printVersion={customOrderPrint.selectedPrintVersion}
                                     />
                                 ) : customOrderPrint.isAtlasStandardSelected || customOrderPrint.isAtlasStandardReturnSelected ? (
                                     <AtlasStandardOrderInvoiceTemplate
@@ -2024,6 +2031,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                         iqdPreference={features.iqd_display_preference}
                                         logoUrl={features.logo_url}
                                         workspaceFooterContacts={workspaceFooterContacts}
+                                        printVersion={customOrderPrint.selectedPrintVersion}
                                         businessPartner={bizPartner}
                                         printedBy={creatorName}
                                         productImageUrls={productImageUrls}
@@ -2043,6 +2051,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                         counterpartyAddress={counterpartyAddress}
                                         productUnits={productUnits}
                                         workspaceFooterContacts={workspaceFooterContacts}
+                                        printVersion={customOrderPrint.selectedPrintVersion}
                                     />
                                 )
                             ),
@@ -2065,6 +2074,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                             productUnits={productUnits}
                             counterpartyPhone={counterpartyPhone}
                             workspaceFooterContacts={workspaceFooterContacts}
+                            printVersion={customOrderPrint.selectedPrintVersion}
                         />
                     ) : customOrderPrint.isAtlasStandardSelected || customOrderPrint.isAtlasStandardReturnSelected ? (
                         <AtlasStandardOrderInvoiceTemplate
@@ -2076,6 +2086,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                             iqdPreference={features.iqd_display_preference}
                             logoUrl={features.logo_url}
                             workspaceFooterContacts={workspaceFooterContacts}
+                            printVersion={customOrderPrint.selectedPrintVersion}
                             businessPartner={bizPartner}
                             printedBy={creatorName}
                             productImageUrls={productImageUrls}
@@ -2095,6 +2106,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                             counterpartyAddress={counterpartyAddress}
                             productUnits={productUnits}
                             workspaceFooterContacts={workspaceFooterContacts}
+                            printVersion={customOrderPrint.selectedPrintVersion}
                         />
                     )
                 }}

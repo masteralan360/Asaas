@@ -5,10 +5,17 @@ import {
     type SalesOrder,
     type PurchaseOrder,
     type OrderInstallment,
-    type IQDDisplayPreference
+    type IQDDisplayPreference,
+    type OrderAdjustment
 } from '@/local-db'
 import { getOrderLineFreeBonusQuantity, getOrderLinePaidQuantity, hasOrderLineFreeBonus } from '@/lib/orderLineItems'
-import { getA4OrderPrintReturnRowStyle, getOrderPrintReturnState } from '@/lib/orderPrintReturnState'
+import { normalizeOrderAdjustments } from '@/lib/orderAdjustments'
+import {
+    getA4OrderPrintReturnRowStyle,
+    getOrderPrintOriginalTotal,
+    getOrderPrintReturnState,
+    type OrderPrintVersion
+} from '@/lib/orderPrintReturnState'
 import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { normalizeUnitCode } from '@/local-db/models'
 import { platformService } from '@/services/platformService'
@@ -76,6 +83,8 @@ interface OrderDetailsPrintTemplateProps {
     onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
     onHiddenFieldChange?: (key: string, hidden: boolean) => void
     workspaceFooterContacts?: WorkspaceFooterContacts
+    /** Whether to show adjusted values or the original pre-return order. */
+    printVersion?: OrderPrintVersion
 }
 
 export const ORDER_RECEIPT_TEMPLATE_FIELD_KEYS = {
@@ -125,6 +134,8 @@ interface OrderReceiptPrintTemplateProps {
     componentPositions?: Record<string, CustomTemplateComponentPosition>
     editableComponents?: boolean
     onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
+    /** Whether to show adjusted values or the original pre-return order. */
+    printVersion?: OrderPrintVersion
 }
 
 export const ORDER_DETAILS_MOVABLE_COMPONENT_KEYS = {
@@ -206,6 +217,20 @@ function buildOrderItemRows(items: Array<{ id: string; productId: string; produc
             lineTotal: overflowTotal,
         }
     })
+}
+
+function getOrderAdjustmentRowLabel(t: TFunction<'translation', undefined>, adjustment: OrderAdjustment) {
+    const rowLabel = t('orders.adjustments.printRow', { defaultValue: 'Order adjustment' })
+    const typeLabel = adjustment.type === 'addition'
+        ? t('orders.adjustments.addition', { defaultValue: 'Addition (+)' })
+        : t('orders.adjustments.deduction', { defaultValue: 'Deduction (−)' })
+
+    return `${rowLabel} — ${adjustment.name} (${typeLabel})`
+}
+
+function formatSignedOrderAdjustment(adjustment: OrderAdjustment, currency: string, iqdPreference: IQDDisplayPreference) {
+    const sign = adjustment.type === 'addition' ? '+' : '−'
+    return `${sign}${formatCurrency(adjustment.convertedAmount, currency, iqdPreference)}`
 }
 
 interface OrderPrintHeaderProps {
@@ -509,10 +534,16 @@ export function OrderReceiptPrintTemplate({
     componentPositions,
     editableComponents,
     onComponentPositionChange,
+    printVersion = 'adjusted',
 }: OrderReceiptPrintTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
     const isSales = kind === 'sales'
+    const isOriginalPrint = isSales && printVersion === 'original'
+    const displayedTotal = isOriginalPrint ? getOrderPrintOriginalTotal(order) : order.total
+    const orderAdjustments = printVersion === 'returned'
+        ? []
+        : normalizeOrderAdjustments(order.orderAdjustments, order.currency)
     const salesOrder = isSales ? order as SalesOrder : null
     const purchaseOrder = !isSales ? order as PurchaseOrder : null
     const isReceiptRtl = isRTL(printLang)
@@ -574,20 +605,22 @@ export function OrderReceiptPrintTemplate({
         </MovableOrderPrintBlock>
     )
 
-    const formatReceiptPrice = (amount: number, currency: string) => {
+    const formatReceiptPrice = (amount: number, currency: string, showSign = false) => {
         const code = currency.toLowerCase()
+        const absoluteAmount = showSign ? Math.abs(amount) : amount
         const formatted = code === 'iqd'
-            ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 }).format(amount)
+            ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 }).format(absoluteAmount)
             : code === 'eur'
-                ? new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 3 }).format(amount)
-                : new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 }).format(amount)
+                ? new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 3 }).format(absoluteAmount)
+                : new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 }).format(absoluteAmount)
         const currencyLabel = code === 'iqd'
             ? (iqdPreference === 'IQD' ? 'IQD' : 'IQD')
             : code.toUpperCase()
+        const sign = showSign ? amount < 0 ? '−' : amount > 0 ? '+' : '' : ''
 
         return (
             <div className="flex max-w-full min-w-0 flex-col items-end leading-none">
-                <span className="break-all text-end font-bold">{formatted}</span>
+                <span className="break-all text-end font-bold">{sign}{formatted}</span>
                 <span className="mt-0.5 text-[9px] font-medium text-black" style={{ opacity: labelOpacity / 100 }}>
                     {currencyLabel}
                 </span>
@@ -741,7 +774,7 @@ export function OrderReceiptPrintTemplate({
                                 const freeBonus = getOrderLineFreeBonusQuantity(item)
                                 const unit = formatOrderLineUnit(t, item, productUnits)
                                 const freeBonusUnit = formatOrderLineFreeBonusUnit(t, item, productUnits)
-                                const returnState = isSales ? getOrderPrintReturnState(item) : null
+                                const returnState = isSales && !isOriginalPrint ? getOrderPrintReturnState(item) : null
                                 return (
                                     <tr key={item.id} data-order-print-return-state={returnState?.status}>
                                         <td className="py-3 align-top text-start">
@@ -798,6 +831,25 @@ export function OrderReceiptPrintTemplate({
                                     </tr>
                                 )
                             })}
+                            {orderAdjustments.map((adjustment) => {
+                                const signedAmount = adjustment.type === 'addition'
+                                    ? adjustment.convertedAmount
+                                    : -adjustment.convertedAmount
+                                return (
+                                    <tr key={`order-adjustment-${adjustment.id}`} data-order-print-row-type="adjustment">
+                                        <td className="py-3 align-top text-start">
+                                            <div className="break-words [overflow-wrap:anywhere] text-sm font-bold">
+                                                {getOrderAdjustmentRowLabel(t, adjustment)}
+                                            </div>
+                                        </td>
+                                        <td className="py-3 text-center align-top">—</td>
+                                        <td className="py-3 text-end align-top">—</td>
+                                        <td className="min-w-0 py-3 align-top text-end">
+                                            {formatReceiptPrice(signedAmount, order.currency, true)}
+                                        </td>
+                                    </tr>
+                                )
+                            })}
                         </tbody>
                     </table>
                     <div className="mt-4 border-t-2 border-black" style={{ '--tw-border-opacity': labelOpacity / 100 } as React.CSSProperties} />
@@ -812,7 +864,7 @@ export function OrderReceiptPrintTemplate({
                     {isSales && salesOrder ? <div className="flex justify-between"><span style={{ opacity: labelOpacity / 100 }}>{t('orders.details.tax', { defaultValue: 'Tax' })}</span>{formatReceiptPrice(salesOrder.tax, order.currency)}</div> : null}
                     <div className="flex items-end justify-between border-t border-black pt-3">
                         <span className={cn('text-sm font-bold text-black', !isReceiptRtl && 'uppercase tracking-wider')} style={{ opacity: labelOpacity / 100 }}>{t('common.total', { defaultValue: 'Total' })}</span>
-                        <span className="text-3xl font-black tracking-tight">{formatCurrency(order.total, order.currency, iqdPreference)}</span>
+                        <span className="text-3xl font-black tracking-tight">{formatCurrency(displayedTotal, order.currency, iqdPreference)}</span>
                     </div>
                     <div className="grid grid-cols-2 gap-3 border-t border-gray-200 pt-2 text-xs">
                         <div><span className="block text-[10px]" style={{ opacity: labelOpacity / 100 }}>{t('orders.details.paidAmount', { defaultValue: 'Paid' })}</span><span className="font-semibold">{formatCurrency(paidAmount, order.currency, iqdPreference)}</span></div>
@@ -879,17 +931,25 @@ export function OrderDetailsPrintTemplate({
     editableComponents,
     onComponentPositionChange,
     onHiddenFieldChange,
-    workspaceFooterContacts
+    workspaceFooterContacts,
+    printVersion = 'adjusted'
 }: OrderDetailsPrintTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
     const isSales = kind === 'sales'
+    const isOriginalPrint = isSales && printVersion === 'original'
+    const displayedTotal = isOriginalPrint ? getOrderPrintOriginalTotal(order) : order.total
+    const orderAdjustments = printVersion === 'returned'
+        ? []
+        : normalizeOrderAdjustments(order.orderAdjustments, order.currency)
     const salesOrder = isSales ? (order as SalesOrder) : null
     const purchaseOrder = !isSales ? (order as PurchaseOrder) : null
     const currency = order.currency
     const noteValue = order.notes?.trim()
     const rowCount = tableRowCount || DEFAULT_ORDER_TABLE_ROW_COUNT
-    const itemRows = buildOrderItemRows(order.items || [], rowCount)
+    const itemRows = buildOrderItemRows(order.items || [], Math.max(1, rowCount - orderAdjustments.length))
+    const populatedItemRows = itemRows.filter((item) => item !== null)
+    const emptyItemRowCount = itemRows.length - populatedItemRows.length
     const showFreeBonus = hasOrderLineFreeBonus(order.items || [])
     const labelOpacity = Math.min(100, Math.max(0, parseInt(templateFields?.labelOpacity || '50', 10)))
     const labelOpacityStyle = { opacity: labelOpacity / 100 }
@@ -1130,16 +1190,17 @@ export function OrderDetailsPrintTemplate({
                     </tr>
                 </thead>
                 <tbody>
-                    {itemRows.length === 0 ? (
+                    {populatedItemRows.length === 0 && orderAdjustments.length === 0 ? (
                         <tr>
                             <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={showFreeBonus ? 6 : 5}>
                                 {t('common.noData') || 'No data'}
                             </td>
                         </tr>
-                    ) : itemRows.map((item, index) => {
+                    ) : <>
+                    {populatedItemRows.map((item, index) => {
                         const unit = item ? formatOrderLineUnit(t, item, productUnits) : ''
                         const freeBonusUnit = item ? formatOrderLineFreeBonusUnit(t, item, productUnits) : ''
-                        const returnState = item && isSales ? getOrderPrintReturnState(item) : null
+                        const returnState = item && isSales && !isOriginalPrint ? getOrderPrintReturnState(item) : null
                         return (
                             <tr
                                 key={item?.id || `empty-${index}`}
@@ -1182,6 +1243,35 @@ export function OrderDetailsPrintTemplate({
                             </tr>
                         )
                     })}
+                    {orderAdjustments.map((adjustment) => (
+                        <tr key={`order-adjustment-${adjustment.id}`} className="h-9" data-order-print-row-type="adjustment">
+                            <td className="border border-slate-300 p-2 font-semibold">
+                                {getOrderAdjustmentRowLabel(t, adjustment)}
+                            </td>
+                            <td className="border border-slate-300 p-2 text-slate-600">
+                                {adjustment.type === 'addition'
+                                    ? t('orders.adjustments.addition', { defaultValue: 'Addition (+)' })
+                                    : t('orders.adjustments.deduction', { defaultValue: 'Deduction (−)' })}
+                            </td>
+                            <td className="border border-slate-300 p-2 text-end">—</td>
+                            {showFreeBonus ? <td className="border border-slate-300 p-2 text-end">—</td> : null}
+                            <td className="border border-slate-300 p-2 text-end">—</td>
+                            <td className="border border-slate-300 p-2 text-end font-semibold">
+                                {formatSignedOrderAdjustment(adjustment, currency, iqdPreference)}
+                            </td>
+                        </tr>
+                    ))}
+                    {Array.from({ length: emptyItemRowCount }, (_, index) => (
+                        <tr key={`empty-${index}`} className="h-9">
+                            <td className="border border-slate-300 p-2">{'\u00A0'}</td>
+                            <td className="border border-slate-300 p-2">{'\u00A0'}</td>
+                            <td className="border border-slate-300 p-2">{'\u00A0'}</td>
+                            {showFreeBonus ? <td className="border border-slate-300 p-2">{'\u00A0'}</td> : null}
+                            <td className="border border-slate-300 p-2">{'\u00A0'}</td>
+                            <td className="border border-slate-300 p-2">{'\u00A0'}</td>
+                        </tr>
+                    ))}
+                    </>}
                 </tbody>
             </table>
             </MovableOrderPrintBlock>
@@ -1214,7 +1304,7 @@ export function OrderDetailsPrintTemplate({
                     ) : null}
                     <div className="flex justify-between border-t border-slate-300 pt-1 mt-1">
                         <span className="font-bold">{t('common.total') || 'Total'}</span>
-                        <span className="font-bold">{formatCurrency(order.total, currency, iqdPreference)}</span>
+                        <span className="font-bold">{formatCurrency(displayedTotal, currency, iqdPreference)}</span>
                     </div>
             </div>
             </MovableOrderPrintBlock>

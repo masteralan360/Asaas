@@ -616,6 +616,39 @@ describe('Order Details custom print template', () => {
         expect(html).toContain('>$50</span>')
     })
 
+    it('prints each order adjustment as a labelled product-table row', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_DETAILS_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const baseOrder = customTemplates
+            .createCustomTemplatePreview(target!, { printLang: 'en' })
+            .createElement({})
+            .props.order
+        const html = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'en',
+            order: {
+                ...baseOrder,
+                orderAdjustments: [{
+                    id: 'delivery-adjustment',
+                    type: 'addition',
+                    name: 'Delivery',
+                    currency: 'usd',
+                    amount: 5,
+                    orderCurrency: 'usd',
+                    convertedAmount: 5,
+                    exchangeRate: 1,
+                    exchangeRateSource: 'native',
+                    exchangeRateTimestamp: '2026-08-22T00:00:00.000Z',
+                    exchangeRates: []
+                }]
+            }
+        }).createElement({}))
+
+        expect(html).toContain('data-order-print-row-type="adjustment"')
+        expect(html).toContain('Delivery')
+        expect(html).toContain('+$5')
+    })
+
     it('preserves movable component positions, hidden fields, field orders, and field titles when reading a saved layout', () => {
         const componentPositions = {
             customer: { x: 10, y: 5 },
@@ -920,6 +953,72 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(fullHtml).toContain('>$0</span>')
     })
 
+    it('prints the original order values without return markings when requested', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const baseOrder = customTemplates
+            .createCustomTemplatePreview(target!, { printLang: 'en' })
+            .createElement({})
+            .props.order
+        const html = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'en',
+            order: {
+                ...baseOrder,
+                total: 50,
+                originalTotalAmount: 75,
+                returnedAmount: 25,
+                items: [{
+                    ...baseOrder.items[0],
+                    quantity: 3,
+                    lineTotal: 75,
+                    convertedUnitPrice: 25,
+                    returnedQuantity: 1
+                }]
+            },
+            orderPrintVersion: 'original'
+        }).createElement({}))
+
+        expect(html).not.toContain('data-order-print-return-state="partially-returned"')
+        expect(html).not.toContain('background-color:#fef3c7')
+        expect(html).not.toContain('data-order-print-return-value=')
+        expect(html).toContain('>3 pcs</td>')
+        expect(html).toContain('>$75</td>')
+    })
+
+    it('prints each order adjustment as a labelled product-table row', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const baseOrder = customTemplates
+            .createCustomTemplatePreview(target!, { printLang: 'en' })
+            .createElement({})
+            .props.order
+        const html = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'en',
+            order: {
+                ...baseOrder,
+                orderAdjustments: [{
+                    id: 'delivery-adjustment',
+                    type: 'addition',
+                    name: 'Delivery',
+                    currency: 'usd',
+                    amount: 5,
+                    orderCurrency: 'usd',
+                    convertedAmount: 5,
+                    exchangeRate: 1,
+                    exchangeRateSource: 'native',
+                    exchangeRateTimestamp: '2026-08-22T00:00:00.000Z',
+                    exchangeRates: []
+                }]
+            }
+        }).createElement({}))
+
+        expect(html).toContain('data-order-print-row-type="adjustment"')
+        expect(html).toContain('Delivery')
+        expect(html).toContain('+$5')
+    })
+
     it('totals kilogram-quantity products in the product-name column when enabled, converting to tons above 1000 kg', () => {
         const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
         expect(target).toBeDefined()
@@ -1041,6 +1140,19 @@ describe('Atlas Standard return custom print template', () => {
             .props.order
         const order = {
             ...baseOrder,
+            orderAdjustments: [{
+                id: 'delivery-adjustment',
+                type: 'addition' as const,
+                name: 'Delivery',
+                currency: 'usd' as const,
+                amount: 5,
+                orderCurrency: 'usd' as const,
+                convertedAmount: 5,
+                exchangeRate: 1,
+                exchangeRateSource: 'native',
+                exchangeRateTimestamp: '2026-08-22T00:00:00.000Z',
+                exchangeRates: []
+            }],
             items: [
                 { ...baseOrder.items[0], id: 'returned-line', productName: 'Returned Product', quantity: 3, lineTotal: 75, convertedUnitPrice: 25 },
                 { ...baseOrder.items[0], id: 'unreturned-line', productName: 'Unreturned Product', quantity: 2, lineTotal: 80, convertedUnitPrice: 40 }
@@ -1065,6 +1177,7 @@ describe('Atlas Standard return custom print template', () => {
         expect(html).not.toContain('Unreturned Product')
         expect(html).toContain('$20')
         expect(html).not.toContain('data-order-print-return-value=')
+        expect(html).not.toContain('data-order-print-row-type="adjustment"')
     })
 
     it('copies Atlas Standard layout elements but resets sale field labels and values', () => {
@@ -1226,6 +1339,41 @@ describe('Order Receipt custom print template', () => {
         expect(html).toContain('Partial Return')
         expect(html).toContain('data-order-print-return-value="partially-returned"')
         expect(html).toContain('flex-col gap-0 text-[9px] leading-[1.05] items-end')
+        expect(html).not.toContain('#fef3c7')
+        expect(html).not.toContain('#fee2e2')
+    })
+
+    it('prints each order adjustment as a monochrome receipt table row', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_RECEIPT_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const baseOrder = customTemplates
+            .createCustomTemplatePreview(target!, { printLang: 'en' })
+            .createElement({})
+            .props.order
+        const html = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+            printLang: 'en',
+            order: {
+                ...baseOrder,
+                orderAdjustments: [{
+                    id: 'handling-adjustment',
+                    type: 'deduction',
+                    name: 'Handling credit',
+                    currency: 'usd',
+                    amount: 3,
+                    orderCurrency: 'usd',
+                    convertedAmount: 3,
+                    exchangeRate: 1,
+                    exchangeRateSource: 'native',
+                    exchangeRateTimestamp: '2026-08-22T00:00:00.000Z',
+                    exchangeRates: []
+                }]
+            }
+        }).createElement({}))
+
+        expect(html).toContain('data-order-print-row-type="adjustment"')
+        expect(html).toContain('Handling credit')
+        expect(html).toContain('−3.00')
         expect(html).not.toContain('#fef3c7')
         expect(html).not.toContain('#fee2e2')
     })

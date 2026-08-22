@@ -41,6 +41,7 @@ import {
     type PrintSelectionNativeOption,
     type PrintSelectionTemplateOption
 } from '@/ui/components/PrintSelectionModal'
+import type { OrderPrintVersion } from '@/lib/orderPrintReturnState'
 import type { StoredCustomTemplateRow } from '@/lib/customTemplates'
 
 interface PrintPreviewModalProps {
@@ -71,7 +72,7 @@ interface PrintPreviewModalProps {
     module?: string
     printSelectionOptions?: PrintSelectionNativeOption[]
     printSelectionTemplates?: PrintSelectionTemplateOption[]
-    onPrintSelection?: (format: PrintFormat, template?: StoredCustomTemplateRow, nativeTemplateKey?: string) => void
+    onPrintSelection?: (format: PrintFormat, template?: StoredCustomTemplateRow, nativeTemplateKey?: string, printVersion?: OrderPrintVersion) => void
     onCreateReturnTemplate?: () => void
     onPreviewPrint?: (blob: Blob) => Promise<void>
     previewPrintActionLabel?: string
@@ -188,9 +189,10 @@ export function PrintPreviewModal({
     const handlePrintSelection = useCallback((
         format: PrintFormat,
         template?: StoredCustomTemplateRow,
-        nativeTemplateKey?: string
+        nativeTemplateKey?: string,
+        printVersion?: OrderPrintVersion
     ) => {
-        onPrintSelection?.(format, template, nativeTemplateKey)
+        onPrintSelection?.(format, template, nativeTemplateKey, printVersion)
         setSelectedPrintFormat(format)
     }, [onPrintSelection])
     const printableFeatures = useMemo(

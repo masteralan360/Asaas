@@ -101,14 +101,14 @@ export async function resolveWorkspaceUsage(req) {
     if (!authorization) return { authorization: null, workspace: null }
 
     const { supabaseUrl, anonKey } = getSupabaseServerConfig()
-    const response = await fetch(`${supabaseUrl}/rest/v1/rpc/get_workspace_usage_status`, {
+    const response = await fetch(`${supabaseUrl}/rest/v1/rpc/get_current_workspace_usage_access`, {
         method: 'POST',
         headers: {
             apikey: anonKey,
             Authorization: authorization,
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ p_workspace_id: null })
+        body: '{}'
     })
 
     if (!response.ok) {
@@ -119,13 +119,13 @@ export async function resolveWorkspaceUsage(req) {
     const rows = await response.json()
     const workspace = Array.isArray(rows) ? rows[0] : rows
     if (!workspace?.workspace_id) {
-        throw new Error('Workspace usage status did not identify a workspace')
+        throw new Error('Workspace usage preflight did not identify a workspace')
     }
 
     return { authorization, workspace }
 }
 
-export async function recordWebLiveUsage(workspaceId, measuredBytes, source, requestId = crypto.randomUUID()) {
+export async function recordWebLiveUsage(workspaceId, measuredBytes, source) {
     if (!workspaceId || !Number.isFinite(measuredBytes) || measuredBytes <= 0) return
 
     const { supabaseUrl, serviceRoleKey } = getSupabaseServerConfig()
@@ -134,14 +134,16 @@ export async function recordWebLiveUsage(workspaceId, measuredBytes, source, req
         headers: {
             apikey: serviceRoleKey,
             Authorization: `Bearer ${serviceRoleKey}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            // The meter is a side-effect-only RPC. Avoid returning a usage row
+            // for every proxied request.
+            Prefer: 'return=minimal'
         },
         body: JSON.stringify({
             p_workspace_id: workspaceId,
             p_bytes: Math.trunc(measuredBytes),
             p_source: source,
-            p_channel: 'web_live',
-            p_request_id: requestId
+            p_channel: 'web_live'
         })
     })
 
@@ -154,7 +156,7 @@ export async function recordWebLiveUsage(workspaceId, measuredBytes, source, req
 }
 
 export function isWorkspaceUsageLocked(workspace) {
-    return workspace?.has_limits === true && workspace?.usage_limit_locked === true
+    return workspace?.usage_limit_locked === true
 }
 
 export { WORKSPACE_TRANSFER_LIMIT_MESSAGE }

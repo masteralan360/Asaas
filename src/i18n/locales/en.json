@@ -2045,9 +2045,14 @@
             "successPartial": "Order items returned and payment adjusted.",
             "itemConfirmation": "Return {{itemName}} from this completed order?",
             "wholeConfirmation": "Return all remaining items from this completed order?",
-            "returnedQuantity": "Returned: {{returned}} / {{total}}",
-            "returnedStatus": "Returned",
-            "history": "Returns ({{count}})"
+      "returnedQuantity": "Returned: {{returned}} / {{total}}",
+      "returnedStatus": "Returned",
+      "returnsReflected": "Returns reflected",
+      "printVersion": "Print version",
+      "adjustedPrint": "Returns reflected",
+      "originalPrint": "Original",
+      "returnedPrint": "Returned",
+      "history": "Returns ({{count}})"
         },
         "table": {
             "orderNumber": "Order #",
@@ -2168,6 +2173,7 @@
         },
         "adjustments": {
             "title": "Order Adjustments",
+            "printRow": "Order adjustment",
             "description": "Confirm each row before it affects the order total.",
             "type": "Adjustment type",
             "addition": "Addition (+)",

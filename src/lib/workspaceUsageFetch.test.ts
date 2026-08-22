@@ -76,6 +76,7 @@ describe('workspace usage fetch metering', () => {
             p_workspace_id: workspaceId,
             p_source: 'table_fetch:products'
         })
+        expect(new Headers(usageCall.init?.headers).get('Prefer')).toBe('return=minimal')
         expect(JSON.parse(String(usageCall.init?.body)).p_bytes).toBeGreaterThan(0)
     })
 

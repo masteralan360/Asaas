@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { getOrderPrintReturnState } from './orderPrintReturnState'
+import { getOrderPrintOriginalTotal, getOrderPrintReturnState } from './orderPrintReturnState'
 
 describe('order print return state', () => {
     it('keeps active order lines unchanged', () => {
@@ -47,5 +47,18 @@ describe('order print return state', () => {
     it('only marks a bonus-bearing line fully returned after all inventory is returned', () => {
         expect(getOrderPrintReturnState({ quantity: 3, freeBonusQuantity: 1, returnedQuantity: 3, lineTotal: 75 }).status)
             .toBe('partially-returned')
+    })
+
+    it('restores the saved original total for original-order prints', () => {
+        expect(getOrderPrintOriginalTotal({
+            total: 50,
+            returnedAmount: 25,
+            originalTotalAmount: 75
+        })).toBe(75)
+        expect(getOrderPrintOriginalTotal({
+            total: 50,
+            returnedAmount: 25,
+            originalTotalAmount: null
+        })).toBe(75)
     })
 })

@@ -164,7 +164,9 @@ describe('PrintSelectionModal', () => {
         expect(html).toContain('My Return Layout')
         expect(html).not.toContain('Create return template')
         expect(html).toContain('Primary')
-        expect(html.match(/Returned/g) || []).toHaveLength(3)
+        expect(html).toContain('Print version')
+        expect(html).toContain('Original')
+        expect(html.match(/Returned/g) || []).toHaveLength(4)
     })
 
     it('offers return-template creation when no saved return template is available', () => {
@@ -174,19 +176,47 @@ describe('PrintSelectionModal', () => {
                 onClose={() => undefined}
                 onSelect={() => undefined}
                 onCreateReturnTemplate={() => undefined}
-                nativeOptions={[]}
-                templateOptions={[{
+                nativeOptions={[{
                     format: 'a4',
-                    template: {
-                        id: 'sales-template',
-                        module_type_key: 'orders.AtlasStandard',
-                        layout_json: {}
-                    },
-                    label: 'My Sales Layout'
+                    label: 'Atlas Standard Return',
+                    description: 'Returned items only',
+                    returned: true
                 }]}
             />
         )
 
         expect(html).toContain('Create return template')
+    })
+
+    it('marks normal order prints that reflect return adjustments', () => {
+        const html = renderToStaticMarkup(
+            <PrintSelectionModal
+                isOpen
+                onClose={() => undefined}
+                onSelect={() => undefined}
+                nativeOptions={[{
+                    format: 'a4',
+                    label: 'Atlas Standard',
+                    description: 'Order invoice',
+                    returnsReflected: true
+                }]}
+                templateOptions={[{
+                    format: 'a4',
+                    template: {
+                        id: 'normal-template',
+                        module_type_key: 'orders.AtlasStandard',
+                        layout_json: {}
+                    },
+                    label: 'My Normal Layout',
+                    primary: true,
+                    returnsReflected: true
+                }]}
+            />
+        )
+
+        expect(html).toContain('Atlas Standard')
+        expect(html).toContain('My Normal Layout')
+        expect(html.match(/Returns reflected/g) || []).toHaveLength(2)
+        expect(html).toContain('Primary')
     })
 })

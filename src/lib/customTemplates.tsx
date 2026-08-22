@@ -66,6 +66,7 @@ import {
     createSampleSalesOrderReturnPrintData,
     type SalesOrderReturnPrintData
 } from '@/lib/orderReturnPrintData'
+import type { OrderPrintVersion } from '@/lib/orderPrintReturnState'
 import type { ProductPrintImageUrls } from '@/ui/components/print/ProductPrintImage'
 import { ModernA4InvoiceTemplate, MODERN_A4_MOVABLE_COMPONENT_KEYS } from '@/ui/components/ModernA4InvoiceTemplate'
 import {
@@ -529,6 +530,7 @@ export type CustomTemplatePreviewOptions = {
     order?: SalesOrder | PurchaseOrder
     orderKind?: 'sales' | 'purchase'
     orderReturnPrintData?: SalesOrderReturnPrintData | null
+    orderPrintVersion?: OrderPrintVersion
     orderInstallments?: OrderInstallment[]
     businessPartner?: BusinessPartner | null
     productUnits?: Record<string, string | null | undefined>
@@ -1528,6 +1530,7 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
                 onComponentPositionChange={renderOptions?.onComponentPositionChange}
                 onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
                 workspaceFooterContacts={renderOptions?.workspaceFooterContacts || options.workspaceFooterContacts}
+                printVersion={options.orderPrintVersion}
             />
         ),
         buildPdf: (element, printLangOverride) => generateTemplatePdf({
@@ -1546,7 +1549,10 @@ function createAtlasStandardOrderInvoicePreview(
         ? SAMPLE_ORDER_DATA
         : options.order || SAMPLE_ORDER_DATA
     const kind = printMode === 'return' ? 'sales' : options.orderKind || 'sales'
-    const returnPrintData = printMode === 'return'
+    const effectivePrintVersion: OrderPrintVersion = printMode === 'return'
+        ? 'returned'
+        : options.orderPrintVersion || 'adjusted'
+    const returnPrintData = effectivePrintVersion === 'returned'
         ? options.orderReturnPrintData || createSampleSalesOrderReturnPrintData(order as SalesOrder)
         : undefined
     const configuredPrintLang = options.features?.print_lang
@@ -1594,6 +1600,7 @@ function createAtlasStandardOrderInvoicePreview(
                 onFieldDisplayModeChange={renderOptions?.onFieldDisplayModeChange}
                 background={renderOptions?.background}
                 returnPrintData={returnPrintData}
+                printVersion={effectivePrintVersion}
             />
         ),
         buildPdf: (element, printLangOverride) => generateTemplatePdf({
@@ -1655,6 +1662,7 @@ function createOrderReceiptPreview(options: CustomTemplatePreviewOptions): Templ
                 componentPositions={renderOptions?.componentPositions}
                 editableComponents={renderOptions?.editableComponents}
                 onComponentPositionChange={renderOptions?.onComponentPositionChange}
+                printVersion={options.orderPrintVersion}
             />
         ),
         buildPdf: (element, printLangOverride) => generateTemplatePdf({

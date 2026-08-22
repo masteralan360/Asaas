@@ -49,18 +49,9 @@ describe('workspace usage helpers', () => {
     })
 
     it('sends measured bytes unchanged for server-side Tauri charging', async () => {
-        const row = {
-            workspace_id: 'workspace-1',
-            transfer_period_start: '2026-06-01',
-            charged_usage_bytes: 1280,
-            monthly_data_transfer_limit_bytes: 1024
-        }
+        testState.rpc.mockResolvedValue({ data: null, error: null })
 
-        testState.rpc.mockReturnValue({
-            maybeSingle: vi.fn(async () => ({ data: row, error: null }))
-        })
-
-        await expect(recordWorkspaceDataTransfer('workspace-1', 128.8, 'test_source')).resolves.toEqual(row)
+        await expect(recordWorkspaceDataTransfer('workspace-1', 128.8, 'test_source')).resolves.toBeUndefined()
         expect(testState.rpc).toHaveBeenCalledWith('record_workspace_data_transfer', {
             p_workspace_id: 'workspace-1',
             p_bytes: 128,
@@ -70,7 +61,7 @@ describe('workspace usage helpers', () => {
     })
 
     it('skips non-positive data transfer amounts', async () => {
-        await expect(recordWorkspaceDataTransfer('workspace-1', 0, 'test_source')).resolves.toBeNull()
+        await expect(recordWorkspaceDataTransfer('workspace-1', 0, 'test_source')).resolves.toBeUndefined()
         expect(testState.rpc).not.toHaveBeenCalled()
     })
 })

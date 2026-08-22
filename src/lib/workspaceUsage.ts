@@ -12,14 +12,6 @@ export interface WorkspaceUsageStatus {
     transfer_period_start: string
 }
 
-export interface WorkspaceTransferUsage {
-    workspace_id: string
-    transfer_period_start: string
-    charged_usage_bytes: number
-    /** Charged-usage allowance, not a raw network-transfer limit. */
-    monthly_data_transfer_limit_bytes: number | null
-}
-
 export const WORKSPACE_STORAGE_LIMIT_MESSAGE = 'Workspace storage limit exceeded'
 // Legacy wire text kept for compatibility. "Data transfer" here means the
 // charged-usage allowance; raw actual transfer is never compared to this limit.
@@ -100,27 +92,25 @@ export async function recordWorkspaceDataTransfer(
     workspaceId: string,
     actualBytes: number,
     source?: string
-): Promise<WorkspaceTransferUsage | null> {
+): Promise<void> {
     // p_bytes is measured for this request only. The database applies the Tauri
     // channel rate and persists charged usage rather than raw bytes.
     const normalizedBytes = Math.trunc(actualBytes)
-    if (!workspaceId || normalizedBytes <= 0) return null
+    if (!workspaceId || normalizedBytes <= 0) return
 
-    const { data, error } = await supabase
+    const { error } = await supabase
         .rpc('record_workspace_data_transfer', {
             p_workspace_id: workspaceId,
             p_bytes: normalizedBytes,
             p_source: source ?? null,
             p_channel: 'tauri'
         })
-        .maybeSingle()
 
     if (error) {
         throw error
     }
 
     notifyWorkspaceUsageUpdated(workspaceId)
-    return data as WorkspaceTransferUsage | null
 }
 
 export async function getWorkspaceUsageStatus(workspaceId?: string): Promise<WorkspaceUsageStatus | null> {

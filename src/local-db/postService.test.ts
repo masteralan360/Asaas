@@ -174,6 +174,18 @@ describe("Post Service COD accounting", () => {
       shipmentId: shipment.id,
     });
     expect(courierSettlement.courierDeliveryFee).toBe(12);
+    const courierPayment = await db.payment_transactions
+      .where("workspaceId")
+      .equals(WORKSPACE_ID)
+      .and((payment) => payment.sourceRecordId === courierSettlement.id)
+      .first();
+    expect(courierPayment).toMatchObject({
+      sourceType: "delivery_courier_remittance",
+      direction: "incoming",
+      // The fee is already retained by the courier, so the Ledger receives
+      // only the net handover. Recording a second outflow would deduct it twice.
+      amount: 88,
+    });
     const merchantSettlement = await payDeliveryMerchant(WORKSPACE_ID, {
       merchantProfileId: profile.id,
       currency: "iqd",

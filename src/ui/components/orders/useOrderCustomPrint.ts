@@ -21,6 +21,7 @@ import {
 import type { CustomTemplateLayout } from '@/lib/pdfPreviewStore'
 import type { OrderInstallment, PurchaseOrder, SalesOrder } from '@/local-db'
 import type { SalesOrderReturnPrintData } from '@/lib/orderReturnPrintData'
+import type { OrderPrintVersion } from '@/lib/orderPrintReturnState'
 import { useBusinessPartner } from '@/local-db'
 import type { PrintFormat } from '@/services/pdfGenerator'
 import type { WorkspaceFeatures } from '@/workspace'
@@ -69,6 +70,7 @@ export function useOrderCustomPrint({
     const [templates, setTemplates] = useState<StoredCustomTemplateRow[]>([])
     const [selectedTemplate, setSelectedTemplate] = useState<StoredCustomTemplateRow | null>(null)
     const [selectedNativeTemplateKey, setSelectedNativeTemplateKey] = useState<OrderNativeTemplateKey>(ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
+    const [selectedPrintVersion, setSelectedPrintVersion] = useState<OrderPrintVersion>('adjusted')
     const currentPrintLanguage = resolveCustomTemplatePrintLanguage(features.print_lang, printLanguage)
     const partnerId = order?.businessPartnerId
         || (orderKind === 'sales' ? (order as SalesOrder)?.customerId : (order as PurchaseOrder)?.supplierId)
@@ -104,6 +106,7 @@ export function useOrderCustomPrint({
         if (!isOpen) {
             setSelectedTemplate(null)
             setSelectedNativeTemplateKey(ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
+            setSelectedPrintVersion('adjusted')
         }
     }, [isOpen])
 
@@ -135,8 +138,10 @@ export function useOrderCustomPrint({
     const isReceiptSelected = !isCustomSelected && selectedNativeTemplateKey === ORDER_RECEIPT_TEMPLATE_KEY
     const isAtlasStandardSelected = !isCustomSelected && selectedNativeTemplateKey === ORDER_ATLAS_STANDARD_TEMPLATE_KEY
     const isAtlasStandardReturnSelected = !isCustomSelected && selectedNativeTemplateKey === ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY
-    const isReturnPrintSelected = isAtlasStandardReturnSelected
-        || selectedTemplateTarget?.moduleTypeKey === ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY
+    const isReturnPrintSelected = selectedPrintVersion === 'returned'
+        && (isAtlasStandardReturnSelected
+            || selectedTemplateTarget?.moduleTypeKey === ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY)
+    const isOriginalPrintSelected = selectedPrintVersion === 'original'
     const preview = useMemo(() => {
         if (!selectedTemplateTarget || !order || !orderKind || !isCustomSelected) return undefined
 
@@ -147,6 +152,7 @@ export function useOrderCustomPrint({
             order,
             orderKind,
             orderReturnPrintData: returnPrintData,
+            orderPrintVersion: selectedPrintVersion,
             orderInstallments: installments,
             businessPartner: bizPartner,
             productUnits,
@@ -156,7 +162,7 @@ export function useOrderCustomPrint({
             printedBy,
             printLang: currentPrintLanguage
         })
-    }, [bizPartner, currentPrintLanguage, features, installments, isCustomSelected, order, orderKind, printedBy, productImageUrls, productUnits, returnPrintData, selectedTemplateTarget, workspaceId, workspaceName, counterpartyPhone, counterpartyAddress])
+    }, [bizPartner, currentPrintLanguage, features, installments, isCustomSelected, order, orderKind, printedBy, productImageUrls, productUnits, returnPrintData, selectedPrintVersion, selectedTemplateTarget, workspaceId, workspaceName, counterpartyPhone, counterpartyAddress])
 
     const buildPdf = useCallback(async ({
         effectiveId,
@@ -181,6 +187,7 @@ export function useOrderCustomPrint({
                 order,
                 orderKind,
                 orderReturnPrintData: returnPrintData,
+                orderPrintVersion: selectedPrintVersion,
                 orderInstallments: installments,
                 businessPartner: bizPartner,
                 productUnits,
@@ -193,7 +200,7 @@ export function useOrderCustomPrint({
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, printedBy, productImageUrls, productUnits, returnPrintData, selectedLayout, selectedTemplateTarget, workspaceId, workspaceName])
+    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, printedBy, productImageUrls, productUnits, returnPrintData, selectedLayout, selectedPrintVersion, selectedTemplateTarget, workspaceId, workspaceName])
 
     const buildEditablePdf = useCallback(async (
         layout: CustomTemplateLayout,
@@ -215,6 +222,7 @@ export function useOrderCustomPrint({
                 order,
                 orderKind,
                 orderReturnPrintData: returnPrintData,
+                orderPrintVersion: selectedPrintVersion,
                 orderInstallments: installments,
                 businessPartner: bizPartner,
                 productUnits,
@@ -227,12 +235,13 @@ export function useOrderCustomPrint({
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, printedBy, productImageUrls, productUnits, returnPrintData, selectedTemplateTarget, workspaceId, workspaceName])
+    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, printedBy, productImageUrls, productUnits, returnPrintData, selectedPrintVersion, selectedTemplateTarget, workspaceId, workspaceName])
 
     const nativeOptions = useMemo(() => [
         {
             format: 'a4' as const,
             label: 'Atlas Standard',
+            returnsReflected: hasReturnPrintData,
             description: t('orders.print.nativeA4TemplateDescription', {
                 defaultValue: 'Use the built-in Atlas Standard order invoice A4 layout.'
             })
@@ -240,6 +249,7 @@ export function useOrderCustomPrint({
         {
             format: 'receipt' as const,
             label: t('orders.print.nativeReceiptTemplate', { defaultValue: 'Orders - Receipt Print' }),
+            returnsReflected: hasReturnPrintData,
             description: t('orders.print.nativeReceiptTemplateDescription', {
                 defaultValue: 'Use the built-in compact order receipt layout.'
             })
@@ -272,20 +282,30 @@ export function useOrderCustomPrint({
                 }),
             primary: template.primary,
             returned: template.module_type_key === ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
+            returnsReflected: hasReturnPrintData
+                && template.module_type_key !== ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
             disabled: !isCustomTemplatePrintLanguageCompatible(template, currentPrintLanguage),
             warning: getCustomTemplatePrintLanguageWarning(template, currentPrintLanguage, t)
         })),
-        [availableTemplates, currentPrintLanguage, t]
+        [availableTemplates, currentPrintLanguage, hasReturnPrintData, t]
     )
     const handleSelection = useCallback((
         _format: PrintFormat,
         template?: StoredCustomTemplateRow,
-        nativeTemplateKey?: string
+        nativeTemplateKey?: string,
+        printVersion: OrderPrintVersion = 'adjusted'
     ) => {
         if (template && !isCustomTemplatePrintLanguageCompatible(template, currentPrintLanguage)) {
             return
         }
         setSelectedTemplate(template || null)
+        const selectedTemplateIsReturn = template?.module_type_key === ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY
+        const selectedNativeIsReturn = nativeTemplateKey === ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY
+        setSelectedPrintVersion(
+            (selectedTemplateIsReturn || selectedNativeIsReturn) && hasReturnPrintData
+                ? 'returned'
+                : printVersion === 'returned' ? 'adjusted' : printVersion
+        )
         if (!template) {
             setSelectedNativeTemplateKey(
                 nativeTemplateKey === ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY && hasReturnPrintData
@@ -297,6 +317,7 @@ export function useOrderCustomPrint({
     const resetSelection = useCallback(() => {
         setSelectedTemplate(null)
         setSelectedNativeTemplateKey(ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
+        setSelectedPrintVersion('adjusted')
     }, [])
 
     return {
@@ -306,6 +327,8 @@ export function useOrderCustomPrint({
         isAtlasStandardSelected,
         isAtlasStandardReturnSelected,
         isReturnPrintSelected,
+        isOriginalPrintSelected,
+        selectedPrintVersion,
         preview,
         buildPdf,
         buildEditablePdf,

@@ -5,12 +5,21 @@ const RETURN_EPSILON = 0.000001
 
 export type OrderPrintReturnStatus = 'active' | 'partially-returned' | 'fully-returned'
 
+/** Chooses which version of a returned sales order a print should represent. */
+export type OrderPrintVersion = 'adjusted' | 'original' | 'returned'
+
 type OrderPrintLine = {
     quantity?: unknown
     freeBonusQuantity?: unknown
     freeQuantity?: unknown
     returnedQuantity?: unknown
     lineTotal?: unknown
+}
+
+type OrderPrintTotal = {
+    total?: unknown
+    originalTotalAmount?: unknown
+    returnedAmount?: unknown
 }
 
 type OrderPrintReturnOverrides = {
@@ -59,6 +68,21 @@ function normalizeAmount(value: unknown) {
 
 function roundPrintedAmount(value: number) {
     return Math.round((value + Number.EPSILON) * 1_000_000) / 1_000_000
+}
+
+/**
+ * The order total is reduced after a return. Use its saved original total for
+ * an "Original" print, without changing the persisted order.
+ */
+export function getOrderPrintOriginalTotal(order: OrderPrintTotal) {
+    if (order.originalTotalAmount !== null && order.originalTotalAmount !== undefined) {
+        const storedOriginalTotal = Number(order.originalTotalAmount)
+        if (Number.isFinite(storedOriginalTotal) && storedOriginalTotal >= 0) {
+            return storedOriginalTotal
+        }
+    }
+
+    return normalizeAmount(order.total) + normalizeAmount(order.returnedAmount)
 }
 
 /**

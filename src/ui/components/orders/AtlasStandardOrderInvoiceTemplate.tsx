@@ -13,7 +13,13 @@ import {
     type SalesOrder
 } from '@/local-db'
 import { getOrderLineFreeBonusQuantity, getOrderLinePaidQuantity } from '@/lib/orderLineItems'
-import { getA4OrderPrintReturnRowStyle, getOrderPrintReturnState } from '@/lib/orderPrintReturnState'
+import { normalizeOrderAdjustments } from '@/lib/orderAdjustments'
+import {
+    getA4OrderPrintReturnRowStyle,
+    getOrderPrintOriginalTotal,
+    getOrderPrintReturnState,
+    type OrderPrintVersion
+} from '@/lib/orderPrintReturnState'
 import type { SalesOrderReturnPrintData } from '@/lib/orderReturnPrintData'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import { normalizeUnitCode } from '@/local-db/models'
@@ -78,6 +84,8 @@ export interface AtlasStandardOrderInvoiceTemplateProps {
     background?: CustomTemplateBackground | null
     /** Renders a return-only document with the same Atlas Standard editor controls. */
     returnPrintData?: SalesOrderReturnPrintData | null
+    /** Whether to show adjusted values, original order values, or return-only values. */
+    printVersion?: OrderPrintVersion
 }
 
 const INK = '#1f2937'
@@ -1088,7 +1096,8 @@ export function AtlasStandardOrderInvoiceTemplate({
     onFieldDisplayModeChange,
     productImageUrls,
     background,
-    returnPrintData
+    returnPrintData,
+    printVersion
 }: AtlasStandardOrderInvoiceTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
@@ -1096,7 +1105,9 @@ export function AtlasStandardOrderInvoiceTemplate({
     const labels = ATLAS_STANDARD_LABELS[locale]
     const returnLabels = ATLAS_STANDARD_RETURN_LABELS[locale]
     const isSales = kind === 'sales'
-    const isReturnPrint = isSales && Boolean(returnPrintData)
+    const effectivePrintVersion: OrderPrintVersion = printVersion || (returnPrintData ? 'returned' : 'adjusted')
+    const isReturnPrint = isSales && effectivePrintVersion === 'returned' && Boolean(returnPrintData)
+    const isOriginalPrint = isSales && effectivePrintVersion === 'original'
     const salesOrder = isSales ? order as SalesOrder : null
     const purchaseOrder = !isSales ? order as PurchaseOrder : null
     const counterpartyLabel = isSales
@@ -1140,23 +1151,32 @@ export function AtlasStandardOrderInvoiceTemplate({
     const paymentMethod = order.paymentMethod
         ? labels.paymentMethods[order.paymentMethod as keyof typeof labels.paymentMethods] || order.paymentMethod
         : '-'
-    const printTotal = isReturnPrint ? returnPrintData?.totalRefundAmount || 0 : order.total
+    const printTotal = isReturnPrint
+        ? returnPrintData?.totalRefundAmount || 0
+        : isOriginalPrint ? getOrderPrintOriginalTotal(order) : order.total
     const amountInWords = numberToWords(printTotal, printLang)
     const items = isReturnPrint
         ? order.items.filter((item) => returnLineByOrderItemId.has(item.id))
         : order.items || []
+    const orderAdjustments = isReturnPrint
+        ? []
+        : normalizeOrderAdjustments(order.orderAdjustments, currency)
+    const printableTableRows = [
+        ...items.map((item) => ({ kind: 'item' as const, item })),
+        ...orderAdjustments.map((adjustment) => ({ kind: 'adjustment' as const, adjustment }))
+    ]
     const maxItemRowsPerTable = Math.max(1, Math.floor(TABLE_DATA_AREA_MM / tableItemRowMm))
-    const itemChunks: typeof items[] = []
-    if (items.length === 0) {
+    const itemChunks: typeof printableTableRows[] = []
+    if (printableTableRows.length === 0) {
         itemChunks.push([])
     } else {
-        for (let index = 0; index < items.length; index += maxItemRowsPerTable) {
-            itemChunks.push(items.slice(index, index + maxItemRowsPerTable))
+        for (let index = 0; index < printableTableRows.length; index += maxItemRowsPerTable) {
+            itemChunks.push(printableTableRows.slice(index, index + maxItemRowsPerTable))
         }
     }
     const paidQuantityTotal = items.reduce((sum, item) => sum + (isReturnPrint
         ? returnLineByOrderItemId.get(item.id)?.returnedQuantity || 0
-        : isSales
+        : isSales && !isOriginalPrint
         ? getOrderPrintReturnState(item).remainingQuantity
         : getOrderLinePaidQuantity(item)), 0)
     const freeQuantityTotal = isReturnPrint
@@ -1227,7 +1247,7 @@ export function AtlasStandardOrderInvoiceTemplate({
         { key: tableKeys.note, label: labels.note, width: `${17 - productImageWidthDifference * 0.3}%` }
     ]
     const visibleTableColumns = resolveVisibleTableColumns(tableColumns, fieldLabelOverrides, hiddenFields)
-    const renderItemsTable = (tableItems: typeof items, rowStartIndex: number, tableKey: string, centered = false) => {
+    const renderItemsTable = (tableItems: typeof printableTableRows, rowStartIndex: number, tableKey: string, centered = false) => {
         const tableEmptyAreaMm = Math.max(0, TABLE_DATA_AREA_MM - (tableItems.length * tableItemRowMm))
         return (
             <table
@@ -1253,13 +1273,57 @@ export function AtlasStandardOrderInvoiceTemplate({
                     </tr>
                 </thead>
                 <tbody>
-                    {tableItems.map((item, index) => {
+                    {tableItems.map((tableRow, index) => {
+                        if (tableRow.kind === 'adjustment') {
+                            const { adjustment } = tableRow
+                            const typeLabel = adjustment.type === 'addition'
+                                ? t('orders.adjustments.addition', { defaultValue: 'Addition (+)' })
+                                : t('orders.adjustments.deduction', { defaultValue: 'Deduction (−)' })
+                            const sign = adjustment.type === 'addition' ? '+' : '−'
+                            const values: Record<string, ReactNode> = {
+                                [tableKeys.productImage]: '\u00a0',
+                                [tableKeys.number]: '\u00a0',
+                                [tableKeys.product]: `${t('orders.adjustments.printRow', { defaultValue: 'Order adjustment' })} — ${adjustment.name}`,
+                                [tableKeys.expiry]: '\u00a0',
+                                [tableKeys.batchNumber]: '\u00a0',
+                                [tableKeys.quantity]: '\u00a0',
+                                [tableKeys.freeQuantity]: '\u00a0',
+                                [tableKeys.price]: '\u00a0',
+                                [tableKeys.total]: `${sign}${formatCurrency(adjustment.convertedAmount, currency, iqdPreference)}`,
+                                [tableKeys.note]: typeLabel
+                            }
+
+                            return (
+                                <tr
+                                    key={`order-adjustment-${adjustment.id}`}
+                                    style={{ height: `${tableItemRowMm}mm` }}
+                                    data-order-print-row-type="adjustment"
+                                >
+                                    {visibleTableColumns.map((column) => (
+                                        <td
+                                            key={column.key}
+                                            className={cn(
+                                                'border text-center align-middle leading-[1.15]',
+                                                column.key === tableKeys.productImage
+                                                    ? 'px-[0.5mm] py-[0.5mm] whitespace-nowrap'
+                                                    : 'px-[1.2mm] py-[1mm] truncate'
+                                            )}
+                                            style={{ borderColor: INK }}
+                                        >
+                                            {values[column.key]}
+                                        </td>
+                                    ))}
+                                </tr>
+                            )
+                        }
+
+                        const { item } = tableRow
                         const batch = getBatchDetails(item, kind)
                         const paidQuantity = getOrderLinePaidQuantity(item)
                         const returnLine = returnLineByOrderItemId.get(item.id)
                         const unit = normalizeUnitCode(item.unit)
                         const freeBonusUnit = normalizeUnitCode(item.freeBonusUnit || item.unit)
-                        const returnState = isSales ? getOrderPrintReturnState(item) : null
+                        const returnState = isSales && !isOriginalPrint ? getOrderPrintReturnState(item) : null
                         const originalQuantity = unit
                             ? `${paidQuantity} ${t(`products.units.${unit}`, { defaultValue: unit })}`
                             : paidQuantity
