@@ -7,6 +7,7 @@ import { getSupabaseClientForTable } from "@/lib/supabaseSchema";
 import { runSupabaseAction } from "@/lib/supabaseRequest";
 import { generateId, toSnakeCase } from "@/lib/utils";
 import { courierSettlementBreakdownByParty, merchantSettlementBreakdownByParty } from "@/lib/postServiceSettlementStatus";
+import { useViewOwnRecordScope, type ViewOwnRecordScope } from "@/permissions/useViewOwnRecordScope";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 
 import { db } from "./database";
@@ -55,7 +56,7 @@ type DeliveryEntity =
   | DeliverySettlement
   | DeliveryLedgerEntry;
 
-export type PostServiceTab = "posts" | "dispatch" | "my-deliveries" | "merchants" | "settlements";
+export type PostServiceTab = "posts" | "dispatch" | "my-deliveries" | "merchants" | "courier" | "settlements";
 type PostServiceRefreshTableName = DeliveryTableName | "business_partners" | "agents" | "fleet_vehicles";
 
 const POST_SERVICE_TAB_REFRESH_TABLES: Record<PostServiceTab, readonly PostServiceRefreshTableName[]> = {
@@ -63,6 +64,7 @@ const POST_SERVICE_TAB_REFRESH_TABLES: Record<PostServiceTab, readonly PostServi
   dispatch: ["business_partners", "agents", "fleet_vehicles", SHIPMENT_TABLE, RUN_TABLE],
   "my-deliveries": ["business_partners", "agents", SHIPMENT_TABLE],
   merchants: ["business_partners", PROFILE_TABLE],
+  courier: ["business_partners", "agents", SHIPMENT_TABLE, LEDGER_TABLE],
   settlements: ["business_partners", "agents", PROFILE_TABLE, SETTLEMENT_TABLE, LEDGER_TABLE],
 };
 
@@ -102,6 +104,18 @@ export interface CreateDeliveryShipmentInput {
 export interface CreateDeliveryRunInput {
   agentId: string;
   shipmentIds: string[];
+  courierDeliveryFee?: number;
+  vehicleId?: string | null;
+  dispatchedAt?: string;
+  notes?: string | null;
+  createdBy?: string | null;
+  /** Internal transfer path: permits a returned post to receive a new manifest. */
+  allowReturnedShipment?: boolean;
+}
+
+export interface TransferReturnedDeliveryShipmentInput {
+  agentId: string;
+  shipmentId: string;
   courierDeliveryFee?: number;
   vehicleId?: string | null;
   dispatchedAt?: string;
@@ -235,6 +249,47 @@ export function toUISaleFromDeliveryShipment(
 
 function shouldUseCloudDeliveryData(workspaceId?: string | null) {
   return !!workspaceId && !isLocalWorkspaceMode(workspaceId);
+}
+
+function isVisibleDeliveryShipment(
+  shipment: DeliveryShipment,
+  viewOwnScope: ViewOwnRecordScope,
+  linkedCourierIds: ReadonlySet<string>,
+) {
+  return !shipment.isDeleted && (
+    !viewOwnScope.isRestricted || (
+      !!shipment.assignedAgentId && linkedCourierIds.has(shipment.assignedAgentId)
+    )
+  );
+}
+
+async function getLinkedCourierIds(workspaceId: string, userId: string | undefined) {
+  if (!userId) return new Set<string>();
+  const couriers = await db.agents
+    .where("workspaceId")
+    .equals(workspaceId)
+    .and((agent) => (
+      !agent.isDeleted
+      && agent.agentType === "courier"
+      && agent.linkedUserId === userId
+    ))
+    .toArray();
+  return new Set(couriers.map((courier) => courier.id));
+}
+
+async function getVisibleDeliveryShipmentIds(
+  workspaceId: string,
+  viewOwnScope: ViewOwnRecordScope,
+) {
+  const linkedCourierIds = viewOwnScope.isRestricted
+    ? await getLinkedCourierIds(workspaceId, viewOwnScope.userId)
+    : new Set<string>();
+  const shipments = await db.delivery_shipments
+    .where("workspaceId")
+    .equals(workspaceId)
+    .and((shipment) => isVisibleDeliveryShipment(shipment, viewOwnScope, linkedCourierIds))
+    .toArray();
+  return new Set(shipments.map((shipment) => shipment.id));
 }
 
 function getSyncMetadata(workspaceId: string, timestamp: string) {
@@ -504,8 +559,21 @@ function makeLedgerEntry(
   return makeBase(workspaceId, input) as DeliveryLedgerEntry;
 }
 
-function sumLedger(rows: DeliveryLedgerEntry[], predicate: (row: DeliveryLedgerEntry) => boolean) {
-  return rows.filter((row) => !row.isDeleted && predicate(row)).reduce((sum, row) => sum + Number(row.amount || 0), 0);
+/** Party-level totals derived from the same per-post FIFO breakdown the dialogs use. */
+function partyTotalsFromBreakdown(
+  breakdownByParty: ReturnType<typeof courierSettlementBreakdownByParty>,
+) {
+  const totals = new Map<string, { amount: number; paid: number; currency: CurrencyCode }>();
+  for (const [key, posts] of breakdownByParty) {
+    const [id, currency] = key.split(":");
+    const current = totals.get(id) ?? { amount: 0, paid: 0, currency: currency as CurrencyCode };
+    for (const post of posts) {
+      current.amount += post.outstanding;
+      current.paid += post.paid;
+    }
+    totals.set(id, current);
+  }
+  return totals;
 }
 
 async function refreshDeliveryPartnerBalances(workspaceId: string, partnerIds: Array<string | null | undefined>) {
@@ -553,11 +621,20 @@ export function useDeliveryMerchantProfiles(workspaceId?: string) {
 
 export function useDeliveryShipments(workspaceId?: string) {
   const online = useNetworkStatus();
+  const viewOwnScope = useViewOwnRecordScope("postService.view_own");
   const rows = useLiveQuery(
-    () => workspaceId
-      ? db.delivery_shipments.where("workspaceId").equals(workspaceId).and((row) => !row.isDeleted).toArray()
-      : [],
-    [workspaceId],
+    async () => {
+      if (!workspaceId) return [];
+      const linkedCourierIds = viewOwnScope.isRestricted
+        ? await getLinkedCourierIds(workspaceId, viewOwnScope.userId)
+        : new Set<string>();
+      return db.delivery_shipments
+        .where("workspaceId")
+        .equals(workspaceId)
+        .and((shipment) => isVisibleDeliveryShipment(shipment, viewOwnScope, linkedCourierIds))
+        .toArray();
+    },
+    [workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId],
   ) ?? [];
 
   useEffect(() => {
@@ -566,18 +643,35 @@ export function useDeliveryShipments(workspaceId?: string) {
         console.error("[Post Service] Failed to hydrate shipments:", error),
       );
     }
-  }, [online, workspaceId]);
+  }, [online, viewOwnScope.isRestricted, viewOwnScope.userId, workspaceId]);
 
   return rows.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
 export function useDeliveryRuns(workspaceId?: string) {
   const online = useNetworkStatus();
+  const viewOwnScope = useViewOwnRecordScope("postService.view_own");
   const rows = useLiveQuery(
-    () => workspaceId
-      ? db.delivery_runs.where("workspaceId").equals(workspaceId).and((row) => !row.isDeleted).toArray()
-      : [],
-    [workspaceId],
+    async () => {
+      if (!workspaceId) return [];
+      const runs = await db.delivery_runs
+        .where("workspaceId")
+        .equals(workspaceId)
+        .and((run) => !run.isDeleted)
+        .toArray();
+      if (!viewOwnScope.isRestricted) return runs;
+
+      const visibleShipmentIds = await getVisibleDeliveryShipmentIds(workspaceId, viewOwnScope);
+      if (visibleShipmentIds.size === 0) return [];
+      const runItems = await db.delivery_run_items
+        .where("workspaceId")
+        .equals(workspaceId)
+        .and((item) => !item.isDeleted && visibleShipmentIds.has(item.shipmentId))
+        .toArray();
+      const visibleRunIds = new Set(runItems.map((item) => item.runId));
+      return runs.filter((run) => visibleRunIds.has(run.id));
+    },
+    [workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId],
   ) ?? [];
 
   useEffect(() => {
@@ -586,18 +680,30 @@ export function useDeliveryRuns(workspaceId?: string) {
         console.error("[Post Service] Failed to hydrate dispatch runs:", error),
       );
     }
-  }, [online, workspaceId]);
+  }, [online, viewOwnScope.isRestricted, viewOwnScope.userId, workspaceId]);
 
   return rows.sort((left, right) => right.dispatchedAt.localeCompare(left.dispatchedAt));
 }
 
 export function useDeliverySettlements(workspaceId?: string) {
   const online = useNetworkStatus();
+  const viewOwnScope = useViewOwnRecordScope("postService.view_own");
   const rows = useLiveQuery(
-    () => workspaceId
-      ? db.delivery_settlements.where("workspaceId").equals(workspaceId).and((row) => !row.isDeleted).toArray()
-      : [],
-    [workspaceId],
+    async () => {
+      if (!workspaceId) return [];
+      const settlements = await db.delivery_settlements
+        .where("workspaceId")
+        .equals(workspaceId)
+        .and((settlement) => !settlement.isDeleted)
+        .toArray();
+      if (!viewOwnScope.isRestricted) return settlements;
+
+      const visibleShipmentIds = await getVisibleDeliveryShipmentIds(workspaceId, viewOwnScope);
+      return settlements.filter((settlement) => (
+        !!settlement.shipmentId && visibleShipmentIds.has(settlement.shipmentId)
+      ));
+    },
+    [workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId],
   ) ?? [];
 
   useEffect(() => {
@@ -606,18 +712,30 @@ export function useDeliverySettlements(workspaceId?: string) {
         console.error("[Post Service] Failed to hydrate settlements:", error),
       );
     }
-  }, [online, workspaceId]);
+  }, [online, viewOwnScope.isRestricted, viewOwnScope.userId, workspaceId]);
 
   return rows.sort((left, right) => right.settledAt.localeCompare(left.settledAt));
 }
 
 export function useDeliveryLedgerEntries(workspaceId?: string) {
   const online = useNetworkStatus();
+  const viewOwnScope = useViewOwnRecordScope("postService.view_own");
   const rows = useLiveQuery(
-    () => workspaceId
-      ? db.delivery_ledger_entries.where("workspaceId").equals(workspaceId).and((row) => !row.isDeleted).toArray()
-      : [],
-    [workspaceId],
+    async () => {
+      if (!workspaceId) return [];
+      const entries = await db.delivery_ledger_entries
+        .where("workspaceId")
+        .equals(workspaceId)
+        .and((entry) => !entry.isDeleted)
+        .toArray();
+      if (!viewOwnScope.isRestricted) return entries;
+
+      const visibleShipmentIds = await getVisibleDeliveryShipmentIds(workspaceId, viewOwnScope);
+      return entries.filter((entry) => (
+        !!entry.shipmentId && visibleShipmentIds.has(entry.shipmentId)
+      ));
+    },
+    [workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId],
   ) ?? [];
 
   useEffect(() => {
@@ -626,7 +744,7 @@ export function useDeliveryLedgerEntries(workspaceId?: string) {
         console.error("[Post Service] Failed to hydrate delivery balances:", error),
       );
     }
-  }, [online, workspaceId]);
+  }, [online, viewOwnScope.isRestricted, viewOwnScope.userId, workspaceId]);
 
   return rows;
 }
@@ -634,21 +752,8 @@ export function useDeliveryLedgerEntries(workspaceId?: string) {
 export function useCourierDeliveryBalances(workspaceId?: string) {
   const entries = useDeliveryLedgerEntries(workspaceId);
   return useMemo<DeliveryBalance[]>(() => {
-    const totals = new Map<string, number>();
-    const settled = new Map<string, number>();
-    for (const entry of entries) {
-      if (!entry.agentId) continue;
-      const key = `${entry.agentId}:${entry.currency}`;
-      totals.set(key, (totals.get(key) ?? 0) + Number(entry.amount || 0));
-      if (entry.kind === "courier_remittance") {
-        settled.set(key, (settled.get(key) ?? 0) - Number(entry.amount || 0));
-      }
-    }
-    return [...totals.entries()]
-      .map(([key, amount]) => {
-        const [id, currency] = key.split(":");
-        return { id, currency: currency as CurrencyCode, amount, paid: settled.get(key) ?? 0 };
-      })
+    return [...partyTotalsFromBreakdown(courierSettlementBreakdownByParty(entries)).entries()]
+      .map(([id, item]) => ({ id, currency: item.currency, amount: item.amount, paid: item.paid }))
       .filter((item) => Math.abs(item.amount) > 0.000001);
   }, [entries]);
 }
@@ -656,21 +761,8 @@ export function useCourierDeliveryBalances(workspaceId?: string) {
 export function useMerchantDeliveryBalances(workspaceId?: string) {
   const entries = useDeliveryLedgerEntries(workspaceId);
   return useMemo<DeliveryBalance[]>(() => {
-    const totals = new Map<string, number>();
-    const settled = new Map<string, number>();
-    for (const entry of entries) {
-      if (!entry.merchantProfileId) continue;
-      const key = `${entry.merchantProfileId}:${entry.currency}`;
-      totals.set(key, (totals.get(key) ?? 0) + Number(entry.amount || 0));
-      if (entry.kind === "merchant_payout") {
-        settled.set(key, (settled.get(key) ?? 0) - Number(entry.amount || 0));
-      }
-    }
-    return [...totals.entries()]
-      .map(([key, amount]) => {
-        const [id, currency] = key.split(":");
-        return { id, currency: currency as CurrencyCode, amount, paid: settled.get(key) ?? 0 };
-      })
+    return [...partyTotalsFromBreakdown(merchantSettlementBreakdownByParty(entries)).entries()]
+      .map(([id, item]) => ({ id, currency: item.currency, amount: item.amount, paid: item.paid }))
       .filter((item) => Math.abs(item.amount) > 0.000001);
   }, [entries]);
 }
@@ -816,11 +908,30 @@ export async function createDeliveryRun(workspaceId: string, input: CreateDelive
   const shipmentIds = [...new Set(input.shipmentIds.filter(Boolean))];
   if (shipmentIds.length === 0) throw new Error("Select at least one shipment");
   const shipments = await db.delivery_shipments.bulkGet(shipmentIds);
-  if (shipments.some((shipment) => !shipment || shipment.isDeleted || shipment.workspaceId !== workspaceId || !["received", "ready_for_dispatch", "postponed"].includes(shipment.status))) {
+  const dispatchableStatuses = input.allowReturnedShipment
+    ? ["received", "ready_for_dispatch", "postponed", "returned"]
+    : ["received", "ready_for_dispatch", "postponed"];
+  if (shipments.some((shipment) => !shipment || shipment.isDeleted || shipment.workspaceId !== workspaceId || !dispatchableStatuses.includes(shipment.status))) {
     throw new Error("Only unassigned, ready, or postponed shipments can be dispatched");
   }
 
   const now = input.dispatchedAt ? new Date(input.dispatchedAt).toISOString() : new Date().toISOString();
+  const returnedRunItems = (await Promise.all((shipments as DeliveryShipment[])
+    .filter((shipment) => shipment.status === "returned" && shipment.assignedRunId)
+    .map(async (shipment) => {
+      const previousItem = await db.delivery_run_items
+        .where("[runId+shipmentId]")
+        .equals([shipment.assignedRunId!, shipment.id])
+        .first();
+      if (!previousItem || previousItem.isDeleted) return null;
+      return {
+        ...previousItem,
+        returnedAt: now,
+        updatedAt: now,
+        version: previousItem.version + 1,
+        ...getSyncMetadata(workspaceId, now),
+      } as DeliveryRunItem;
+    }))).filter((item): item is DeliveryRunItem => item !== null);
   const run = makeBase(workspaceId, {
     runNumber: makeReference("RUN", new Date(now)),
     agentId: agent.id,
@@ -868,16 +979,36 @@ export async function createDeliveryRun(workspaceId: string, input: CreateDelive
   await db.transaction("rw", [db.delivery_runs, db.delivery_shipments, db.delivery_run_items, db.delivery_shipment_events], async () => {
     await db.delivery_runs.put(run);
     await db.delivery_shipments.bulkPut(updates);
-    await db.delivery_run_items.bulkPut(items);
+    await db.delivery_run_items.bulkPut([...returnedRunItems, ...items]);
     await db.delivery_shipment_events.bulkPut(events);
   });
   await syncEntitiesInDependencyOrder(workspaceId, [
     [RUN_TABLE, [run]],
     [SHIPMENT_TABLE, updates],
-    [RUN_ITEM_TABLE, items],
+    [RUN_ITEM_TABLE, [...returnedRunItems, ...items]],
     [EVENT_TABLE, events],
   ]);
   return run;
+}
+
+export async function transferReturnedDeliveryShipment(workspaceId: string, input: TransferReturnedDeliveryShipmentInput) {
+  const shipment = await db.delivery_shipments.get(input.shipmentId);
+  if (!shipment || shipment.isDeleted || shipment.workspaceId !== workspaceId || shipment.status !== "returned") {
+    throw new Error("Only returned shipments can be transferred");
+  }
+  if (!shipment.assignedAgentId || shipment.assignedAgentId === input.agentId) {
+    throw new Error("Select a different courier");
+  }
+  return createDeliveryRun(workspaceId, {
+    agentId: input.agentId,
+    shipmentIds: [shipment.id],
+    courierDeliveryFee: input.courierDeliveryFee,
+    vehicleId: input.vehicleId,
+    dispatchedAt: input.dispatchedAt,
+    notes: input.notes,
+    createdBy: input.createdBy,
+    allowReturnedShipment: true,
+  });
 }
 
 export async function updateDeliveryShipmentStatus(
@@ -1045,9 +1176,10 @@ async function createSettlement(
     }
     expectedAmount = post.outstanding;
   } else {
-    expectedAmount = type === "courier_remittance"
-      ? sumLedger(entries, (entry) => entry.agentId === options.agentId && entry.currency === options.currency)
-      : sumLedger(entries, (entry) => entry.merchantProfileId === options.merchantProfileId && entry.currency === options.currency);
+    const partyTotals = type === "courier_remittance"
+      ? partyTotalsFromBreakdown(courierSettlementBreakdownByParty(entries)).get(options.agentId ?? "")
+      : partyTotalsFromBreakdown(merchantSettlementBreakdownByParty(entries)).get(options.merchantProfileId ?? "");
+    expectedAmount = partyTotals && options.currency === partyTotals.currency ? partyTotals.amount : 0;
   }
   const { expected, actual } = assertSettlementAmount(expectedAmount, options.actualAmount, options.varianceNote);
   const settledAt = options.settledAt ? new Date(options.settledAt).toISOString() : new Date().toISOString();

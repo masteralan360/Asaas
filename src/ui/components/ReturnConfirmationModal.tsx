@@ -39,8 +39,11 @@ export function ReturnConfirmationModal({
     const [step, setStep] = useState<'confirmation' | 'quantity' | 'reason'>('confirmation')
     const [selectedReason, setSelectedReason] = useState<string>('customer_returned')
     const [otherReason, setOtherReason] = useState('')
-    const [returnQuantity, setReturnQuantity] = useState<number>(1)
+    const [returnQuantity, setReturnQuantity] = useState('')
     const maxQuantityDescriptionId = useId()
+    const isReturnQuantityValid = returnQuantity.trim() !== ''
+        && isPositiveQuantity(returnQuantity)
+        && Number(returnQuantity) <= maxQuantity
 
     const returnReasons = [
         { value: 'customer_returned', label: t('sales.return.reasons.customerReturned') || 'Customer returned item' },
@@ -60,7 +63,7 @@ export function ReturnConfirmationModal({
     }
 
     const handleQuantityContinue = () => {
-        if (!isPositiveQuantity(returnQuantity)) {
+        if (!isReturnQuantityValid) {
             return
         }
         setStep('reason')
@@ -68,7 +71,10 @@ export function ReturnConfirmationModal({
 
     const handleReturnConfirm = () => {
         const finalReason = selectedReason === 'other' ? otherReason.trim() : selectedReason
-        onConfirm(finalReason, isItemReturn ? returnQuantity : undefined)
+        onConfirm(
+            finalReason,
+            isItemReturn && isReturnQuantityValid ? roundQuantity(Number(returnQuantity)) : undefined
+        )
         handleClose()
     }
 
@@ -76,7 +82,7 @@ export function ReturnConfirmationModal({
         setStep('confirmation')
         setSelectedReason('customer_returned')
         setOtherReason('')
-        setReturnQuantity(1)
+        setReturnQuantity('')
         onClose()
     }
 
@@ -146,14 +152,7 @@ export function ReturnConfirmationModal({
                                             value={returnQuantity}
                                             autoFocus
                                             aria-describedby={maxQuantityDescriptionId}
-                                            onChange={(e) => {
-                                                const parsed = Number.parseFloat(e.target.value)
-                                                if (!Number.isFinite(parsed)) {
-                                                    setReturnQuantity(0)
-                                                    return
-                                                }
-                                                setReturnQuantity(roundQuantity(Math.min(Math.max(0.01, parsed), maxQuantity)))
-                                            }}
+                                            onChange={(e) => setReturnQuantity(e.target.value)}
                                             className="w-full h-16 pl-6 pr-24 text-left text-2xl font-black tabular-nums bg-muted/30 border-2 border-border/50 rounded-2xl focus:border-primary focus:ring-0 transition-all outline-none"
                                         />
                                         <div
@@ -171,7 +170,7 @@ export function ReturnConfirmationModal({
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => setReturnQuantity(Math.min(1, maxQuantity))}
+                                        onClick={() => setReturnQuantity(String(Math.min(1, maxQuantity)))}
                                         className="h-9 px-4 rounded-lg font-bold"
                                     >
                                         1
@@ -179,7 +178,7 @@ export function ReturnConfirmationModal({
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => setReturnQuantity(maxQuantity)}
+                                        onClick={() => setReturnQuantity(String(maxQuantity))}
                                         className="h-9 px-4 rounded-lg font-bold"
                                     >
                                         {t('common.all') || 'All'} ({maxQuantity})
@@ -188,7 +187,7 @@ export function ReturnConfirmationModal({
                                         <Button
                                             variant="outline"
                                             size="sm"
-                                            onClick={() => setReturnQuantity(roundQuantity(maxQuantity / 2))}
+                                            onClick={() => setReturnQuantity(String(roundQuantity(maxQuantity / 2)))}
                                             className="h-9 px-4 rounded-lg font-bold"
                                         >
                                             50%
@@ -207,6 +206,7 @@ export function ReturnConfirmationModal({
                                 </Button>
                                 <Button
                                     onClick={handleQuantityContinue}
+                                    disabled={!isReturnQuantityValid}
                                     className="w-full sm:w-auto h-11 px-8 text-sm font-black shadow-lg shadow-primary/20 order-1 sm:order-2"
                                 >
                                     {t('common.continue') || 'Continue'}

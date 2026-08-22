@@ -1143,7 +1143,7 @@ export function Members() {
                                             </div>
                                             <p className="mt-1 text-sm text-muted-foreground">
                                                 {t('members.permissions.globalViewOwnDescription', {
-                                                    defaultValue: 'Grant or remove View Own Records for orders, sales, loans, installments, and invoice history together.'
+                                                    defaultValue: 'Grant or remove View Own Records for orders, posts, sales, loans, installments, and invoice history together.'
                                                 })}
                                             </p>
                                         </div>

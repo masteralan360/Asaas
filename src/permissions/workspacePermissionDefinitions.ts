@@ -45,6 +45,16 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     section: "agents",
   },
   {
+    key: "postService.view_own",
+    module: "postService",
+    labelKey: "members.permissions.postServiceViewOwn",
+    defaultLabel: "View Own Records",
+    descriptionKey: "members.permissions.postServiceViewOwnDescription",
+    defaultDescription: "Show only posts assigned to this member's linked courier.",
+    icon: PackageCheck,
+    section: "agents",
+  },
+  {
     key: "postService.dispatch",
     module: "postService",
     labelKey: "members.permissions.postServiceDispatch",

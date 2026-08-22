@@ -13,6 +13,7 @@ import { getOrderLineFreeBonusQuantity, getOrderLineInventoryQuantity, getOrderL
 import { getOrderAdjustmentTotals, normalizeOrderAdjustments } from '@/lib/orderAdjustments'
 import { getOrderPrintReturnState } from '@/lib/orderPrintReturnState'
 import { createSalesOrderReturnPrintData } from '@/lib/orderReturnPrintData'
+import { isPositiveQuantity } from '@/lib/quantity'
 import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { normalizeUnitCode } from '@/local-db/models'
 import { buildWorkflowGradientFill } from '@/lib/workflowProgressGradient'
@@ -937,8 +938,14 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
     const handleOrderReturnConfirm = async (reason: string, quantity?: number) => {
         if (!resolved || resolved.kind !== 'sales' || !returnTarget) return
 
+        if (returnTarget.orderItemId && (
+            !isPositiveQuantity(quantity)
+            || quantity === undefined
+            || quantity > returnTarget.maxQuantity
+        )) return
+
         const items = returnTarget.orderItemId
-            ? [{ orderItemId: returnTarget.orderItemId, quantity: quantity || returnTarget.maxQuantity }]
+            ? [{ orderItemId: returnTarget.orderItemId, quantity }]
             : resolved.order.items
                 .map((item) => ({ orderItemId: item.id, quantity: getReturnableQuantity(item) }))
                 .filter((item) => item.quantity > 0)

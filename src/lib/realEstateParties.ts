@@ -93,7 +93,8 @@ export function getRealEstatePartyLabels(transactionType: RealEstateTransactionT
             label,
             placeholder: tr(`${scope}.${party}Placeholder`, `Search or enter ${label.toLowerCase()} name`),
             linkedLabel: tr(`${scope}.linked${party === 'buyer' ? 'Buyer' : 'Seller'}`, `Linked ${label.toLowerCase()}`),
-            witnessLabel: tr(`${scope}.${party}Witness`, `${label} Witness`)
+            witnessLabel: tr(`${scope}.${party}Witness`, `${label} Witness`),
+            addButtonLabel: tr(`${scope}.${party}Add`, `Add ${label.toLowerCase()}`)
         }
     }
 

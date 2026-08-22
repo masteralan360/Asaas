@@ -72,7 +72,7 @@ type BusinessPartnerFormState = {
 
 const DEFAULT_ROLE: BusinessPartnerRole = 'both'
 
-function createEmptyState(defaultCurrency: CurrencyCode, role: BusinessPartnerRole): BusinessPartnerFormState {
+function createEmptyState(defaultCurrency: CurrencyCode, role: BusinessPartnerRole, agentType: AgentType = 'field_agent'): BusinessPartnerFormState {
     return {
         name: '',
         contactName: '',
@@ -90,7 +90,7 @@ function createEmptyState(defaultCurrency: CurrencyCode, role: BusinessPartnerRo
         priceBookId: '',
         role,
         agentZone: '',
-        agentType: 'field_agent',
+        agentType,
         agentCarModel: '',
         agentPlateNumber: '',
         agentCourierDeliveryFee: '',
@@ -158,6 +158,7 @@ interface BusinessPartnerFormDialogProps {
     availableCurrencies: CurrencyCode[]
     initialRole?: BusinessPartnerRole
     lockedRole?: BusinessPartnerRole
+    initialAgentType?: AgentType
     enableRealEstateRoles?: boolean
     enableAgentRole?: boolean
     workspaceId?: string
@@ -175,6 +176,7 @@ export function BusinessPartnerFormDialog({
     availableCurrencies,
     initialRole = DEFAULT_ROLE,
     lockedRole,
+    initialAgentType = 'field_agent',
     enableRealEstateRoles = false,
     enableAgentRole = false,
     workspaceId,
@@ -189,7 +191,7 @@ export function BusinessPartnerFormDialog({
     const priceBooksEnabled = hasCapability('priceBooks')
     const effectiveWorkspaceId = workspaceId || user?.workspaceId
     const priceBooks = usePriceBooks(effectiveWorkspaceId, { enabled: priceBooksEnabled && isOpen })
-    const [formState, setFormState] = useState<BusinessPartnerFormState>(() => createEmptyState(defaultCurrency, lockedRole ?? initialRole))
+    const [formState, setFormState] = useState<BusinessPartnerFormState>(() => createEmptyState(defaultCurrency, lockedRole ?? initialRole, initialAgentType))
     const [priceBookAttention, setPriceBookAttention] = useState(false)
     const priceBookFieldRef = useRef<HTMLDivElement>(null)
     const agent = useAgent(partner?.agentFacetId)
@@ -254,7 +256,7 @@ export function BusinessPartnerFormDialog({
         const nextState =
             partner
                 ? mapPartnerToState(partner, agent)
-                : createEmptyState(defaultCurrency, initialRole)
+                : createEmptyState(defaultCurrency, initialRole, initialAgentType)
         const hasAllowedRole = (enableRealEstateRoles || !isRealEstateBusinessPartnerRole(nextState.role))
             && (enableAgentRole || !isAgentBusinessPartnerRole(nextState.role))
 
@@ -262,7 +264,7 @@ export function BusinessPartnerFormDialog({
             ...nextState,
             role: lockedRole ?? (hasAllowedRole ? nextState.role : DEFAULT_ROLE)
         })
-    }, [agent, defaultCurrency, enableAgentRole, enableRealEstateRoles, initialRole, isOpen, lockedRole, partner])
+    }, [agent, defaultCurrency, enableAgentRole, enableRealEstateRoles, initialAgentType, initialRole, isOpen, lockedRole, partner])
 
     useEffect(() => {
         if (!isOpen) {

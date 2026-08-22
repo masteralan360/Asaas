@@ -1985,6 +1985,8 @@
             "manageDescription": "اختر وحدة، ثم قم بتبديل الصلاحيات المتاحة لـ {{name}}.",
             "selectModule": "اختر وحدة",
             "global": "عام",
+            "globalViewOwn": "عرض السجلات الخاصة عالمياً",
+            "globalViewOwnDescription": "منح أو إزالة عرض السجلات الخاصة للطلبات والشحنات والمبيعات والقروض والأقساط وسجل الفواتير معاً.",
             "saving": "جارٍ الحفظ...",
             "copyButton": "نسخ من عضو آخر",
             "copyTitle": "نسخ الصلاحيات من عضو آخر",
@@ -2063,6 +2065,8 @@
             "agentsAccessDescription": "الوصول إلى الوكلاء التشغيليين والسائقين والمناطق والمستخدمين المرتبطين.",
             "postServiceAccess": "خدمة التوصيل",
             "postServiceAccessDescription": "الوصول إلى تجار التوصيل والشحنات والتوزيع وعروض التسوية.",
+            "postServiceViewOwn": "عرض السجلات الخاصة",
+            "postServiceViewOwnDescription": "عرض الشحنات المعيّنة فقط إلى المندوب المرتبط بهذا العضو.",
             "postServiceDispatch": "توزيع الشحنات",
             "postServiceDispatchDescription": "إنشاء كشوفات المندوبين وتعيين الشحنات إليهم.",
             "postServiceSettle": "تسوية نقد التوصيل",
@@ -6144,8 +6148,12 @@
             "markDelivered": "تم التسليم",
             "postpone": "تأجيل",
             "return": "إرجاع",
+            "transferPost": "نقل الشحنة",
             "settlements": "التسويات",
             "recordHandover": "تسجيل التسليم",
+            "addCourier": "إضافة مندوب",
+            "editCourier": "تعديل المندوب",
+            "addBusinessPartner": "إضافة شريك أعمال",
             "payMerchant": "دفع التاجر",
             "editMerchant": "تعديل التاجر",
             "saveMerchant": "حفظ التاجر",
@@ -6168,6 +6176,7 @@
             "dispatch": "التوزيع",
             "myDeliveries": "توصيلاتي",
             "merchants": "التجار",
+            "courier": "المندوبون",
             "settlements": "التسويات"
         },
         "view": {
@@ -6180,6 +6189,7 @@
             "recentRuns": "جولات التوزيع الأخيرة",
             "myAssignedPosts": "الشحنات المعينة لي",
             "deliveryMerchants": "تجار التوصيل",
+            "couriers": "المندوبون",
             "courierHandovers": "تسليمات نقد المندوبين",
             "merchantPayouts": "دفعات التجار",
             "settlementHistory": "سجل التسويات"
@@ -6225,7 +6235,8 @@
             "deliveryNote": "إثبات أو ملاحظة التوصيل",
             "varianceNote": "مطلوب عند دفع مبلغ أقل من الرصيد المستحق",
             "searchPosts": "ابحث برقم التتبع أو المستلم أو التاجر أو المندوب...",
-            "searchMerchants": "ابحث عن التجار..."
+            "searchMerchants": "ابحث عن التجار...",
+            "searchCouriers": "ابحث عن المندوبين..."
         },
         "options": {
             "noVehicle": "لا توجد مركبة"
@@ -6261,7 +6272,12 @@
             "paid": "مدفوع",
             "collected": "المحصّل",
             "payable": "مستحق الدفع",
-            "principal": "أصل المبلغ"
+            "principal": "أصل المبلغ",
+            "zone": "المنطقة",
+            "contact": "جهة الاتصال",
+            "openPosts": "شحنات مفتوحة",
+            "deliveredPosts": "مُسلّمة",
+            "outstandingCash": "النقد المستحق"
         },
         "empty": {
             "noPosts": "لا توجد شحنات مطابقة لهذا العرض.",
@@ -6269,11 +6285,14 @@
             "noLinkedCourier": "مستخدم مساحة العمل غير مرتبط بمندوب نشط. يمكن للمسؤول ربطه من دليل المندوبين.",
             "noMerchants": "لم يتم تفعيل تجار توصيل بعد.",
             "noMerchantSearchResults": "لا يوجد تجار يطابقون بحثك.",
+            "noCouriers": "لا يوجد مندوبون مسجلون بعد. أضف واحداً من دليل المندوبين.",
+            "noCourierPosts": "لا توجد تسويات شحنات مسجلة لهذا المندوب.",
             "noBalances": "لا توجد أرصدة مفتوحة.",
             "noSettlements": "لم يتم تسجيل تسويات بعد."
         },
         "filters": {
-            "all": "الكل"
+            "all": "الكل",
+            "showCompleted": "إظهار المكتملة"
         },
         "status": {
             "received": "تم الاستلام",
@@ -6327,9 +6346,22 @@
                 "title": "حذف تاجر التوصيل نهائياً",
                 "description": "يزيل هذا ملف تاجر التوصيل فقط نهائياً. يبقى شريك الأعمال متاحاً في بقية النظام."
             },
+            "addCourier": {
+                "title": "إضافة مندوب"
+            },
+            "addBusinessPartner": {
+                "title": "إضافة شريك أعمال"
+            },
+            "editCourier": {
+                "title": "تعديل المندوب"
+            },
             "newPost": {
                 "title": "شحنة جديدة",
                 "description": "تبقى بيانات المستلم في الشحنة. احفظها كشريك أعمال فقط عندما تحتاج إلى سجل CRM دائم."
+            },
+            "transferPost": {
+                "title": "نقل الشحنة",
+                "description": "أنشئ كشف مندوب جديداً للشحنة {{trackingNumber}} · {{recipient}}."
             },
             "status": {
                 "title": "تحديد حالة الشحنة: {{status}}"
@@ -6382,13 +6414,21 @@
             "dispatchCreated": "تم إنشاء التوزيع",
             "dispatchCreatedDescription": "تم تعيين {{run}} إلى المندوب.",
             "dispatchFailed": "تعذر توزيع الشحنات",
+            "postTransferred": "تم نقل الشحنة",
+            "postTransferredDescription": "تم تعيين {{run}} إلى المندوب الجديد.",
+            "transferPostFailed": "تعذر نقل الشحنة",
             "postMarked": "تم تحديد حالة الشحنة: {{status}}",
             "updatePostFailed": "تعذر تحديث الشحنة",
             "courierHandoverRecorded": "تم تسجيل تسليم المندوب",
             "merchantPayoutRecorded": "تم تسجيل دفعة التاجر",
             "settlementFailed": "تعذر تسجيل التسوية",
             "runClosed": "تم إغلاق جولة التوزيع",
-            "closeRunFailed": "تعذر إغلاق جولة التوزيع"
+            "closeRunFailed": "تعذر إغلاق جولة التوزيع",
+            "courierAdded": "تمت إضافة المندوب",
+            "courierUpdated": "تم تحديث المندوب",
+            "courierSaveFailed": "تعذر حفظ المندوب",
+            "businessPartnerCreated": "تم إنشاء شريك الأعمال",
+            "businessPartnerSaveFailed": "تعذر إنشاء شريك الأعمال"
         },
         "errors": {
             "generic": "يرجى المحاولة مرة أخرى.",
@@ -6398,6 +6438,8 @@
             "selectCourier": "اختر مندوباً نشطاً.",
             "selectShipment": "اختر شحنة واحدة على الأقل.",
             "shipmentNotDispatchable": "لا يمكن توزيع إلا الشحنات غير المعينة أو الجاهزة أو المؤجلة.",
+            "returnedTransferOnly": "يمكن نقل الشحنات المرتجعة فقط.",
+            "differentCourierRequired": "اختر مندوباً مختلفاً.",
             "shipmentNotFound": "لم يتم العثور على الشحنة.",
             "completedShipment": "لا يمكن تغيير شحنة مكتملة. سجل تسوية بدلاً من ذلك.",
             "reasonRequired": "السبب مطلوب لهذه الحالة.",

@@ -2960,6 +2960,8 @@
             "manageDescription": "Choose a module, then toggle the available permissions for {{name}}.",
             "selectModule": "Select module",
             "global": "Global",
+            "globalViewOwn": "Global View Own Records",
+            "globalViewOwnDescription": "Grant or remove View Own Records for orders, posts, sales, loans, installments, and invoice history together.",
             "saving": "Saving...",
             "copyButton": "Copy from another member",
             "copyTitle": "Copy Permissions from Another Member",
@@ -3038,6 +3040,8 @@
             "agentsAccessDescription": "Access operational agents, drivers, territories, and linked workspace users.",
             "postServiceAccess": "Post Service",
             "postServiceAccessDescription": "Access delivery merchants, shipments, dispatch, and settlement views.",
+            "postServiceViewOwn": "View Own Records",
+            "postServiceViewOwnDescription": "Show only posts assigned to this member's linked courier.",
             "postServiceDispatch": "Dispatch shipments",
             "postServiceDispatchDescription": "Create courier manifests and assign shipments to couriers.",
             "postServiceSettle": "Settle delivery cash",
@@ -6398,8 +6402,12 @@
             "markDelivered": "Delivered",
             "postpone": "Postpone",
             "return": "Return",
+            "transferPost": "Transfer post",
             "settlements": "Settlements",
             "recordHandover": "Record handover",
+            "addCourier": "Add Courier",
+            "editCourier": "Edit courier",
+            "addBusinessPartner": "Add business partner",
             "payMerchant": "Pay merchant",
             "editMerchant": "Edit merchant",
             "saveMerchant": "Save merchant",
@@ -6422,6 +6430,7 @@
             "dispatch": "Dispatch",
             "myDeliveries": "My deliveries",
             "merchants": "Merchants",
+            "courier": "Couriers",
             "settlements": "Settlements"
         },
         "view": {
@@ -6434,6 +6443,7 @@
             "recentRuns": "Recent dispatch runs",
             "myAssignedPosts": "My assigned posts",
             "deliveryMerchants": "Delivery merchants",
+            "couriers": "Couriers",
             "courierHandovers": "Courier cash handovers",
             "merchantPayouts": "Merchant payouts",
             "settlementHistory": "Settlement history"
@@ -6479,7 +6489,8 @@
             "deliveryNote": "Proof or delivery note",
             "varianceNote": "Required when paying less than the outstanding balance",
             "searchPosts": "Search tracking number, recipient, merchant, or courier...",
-            "searchMerchants": "Search merchants..."
+            "searchMerchants": "Search merchants...",
+            "searchCouriers": "Search couriers..."
         },
         "options": {
             "noVehicle": "No vehicle"
@@ -6515,7 +6526,12 @@
             "paid": "Paid",
             "collected": "Collected",
             "payable": "Payable",
-            "principal": "Principal"
+            "principal": "Principal",
+            "zone": "Zone",
+            "contact": "Contact",
+            "openPosts": "Open posts",
+            "deliveredPosts": "Delivered",
+            "outstandingCash": "Outstanding cash"
         },
         "empty": {
             "noPosts": "No posts match this view.",
@@ -6523,11 +6539,14 @@
             "noLinkedCourier": "Your workspace user is not linked to an active courier. An administrator can link one from the Agents directory.",
             "noMerchants": "No delivery merchants enabled yet.",
             "noMerchantSearchResults": "No merchants match your search.",
+            "noCouriers": "No couriers registered yet. Add one from the Agents directory.",
+            "noCourierPosts": "No post settlements recorded for this courier.",
             "noBalances": "No open balances.",
             "noSettlements": "No settlements recorded yet."
         },
         "filters": {
-            "all": "All"
+            "all": "All",
+            "showCompleted": "Show completed"
         },
         "status": {
             "received": "Received",
@@ -6581,9 +6600,22 @@
                 "title": "Permanently delete delivery merchant",
                 "description": "This permanently removes the delivery-merchant profile only. The Business Partner remains available elsewhere in the ERP."
             },
+            "addCourier": {
+                "title": "Add Courier"
+            },
+            "addBusinessPartner": {
+                "title": "Add Business Partner"
+            },
+            "editCourier": {
+                "title": "Edit Courier"
+            },
             "newPost": {
                 "title": "New post",
                 "description": "Recipient details stay on the post. Save them as a Business Partner only when you need a lasting CRM record."
+            },
+            "transferPost": {
+                "title": "Transfer post",
+                "description": "Create a new courier manifest for {{trackingNumber}} · {{recipient}}."
             },
             "status": {
                 "title": "Mark post {{status}}"
@@ -6636,13 +6668,21 @@
             "dispatchCreated": "Dispatch created",
             "dispatchCreatedDescription": "{{run}} was assigned to the courier.",
             "dispatchFailed": "Could not dispatch posts",
+            "postTransferred": "Post transferred",
+            "postTransferredDescription": "{{run}} was assigned to the new courier.",
+            "transferPostFailed": "Could not transfer post",
             "postMarked": "Post marked {{status}}",
             "updatePostFailed": "Could not update post",
             "courierHandoverRecorded": "Courier handover recorded",
             "merchantPayoutRecorded": "Merchant payout recorded",
             "settlementFailed": "Could not record settlement",
             "runClosed": "Dispatch run closed",
-            "closeRunFailed": "Could not close run"
+            "closeRunFailed": "Could not close run",
+            "courierAdded": "Courier added",
+            "courierUpdated": "Courier updated",
+            "courierSaveFailed": "Could not save courier",
+            "businessPartnerCreated": "Business partner created",
+            "businessPartnerSaveFailed": "Could not create business partner"
         },
         "errors": {
             "generic": "Please try again.",
@@ -6652,6 +6692,8 @@
             "selectCourier": "Select an active courier.",
             "selectShipment": "Select at least one shipment.",
             "shipmentNotDispatchable": "Only unassigned, ready, or postponed shipments can be dispatched.",
+            "returnedTransferOnly": "Only returned posts can be transferred.",
+            "differentCourierRequired": "Select a different courier.",
             "shipmentNotFound": "Shipment not found.",
             "completedShipment": "A completed shipment cannot be changed. Record an adjustment instead.",
             "reasonRequired": "A reason is required for this status.",

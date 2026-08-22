@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Building2, Plus, Users, X } from 'lucide-react'
+import { ArrowLeft, Building2, Users, X } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
@@ -26,6 +26,7 @@ import {
     Textarea,
     useToast
 } from '@/ui/components'
+import { AddPartnerButton } from '@/ui/components/crm/AddPartnerButton'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
 import { useWorkspace } from '@/workspace'
@@ -398,9 +399,7 @@ export function CreateRealEstateTransactionPage({
                                                         includeRealEstateRoles={features.real_estate}
                                                         excludePartnerIds={sellerLink?.id ? [sellerLink.id] : []}
                                                     />
-                                                    <Button type="button" size="icon" variant="outline" className="shrink-0" onClick={() => setIsCreateBuyerOpen(true)}>
-                                                        <Plus className="h-4 w-4" />
-                                                    </Button>
+                                                    <AddPartnerButton onClick={() => setIsCreateBuyerOpen(true)} label={partyLabels.buyer.addButtonLabel} />
                                                 </div>
                                                 {buyerLink ? (
                                                     <LinkedPartyBadge label={partyLabels.buyer.linkedLabel} name={buyerLink.name} onClear={() => setBuyerLink(null)} />
@@ -426,9 +425,7 @@ export function CreateRealEstateTransactionPage({
                                                         includeRealEstateRoles={features.real_estate}
                                                         excludePartnerIds={buyerLink?.id ? [buyerLink.id] : []}
                                                     />
-                                                    <Button type="button" size="icon" variant="outline" className="shrink-0" onClick={() => setIsCreateSellerOpen(true)}>
-                                                        <Plus className="h-4 w-4" />
-                                                    </Button>
+                                                    <AddPartnerButton onClick={() => setIsCreateSellerOpen(true)} label={partyLabels.seller.addButtonLabel} />
                                                 </div>
                                                 {sellerLink ? (
                                                     <LinkedPartyBadge label={partyLabels.seller.linkedLabel} name={sellerLink.name} onClear={() => setSellerLink(null)} />

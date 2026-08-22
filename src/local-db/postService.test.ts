@@ -13,6 +13,7 @@ const WORKSPACE_ID = "00000000-0000-4000-8000-000000000909";
 let createDeliveryMerchantProfile: typeof import("./postService").createDeliveryMerchantProfile;
 let createDeliveryShipment: typeof import("./postService").createDeliveryShipment;
 let createDeliveryRun: typeof import("./postService").createDeliveryRun;
+let transferReturnedDeliveryShipment: typeof import("./postService").transferReturnedDeliveryShipment;
 let updateDeliveryShipmentStatus: typeof import("./postService").updateDeliveryShipmentStatus;
 let settleDeliveryCourier: typeof import("./postService").settleDeliveryCourier;
 let payDeliveryMerchant: typeof import("./postService").payDeliveryMerchant;
@@ -65,7 +66,7 @@ describe("Post Service COD accounting", () => {
   beforeAll(async () => {
     installBrowserEnvironment();
     const postService = await import("./postService");
-    ({ createDeliveryMerchantProfile, createDeliveryShipment, createDeliveryRun, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryMerchant, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment } = postService);
+    ({ createDeliveryMerchantProfile, createDeliveryShipment, createDeliveryRun, transferReturnedDeliveryShipment, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryMerchant, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment } = postService);
   });
 
   beforeEach(async () => {
@@ -261,6 +262,38 @@ describe("Post Service COD accounting", () => {
     });
     await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
     await expect(updateDeliveryShipmentStatus(shipment.id, { status: "postponed", actorAgentId: deliveryCourier.id })).rejects.toThrow("reason is required");
+  });
+
+  it("transfers a returned post to a new courier in a fresh manifest", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const originalCourier = courier(crypto.randomUUID());
+    const replacementCourier = courier(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    await db.agents.bulkPut([originalCourier, replacementCourier]);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id, recipientName: "Recipient", recipientPhone: "07500000000",
+      recipientAddress: "Baghdad", currency: "iqd", codAmount: 100,
+    });
+    const originalRun = await createDeliveryRun(WORKSPACE_ID, { agentId: originalCourier.id, shipmentIds: [shipment.id], courierDeliveryFee: 5 });
+    await updateDeliveryShipmentStatus(shipment.id, { status: "returned", note: "Customer was unavailable", actorAgentId: originalCourier.id });
+
+    const transferRun = await transferReturnedDeliveryShipment(WORKSPACE_ID, {
+      agentId: replacementCourier.id,
+      shipmentId: shipment.id,
+      courierDeliveryFee: 7,
+      notes: "Transfer after return",
+    });
+
+    const transferred = await db.delivery_shipments.get(shipment.id);
+    const originalRunItem = await db.delivery_run_items.where("[runId+shipmentId]").equals([originalRun.id, shipment.id]).first();
+    const transferRunItem = await db.delivery_run_items.where("[runId+shipmentId]").equals([transferRun.id, shipment.id]).first();
+    const events = await db.delivery_shipment_events.where("[workspaceId+shipmentId]").equals([WORKSPACE_ID, shipment.id]).toArray();
+
+    expect(transferred).toMatchObject({ status: "assigned", assignedAgentId: replacementCourier.id, assignedRunId: transferRun.id, courierDeliveryFee: 7, statusNote: null });
+    expect(originalRunItem?.returnedAt).toBeTruthy();
+    expect(transferRunItem).toMatchObject({ runId: transferRun.id, shipmentId: shipment.id, returnedAt: null });
+    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ previousStatus: "returned", status: "assigned", actorAgentId: replacementCourier.id, note: "Transfer after return" })]));
   });
 
   it("uses a daily PST tracking sequence in local workspaces", async () => {
