@@ -6,7 +6,7 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { getTravelSaleCost } from '@/lib/travelAgency'
 import { roundOrderValue } from '@/lib/orderPrecision'
 import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
-import { normalizeOrderAdjustments } from '@/lib/orderAdjustments'
+import { createOrderAdjustment, normalizeOrderAdjustments, type OrderAdjustmentDraft } from '@/lib/orderAdjustments'
 import { isOnline } from '@/lib/network'
 import { getOrderLineInventoryQuantity } from '@/lib/orderLineItems'
 import { isPositiveQuantity, roundQuantity } from '@/lib/quantity'
@@ -61,6 +61,7 @@ import type {
     Inventory,
     Loan,
     OrderInstallment,
+    OrderAdjustment,
     OrderReturn,
     OrderReturnItem,
     OrderPaymentMethod,
@@ -2415,6 +2416,75 @@ export type ReturnSalesOrderInput = {
     reason: string
     returnedBy?: string | null
     actorRole?: string | null
+}
+
+export type CreatePostReturnOrderAdjustmentInput = {
+    orderId: string
+    returnId: string
+    adjustment: OrderAdjustmentDraft
+    notes?: string | null
+    createdBy?: string | null
+    actorRole?: string | null
+}
+
+/**
+ * Adds an immutable correction to a posted return. It deliberately does not
+ * rewrite the original return, its item rows, or payment reversals; those
+ * remain the historical record while adjusted documents project this row.
+ */
+export async function createPostReturnSalesOrderAdjustment(input: CreatePostReturnOrderAdjustmentInput) {
+    if (input.actorRole !== 'admin') {
+        throw new Error('Only admins can add post-return adjustments')
+    }
+
+    const order = await db.sales_orders.get(input.orderId)
+    if (!order || order.isDeleted) {
+        throw new Error('Sales order not found')
+    }
+    if (order.status !== 'completed' || order.returnStatus === 'none' || !order.returnStatus) {
+        throw new Error('Post-return adjustments require a returned completed sales order')
+    }
+    if (order.isLocked) {
+        throw new Error('locked_order_immutable')
+    }
+
+    const linkedReturn = await db.order_returns.get(input.returnId)
+    if (!linkedReturn || linkedReturn.isDeleted || linkedReturn.status !== 'posted' || linkedReturn.orderId !== order.id) {
+        throw new Error('Posted order return not found')
+    }
+
+    const confirmed = createOrderAdjustment(input.adjustment, order.currency, order.exchangeRates)
+    if (!confirmed) {
+        throw new Error('Invalid post-return adjustment')
+    }
+
+    const timestamp = new Date().toISOString()
+    const notes = input.notes?.trim() || null
+    const adjustment: OrderAdjustment = {
+        ...confirmed,
+        scope: 'post_return',
+        returnId: linkedReturn.id,
+        ...(notes ? { notes } : {}),
+        createdAt: timestamp,
+        createdBy: input.createdBy || null
+    }
+    const existingAdjustments = normalizeOrderAdjustments(order.orderAdjustments, order.currency)
+    const updatedOrder: SalesOrder = {
+        ...order,
+        orderAdjustments: [...existingAdjustments, adjustment],
+        updatedAt: timestamp,
+        version: order.version + 1,
+        ...getSyncMetadata(order.workspaceId, timestamp)
+    }
+
+    await db.sales_orders.put(updatedOrder)
+    await syncUpsertEntities(
+        'sales_orders',
+        [updatedOrder] as unknown as Array<Record<string, unknown> & { id: string; version: number }>,
+        order.workspaceId
+    )
+
+    return { order: updatedOrder, adjustment }
 }
 
 type PreparedSalesOrderReturnLine = {

@@ -9,7 +9,11 @@ import {
     type OrderAdjustment
 } from '@/local-db'
 import { getOrderLineFreeBonusQuantity, getOrderLinePaidQuantity, hasOrderLineFreeBonus } from '@/lib/orderLineItems'
-import { normalizeOrderAdjustments } from '@/lib/orderAdjustments'
+import {
+    getOrderTotalWithPostReturnAdjustments,
+    isPostReturnOrderAdjustment,
+    normalizeOrderAdjustments
+} from '@/lib/orderAdjustments'
 import {
     getA4OrderPrintReturnRowStyle,
     getOrderPrintOriginalTotal,
@@ -87,9 +91,14 @@ interface OrderDetailsPrintTemplateProps {
     printVersion?: OrderPrintVersion
 }
 
+export const ORDER_PRINT_COMMON_FIELD_KEYS = {
+    showOrderAdjustments: 'showOrderAdjustments'
+} as const
+
 export const ORDER_RECEIPT_TEMPLATE_FIELD_KEYS = {
     showExchangeRateSnapshots: 'orderReceipt.showExchangeRateSnapshots',
     showOriginalCurrencyPrice: 'orderReceipt.showOriginalCurrencyPrice',
+    showOrderAdjustments: ORDER_PRINT_COMMON_FIELD_KEYS.showOrderAdjustments,
     hideUnit: 'orderReceipt.hideUnit',
     hideDiscount: 'orderReceipt.hideDiscount',
     showNotes: 'orderReceipt.showNotes',
@@ -220,7 +229,9 @@ function buildOrderItemRows(items: Array<{ id: string; productId: string; produc
 }
 
 function getOrderAdjustmentRowLabel(t: TFunction<'translation', undefined>, adjustment: OrderAdjustment) {
-    const rowLabel = t('orders.adjustments.printRow', { defaultValue: 'Order adjustment' })
+    const rowLabel = isPostReturnOrderAdjustment(adjustment)
+        ? t('orders.adjustments.postReturn.printRow', { defaultValue: 'Post-return adjustment' })
+        : t('orders.adjustments.printRow', { defaultValue: 'Order adjustment' })
     const typeLabel = adjustment.type === 'addition'
         ? t('orders.adjustments.addition', { defaultValue: 'Addition (+)' })
         : t('orders.adjustments.deduction', { defaultValue: 'Deduction (−)' })
@@ -540,10 +551,6 @@ export function OrderReceiptPrintTemplate({
     const t = i18n.getFixedT(printLang)
     const isSales = kind === 'sales'
     const isOriginalPrint = isSales && printVersion === 'original'
-    const displayedTotal = isOriginalPrint ? getOrderPrintOriginalTotal(order) : order.total
-    const orderAdjustments = printVersion === 'returned'
-        ? []
-        : normalizeOrderAdjustments(order.orderAdjustments, order.currency)
     const salesOrder = isSales ? order as SalesOrder : null
     const purchaseOrder = !isSales ? order as PurchaseOrder : null
     const isReceiptRtl = isRTL(printLang)
@@ -556,6 +563,16 @@ export function OrderReceiptPrintTemplate({
         : (t('orders.details.purchaseOrder') || 'Purchase Order')
     const fieldValue = (key: string) => templateFields?.[key]
     const isFieldEnabled = (key: string) => fieldValue(key) !== 'false'
+    const showOrderAdjustments = isFieldEnabled(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showOrderAdjustments)
+    const normalizedOrderAdjustments = normalizeOrderAdjustments(order.orderAdjustments, order.currency)
+    const orderAdjustments = showOrderAdjustments && printVersion !== 'returned'
+        ? normalizedOrderAdjustments.filter((adjustment) => !isOriginalPrint || !isPostReturnOrderAdjustment(adjustment))
+        : []
+    const displayedTotal = isOriginalPrint
+        ? getOrderPrintOriginalTotal(order)
+        : showOrderAdjustments
+            ? getOrderTotalWithPostReturnAdjustments(order.total, normalizedOrderAdjustments)
+            : order.total
     const showExchangeRateSnapshots = isFieldEnabled(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showExchangeRateSnapshots)
     const showOriginalCurrencyPrice = isFieldEnabled(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showOriginalCurrencyPrice)
     const hideUnit = fieldValue(ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.hideUnit) === 'true'
@@ -938,10 +955,16 @@ export function OrderDetailsPrintTemplate({
     const t = i18n.getFixedT(printLang)
     const isSales = kind === 'sales'
     const isOriginalPrint = isSales && printVersion === 'original'
-    const displayedTotal = isOriginalPrint ? getOrderPrintOriginalTotal(order) : order.total
-    const orderAdjustments = printVersion === 'returned'
-        ? []
-        : normalizeOrderAdjustments(order.orderAdjustments, order.currency)
+    const showOrderAdjustments = templateFields?.[ORDER_PRINT_COMMON_FIELD_KEYS.showOrderAdjustments] !== 'false'
+    const normalizedOrderAdjustments = normalizeOrderAdjustments(order.orderAdjustments, order.currency)
+    const orderAdjustments = showOrderAdjustments && printVersion !== 'returned'
+        ? normalizedOrderAdjustments.filter((adjustment) => !isOriginalPrint || !isPostReturnOrderAdjustment(adjustment))
+        : []
+    const displayedTotal = isOriginalPrint
+        ? getOrderPrintOriginalTotal(order)
+        : showOrderAdjustments
+            ? getOrderTotalWithPostReturnAdjustments(order.total, normalizedOrderAdjustments)
+            : order.total
     const salesOrder = isSales ? (order as SalesOrder) : null
     const purchaseOrder = !isSales ? (order as PurchaseOrder) : null
     const currency = order.currency
@@ -1087,7 +1110,7 @@ export function OrderDetailsPrintTemplate({
                         {
                             key: 'orders.commercials.total',
                             label: t('common.total') || 'Total',
-                            value: formatCurrency(order.total, currency, iqdPreference),
+                            value: formatCurrency(displayedTotal, currency, iqdPreference),
                             className: 'font-bold'
                         },
                         {

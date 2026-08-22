@@ -1,5 +1,7 @@
-import type { OrderReturn, OrderReturnItem, SalesOrder } from '@/local-db/models'
+import type { OrderAdjustment, OrderReturn, OrderReturnItem, SalesOrder } from '@/local-db/models'
 import { getOrderLineInventoryQuantity } from '@/lib/orderLineItems'
+import { isPostReturnOrderAdjustment, normalizeOrderAdjustments } from '@/lib/orderAdjustments'
+import { roundOrderValue } from '@/lib/orderPrecision'
 
 const RETURN_EPSILON = 0.000001
 
@@ -10,11 +12,19 @@ export type SalesOrderReturnPrintLine = {
     unitRefundAmount: number
 }
 
+/** Immutable correction linked to one of the return records in this document. */
+export type SalesOrderReturnPrintAdjustment = OrderAdjustment
+
 export type SalesOrderReturnPrintData = {
     status: 'partial' | 'full'
     returnedAt?: string | null
+    /** Item refunds before post-return corrections. */
+    baseRefundAmount: number
+    /** Signed effect on the refund: a deduction increases it, an addition reduces it. */
+    adjustmentAmount: number
     totalRefundAmount: number
     lines: SalesOrderReturnPrintLine[]
+    adjustments: SalesOrderReturnPrintAdjustment[]
 }
 
 function positiveNumber(value: unknown) {
@@ -79,11 +89,23 @@ export function createSalesOrderReturnPrintData(
         !latest || entry.returnedAt > latest.returnedAt ? entry : latest
     , null)
 
+    const adjustments = normalizeOrderAdjustments(order.orderAdjustments, order.currency)
+        .filter((adjustment) => isPostReturnOrderAdjustment(adjustment)
+            && adjustment.returnId
+            && postedReturnIds.has(adjustment.returnId))
+    const baseRefundAmount = roundOrderValue(lines.reduce((sum, line) => sum + line.refundAmount, 0))
+    const adjustmentAmount = roundOrderValue(adjustments.reduce((sum, adjustment) => (
+        sum + (adjustment.type === 'deduction' ? adjustment.convertedAmount : -adjustment.convertedAmount)
+    ), 0))
+
     return {
         status: order.returnStatus === 'full' || calculatedFullReturn ? 'full' : 'partial',
         returnedAt: latestReturn?.returnedAt || null,
-        totalRefundAmount: lines.reduce((sum, line) => sum + line.refundAmount, 0),
-        lines
+        baseRefundAmount,
+        adjustmentAmount,
+        totalRefundAmount: roundOrderValue(baseRefundAmount + adjustmentAmount),
+        lines,
+        adjustments
     }
 }
 
@@ -94,8 +116,11 @@ export function createSampleSalesOrderReturnPrintData(order: SalesOrder): SalesO
         return {
             status: 'partial',
             returnedAt: new Date().toISOString(),
+            baseRefundAmount: 0,
+            adjustmentAmount: 0,
             totalRefundAmount: 0,
-            lines: []
+            lines: [],
+            adjustments: []
         }
     }
 
@@ -104,12 +129,15 @@ export function createSampleSalesOrderReturnPrintData(order: SalesOrder): SalesO
     return {
         status: 'partial',
         returnedAt: new Date().toISOString(),
+        baseRefundAmount: returnedQuantity * unitRefundAmount,
+        adjustmentAmount: 0,
         totalRefundAmount: returnedQuantity * unitRefundAmount,
         lines: [{
             orderItemId: firstItem.id,
             returnedQuantity,
             refundAmount: returnedQuantity * unitRefundAmount,
             unitRefundAmount
-        }]
+        }],
+        adjustments: []
     }
 }

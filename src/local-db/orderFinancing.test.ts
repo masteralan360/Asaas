@@ -43,6 +43,7 @@ let updateSalesOrderStatus: typeof import('./orders').updateSalesOrderStatus
 let updatePurchaseOrderStatus: typeof import('./orders').updatePurchaseOrderStatus
 let recordOrderPayment: typeof import('./orders').recordOrderPayment
 let returnSalesOrder: typeof import('./orders').returnSalesOrder
+let createPostReturnSalesOrderAdjustment: typeof import('./orders').createPostReturnSalesOrderAdjustment
 let createProduct: typeof import('./hooks').createProduct
 let createStorage: typeof import('./hooks').createStorage
 let recordLoanPayment: typeof import('./hooks').recordLoanPayment
@@ -363,6 +364,7 @@ describe('order-linked financing', () => {
         updatePurchaseOrderStatus = orders.updatePurchaseOrderStatus
         recordOrderPayment = orders.recordOrderPayment
         returnSalesOrder = orders.returnSalesOrder
+        createPostReturnSalesOrderAdjustment = orders.createPostReturnSalesOrderAdjustment
         createProduct = loans.createProduct
         createStorage = loans.createStorage
         recordLoanPayment = loans.recordLoanPayment
@@ -894,6 +896,51 @@ describe('order-linked financing', () => {
 
         expect(await db.order_returns.where('orderId').equals(completed.id).count()).toBe(0)
         expect((await db.sales_orders.get(completed.id))?.total).toBe(100)
+    })
+
+    it('adds an immutable adjustment linked to a posted return without rewriting the return record', async () => {
+        const customer = await createCustomer()
+        const { storage, product } = await createStockedSalesProduct(100)
+        const draft = await createSalesOrder(
+            WORKSPACE_ID,
+            salesOrderInput(customer.id, product, storage.id, { method: 'cash', total: 100 })
+        )
+        await recordOrderPayment(WORKSPACE_ID, {
+            orderType: 'sales', orderId: draft.id, amount: 100, paymentMethod: 'cash', paidAt: '2026-08-20T10:00:00.000Z'
+        })
+        await updateSalesOrderStatus(draft.id, 'pending')
+        const completed = await updateSalesOrderStatus(draft.id, 'completed')
+        const returned = await returnSalesOrder({
+            orderId: completed.id,
+            items: [{ orderItemId: completed.items[0].id, quantity: 0.5 }],
+            reason: 'customer_returned',
+            actorRole: 'admin'
+        })
+
+        await expect(createPostReturnSalesOrderAdjustment({
+            orderId: returned.order.id,
+            returnId: returned.return.id,
+            adjustment: { id: 'staff-attempt', type: 'addition', name: 'Restocking', currency: returned.order.currency, amount: '5' },
+            actorRole: 'staff'
+        })).rejects.toThrow('Only admins')
+
+        const result = await createPostReturnSalesOrderAdjustment({
+            orderId: returned.order.id,
+            returnId: returned.return.id,
+            adjustment: { id: 'restocking', type: 'addition', name: 'Restocking', currency: returned.order.currency, amount: '5' },
+            notes: 'Opened packaging',
+            createdBy: 'admin-1',
+            actorRole: 'admin'
+        })
+
+        expect(result.adjustment).toMatchObject({
+            id: 'restocking', scope: 'post_return', returnId: returned.return.id, notes: 'Opened packaging', createdBy: 'admin-1'
+        })
+        expect(result.order.total).toBe(50)
+        expect((await db.order_returns.get(returned.return.id))?.refundAmount).toBe(50)
+        expect((await db.sales_orders.get(returned.order.id))?.orderAdjustments).toEqual([
+            expect.objectContaining({ id: 'restocking', scope: 'post_return', returnId: returned.return.id })
+        ])
     })
 
     it('reduces an outstanding order loan before refunding paid money', async () => {

@@ -53,6 +53,7 @@ import {
 } from '@/ui/components/crm/PartnerOrderItemsPrintTemplate'
 import {
     ORDER_DETAILS_MOVABLE_COMPONENT_KEYS,
+    ORDER_PRINT_COMMON_FIELD_KEYS,
     ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS,
     ORDER_RECEIPT_TEMPLATE_FIELD_KEYS,
     OrderReceiptPrintTemplate,
@@ -60,7 +61,8 @@ import {
 } from '@/ui/components/orders/OrderPrintTemplates'
 import {
     AtlasStandardOrderInvoiceTemplate,
-    ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS
+    ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS,
+    ATLAS_STANDARD_ORDER_TEMPLATE_FIELD_KEYS
 } from '@/ui/components/orders/AtlasStandardOrderInvoiceTemplate'
 import {
     createSampleSalesOrderReturnPrintData,
@@ -96,6 +98,7 @@ export const PARTNER_DETAILS_TEMPLATE_FIELD_KEYS = {
 export const ORDER_DETAILS_TEMPLATE_FIELD_KEYS = {
     hideUnit: 'hideUnit',
     hideDiscount: 'hideDiscount',
+    showOrderAdjustments: ORDER_PRINT_COMMON_FIELD_KEYS.showOrderAdjustments,
     boldAllText: 'boldAllText',
     labelOpacity: 'labelOpacity'
 } as const
@@ -875,6 +878,12 @@ const ORDER_DETAILS_FIELDS = [
         type: 'boolean' as const
     },
     {
+        key: ORDER_DETAILS_TEMPLATE_FIELD_KEYS.showOrderAdjustments,
+        label: 'Show order adjustments',
+        value: 'true',
+        type: 'boolean' as const
+    },
+    {
         key: ORDER_DETAILS_TEMPLATE_FIELD_KEYS.boldAllText,
         label: 'Bold all text',
         value: 'false',
@@ -891,6 +900,15 @@ const ORDER_DETAILS_FIELDS = [
         label: 'Labels opacity',
         value: '50',
         type: 'number' as const
+    }
+]
+
+const ATLAS_STANDARD_ORDER_FIELDS = [
+    {
+        key: ATLAS_STANDARD_ORDER_TEMPLATE_FIELD_KEYS.showOrderAdjustments,
+        label: 'Show order adjustments',
+        value: 'true',
+        type: 'boolean' as const
     }
 ]
 
@@ -917,6 +935,12 @@ const ORDER_RECEIPT_FIELDS = [
         key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.hideDiscount,
         label: 'Hide discounts',
         value: 'false',
+        type: 'boolean' as const
+    },
+    {
+        key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showOrderAdjustments,
+        label: 'Show order adjustments',
+        value: 'true',
         type: 'boolean' as const
     },
     {
@@ -1565,7 +1589,7 @@ function createAtlasStandardOrderInvoicePreview(
             : 'en'
 
     return {
-        fields: [],
+        fields: printMode === 'order' ? ATLAS_STANDARD_ORDER_FIELDS : [],
         reflowLowerPageText: true,
         supportsBackgroundEdit: true,
         movableComponents: [
@@ -1574,7 +1598,7 @@ function createAtlasStandardOrderInvoicePreview(
         ],
         page: { widthMm: 210, heightMm: 297 },
         fixedPrintLang,
-        createElement: (_data, _effectiveId, printLangOverride, renderOptions) => (
+        createElement: (data, _effectiveId, printLangOverride, renderOptions) => (
             <AtlasStandardOrderInvoiceTemplate
                 workspaceName={options.workspaceName}
                 printLang={printLangOverride || fixedPrintLang}
@@ -1599,6 +1623,7 @@ function createAtlasStandardOrderInvoicePreview(
                 fieldDisplayModes={renderOptions?.fieldDisplayModes}
                 onFieldDisplayModeChange={renderOptions?.onFieldDisplayModeChange}
                 background={renderOptions?.background}
+                templateFields={data}
                 returnPrintData={returnPrintData}
                 printVersion={effectivePrintVersion}
             />

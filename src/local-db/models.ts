@@ -707,6 +707,7 @@ export type OrderPaymentMethod =
   | "loan"
   | "installments";
 export type OrderAdjustmentType = "addition" | "deduction";
+export type OrderAdjustmentScope = "order" | "post_return";
 export type WorkspaceVisibility = "private" | "public" | "link_only";
 export type MarketplaceOrderStatus =
   | "pending"
@@ -803,6 +804,15 @@ export interface OrderAdjustment {
   exchangeRateTimestamp: string;
   /** The rate snapshot(s) used to lock this adjustment's conversion. */
   exchangeRates: ExchangeRateSnapshot[];
+  /**
+   * Standard adjustments belong to the sale itself. A post-return adjustment
+   * is immutable and tied to one posted return record.
+   */
+  scope?: OrderAdjustmentScope;
+  returnId?: string | null;
+  notes?: string | null;
+  createdAt?: string | null;
+  createdBy?: string | null;
 }
 
 export interface SalesOrder extends BaseEntity {

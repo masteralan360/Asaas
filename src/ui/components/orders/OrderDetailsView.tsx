@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
-import { ArrowLeft, BadgeCheck, CalendarDays, CircleCheck, CreditCard, Eye, LayoutGrid, List, Loader2, Lock, Package, PackageCheck, Pencil, Printer, Receipt, RotateCcw, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse, XCircle } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, CalendarDays, CircleCheck, CreditCard, Eye, LayoutGrid, List, Loader2, Lock, Package, PackageCheck, Pencil, Plus, Printer, Receipt, RotateCcw, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedOrderError } from '@/lib/orderErrors'
 import { ORDER_STATUS_ADVANCE_HOLD_DURATION_MS } from '@/lib/pressAndHold'
@@ -10,7 +10,12 @@ import { useAuth } from '@/auth'
 import { useDemoTutorial } from '@/demo'
 import { useProfileData } from '@/hooks/useProfileData'
 import { getOrderLineFreeBonusQuantity, getOrderLineInventoryQuantity, getOrderLinePaidQuantity, hasOrderLineFreeBonus } from '@/lib/orderLineItems'
-import { getOrderAdjustmentTotals, normalizeOrderAdjustments } from '@/lib/orderAdjustments'
+import {
+    getOrderAdjustmentTotals,
+    getOrderTotalWithPostReturnAdjustments,
+    isPostReturnOrderAdjustment,
+    normalizeOrderAdjustments
+} from '@/lib/orderAdjustments'
 import { getOrderPrintOriginalTotal, getOrderPrintReturnState } from '@/lib/orderPrintReturnState'
 import { createSalesOrderReturnPrintData } from '@/lib/orderReturnPrintData'
 import { isPositiveQuantity } from '@/lib/quantity'
@@ -23,6 +28,7 @@ import {
     db,
     approvePurchaseOrderRequest,
     approveSalesOrderRequest,
+    createPostReturnSalesOrderAdjustment,
     deletePurchaseOrder,
     deleteSalesOrder,
     findLatestUnreversedPaymentTransaction,
@@ -89,13 +95,18 @@ import { getStoredLocalInvoicePdfPath } from '@/services/localInvoiceStorage'
 import { r2Service } from '@/services/r2Service'
 import { getWorkspaceUsageLimitMessage, isWorkspaceUsageLimitError } from '@/lib/workspaceUsage'
 import {
+    ORDER_PRINT_COMMON_FIELD_KEYS,
     ORDER_RECEIPT_TEMPLATE_FIELD_KEYS,
     OrderDetailsPrintTemplate,
     OrderReceiptPrintTemplate
 } from './OrderPrintTemplates'
-import { AtlasStandardOrderInvoiceTemplate } from './AtlasStandardOrderInvoiceTemplate'
+import {
+    AtlasStandardOrderInvoiceTemplate,
+    ATLAS_STANDARD_ORDER_TEMPLATE_FIELD_KEYS
+} from './AtlasStandardOrderInvoiceTemplate'
 import { OrderStatusBadge } from './OrderStatusBadge'
 import { useOrderCustomPrint } from './useOrderCustomPrint'
+import { PostReturnAdjustmentDialog } from './PostReturnAdjustmentDialog'
 
 function statusLabel(t: (key: string) => string, status: string) {
     const translated = t(`orders.status.${status}`)
@@ -285,6 +296,8 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
     const [isLoadingOrderInvoice, setIsLoadingOrderInvoice] = useState(false)
     const [returnTarget, setReturnTarget] = useState<{ orderItemId: string | null; maxQuantity: number; itemName: string } | null>(null)
     const [isReturning, setIsReturning] = useState(false)
+    const [isPostReturnAdjustmentOpen, setIsPostReturnAdjustmentOpen] = useState(false)
+    const [isSavingPostReturnAdjustment, setIsSavingPostReturnAdjustment] = useState(false)
 
     useEffect(() => {
         localStorage.setItem('order_details_view_mode', viewMode)
@@ -524,6 +537,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                 { key: 'notes', label: t('common.notes') || 'Notes', value: (order as any).notes || '', type: 'text' },
                 { key: 'hideUnit', label: t('orders.form.hideUnit', { defaultValue: 'Hide Unit' }), value: localStorage.getItem('atlas_print_hide_unit') || 'false', type: 'boolean' },
                 { key: 'hideDiscount', label: t('orders.form.hideDiscount', { defaultValue: 'Hide Discount' }), value: localStorage.getItem('atlas_print_hide_discount') || 'false', type: 'boolean' },
+                { key: ORDER_PRINT_COMMON_FIELD_KEYS.showOrderAdjustments, label: t('orders.adjustments.showInPrint', { defaultValue: 'Show order adjustments' }), value: 'true', type: 'boolean' },
                 { key: 'boldAllText', label: t('orders.print.boldAllText', { defaultValue: 'Bold all text' }), value: 'false', type: 'boolean' },
                 { key: 'labelOpacity', label: t('orders.print.labelOpacity', { defaultValue: 'Labels opacity' }), value: '50', type: 'number' },
             ],
@@ -588,6 +602,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                 { key: 'notes', label: t('common.notes') || 'Notes', value: order.notes || '', type: 'text' },
                 { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showExchangeRateSnapshots, label: t('sales.marketRatesSnapshot', { defaultValue: 'Show exchange rate snapshots' }), value: 'true', type: 'boolean' },
                 { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showOriginalCurrencyPrice, label: t('orders.print.showOriginalCurrencyPrice', { defaultValue: 'Show original currency price' }), value: 'true', type: 'boolean' },
+                { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showOrderAdjustments, label: t('orders.adjustments.showInPrint', { defaultValue: 'Show order adjustments' }), value: 'true', type: 'boolean' },
                 { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.hideUnit, label: t('orders.form.hideUnit', { defaultValue: 'Hide Unit' }), value: localStorage.getItem('atlas_print_hide_unit') || 'false', type: 'boolean' },
                 { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.hideDiscount, label: t('orders.form.hideDiscount', { defaultValue: 'Hide Discount' }), value: localStorage.getItem('atlas_print_hide_discount') || 'false', type: 'boolean' },
                 { key: ORDER_RECEIPT_TEMPLATE_FIELD_KEYS.showNotes, label: t('orders.print.showNotes', { defaultValue: 'Show notes' }), value: 'true', type: 'boolean' },
@@ -643,9 +658,11 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
         if (!resolved) return undefined
         const { order, kind } = resolved
         return {
-            fields: [],
+            fields: [
+                { key: ATLAS_STANDARD_ORDER_TEMPLATE_FIELD_KEYS.showOrderAdjustments, label: t('orders.adjustments.showInPrint', { defaultValue: 'Show order adjustments' }), value: 'true', type: 'boolean' }
+            ],
             supportsBackgroundEdit: true,
-            createElement: (_data, _effectiveId, printLangOverride, renderOptions) => {
+            createElement: (data, _effectiveId, printLangOverride, renderOptions) => {
                 const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
                 return (
                     <AtlasStandardOrderInvoiceTemplate
@@ -667,6 +684,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                         fieldDisplayModes={renderOptions?.fieldDisplayModes}
                         onFieldDisplayModeChange={renderOptions?.onFieldDisplayModeChange}
                         background={renderOptions?.background}
+                        templateFields={data}
                         printVersion={customOrderPrint.selectedPrintVersion}
                     />
                 )
@@ -676,7 +694,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                 return generateTemplatePdf({ element, format: 'a4', printLang: printLangOverride || baseLang })
             }
         }
-    }, [resolved, features, installments, workspaceName, i18n, bizPartner, workspaceFooterContacts, creatorName, productImageUrls, customOrderPrint.selectedPrintVersion])
+    }, [resolved, features, installments, workspaceName, t, i18n, bizPartner, workspaceFooterContacts, creatorName, productImageUrls, customOrderPrint.selectedPrintVersion])
 
     const orderAtlasStandardReturnPreview = useMemo<TemplatePreview | undefined>(() => {
         if (!resolved || resolved.kind !== 'sales' || !returnPrintData) return undefined
@@ -743,6 +761,9 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
     const iqd = features.iqd_display_preference
     const orderAdjustments = normalizeOrderAdjustments(order.orderAdjustments, currency)
     const orderAdjustmentTotals = getOrderAdjustmentTotals(orderAdjustments)
+    const adjustedOrderTotal = isSales
+        ? getOrderTotalWithPostReturnAdjustments(order.total, orderAdjustments)
+        : order.total
     const mainStorageId = isSales ? (order as SalesOrder).sourceStorageId : (order as PurchaseOrder).destinationStorageId
     const showFreeBonus = hasOrderLineFreeBonus(order.items)
     const totalUnits = order.items.reduce((sum, item) => sum + (isSales
@@ -753,6 +774,10 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
     const outstanding = getOrderBalanceAmount(order)
     const paymentStatus = getOrderPaymentStatus(order)
     const isFullyReturnedSalesOrder = isSales && (order as SalesOrder).returnStatus === 'full'
+    const canCreatePostReturnAdjustment = isSales
+        && salesOrderReturns.length > 0
+        && user?.role === 'admin'
+        && !order.isLocked
     const isFinanced = order.paymentMethod === 'loan' || order.paymentMethod === 'installments' || !!order.linkedLoanId
     const linkedLoanRoute = linkedLoan
         ? linkedLoan.loanCategory === 'simple' ? `/loans/${linkedLoan.id}` : `/installments/${linkedLoan.id}`
@@ -986,6 +1011,39 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
         }
     }
 
+    const handlePostReturnAdjustment = async (input: {
+        returnId: string
+        adjustment: Parameters<typeof createPostReturnSalesOrderAdjustment>[0]['adjustment']
+        notes: string
+    }) => {
+        if (!salesOrder) return
+
+        setIsSavingPostReturnAdjustment(true)
+        try {
+            await createPostReturnSalesOrderAdjustment({
+                orderId: salesOrder.id,
+                returnId: input.returnId,
+                adjustment: input.adjustment,
+                notes: input.notes,
+                createdBy: user?.id || null,
+                actorRole: user?.role || null
+            })
+            toast({
+                title: t('orders.adjustments.postReturn.title', { defaultValue: 'Post-return adjustment' }),
+                description: t('orders.adjustments.postReturn.saved', { defaultValue: 'The immutable correction was added to the selected return.' })
+            })
+            setIsPostReturnAdjustmentOpen(false)
+        } catch (error: any) {
+            toast({
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: getLocalizedOrderError(error, t, 'Failed to add post-return adjustment'),
+                variant: 'destructive'
+            })
+        } finally {
+            setIsSavingPostReturnAdjustment(false)
+        }
+    }
+
     return (
         <div
             className="space-y-4"
@@ -1116,6 +1174,16 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                             {t('orders.return.action', { defaultValue: 'Return Order' })}
                         </Button>
                     )}
+                    {canCreatePostReturnAdjustment ? (
+                        <Button
+                            variant="outline"
+                            className="border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 hover:text-amber-800"
+                            onClick={() => setIsPostReturnAdjustmentOpen(true)}
+                        >
+                            <Plus className="mr-2 h-4 w-4" />
+                            {t('orders.adjustments.postReturn.action', { defaultValue: 'Post-return adjustment' })}
+                        </Button>
+                    ) : null}
                     {canDelete && order.status === 'draft' && (
                         <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
                             <Trash2 className="mr-2 h-4 w-4" />
@@ -1786,7 +1854,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                     <div className="flex flex-wrap items-center justify-between gap-3">
                                         <div className="text-sm font-black">{t('orders.adjustments.title', { defaultValue: 'Order Adjustments' })}</div>
                                         <div className="text-sm font-black">
-                                            {t('orders.adjustments.finalTotal', { defaultValue: 'Final order total' })}: {formatCurrency(order.total, currency, iqd)}
+                                            {t('orders.adjustments.finalTotal', { defaultValue: 'Final order total' })}: {formatCurrency(adjustedOrderTotal, currency, iqd)}
                                         </div>
                                     </div>
                                     <div className="mt-3 space-y-2">
@@ -1797,7 +1865,20 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                                         {adjustment.type === 'addition' ? '+' : '−'}
                                                     </span>
                                                     <span className="font-medium">{adjustment.name}</span>
+                                                    {isPostReturnOrderAdjustment(adjustment) ? (
+                                                        <span className="ml-2 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200">
+                                                            {t('orders.adjustments.postReturn.badge', { defaultValue: 'Post-return' })}
+                                                        </span>
+                                                    ) : null}
                                                     <span className="ml-2 text-xs uppercase text-muted-foreground">{adjustment.currency}</span>
+                                                    {isPostReturnOrderAdjustment(adjustment) && adjustment.returnId ? (
+                                                        <span className="ml-2 text-xs text-muted-foreground">
+                                                            {t('orders.adjustments.postReturn.linkedReturn', { defaultValue: 'Linked return' })}: {salesOrderReturns.find((orderReturn) => orderReturn.id === adjustment.returnId)?.reason || adjustment.returnId}
+                                                        </span>
+                                                    ) : null}
+                                                    {isPostReturnOrderAdjustment(adjustment) && adjustment.notes ? (
+                                                        <div className="mt-1 text-xs text-muted-foreground">{adjustment.notes}</div>
+                                                    ) : null}
                                                 </div>
                                                 <span className={cn('shrink-0 font-bold', adjustment.type === 'addition' ? 'text-emerald-600' : 'text-rose-600')}>
                                                     {adjustment.type === 'addition' ? '+' : '−'}{formatCurrency(adjustment.amount, adjustment.currency, iqd)}
@@ -1813,7 +1894,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                     <div className="mt-3 grid gap-2 sm:grid-cols-3">
                                         <AdjustmentSummary label={t('orders.adjustments.totalAdditions', { defaultValue: 'Total additions' })} value={`+${formatCurrency(orderAdjustmentTotals.additions, currency, iqd)}`} valueClassName="text-emerald-600" />
                                         <AdjustmentSummary label={t('orders.adjustments.totalDeductions', { defaultValue: 'Total deductions' })} value={`−${formatCurrency(orderAdjustmentTotals.deductions, currency, iqd)}`} valueClassName="text-rose-600" />
-                                        <AdjustmentSummary label={t('orders.adjustments.finalTotal', { defaultValue: 'Final order total' })} value={formatCurrency(order.total, currency, iqd)} />
+                                        <AdjustmentSummary label={t('orders.adjustments.finalTotal', { defaultValue: 'Final order total' })} value={formatCurrency(adjustedOrderTotal, currency, iqd)} />
                                     </div>
                                 </div>
                             ) : null}
@@ -1868,6 +1949,18 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                 isItemReturn={!!returnTarget?.orderItemId}
                 maxQuantity={returnTarget?.maxQuantity || 1}
                 itemName={returnTarget?.itemName || ''}
+            />
+
+            <PostReturnAdjustmentDialog
+                open={isPostReturnAdjustmentOpen}
+                onOpenChange={setIsPostReturnAdjustmentOpen}
+                returns={salesOrderReturns}
+                orderCurrency={currency}
+                exchangeRates={order.exchangeRates || []}
+                availableCurrencies={Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as import('@/local-db').CurrencyCode[]}
+                iqdDisplayPreference={features.iqd_display_preference}
+                isSaving={isSavingPostReturnAdjustment}
+                onSubmit={handlePostReturnAdjustment}
             />
 
             <SettlementDialog

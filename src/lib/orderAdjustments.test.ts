@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
     calculateOrderTotalWithAdjustments,
     createOrderAdjustment,
+    getOrderTotalWithPostReturnAdjustments,
+    isPostReturnOrderAdjustment,
     getOrderAdjustmentTotals,
     normalizeOrderAdjustments
 } from './orderAdjustments'
@@ -94,5 +96,31 @@ describe('order adjustments', () => {
 
         expect(getOrderAdjustmentTotals(adjustments)).toEqual({ additions: 12.5, deductions: 3.25 })
         expect(calculateOrderTotalWithAdjustments(100, adjustments)).toBe(109.25)
+    })
+
+    it('keeps post-return corrections linked and applies only those to adjusted document totals', () => {
+        const regular = createOrderAdjustment({
+            id: 'shipping', type: 'addition', name: 'Shipping', currency: 'usd', amount: '8'
+        }, 'usd')!
+        const postReturn = {
+            ...createOrderAdjustment({
+                id: 'restocking', type: 'addition', name: 'Restocking fee', currency: 'usd', amount: '5'
+            }, 'usd')!,
+            scope: 'post_return' as const,
+            returnId: 'return-1',
+            notes: 'Opened packaging',
+            createdAt: '2026-08-22T12:00:00.000Z',
+            createdBy: 'admin-1'
+        }
+
+        const normalized = normalizeOrderAdjustments([regular, postReturn], 'usd')
+
+        expect(normalized[1]).toMatchObject({
+            scope: 'post_return',
+            returnId: 'return-1',
+            notes: 'Opened packaging'
+        })
+        expect(isPostReturnOrderAdjustment(normalized[1])).toBe(true)
+        expect(getOrderTotalWithPostReturnAdjustments(50, normalized)).toBe(55)
     })
 })

@@ -497,6 +497,11 @@ describe('Order Details custom print template', () => {
                 type: 'boolean'
             }),
             expect.objectContaining({
+                key: customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.showOrderAdjustments,
+                value: 'true',
+                type: 'boolean'
+            }),
+            expect.objectContaining({
                 key: customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.boldAllText,
                 value: 'false',
                 type: 'boolean'
@@ -624,7 +629,7 @@ describe('Order Details custom print template', () => {
             .createCustomTemplatePreview(target!, { printLang: 'en' })
             .createElement({})
             .props.order
-        const html = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+        const preview = customTemplates.createCustomTemplatePreview(target!, {
             printLang: 'en',
             order: {
                 ...baseOrder,
@@ -642,11 +647,16 @@ describe('Order Details custom print template', () => {
                     exchangeRates: []
                 }]
             }
-        }).createElement({}))
+        })
+        const html = renderToStaticMarkup(preview.createElement({}))
+        const hiddenHtml = renderToStaticMarkup(preview.createElement({
+            [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.showOrderAdjustments]: 'false'
+        }))
 
         expect(html).toContain('data-order-print-row-type="adjustment"')
         expect(html).toContain('Delivery')
         expect(html).toContain('+$5')
+        expect(hiddenHtml).not.toContain('data-order-print-row-type="adjustment"')
     })
 
     it('preserves movable component positions, hidden fields, field orders, and field titles when reading a saved layout', () => {
@@ -806,7 +816,13 @@ describe('Atlas Standard order invoice custom print template', () => {
             onFieldDisplayModeChange
         })
 
-        expect(preview.fields).toEqual([])
+        expect(preview.fields).toEqual([
+            expect.objectContaining({
+                key: 'showOrderAdjustments',
+                value: 'true',
+                type: 'boolean'
+            })
+        ])
         expect(preview.reflowLowerPageText).toBe(true)
         expect(preview.movableComponents).toEqual([
             { key: 'atlasStandardWorkspaceLogo', label: 'Workspace Logo' },
@@ -994,7 +1010,7 @@ describe('Atlas Standard order invoice custom print template', () => {
             .createCustomTemplatePreview(target!, { printLang: 'en' })
             .createElement({})
             .props.order
-        const html = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+        const preview = customTemplates.createCustomTemplatePreview(target!, {
             printLang: 'en',
             order: {
                 ...baseOrder,
@@ -1012,11 +1028,14 @@ describe('Atlas Standard order invoice custom print template', () => {
                     exchangeRates: []
                 }]
             }
-        }).createElement({}))
+        })
+        const html = renderToStaticMarkup(preview.createElement({}))
+        const hiddenHtml = renderToStaticMarkup(preview.createElement({ showOrderAdjustments: 'false' }))
 
         expect(html).toContain('data-order-print-row-type="adjustment"')
         expect(html).toContain('Delivery')
         expect(html).toContain('+$5')
+        expect(hiddenHtml).not.toContain('data-order-print-row-type="adjustment"')
     })
 
     it('totals kilogram-quantity products in the product-name column when enabled, converting to tons above 1000 kg', () => {
@@ -1152,6 +1171,20 @@ describe('Atlas Standard return custom print template', () => {
                 exchangeRateSource: 'native',
                 exchangeRateTimestamp: '2026-08-22T00:00:00.000Z',
                 exchangeRates: []
+            }, {
+                id: 'return-packaging-adjustment',
+                type: 'deduction' as const,
+                name: 'Damaged packaging',
+                currency: 'usd' as const,
+                amount: 5,
+                orderCurrency: 'usd' as const,
+                convertedAmount: 5,
+                exchangeRate: 1,
+                exchangeRateSource: 'native',
+                exchangeRateTimestamp: '2026-08-22T00:00:00.000Z',
+                exchangeRates: [],
+                scope: 'post_return' as const,
+                returnId: 'return-1'
             }],
             items: [
                 { ...baseOrder.items[0], id: 'returned-line', productName: 'Returned Product', quantity: 3, lineTotal: 75, convertedUnitPrice: 25 },
@@ -1165,8 +1198,25 @@ describe('Atlas Standard return custom print template', () => {
             orderReturnPrintData: {
                 status: 'partial',
                 returnedAt: '2026-08-15T10:00:00.000Z',
-                totalRefundAmount: 20,
-                lines: [{ orderItemId: 'returned-line', returnedQuantity: 1, refundAmount: 20, unitRefundAmount: 20 }]
+                baseRefundAmount: 20,
+                adjustmentAmount: 5,
+                totalRefundAmount: 25,
+                lines: [{ orderItemId: 'returned-line', returnedQuantity: 1, refundAmount: 20, unitRefundAmount: 20 }],
+                adjustments: [{
+                    id: 'return-packaging-adjustment',
+                    type: 'deduction',
+                    name: 'Damaged packaging',
+                    currency: 'usd',
+                    amount: 5,
+                    orderCurrency: 'usd',
+                    convertedAmount: 5,
+                    exchangeRate: 1,
+                    exchangeRateSource: 'native',
+                    exchangeRateTimestamp: '2026-08-22T00:00:00.000Z',
+                    exchangeRates: [],
+                    scope: 'post_return',
+                    returnId: 'return-1'
+                }]
             }
         }).createElement({}))
 
@@ -1175,9 +1225,12 @@ describe('Atlas Standard return custom print template', () => {
         expect(html).toContain('Refund Amount')
         expect(html).toContain('Returned Product')
         expect(html).not.toContain('Unreturned Product')
-        expect(html).toContain('$20')
+        expect(html).toContain('$25')
         expect(html).not.toContain('data-order-print-return-value=')
-        expect(html).not.toContain('data-order-print-row-type="adjustment"')
+        expect(html).toContain('data-order-print-row-type="adjustment"')
+        expect(html).toContain('Post-return adjustment')
+        expect(html).toContain('Damaged packaging')
+        expect(html).not.toContain('Delivery')
     })
 
     it('copies Atlas Standard layout elements but resets sale field labels and values', () => {
@@ -1271,6 +1324,8 @@ describe('Order Receipt custom print template', () => {
             expect.objectContaining({
                 key: 'orderReceipt.hideDiscount', value: 'false', type: 'boolean' }),
             expect.objectContaining({
+                key: 'showOrderAdjustments', value: 'true', type: 'boolean' }),
+            expect.objectContaining({
                 key: 'orderReceipt.showContacts', value: 'true', type: 'boolean' }),
             expect.objectContaining({
                 key: 'orderReceipt.thankYou', value: '', type: 'text' })
@@ -1351,7 +1406,7 @@ describe('Order Receipt custom print template', () => {
             .createCustomTemplatePreview(target!, { printLang: 'en' })
             .createElement({})
             .props.order
-        const html = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
+        const preview = customTemplates.createCustomTemplatePreview(target!, {
             printLang: 'en',
             order: {
                 ...baseOrder,
@@ -1369,13 +1424,16 @@ describe('Order Receipt custom print template', () => {
                     exchangeRates: []
                 }]
             }
-        }).createElement({}))
+        })
+        const html = renderToStaticMarkup(preview.createElement({}))
+        const hiddenHtml = renderToStaticMarkup(preview.createElement({ showOrderAdjustments: 'false' }))
 
         expect(html).toContain('data-order-print-row-type="adjustment"')
         expect(html).toContain('Handling credit')
         expect(html).toContain('−3.00')
         expect(html).not.toContain('#fef3c7')
         expect(html).not.toContain('#fee2e2')
+        expect(hiddenHtml).not.toContain('data-order-print-row-type="adjustment"')
     })
 })
 

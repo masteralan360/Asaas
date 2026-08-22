@@ -13,7 +13,11 @@ import {
     type SalesOrder
 } from '@/local-db'
 import { getOrderLineFreeBonusQuantity, getOrderLinePaidQuantity } from '@/lib/orderLineItems'
-import { normalizeOrderAdjustments } from '@/lib/orderAdjustments'
+import {
+    getOrderTotalWithPostReturnAdjustments,
+    isPostReturnOrderAdjustment,
+    normalizeOrderAdjustments
+} from '@/lib/orderAdjustments'
 import {
     getA4OrderPrintReturnRowStyle,
     getOrderPrintOriginalTotal,
@@ -82,6 +86,7 @@ export interface AtlasStandardOrderInvoiceTemplateProps {
     onFieldDisplayModeChange?: (fieldKey: string, mode: string) => void
     productImageUrls?: ProductPrintImageUrls
     background?: CustomTemplateBackground | null
+    templateFields?: Record<string, string>
     /** Renders a return-only document with the same Atlas Standard editor controls. */
     returnPrintData?: SalesOrderReturnPrintData | null
     /** Whether to show adjusted values, original order values, or return-only values. */
@@ -378,6 +383,10 @@ const ATLAS_STANDARD_LABELS = {
         statuses: { draft: 'ڕەشنووس', pending: 'چاوەڕوان', completed: 'تەواوبوو', cancelled: 'هەڵوەشاوە', ordered: 'داواکراو', received: 'وەرگیراو' },
         paymentMethods: { cash: 'کاش', fib: 'FIB', qicard: 'کیو کارد', zaincash: 'زین کاش', fastpay: 'فاست پەی', bank_transfer: 'گواستنەوەی بانکی', loan: 'قەرز', installments: 'قسط' }
     }
+} as const
+
+export const ATLAS_STANDARD_ORDER_TEMPLATE_FIELD_KEYS = {
+    showOrderAdjustments: 'showOrderAdjustments'
 } as const
 
 const ATLAS_STANDARD_RETURN_LABELS = {
@@ -1097,7 +1106,8 @@ export function AtlasStandardOrderInvoiceTemplate({
     productImageUrls,
     background,
     returnPrintData,
-    printVersion
+    printVersion,
+    templateFields
 }: AtlasStandardOrderInvoiceTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
@@ -1151,16 +1161,24 @@ export function AtlasStandardOrderInvoiceTemplate({
     const paymentMethod = order.paymentMethod
         ? labels.paymentMethods[order.paymentMethod as keyof typeof labels.paymentMethods] || order.paymentMethod
         : '-'
+    const showOrderAdjustments = templateFields?.[ATLAS_STANDARD_ORDER_TEMPLATE_FIELD_KEYS.showOrderAdjustments] !== 'false'
+    const normalizedOrderAdjustments = normalizeOrderAdjustments(order.orderAdjustments, currency)
+    const orderAdjustments = isReturnPrint
+        ? returnPrintData?.adjustments || []
+        : showOrderAdjustments
+            ? normalizedOrderAdjustments.filter((adjustment) => !isOriginalPrint || !isPostReturnOrderAdjustment(adjustment))
+        : []
     const printTotal = isReturnPrint
         ? returnPrintData?.totalRefundAmount || 0
-        : isOriginalPrint ? getOrderPrintOriginalTotal(order) : order.total
+        : isOriginalPrint
+            ? getOrderPrintOriginalTotal(order)
+            : showOrderAdjustments
+                ? getOrderTotalWithPostReturnAdjustments(order.total, normalizedOrderAdjustments)
+                : order.total
     const amountInWords = numberToWords(printTotal, printLang)
     const items = isReturnPrint
         ? order.items.filter((item) => returnLineByOrderItemId.has(item.id))
         : order.items || []
-    const orderAdjustments = isReturnPrint
-        ? []
-        : normalizeOrderAdjustments(order.orderAdjustments, currency)
     const printableTableRows = [
         ...items.map((item) => ({ kind: 'item' as const, item })),
         ...orderAdjustments.map((adjustment) => ({ kind: 'adjustment' as const, adjustment }))
@@ -1276,14 +1294,23 @@ export function AtlasStandardOrderInvoiceTemplate({
                     {tableItems.map((tableRow, index) => {
                         if (tableRow.kind === 'adjustment') {
                             const { adjustment } = tableRow
-                            const typeLabel = adjustment.type === 'addition'
-                                ? t('orders.adjustments.addition', { defaultValue: 'Addition (+)' })
-                                : t('orders.adjustments.deduction', { defaultValue: 'Deduction (−)' })
-                            const sign = adjustment.type === 'addition' ? '+' : '−'
+                            const isPostReturnAdjustment = isPostReturnOrderAdjustment(adjustment)
+                            const typeLabel = isReturnPrint && isPostReturnAdjustment
+                                ? adjustment.type === 'addition'
+                                    ? t('orders.adjustments.postReturn.reducesRefund', { defaultValue: 'Reduces refund' })
+                                    : t('orders.adjustments.postReturn.increasesRefund', { defaultValue: 'Increases refund' })
+                                : adjustment.type === 'addition'
+                                    ? t('orders.adjustments.addition', { defaultValue: 'Addition (+)' })
+                                    : t('orders.adjustments.deduction', { defaultValue: 'Deduction (−)' })
+                            const sign = isReturnPrint && isPostReturnAdjustment
+                                ? adjustment.type === 'addition' ? '−' : '+'
+                                : adjustment.type === 'addition' ? '+' : '−'
                             const values: Record<string, ReactNode> = {
                                 [tableKeys.productImage]: '\u00a0',
                                 [tableKeys.number]: '\u00a0',
-                                [tableKeys.product]: `${t('orders.adjustments.printRow', { defaultValue: 'Order adjustment' })} — ${adjustment.name}`,
+                                [tableKeys.product]: `${isPostReturnAdjustment
+                                    ? t('orders.adjustments.postReturn.printRow', { defaultValue: 'Post-return adjustment' })
+                                    : t('orders.adjustments.printRow', { defaultValue: 'Order adjustment' })} — ${adjustment.name}`,
                                 [tableKeys.expiry]: '\u00a0',
                                 [tableKeys.batchNumber]: '\u00a0',
                                 [tableKeys.quantity]: '\u00a0',

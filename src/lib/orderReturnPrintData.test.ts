@@ -24,13 +24,16 @@ describe('sales order return print data', () => {
         expect(printData).toEqual({
             status: 'partial',
             returnedAt: '2026-08-15T10:00:00.000Z',
+            baseRefundAmount: 20,
+            adjustmentAmount: 0,
             totalRefundAmount: 20,
             lines: [{
                 orderItemId: 'line-returned',
                 returnedQuantity: 1,
                 refundAmount: 20,
                 unitRefundAmount: 20
-            }]
+            }],
+            adjustments: []
         })
     })
 
@@ -52,5 +55,40 @@ describe('sales order return print data', () => {
 
         expect(printData?.status).toBe('full')
         expect(printData?.totalRefundAmount).toBe(65)
+    })
+
+    it('includes only immutable corrections linked to posted returns and reconciles the refund total', () => {
+        const order = {
+            id: 'order-3',
+            returnStatus: 'partial',
+            currency: 'usd',
+            items: [{ id: 'line-1', quantity: 1, lineTotal: 25, convertedUnitPrice: 25 }],
+            orderAdjustments: [
+                {
+                    id: 'extra-refund', type: 'deduction', name: 'Damaged packaging', currency: 'usd', amount: 5,
+                    orderCurrency: 'usd', convertedAmount: 5, exchangeRate: 1, exchangeRateSource: 'native',
+                    exchangeRateTimestamp: '2026-08-15T10:00:00.000Z', exchangeRates: [], scope: 'post_return', returnId: 'posted-return'
+                },
+                {
+                    id: 'voided-return-adjustment', type: 'addition', name: 'Fee', currency: 'usd', amount: 3,
+                    orderCurrency: 'usd', convertedAmount: 3, exchangeRate: 1, exchangeRateSource: 'native',
+                    exchangeRateTimestamp: '2026-08-15T10:00:00.000Z', exchangeRates: [], scope: 'post_return', returnId: 'voided-return'
+                }
+            ]
+        } as any
+
+        const printData = createSalesOrderReturnPrintData(order, [
+            { id: 'posted-return', status: 'posted', returnedAt: '2026-08-15T10:00:00.000Z', isDeleted: false },
+            { id: 'voided-return', status: 'voided', returnedAt: '2026-08-15T11:00:00.000Z', isDeleted: false }
+        ] as any, [
+            { returnId: 'posted-return', orderItemId: 'line-1', quantity: 1, refundAmount: 25, isDeleted: false }
+        ] as any)
+
+        expect(printData).toMatchObject({
+            baseRefundAmount: 25,
+            adjustmentAmount: 5,
+            totalRefundAmount: 30,
+            adjustments: [expect.objectContaining({ id: 'extra-refund', returnId: 'posted-return' })]
+        })
     })
 })

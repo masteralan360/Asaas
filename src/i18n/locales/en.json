@@ -2174,6 +2174,7 @@
         "adjustments": {
             "title": "Order Adjustments",
             "printRow": "Order adjustment",
+            "showInPrint": "Show order adjustments",
             "description": "Confirm each row before it affects the order total.",
             "type": "Adjustment type",
             "addition": "Addition (+)",
@@ -2190,7 +2191,27 @@
             "totalDeductions": "Total deductions",
             "finalTotal": "Final order total",
             "convertedAmount": "Applied to order",
-            "exchangeRateUnavailable": "Exchange rate unavailable for the selected currency."
+            "exchangeRateUnavailable": "Exchange rate unavailable for the selected currency.",
+            "postReturn": {
+                "title": "Post-return adjustment",
+                "action": "Post-return adjustment",
+                "description": "Add a correction to one posted return. It is permanently recorded and never changes the original order document.",
+                "immutableNotice": "This correction is immutable after saving. Use the reason and note to make its cause clear.",
+                "return": "Posted return",
+                "selectReturn": "Select a return",
+                "reason": "Reason",
+                "reasonPlaceholder": "Restocking fee, damaged packaging…",
+                "notes": "Note (optional)",
+                "notesPlaceholder": "Add context for this correction…",
+                "validation": "Choose a return, type, currency, reason, and amount greater than zero.",
+                "save": "Save immutable correction",
+                "saved": "The immutable correction was added to the selected return.",
+                "badge": "Post-return",
+                "linkedReturn": "Linked return",
+                "printRow": "Post-return adjustment",
+                "reducesRefund": "Reduces refund",
+                "increasesRefund": "Increases refund"
+            }
         },
         "messages": {
             "deleteConfirm": "Are you sure you want to delete this order?"

@@ -121,6 +121,13 @@ export function normalizeOrderAdjustments(value: unknown, orderCurrency: Currenc
             return []
         }
 
+        const scope = row.scope === 'post_return' && typeof row.returnId === 'string' && row.returnId
+            ? 'post_return' as const
+            : 'order' as const
+        const notes = typeof row.notes === 'string' && row.notes.trim() ? row.notes.trim() : null
+        const createdAt = typeof row.createdAt === 'string' && row.createdAt ? row.createdAt : null
+        const createdBy = typeof row.createdBy === 'string' && row.createdBy ? row.createdBy : null
+
         return [{
             id,
             type,
@@ -132,9 +139,42 @@ export function normalizeOrderAdjustments(value: unknown, orderCurrency: Currenc
             exchangeRate: Math.round(exchangeRate * 10 ** 8) / 10 ** 8,
             exchangeRateSource: row.exchangeRateSource,
             exchangeRateTimestamp: row.exchangeRateTimestamp,
-            exchangeRates: rowExchangeRates
+            exchangeRates: rowExchangeRates,
+            ...(scope === 'post_return' ? {
+                scope,
+                returnId: row.returnId as string,
+                ...(notes ? { notes } : {}),
+                ...(createdAt ? { createdAt } : {}),
+                ...(createdBy ? { createdBy } : {})
+            } : {})
         }]
     })
+}
+
+export function isPostReturnOrderAdjustment(adjustment: OrderAdjustment) {
+    return adjustment.scope === 'post_return' && Boolean(adjustment.returnId)
+}
+
+/** Amount that changes the remaining order balance after a return. */
+export function getPostReturnOrderAdjustmentNetAmount(adjustments: readonly OrderAdjustment[]) {
+    return roundOrderValue(adjustments.reduce((total, adjustment) => {
+        if (!isPostReturnOrderAdjustment(adjustment)) return total
+        return total + (adjustment.type === 'addition'
+            ? adjustment.convertedAmount
+            : -adjustment.convertedAmount)
+    }, 0))
+}
+
+/**
+ * The persisted order total remains the value after item returns. Post-return
+ * corrections are kept as immutable audit rows, so document totals apply them
+ * at read/print time without rewriting the original return transaction.
+ */
+export function getOrderTotalWithPostReturnAdjustments(
+    existingTotal: number,
+    adjustments: readonly OrderAdjustment[]
+) {
+    return roundOrderValue(existingTotal + getPostReturnOrderAdjustmentNetAmount(adjustments))
 }
 
 export function getOrderAdjustmentTotals(adjustments: OrderAdjustment[]) {
