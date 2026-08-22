@@ -9,7 +9,7 @@ import type { CurrencyCode } from '@/local-db/models'
 import { useWorkspace } from '@/workspace'
 import { formatCompactDateTime, formatCurrency, generateId, cn, stylizeText } from '@/lib/utils'
 import { Button, Input, useToast, Textarea, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, StorageSelector } from '@/ui/components'
-import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Loader2, Menu, Minus, Package, Plus, Receipt, Search, ShoppingCart, StickyNote, Table2, Trash2 } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChefHat, ChevronDown, ChevronRight, ChevronUp, Loader2, Menu, Minus, Package, Plus, Receipt, Search, ShoppingCart, StickyNote, Table2, Trash2 } from 'lucide-react'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { platformService } from '@/services/platformService'
 import { useKdsStream } from '@/hooks/useKdsStream'
@@ -18,6 +18,7 @@ import { convertCurrencyAmountWithAvailableSnapshot } from '@/lib/orderCurrency'
 import { getMissingProductCostMessage, hasValidProductCost } from '@/lib/productCost'
 import { mapSaleToUniversal } from '@/lib/mappings'
 import { INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY } from '@/lib/customTemplates'
+import { printService } from '@/services/printService'
 import { CheckoutSuccessModal } from '@/ui/components/pos/CheckoutSuccessModal'
 import { usePosReceiptPrinter } from '@/ui/components/pos/usePosReceiptPrinter'
 
@@ -93,6 +94,134 @@ function getTicketNotes(items: InstantPosItem[]) {
         .join('\n')
 
     return notes || null
+}
+
+function wrapCookTicketText(context: CanvasRenderingContext2D, value: string, maxWidth: number) {
+    const words = value.trim().split(/\s+/).filter(Boolean)
+    const lines: string[] = []
+    let line = ''
+
+    const pushLongWord = (word: string) => {
+        let segment = ''
+        for (const character of Array.from(word)) {
+            const candidate = `${segment}${character}`
+            if (segment && context.measureText(candidate).width > maxWidth) {
+                lines.push(segment)
+                segment = character
+            } else {
+                segment = candidate
+            }
+        }
+        if (segment) line = segment
+    }
+
+    for (const word of words) {
+        const candidate = line ? `${line} ${word}` : word
+        if (context.measureText(candidate).width <= maxWidth) {
+            line = candidate
+            continue
+        }
+
+        if (line) lines.push(line)
+        line = ''
+        if (context.measureText(word).width <= maxWidth) {
+            line = word
+        } else {
+            pushLongWord(word)
+        }
+    }
+
+    if (line) lines.push(line)
+    return lines.length > 0 ? lines : ['']
+}
+
+async function createCookOrderTicketPdf({
+    items,
+    widthMm,
+    direction,
+}: {
+    items: InstantPosItem[]
+    widthMm: number
+    direction: 'ltr' | 'rtl'
+}): Promise<Blob> {
+    const widthPx = widthMm <= 58 ? 384 : 576
+    const pixelsPerMm = widthPx / widthMm
+    const horizontalPaddingPx = Math.round(pixelsPerMm * 3)
+    const verticalPaddingPx = Math.round(pixelsPerMm * 3)
+    const titleFontPx = Math.round(pixelsPerMm * 4)
+    const quantityFontPx = Math.round(pixelsPerMm * 3.4)
+    const noteFontPx = Math.round(pixelsPerMm * 3.2)
+    const maxTextWidthPx = widthPx - (horizontalPaddingPx * 2)
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Could not create the cook order ticket.')
+
+    await document.fonts?.ready
+
+    const rows = items.map((item) => {
+        context.font = `700 ${titleFontPx}px Inter, Arial, sans-serif`
+        const nameLines = wrapCookTicketText(context, item.name, maxTextWidthPx)
+        const note = item.note?.trim()
+        const noteLines = note
+            ? (() => {
+                context.font = `italic ${noteFontPx}px Inter, Arial, sans-serif`
+                return wrapCookTicketText(context, note, maxTextWidthPx)
+            })()
+            : []
+        return { item, nameLines, noteLines }
+    })
+
+    const titleLineHeightPx = Math.round(titleFontPx * 1.25)
+    const quantityLineHeightPx = Math.round(quantityFontPx * 1.25)
+    const noteLineHeightPx = Math.round(noteFontPx * 1.3)
+    const itemGapPx = Math.round(pixelsPerMm * 2.5)
+    const heightPx = verticalPaddingPx * 2 + rows.reduce((total, row) => (
+        total
+        + (row.nameLines.length * titleLineHeightPx)
+        + quantityLineHeightPx
+        + (row.noteLines.length * noteLineHeightPx)
+        + itemGapPx
+    ), 0)
+
+    canvas.width = widthPx
+    canvas.height = heightPx
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, widthPx, heightPx)
+    context.fillStyle = '#000000'
+    context.textAlign = direction === 'rtl' ? 'right' : 'left'
+    const textX = direction === 'rtl' ? widthPx - horizontalPaddingPx : horizontalPaddingPx
+    let y = verticalPaddingPx
+
+    for (const row of rows) {
+        context.font = `700 ${titleFontPx}px Inter, Arial, sans-serif`
+        for (const line of row.nameLines) {
+            y += titleLineHeightPx
+            context.fillText(line, textX, y)
+        }
+
+        context.font = `700 ${quantityFontPx}px Inter, Arial, sans-serif`
+        y += quantityLineHeightPx
+        context.fillText(`x${row.item.quantity}`, textX, y)
+
+        if (row.noteLines.length > 0) {
+            context.font = `italic ${noteFontPx}px Inter, Arial, sans-serif`
+            for (const line of row.noteLines) {
+                y += noteLineHeightPx
+                context.fillText(line, textX, y)
+            }
+        }
+        y += itemGapPx
+    }
+
+    const heightMm = heightPx / pixelsPerMm
+    const { jsPDF } = await import('jspdf')
+    const pdf = new jsPDF({
+        orientation: heightMm >= widthMm ? 'p' : 'l',
+        unit: 'mm',
+        format: [widthMm, heightMm]
+    })
+    pdf.addImage(canvas, 'PNG', 0, 0, widthMm, heightMm, undefined, 'FAST')
+    return pdf.output('blob') as Blob
 }
 
 
@@ -179,9 +308,12 @@ interface MobileTicketPanelProps {
     canPreprintReceipt: boolean
     isPreprinting: boolean
     isLoadingPreprintTemplate: boolean
+    canCookOrderTicket: boolean
+    isPrintingCookOrderTicket: boolean
     getStorageLabel: (storageId?: string | null) => string | null
     checkoutTicket: () => void
     handlePreprintReceipt: () => Promise<void>
+    handleCookOrderTicket: () => Promise<void>
     setTicketStatus: (status: InstantPosStatus) => void
     extendPendingExpiry: (id: string) => void
     clearActiveTicket: () => void
@@ -197,7 +329,8 @@ function MobileTicketPanel({
     activeTicket, activeTicketTotals, settlementCurrency, features, t,
     statusLabels, statusAction, activePendingTimeLeftMs, isCheckoutLoading,
     canPreprintReceipt, isPreprinting, isLoadingPreprintTemplate,
-    getStorageLabel, checkoutTicket, handlePreprintReceipt, setTicketStatus, extendPendingExpiry, clearActiveTicket,
+    canCookOrderTicket, isPrintingCookOrderTicket,
+    getStorageLabel, checkoutTicket, handlePreprintReceipt, handleCookOrderTicket, setTicketStatus, extendPendingExpiry, clearActiveTicket,
     updateItemQuantity, setItemQuantity, removeItem, setNoteItem, openTablePicker, closeTicket
 }: MobileTicketPanelProps) {
     const [isExpanded, setIsExpanded] = useState(false)
@@ -335,13 +468,31 @@ function MobileTicketPanel({
                                     event.stopPropagation()
                                     void handlePreprintReceipt()
                                 }}
-                                disabled={isCheckoutLoading || isPreprinting || isLoadingPreprintTemplate}
+                                disabled={isCheckoutLoading || isPreprinting || isPrintingCookOrderTicket || isLoadingPreprintTemplate}
                                 title={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
                                 aria-label={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
                             >
                                 {isPreprinting || isLoadingPreprintTemplate
                                     ? <Loader2 className="h-5 w-5 animate-spin" />
                                     : <Receipt className="h-5 w-5" />}
+                            </Button>
+                        )}
+                        {canCookOrderTicket && (
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-12 w-12 rounded-2xl border-2"
+                                onClick={(event) => {
+                                    event.stopPropagation()
+                                    void handleCookOrderTicket()
+                                }}
+                                disabled={isCheckoutLoading || isPreprinting || isPrintingCookOrderTicket}
+                                title={t('instantPos.cookOrderTicket', { defaultValue: 'Cook Order Ticket' })}
+                                aria-label={t('instantPos.cookOrderTicket', { defaultValue: 'Cook Order Ticket' })}
+                            >
+                                {isPrintingCookOrderTicket
+                                    ? <Loader2 className="h-5 w-5 animate-spin" />
+                                    : <ChefHat className="h-5 w-5" />}
                             </Button>
                         )}
                         <Button
@@ -524,36 +675,53 @@ function MobileTicketPanel({
                                     </div>
                                 )}
 
-                                <div className="grid grid-cols-2 gap-3 pt-2">
+                                <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_3.5rem] gap-3 pt-2">
                                     {statusAction && (
                                         <Button
                                             onClick={() => setTicketStatus(statusAction.status)}
                                             variant="secondary"
-                                            className="h-14 rounded-2xl font-bold"
+                                            className="col-span-3 h-14 rounded-2xl font-bold"
                                         >
                                             {statusAction.label}
                                         </Button>
                                     )}
-                                    <Button className={cn("h-14 rounded-2xl font-black text-lg gap-2", !statusAction && !canPreprintReceipt && "col-span-2")} onClick={checkoutTicket} disabled={activeTicket.items.length === 0 || isCheckoutLoading || activeTicketTotals.hasMixedCurrency}>
+                                    {canCookOrderTicket && (
+                                        <Button
+                                            variant="outline"
+                                            size="icon"
+                                            className="h-14 w-14 rounded-2xl border-2"
+                                            onClick={() => void handleCookOrderTicket()}
+                                            disabled={isCheckoutLoading || isPreprinting || isPrintingCookOrderTicket}
+                                            title={t('instantPos.cookOrderTicket', { defaultValue: 'Cook Order Ticket' })}
+                                            aria-label={t('instantPos.cookOrderTicket', { defaultValue: 'Cook Order Ticket' })}
+                                        >
+                                            {isPrintingCookOrderTicket
+                                                ? <Loader2 className="h-5 w-5 animate-spin" />
+                                                : <ChefHat className="h-5 w-5" />}
+                                        </Button>
+                                    )}
+                                    <Button className={cn("h-14 rounded-2xl font-black text-lg gap-2", !canCookOrderTicket && "col-start-2")} onClick={checkoutTicket} disabled={activeTicket.items.length === 0 || isCheckoutLoading || activeTicketTotals.hasMixedCurrency}>
                                         {isCheckoutLoading ? <Loader2 className="animate-spin" /> : <><CheckCircle2 className="w-5 h-5" /> {t('instantPos.checkout')}</>}
                                     </Button>
                                     {canPreprintReceipt && (
                                         <Button
                                             variant="outline"
-                                            className="h-14 rounded-2xl border-2"
+                                            size="icon"
+                                            className="h-14 w-14 rounded-2xl border-2"
                                             onClick={() => void handlePreprintReceipt()}
-                                            disabled={isCheckoutLoading || isPreprinting || isLoadingPreprintTemplate}
+                                            disabled={isCheckoutLoading || isPreprinting || isPrintingCookOrderTicket || isLoadingPreprintTemplate}
                                             title={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
+                                            aria-label={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
                                         >
                                             {isPreprinting || isLoadingPreprintTemplate
                                                 ? <Loader2 className="h-5 w-5 animate-spin" />
                                                 : <Receipt className="h-5 w-5" />}
                                         </Button>
                                     )}
-                                    <Button variant="outline" className="h-14 rounded-2xl font-bold col-span-2" onClick={() => closeTicket(activeTicket.id)} disabled={isCheckoutLoading}>
+                                    <Button variant="outline" className="h-14 rounded-2xl font-bold col-span-3" onClick={() => closeTicket(activeTicket.id)} disabled={isCheckoutLoading}>
                                         {t('instantPos.closeTicket')}
                                     </Button>
-                                    <Button variant="ghost" className="h-10 rounded-xl text-destructive font-bold col-span-2" onClick={clearActiveTicket} disabled={isCheckoutLoading}>
+                                    <Button variant="ghost" className="h-10 rounded-xl text-destructive font-bold col-span-3" onClick={clearActiveTicket} disabled={isCheckoutLoading}>
                                         {t('instantPos.clearAll')}
                                     </Button>
                                 </div>
@@ -575,7 +743,7 @@ function MobileTicketPanel({
 }
 
 export function InstantPOS() {
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
     const { features, hasFeature, isLocalMode } = useWorkspace()
@@ -644,6 +812,7 @@ export function InstantPOS() {
     const [selectedCategory, setSelectedCategory] = useState<string>('all')
     const [isCheckoutLoading, setIsCheckoutLoading] = useState(false)
     const [isPreprinting, setIsPreprinting] = useState(false)
+    const [isPrintingCookOrderTicket, setIsPrintingCookOrderTicket] = useState(false)
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false)
     const [completedSaleData, setCompletedSaleData] = useState<any>(null)
     const [now, setNow] = useState(() => Date.now())
@@ -905,6 +1074,54 @@ export function InstantPOS() {
             setIsPreprinting(false)
         }
     }, [isPreprinting, preprintReceiptData, printPreprintReceipt, t, toast])
+
+    const canCookOrderTicket = !!activeTicket && activeTicket.items.length > 0
+    const cookTicketDirection = useMemo<'ltr' | 'rtl'>(() => {
+        const printLanguage = features.print_lang && features.print_lang !== 'auto'
+            ? features.print_lang
+            : i18n.language
+        return printLanguage.startsWith('ar') || printLanguage.startsWith('ku') ? 'rtl' : 'ltr'
+    }, [features.print_lang, i18n.language])
+    const buildCookOrderTicketPdf = useCallback(async () => {
+        if (!activeTicket || activeTicket.items.length === 0) {
+            throw new Error('Cook order ticket items are not available.')
+        }
+
+        const thermalPrinter = features.thermal_printing && user?.workspaceId
+            ? await printService.getSelectedThermalPrinter(user.workspaceId)
+            : null
+        return createCookOrderTicketPdf({
+            items: activeTicket.items,
+            widthMm: thermalPrinter?.roll_width_mm ?? 80,
+            direction: cookTicketDirection,
+        })
+    }, [activeTicket, cookTicketDirection, features.thermal_printing, user?.workspaceId])
+    const { printReceipt: printCookOrderTicket } = usePosReceiptPrinter({
+        saleData: undefined,
+        features,
+        enabled: canCookOrderTicket,
+        receiptPdfBuilder: buildCookOrderTicketPdf,
+    })
+
+    const handleCookOrderTicket = useCallback(async () => {
+        if (!activeTicket || !canCookOrderTicket || isPrintingCookOrderTicket) return
+
+        setIsPrintingCookOrderTicket(true)
+        try {
+            await printCookOrderTicket({
+                title: `Cook_Order_Ticket_${activeTicket.number}`
+            })
+        } catch (error) {
+            console.error('[Instant POS] Failed to print cook order ticket:', error)
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: t('instantPos.cookOrderTicketFailed', { defaultValue: 'Could not print the cook order ticket.' })
+            })
+        } finally {
+            setIsPrintingCookOrderTicket(false)
+        }
+    }, [activeTicket, canCookOrderTicket, isPrintingCookOrderTicket, printCookOrderTicket, t, toast])
 
     const statusLabels = useMemo(() => ({
         pending: t('instantPos.status.pending') || 'Pending',
@@ -1844,9 +2061,12 @@ export function InstantPOS() {
                             canPreprintReceipt={canPreprintReceipt}
                             isPreprinting={isPreprinting}
                             isLoadingPreprintTemplate={isLoadingPreprintTemplate}
+                            canCookOrderTicket={canCookOrderTicket}
+                            isPrintingCookOrderTicket={isPrintingCookOrderTicket}
                             getStorageLabel={getStorageLabel}
                             checkoutTicket={checkoutTicket}
                             handlePreprintReceipt={handlePreprintReceipt}
+                            handleCookOrderTicket={handleCookOrderTicket}
                             setTicketStatus={setTicketStatus}
                             extendPendingExpiry={extendPendingExpiry}
                             clearActiveTicket={clearActiveTicket}
@@ -2056,6 +2276,21 @@ export function InstantPOS() {
                                     </Button>
                                 )}
                                 <div className="flex gap-2">
+                                    {canCookOrderTicket && (
+                                        <Button
+                                            variant="outline"
+                                            size="icon"
+                                            className="h-11 w-11 rounded-xl border-2"
+                                            onClick={() => void handleCookOrderTicket()}
+                                            disabled={isCheckoutLoading || isPreprinting || isPrintingCookOrderTicket}
+                                            title={t('instantPos.cookOrderTicket', { defaultValue: 'Cook Order Ticket' })}
+                                            aria-label={t('instantPos.cookOrderTicket', { defaultValue: 'Cook Order Ticket' })}
+                                        >
+                                            {isPrintingCookOrderTicket
+                                                ? <Loader2 className="h-4 w-4 animate-spin" />
+                                                : <ChefHat className="h-4 w-4" />}
+                                        </Button>
+                                    )}
                                     <Button
                                         className="h-11 flex-1 rounded-xl"
                                         onClick={checkoutTicket}
@@ -2076,7 +2311,7 @@ export function InstantPOS() {
                                             size="icon"
                                             className="h-11 w-11 rounded-xl border-2"
                                             onClick={() => void handlePreprintReceipt()}
-                                            disabled={isCheckoutLoading || isPreprinting || isLoadingPreprintTemplate}
+                                            disabled={isCheckoutLoading || isPreprinting || isPrintingCookOrderTicket || isLoadingPreprintTemplate}
                                             title={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
                                             aria-label={t('pos.preprintReceipt', { defaultValue: 'Pre-print receipt' })}
                                         >

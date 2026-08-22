@@ -125,12 +125,12 @@ export function usePosReceiptPrinter({
     )
 
     const buildReceiptPdf = useCallback(async () => {
-        if (!saleData) {
-            throw new Error('Receipt data is not available.')
-        }
-
         if (receiptPdfBuilder) {
             return receiptPdfBuilder()
+        }
+
+        if (!saleData) {
+            throw new Error('Receipt data is not available.')
         }
 
         if (primaryReceiptTarget && primaryReceiptLayout) {
