@@ -54,6 +54,7 @@ import {
     type PurchaseOrderItem,
     type SalesOrder,
     type SalesOrderItem,
+    type SalesOrderReturnLineInput,
     type WorkspacePaymentMethod
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
@@ -938,17 +939,20 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
     const handleOrderReturnConfirm = async (reason: string, quantity?: number) => {
         if (!resolved || resolved.kind !== 'sales' || !returnTarget) return
 
-        if (returnTarget.orderItemId && (
-            !isPositiveQuantity(quantity)
-            || quantity === undefined
-            || quantity > returnTarget.maxQuantity
-        )) return
+        let items: SalesOrderReturnLineInput[]
+        if (returnTarget.orderItemId) {
+            if (
+                quantity === undefined
+                || !isPositiveQuantity(quantity)
+                || quantity > returnTarget.maxQuantity
+            ) return
 
-        const items = returnTarget.orderItemId
-            ? [{ orderItemId: returnTarget.orderItemId, quantity }]
-            : resolved.order.items
+            items = [{ orderItemId: returnTarget.orderItemId, quantity }]
+        } else {
+            items = resolved.order.items
                 .map((item) => ({ orderItemId: item.id, quantity: getReturnableQuantity(item) }))
                 .filter((item) => item.quantity > 0)
+        }
         if (items.length === 0) return
 
         setIsReturning(true)
