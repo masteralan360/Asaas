@@ -326,10 +326,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
 
                 {showNotes && noteValue ? mp(RECEIPT_MOVABLE_COMPONENT_KEYS.notes, 'Notes',
                     <div className="mb-5 border-t border-gray-200 pt-3 text-xs">
-                        <span className={cn('block text-[10px] font-semibold text-black', !isRTL && 'uppercase tracking-wider')} style={{ opacity: labelOpacity / 100 }}>
-                            {t('orders.details.notes', { defaultValue: 'Notes' })}
-                        </span>
-                        <p className="mt-1 whitespace-pre-wrap break-words">{noteValue}</p>
+                        <p className="whitespace-pre-wrap break-words">{noteValue}</p>
                     </div>,
                     undefined, 'right', 0, true
                 ) : null}
