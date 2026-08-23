@@ -1709,7 +1709,7 @@ export function InstantPOS() {
                         origin: 'instant_pos',
                         payment_method: 'cash',
                         tableNumber: activeTicket.tableNumber || null,
-                        notes: ticketNote,
+                        notes: ticketNote || undefined,
                         sequenceId: localSequenceId,
                         createdAt: snapshotTimestamp,
                         updatedAt: snapshotTimestamp,
