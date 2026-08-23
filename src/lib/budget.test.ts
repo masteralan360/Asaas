@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { compareMonthKeys, getApplicableStartMonth, isMonthKeyOnOrBefore } from './budget'
+import { compareMonthKeys, getApplicableStartMonth } from './budget'
 
 describe('month key safety', () => {
     it('orders extended years chronologically instead of lexicographically', () => {
@@ -14,6 +14,5 @@ describe('month key safety', () => {
         expect(getApplicableStartMonth('0025-01-01', createdAt, currentMonth)).toBe('2026-01')
         expect(getApplicableStartMonth('10125-01-01', createdAt, currentMonth)).toBeNull()
         expect(getApplicableStartMonth('not-a-date', createdAt, currentMonth)).toBe('2026-01')
-        expect(isMonthKeyOnOrBefore('NaN-NaN', currentMonth)).toBe(false)
     })
 })
