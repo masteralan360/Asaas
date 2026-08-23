@@ -17,6 +17,7 @@ vi.mock('@/ui/components/SaleReceipt', () => ({
         showExchangeRateSnapshots: 'showExchangeRateSnapshots',
         showOriginalCurrencyPrice: 'showOriginalCurrencyPrice',
         showTableNumber: 'showTableNumber',
+        showNotes: 'showNotes',
         thankYou: 'thankYou',
         keepRecord: 'keepRecord',
         labelOpacity: 'labelOpacity'
@@ -33,6 +34,7 @@ vi.mock('@/ui/components/SaleReceipt', () => ({
         exchangeRateSnapshots: 'receiptExchangeRateSnapshots',
         itemsTable: 'receiptItemsTable',
         total: 'receiptTotal',
+        notes: 'receiptNotes',
         thankYou: 'receiptThankYou',
         keepRecord: 'receiptKeepRecord'
     },
@@ -214,12 +216,15 @@ describe('Instant History receipt custom print template', () => {
 
         expect(instantPreview.fields).toEqual([
             ...salesPreview.fields,
-            expect.objectContaining({ key: 'showTableNumber', value: 'true', type: 'boolean' })
+            expect.objectContaining({ key: 'showTableNumber', value: 'true', type: 'boolean' }),
+            expect.objectContaining({ key: 'showNotes', value: 'true', type: 'boolean' })
         ])
         expect(instantPreview.movableComponents).toEqual([
             ...salesPreview.movableComponents!.slice(0, 5),
             expect.objectContaining({ key: 'receiptTableNumber', label: 'Table Number' }),
-            ...salesPreview.movableComponents!.slice(5)
+            ...salesPreview.movableComponents!.slice(5, 10),
+            expect.objectContaining({ key: 'receiptNotes', label: 'Notes' }),
+            ...salesPreview.movableComponents!.slice(10)
         ])
         const previewElement = instantPreview.createElement({}, 'instant-receipt-preview') as any
         expect(previewElement.props.children.props.data.table_number).toBe('12')

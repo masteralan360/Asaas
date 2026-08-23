@@ -81,7 +81,7 @@ export function mapSaleToUniversal(sale: Sale, options: MapSaleToUniversalOption
         exchange_rate: null,
         exchange_source: null,
         exchange_rate_timestamp: null,
-        origin: 'pos',
+        origin: sale.origin || 'pos',
         items: baseItems,
         status: 'paid',
         customer_id: (sale as any).customerId || (sale as any).customer_id || '',

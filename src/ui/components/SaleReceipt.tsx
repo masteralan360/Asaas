@@ -16,6 +16,7 @@ export const SALE_RECEIPT_TEMPLATE_FIELD_KEYS = {
     showExchangeRateSnapshots: 'receipt.showExchangeRateSnapshots',
     showOriginalCurrencyPrice: 'receipt.showOriginalCurrencyPrice',
     showTableNumber: 'receipt.showTableNumber',
+    showNotes: 'receipt.showNotes',
     thankYou: 'receipt.thankYou',
     keepRecord: 'receipt.keepRecord',
     labelOpacity: 'receipt.labelOpacity',
@@ -33,6 +34,7 @@ export const RECEIPT_MOVABLE_COMPONENT_KEYS = {
     exchangeRateSnapshots: 'receiptExchangeRateSnapshots',
     itemsTable: 'receiptItemsTable',
     total: 'receiptTotal',
+    notes: 'receiptNotes',
     thankYou: 'receiptThankYou',
     keepRecord: 'receiptKeepRecord',
 } as const
@@ -76,7 +78,10 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
         const showExchangeRateSnapshots = isFieldEnabled(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showExchangeRateSnapshots)
         const showOriginalCurrencyPrice = isFieldEnabled(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showOriginalCurrencyPrice)
         const showTableNumber = isFieldEnabled(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showTableNumber)
+        const showNotes = data.origin === 'instant_pos'
+            && isFieldEnabled(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showNotes)
         const tableNumber = typeof data.table_number === 'string' ? data.table_number.trim() : ''
+        const noteValue = data.notes?.trim()
         const thankYouText = fieldValue(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.thankYou)?.trim()
             || t('sales.receipt.thankYou')
         const keepRecordText = fieldValue(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord)?.trim()
@@ -318,6 +323,16 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                     </div>,
                     undefined, 'right', 0, true
                 )}
+
+                {showNotes && noteValue ? mp(RECEIPT_MOVABLE_COMPONENT_KEYS.notes, 'Notes',
+                    <div className="mb-5 border-t border-gray-200 pt-3 text-xs">
+                        <span className={cn('block text-[10px] font-semibold text-black', !isRTL && 'uppercase tracking-wider')} style={{ opacity: labelOpacity / 100 }}>
+                            {t('orders.details.notes', { defaultValue: 'Notes' })}
+                        </span>
+                        <p className="mt-1 whitespace-pre-wrap break-words">{noteValue}</p>
+                    </div>,
+                    undefined, 'right', 0, true
+                ) : null}
 
                 <div className="text-center text-[10px] text-gray-400 border-t border-gray-100 pt-6">
                     {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.thankYou, 'Thank You',

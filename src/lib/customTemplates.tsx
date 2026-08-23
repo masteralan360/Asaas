@@ -1066,6 +1066,12 @@ const INSTANT_HISTORY_RECEIPT_FIELDS = [
         label: 'Show table number',
         value: 'true',
         type: 'boolean' as const
+    },
+    {
+        key: SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showNotes,
+        label: 'Show notes',
+        value: 'true',
+        type: 'boolean' as const
     }
 ]
 
@@ -1350,7 +1356,7 @@ function createSalesHistoryProfessionalA4Preview(options: CustomTemplatePreviewO
 
 function createSalesHistoryReceiptPreview(options: CustomTemplatePreviewOptions, includeTableNumber = false): TemplatePreview {
     const receiptData = options.receiptData || (includeTableNumber
-        ? { ...SAMPLE_RECEIPT_DATA, table_number: '12' }
+        ? { ...SAMPLE_RECEIPT_DATA, origin: 'instant_pos', table_number: '12' }
         : SAMPLE_RECEIPT_DATA)
 
     return {
@@ -1367,6 +1373,7 @@ function createSalesHistoryReceiptPreview(options: CustomTemplatePreviewOptions,
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.exchangeRateSnapshots, label: 'Exchange Rate Snapshots' },
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.itemsTable, label: 'Items Table' },
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.total, label: 'Total' },
+            ...(includeTableNumber ? [{ key: RECEIPT_MOVABLE_COMPONENT_KEYS.notes, label: 'Notes' }] : []),
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.thankYou, label: 'Thank You' },
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.keepRecord, label: 'Keep Record' },
         ],

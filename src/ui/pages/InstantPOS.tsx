@@ -8,7 +8,7 @@ import { db } from '@/local-db/database'
 import type { CurrencyCode } from '@/local-db/models'
 import { useWorkspace } from '@/workspace'
 import { formatCompactDateTime, formatCurrency, generateId, cn, stylizeText } from '@/lib/utils'
-import { Button, Input, useToast, Textarea, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, StorageSelector } from '@/ui/components'
+import { AppDialog, AppDialogBody, AppDialogContent, AppDialogFooter, AppDialogHeader, AppDialogTitle, Button, Input, useToast, Textarea, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, StorageSelector } from '@/ui/components'
 import { AlertCircle, CheckCircle2, ChefHat, ChevronDown, ChevronRight, ChevronUp, Loader2, Menu, Minus, Package, Plus, Receipt, Search, ShoppingCart, StickyNote, Table2, Trash2 } from 'lucide-react'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { platformService } from '@/services/platformService'
@@ -54,6 +54,7 @@ type InstantPosTicket = {
     createdAt: string
     status: InstantPosStatus
     items: InstantPosItem[]
+    note?: string
     tableNumber?: string
     kitchenRoutedAt?: string
     expiresAt?: string
@@ -85,15 +86,6 @@ function normalizeTableNumber(value: string) {
     if (!Number.isInteger(numeric) || numeric < 1) return null
 
     return String(numeric)
-}
-
-function getTicketNotes(items: InstantPosItem[]) {
-    const notes = items
-        .filter((item) => item.note)
-        .map((item) => `${item.name} --${stylizeText(item.note || '')}`)
-        .join('\n')
-
-    return notes || null
 }
 
 function wrapCookTicketText(context: CanvasRenderingContext2D, value: string, maxWidth: number) {
@@ -321,6 +313,8 @@ interface MobileTicketPanelProps {
     setItemQuantity: (productId: string, storageId: string | undefined, quantity: number) => void
     removeItem: (productId: string, storageId: string | undefined) => void
     setNoteItem: (item: { productId: string, storageId?: string, name: string, note: string } | null) => void
+    hasTicketNote: boolean
+    openTicketNoteEditor: () => void
     openTablePicker: () => void
     closeTicket: (id: string) => void
 }
@@ -331,7 +325,7 @@ function MobileTicketPanel({
     canPreprintReceipt, isPreprinting, isLoadingPreprintTemplate,
     canCookOrderTicket, isPrintingCookOrderTicket,
     getStorageLabel, checkoutTicket, handlePreprintReceipt, handleCookOrderTicket, setTicketStatus, extendPendingExpiry, clearActiveTicket,
-    updateItemQuantity, setItemQuantity, removeItem, setNoteItem, openTablePicker, closeTicket
+    updateItemQuantity, setItemQuantity, removeItem, setNoteItem, hasTicketNote, openTicketNoteEditor, openTablePicker, closeTicket
 }: MobileTicketPanelProps) {
     const [isExpanded, setIsExpanded] = useState(false)
     const [isDragging, setIsDragging] = useState(false)
@@ -676,15 +670,31 @@ function MobileTicketPanel({
                                 )}
 
                                 <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_3.5rem] gap-3 pt-2">
-                                    {statusAction && (
+                                    <div className={cn('col-span-3 flex gap-3', !statusAction && 'justify-end')}>
+                                        {statusAction && (
+                                            <Button
+                                                onClick={() => setTicketStatus(statusAction.status)}
+                                                variant="secondary"
+                                                className="h-14 flex-1 rounded-2xl font-bold"
+                                            >
+                                                {statusAction.label}
+                                            </Button>
+                                        )}
                                         <Button
-                                            onClick={() => setTicketStatus(statusAction.status)}
-                                            variant="secondary"
-                                            className="col-span-3 h-14 rounded-2xl font-bold"
+                                            variant="outline"
+                                            size="icon"
+                                            className={cn(
+                                                'h-14 w-14 rounded-2xl border-2',
+                                                hasTicketNote && 'border-primary/50 bg-primary/10 text-primary hover:bg-primary/15'
+                                            )}
+                                            onClick={openTicketNoteEditor}
+                                            disabled={isCheckoutLoading}
+                                            title={t('instantPos.addTicketNote', { defaultValue: 'Add Note' })}
+                                            aria-label={t('instantPos.addTicketNote', { defaultValue: 'Add Note' })}
                                         >
-                                            {statusAction.label}
+                                            <StickyNote className="h-5 w-5" />
                                         </Button>
-                                    )}
+                                    </div>
                                     {canCookOrderTicket && (
                                         <Button
                                             variant="outline"
@@ -817,6 +827,7 @@ export function InstantPOS() {
     const [completedSaleData, setCompletedSaleData] = useState<any>(null)
     const [now, setNow] = useState(() => Date.now())
     const [noteItem, setNoteItem] = useState<{ productId: string, storageId?: string, name: string, note: string } | null>(null)
+    const [ticketNoteEditor, setTicketNoteEditor] = useState<{ ticketId: string, note: string } | null>(null)
     const [isTablePickerOpen, setIsTablePickerOpen] = useState(false)
     const [tableNumberInput, setTableNumberInput] = useState('')
 
@@ -1040,7 +1051,7 @@ export function InstantPOS() {
             origin: 'instant_pos',
             payment_method: 'cash',
             instant_table_number: activeTicket.tableNumber || null,
-            notes: getTicketNotes(activeTicket.items)
+            notes: activeTicket.note?.trim() || null
         } as any)
     }, [activeTicket, activeTicketTotals.hasMixedCurrency, activeTicketTotals.total, resolveTicketProduct, settlementCurrency, user])
 
@@ -1324,6 +1335,24 @@ export function InstantPOS() {
         setNoteItem(null)
     }
 
+    const openTicketNoteEditor = () => {
+        if (!activeTicket) return
+        setTicketNoteEditor({
+            ticketId: activeTicket.id,
+            note: activeTicket.note || ''
+        })
+    }
+
+    const saveTicketNote = () => {
+        if (!ticketNoteEditor) return
+        const note = ticketNoteEditor.note.trim()
+        updateTicket(ticketNoteEditor.ticketId, (ticket) => ({
+            ...ticket,
+            note: note || undefined
+        }))
+        setTicketNoteEditor(null)
+    }
+
     const setTicketStatus = (status: InstantPosStatus) => {
         if (!activeTicket) return
         updateTicket(activeTicket.id, ticket => ({
@@ -1520,7 +1549,7 @@ export function InstantPOS() {
             maxDiscountPercent: features.max_discount_percent
         })
 
-        const consolidatedNotes = getTicketNotes(activeTicket.items)
+        const ticketNote = activeTicket.note?.trim() || null
 
         const checkoutPayload = {
             id: saleId,
@@ -1532,7 +1561,7 @@ export function InstantPOS() {
             origin: 'instant_pos',
             payment_method: 'cash',
             instant_table_number: activeTicket.tableNumber || null,
-            notes: consolidatedNotes
+            notes: ticketNote
         }
 
         try {
@@ -1680,6 +1709,7 @@ export function InstantPOS() {
                         origin: 'instant_pos',
                         payment_method: 'cash',
                         tableNumber: activeTicket.tableNumber || null,
+                        notes: ticketNote,
                         sequenceId: localSequenceId,
                         createdAt: snapshotTimestamp,
                         updatedAt: snapshotTimestamp,
@@ -2074,6 +2104,8 @@ export function InstantPOS() {
                             setItemQuantity={setItemQuantity}
                             removeItem={removeItem}
                             setNoteItem={setNoteItem}
+                            hasTicketNote={Boolean(activeTicket.note?.trim())}
+                            openTicketNoteEditor={openTicketNoteEditor}
                             openTablePicker={openTablePicker}
                             closeTicket={closeTicket}
                         />
@@ -2266,15 +2298,31 @@ export function InstantPOS() {
                             </div>
 
                             <div className="flex flex-col gap-2 px-4 pb-4">
-                                {statusAction && (
+                                <div className={cn('flex gap-2', !statusAction && 'justify-end')}>
+                                    {statusAction && (
+                                        <Button
+                                            onClick={() => setTicketStatus(statusAction.status)}
+                                            variant="secondary"
+                                            className="h-11 flex-1 rounded-xl"
+                                        >
+                                            {statusAction.label}
+                                        </Button>
+                                    )}
                                     <Button
-                                        onClick={() => setTicketStatus(statusAction.status)}
-                                        variant="secondary"
-                                        className="h-11 w-full rounded-xl"
+                                        variant="outline"
+                                        size="icon"
+                                        className={cn(
+                                            'h-11 w-11 rounded-xl border-2',
+                                            activeTicket.note?.trim() && 'border-primary/50 bg-primary/10 text-primary hover:bg-primary/15'
+                                        )}
+                                        onClick={openTicketNoteEditor}
+                                        disabled={isCheckoutLoading}
+                                        title={t('instantPos.addTicketNote', { defaultValue: 'Add Note' })}
+                                        aria-label={t('instantPos.addTicketNote', { defaultValue: 'Add Note' })}
                                     >
-                                        {statusAction.label}
+                                        <StickyNote className="h-4 w-4" />
                                     </Button>
-                                )}
+                                </div>
                                 <div className="flex gap-2">
                                     {canCookOrderTicket && (
                                         <Button
@@ -2357,6 +2405,39 @@ export function InstantPOS() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <AppDialog open={!!ticketNoteEditor} onOpenChange={(open) => !open && setTicketNoteEditor(null)}>
+                <AppDialogContent className="max-w-lg">
+                    <AppDialogHeader>
+                        <AppDialogTitle>{t('instantPos.ticketNotes', { defaultValue: 'Ticket Notes' })}</AppDialogTitle>
+                    </AppDialogHeader>
+                    <AppDialogBody>
+                        <div className="space-y-2">
+                            <label htmlFor="instant-pos-ticket-note" className="text-sm font-medium">
+                                {t('common.notes', { defaultValue: 'Notes' })}
+                            </label>
+                            <Textarea
+                                id="instant-pos-ticket-note"
+                                autoFocus
+                                value={ticketNoteEditor?.note || ''}
+                                onChange={(event) => setTicketNoteEditor((current) => current
+                                    ? { ...current, note: event.target.value }
+                                    : current)}
+                                placeholder={t('instantPos.ticketNotePlaceholder', { defaultValue: 'Add a note for this ticket...' })}
+                                className="min-h-28"
+                            />
+                        </div>
+                    </AppDialogBody>
+                    <AppDialogFooter>
+                        <Button variant="outline" onClick={() => setTicketNoteEditor(null)}>
+                            {t('common.cancel', { defaultValue: 'Cancel' })}
+                        </Button>
+                        <Button onClick={saveTicketNote}>
+                            {t('common.save', { defaultValue: 'Save' })}
+                        </Button>
+                    </AppDialogFooter>
+                </AppDialogContent>
+            </AppDialog>
 
             <Dialog open={isTablePickerOpen} onOpenChange={setIsTablePickerOpen}>
                 <DialogContent className="sm:max-w-[425px]">
