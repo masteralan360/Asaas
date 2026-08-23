@@ -2,7 +2,15 @@ import { useEffect, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
-import { addMonths, buildDueDate, monthKeyFromDate, type MonthKey } from '@/lib/budget'
+import {
+    addMonths,
+    buildDueDate,
+    compareMonthKeys,
+    getApplicableStartMonth,
+    isMonthKeyOnOrBefore,
+    monthKeyFromDate,
+    type MonthKey
+} from '@/lib/budget'
 import { isOnline } from '@/lib/network'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
@@ -490,8 +498,9 @@ async function ensureExpenseItemsThroughCurrentMonth(workspaceId: string) {
     }
 
     const earliestMonth = series
-        .map((item) => item.startMonth)
-        .sort((left, right) => left.localeCompare(right))[0] as MonthKey | undefined
+        .map((item) => getApplicableStartMonth(item.startMonth, item.createdAt, currentMonth))
+        .filter((month): month is MonthKey => !!month)
+        .sort(compareMonthKeys)[0]
 
     if (!earliestMonth) {
         return
@@ -500,7 +509,7 @@ async function ensureExpenseItemsThroughCurrentMonth(workspaceId: string) {
     const { ensureExpenseItemsForMonth } = await import('./hooks')
     let monthCursor: MonthKey = earliestMonth
 
-    while (monthCursor <= currentMonth) {
+    while (isMonthKeyOnOrBefore(monthCursor, currentMonth)) {
         await ensureExpenseItemsForMonth(workspaceId, monthCursor)
         monthCursor = addMonths(monthCursor, 1)
     }
@@ -899,11 +908,14 @@ function buildPayrollObligations(
             return []
         }
 
-        const startMonth = monthKeyFromDate(employee.joiningDate)
+        const startMonth = getApplicableStartMonth(employee.joiningDate, employee.createdAt, currentMonth)
+        if (!startMonth) {
+            return []
+        }
         const obligations: PaymentObligation[] = []
         let monthCursor: MonthKey = startMonth
 
-        while (monthCursor <= currentMonth) {
+        while (isMonthKeyOnOrBefore(monthCursor, currentMonth)) {
             const obligation = buildPayrollObligation(
                 employee,
                 monthCursor,

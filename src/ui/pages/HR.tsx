@@ -29,6 +29,16 @@ const ROLE_HIERARCHY: Record<string, string[]> = {
     'Technical': ['IT Support', 'Maintenance', 'Developer']
 }
 
+const MIN_EMPLOYEE_JOINING_DATE = '1900-01-01'
+
+function isValidEmployeeJoiningDate(value: string) {
+    const today = new Date().toISOString().slice(0, 10)
+    return /^\d{4}-\d{2}-\d{2}$/.test(value)
+        && !Number.isNaN(new Date(`${value}T00:00:00`).getTime())
+        && value >= MIN_EMPLOYEE_JOINING_DATE
+        && value <= today
+}
+
 export default function HR() {
     const { user } = useAuth()
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
@@ -117,6 +127,15 @@ export default function HR() {
         if (!workspaceId || isSaving) return
 
         const formData = new FormData(e.currentTarget)
+        const joiningDate = formData.get('joiningDate') as string
+
+        if (!isValidEmployeeJoiningDate(joiningDate)) {
+            toast({
+                variant: 'destructive',
+                description: t('hr.invalidJoiningDate', 'Choose a joining date between 1900 and today.')
+            })
+            return
+        }
 
         if (hasDividends && dividendType === 'percentage') {
             const newPercentage = parseFormattedNumber(dividendAmountDisplay)
@@ -135,7 +154,7 @@ export default function HR() {
             role: `${selectedCategory}:${selectedRole}`,
             gender: formData.get('gender') as 'male' | 'female' | 'other',
             location: formData.get('location') as string,
-            joiningDate: formData.get('joiningDate') as string,
+            joiningDate,
             salary: parseFormattedNumber(salaryDisplay),
             salaryCurrency: (formData.get('salaryCurrency') as any) || baseCurrency || 'usd',
             hasDividends,
@@ -492,7 +511,15 @@ export default function HR() {
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="joiningDate">{t('hr.form.joiningDate', 'Joining Date')}</Label>
-                                <Input id="joiningDate" name="joiningDate" type="date" defaultValue={editingEmployee?.joiningDate ? new Date(editingEmployee.joiningDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]} required />
+                                <Input
+                                    id="joiningDate"
+                                    name="joiningDate"
+                                    type="date"
+                                    min={MIN_EMPLOYEE_JOINING_DATE}
+                                    max={new Date().toISOString().slice(0, 10)}
+                                    defaultValue={editingEmployee?.joiningDate ? new Date(editingEmployee.joiningDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}
+                                    required
+                                />
                             </div>
 
                             {/* Link Workspace Account - Requirement: between salary payday/joining date and location */}

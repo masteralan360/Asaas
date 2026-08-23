@@ -30,6 +30,65 @@ export function addMonths(month: MonthKey, delta: number): MonthKey {
     return monthKeyFromDate(base)
 }
 
+/**
+ * Month keys normally use a four-digit year, but imported data can contain
+ * years outside that range. Comparing those keys as strings makes 10125 sort
+ * before 2026, which can turn a bounded month loop into millions of steps.
+ */
+function toMonthNumber(value: MonthKey) {
+    const match = /^(\d+)-(\d{2})$/.exec(value)
+    if (!match) return null
+
+    const year = Number(match[1])
+    const month = Number(match[2])
+    if (!Number.isSafeInteger(year) || month < 1 || month > 12) return null
+
+    return year * 12 + month - 1
+}
+
+export function isValidMonthKey(value: MonthKey): boolean {
+    return toMonthNumber(value) !== null
+}
+
+export function compareMonthKeys(left: MonthKey, right: MonthKey): number {
+
+    const leftMonth = toMonthNumber(left)
+    const rightMonth = toMonthNumber(right)
+
+    if (leftMonth === null) return rightMonth === null ? 0 : 1
+    if (rightMonth === null) return -1
+    return leftMonth - rightMonth
+}
+
+export function isMonthKeyOnOrBefore(left: MonthKey, right: MonthKey): boolean {
+    const leftMonth = toMonthNumber(left)
+    const rightMonth = toMonthNumber(right)
+    return leftMonth !== null && rightMonth !== null && leftMonth <= rightMonth
+}
+
+/**
+ * Resolves a recurring record's first applicable month. A record cannot
+ * generate entries before it was created, and future-dated records have no
+ * applicable month yet.
+ */
+export function getApplicableStartMonth(
+    sourceDate: string,
+    createdAt: string,
+    currentMonth: MonthKey = monthKeyFromDate(new Date())
+): MonthKey | null {
+    const sourceMonth = monthKeyFromDate(sourceDate)
+    const recordMonth = monthKeyFromDate(createdAt)
+    if (!isValidMonthKey(recordMonth)) {
+        return null
+    }
+
+    const startMonth = !isValidMonthKey(sourceMonth) || isMonthKeyOnOrBefore(sourceMonth, recordMonth)
+        ? recordMonth
+        : sourceMonth
+
+    return isMonthKeyOnOrBefore(startMonth, currentMonth) ? startMonth : null
+}
+
 export function buildDueDate(month: MonthKey, day: number): string {
     const safeDay = Math.min(Math.max(day, 1), getDaysInMonth(month))
     return `${month}-${String(safeDay).padStart(2, '0')}`
