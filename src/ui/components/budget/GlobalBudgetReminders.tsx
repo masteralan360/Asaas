@@ -40,6 +40,9 @@ import {
     subscribeToBudgetReminderSuppressions
 } from '@/lib/budgetReminderSession'
 
+// Temporarily disable the automatic budget payment prompt. Set to true to restore it.
+const BUDGET_REMINDER_MODAL_ENABLED = false
+
 function isCurrentlySnoozed(item: BudgetReminderItem, now: Date) {
     if (item.status !== 'snoozed') return false
     if (item.snoozedIndefinite) return true
@@ -644,32 +647,34 @@ export function GlobalBudgetReminders() {
     return (
         <>
 
-            <BudgetReminderModal
-                isOpen={!!currentReminder}
-                item={currentReminder}
-                queuePosition={currentReminderIndex >= 0 ? currentReminderIndex + 1 : 1}
-                queueTotal={activeReminderItems.length}
-                iqdPreference={features.iqd_display_preference}
-                onPaid={() => {
-                    if (!currentReminder) return
-                    void handleMarkPaid(currentReminder)
-                }}
-                onRemindTomorrow={() => {
-                    if (!currentReminder) return
-                    void handleReminderSnooze(currentReminder, { id: 'tomorrow', label: 'Tomorrow', minutes: 24 * 60 })
-                }}
-                onSnooze={() => {
-                    if (!currentReminder) return
-                    setCurrentReminderId(null)
-                    setSnoozeTarget(currentReminder)
-                }}
-                onOpenChange={(open) => {
-                    if (!open && currentReminder) {
-                        markReminderHandledForSession(currentReminder.id)
+            {BUDGET_REMINDER_MODAL_ENABLED && (
+                <BudgetReminderModal
+                    isOpen={!!currentReminder}
+                    item={currentReminder}
+                    queuePosition={currentReminderIndex >= 0 ? currentReminderIndex + 1 : 1}
+                    queueTotal={activeReminderItems.length}
+                    iqdPreference={features.iqd_display_preference}
+                    onPaid={() => {
+                        if (!currentReminder) return
+                        void handleMarkPaid(currentReminder)
+                    }}
+                    onRemindTomorrow={() => {
+                        if (!currentReminder) return
+                        void handleReminderSnooze(currentReminder, { id: 'tomorrow', label: 'Tomorrow', minutes: 24 * 60 })
+                    }}
+                    onSnooze={() => {
+                        if (!currentReminder) return
                         setCurrentReminderId(null)
-                    }
-                }}
-            />
+                        setSnoozeTarget(currentReminder)
+                    }}
+                    onOpenChange={(open) => {
+                        if (!open && currentReminder) {
+                            markReminderHandledForSession(currentReminder.id)
+                            setCurrentReminderId(null)
+                        }
+                    }}
+                />
+            )}
 
             <SettlementDialog
                 open={!!settlementTarget}
