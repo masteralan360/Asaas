@@ -1043,7 +1043,7 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(hiddenHtml).not.toContain('data-order-print-row-type="adjustment"')
     })
 
-    it('totals kilogram-quantity products in the product-name column when enabled, converting to tons above 1000 kg', () => {
+    it('totals kilogram-quantity products multiplied by line quantity when enabled, converting to tons above 1000 kg', () => {
         const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
         expect(target).toBeDefined()
 
@@ -1074,9 +1074,9 @@ describe('Atlas Standard order invoice custom print template', () => {
             fieldDisplayModes: { 'atlasStandard.table.productKgTotal': 'enabled' }
         }))
 
-        expect(enabledHtml).toContain('350 kg')
+        expect(enabledHtml).toContain('63 ton')
+        expect(enabledHtml).not.toContain('350 kg')
         expect(enabledHtml).not.toContain('35000 kg')
-        expect(enabledHtml).not.toContain('0.35 ton')
 
         const concatenatedKgHtml = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
             printLang: 'en',
@@ -1090,7 +1090,7 @@ describe('Atlas Standard order invoice custom print template', () => {
         }).createElement({}, undefined, undefined, {
             fieldDisplayModes: { 'atlasStandard.table.productKgTotal': 'enabled' }
         }))
-        expect(concatenatedKgHtml).toContain('1.2 ton')
+        expect(concatenatedKgHtml).toContain('4.8 ton')
         expect(concatenatedKgHtml).not.toContain('1200 kg')
 
         const belowThousandHtml = renderToStaticMarkup(customTemplates.createCustomTemplatePreview(target!, {
@@ -1098,8 +1098,8 @@ describe('Atlas Standard order invoice custom print template', () => {
             order: {
                 ...weightedOrder,
                 items: [
-                    { ...baseOrder.items[0], productName: 'Sugar 400KG', id: 'below-1' },
-                    { ...baseOrder.items[0], productName: 'Rice 500KG', id: 'below-2' }
+                    { ...baseOrder.items[0], productName: 'Sugar 400KG', id: 'below-1', quantity: 1 },
+                    { ...baseOrder.items[0], productName: 'Rice 500KG', id: 'below-2', quantity: 1 }
                 ]
             }
         }).createElement({}, undefined, undefined, {

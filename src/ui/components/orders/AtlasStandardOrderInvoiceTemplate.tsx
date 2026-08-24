@@ -12,7 +12,7 @@ import {
     type PurchaseOrder,
     type SalesOrder
 } from '@/local-db'
-import { getOrderLineFreeBonusQuantity, getOrderLinePaidQuantity } from '@/lib/orderLineItems'
+import { getOrderLineFreeBonusQuantity, getOrderLineInventoryQuantity, getOrderLinePaidQuantity } from '@/lib/orderLineItems'
 import {
     getOrderTotalWithPostReturnAdjustments,
     isPostReturnOrderAdjustment,
@@ -1219,7 +1219,7 @@ export function AtlasStandardOrderInvoiceTemplate({
     const productImageWidthDifference = productImageColumnWidth - DEFAULT_PRODUCT_IMAGE_COLUMN_WIDTH
     const productKgTotalEnabled = fieldDisplayModes[tableSettingKeys.productKgTotal] === 'enabled'
     const weightGroupedKgTotal = items.reduce(
-        (sum, item) => sum + getProductNameWeightKg(item.productName),
+        (sum, item) => sum + getProductNameWeightKg(item.productName) * getOrderLineInventoryQuantity(item),
         0
     )
     const productKgTotalLabel = productKgTotalEnabled && weightGroupedKgTotal > 0
