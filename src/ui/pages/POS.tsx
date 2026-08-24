@@ -3811,14 +3811,23 @@ export function POS() {
                                                                             const raw = e.target.value
                                                                             setDynamicInputBuffer((prev) => ({ ...prev, [itemKey]: raw }))
                                                                             const parsed = parseFloat(raw)
-                                                                            if (!isNaN(parsed) && parsed >= 0) {
+                                                                            if (!isNaN(parsed) && parsed > 0) {
                                                                                 setExactQuantity(itemKey, parsed)
                                                                             }
                                                                         }}
-                                                                        onBlur={() => setDynamicInputBuffer((prev) => {
-                                                                            const { [itemKey]: _, ...rest } = prev
-                                                                            return rest
-                                                                        })}
+                                                                        onBlur={() => {
+                                                                            const raw = dynamicInputBuffer[itemKey]
+                                                                            if (raw !== undefined) {
+                                                                                const parsed = parseFloat(raw)
+                                                                                if (!isNaN(parsed) && parsed === 0) {
+                                                                                    removeFromCart(itemKey)
+                                                                                }
+                                                                            }
+                                                                            setDynamicInputBuffer((prev) => {
+                                                                                const { [itemKey]: _, ...rest } = prev
+                                                                                return rest
+                                                                            })
+                                                                        }}
                                                                         className="h-7 w-14 text-xs text-center border-0 bg-transparent p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                                     />
                                                                     <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`, { defaultValue: item.unit ?? '' })}</span>
@@ -4154,7 +4163,7 @@ export function POS() {
                                     data-tour-id="tutorial-pos-checkout"
                                     className="flex-[3] h-14 text-xl shadow-lg shadow-primary/20 rounded-2xl"
                                     onClick={() => handleCheckout()}
-                                    disabled={cart.length === 0 || isLoading || hasTrulyMissingRates}
+                                    disabled={cart.length === 0 || cart.some((item) => item.quantity <= 0) || isLoading || hasTrulyMissingRates}
                                 >
                                     {isLoading ? (
                                         <Loader2 className="w-6 h-6 animate-spin mr-2" />
@@ -4590,14 +4599,24 @@ export function POS() {
                                                 const raw = e.target.value
                                                 setDynamicInputBuffer((prev) => ({ ...prev, [dynamicUnitModal.itemKey]: raw }))
                                                 const parsed = parseFloat(raw)
-                                                if (!isNaN(parsed) && parsed >= 0) {
+                                                if (!isNaN(parsed) && parsed > 0) {
                                                     setExactQuantity(dynamicUnitModal.itemKey, parsed)
                                                 }
                                             }}
-                                            onBlur={() => setDynamicInputBuffer((prev) => {
-                                                const { [dynamicUnitModal.itemKey]: _, ...rest } = prev
-                                                return rest
-                                            })}
+                                            onBlur={() => {
+                                                const raw = dynamicInputBuffer[dynamicUnitModal.itemKey]
+                                                if (raw !== undefined) {
+                                                    const parsed = parseFloat(raw)
+                                                    if (!isNaN(parsed) && parsed === 0) {
+                                                        removeFromCart(dynamicUnitModal.itemKey)
+                                                        setDynamicUnitModal(null)
+                                                    }
+                                                }
+                                                setDynamicInputBuffer((prev) => {
+                                                    const { [dynamicUnitModal.itemKey]: _, ...rest } = prev
+                                                    return rest
+                                                })
+                                            }}
                                             className="h-8 w-20 text-xs text-center"
                                         />
                                         <span className="text-xs font-bold opacity-50 uppercase">{unitLabel}</span>
@@ -5705,14 +5724,23 @@ function MobileCart({
                                                         const raw = e.target.value
                                                         setMobileInputBuffer((prev) => ({ ...prev, [itemKey]: raw }))
                                                         const parsed = parseFloat(raw)
-                                                        if (!isNaN(parsed) && parsed >= 0) {
+                                                        if (!isNaN(parsed) && parsed > 0) {
                                                             setExactQuantity(itemKey, parsed)
                                                         }
                                                     }}
-                                                    onBlur={() => setMobileInputBuffer((prev) => {
-                                                        const { [itemKey]: _, ...rest } = prev
-                                                        return rest
-                                                    })}
+                                                    onBlur={() => {
+                                                        const raw = mobileInputBuffer[itemKey]
+                                                        if (raw !== undefined) {
+                                                            const parsed = parseFloat(raw)
+                                                            if (!isNaN(parsed) && parsed === 0) {
+                                                                removeFromCart(itemKey)
+                                                            }
+                                                        }
+                                                        setMobileInputBuffer((prev) => {
+                                                            const { [itemKey]: _, ...rest } = prev
+                                                            return rest
+                                                        })
+                                                    }}
                                                     className="h-8 w-16 text-xs text-center rounded-lg border-border/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                 />
                                                 <span className="text-[10px] font-bold opacity-50 uppercase tracking-tighter pr-1">{t(`products.units.${item.unit}`, item.unit)}</span>
@@ -5813,7 +5841,7 @@ function MobileCart({
                                     e.stopPropagation();
                                     handleCheckout();
                                 }}
-                                disabled={cart.length === 0 || isLoading || hasTrulyMissingRates}
+                                disabled={cart.length === 0 || cart.some((item) => item.quantity <= 0) || isLoading || hasTrulyMissingRates}
                             >
                                 {isLoading ? <Loader2 className="animate-spin w-5 h-5" /> : (
                                     <div className="flex items-center gap-2">
@@ -6004,7 +6032,7 @@ function MobileCart({
                                     data-tour-id="tutorial-pos-checkout"
                                     className="flex-[4] h-14 rounded-2xl text-lg font-black shadow-xl shadow-primary/20 active:scale-95 transition-all text-primary-foreground"
                                     onClick={() => handleCheckout()}
-                                    disabled={cart.length === 0 || isLoading || hasTrulyMissingRates}
+                                    disabled={cart.length === 0 || cart.some((item) => item.quantity <= 0) || isLoading || hasTrulyMissingRates}
                                 >
                                     {isLoading ? <Loader2 className="animate-spin w-6 h-6" /> : (
                                         <div className="flex items-center gap-2">
