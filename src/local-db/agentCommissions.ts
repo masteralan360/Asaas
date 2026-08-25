@@ -117,9 +117,9 @@ export interface RecordCommissionApprovalInput {
 
 export interface RecordCommissionPayoutInput {
   agentId: string;
+  orderId: string;
   amount: number;
   currency: CurrencyCode;
-  payoutReference: string;
   paymentMethod?: WorkspacePaymentMethod;
   occurredAt?: string;
   notes?: string | null;
@@ -1613,8 +1613,8 @@ export async function recordCommissionPayout(
 ) {
   const amount = assertMoney(input.amount, "Payout amount");
   if (amount <= 0) throw new Error("Payout amount must be greater than zero");
-  const reference = normalizeText(input.payoutReference);
-  if (!reference) throw new Error("Payout reference is required");
+  const orderId = normalizeText(input.orderId);
+  if (!orderId) throw new Error("Select the sales order whose commission is being paid");
   const paymentMethod = input.paymentMethod ?? "cash";
   assertCommissionPayoutPaymentMethod(paymentMethod);
   const notes = normalizeText(input.notes);
@@ -1623,38 +1623,40 @@ export async function recordCommissionPayout(
   if (!agent || agent.isDeleted || agent.workspaceId !== workspaceId || agent.agentType !== "field_agent") {
     throw new Error("Field agent not found");
   }
+  const order = await db.sales_orders.get(orderId);
+  if (!order || order.isDeleted || order.workspaceId !== workspaceId) {
+    throw new Error("Sales order not found");
+  }
+  if (order.currency.toLowerCase() !== input.currency.toLowerCase()) {
+    throw new Error("Commission payouts must use the sales order currency");
+  }
   const entries = await db.agent_commission_entries
     .where("[workspaceId+agentId]")
     .equals([workspaceId, input.agentId])
     .and((entry) => !entry.isDeleted && entry.currency === input.currency)
     .toArray();
-  const normalizedReference = reference.toLowerCase();
-  const existingPayout = entries.find((entry) => (
-    entry.kind === "payout"
-    && entry.payoutReference?.trim().toLowerCase() === normalizedReference
-  ));
-  if (existingPayout) {
-    if (Math.abs(existingPayout.amount + amount) <= 0.000001) {
-      await ensureCommissionPayoutTransaction(workspaceId, existingPayout, {
-        counterpartyName: await resolveAgentCounterpartyName(existingPayout.agentId),
-        paymentMethod,
-        notes: existingPayout.notes ?? notes,
-        createdBy: existingPayout.createdBy ?? createdBy,
-      });
-      return existingPayout;
-    }
-    throw new Error("That payout reference has already been recorded with another amount");
+  const orderEntries = entries.filter((entry) => entry.orderId === order.id);
+  const assignmentId = orderEntries.find((entry) => entry.assignmentId)?.assignmentId;
+  if (!assignmentId) {
+    throw new Error("The selected sales order has no commission for this agent");
   }
-  const outstanding = roundCommissionAmount(entries
+  const outstanding = roundCommissionAmount(orderEntries
     .filter((entry) => entry.kind !== "estimate" && entry.kind !== "approval")
     .reduce((sum, entry) => sum + entry.amount, 0));
   if (amount - outstanding > 0.000001) {
-    throw new Error("Payout amount exceeds the agent's outstanding commission");
+    throw new Error("Payout amount exceeds the selected order's outstanding commission");
   }
 
+  // Keep the server-derived accrual current before the live ledger insert.
+  // When offline this queues the same idempotent reconciliation ahead of the
+  // payout; the sync engine also enforces that ordering before it uploads.
+  await requestServerCommissionReconciliation(workspaceId, order.id, {
+    assignmentId,
+  });
+
   const entry = await appendEntry(workspaceId, {
-    orderId: null,
-    assignmentId: null,
+    orderId: order.id,
+    assignmentId,
     agentId: input.agentId,
     membershipId: null,
     planId: null,
@@ -1674,7 +1676,7 @@ export async function recordCommissionPayout(
     ratePercent: 0,
     amount: -amount,
     occurredAt: normalizeTimestamp(input.occurredAt),
-    payoutReference: reference,
+    payoutReference: order.orderNumber,
     notes: normalizeText(input.notes),
     createdBy: input.createdBy ?? null,
   });

@@ -86,6 +86,7 @@ const dbMock = vi.hoisted(() => {
 const supabaseMock = vi.hoisted(() => {
     const mutationError = new Error('permission denied')
     const upsert = vi.fn(async (): Promise<{ data: null; error: Error | null }> => ({ data: null, error: mutationError }))
+    const insert = vi.fn(async (): Promise<{ data: null; error: Error | null }> => ({ data: null, error: null }))
     const rpc = vi.fn(async () => ({ data: null as any, error: null as any }))
     const orderUpsert = vi.fn(() => ({
         select: vi.fn(async () => ({ data: [] as any[], error: null as any }))
@@ -112,6 +113,7 @@ const supabaseMock = vi.hoisted(() => {
             upsert: tableName === 'sales_orders' || tableName === 'purchase_orders'
                 ? orderUpsert
                 : upsert,
+            insert,
             update: vi.fn(() => ({
                 eq: vi.fn(async () => ({ data: null, error: null }))
             })),
@@ -131,6 +133,7 @@ const supabaseMock = vi.hoisted(() => {
         mutationError,
         rpc,
         upsert,
+        insert,
         orderUpsert,
         setSaleLookup(row: Record<string, any> | null) {
             saleLookup = row
@@ -142,6 +145,7 @@ const supabaseMock = vi.hoisted(() => {
             from.mockClear()
             rpc.mockClear()
             upsert.mockClear()
+            insert.mockClear()
             orderUpsert.mockClear()
             saleLookup = null
             pullError = null
@@ -570,6 +574,52 @@ describe('fullSync error reporting', () => {
         expect(payload).not.toHaveProperty('sku_key')
         expect(payload).not.toHaveProperty('quantity')
         expect(payload).not.toHaveProperty('storage_id')
+    })
+
+    it('reconciles an order before uploading its commission payout', async () => {
+        const events: string[] = []
+        supabaseMock.rpc.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+            events.push(`rpc:${name}:${String(args.p_order_id ?? '')}`)
+            return { data: null, error: null }
+        })
+        supabaseMock.insert.mockImplementation(async () => {
+            events.push('insert:payout')
+            return { data: null, error: null }
+        })
+        dbMock.rows.push({
+            id: 'commission-payout-mutation',
+            workspaceId: 'workspace-1',
+            entityType: 'agent_commission_entries',
+            entityId: 'commission-payout-1',
+            operation: 'create',
+            payload: {
+                id: 'commission-payout-1',
+                orderId: 'sales-order-1',
+                assignmentId: 'assignment-1',
+                agentId: 'agent-1',
+                kind: 'payout',
+                status: 'paid',
+                amount: -8000,
+                currency: 'iqd'
+            },
+            createdAt: '2026-08-25T12:36:50.058Z',
+            status: 'pending'
+        })
+
+        const result = await fullSync('user-1', 'workspace-1', null)
+
+        expect(result.success).toBe(true)
+        expect(events).toEqual([
+            'rpc:reconcile_sales_agent_commission:sales-order-1',
+            'insert:payout'
+        ])
+        expect(supabaseMock.insert).toHaveBeenCalledWith(expect.objectContaining({
+            id: 'commission-payout-1',
+            order_id: 'sales-order-1',
+            assignment_id: 'assignment-1',
+            amount: -8000
+        }))
+        expect(dbMock.rows[0]).toMatchObject({ status: 'synced', error: undefined })
     })
 
     it('retries and repairs product mutations that previously failed because of sku_key', async () => {

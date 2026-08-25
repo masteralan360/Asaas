@@ -67,9 +67,9 @@ CREATE UNIQUE INDEX agent_commission_entries_one_reversal_per_return_idx
   WHERE kind = 'reversal' AND order_return_id IS NOT NULL;
 CREATE UNIQUE INDEX agent_commission_entries_one_approval_per_source_idx
   ON crm.agent_commission_entries (related_entry_id) WHERE kind = 'approval';
-CREATE UNIQUE INDEX agent_commission_entries_payout_reference_idx
+CREATE INDEX agent_commission_entries_payout_order_idx
   ON crm.agent_commission_entries (
-    workspace_id, agent_id, currency, lower(btrim(payout_reference))
+    workspace_id, agent_id, currency, order_id, occurred_at DESC
   ) WHERE kind = 'payout';
 
 ALTER TABLE crm.agent_commission_entries ENABLE ROW LEVEL SECURITY;

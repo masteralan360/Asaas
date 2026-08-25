@@ -983,6 +983,28 @@ export async function processMutationQueue(
           if (operation !== "create") {
             throw new Error("Commission ledger entries are immutable and cannot be updated");
           }
+
+          // The database enforces that a payout cannot exceed the commission
+          // currently earned for its order. Accruals are derived by the
+          // reconciliation RPC rather than uploaded as ledger rows, so make
+          // that derivation current immediately before the payout insert. This
+          // also covers offline payouts whose queued reconciliation mutation
+          // is deliberately processed at the end of this batch.
+          if (dbPayload.kind === "payout") {
+            const payoutOrderId = dbPayload.order_id;
+            if (typeof payoutOrderId !== "string" || !payoutOrderId) {
+              throw new Error("Commission payout is missing its sales order reference");
+            }
+            const { error: reconciliationError } = await supabase.rpc(
+              "reconcile_sales_agent_commission",
+              {
+                p_order_id: payoutOrderId,
+                p_order_return_id: null,
+              },
+            );
+            if (reconciliationError) throw reconciliationError;
+          }
+
           const { error } = await client.from(tableName).insert(dbPayload);
           if (error) {
             const { data: existingEntry, error: lookupError } = await client

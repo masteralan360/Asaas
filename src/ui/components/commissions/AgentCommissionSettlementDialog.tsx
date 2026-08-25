@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BadgeCheck, Banknote, SlidersHorizontal } from 'lucide-react'
 
-import { formatCurrency, formatDateTime } from '@/lib/utils'
+import { formatCurrency, formatDateTime, formatNumericInput, sanitizeNumericInput } from '@/lib/utils'
 import {
     recordCommissionAdjustment,
     recordCommissionApproval,
@@ -41,6 +41,11 @@ import { summarizeCommissionEntries } from './agentCommissionPresentation'
 
 type SettlementTab = 'approve' | 'payout' | 'adjustment'
 
+function payoutAmountInputValue(amount?: number) {
+    if (!Number.isFinite(amount) || !amount || amount <= 0) return ''
+    return String(Math.round((amount + Number.EPSILON) * 1_000_000) / 1_000_000)
+}
+
 export function AgentCommissionSettlementDialog({
     open,
     onOpenChange,
@@ -69,7 +74,7 @@ export function AgentCommissionSettlementDialog({
     const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(() => new Set())
     const [currency, setCurrency] = useState<CurrencyCode>(defaultCurrency)
     const [amount, setAmount] = useState('')
-    const [reference, setReference] = useState('')
+    const [payoutOrderId, setPayoutOrderId] = useState('')
     const [paymentMethod, setPaymentMethod] = useState('cash')
     const [notes, setNotes] = useState('')
     const [adjustmentOrderId, setAdjustmentOrderId] = useState('')
@@ -95,21 +100,41 @@ export function AgentCommissionSettlementDialog({
         () => salesOrders.filter((order) => assignedOrderIds.has(order.id)),
         [assignedOrderIds, salesOrders]
     )
-    const payoutCurrencies = useMemo(() => Object.entries(summary.due)
-        .filter(([, due]) => due > 0.000001)
-        .map(([currencyCode]) => currencyCode as CurrencyCode), [summary.due])
+    const payoutOrders = useMemo(() => {
+        const dueByOrderId = new Map<string, { currency: CurrencyCode, due: number }>()
+        for (const entry of entries) {
+            if (!entry.orderId || entry.kind === 'estimate' || entry.kind === 'approval') continue
+            const current = dueByOrderId.get(entry.orderId) || { currency: entry.currency as CurrencyCode, due: 0 }
+            if (current.currency !== entry.currency) continue
+            current.due += entry.amount
+            dueByOrderId.set(entry.orderId, current)
+        }
+
+        return Array.from(dueByOrderId, ([orderId, value]) => {
+            const order = salesOrders.find((candidate) => candidate.id === orderId)
+            return order && !order.isDeleted && value.due > 0.000001
+                ? { orderId, orderNumber: order.orderNumber, customerName: order.customerName, ...value }
+                : null
+        })
+            .filter((order): order is { orderId: string, orderNumber: string, customerName: string, currency: CurrencyCode, due: number } => Boolean(order))
+            .sort((left, right) => left.orderNumber.localeCompare(right.orderNumber))
+    }, [entries, salesOrders])
+    const selectedPayoutOrder = useMemo(
+        () => payoutOrders.find((order) => order.orderId === payoutOrderId) || null,
+        [payoutOrderId, payoutOrders]
+    )
 
     useEffect(() => {
         if (!open) return
         setTab(approvalCandidates.length > 0 ? 'approve' : 'payout')
         setSelectedEntryIds(new Set())
-        setCurrency(payoutCurrencies[0] || defaultCurrency)
-        setAmount('')
-        setReference('')
+        setPayoutOrderId(payoutOrders[0]?.orderId || '')
+        setCurrency(payoutOrders[0]?.currency || defaultCurrency)
+        setAmount(payoutAmountInputValue(payoutOrders[0]?.due))
         setPaymentMethod('cash')
         setNotes('')
         setAdjustmentOrderId('')
-    }, [approvalCandidates.length, defaultCurrency, open, payoutCurrencies])
+    }, [approvalCandidates.length, defaultCurrency, open, payoutOrders])
 
     function toggleApproval(entryId: string, checked: boolean) {
         setSelectedEntryIds((current) => {
@@ -134,12 +159,15 @@ export function AgentCommissionSettlementDialog({
             } else if (tab === 'payout') {
                 const payoutAmount = Number(amount)
                 if (!(payoutAmount > 0)) throw new Error('Enter a positive payout amount.')
-                if (!reference.trim()) throw new Error('Enter a payout reference.')
+                if (!selectedPayoutOrder) throw new Error('Select a sales order with commission due.')
+                if (payoutAmount - selectedPayoutOrder.due > 0.000001) {
+                    throw new Error('Payout amount exceeds the selected order\'s outstanding commission.')
+                }
                 await recordCommissionPayout(workspaceId, {
                     agentId,
+                    orderId: selectedPayoutOrder.orderId,
                     amount: payoutAmount,
-                    currency,
-                    payoutReference: reference.trim(),
+                    currency: selectedPayoutOrder.currency,
                     paymentMethod: paymentMethod as any,
                     notes: notes.trim() || null,
                     createdBy: userId || null
@@ -239,25 +267,50 @@ export function AgentCommissionSettlementDialog({
                         <TabsContent value="payout" className="mt-4 space-y-4">
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <div className="space-y-2">
-                                    <Label>Currency</Label>
-                                    <Select value={currency} onValueChange={(value) => setCurrency(value as CurrencyCode)} disabled={isSaving}>
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <Label htmlFor="commission-payout-order">Sales order</Label>
+                                    <Select
+                                        value={payoutOrderId || '__none__'}
+                                        onValueChange={(value) => {
+                                            const orderId = value === '__none__' ? '' : value
+                                            const order = payoutOrders.find((candidate) => candidate.orderId === orderId)
+                                            setPayoutOrderId(orderId)
+                                            setCurrency(order?.currency || defaultCurrency)
+                                            setAmount(payoutAmountInputValue(order?.due))
+                                        }}
+                                        disabled={isSaving || payoutOrders.length === 0}
+                                    >
+                                        <SelectTrigger id="commission-payout-order"><SelectValue placeholder="Select a payable sales order" /></SelectTrigger>
                                         <SelectContent>
-                                            {(payoutCurrencies.length > 0 ? payoutCurrencies : [defaultCurrency]).map((currencyCode) => (
-                                                <SelectItem key={currencyCode} value={currencyCode}>{currencyCode.toUpperCase()}</SelectItem>
+                                            <SelectItem value="__none__" disabled>Select a payable sales order</SelectItem>
+                                            {payoutOrders.map((order) => (
+                                                <SelectItem key={order.orderId} value={order.orderId}>
+                                                    {order.orderNumber} · {order.customerName} · Due {formatCurrency(order.due, order.currency, iqdPreference)}
+                                                </SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
-                                    <p className="text-xs text-muted-foreground">Due: {formatCurrency(summary.due[currency] || 0, currency, iqdPreference)}</p>
+                                    {selectedPayoutOrder ? (
+                                        <p className="text-xs text-muted-foreground">
+                                            Reference: <span className="font-semibold text-foreground">{selectedPayoutOrder.orderNumber}</span> · set automatically from the sales order.
+                                        </p>
+                                    ) : <p className="text-xs text-muted-foreground">No order-specific commission is currently due.</p>}
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="commission-payout-amount">Payout amount</Label>
-                                    <Input id="commission-payout-amount" type="number" min="0" step="any" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={isSaving} />
+                                    <Input
+                                        id="commission-payout-amount"
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={formatNumericInput(amount)}
+                                        onChange={(event) => setAmount(sanitizeNumericInput(event.target.value, {
+                                            allowDecimal: true,
+                                            maxFractionDigits: 6
+                                        }))}
+                                        placeholder="0"
+                                        disabled={isSaving || !selectedPayoutOrder}
+                                    />
+                                    {selectedPayoutOrder ? <p className="text-xs text-muted-foreground">Due: {formatCurrency(selectedPayoutOrder.due, selectedPayoutOrder.currency, iqdPreference)}</p> : null}
                                 </div>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="commission-payout-reference">Payout reference</Label>
-                                <Input id="commission-payout-reference" value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Bank transfer, cash voucher, or payroll reference" disabled={isSaving} />
                             </div>
                             <div className="space-y-2">
                                 <Label>Payment method</Label>
@@ -323,7 +376,7 @@ export function AgentCommissionSettlementDialog({
                 </AppDialogBody>
                 <AppDialogFooter>
                     <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>Cancel</Button>
-                    <Button type="button" onClick={() => void handleSubmit()} disabled={isSaving || (tab === 'approve' && approvalCandidates.length === 0)}>
+                    <Button type="button" onClick={() => void handleSubmit()} disabled={isSaving || (tab === 'approve' && approvalCandidates.length === 0) || (tab === 'payout' && !selectedPayoutOrder)}>
                         {isSaving ? 'Saving…' : actionLabel}
                     </Button>
                 </AppDialogFooter>

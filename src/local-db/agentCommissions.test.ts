@@ -408,40 +408,41 @@ describe("sales agent commission lifecycle", () => {
 
     const payout = await commissions.recordCommissionPayout(WORKSPACE_ID, {
       agentId: agent.id,
+      orderId: order.id,
       amount: 10,
       currency: "usd",
-      payoutReference: "PAY-1",
       paymentMethod: "cash",
     });
     expect(payout.amount).toBe(-10);
-    const payoutRetry = await commissions.recordCommissionPayout(WORKSPACE_ID, {
+    expect(payout).toMatchObject({ orderId: order.id, payoutReference: order.orderNumber });
+    const finalPayout = await commissions.recordCommissionPayout(WORKSPACE_ID, {
       agentId: agent.id,
+      orderId: order.id,
       amount: 10,
       currency: "usd",
-      payoutReference: " pay-1 ",
       paymentMethod: "cash",
     });
-    expect(payoutRetry.id).toBe(payout.id);
+    expect(finalPayout.id).not.toBe(payout.id);
     await expect(commissions.recordCommissionPayout(WORKSPACE_ID, {
       agentId: agent.id,
-      amount: 11,
+      orderId: order.id,
+      amount: 1,
       currency: "usd",
-      payoutReference: "PAY-1",
       paymentMethod: "cash",
-    })).rejects.toThrow("another amount");
+    })).rejects.toThrow("selected order's outstanding commission");
 
     const allEntries = await db.agent_commission_entries.where("agentId").equals(agent.id).toArray();
-    expect(allEntries.filter((entry) => entry.kind === "payout")).toHaveLength(1);
+    expect(allEntries.filter((entry) => entry.kind === "payout")).toHaveLength(2);
     const outstanding = allEntries
       .filter((entry) => entry.kind !== "approval" && entry.kind !== "estimate")
       .reduce((sum, entry) => sum + entry.amount, 0);
-    expect(outstanding).toBe(10);
+    expect(outstanding).toBe(0);
 
     const payoutTransactions = await db.payment_transactions
       .where("[workspaceId+sourceType+sourceRecordId]")
       .equals([WORKSPACE_ID, "agent_commission_payout", agent.id])
       .toArray();
-    expect(payoutTransactions).toEqual([
+    expect(payoutTransactions).toEqual(expect.arrayContaining([
       expect.objectContaining({
         sourceModule: "orders",
         sourceType: "agent_commission_payout",
@@ -453,7 +454,11 @@ describe("sales agent commission lifecycle", () => {
         paymentMethod: "cash",
         metadata: expect.objectContaining({ agentCommissionEntryId: payout.id }),
       }),
-    ]);
+      expect.objectContaining({
+        sourceSubrecordId: finalPayout.id,
+        metadata: expect.objectContaining({ agentCommissionEntryId: finalPayout.id }),
+      }),
+    ]));
   });
 
   it("rejects commission payouts that cannot be paid through a real payment method", async () => {
@@ -478,9 +483,9 @@ describe("sales agent commission lifecycle", () => {
 
     await expect(commissions.recordCommissionPayout(WORKSPACE_ID, {
       agentId: agent.id,
+      orderId: order.id,
       amount: 1,
       currency: "usd",
-      payoutReference: "PAY-CREDIT",
       paymentMethod: "credit",
     })).rejects.toThrow("valid commission payout payment method");
     expect(await db.payment_transactions.count()).toBe(0);
