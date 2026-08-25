@@ -87,7 +87,7 @@ const supabaseMock = vi.hoisted(() => {
     const mutationError = new Error('permission denied')
     const upsert = vi.fn(async (): Promise<{ data: null; error: Error | null }> => ({ data: null, error: mutationError }))
     const insert = vi.fn(async (): Promise<{ data: null; error: Error | null }> => ({ data: null, error: null }))
-    const rpc = vi.fn(async () => ({ data: null as any, error: null as any }))
+    const rpc = vi.fn(async (..._args: unknown[]) => ({ data: null as any, error: null as any }))
     const orderUpsert = vi.fn(() => ({
         select: vi.fn(async () => ({ data: [] as any[], error: null as any }))
     }))
@@ -578,8 +578,12 @@ describe('fullSync error reporting', () => {
 
     it('reconciles an order before uploading its commission payout', async () => {
         const events: string[] = []
-        supabaseMock.rpc.mockImplementation(async (name: string, args: Record<string, unknown>) => {
-            events.push(`rpc:${name}:${String(args.p_order_id ?? '')}`)
+        supabaseMock.rpc.mockImplementation(async (...rpcArgs: unknown[]) => {
+            const [name, rawArgs] = rpcArgs
+            const args = rawArgs && typeof rawArgs === 'object'
+                ? rawArgs as Record<string, unknown>
+                : {}
+            events.push(`rpc:${String(name)}:${String(args.p_order_id ?? '')}`)
             return { data: null, error: null }
         })
         supabaseMock.insert.mockImplementation(async () => {
