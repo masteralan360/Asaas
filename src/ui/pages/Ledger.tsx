@@ -703,7 +703,7 @@ interface LedgerBuildContext {
     purchaseOrderById: Map<string, PurchaseOrder>
     businessPartnerByName: Map<string, string>
     deliverySettlementById: Map<string, { agentId?: string | null; merchantProfileId?: string | null; businessPartnerId?: string | null; shipmentId?: string | null }>
-    deliveryShipmentById: Map<string, { trackingNumber: string; recipientName: string }>
+    deliveryShipmentById: Map<string, { trackingNumber: string; recipientPhone: string }>
     agentNameById: Map<string, string>
     agentBusinessPartnerIdById: Map<string, string>
     merchantNameByProfileId: Map<string, string>
@@ -1076,12 +1076,12 @@ function buildPaymentLedgerEntry(
                         ? t('ledger.description.deliveryPostCourierRelation', {
                             defaultValue: 'Post {{tracking}} · courier cash handover for {{recipient}}.',
                             tracking: shipment?.trackingNumber || shipmentId,
-                            recipient: shipment?.recipientName || t('common.unknown', { defaultValue: 'Unknown recipient' })
+                            recipient: shipment?.recipientPhone || t('common.unknown', { defaultValue: 'Unknown recipient' })
                         })
                         : t('ledger.description.deliveryPostMerchantRelation', {
                             defaultValue: 'Post {{tracking}} · merchant payout for {{recipient}}.',
                             tracking: shipment?.trackingNumber || shipmentId,
-                            recipient: shipment?.recipientName || t('common.unknown', { defaultValue: 'Unknown recipient' })
+                            recipient: shipment?.recipientPhone || t('common.unknown', { defaultValue: 'Unknown recipient' })
                         })
                 }
                 : {

@@ -90,7 +90,6 @@ describe("Post Service COD accounting", () => {
     });
     const shipment = await createDeliveryShipment(WORKSPACE_ID, {
       merchantProfileId: profile.id,
-      recipientName: "Recipient",
       recipientPhone: "07500000000",
       recipientAddress: "Baghdad",
       currency: "iqd",
@@ -141,7 +140,6 @@ describe("Post Service COD accounting", () => {
     });
     const shipment = await createDeliveryShipment(WORKSPACE_ID, {
       merchantProfileId: profile.id,
-      recipientName: "Recipient",
       recipientPhone: "07500000000",
       recipientAddress: "Baghdad",
       currency: "iqd",
@@ -211,7 +209,7 @@ describe("Post Service COD accounting", () => {
       defaultFeePayer: "recipient",
     });
     const shipment = await createDeliveryShipment(WORKSPACE_ID, {
-      merchantProfileId: profile.id, recipientName: "Recipient", recipientPhone: "07500000000",
+      merchantProfileId: profile.id, recipientPhone: "07500000000",
       recipientAddress: "Baghdad", currency: "iqd", codAmount: 0,
       deliveryFee: 5000,
     });
@@ -239,7 +237,6 @@ describe("Post Service COD accounting", () => {
     });
     const shipment = await createDeliveryShipment(WORKSPACE_ID, {
       merchantProfileId: profile.id,
-      recipientName: "Recipient",
       recipientPhone: "07500000000",
       recipientAddress: "Baghdad",
       currency: "iqd",
@@ -292,7 +289,7 @@ describe("Post Service COD accounting", () => {
       defaultFeePayer: "merchant",
     });
     const shipment = await createDeliveryShipment(WORKSPACE_ID, {
-      merchantProfileId: profile.id, recipientName: "Recipient", recipientPhone: "07500000000",
+      merchantProfileId: profile.id, recipientPhone: "07500000000",
       recipientAddress: "Baghdad", currency: "iqd", codAmount: 100,
       deliveryFee: 10,
     });
@@ -321,11 +318,77 @@ describe("Post Service COD accounting", () => {
     await db.agents.put(deliveryCourier);
     const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id });
     const shipment = await createDeliveryShipment(WORKSPACE_ID, {
-      merchantProfileId: profile.id, recipientName: "Recipient", recipientPhone: "07500000000",
+      merchantProfileId: profile.id, recipientPhone: "07500000000",
       recipientAddress: "Baghdad", currency: "iqd", codAmount: 1,
     });
     await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
     await expect(updateDeliveryShipmentStatus(shipment.id, { status: "postponed", actorAgentId: deliveryCourier.id })).rejects.toThrow("reason is required");
+  });
+
+  it("accepts and persists a voice-only returned or postponed reason", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const deliveryCourier = courier(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientPhone: "07500000000",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      codAmount: 1,
+    });
+    await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
+    const recordingId = crypto.randomUUID();
+    const voiceReasonPath = `${WORKSPACE_ID}/${shipment.id}/postponed/${recordingId}.flac`;
+
+    await updateDeliveryShipmentStatus(shipment.id, {
+      status: "postponed",
+      voiceReasonPath,
+      voiceReasonDurationMs: 4_200,
+      actorAgentId: deliveryCourier.id,
+    });
+
+    const events = await db.delivery_shipment_events
+      .where("[workspaceId+shipmentId]")
+      .equals([WORKSPACE_ID, shipment.id])
+      .toArray();
+    const event = events.find((row) => row.status === "postponed");
+    expect(event).toMatchObject({
+      status: "postponed",
+      note: null,
+      voiceReasonPath,
+      voiceReasonDurationMs: 4_200,
+    });
+  });
+
+  it("does not retain a local-only cleanup field when a postponed voice reason is redispatched", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const deliveryCourier = courier(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientPhone: "07500000000",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      codAmount: 1,
+    });
+    await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
+    const voiceReasonPath = `${WORKSPACE_ID}/${shipment.id}/postponed/${crypto.randomUUID()}.flac`;
+    await updateDeliveryShipmentStatus(shipment.id, {
+      status: "postponed",
+      voiceReasonPath,
+      voiceReasonDurationMs: 4_200,
+      actorAgentId: deliveryCourier.id,
+    });
+
+    await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
+
+    const redispatched = await db.delivery_shipments.get(shipment.id);
+    expect(redispatched?.status).toBe("assigned");
+    expect(redispatched).not.toHaveProperty("voiceReasonCleanupPaths");
   });
 
   it("transfers a returned post to a new courier in a fresh manifest", async () => {
@@ -336,7 +399,7 @@ describe("Post Service COD accounting", () => {
     await db.agents.bulkPut([originalCourier, replacementCourier]);
     const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id });
     const shipment = await createDeliveryShipment(WORKSPACE_ID, {
-      merchantProfileId: profile.id, recipientName: "Recipient", recipientPhone: "07500000000",
+      merchantProfileId: profile.id, recipientPhone: "07500000000",
       recipientAddress: "Baghdad", currency: "iqd", codAmount: 100,
     });
     const originalRun = await createDeliveryRun(WORKSPACE_ID, { agentId: originalCourier.id, shipmentIds: [shipment.id], courierDeliveryFee: 5 });
@@ -366,7 +429,6 @@ describe("Post Service COD accounting", () => {
     const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id });
     const input = {
       merchantProfileId: profile.id,
-      recipientName: "Recipient",
       recipientPhone: "07500000000",
       recipientAddress: "Baghdad",
       currency: "iqd" as const,
@@ -391,7 +453,6 @@ describe("Post Service COD accounting", () => {
     });
     const shipment = await createDeliveryShipment(WORKSPACE_ID, {
       merchantProfileId: profile.id,
-      recipientName: "Recipient",
       recipientPhone: "07500000000",
       recipientAddress: "Baghdad",
       currency: "iqd",
@@ -449,11 +510,11 @@ describe("Post Service COD accounting", () => {
       defaultFeePayer: "recipient",
     });
     const first = await createDeliveryShipment(WORKSPACE_ID, {
-      merchantProfileId: profile.id, recipientName: "Recipient", recipientPhone: "07500000000",
+      merchantProfileId: profile.id, recipientPhone: "07500000000",
       recipientAddress: "Baghdad", currency: "iqd", codAmount: 100,
     });
     const second = await createDeliveryShipment(WORKSPACE_ID, {
-      merchantProfileId: profile.id, recipientName: "Recipient", recipientPhone: "07500000000",
+      merchantProfileId: profile.id, recipientPhone: "07500000000",
       recipientAddress: "Baghdad", currency: "iqd", codAmount: 50,
     });
     await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [first.id, second.id] });
@@ -485,7 +546,7 @@ describe("Post Service COD accounting", () => {
     await db.business_partners.put(merchant);
     const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id });
     await createDeliveryShipment(WORKSPACE_ID, {
-      merchantProfileId: profile.id, recipientName: "Recipient", recipientPhone: "07500000000",
+      merchantProfileId: profile.id, recipientPhone: "07500000000",
       recipientAddress: "Baghdad", currency: "iqd", codAmount: 1,
     });
 

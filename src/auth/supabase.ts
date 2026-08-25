@@ -55,13 +55,17 @@ const clientKey = isKeyValid ? resolvedSupabaseAnonKey : 'placeholder-key'
 const webUsageGatewayUrl = !isTauri() && !isBackendConfigurationRequired
     ? (import.meta.env.VITE_WEB_USAGE_GATEWAY_URL || (import.meta.env.PROD ? '/api-workspace-data' : ''))
     : ''
+const webStorageUsageGatewayUrl = !isTauri() && !isBackendConfigurationRequired
+    ? (import.meta.env.VITE_WEB_STORAGE_USAGE_GATEWAY_URL || (import.meta.env.PROD ? '/api-workspace-storage' : ''))
+    : ''
 
 export const supabase = createClient(clientUrl, clientKey, {
     global: {
         fetch: createWorkspaceUsageFetch({
             supabaseUrl: clientUrl,
             supabaseAnonKey: clientKey,
-            webGatewayUrl: webUsageGatewayUrl
+            webGatewayUrl: webUsageGatewayUrl,
+            webStorageGatewayUrl: webStorageUsageGatewayUrl
         })
     },
     auth: {

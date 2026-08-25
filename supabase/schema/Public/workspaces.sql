@@ -34,8 +34,10 @@ CREATE TABLE public.workspaces (
   usage_limit_locked boolean NOT NULL DEFAULT false,
   payment_renewal_locked boolean NOT NULL DEFAULT false,
   subscription_expiry_locked boolean NOT NULL DEFAULT false,
+  sales_agent_commission_sheet_type text NOT NULL DEFAULT 'normal'::text,
   CONSTRAINT workspaces_data_mode_check CHECK ((data_mode::text) = ANY (ARRAY['cloud'::text, 'local'::text, 'hybrid'::text, 'demo'::text])),
   CONSTRAINT workspaces_plan_check CHECK (plan = ANY (ARRAY['basic'::text, 'business'::text, 'enterprise'::text])),
+  CONSTRAINT workspaces_sales_agent_commission_sheet_type_check CHECK (sales_agent_commission_sheet_type IN ('normal', 'tier_based')),
   PRIMARY KEY (id)
 );
 

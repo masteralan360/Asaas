@@ -4,6 +4,10 @@ CREATE TABLE crm.agent_commission_plans (
   name text NOT NULL,
   level text NOT NULL CHECK (NULLIF(btrim(level), '') IS NOT NULL),
   rate_percent numeric(9, 6) NOT NULL CHECK (rate_percent >= 0 AND rate_percent <= 100),
+  commission_type text NOT NULL DEFAULT 'fixed_amount' CHECK (commission_type IN ('fixed_amount', 'percentage')),
+  fixed_amount numeric(18, 6) NULL,
+  fixed_currency text NULL CHECK (fixed_currency IS NULL OR fixed_currency IN ('usd', 'eur', 'iqd', 'try')),
+  tier_name text NULL CHECK (tier_name IS NULL OR NULLIF(btrim(tier_name), '') IS NOT NULL),
   calculation_basis text NOT NULL DEFAULT 'net_profit' CHECK (calculation_basis IN ('net_profit', 'net_revenue')),
   include_tax boolean NOT NULL DEFAULT false,
   include_delivery_charge boolean NOT NULL DEFAULT false,
@@ -17,11 +21,23 @@ CREATE TABLE crm.agent_commission_plans (
   sync_status text NOT NULL DEFAULT 'synced',
   version bigint NOT NULL DEFAULT 1 CHECK (version >= 1),
   is_deleted boolean NOT NULL DEFAULT false,
-  CONSTRAINT agent_commission_plans_name_check CHECK (NULLIF(btrim(name), '') IS NOT NULL)
+  CONSTRAINT agent_commission_plans_name_check CHECK (NULLIF(btrim(name), '') IS NOT NULL),
+  CONSTRAINT agent_commission_plans_commission_shape_check CHECK (
+    (commission_type = 'percentage'
+      AND fixed_amount IS NULL
+      AND fixed_currency IS NULL)
+    OR (commission_type = 'fixed_amount'
+      AND rate_percent = 0
+      AND fixed_amount > 0
+      AND fixed_currency IS NOT NULL)
+  )
 );
 
 COMMENT ON COLUMN crm.agent_commission_plans.level IS
   'Stable user-defined commission-level key. The matching name column is the user-visible level name.';
+
+COMMENT ON COLUMN crm.agent_commission_plans.tier_name IS
+  'Optional tier label for a tier-based sales-agent commission sheet. Informational until tier calculations are enabled.';
 
 CREATE INDEX agent_commission_plans_workspace_idx ON crm.agent_commission_plans (workspace_id);
 CREATE INDEX agent_commission_plans_workspace_level_idx

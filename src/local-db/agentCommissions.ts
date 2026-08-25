@@ -23,6 +23,7 @@ import type {
   CommissionCalculation,
   CommissionCalculationBasis,
   CommissionPlanLevel,
+  CommissionPlanType,
   CurrencyCode,
   ExchangeRateSnapshot,
   ManualSalesAgentCommissionType,
@@ -53,6 +54,10 @@ export interface CreateAgentCommissionPlanInput {
   name: string;
   level: CommissionPlanLevel;
   ratePercent: number;
+  commissionType?: CommissionPlanType;
+  fixedAmount?: number | null;
+  fixedCurrency?: CurrencyCode | null;
+  tierName?: string | null;
   calculationBasis?: CommissionCalculationBasis;
   includeTax?: boolean;
   includeDeliveryCharge?: boolean;
@@ -67,6 +72,10 @@ export interface UpdateAgentCommissionPlanInput {
   name?: string;
   level?: CommissionPlanLevel;
   ratePercent?: number;
+  commissionType?: CommissionPlanType;
+  fixedAmount?: number | null;
+  fixedCurrency?: CurrencyCode | null;
+  tierName?: string | null;
   calculationBasis?: CommissionCalculationBasis;
   includeTax?: boolean;
   includeDeliveryCharge?: boolean;
@@ -76,6 +85,12 @@ export interface UpdateAgentCommissionPlanInput {
   notes?: string | null;
   /** Actor hint for local mode. Cloud audit fields are stamped from auth.uid(). */
   createdBy?: string | null;
+}
+
+export interface DeleteAgentCommissionPlanInput {
+  /** Actor hint for local mode. Cloud audit fields are stamped from auth.uid(). */
+  deletedBy?: string | null;
+  effectiveAt?: string;
 }
 
 export interface SetAgentCommissionMembershipInput {
@@ -190,6 +205,45 @@ function assertRate(value: number) {
     throw new Error("Commission rate must be between 0 and 100 percent");
   }
   return roundCommissionAmount(rate);
+}
+
+function resolveCommissionPlanType(value?: CommissionPlanType | null): CommissionPlanType {
+  return value === "fixed_amount" ? "fixed_amount" : "percentage";
+}
+
+function assertCommissionCurrency(value?: CurrencyCode | null): CurrencyCode {
+  if (value === "usd" || value === "eur" || value === "iqd" || value === "try") {
+    return value;
+  }
+  throw new Error("Select a valid commission currency");
+}
+
+function resolveCommissionPlanTerms(input: {
+  commissionType?: CommissionPlanType | null;
+  ratePercent?: number | null;
+  fixedAmount?: number | null;
+  fixedCurrency?: CurrencyCode | null;
+}, fallback?: Pick<AgentCommissionPlan, "commissionType" | "ratePercent" | "fixedAmount" | "fixedCurrency">) {
+  const commissionType = resolveCommissionPlanType(input.commissionType ?? fallback?.commissionType);
+  if (commissionType === "percentage") {
+    return {
+      commissionType,
+      ratePercent: assertRate(input.ratePercent ?? fallback?.ratePercent ?? 0),
+      fixedAmount: null,
+      fixedCurrency: null,
+    };
+  }
+
+  const fixedAmount = assertMoney(input.fixedAmount ?? fallback?.fixedAmount ?? 0, "Fixed commission");
+  if (fixedAmount <= 0) {
+    throw new Error("Fixed commission amount must be greater than zero");
+  }
+  return {
+    commissionType,
+    ratePercent: 0,
+    fixedAmount,
+    fixedCurrency: assertCommissionCurrency(input.fixedCurrency ?? fallback?.fixedCurrency),
+  };
 }
 
 type ResolvedManualSalesAgentCommission = {
@@ -619,13 +673,18 @@ export async function createAgentCommissionPlan(
   if (existingLevel) {
     throw new Error("This workspace already has a commission plan for that level");
   }
+  const terms = resolveCommissionPlanTerms(input);
   const now = new Date().toISOString();
   const plan: AgentCommissionPlan = {
     id: generateId(),
     workspaceId,
     name,
     level,
-    ratePercent: assertRate(input.ratePercent),
+    commissionType: terms.commissionType,
+    ratePercent: terms.ratePercent,
+    fixedAmount: terms.fixedAmount,
+    fixedCurrency: terms.fixedCurrency,
+    tierName: normalizeText(input.tierName),
     calculationBasis: input.calculationBasis ?? "net_profit",
     includeTax: input.includeTax ?? false,
     includeDeliveryCharge: input.includeDeliveryCharge ?? false,
@@ -666,7 +725,14 @@ export async function updateAgentCommissionPlan(
   }
   const nextLevel = input.level === undefined ? existing.level : normalizeText(input.level);
   if (!nextLevel) throw new Error("Commission level is required");
-  const ratePercent = input.ratePercent === undefined ? existing.ratePercent : assertRate(input.ratePercent);
+  const terms = resolveCommissionPlanTerms({
+    commissionType: input.commissionType,
+    ratePercent: input.ratePercent,
+    fixedAmount: input.fixedAmount,
+    fixedCurrency: input.fixedCurrency,
+  }, existing);
+  const { commissionType, ratePercent, fixedAmount, fixedCurrency } = terms;
+  const tierName = input.tierName === undefined ? existing.tierName ?? null : normalizeText(input.tierName);
   const calculationBasis = input.calculationBasis ?? existing.calculationBasis;
   const includeTax = input.includeTax ?? existing.includeTax;
   const includeDeliveryCharge = input.includeDeliveryCharge ?? existing.includeDeliveryCharge;
@@ -689,7 +755,10 @@ export async function updateAgentCommissionPlan(
     .and((membership) => !membership.isDeleted)
     .toArray();
   const changesTerms = nextLevel !== existing.level
+    || commissionType !== resolveCommissionPlanType(existing.commissionType)
     || ratePercent !== existing.ratePercent
+    || fixedAmount !== (existing.fixedAmount ?? null)
+    || fixedCurrency !== (existing.fixedCurrency ?? null)
     || calculationBasis !== existing.calculationBasis
     || includeTax !== existing.includeTax
     || includeDeliveryCharge !== existing.includeDeliveryCharge
@@ -730,7 +799,11 @@ export async function updateAgentCommissionPlan(
       id: generateId(),
       name,
       level: existing.level,
+      commissionType,
       ratePercent,
+      fixedAmount,
+      fixedCurrency,
+      tierName,
       calculationBasis,
       includeTax,
       includeDeliveryCharge,
@@ -821,7 +894,11 @@ export async function updateAgentCommissionPlan(
     ...existing,
     name,
     level: nextLevel,
+    commissionType,
     ratePercent,
+    fixedAmount,
+    fixedCurrency,
+    tierName,
     calculationBasis,
     includeTax,
     includeDeliveryCharge,
@@ -850,6 +927,85 @@ export async function updateAgentCommissionPlan(
     }
   }
   return updated;
+}
+
+/**
+ * Retires a saved commission level without deleting any historical plan,
+ * membership, order, or ledger records. Retired levels are excluded from
+ * settings and can no longer be assigned to a field agent.
+ */
+export async function deleteAgentCommissionPlan(
+  planId: string,
+  input: DeleteAgentCommissionPlanInput = {},
+) {
+  const existing = await db.agent_commission_plans.get(planId);
+  if (!existing || existing.isDeleted) throw new Error("Commission plan not found");
+  if (!existing.isActive && existing.effectiveTo) {
+    throw new Error("Commission plan has already been deleted");
+  }
+
+  const memberships = await db.agent_commission_memberships
+    .where("[workspaceId+planId]")
+    .equals([existing.workspaceId, existing.id])
+    .and((membership) => !membership.isDeleted && !membership.effectiveTo)
+    .toArray();
+  const requestedAt = normalizeTimestamp(input.effectiveAt);
+  const retiredAt = new Date(Math.max(
+    new Date(requestedAt).getTime(),
+    new Date(existing.effectiveFrom).getTime() + 1,
+    ...memberships.map((membership) => new Date(membership.effectiveFrom).getTime() + 1),
+  )).toISOString();
+  const now = new Date().toISOString();
+  const retiredPlan: AgentCommissionPlan = {
+    ...existing,
+    effectiveTo: retiredAt,
+    isActive: false,
+    updatedAt: now,
+    version: existing.version + 1,
+    ...getSyncMetadata(existing.workspaceId, now),
+  };
+  const endedMemberships = memberships.map((membership) => ({
+    ...membership,
+    effectiveTo: retiredAt,
+    endedBy: input.deletedBy ?? null,
+    updatedAt: now,
+    version: membership.version + 1,
+    ...getSyncMetadata(existing.workspaceId, now),
+  } satisfies AgentCommissionMembership));
+
+  await db.transaction(
+    "rw",
+    db.agent_commission_plans,
+    db.agent_commission_memberships,
+    async () => {
+      if (endedMemberships.length > 0) {
+        await db.agent_commission_memberships.bulkPut(endedMemberships);
+      }
+      await db.agent_commission_plans.put(retiredPlan);
+    },
+  );
+
+  for (const membership of endedMemberships) {
+    await syncUpsert(MEMBERSHIP_TABLE, membership);
+  }
+  await syncUpsert(PLAN_TABLE, retiredPlan);
+
+  if (shouldUseCloudData(existing.workspaceId)) {
+    for (const membership of endedMemberships) {
+      const assignments = await db.sales_order_agent_assignments
+        .where("[workspaceId+agentId]")
+        .equals([existing.workspaceId, membership.agentId])
+        .and((assignment) => !assignment.isDeleted && !assignment.unassignedAt)
+        .toArray();
+      await Promise.all(assignments.map((assignment) => requestServerCommissionReconciliation(
+        existing.workspaceId,
+        assignment.orderId,
+        { membershipId: membership.id, planId: existing.id },
+      )));
+    }
+  }
+
+  return retiredPlan;
 }
 
 function closeTimestampAfter(start: string, requested: string) {
@@ -934,13 +1090,21 @@ export function calculateSalesOrderCommission(
   order: SalesOrder,
   plan: Pick<
     AgentCommissionPlan,
-    "ratePercent" | "calculationBasis" | "includeTax" | "includeDeliveryCharge"
+    | "commissionType"
+    | "ratePercent"
+    | "fixedAmount"
+    | "fixedCurrency"
+    | "calculationBasis"
+    | "includeTax"
+    | "includeDeliveryCharge"
   >,
   assignment?: Pick<
     SalesOrderAgentAssignment,
     "deliveryChargeAmount" | "internalDeliveryCostAmount"
   > | null,
 ): CommissionCalculation {
+  const commissionType = resolveCommissionPlanType(plan.commissionType);
+  const ratePercent = commissionType === "percentage" ? assertRate(plan.ratePercent) : 0;
   const zero: CommissionCalculation = {
     currency: order.currency,
     revenueAmount: 0,
@@ -948,7 +1112,7 @@ export function calculateSalesOrderCommission(
     taxAmount: 0,
     deliveryChargeAmount: 0,
     basisAmount: 0,
-    ratePercent: assertRate(plan.ratePercent),
+    ratePercent,
     commissionAmount: 0,
   };
   if (order.status === "cancelled" || order.returnStatus === "full" || order.isDeleted) return zero;
@@ -992,7 +1156,17 @@ export function calculateSalesOrderCommission(
     0,
     plan.calculationBasis === "net_revenue" ? revenueAmount : revenueAmount - costAmount,
   );
-  const ratePercent = assertRate(plan.ratePercent);
+  const fixedCommission = commissionType === "fixed_amount"
+    ? getAppliedCurrencyConversion(
+      assertMoney(plan.fixedAmount ?? 0, "Fixed commission"),
+      assertCommissionCurrency(plan.fixedCurrency),
+      order.currency,
+      order.exchangeRates,
+    )
+    : null;
+  if (commissionType === "fixed_amount" && !fixedCommission) {
+    throw new Error("Exchange rate unavailable for the commission plan currency");
+  }
 
   return {
     currency: order.currency,
@@ -1002,7 +1176,9 @@ export function calculateSalesOrderCommission(
     deliveryChargeAmount: roundCommissionAmount(deliveryChargeAmount),
     basisAmount: roundCommissionAmount(basisAmount),
     ratePercent,
-    commissionAmount: roundCommissionAmount(basisAmount * ratePercent / 100),
+    commissionAmount: commissionType === "fixed_amount"
+      ? roundCommissionAmount(fixedCommission!.convertedAmount)
+      : roundCommissionAmount(basisAmount * ratePercent / 100),
   };
 }
 
@@ -1204,10 +1380,13 @@ export async function reconcileSalesOrderCommission(
       : null;
   }
 
+  const accrualPlan = accrual.planId
+    ? await db.agent_commission_plans.get(accrual.planId)
+    : null;
   const calculation = isEligible
     ? accrual.membershipId == null && accrual.planId == null
       ? calculateManualSalesOrderCommission(order, assignment)
-      : calculateSalesOrderCommission(order, {
+      : calculateSalesOrderCommission(order, accrualPlan ?? {
         ratePercent: accrual.ratePercent,
         calculationBasis: accrual.calculationBasis,
         includeTax: accrual.includeTax,
@@ -1477,7 +1656,10 @@ export async function reverseCommissionForOrderReturn(
     if (recognized <= 0) continue;
 
     const currentAssignment = !assignment.unassignedAt;
-    const snapshotPlan = {
+    const snapshotPlan = accrual.planId
+      ? await db.agent_commission_plans.get(accrual.planId)
+      : null;
+    const fallbackPlan = {
       ratePercent: accrual.ratePercent,
       calculationBasis: accrual.calculationBasis,
       includeTax: accrual.includeTax,
@@ -1486,7 +1668,7 @@ export async function reverseCommissionForOrderReturn(
     const targetCalculation = currentAssignment
       ? accrual.membershipId == null && accrual.planId == null
         ? calculateManualSalesOrderCommission(order, assignment)
-        : calculateSalesOrderCommission(order, snapshotPlan, assignment)
+        : calculateSalesOrderCommission(order, snapshotPlan ?? fallbackPlan, assignment)
       : null;
     const target = targetCalculation?.commissionAmount ?? 0;
     const difference = roundCommissionAmount(target - recognized);

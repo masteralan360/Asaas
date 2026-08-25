@@ -5,6 +5,7 @@ import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 
 import { useAuth } from '@/auth'
+import { useDateRange } from '@/context/DateRangeContext'
 import {
     getPaymentSourceKey,
     getPaymentTransactionRoutePath,
@@ -13,6 +14,7 @@ import {
     usePaymentTransactions,
     type PaymentTransaction
 } from '@/local-db'
+import { isDateInDateRange } from '@/lib/dateRangeFilters'
 import { cn, formatCurrency, formatDateTime } from '@/lib/utils'
 import {
     Button,
@@ -34,6 +36,7 @@ import {
     TableRow,
     useToast
 } from '@/ui/components'
+import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { DirectTransactionDialog } from '@/ui/components/payments/DirectTransactionDialog'
 import { useWorkspace } from '@/workspace'
 
@@ -79,6 +82,7 @@ export function DirectTransactions() {
     const { user } = useAuth()
     const { toast } = useToast()
     const { features } = useWorkspace()
+    const { dateRange, customDates } = useDateRange()
     const [, setLocation] = useLocation()
     const workspaceId = user?.workspaceId
     const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr
@@ -99,6 +103,10 @@ export function DirectTransactions() {
                     return false
                 }
 
+                if (!isDateInDateRange(item.paidAt, dateRange, customDates)) {
+                    return false
+                }
+
                 if (directionFilter !== 'all' && item.direction !== directionFilter) {
                     return false
                 }
@@ -115,7 +123,7 @@ export function DirectTransactions() {
                 ].some((value) => value?.toLowerCase().includes(normalizedSearch))
             })
             .sort((left, right) => right.paidAt.localeCompare(left.paidAt) || right.createdAt.localeCompare(left.createdAt))
-    }, [allTransactions, directionFilter, search])
+    }, [allTransactions, customDates, dateRange, directionFilter, search])
     const visibleDirectTransactions = useMemo(() => collapseTransactionsBySource(directTransactions), [directTransactions])
 
     const reversedIds = useMemo(
@@ -232,35 +240,38 @@ export function DirectTransactions() {
 
             <Card>
                 <CardContent className="pt-6">
-                    <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_180px_auto]">
-                        <div className="relative">
-                            <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                value={search}
-                                onChange={(event) => setSearch(event.target.value)}
-                                placeholder={t('directTransactions.searchPlaceholder', { defaultValue: 'Search direct transactions' })}
-                                className="pl-9"
-                            />
+                    <div className="space-y-3">
+                        <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_180px_auto]">
+                            <div className="relative">
+                                <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    value={search}
+                                    onChange={(event) => setSearch(event.target.value)}
+                                    placeholder={t('directTransactions.searchPlaceholder', { defaultValue: 'Search direct transactions' })}
+                                    className="pl-9"
+                                />
+                            </div>
+                            <Select value={directionFilter} onValueChange={(value: DirectionFilter) => setDirectionFilter(value)}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder={t('directTransactions.filters.direction', { defaultValue: 'Direction' })} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">{t('directTransactions.filters.allDirections', { defaultValue: 'All Directions' })}</SelectItem>
+                                    <SelectItem value="incoming">{t('directTransactions.filters.incoming', { defaultValue: 'Incoming' })}</SelectItem>
+                                    <SelectItem value="outgoing">{t('directTransactions.filters.outgoing', { defaultValue: 'Outgoing' })}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            {(search.trim() || directionFilter !== 'all') ? (
+                                <Button type="button" variant="ghost" onClick={() => {
+                                    setSearch('')
+                                    setDirectionFilter('all')
+                                }} className="justify-self-start lg:justify-self-end">
+                                    <RotateCcw className="mr-2 h-4 w-4" />
+                                    {t('directTransactions.clearFilters', { defaultValue: 'Clear Filters' })}
+                                </Button>
+                            ) : null}
                         </div>
-                        <Select value={directionFilter} onValueChange={(value: DirectionFilter) => setDirectionFilter(value)}>
-                            <SelectTrigger>
-                                <SelectValue placeholder={t('directTransactions.filters.direction', { defaultValue: 'Direction' })} />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">{t('directTransactions.filters.allDirections', { defaultValue: 'All Directions' })}</SelectItem>
-                                <SelectItem value="incoming">{t('directTransactions.filters.incoming', { defaultValue: 'Incoming' })}</SelectItem>
-                                <SelectItem value="outgoing">{t('directTransactions.filters.outgoing', { defaultValue: 'Outgoing' })}</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        {(search.trim() || directionFilter !== 'all') ? (
-                            <Button type="button" variant="ghost" onClick={() => {
-                                setSearch('')
-                                setDirectionFilter('all')
-                            }} className="justify-self-start lg:justify-self-end">
-                                <RotateCcw className="mr-2 h-4 w-4" />
-                                {t('directTransactions.clearFilters', { defaultValue: 'Clear Filters' })}
-                            </Button>
-                        ) : null}
+                        <DateRangeFilters />
                     </div>
                 </CardContent>
             </Card>

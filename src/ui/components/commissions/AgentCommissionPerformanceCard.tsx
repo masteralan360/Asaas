@@ -30,6 +30,7 @@ import { CommissionCurrencyTotalsView } from './CommissionCurrencyTotals'
 import {
     commissionStatusClass,
     commissionStatusLabel,
+    formatCommissionPlanTerms,
     summarizeCommissionEntries
 } from './agentCommissionPresentation'
 import { useCommissionAgentDirectory } from './useCommissionAgentDirectory'
@@ -136,7 +137,7 @@ export function AgentCommissionPerformanceCard({
                     {t('salesAgentCommissions.performance')}
                     {agent?.plan ? (
                         <Badge variant="outline" className="border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300">
-                            {agent.plan.name} · {agent.plan.ratePercent}%
+                            {agent.plan.name} · {formatCommissionPlanTerms(agent.plan, iqdPreference)}
                         </Badge>
                     ) : null}
                 </CardTitle>

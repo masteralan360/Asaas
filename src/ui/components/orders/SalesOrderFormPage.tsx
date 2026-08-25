@@ -859,10 +859,12 @@ export function SalesOrderFormPage({
             const hasAdjustmentCurrencyConversion = orderAdjustments.some((adjustment) => adjustment.currency !== currency)
             const manualCommissionValidation = commissionAssignmentRef.current?.validate()
             const hasManualCommissionCurrencyConversion = Boolean(manualCommissionValidation?.hasManualCommissionCurrencyConversion)
+            const hasCommissionPlanCurrencyConversion = Boolean(manualCommissionValidation?.hasCommissionPlanCurrencyConversion)
             const hasOrderRateSnapshot = hasMultiCurrency
                 || usesPriceBookPricing
                 || hasAdjustmentCurrencyConversion
                 || hasManualCommissionCurrencyConversion
+                || hasCommissionPlanCurrencyConversion
             const snapshot = hasOrderRateSnapshot ? adjustmentExchangeRates : []
             const primaryRate = hasMultiCurrency ? getPrimaryExchangeDetails(currency, features.default_currency, snapshot) : null
             const commonStorageId = getCommonStorageId(orderItems)

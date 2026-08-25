@@ -19,6 +19,7 @@ import {
 } from "@/sync/syncProgress";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 import { recordWorkspaceDataFetch } from "@/workspace/workspaceDataFreshness";
+import { getPostponedVoiceReasonCleanupPaths } from "@/lib/deliveryVoiceReasonPaths";
 // import { getPendingItems, removeFromQueue, incrementRetry } from './syncQueue'
 
 export type SyncState = "idle" | "syncing" | "error" | "offline";
@@ -33,6 +34,13 @@ export interface SyncResult {
 const PULL_PAGE_SIZE = 1000;
 const SALE_ITEM_PARENT_BATCH_SIZE = 250;
 const PULL_FETCH_CONCURRENCY = 6;
+
+async function deleteQueuedDeliveryVoiceReasons(paths: readonly string[]) {
+  const uniquePaths = [...new Set(paths.filter((path) => typeof path === "string" && path.length > 0))];
+  if (uniquePaths.length === 0) return;
+  const { error } = await supabase.storage.from("voice").remove(uniquePaths);
+  if (error) throw error;
+}
 
 const SYNC_PULL_TABLES = [
   "products",
@@ -287,6 +295,17 @@ function getMutationParentKeys(mutation: MutationSyncOrderItem) {
       addParent("delivery_merchant_profiles", "merchantProfileId", "merchant_profile_id");
       addParent("business_partners", "businessPartnerId", "business_partner_id");
       break;
+    case "delivery_voice_cleanup": {
+      addParent("delivery_shipments", "shipmentId", "shipment_id");
+      const rawEventIds: unknown = payload.eventIds ?? payload.event_ids;
+      const eventIds: unknown[] = Array.isArray(rawEventIds) ? rawEventIds : [];
+      for (const eventId of eventIds) {
+        if (typeof eventId === "string" && eventId) {
+          parentKeys.push(mutationEntityKey(workspaceId, "delivery_shipment_events", eventId));
+        }
+      }
+      break;
+    }
   }
 
   return parentKeys;
@@ -787,6 +806,32 @@ export async function processMutationQueue(
     try {
       const { entityType, operation, payload, entityId, workspaceId, id } =
         mutation;
+      if (entityType === "delivery_voice_cleanup") {
+        const shipmentId = payload.shipmentId ?? payload.shipment_id;
+        if (typeof shipmentId !== "string" || !shipmentId || shipmentId !== entityId) {
+          throw new Error("Voice recording cleanup has an invalid shipment reference.");
+        }
+        const rawEventIds: unknown = payload.eventIds ?? payload.event_ids;
+        const eventIds = Array.isArray(rawEventIds)
+          ? rawEventIds.filter((eventId): eventId is string => typeof eventId === "string" && !!eventId)
+          : [];
+        const events = eventIds.length > 0
+          ? await db.delivery_shipment_events.bulkGet(eventIds)
+          : [];
+        if (events.some((event) => !event || event.workspaceId !== workspaceId || event.syncStatus !== "synced")) {
+          throw new Error("Voice recording cleanup is waiting for the postponed status event to sync.");
+        }
+        const voiceReasonPaths = getPostponedVoiceReasonCleanupPaths({
+          workspaceId,
+          shipmentId,
+          paths: payload.paths,
+        });
+        await deleteQueuedDeliveryVoiceReasons(voiceReasonPaths);
+        await db.offline_mutations.update(id, { status: "synced", error: undefined });
+        successCount++;
+        reportCompleted();
+        continue;
+      }
       const tableName = getTableName(entityType);
       const client = getSupabaseClientForTable(tableName);
       let syncedEntityId = entityId;

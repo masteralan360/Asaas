@@ -4,6 +4,8 @@ const mutationStore = vi.hoisted(() => {
     const rows: Array<Record<string, any>> = []
     const deliveryMerchantProfiles: Array<Record<string, any>> = []
     const businessPartners: Array<Record<string, any>> = []
+    const deliveryShipments: Array<Record<string, any>> = []
+    const deliveryShipmentEvents: Array<Record<string, any>> = []
 
     const table = {
         where: vi.fn((indexName: string) => ({
@@ -67,17 +69,42 @@ const mutationStore = vi.hoisted(() => {
         get: vi.fn(async (id: string) => businessPartners.find((partner) => partner.id === id))
     }
 
+    const deliveryShipmentsTable = {
+        get: vi.fn(async (id: string) => deliveryShipments.find((shipment) => shipment.id === id))
+    }
+
+    const deliveryShipmentEventsTable = {
+        where: vi.fn((indexName: string) => ({
+            equals: vi.fn((key: [string, string]) => {
+                if (indexName !== '[workspaceId+shipmentId]') {
+                    throw new Error(`Unsupported delivery event index: ${indexName}`)
+                }
+                return {
+                    toArray: vi.fn(async () => deliveryShipmentEvents.filter((event) => (
+                        event.workspaceId === key[0] && event.shipmentId === key[1]
+                    )))
+                }
+            })
+        }))
+    }
+
     return {
         rows,
         table,
         deliveryMerchantProfiles,
         businessPartners,
+        deliveryShipments,
+        deliveryShipmentEvents,
         merchantProfilesTable,
         businessPartnersTable,
+        deliveryShipmentsTable,
+        deliveryShipmentEventsTable,
         reset() {
             rows.splice(0)
             deliveryMerchantProfiles.splice(0)
             businessPartners.splice(0)
+            deliveryShipments.splice(0)
+            deliveryShipmentEvents.splice(0)
             table.where.mockClear()
             table.add.mockClear()
             table.update.mockClear()
@@ -110,7 +137,9 @@ vi.mock('./database', () => ({
     db: {
         offline_mutations: mutationStore.table,
         delivery_merchant_profiles: mutationStore.merchantProfilesTable,
-        business_partners: mutationStore.businessPartnersTable
+        business_partners: mutationStore.businessPartnersTable,
+        delivery_shipments: mutationStore.deliveryShipmentsTable,
+        delivery_shipment_events: mutationStore.deliveryShipmentEventsTable,
     }
 }))
 
@@ -408,5 +437,38 @@ describe('addToOfflineMutations', () => {
             })
         ]))
         expect(mutationStore.rows[0]).toMatchObject({ status: 'pending', error: undefined })
+    })
+
+    it('queues postponed voice cleanup after retrying a failed redispatch', async () => {
+        mutationStore.deliveryShipments.push({
+            id: 'shipment-voice-1', workspaceId: 'workspace-1', status: 'assigned', isDeleted: false
+        })
+        mutationStore.deliveryShipmentEvents.push({
+            id: 'postponed-event-1', workspaceId: 'workspace-1', shipmentId: 'shipment-voice-1',
+            status: 'postponed', isDeleted: false,
+            voiceReasonPath: 'workspace-1/shipment-voice-1/postponed/reason.flac'
+        })
+        mutationStore.rows.push({
+            id: 'shipment-voice-failure', workspaceId: 'workspace-1', entityType: 'delivery_shipments',
+            entityId: 'shipment-voice-1', operation: 'update', payload: { status: 'assigned' },
+            createdAt: '2026-08-25T00:00:00.000Z', status: 'failed',
+            error: 'Sync integrity issue: Direct deletion from storage tables is not allowed. Use the Storage API instead.'
+        })
+
+        await expect(retrySyncIntegrityMutations('workspace-1')).resolves.toBe(1)
+
+        expect(mutationStore.rows).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                entityType: 'delivery_voice_cleanup',
+                entityId: 'shipment-voice-1',
+                operation: 'delete',
+                payload: {
+                    shipmentId: 'shipment-voice-1',
+                    eventIds: ['postponed-event-1'],
+                    paths: ['workspace-1/shipment-voice-1/postponed/reason.flac']
+                },
+                status: 'pending'
+            })
+        ]))
     })
 })

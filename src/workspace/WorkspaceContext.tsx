@@ -4,6 +4,7 @@ import { useAuth } from '@/auth/AuthContext'
 import type {
     CurrencyCode,
     IQDDisplayPreference,
+    SalesAgentCommissionSheetType,
     Workspace,
     WorkspaceDataMode
 } from '@/local-db/models'
@@ -112,6 +113,7 @@ export interface WorkspaceFeatures {
     visibility: 'private' | 'public' | 'link_only'
     store_slug: string | null
     store_description: string | null
+    sales_agent_commission_sheet_type: SalesAgentCommissionSheetType
 }
 
 export interface UpdateInfo {
@@ -152,7 +154,7 @@ interface WorkspaceContextType {
     refreshFeatures: () => Promise<void>
     refreshPaymentSummary: () => Promise<WorkspacePaymentSummary | null>
     updateSettings: (
-        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'pos_convert_to_workspace_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string },
+        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'pos_convert_to_workspace_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'sales_agent_commission_sheet_type' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string },
         options?: { requireRemoteSync?: boolean }
     ) => Promise<void>
     switchDataMode: (newMode: 'cloud' | 'hybrid') => Promise<{ error: string | null }>
@@ -265,7 +267,8 @@ const defaultFeatures: WorkspaceFeatures = {
     upload_limit_mb: null,
     visibility: 'private',
     store_slug: null,
-    store_description: null
+    store_description: null,
+    sales_agent_commission_sheet_type: 'normal'
 }
 
 const WORKSPACE_FEATURE_COLUMNS = [
@@ -291,7 +294,8 @@ const WORKSPACE_FEATURE_COLUMNS = [
     'upload_limit_mb',
     'visibility',
     'store_slug',
-    'store_description'
+    'store_description',
+    'sales_agent_commission_sheet_type'
 ].join(', ')
 
 function mergeWorkspaceFeatures(
@@ -394,7 +398,8 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
         upload_limit_mb: localWorkspace.upload_limit_mb ?? null,
         visibility: localWorkspace.visibility ?? 'private',
         store_slug: localWorkspace.store_slug ?? null,
-        store_description: localWorkspace.store_description ?? null
+        store_description: localWorkspace.store_description ?? null,
+        sales_agent_commission_sheet_type: localWorkspace.sales_agent_commission_sheet_type ?? 'normal'
     })
 }
 
@@ -575,6 +580,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             visibility: nextFeatures.visibility,
             store_slug: nextFeatures.store_slug,
             store_description: nextFeatures.store_description,
+            sales_agent_commission_sheet_type: nextFeatures.sales_agent_commission_sheet_type,
             syncStatus: 'synced',
             lastSyncedAt: timestamp,
             version: existing?.version ?? 1,
@@ -782,7 +788,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 upload_limit_mb: resolvedLocallyOwned.upload_limit_mb ?? workspaceRow.upload_limit_mb ?? null,
                 visibility: workspaceRow.visibility ?? currentFeatures.visibility,
                 store_slug: workspaceRow.store_slug ?? currentFeatures.store_slug,
-                store_description: workspaceRow.store_description ?? currentFeatures.store_description
+                store_description: workspaceRow.store_description ?? currentFeatures.store_description,
+                sales_agent_commission_sheet_type: workspaceRow.sales_agent_commission_sheet_type ?? currentFeatures.sales_agent_commission_sheet_type
             }, fetchedOverrides)
             const nextWorkspaceName = resolveFetchedWorkspaceName({
                 workspaceMode: workspaceRow.data_mode,
@@ -1013,7 +1020,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             has_usage_limits: currentFeatures.has_usage_limits,
                             visibility: data.visibility ?? currentFeatures.visibility,
                             store_slug: data.store_slug ?? currentFeatures.store_slug,
-                            store_description: data.store_description ?? currentFeatures.store_description
+                            store_description: data.store_description ?? currentFeatures.store_description,
+                            sales_agent_commission_sheet_type: data.sales_agent_commission_sheet_type ?? currentFeatures.sales_agent_commission_sheet_type
                         }, overridesRef.current)
                         const nextWorkspaceName = resolveFetchedWorkspaceName({
                             workspaceMode: data.data_mode,
@@ -1338,6 +1346,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 visibility: newFeatures.visibility,
                 store_slug: newFeatures.store_slug,
                 store_description: newFeatures.store_description,
+                sales_agent_commission_sheet_type: newFeatures.sales_agent_commission_sheet_type,
                 syncStatus: shouldSync ? 'pending' : 'synced',
                 lastSyncedAt: shouldSync ? null : new Date().toISOString(),
                 version: 1,

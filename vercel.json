@@ -90,11 +90,15 @@
             "destination": "/api/workspace-data?path=$1"
         },
         {
+            "source": "/api-workspace-storage/(.*)",
+            "destination": "/api/workspace-storage?path=$1"
+        },
+        {
             "source": "/api-workspace-r2/(.*)",
             "destination": "/api/workspace-r2?path=$1"
         },
         {
-            "source": "/((?!api-xeiqd(?:/|$)|api-forexfy(?:/|$)|api-pmcgroup(?:/|$)|api-workspace-data(?:/|$)|api-workspace-r2(?:/|$)|assets(?:/|$)|.*\\.[^/]+$).*)",
+            "source": "/((?!api-xeiqd(?:/|$)|api-forexfy(?:/|$)|api-pmcgroup(?:/|$)|api-workspace-data(?:/|$)|api-workspace-storage(?:/|$)|api-workspace-r2(?:/|$)|assets(?:/|$)|.*\\.[^/]+$).*)",
             "has": [
                 {
                     "type": "host",
@@ -104,7 +108,7 @@
             "destination": "/marketplace.html"
         },
         {
-            "source": "/((?!api-xeiqd(?:/|$)|api-forexfy(?:/|$)|api-pmcgroup(?:/|$)|api-workspace-data(?:/|$)|api-workspace-r2(?:/|$)|assets(?:/|$)|.*\\.[^/]+$).*)",
+            "source": "/((?!api-xeiqd(?:/|$)|api-forexfy(?:/|$)|api-pmcgroup(?:/|$)|api-workspace-data(?:/|$)|api-workspace-storage(?:/|$)|api-workspace-r2(?:/|$)|assets(?:/|$)|.*\\.[^/]+$).*)",
             "destination": "/index.html"
         }
     ]

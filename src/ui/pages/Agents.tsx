@@ -43,6 +43,7 @@ import {
     CommissionFeatureBoundary,
     useOptionalCommissionFeatureData
 } from '@/ui/components/commissions/useCommissionAgentDirectory'
+import { formatCommissionPlanTerms } from '@/ui/components/commissions/agentCommissionPresentation'
 
 function statusClass(status: AgentStatus) {
     if (status === 'active') {
@@ -392,6 +393,7 @@ function AgentCommissionPlanCell({
     canViewAll: boolean
 }) {
     const { t } = useTranslation()
+    const { features } = useWorkspace()
     const commissionData = useOptionalCommissionFeatureData()
     const commissionAgent = agentId ? commissionData?.agentById.get(agentId) : undefined
     const canView = canViewAll || commissionAgent?.agent.linkedUserId === viewerUserId
@@ -403,7 +405,7 @@ function AgentCommissionPlanCell({
             ) : commissionAgent?.plan ? (
                 <Badge variant="outline" className="gap-1.5 border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300">
                     <BadgePercent className="h-3.5 w-3.5" />
-                    {commissionAgent.plan.name} · {commissionAgent.plan.ratePercent}%
+                    {commissionAgent.plan.name} · {formatCommissionPlanTerms(commissionAgent.plan, features.iqd_display_preference)}
                 </Badge>
             ) : <span className="text-sm text-muted-foreground">{t('salesAgentCommissions.optionalNone')}</span>}
         </TableCell>

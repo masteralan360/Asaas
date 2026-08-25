@@ -1,7 +1,7 @@
 {
   "name": "atlas",
   "private": true,
-  "version": "0.5.15",
+  "version": "0.5.16",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -53,6 +53,7 @@
     "@hello-pangea/dnd": "^18.0.1",
     "@lglab/react-qr-code": "^1.4.9",
     "@lyfie/luthor": "^2.3.6",
+    "@mediabunny/flac-encoder": "1.55.2",
     "@mui/material": "^7.3.8",
     "@radix-ui/react-alert-dialog": "^1.1.2",
     "@radix-ui/react-avatar": "^1.1.1",
@@ -86,6 +87,7 @@
     "@untitledui/file-icons": "^0.0.9",
     "@untitledui/icons": "^0.0.22",
     "@vercel/analytics": "^2.0.1",
+    "@wasm-audio-decoders/flac": "0.2.10",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "crypto-js": "^4.2.0",
@@ -99,6 +101,7 @@
     "jspdf": "^4.1.0",
     "lucide-react": "^0.563.0",
     "maplibre-gl": "^5.19.0",
+    "mediabunny": "1.55.2",
     "motion": "^12.38.0",
     "mrz": "^5.0.2",
     "pdfjs-dist": "^5.4.394",
@@ -153,5 +156,5 @@
     "vitest": "^4.1.8",
     "workbox-window": "^7.1.0"
   },
-  "min_version": "0.5.15"
+  "min_version": "0.5.16"
 }

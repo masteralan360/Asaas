@@ -18,7 +18,7 @@ import {
     TableRow
 } from '@/ui/components'
 import { CommissionCurrencyTotalsView } from './CommissionCurrencyTotals'
-import { summarizeCommissionEntries } from './agentCommissionPresentation'
+import { formatCommissionPlanTerms, summarizeCommissionEntries } from './agentCommissionPresentation'
 import { useCommissionAgentDirectory } from './useCommissionAgentDirectory'
 import { AgentCommissionSettlementDialog } from './AgentCommissionSettlementDialog'
 
@@ -149,7 +149,7 @@ export function AgentCommissionAdminOverview({
                                         <TableCell>
                                             {entry.plan ? (
                                                 <Badge variant="outline" className="border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300">
-                                                    {entry.plan.name} · {entry.plan.ratePercent}%
+                                                    {entry.plan.name} · {formatCommissionPlanTerms(entry.plan, iqdPreference)}
                                                 </Badge>
                                             ) : <span className="text-sm text-muted-foreground">{t('salesAgentCommissions.noPlan')}</span>}
                                         </TableCell>

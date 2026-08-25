@@ -14,6 +14,10 @@ import { db } from "./database";
 import { fetchTableFromSupabase } from "./hooks";
 import { addToOfflineMutations } from "./offlineMutations";
 import { appendPaymentTransaction } from "./payments";
+import {
+  deleteDeliveryVoiceReasons,
+  getPostponedVoiceReasonCleanupPaths,
+} from "@/services/deliveryVoiceReasons";
 import type {
   CurrencyCode,
   DeliveryFeePayer,
@@ -60,7 +64,7 @@ export type PostServiceTab = "posts" | "dispatch" | "my-deliveries" | "merchants
 type PostServiceRefreshTableName = DeliveryTableName | "business_partners" | "agents" | "fleet_vehicles";
 
 const POST_SERVICE_TAB_REFRESH_TABLES: Record<PostServiceTab, readonly PostServiceRefreshTableName[]> = {
-  posts: ["business_partners", PROFILE_TABLE, SHIPMENT_TABLE],
+  posts: ["business_partners", PROFILE_TABLE, SHIPMENT_TABLE, EVENT_TABLE],
   dispatch: ["business_partners", "agents", "fleet_vehicles", SHIPMENT_TABLE, RUN_TABLE],
   "my-deliveries": ["business_partners", "agents", SHIPMENT_TABLE],
   merchants: ["business_partners", PROFILE_TABLE],
@@ -87,11 +91,8 @@ export interface UpdateDeliveryMerchantProfileInput {
 
 export interface CreateDeliveryShipmentInput {
   merchantProfileId: string;
-  recipientName: string;
   recipientPhone: string;
-  recipientAlternatePhone?: string | null;
   recipientAddress: string;
-  recipientCity?: string | null;
   description?: string | null;
   currency: CurrencyCode;
   codAmount: number;
@@ -129,6 +130,8 @@ export interface UpdateDeliveryShipmentStatusInput {
     "ready_for_dispatch" | "delivered" | "postponed" | "returned" | "cancelled"
   >;
   note?: string | null;
+  voiceReasonPath?: string | null;
+  voiceReasonDurationMs?: number | null;
   actorUserId?: string | null;
   actorAgentId?: string | null;
 }
@@ -302,6 +305,14 @@ function sanitizePayload(entity: DeliveryEntity) {
   const payload = toSnakeCase(entity as unknown as Record<string, unknown>);
   delete payload.sync_status;
   delete payload.last_synced_at;
+  // Recipient phone is now the only recipient identifier. Strip these fields
+  // from old local rows and queued payloads so upgraded clients can sync to
+  // the simplified database schema without losing the shipment itself.
+  if ("trackingNumber" in entity && "merchantProfileId" in entity) {
+    delete payload.recipient_name;
+    delete payload.recipient_alternate_phone;
+    delete payload.recipient_city;
+  }
   return Object.fromEntries(
     Object.entries(payload).filter(([, value]) => value !== undefined),
   );
@@ -453,6 +464,28 @@ async function syncEntitiesInDependencyOrder(
 
     canSyncDependants = await syncEntities(tableName, entities, workspaceId);
   }
+
+  return canSyncDependants;
+}
+
+async function queuePostponedVoiceReasonCleanup(input: {
+  workspaceId: string;
+  shipmentId: string;
+  eventIds: string[];
+  paths: string[];
+}) {
+  if (input.paths.length === 0 || !shouldUseCloudDeliveryData(input.workspaceId)) return;
+  await addToOfflineMutations(
+    "delivery_voice_cleanup",
+    input.shipmentId,
+    "delete",
+    {
+      shipmentId: input.shipmentId,
+      eventIds: input.eventIds,
+      paths: input.paths,
+    },
+    input.workspaceId,
+  );
 }
 
 async function syncHardDeleteProfile(profileId: string, workspaceId: string) {
@@ -667,6 +700,35 @@ export function useDeliveryShipments(workspaceId?: string) {
   return rows.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
+export function useDeliveryShipmentEvents(workspaceId?: string) {
+  const online = useNetworkStatus();
+  const viewOwnScope = useViewOwnRecordScope("postService.view_own");
+  const rows = useLiveQuery(
+    async () => {
+      if (!workspaceId) return [];
+      const events = await db.delivery_shipment_events
+        .where("workspaceId")
+        .equals(workspaceId)
+        .and((event) => !event.isDeleted)
+        .toArray();
+      if (!viewOwnScope.isRestricted) return events;
+      const visibleShipmentIds = await getVisibleDeliveryShipmentIds(workspaceId, viewOwnScope);
+      return events.filter((event) => visibleShipmentIds.has(event.shipmentId));
+    },
+    [workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId],
+  ) ?? [];
+
+  useEffect(() => {
+    if (workspaceId && online) {
+      void hydrateTable(EVENT_TABLE, workspaceId).catch((error) =>
+        console.error("[Post Service] Failed to hydrate shipment events:", error),
+      );
+    }
+  }, [online, viewOwnScope.isRestricted, viewOwnScope.userId, workspaceId]);
+
+  return rows.sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
+}
+
 export function useDeliveryRuns(workspaceId?: string) {
   const online = useNetworkStatus();
   const viewOwnScope = useViewOwnRecordScope("postService.view_own");
@@ -862,8 +924,8 @@ export async function createDeliveryShipment(
   if (!profile || profile.isDeleted || !profile.isActive || profile.workspaceId !== workspaceId) {
     throw new Error("Select an active delivery merchant");
   }
-  if (!input.recipientName.trim() || !input.recipientPhone.trim() || !input.recipientAddress.trim()) {
-    throw new Error("Recipient name, phone, and address are required");
+  if (!input.recipientPhone.trim() || !input.recipientAddress.trim()) {
+    throw new Error("Recipient phone and delivery address are required");
   }
   const now = new Date().toISOString();
   const trackingNumber = await getInitialShipmentTrackingNumber(workspaceId);
@@ -871,11 +933,8 @@ export async function createDeliveryShipment(
     trackingNumber,
     merchantProfileId: profile.id,
     merchantBusinessPartnerId: profile.businessPartnerId,
-    recipientName: input.recipientName.trim(),
     recipientPhone: input.recipientPhone.trim(),
-    recipientAlternatePhone: normalizeText(input.recipientAlternatePhone),
     recipientAddress: input.recipientAddress.trim(),
-    recipientCity: normalizeText(input.recipientCity),
     recipientLatitude: null,
     recipientLongitude: null,
     description: normalizeText(input.description),
@@ -933,6 +992,30 @@ export async function createDeliveryRun(workspaceId: string, input: CreateDelive
   if (shipments.some((shipment) => !shipment || shipment.isDeleted || shipment.workspaceId !== workspaceId || !dispatchableStatuses.includes(shipment.status))) {
     throw new Error("Only unassigned, ready, or postponed shipments can be dispatched");
   }
+
+  const postponedVoiceReasonsByShipment = new Map<string, { eventIds: string[]; paths: string[] }>();
+  await Promise.all((shipments as DeliveryShipment[])
+    .filter((shipment) => shipment.status === "postponed")
+    .map(async (shipment) => {
+      const events = await db.delivery_shipment_events
+        .where("[workspaceId+shipmentId]")
+        .equals([workspaceId, shipment.id])
+        .toArray();
+      const postponedEvents = events.filter((event) => !event.isDeleted && event.status === "postponed");
+      const paths = getPostponedVoiceReasonCleanupPaths({
+        workspaceId,
+        shipmentId: shipment.id,
+        paths: postponedEvents.map((event) => event.voiceReasonPath),
+      });
+      if (paths.length > 0) {
+        postponedVoiceReasonsByShipment.set(shipment.id, {
+          eventIds: postponedEvents
+            .filter((event) => typeof event.voiceReasonPath === "string" && paths.includes(event.voiceReasonPath))
+            .map((event) => event.id),
+          paths,
+        });
+      }
+    }));
 
   const now = input.dispatchedAt ? new Date(input.dispatchedAt).toISOString() : new Date().toISOString();
   const returnedRunItems = (await Promise.all((shipments as DeliveryShipment[])
@@ -1001,12 +1084,26 @@ export async function createDeliveryRun(workspaceId: string, input: CreateDelive
     await db.delivery_run_items.bulkPut([...returnedRunItems, ...items]);
     await db.delivery_shipment_events.bulkPut(events);
   });
-  await syncEntitiesInDependencyOrder(workspaceId, [
+  const synced = await syncEntitiesInDependencyOrder(workspaceId, [
     [RUN_TABLE, [run]],
     [SHIPMENT_TABLE, updates],
     [RUN_ITEM_TABLE, [...returnedRunItems, ...items]],
     [EVENT_TABLE, events],
   ]);
+  for (const [shipmentId, cleanup] of postponedVoiceReasonsByShipment) {
+    if (!synced) {
+      await queuePostponedVoiceReasonCleanup({ workspaceId, shipmentId, ...cleanup });
+      continue;
+    }
+    try {
+      // Every run item and status event is synced before this point. The
+      // recording is now irrelevant and can safely be removed through the
+      // authenticated Storage API.
+      await deleteDeliveryVoiceReasons(cleanup.paths);
+    } catch {
+      await queuePostponedVoiceReasonCleanup({ workspaceId, shipmentId, ...cleanup });
+    }
+  }
   return run;
 }
 
@@ -1040,8 +1137,17 @@ export async function updateDeliveryShipmentStatus(
     throw new Error("A completed shipment cannot be changed. Record an adjustment instead.");
   }
   const note = normalizeText(input.note);
-  if (["postponed", "returned", "cancelled"].includes(input.status) && !note) {
+  const voiceReasonPath = normalizeText(input.voiceReasonPath);
+  const requiresVoiceOrTextReason = ["postponed", "returned"].includes(input.status);
+  if ((requiresVoiceOrTextReason && !note && !voiceReasonPath) || (input.status === "cancelled" && !note)) {
     throw new Error("A reason is required for this status");
+  }
+  if (voiceReasonPath && !requiresVoiceOrTextReason) {
+    throw new Error("Voice reasons are only supported for returned or postponed posts");
+  }
+  const voiceReasonDurationMs = voiceReasonPath ? Number(input.voiceReasonDurationMs) : null;
+  if (voiceReasonPath && (voiceReasonDurationMs === null || !Number.isInteger(voiceReasonDurationMs) || voiceReasonDurationMs < 1 || voiceReasonDurationMs > 1_800_000)) {
+    throw new Error("Voice reason duration is invalid");
   }
   if (["delivered", "postponed", "returned"].includes(input.status) && !original.assignedAgentId) {
     throw new Error("Assign the shipment to a courier first");
@@ -1069,6 +1175,8 @@ export async function updateDeliveryShipmentStatus(
     previousStatus: original.status,
     status: input.status,
     note,
+    voiceReasonPath,
+    voiceReasonDurationMs: voiceReasonPath ? voiceReasonDurationMs! : null,
     actorUserId: input.actorUserId ?? null,
     actorAgentId: input.actorAgentId ?? original.assignedAgentId ?? null,
     occurredAt: now,

@@ -41,6 +41,14 @@ const NON_REMOTE_FIELDS_BY_ENTITY: Readonly<Record<string, ReadonlySet<string>>>
   ]),
   customers: new Set(["is_locked"]),
   suppliers: new Set(["is_locked"]),
+  // Delivery recipient phone is the only current identifier. These fields may
+  // remain in a local offline row created before the simplified contract, but
+  // no longer exist in the delivery_shipments table.
+  delivery_shipments: new Set([
+    "recipient_name",
+    "recipient_alternate_phone",
+    "recipient_city",
+  ]),
 };
 
 // Development-only fault injection. Set VITE_DEBUG_FORCE_SYNC_SCHEMA_MISMATCH

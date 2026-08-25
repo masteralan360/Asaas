@@ -26,6 +26,47 @@ function payloadId(payload: Record<string, unknown>, camelCase: string, snakeCas
     return typeof value === 'string' && value.length > 0 ? value : null
 }
 
+async function queueRedispatchedPostponedVoiceCleanup(
+    workspaceId: string,
+    mutations: OfflineMutation[]
+) {
+    const shipmentMutations = mutations.filter((mutation) => (
+        mutation.entityType === 'delivery_shipments'
+        && mutation.payload.status === 'assigned'
+    ))
+
+    for (const mutation of shipmentMutations) {
+        const shipment = await db.delivery_shipments.get(mutation.entityId)
+        if (!shipment || shipment.isDeleted || shipment.workspaceId !== workspaceId || shipment.status !== 'assigned') continue
+
+        const events = await db.delivery_shipment_events
+            .where('[workspaceId+shipmentId]')
+            .equals([workspaceId, shipment.id])
+            .toArray()
+        const postponedEvents = events.filter((event) => (
+            !event.isDeleted
+            && event.status === 'postponed'
+            && typeof event.voiceReasonPath === 'string'
+            && event.voiceReasonPath.startsWith(`${workspaceId}/${shipment.id}/postponed/`)
+            && event.voiceReasonPath.endsWith('.flac')
+        ))
+        const paths = [...new Set(postponedEvents.map((event) => event.voiceReasonPath!))]
+        if (paths.length === 0) continue
+
+        await addToOfflineMutations(
+            'delivery_voice_cleanup',
+            shipment.id,
+            'delete',
+            {
+                shipmentId: shipment.id,
+                eventIds: postponedEvents.map((event) => event.id),
+                paths,
+            },
+            workspaceId,
+        )
+    }
+}
+
 /**
  * A merchant profile may have been created while a workspace was local, then
  * later be used to create a cloud shipment. When that shipment is explicitly
@@ -182,6 +223,7 @@ export async function retrySyncIntegrityMutations(workspaceId: string): Promise<
     if (rows.length === 0) return 0
 
     await requeueDeliveryShipmentParents(workspaceId, rows)
+    await queueRedispatchedPostponedVoiceCleanup(workspaceId, rows)
 
     await db.offline_mutations.bulkUpdate(rows.map((mutation) => ({
         key: mutation.id,

@@ -37,6 +37,101 @@ describe('workspace usage fetch metering', () => {
         expect(workspaceUsageFetchInternals.extractWorkspaceIdsFromUrl(url, 'products')).toEqual([workspaceId])
     })
 
+    it('classifies Storage object uploads and downloads without metering signing calls', () => {
+        const upload = workspaceUsageFetchInternals.getStorageObjectTransfer(
+            new URL(`https://example.supabase.co/storage/v1/object/voice/${workspaceId}/reason.flac`),
+            'POST',
+            'https://example.supabase.co'
+        )
+        const download = workspaceUsageFetchInternals.getStorageObjectTransfer(
+            new URL(`https://example.supabase.co/storage/v1/object/auth/voice/${workspaceId}/reason.flac`),
+            'GET',
+            'https://example.supabase.co'
+        )
+        const sign = workspaceUsageFetchInternals.getStorageObjectTransfer(
+            new URL(`https://example.supabase.co/storage/v1/object/sign/voice/${workspaceId}/reason.flac`),
+            'POST',
+            'https://example.supabase.co'
+        )
+
+        expect(upload).toMatchObject({
+            direction: 'upload',
+            bucketId: 'voice',
+            objectPathSegments: [workspaceId, 'reason.flac']
+        })
+        expect(download).toMatchObject({
+            direction: 'download',
+            bucketId: 'voice',
+            objectPathSegments: [workspaceId, 'reason.flac']
+        })
+        expect(sign).toBeNull()
+    })
+
+    it('counts authenticated Storage uploads and downloads against the active workspace', async () => {
+        testState.activeWorkspaceId = workspaceId
+        const calls: Array<{ url: string; init?: RequestInit }> = []
+        const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            calls.push({ url: String(input), init })
+            if (String(input).includes('/rpc/record_workspace_data_transfer')) {
+                return new Response(JSON.stringify({ success: true }), { status: 200 })
+            }
+            return new Response(String(input).includes('/object/auth/') ? 'fLaC' : JSON.stringify({ Key: 'voice/reason.flac' }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/octet-stream' }
+            })
+        }) as unknown as typeof fetch
+        const meteredFetch = createWorkspaceUsageFetch({
+            supabaseUrl: 'https://example.supabase.co',
+            supabaseAnonKey: 'anon-key',
+            fetchImpl
+        })
+
+        await meteredFetch(`https://example.supabase.co/storage/v1/object/voice/${branchWorkspaceId}/reason.flac`, {
+            method: 'POST',
+            headers: { Authorization: 'Bearer token', 'Content-Type': 'audio/flac' },
+            body: new Blob(['fLaC'])
+        })
+        await meteredFetch(`https://example.supabase.co/storage/v1/object/auth/voice/${branchWorkspaceId}/reason.flac`, {
+            headers: { Authorization: 'Bearer token' }
+        })
+
+        expect(calls).toHaveLength(4)
+        expect(JSON.parse(String(calls[1].init?.body))).toMatchObject({
+            p_workspace_id: workspaceId,
+            p_source: 'storage_upload:voice'
+        })
+        expect(JSON.parse(String(calls[3].init?.body))).toMatchObject({
+            p_workspace_id: workspaceId,
+            p_source: 'storage_download:voice'
+        })
+    })
+
+    it('routes Web Live Storage transfers through the server-side metering gateway', async () => {
+        testState.activeWorkspaceId = workspaceId
+        const calls: Array<{ url: string; init?: RequestInit }> = []
+        const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            calls.push({ url: String(input), init })
+            return new Response('fLaC', { status: 200, headers: { 'Content-Type': 'audio/flac' } })
+        }) as unknown as typeof fetch
+        const meteredFetch = createWorkspaceUsageFetch({
+            supabaseUrl: 'https://example.supabase.co',
+            supabaseAnonKey: 'anon-key',
+            webStorageGatewayUrl: 'https://app.example.com/api-workspace-storage',
+            fetchImpl
+        })
+
+        const response = await meteredFetch(
+            `https://example.supabase.co/storage/v1/object/auth/voice/${workspaceId}/reason.flac`,
+            { headers: { Authorization: 'Bearer token' } }
+        )
+
+        expect(response.ok).toBe(true)
+        expect(calls).toHaveLength(1)
+        expect(calls[0].url).toBe(
+            `https://app.example.com/api-workspace-storage/object/auth/voice/${workspaceId}/reason.flac`
+        )
+    })
+
     it('counts GET table response bytes through the usage RPC', async () => {
         const calls: Array<{ url: string; init?: RequestInit }> = []
         const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

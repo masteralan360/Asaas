@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { UserRoundCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { getAppliedCurrencyConversion } from '@/lib/orderCurrency'
 import {
     assignSalesOrderAgent,
     type CurrencyCode,
@@ -90,6 +91,19 @@ export function OrderAgentAssignmentDialog({
     async function handleSave() {
         setIsSaving(true)
         try {
+            if (
+                selectedAgent?.plan?.commissionType === 'fixed_amount'
+                && selectedAgent.plan.fixedCurrency
+                && selectedAgent.plan.fixedCurrency !== orderCurrency
+                && !getAppliedCurrencyConversion(
+                    1,
+                    selectedAgent.plan.fixedCurrency,
+                    orderCurrency,
+                    order?.exchangeRates
+                )
+            ) {
+                throw new Error(t('salesAgentCommissions.errors.commissionExchangeRateUnavailable'))
+            }
             await assignSalesOrderAgent(workspaceId, {
                 orderId,
                 agentId: value.agentId || null,

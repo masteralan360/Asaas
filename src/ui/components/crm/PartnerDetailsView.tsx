@@ -532,7 +532,7 @@ function normalizeDeliveryShipment(
     const total = perspective === 'courier'
         ? shipment.codAmount + (shipment.feePayer === 'recipient' ? shipment.deliveryFee : 0)
         : shipment.codAmount - (shipment.feePayer === 'merchant' ? shipment.deliveryFee : 0)
-    const recipientLabel = [shipment.recipientName, shipment.recipientCity].filter(Boolean).join(' · ')
+    const recipientLabel = shipment.recipientPhone
     return {
         id: shipment.id,
         source: 'delivery_shipment',
@@ -953,8 +953,8 @@ export function PartnerDetailsView({
                     reference: transaction.reference,
                     displayDate: transaction.displayDate,
                     sortDate: transaction.sortDate,
-                    customerName: shipment.recipientName,
-                    summary: merchantNameById.get(shipment.merchantBusinessPartnerId) ?? shipment.recipientCity ?? '',
+                    customerName: shipment.recipientPhone,
+                    summary: merchantNameById.get(shipment.merchantBusinessPartnerId) ?? shipment.recipientAddress,
                     total: transaction.originalAmount,
                     paidAmount: transaction.paidAmount,
                     remainingAmount: transaction.remainingAmount,

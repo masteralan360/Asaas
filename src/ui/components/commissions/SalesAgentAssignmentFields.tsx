@@ -5,6 +5,7 @@ import { getAppliedCurrencyConversion } from '@/lib/orderCurrency'
 import { formatCurrency, formatNumericInput, sanitizeNumericInput } from '@/lib/utils'
 import type { CurrencyCode, ExchangeRateSnapshot, ManualSalesAgentCommissionType } from '@/local-db'
 import type { CommissionAgentDirectoryEntry } from './useCommissionAgentDirectory'
+import { formatCommissionPlanTerms } from './agentCommissionPresentation'
 import {
     Badge,
     CurrencySelector,
@@ -110,7 +111,7 @@ export function SalesAgentAssignmentFields({
                                 value={entry.agent.id}
                                 disabled={!entry.isEligible && entry.agent.id !== currentAgent?.agent.id}
                             >
-                                {entry.name}{entry.plan ? ` · ${entry.plan.name} (${entry.plan.ratePercent}%)` : ` · ${t('salesAgentCommissions.noCommissionPlan')}`}
+                                {entry.name}{entry.plan ? ` · ${entry.plan.name} (${formatCommissionPlanTerms(entry.plan, iqdDisplayPreference || 'IQD')})` : ` · ${t('salesAgentCommissions.noCommissionPlan')}`}
                             </SelectItem>
                         ))}
                     </SelectContent>
@@ -129,7 +130,7 @@ export function SalesAgentAssignmentFields({
                     {selectedAgent.plan ? (
                         <Badge variant="outline" className="gap-1.5 border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300">
                             <BadgePercent className="h-3.5 w-3.5" />
-                            {selectedAgent.plan.name} · {selectedAgent.plan.ratePercent}%
+                            {selectedAgent.plan.name} · {formatCommissionPlanTerms(selectedAgent.plan, iqdDisplayPreference || 'IQD')}
                         </Badge>
                     ) : (
                         <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">

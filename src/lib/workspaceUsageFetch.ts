@@ -33,12 +33,15 @@ type WorkspaceUsageFetchOptions = {
     supabaseAnonKey: string
     /** Same-origin Vercel REST gateway used only by the Web Live build. */
     webGatewayUrl?: string
+    /** Same-origin Vercel Storage gateway used only by the Web Live build. */
+    webStorageGatewayUrl?: string
     fetchImpl?: typeof fetch
 }
 
-type NormalizedWorkspaceUsageFetchOptions = Omit<WorkspaceUsageFetchOptions, 'fetchImpl' | 'webGatewayUrl'> & {
+type NormalizedWorkspaceUsageFetchOptions = Omit<WorkspaceUsageFetchOptions, 'fetchImpl' | 'webGatewayUrl' | 'webStorageGatewayUrl'> & {
     fetchImpl: typeof fetch
     webGatewayUrl: string
+    webStorageGatewayUrl: string
 }
 
 type UsageRecordResult = {
@@ -53,6 +56,13 @@ type WorkspaceTransferContext = {
     countRequestBody: boolean
     countResponseBody: boolean
     source: string
+    gateway: 'rest' | 'storage'
+}
+
+type StorageObjectTransfer = {
+    direction: 'upload' | 'download'
+    bucketId: string
+    objectPathSegments: string[]
 }
 
 function isUuid(value?: string | null): value is string {
@@ -113,6 +123,80 @@ function getRestPathSegments(url: URL, supabaseUrl: string): string[] | null {
         .split('/')
         .filter(Boolean)
         .map((segment) => decodeURIComponent(segment))
+}
+
+function getStoragePathSegments(url: URL, supabaseUrl: string): string[] | null {
+    let baseUrl: URL
+    try {
+        baseUrl = new URL(supabaseUrl)
+    } catch {
+        return null
+    }
+
+    if (url.origin !== baseUrl.origin) return null
+
+    const basePath = baseUrl.pathname.replace(/\/+$/, '')
+    const storagePrefix = `${basePath}/storage/v1/`.replace(/\/{2,}/g, '/')
+    if (!url.pathname.startsWith(storagePrefix)) return null
+
+    return url.pathname
+        .slice(storagePrefix.length)
+        .split('/')
+        .filter(Boolean)
+        .map((segment) => decodeURIComponent(segment))
+}
+
+function getStorageObjectTransfer(url: URL, method: string, supabaseUrl: string): StorageObjectTransfer | null {
+    const segments = getStoragePathSegments(url, supabaseUrl)
+    if (!segments?.length) return null
+
+    const isWrite = ['POST', 'PUT', 'PATCH'].includes(method)
+    const isRead = method === 'GET'
+
+    if (segments[0] === 'object') {
+        const operation = segments[1]
+        const namedObjectOperation = ['auth', 'public', 'sign'].includes(operation)
+        const controlOperation = ['copy', 'info', 'list', 'move', 'rename', 'sign', 'upload'].includes(operation)
+        const bucketIndex = namedObjectOperation ? 2 : 1
+        const pathIndex = bucketIndex + 1
+        const bucketId = segments[bucketIndex]
+        const objectPathSegments = segments.slice(pathIndex)
+
+        if (!bucketId || objectPathSegments.length === 0) return null
+        if (isRead && (namedObjectOperation || !controlOperation)) {
+            return { direction: 'download', bucketId, objectPathSegments }
+        }
+        if (isWrite && !controlOperation) {
+            return { direction: 'upload', bucketId, objectPathSegments }
+        }
+
+        // A signed upload URL still transfers object bytes, even though its
+        // route is nested below /object/upload/sign.
+        if (isWrite && operation === 'upload' && segments[2] === 'sign' && segments[3]) {
+            return {
+                direction: 'upload',
+                bucketId: segments[3],
+                objectPathSegments: segments.slice(4)
+            }
+        }
+    }
+
+    if (
+        isRead
+        && segments[0] === 'render'
+        && segments[1] === 'image'
+        && ['auth', 'public', 'sign'].includes(segments[2])
+        && segments[3]
+        && segments.length > 4
+    ) {
+        return {
+            direction: 'download',
+            bucketId: segments[3],
+            objectPathSegments: segments.slice(4)
+        }
+    }
+
+    return null
 }
 
 function getRestTableName(url: URL, supabaseUrl: string): string | null {
@@ -226,6 +310,22 @@ function resolveWorkspaceId(url: URL, tableName: string, authHeader: string | nu
     return urlWorkspaceIds.length === 1 ? urlWorkspaceIds[0] : null
 }
 
+function resolveStorageWorkspaceId(
+    url: URL,
+    transfer: StorageObjectTransfer,
+    authHeader: string | null
+) {
+    // Charge the authenticated/current workspace first. A path segment is
+    // only a fallback for a caller whose workspace context is otherwise
+    // unavailable; it must never let a client redirect a charge elsewhere.
+    const authenticatedWorkspaceId = resolveWorkspaceId(url, 'storage', authHeader)
+    if (authenticatedWorkspaceId) return authenticatedWorkspaceId
+
+    const pathWorkspaceId = transfer.objectPathSegments[0]
+    if (isUuid(pathWorkspaceId)) return pathWorkspaceId
+    return null
+}
+
 function isSupabaseUrl(url: URL, supabaseUrl: string) {
     try {
         const baseUrl = new URL(supabaseUrl)
@@ -280,29 +380,35 @@ function getWorkspaceTransferContext(
 
     const tableName = getRestTableName(url, supabaseUrl)
     const rpcName = getRestRpcName(url, supabaseUrl)
-    if (!tableName && !rpcName) return null
+    const method = getRequestMethod(input, init)
+    const storageTransfer = getStorageObjectTransfer(url, method, supabaseUrl)
+    if (!tableName && !rpcName && !storageTransfer) return null
     if (rpcName && UNMETERED_RPC_NAMES.has(rpcName)) return null
 
-    const method = getRequestMethod(input, init)
     const isTableFetch = Boolean(tableName && method === 'GET')
     const isTableWrite = Boolean(tableName && TABLE_WRITE_METHODS.has(method))
     const isRpcTransfer = Boolean(rpcName && RPC_METHODS.has(method))
-    if (!isTableFetch && !isTableWrite && !isRpcTransfer) return null
+    if (!isTableFetch && !isTableWrite && !isRpcTransfer && !storageTransfer) return null
 
     const authHeader = headers.get('Authorization')
-    const workspaceId = resolveWorkspaceId(url, tableName ?? rpcName ?? '', authHeader)
+    const workspaceId = storageTransfer
+        ? resolveStorageWorkspaceId(url, storageTransfer, authHeader)
+        : resolveWorkspaceId(url, tableName ?? rpcName ?? '', authHeader)
     if (!workspaceId || isLocalWorkspaceMode(workspaceId)) return null
 
     return {
         workspaceId,
         authHeader,
-        countRequestBody: isTableWrite || (isRpcTransfer && method !== 'GET'),
+        countRequestBody: Boolean(storageTransfer?.direction === 'upload') || isTableWrite || (isRpcTransfer && method !== 'GET'),
         countResponseBody: true,
-        source: isTableFetch
-            ? `table_fetch:${tableName}`
-            : isTableWrite
-                ? `table_write:${tableName}`
-                : `rpc_transfer:${rpcName}`
+        source: storageTransfer
+            ? `storage_${storageTransfer.direction}:${storageTransfer.bucketId}`
+            : isTableFetch
+                ? `table_fetch:${tableName}`
+                : isTableWrite
+                    ? `table_write:${tableName}`
+                    : `rpc_transfer:${rpcName}`,
+        gateway: storageTransfer ? 'storage' : 'rest'
     }
 }
 
@@ -430,7 +536,8 @@ async function recordSupabaseDataTransfer(
 function getGatewayUrl(
     input: RequestInfo | URL,
     supabaseUrl: string,
-    webGatewayUrl: string
+    webGatewayUrl: string,
+    upstreamPrefix: '/rest/v1/' | '/storage/v1/'
 ): URL | null {
     const sourceUrl = getRequestUrl(input)
     if (!sourceUrl || !webGatewayUrl) return null
@@ -448,13 +555,13 @@ function getGatewayUrl(
     }
 
     const basePath = supabaseBase.pathname.replace(/\/+$/, '')
-    const restPrefix = `${basePath}/rest/v1/`.replace(/\/{2,}/g, '/')
-    if (!sourceUrl.pathname.startsWith(restPrefix)) return null
+    const servicePrefix = `${basePath}${upstreamPrefix}`.replace(/\/{2,}/g, '/')
+    if (!sourceUrl.pathname.startsWith(servicePrefix)) return null
 
-    const restPath = sourceUrl.pathname.slice(restPrefix.length)
-    if (!restPath || restPath.split('/').some((segment) => segment === '..')) return null
+    const servicePath = sourceUrl.pathname.slice(servicePrefix.length)
+    if (!servicePath || servicePath.split('/').some((segment) => segment === '..')) return null
 
-    gatewayBase.pathname = `${gatewayBase.pathname.replace(/\/+$/, '')}/${restPath}`
+    gatewayBase.pathname = `${gatewayBase.pathname.replace(/\/+$/, '')}/${servicePath}`
     gatewayBase.search = sourceUrl.search
     return gatewayBase
 }
@@ -515,13 +622,19 @@ export function createWorkspaceUsageFetch(options: WorkspaceUsageFetchOptions): 
     const normalizedOptions: NormalizedWorkspaceUsageFetchOptions = {
         ...options,
         webGatewayUrl: options.webGatewayUrl?.trim() ?? '',
+        webStorageGatewayUrl: options.webStorageGatewayUrl?.trim() ?? '',
         fetchImpl: options.fetchImpl ?? fetch.bind(globalThis)
     }
 
     return async (input, init) => {
         const countContext = getWorkspaceTransferContext(input, init, normalizedOptions.supabaseUrl)
         const gatewayUrl = countContext
-            ? getGatewayUrl(input, normalizedOptions.supabaseUrl, normalizedOptions.webGatewayUrl)
+            ? getGatewayUrl(
+                input,
+                normalizedOptions.supabaseUrl,
+                countContext.gateway === 'storage' ? normalizedOptions.webStorageGatewayUrl : normalizedOptions.webGatewayUrl,
+                countContext.gateway === 'storage' ? '/storage/v1/' : '/rest/v1/'
+            )
             : null
         const gatewayRequest = gatewayUrl ? buildGatewayFetchArgs(input, init, gatewayUrl) : null
         const requestBytesPromise = countContext?.countRequestBody
@@ -569,5 +682,7 @@ export const workspaceUsageFetchInternals = {
     getRestRpcName,
     getRestTableName,
     getRequestTransferBytes,
+    getStorageObjectTransfer,
+    getStoragePathSegments,
     resolveWorkspaceId
 }

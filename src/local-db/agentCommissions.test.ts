@@ -213,6 +213,83 @@ describe("sales agent commission lifecycle", () => {
     });
   });
 
+  it("calculates a fixed commission plan in the order currency using its locked rate snapshot", () => {
+    const order = { ...completedOrder(crypto.randomUUID()), currency: "iqd" as const };
+    order.exchangeRates = [{
+      pair: "USD/IQD",
+      rate: 150_000,
+      priceBasisAmount: 100,
+      source: "test",
+      timestamp: new Date().toISOString(),
+    }];
+
+    const calculation = commissions.calculateSalesOrderCommission(order, {
+      commissionType: "fixed_amount",
+      ratePercent: 0,
+      fixedAmount: 10,
+      fixedCurrency: "usd",
+      calculationBasis: "net_profit",
+      includeTax: false,
+      includeDeliveryCharge: false,
+    });
+
+    expect(calculation).toMatchObject({
+      currency: "iqd",
+      ratePercent: 0,
+      commissionAmount: 15_000,
+    });
+  });
+
+  it("stores a tier label without changing the current commission calculation", async () => {
+    const plan = await commissions.createAgentCommissionPlan(WORKSPACE_ID, {
+      name: "Tiered sales",
+      level: "tiered-sales",
+      commissionType: "percentage",
+      ratePercent: 10,
+      tierName: "Gold",
+      calculationBasis: "net_profit",
+      effectiveFrom: new Date().toISOString(),
+    });
+
+    const calculation = commissions.calculateSalesOrderCommission(completedOrder(crypto.randomUUID()), plan);
+
+    expect(plan.tierName).toBe("Gold");
+    expect(calculation.commissionAmount).toBe(40);
+  });
+
+  it("retires a saved commission level and ends current memberships without deleting history", async () => {
+    const agent = fieldAgent(crypto.randomUUID());
+    await db.agents.put(agent);
+    const plan = await commissions.createAgentCommissionPlan(WORKSPACE_ID, {
+      name: "Retired level",
+      level: "retired-level",
+      commissionType: "percentage",
+      ratePercent: 5,
+      calculationBasis: "net_profit",
+      effectiveFrom: new Date().toISOString(),
+    });
+    const membership = await commissions.setAgentCommissionMembership(WORKSPACE_ID, {
+      agentId: agent.id,
+      planId: plan.id,
+    });
+
+    const retired = await commissions.deleteAgentCommissionPlan(plan.id);
+    const endedMembership = await db.agent_commission_memberships.get(membership!.id);
+
+    expect(retired).toMatchObject({
+      id: plan.id,
+      isActive: false,
+      isDeleted: false,
+    });
+    expect(retired.effectiveTo).toBeTruthy();
+    expect(endedMembership).toMatchObject({
+      id: membership!.id,
+      planId: plan.id,
+      isDeleted: false,
+    });
+    expect(endedMembership?.effectiveTo).toBe(retired.effectiveTo);
+  });
+
   it("recalculates percentage manual commissions from the current order total", async () => {
     const agent = fieldAgent(crypto.randomUUID());
     const order = completedOrder(crypto.randomUUID());

@@ -15,35 +15,26 @@ export function AgentCommissionSettings() {
     const { hasFeature } = useWorkspace()
     const { permissionKeys } = useWorkspacePermissions()
     const [, navigate] = useLocation()
-    const canManageCommissionPlans = hasFeature('sales_agent_commissions')
-        && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.managePlans')
+    const canManageCommissionPlans = hasFeature('sales_agent_commissions') && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.managePlans')
 
     if (!user?.workspaceId || !canManageCommissionPlans) return null
 
     return (
         <CommissionFeatureBoundary enabled={true} workspaceId={user.workspaceId}>
-            <div className="mx-auto w-full max-w-6xl space-y-6">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="flex items-start gap-3">
-                        <div className="rounded-xl bg-violet-500/10 p-2 text-violet-700 dark:text-violet-300">
-                            <BadgePercent className="h-6 w-6" />
-                        </div>
-                        <div>
-                            <h1 className="text-2xl font-bold">{t('salesAgentCommissions.settingsTitle')}</h1>
-                            <p className="mt-1 text-muted-foreground">{t('salesAgentCommissions.settingsDescription')}</p>
-                        </div>
-                    </div>
-                    <Button type="button" variant="outline" className="gap-2 self-start" onClick={() => navigate('/agents')}>
+            <div className="mx-auto w-full max-w-[96rem] space-y-8 pb-8">
+                <div className="space-y-1">
+                    <Button type="button" variant="ghost" className="h-auto gap-2 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground" onClick={() => navigate('/agents')}>
                         <ArrowLeft className="h-4 w-4" />
-                        {t('common.back', { defaultValue: 'Back' })}
+                        {t('agents.title', { defaultValue: 'Agents' })}
                     </Button>
+                    <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
+                        <BadgePercent className="h-7 w-7 text-violet-700 dark:text-violet-300" />
+                        {t('salesAgentCommissions.settingsTitle')}
+                    </h1>
+                    <p className="text-sm text-muted-foreground">{t('salesAgentCommissions.settingsDescription')}</p>
                 </div>
 
-                <AgentCommissionSettingsForm
-                    workspaceId={user.workspaceId}
-                    userId={user.id}
-                    onCancel={() => navigate('/agents')}
-                />
+                <AgentCommissionSettingsForm workspaceId={user.workspaceId} userId={user.id} onCancel={() => navigate('/agents')} />
             </div>
         </CommissionFeatureBoundary>
     )

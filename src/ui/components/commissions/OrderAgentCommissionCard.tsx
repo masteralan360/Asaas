@@ -11,7 +11,7 @@ import {
     type IQDDisplayPreference
 } from '@/local-db'
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@/ui/components'
-import { commissionStatusClass, commissionStatusLabel } from './agentCommissionPresentation'
+import { commissionStatusClass, commissionStatusLabel, formatCommissionPlanTerms } from './agentCommissionPresentation'
 import { OrderAgentAssignmentDialog } from './OrderAgentAssignmentDialog'
 import { useCommissionAgentDirectory } from './useCommissionAgentDirectory'
 
@@ -78,7 +78,7 @@ export function OrderAgentCommissionCard({
                                 {assignedAgent?.plan ? (
                                     <Badge variant="outline" className="mt-3 gap-1.5 border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300">
                                         <BadgePercent className="h-3.5 w-3.5" />
-                                        {assignedAgent.plan.name} · {assignedAgent.plan.ratePercent}%
+                                        {assignedAgent.plan.name} · {formatCommissionPlanTerms(assignedAgent.plan, iqdPreference)}
                                     </Badge>
                                 ) : (
                                     <Badge variant="outline" className="mt-3 border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">

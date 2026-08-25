@@ -63,13 +63,16 @@ export function requestHeadersForUpstream(req, body) {
         'accept-profile',
         'accept-language',
         'authorization',
+        'cache-control',
         'content-profile',
         'content-type',
         'if-match',
         'if-none-match',
         'prefer',
         'range',
-        'x-client-info'
+        'x-metadata',
+        'x-client-info',
+        'x-upsert'
     ]
 
     for (const name of passThrough) {

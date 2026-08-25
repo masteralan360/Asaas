@@ -5,6 +5,21 @@ import type {
     CommissionEntryStatus,
     CommissionPlanLevel
 } from '@/local-db'
+import { formatCurrency } from '@/lib/utils'
+
+export function formatCommissionPlanTerms(
+    plan: Pick<AgentCommissionPlan, 'commissionType' | 'ratePercent' | 'fixedAmount' | 'fixedCurrency'>,
+    iqdPreference: 'IQD' | 'د.ع' = 'IQD'
+) {
+    if (plan.commissionType === 'fixed_amount') {
+        return formatCurrency(
+            Number(plan.fixedAmount || 0),
+            (plan.fixedCurrency || 'usd') as Parameters<typeof formatCurrency>[1],
+            iqdPreference
+        )
+    }
+    return `${plan.ratePercent}%`
+}
 
 export function getActiveAgentCommissionMembership(
     memberships: AgentCommissionMembership[],

@@ -18,7 +18,10 @@ import {
 import { useCommissionAgentDirectory } from './useCommissionAgentDirectory'
 
 export interface SalesOrderCommissionAssignmentHandle {
-    validate: () => { hasManualCommissionCurrencyConversion: boolean }
+    validate: () => {
+        hasManualCommissionCurrencyConversion: boolean
+        hasCommissionPlanCurrencyConversion: boolean
+    }
     save: (order: Pick<SalesOrder, 'id' | 'currency' | 'total' | 'exchangeRates'>) => Promise<void>
 }
 
@@ -144,12 +147,27 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
             total: orderTotal,
             exchangeRates
         })
+        const fixedPlanCurrency = selectedAgent?.plan?.commissionType === 'fixed_amount'
+            ? selectedAgent.plan.fixedCurrency
+            : null
+        const hasCommissionPlanCurrencyConversion = Boolean(
+            fixedPlanCurrency && fixedPlanCurrency !== orderCurrency
+        )
+        if (hasCommissionPlanCurrencyConversion && !getAppliedCurrencyConversion(
+            1,
+            fixedPlanCurrency!,
+            orderCurrency,
+            exchangeRates
+        )) {
+            throw new Error(t('salesAgentCommissions.errors.commissionExchangeRateUnavailable'))
+        }
         return {
             hasManualCommissionCurrencyConversion: Boolean(
                 manual?.type === 'fixed_amount' && manual.currency !== orderCurrency
-            )
+            ),
+            hasCommissionPlanCurrencyConversion
         }
-    }, [exchangeRates, getManualCommissionInput, orderCurrency, orderTotal])
+    }, [exchangeRates, getManualCommissionInput, orderCurrency, orderTotal, selectedAgent?.plan, t])
 
     const save = useCallback(async (order: Pick<SalesOrder, 'id' | 'currency' | 'total' | 'exchangeRates'>) => {
         const nextAgentId = value.agentId || null

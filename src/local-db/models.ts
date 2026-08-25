@@ -535,11 +535,14 @@ export interface DeliveryShipment extends BaseEntity {
   trackingNumber: string;
   merchantProfileId: string;
   merchantBusinessPartnerId: string;
-  recipientName: string;
+  /**
+   * The recipient's required, primary identifier for a delivery post.
+   *
+   * Legacy recipient-name, alternate-phone, and city fields were removed
+   * from the remote contract. The full location lives in recipientAddress.
+   */
   recipientPhone: string;
-  recipientAlternatePhone?: string | null;
   recipientAddress: string;
-  recipientCity?: string | null;
   recipientLatitude?: number | null;
   recipientLongitude?: number | null;
   description?: string | null;
@@ -566,6 +569,10 @@ export interface DeliveryShipmentEvent extends BaseEntity {
   previousStatus?: DeliveryShipmentStatus | null;
   status: DeliveryShipmentStatus;
   note?: string | null;
+  /** Private `voice` bucket path for a returned/postponed reason. */
+  voiceReasonPath?: string | null;
+  /** Duration of the FLAC reason recording, retained for secure playback UX. */
+  voiceReasonDurationMs?: number | null;
   actorUserId?: string | null;
   actorAgentId?: string | null;
   occurredAt: string;
@@ -818,7 +825,10 @@ export interface OrderAdjustment {
 /** Stable, user-defined commission-level key. The plan name is its visible label. */
 export type CommissionPlanLevel = string;
 export type CommissionCalculationBasis = "net_profit" | "net_revenue";
-export type ManualSalesAgentCommissionType = "fixed_amount" | "percentage";
+export type CommissionPlanType = "fixed_amount" | "percentage";
+/** A workspace-wide presentation structure for the sales-agent commission sheet. */
+export type SalesAgentCommissionSheetType = "normal" | "tier_based";
+export type ManualSalesAgentCommissionType = CommissionPlanType;
 export type CommissionEntryKind =
   | "estimate"
   | "accrual"
@@ -837,7 +847,14 @@ export type CommissionEntryStatus =
 export interface AgentCommissionPlan extends BaseEntity {
   name: string;
   level: CommissionPlanLevel;
+  /** Legacy plans without this field are treated as percentage plans. */
+  commissionType?: CommissionPlanType;
   ratePercent: number;
+  /** Required for fixed-amount plans and stored in the selected source currency. */
+  fixedAmount?: number | null;
+  fixedCurrency?: CurrencyCode | null;
+  /** Informational workspace tier. It does not change commission calculations yet. */
+  tierName?: string | null;
   calculationBasis: CommissionCalculationBasis;
   includeTax: boolean;
   includeDeliveryCharge: boolean;
@@ -2008,6 +2025,7 @@ export interface SyncQueueItem {
     | "delivery_run_items"
     | "delivery_settlements"
     | "delivery_ledger_entries"
+    | "delivery_voice_cleanup"
     | "business_partners"
     | "business_partner_merge_candidates"
     | "sales_orders"
@@ -2093,6 +2111,7 @@ export interface Workspace extends BaseEntity {
   visibility?: WorkspaceVisibility;
   store_slug?: string | null;
   store_description?: string | null;
+  sales_agent_commission_sheet_type?: SalesAgentCommissionSheetType;
 }
 
 export interface WorkspaceContact extends Omit<BaseEntity, "isDeleted"> {
@@ -2161,6 +2180,7 @@ export interface OfflineMutation {
     | "delivery_run_items"
     | "delivery_settlements"
     | "delivery_ledger_entries"
+    | "delivery_voice_cleanup"
     | "business_partners"
     | "business_partner_merge_candidates"
     | "sales_orders"
