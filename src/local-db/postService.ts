@@ -552,6 +552,25 @@ function makeBase<T extends Record<string, unknown>>(
   };
 }
 
+/**
+ * Produces a stable UUID for a delivery operation that can be replayed from a
+ * second device. A status update may arrive twice when two clients have the
+ * same assigned post open; using a generated UUID in that situation creates a
+ * second Delivered event and repeats every accounting obligation.
+ */
+async function deliveryOperationId(seed: string) {
+  const digest = new Uint8Array(await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`atlas:delivery:${seed}`),
+  ));
+  const bytes = digest.slice(0, 16);
+  // Mark the derived value as a RFC 4122 version-5, variant-1 UUID.
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function makeLedgerEntry(
   workspaceId: string,
   input: Omit<DeliveryLedgerEntry, "id" | "workspaceId" | "createdAt" | "updatedAt" | "version" | "isDeleted" | "syncStatus" | "lastSyncedAt">,
@@ -1043,7 +1062,9 @@ export async function updateDeliveryShipmentStatus(
     version: original.version + 1,
     ...getSyncMetadata(original.workspaceId, now),
   };
-  const event = makeBase(original.workspaceId, {
+  const operationKey = `${original.id}:${original.version}:${input.status}`;
+  const event = {
+    ...(makeBase(original.workspaceId, {
     shipmentId: original.id,
     previousStatus: original.status,
     status: input.status,
@@ -1051,7 +1072,9 @@ export async function updateDeliveryShipmentStatus(
     actorUserId: input.actorUserId ?? null,
     actorAgentId: input.actorAgentId ?? original.assignedAgentId ?? null,
     occurredAt: now,
-  }) as DeliveryShipmentEvent;
+    }) as DeliveryShipmentEvent),
+    id: await deliveryOperationId(`status:${operationKey}`),
+  };
   const ledgerEntries: DeliveryLedgerEntry[] = [];
   if (input.status === "delivered") {
     const collected = original.codAmount + (original.feePayer === "recipient" ? original.deliveryFee : 0);
@@ -1122,6 +1145,10 @@ export async function updateDeliveryShipmentStatus(
         createdBy: input.actorUserId ?? null,
       }));
     }
+
+    await Promise.all(ledgerEntries.map(async (entry) => {
+      entry.id = await deliveryOperationId(`obligation:${operationKey}:${entry.kind}`);
+    }));
   }
 
   await db.transaction("rw", [db.delivery_shipments, db.delivery_shipment_events, db.delivery_ledger_entries], async () => {

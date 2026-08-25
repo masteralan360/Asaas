@@ -227,6 +227,58 @@ describe("Post Service COD accounting", () => {
     expect(entries.some((entry) => entry.amount === 0)).toBe(false);
   });
 
+  it("does not duplicate a delivered post's event or ledger obligations when a stale client replays it", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const deliveryCourier = courier(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, {
+      businessPartnerId: merchant.id,
+      defaultFeeAmount: 10,
+      defaultFeePayer: "merchant",
+    });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientName: "Recipient",
+      recipientPhone: "07500000000",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      codAmount: 100,
+    });
+    await createDeliveryRun(WORKSPACE_ID, {
+      agentId: deliveryCourier.id,
+      shipmentIds: [shipment.id],
+      courierDeliveryFee: 5,
+    });
+    const assignedSnapshot = await db.delivery_shipments.get(shipment.id);
+    expect(assignedSnapshot?.status).toBe("assigned");
+
+    await updateDeliveryShipmentStatus(shipment.id, { status: "delivered", actorAgentId: deliveryCourier.id });
+    // A second device that was already open still has the assigned version of
+    // the post. Replay that exact state to prove its operation IDs are stable.
+    await db.delivery_shipments.put(assignedSnapshot!);
+    await updateDeliveryShipmentStatus(shipment.id, { status: "delivered", actorAgentId: deliveryCourier.id });
+
+    const events = await db.delivery_shipment_events
+      .where("[workspaceId+shipmentId]")
+      .equals([WORKSPACE_ID, shipment.id])
+      .toArray();
+    const obligations = (await db.delivery_ledger_entries
+      .where("[workspaceId+shipmentId]")
+      .equals([WORKSPACE_ID, shipment.id])
+      .toArray())
+      .filter((entry) => ["courier_collection", "courier_delivery_fee", "merchant_cod_payable", "merchant_fee"].includes(entry.kind));
+
+    expect(events.filter((event) => event.status === "delivered")).toHaveLength(1);
+    expect(obligations).toHaveLength(4);
+    expect(obligations.map((entry) => entry.kind).sort()).toEqual([
+      "courier_collection",
+      "courier_delivery_fee",
+      "merchant_cod_payable",
+      "merchant_fee",
+    ]);
+  });
+
   it("includes unpaid merchant payout posts and courier custody in partner balances", async () => {
     const merchant = partner(crypto.randomUUID());
     const deliveryCourier = courier(crypto.randomUUID());
