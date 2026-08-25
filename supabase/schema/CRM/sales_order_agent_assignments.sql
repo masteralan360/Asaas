@@ -63,8 +63,8 @@ CREATE INDEX sales_order_agent_assignments_agent_idx
 CREATE INDEX sales_order_agent_assignments_previous_idx ON crm.sales_order_agent_assignments (previous_assignment_id);
 CREATE INDEX sales_order_agent_assignments_assigned_by_idx ON crm.sales_order_agent_assignments (assigned_by);
 CREATE INDEX sales_order_agent_assignments_unassigned_by_idx ON crm.sales_order_agent_assignments (unassigned_by);
-CREATE UNIQUE INDEX sales_order_agent_assignments_one_active_idx
-  ON crm.sales_order_agent_assignments (workspace_id, order_id)
+CREATE UNIQUE INDEX sales_order_agent_assignments_one_active_agent_idx
+  ON crm.sales_order_agent_assignments (workspace_id, order_id, agent_id)
   WHERE unassigned_at IS NULL AND is_deleted = false;
 
 ALTER TABLE crm.sales_order_agent_assignments ENABLE ROW LEVEL SECURITY;

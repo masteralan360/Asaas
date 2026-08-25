@@ -8,6 +8,7 @@ import { db } from './database'
 
 const WORKSPACE_ID = '00000000-0000-4000-8000-000000000001'
 let createBusinessPartner: typeof import('./businessPartners').createBusinessPartner
+let deleteBusinessPartner: typeof import('./businessPartners').deleteBusinessPartner
 let mergeBusinessPartners: typeof import('./businessPartners').mergeBusinessPartners
 let replaceAgentExcludedCategories: typeof import('./businessPartners').replaceAgentExcludedCategories
 let updateBusinessPartner: typeof import('./businessPartners').updateBusinessPartner
@@ -100,6 +101,7 @@ describe('business partner agent facets', () => {
         installBrowserStorage()
         const businessPartners = await import('./businessPartners')
         createBusinessPartner = businessPartners.createBusinessPartner
+        deleteBusinessPartner = businessPartners.deleteBusinessPartner
         mergeBusinessPartners = businessPartners.mergeBusinessPartners
         replaceAgentExcludedCategories = businessPartners.replaceAgentExcludedCategories
         updateBusinessPartner = businessPartners.updateBusinessPartner
@@ -368,5 +370,40 @@ describe('business partner agent facets', () => {
                 operation: 'delete',
                 payload: { id: exclusionId, hardDelete: true }
             })
+    })
+
+    it('queues an agent retirement with its business-partner reference', async () => {
+        const partner = await createBusinessPartner(WORKSPACE_ID, {
+            name: 'Agent to retire',
+            phone: '07500000009',
+            defaultCurrency: 'iqd',
+            creditLimit: 0,
+            role: 'agent',
+            agent: {
+                zone: 'Central District',
+                agentType: 'field_agent',
+                status: 'active'
+            }
+        }, { allowAgentRole: true })
+
+        writeWorkspaceModeSnapshot({ workspaceId: WORKSPACE_ID, dataMode: 'cloud' })
+        setNetworkStatus(false)
+        await deleteBusinessPartner(partner.id)
+
+        const queued = await db.offline_mutations
+            .where('workspaceId')
+            .equals(WORKSPACE_ID)
+            .toArray()
+        const agentMutation = queued.find((mutation) => mutation.entityType === 'agents')
+        const partnerMutation = queued.find((mutation) => mutation.entityType === 'business_partners')
+
+        expect(agentMutation).toMatchObject({
+            operation: 'delete',
+            payload: { id: partner.agentFacetId, businessPartnerId: partner.id }
+        })
+        expect(partnerMutation).toMatchObject({
+            operation: 'delete',
+            payload: { id: partner.id }
+        })
     })
 })

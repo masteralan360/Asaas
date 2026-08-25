@@ -443,10 +443,11 @@ describe('partner settlement', () => {
                 linkedPartyType: 'business_partner',
                 linkedPartyId: partner.id,
                 firstDueDate: null,
-                installmentFrequency: 'monthly'
+                installmentFrequency: 'monthly',
+                createdAt: spec.createdAt
             })
             loanIds.push(loan.id)
-            await db.loans.update(loan.id, { loanNo: spec.label, createdAt: spec.createdAt, updatedAt: spec.createdAt })
+            await db.loans.update(loan.id, { loanNo: spec.label })
         }
         const [loanAId, loanBId, loanCId] = loanIds
 

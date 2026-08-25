@@ -309,13 +309,18 @@ async function syncUpsertEntities(tableName: PartnerTableName, entities: SyncEnt
     }
 }
 
-async function syncSoftDelete(tableName: PartnerTableName, entityId: string, workspaceId: string) {
+async function syncSoftDelete(
+    tableName: PartnerTableName,
+    entityId: string,
+    workspaceId: string,
+    payload: Record<string, unknown> = {}
+) {
     if (!shouldUseCloudBusinessData(workspaceId)) {
         return
     }
 
     if (!isOnline(workspaceId)) {
-        await addToOfflineMutations(tableName, entityId, 'delete', { id: entityId }, workspaceId)
+        await addToOfflineMutations(tableName, entityId, 'delete', { ...payload, id: entityId }, workspaceId)
         return
     }
 
@@ -334,7 +339,7 @@ async function syncSoftDelete(tableName: PartnerTableName, entityId: string, wor
         await markEntitiesSynced(tableName, [entityId])
     } catch (error) {
         console.error(`[BusinessPartners] Failed to delete ${tableName}:`, error)
-        await addToOfflineMutations(tableName, entityId, 'delete', { id: entityId }, workspaceId)
+        await addToOfflineMutations(tableName, entityId, 'delete', { ...payload, id: entityId }, workspaceId)
     }
 }
 
@@ -1727,7 +1732,6 @@ export async function deleteBusinessPartner(id: string) {
         ...getSyncMetadata(partner.workspaceId, now)
     }
     await db.business_partners.put(deletedPartner)
-    await syncSoftDelete('business_partners', deletedPartner.id, deletedPartner.workspaceId)
 
     if (partner.customerFacetId) {
         const customer = await db.customers.get(partner.customerFacetId)
@@ -1767,9 +1771,15 @@ export async function deleteBusinessPartner(id: string) {
                 version: agent.version + 1,
                 ...getSyncMetadata(agent.workspaceId, now)
             })
-            await syncSoftDelete('agents', agent.id, agent.workspaceId)
+            await syncSoftDelete('agents', agent.id, agent.workspaceId, {
+                businessPartnerId: deletedPartner.id
+            })
         }
     }
+
+    // Retire dependent facets before their business partner. This preserves
+    // the database relationship while both deletes are queued or uploaded.
+    await syncSoftDelete('business_partners', deletedPartner.id, deletedPartner.workspaceId)
 }
 
 export async function mergeBusinessPartners(primaryPartnerId: string, secondaryPartnerId: string) {

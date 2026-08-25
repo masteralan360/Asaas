@@ -235,6 +235,9 @@ function getMutationParentKeys(mutation: MutationSyncOrderItem) {
   };
 
   switch (entityType) {
+    case "agents":
+      addParent("business_partners", "businessPartnerId", "business_partner_id");
+      break;
     case "agent_commission_memberships":
       addParent("agents", "agentId", "agent_id");
       addParent("agent_commission_plans", "planId", "plan_id");
@@ -344,6 +347,16 @@ export function orderMutationsForSync<T extends MutationSyncOrderItem>(mutations
     for (const parentKey of getMutationParentKeys(mutation)) {
       const parentIndices = indicesByEntity.get(parentKey);
       if (!parentIndices) continue;
+
+      if (mutation.operation === "delete") {
+        // A soft-deleted child must reach Supabase before its deleted parent.
+        // This is the reverse of the create/update relationship above and is
+        // necessary even when both mutations share one timestamp.
+        parentIndices
+          .filter((parentIndex) => chronological[parentIndex].operation === "delete")
+          .forEach((parentIndex) => addEdge(index, parentIndex));
+        continue;
+      }
 
       const activeParentIndices = parentIndices.filter(
         (parentIndex) => chronological[parentIndex].operation !== "delete",

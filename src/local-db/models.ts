@@ -876,7 +876,7 @@ export interface AgentCommissionMembership extends BaseEntity {
   notes?: string | null;
 }
 
-/** Historical sales attribution; only one assignment may be active per order. */
+/** Historical sales attribution; an order can have one active assignment per field agent. */
 export interface SalesOrderAgentAssignment extends BaseEntity {
   orderId: string;
   agentId: string;

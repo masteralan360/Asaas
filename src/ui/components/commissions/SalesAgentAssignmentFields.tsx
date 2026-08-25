@@ -33,6 +33,7 @@ export interface SalesAgentAssignmentFieldValue {
 }
 
 interface SalesAgentAssignmentFieldsProps {
+    idPrefix?: string
     value: SalesAgentAssignmentFieldValue
     onChange: (value: SalesAgentAssignmentFieldValue) => void
     agents: CommissionAgentDirectoryEntry[]
@@ -47,6 +48,7 @@ interface SalesAgentAssignmentFieldsProps {
 }
 
 export function SalesAgentAssignmentFields({
+    idPrefix = 'sales-agent-assignment',
     value,
     onChange,
     agents,
@@ -70,6 +72,7 @@ export function SalesAgentAssignmentFields({
         key: Key,
         nextValue: SalesAgentAssignmentFieldValue[Key]
     ) => onChange({ ...value, [key]: nextValue })
+    const fieldId = (name: string) => `${idPrefix}-${name}`
     const selectAgent = (agentId: string) => {
         const nextAgentId = agentId === UNASSIGNED_VALUE ? '' : agentId
         if (nextAgentId === value.agentId) return
@@ -94,13 +97,13 @@ export function SalesAgentAssignmentFields({
     return (
         <div className="space-y-4">
             <div className="space-y-2">
-                <Label htmlFor="sales-agent-assignment">{t('salesAgentCommissions.assignedSalesAgent')}</Label>
+                <Label htmlFor={fieldId('agent')}>{t('salesAgentCommissions.assignedSalesAgent')}</Label>
                 <Select
                     value={value.agentId || UNASSIGNED_VALUE}
                     onValueChange={selectAgent}
                     disabled={disabled}
                 >
-                    <SelectTrigger id="sales-agent-assignment" className="min-h-11">
+                    <SelectTrigger id={fieldId('agent')} className="min-h-11">
                         <SelectValue placeholder={t('salesAgentCommissions.noSalesAgentAssigned')} />
                     </SelectTrigger>
                     <SelectContent>
@@ -150,7 +153,7 @@ export function SalesAgentAssignmentFields({
                     </div>
                     <div className="space-y-4">
                         <div className="space-y-2">
-                            <Label htmlFor="sales-agent-manual-commission-type">{t('salesAgentCommissions.commissionType')}</Label>
+                            <Label htmlFor={fieldId('manual-commission-type')}>{t('salesAgentCommissions.commissionType')}</Label>
                             <Select
                                 value={value.manualCommissionType}
                                 onValueChange={(type) => onChange({
@@ -161,7 +164,7 @@ export function SalesAgentAssignmentFields({
                                 })}
                                 disabled={disabled}
                             >
-                                <SelectTrigger id="sales-agent-manual-commission-type" className="min-h-11">
+                                <SelectTrigger id={fieldId('manual-commission-type')} className="min-h-11">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -173,9 +176,9 @@ export function SalesAgentAssignmentFields({
                         {value.manualCommissionType === 'fixed_amount' ? (
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <div className="space-y-2">
-                                    <Label htmlFor="sales-agent-manual-commission-amount">{t('salesAgentCommissions.commissionAmount')}</Label>
+                                    <Label htmlFor={fieldId('manual-commission-amount')}>{t('salesAgentCommissions.commissionAmount')}</Label>
                                     <Input
-                                        id="sales-agent-manual-commission-amount"
+                                        id={fieldId('manual-commission-amount')}
                                         inputMode="decimal"
                                         value={formatNumericInput(value.manualCommissionAmount)}
                                         onChange={(event) => update('manualCommissionAmount', sanitizeNumericInput(event.target.value, {
@@ -197,9 +200,9 @@ export function SalesAgentAssignmentFields({
                             </div>
                         ) : (
                             <div className="space-y-2">
-                                <Label htmlFor="sales-agent-manual-commission-amount">{t('salesAgentCommissions.commissionPercentage')}</Label>
+                                <Label htmlFor={fieldId('manual-commission-amount')}>{t('salesAgentCommissions.commissionPercentage')}</Label>
                                 <Input
-                                    id="sales-agent-manual-commission-amount"
+                                    id={fieldId('manual-commission-amount')}
                                     inputMode="decimal"
                                     value={formatNumericInput(value.manualCommissionAmount)}
                                     onChange={(event) => update('manualCommissionAmount', sanitizeNumericInput(event.target.value, {
@@ -238,12 +241,12 @@ export function SalesAgentAssignmentFields({
 
             <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="sales-agent-customer-city" className="flex items-center gap-2">
+                    <Label htmlFor={fieldId('customer-city')} className="flex items-center gap-2">
                         <MapPin className="h-4 w-4 text-muted-foreground" />
                         {t('salesAgentCommissions.customerCitySnapshot')}
                     </Label>
                     <Input
-                        id="sales-agent-customer-city"
+                        id={fieldId('customer-city')}
                         value={value.customerCity}
                         onChange={(event) => update('customerCity', event.target.value)}
                         disabled={disabled || !value.agentId}
@@ -251,12 +254,12 @@ export function SalesAgentAssignmentFields({
                     />
                 </div>
                 <div className="space-y-2">
-                    <Label htmlFor="sales-agent-delivery-charge" className="flex items-center gap-2">
+                    <Label htmlFor={fieldId('delivery-charge')} className="flex items-center gap-2">
                         <Truck className="h-4 w-4 text-muted-foreground" />
                         {t('salesAgentCommissions.customerDeliveryCharge')}
                     </Label>
                     <Input
-                        id="sales-agent-delivery-charge"
+                        id={fieldId('delivery-charge')}
                         type="number"
                         inputMode="decimal"
                         min="0"
@@ -268,9 +271,9 @@ export function SalesAgentAssignmentFields({
                     />
                 </div>
                 <div className="space-y-2">
-                    <Label htmlFor="sales-agent-internal-delivery-cost">{t('salesAgentCommissions.internalDeliveryCost')}</Label>
+                    <Label htmlFor={fieldId('internal-delivery-cost')}>{t('salesAgentCommissions.internalDeliveryCost')}</Label>
                     <Input
-                        id="sales-agent-internal-delivery-cost"
+                        id={fieldId('internal-delivery-cost')}
                         type="number"
                         inputMode="decimal"
                         min="0"
@@ -285,9 +288,9 @@ export function SalesAgentAssignmentFields({
 
             {showReason ? (
                 <div className="space-y-2">
-                    <Label htmlFor="sales-agent-reassignment-reason">{t('salesAgentCommissions.reassignmentReason')}</Label>
+                    <Label htmlFor={fieldId('reassignment-reason')}>{t('salesAgentCommissions.reassignmentReason')}</Label>
                     <Textarea
-                        id="sales-agent-reassignment-reason"
+                        id={fieldId('reassignment-reason')}
                         value={value.reassignmentReason}
                         onChange={(event) => update('reassignmentReason', event.target.value)}
                         disabled={disabled}

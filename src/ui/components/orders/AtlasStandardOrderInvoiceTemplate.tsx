@@ -1480,7 +1480,10 @@ export function AtlasStandardOrderInvoiceTemplate({
             label: isReturnPrint ? returnLabels.invoice : labels.invoice,
             value: isReturnPrint ? returnLabels.returnInvoice : isSales ? labels.salesOrder : labels.purchaseOrder,
             className: 'border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{isReturnPrint ? returnLabels.returnInvoice : isSales ? labels.salesOrder : labels.purchaseOrder}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{isReturnPrint
+                ? returnLabels.returnInvoice
+                : <span className={isSales ? 'text-green-600' : 'text-red-600'}>{isSales ? labels.salesOrder : labels.purchaseOrder}</span>
+            }</div>
         },
         {
             key: detailsKeys.number,

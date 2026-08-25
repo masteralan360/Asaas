@@ -860,7 +860,7 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(html).toContain('h-[8mm] bg-[#e5e7eb]')
         expect(html).toContain('text-[9px] leading-[1.2] truncate')
         expect(html).toContain('min-h-[6.5mm] px-2 py-1.5 text-xs truncate')
-        expect(html).toContain('Invoice : </strong>Sales Order')
+        expect(html).toContain('Invoice : </strong><span class="text-green-600">Sales Order</span>')
         expect(html).toContain('Phone : </strong>-')
         expect(html).toContain('Invoice Organizer : </strong>')
         expect(html).not.toContain('Invoice Organizer : </strong>Order Cashier')
@@ -868,7 +868,7 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(html).toContain('Paid Amount : </strong>')
         expect(html).toContain('Order Outstanding : </strong>')
         expect(html).toContain('Payment Method : </strong>Cash')
-        expect(html.indexOf('<strong>Invoice : </strong>Sales Order')).toBeLessThan(html.indexOf('<strong>Customer : </strong>Sample Customer'))
+        expect(html.indexOf('<strong>Invoice : </strong><span class="text-green-600">Sales Order</span>')).toBeLessThan(html.indexOf('<strong>Customer : </strong>Sample Customer'))
         expect(html.indexOf('<strong>Discount : </strong>')).toBeLessThan(html.indexOf('<strong>Paid Amount : </strong>'))
         expect(html).not.toContain('Previous Balance')
         expect(html).not.toContain('Net Payable')
@@ -878,6 +878,14 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(html).toContain('data-order-print-component="atlasStandardWorkspaceLogo"')
         expect(html).toContain('data-template-text-flow-anchor')
         expect((html.match(/data-order-print-component=/g) || [])).toHaveLength(2)
+
+        const purchasePreview = customTemplates.createCustomTemplatePreview(target!, {
+            workspaceName: 'Atlas Test',
+            printLang: 'en',
+            orderKind: 'purchase'
+        })
+        const purchaseHtml = renderToStaticMarkup(purchasePreview.createElement({}))
+        expect(purchaseHtml).toContain('Invoice : </strong><span class="text-red-600">Purchase Order</span>')
 
         const hiddenNoteHtml = renderToStaticMarkup(preview.createElement({}, undefined, undefined, {
             hiddenFields: { 'atlasStandard.table.note': true }

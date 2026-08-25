@@ -1,3 +1,12 @@
+# Atlas Architecture
+
+## Workspace data modes
+
+- **Cloud:** Supabase is the source of truth; Dexie is a local cache and offline changes sync when connectivity returns.
+- **Hybrid:** Supabase remains the source of truth; desktop apps also maintain a local SQLite mirror for resilience and recovery.
+- **Local:** The device’s SQLite database is the source of truth; business data does not synchronize with Supabase.
+- All modes use Dexie/IndexedDB for responsive local UI reads and writes.
+
 # Atlas UI conventions
 
 ## Dialogs (required)
@@ -36,3 +45,21 @@ Any field or control that allows users to select a currency MUST use the app-pro
 While the modal is proceeding/processing it must NOT allow the user to close the modal by the overlay or X button. This is to prevent the user from closing the modal while the data is being saved and thus potentially corrupting the data.
 
 Before finishing a modal, compare it with `src/ui/components/crm/BusinessPartnerFormDialog.tsx` and verify it at a narrow mobile width as well as desktop.
+
+
+## Localization (required)
+Use the `react-i18next` library for all text content that appears in the UI. Do not hardcode strings in components or application logic. The expected flow is:
+
+1. Define text in the relevant language JSON file at `src/i18n/locales/`
+2. Refer to text via keys in JSX, for example: `<p>{t('welcomeMessage')}</p>`
+
+## Printing
+If said new print template is required to have tables, then it must use the in-app A4 pagination for tables similar to 
+'src\ui\components\orders\AtlasStandardOrderInvoiceTemplate.tsx'.
+
+it Must always have its custom template.
+
+## Date-range filtering
+
+Any new module that displays a table or list of timestamped records MUST include the shared `DateRangeFilters` control when filtering by creation date is meaningful. Reuse this component rather than building a custom date-range filter.
+

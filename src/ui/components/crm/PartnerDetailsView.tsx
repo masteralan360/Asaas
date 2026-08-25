@@ -34,7 +34,7 @@ import {
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
     useAgent,
-    getActiveSalesOrderAgentAssignment,
+    getActiveSalesOrderAgentAssignments,
     useBusinessPartner,
     useBusinessPartners,
     useClinicalAppointments,
@@ -840,7 +840,8 @@ export function PartnerDetailsView({
             ? agent
                 ? allSalesOrders.filter((order) =>
                     !order.isDeleted
-                    && getActiveSalesOrderAgentAssignment(salesOrderAgentAssignments, order.id)?.agentId === agent.id
+                    && getActiveSalesOrderAgentAssignments(salesOrderAgentAssignments, order.id)
+                        .some((assignment) => assignment.agentId === agent.id)
                 )
                 : []
             : agentLinkedUserId

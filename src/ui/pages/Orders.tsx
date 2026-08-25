@@ -31,7 +31,7 @@ import {
     getOrderBalanceAmount,
     getOrderPaidAmount,
     getOrderPaymentStatus,
-    getActiveSalesOrderAgentAssignment,
+    getActiveSalesOrderAgentAssignments,
     getPrimaryStorageFromList,
     isOrderApprovalRequested,
     findLatestUnreversedPaymentTransaction,
@@ -418,16 +418,19 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         permissionKeys,
         'salesAgentCommissions.viewOwn'
     )
-    const activeSalesAgentAssignmentByOrderId = useMemo(() => new Map(salesOrders.flatMap((order) => {
-        const assignment = getActiveSalesOrderAgentAssignment(commissionData?.assignments || [], order.id)
-        return assignment ? [[order.id, assignment] as const] : []
+    const activeSalesAgentAssignmentsByOrderId = useMemo(() => new Map(salesOrders.flatMap((order) => {
+        const assignments = getActiveSalesOrderAgentAssignments(commissionData?.assignments || [], order.id)
+        return assignments.length > 0 ? [[order.id, assignments] as const] : []
     })), [commissionData?.assignments, salesOrders])
-    const visibleCommissionAgentByOrderId = useMemo(() => new Map(Array.from(activeSalesAgentAssignmentByOrderId, ([orderId, assignment]) => {
-        const agent = commissionData?.agentById.get(assignment.agentId)
-        const canSeeAgent = canViewAllSalesAgentAssignments
-            || (canViewOwnSalesAgentAssignments && agent?.agent.linkedUserId === user?.id)
-        return [orderId, canSeeAgent ? agent : undefined] as const
-    })), [activeSalesAgentAssignmentByOrderId, canViewAllSalesAgentAssignments, canViewOwnSalesAgentAssignments, commissionData?.agentById, user?.id])
+    const visibleCommissionAgentsByOrderId = useMemo(() => new Map(Array.from(activeSalesAgentAssignmentsByOrderId, ([orderId, assignments]) => {
+        const agents = assignments.flatMap((assignment) => {
+            const agent = commissionData?.agentById.get(assignment.agentId)
+            const canSeeAgent = canViewAllSalesAgentAssignments
+                || (canViewOwnSalesAgentAssignments && agent?.agent.linkedUserId === user?.id)
+            return agent && canSeeAgent ? [agent] : []
+        })
+        return [orderId, agents] as const
+    })), [activeSalesAgentAssignmentsByOrderId, canViewAllSalesAgentAssignments, canViewOwnSalesAgentAssignments, commissionData?.agentById, user?.id])
     const defaultStorageId = getPrimaryStorageFromList(storages)?.id || ''
     const unitRegistry = useUnitRegistry(workspaceId)
 
@@ -605,10 +608,10 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
             order.orderNumber.toLowerCase().includes(query)
             || order.customerName.toLowerCase().includes(query)
             || (salesAgentCommissionsEnabled
-                && visibleCommissionAgentByOrderId.get(order.id)?.name.toLowerCase().includes(query))
+                && visibleCommissionAgentsByOrderId.get(order.id)?.some((agent) => agent.name.toLowerCase().includes(query)))
             || order.items.some((item) => item.productName.toLowerCase().includes(query))
         )
-    }, [dateFilteredSalesOrders, ecommerceFilter, paymentFilter, salesAgentCommissionsEnabled, search, statusFilter, visibleCommissionAgentByOrderId])
+    }, [dateFilteredSalesOrders, ecommerceFilter, paymentFilter, salesAgentCommissionsEnabled, search, statusFilter, visibleCommissionAgentsByOrderId])
 
     const filteredPurchaseOrders = useMemo(() => {
         let items = [...dateFilteredPurchaseOrders]
@@ -1478,14 +1481,18 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                     {activeTab === 'sales' && salesAgentCommissionsEnabled ? (
                                         <TableCell>
                                             {(() => {
-                                                const assignment = activeSalesAgentAssignmentByOrderId.get(row.id)
-                                                const agent = visibleCommissionAgentByOrderId.get(row.id)
-                                                return agent ? (
-                                                    <div>
-                                                        <div className="font-medium">{agent.name}</div>
-                                                        <div className="text-xs text-muted-foreground">{agent.plan?.name || t('salesAgentCommissions.noCommissionPlan')}</div>
+                                                const assignments = activeSalesAgentAssignmentsByOrderId.get(row.id) || []
+                                                const agents = visibleCommissionAgentsByOrderId.get(row.id) || []
+                                                return agents.length > 0 ? (
+                                                    <div className="space-y-1">
+                                                        {agents.map((agent) => (
+                                                            <div key={agent.agent.id}>
+                                                                <div className="font-medium">{agent.name}</div>
+                                                                <div className="text-xs text-muted-foreground">{agent.plan?.name || t('salesAgentCommissions.noCommissionPlan')}</div>
+                                                            </div>
+                                                        ))}
                                                     </div>
-                                                ) : <span className="text-muted-foreground">{assignment ? t('salesAgentCommissions.restricted') : t('salesAgentCommissions.unassigned')}</span>
+                                                ) : <span className="text-muted-foreground">{assignments.length > 0 ? t('salesAgentCommissions.restricted') : t('salesAgentCommissions.unassigned')}</span>
                                             })()}
                                         </TableCell>
                                     ) : null}
@@ -1601,9 +1608,11 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                              <div className="flex items-center gap-1.5 text-xs text-violet-700 dark:text-violet-300">
                                                  <UsersRound className="h-3.5 w-3.5" />
                                                  {(() => {
-                                                     const assignment = activeSalesAgentAssignmentByOrderId.get(row.id)
-                                                     const agent = visibleCommissionAgentByOrderId.get(row.id)
-                                                     return agent?.name || (assignment ? t('salesAgentCommissions.restricted') : t('salesAgentCommissions.unassigned'))
+                                                     const assignments = activeSalesAgentAssignmentsByOrderId.get(row.id) || []
+                                                     const agents = visibleCommissionAgentsByOrderId.get(row.id) || []
+                                                     return agents.length > 0
+                                                         ? agents.map((agent) => agent.name).join(', ')
+                                                         : (assignments.length > 0 ? t('salesAgentCommissions.restricted') : t('salesAgentCommissions.unassigned'))
                                                  })()}
                                              </div>
                                          ) : null}

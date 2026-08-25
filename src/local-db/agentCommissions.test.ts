@@ -740,6 +740,80 @@ describe("sales agent commission lifecycle", () => {
     expect(await db.agent_commission_entries.where("orderId").equals(order.id).count()).toBe(0);
   });
 
+  it("credits every active beneficiary on the same sales order independently", async () => {
+    const firstAgent = fieldAgent(crypto.randomUUID());
+    const secondAgent = fieldAgent(crypto.randomUUID());
+    const order = completedOrder(crypto.randomUUID());
+    await db.agents.bulkPut([firstAgent, secondAgent]);
+    await db.sales_orders.put(order);
+    const plan = await commissions.createAgentCommissionPlan(WORKSPACE_ID, {
+      name: "Shared level",
+      level: "level_1",
+      ratePercent: 10,
+    });
+    await commissions.setAgentCommissionMembership(WORKSPACE_ID, {
+      agentId: firstAgent.id,
+      planId: plan.id,
+    });
+    await commissions.setAgentCommissionMembership(WORKSPACE_ID, {
+      agentId: secondAgent.id,
+      planId: plan.id,
+    });
+
+    await commissions.replaceSalesOrderAgentAssignments(WORKSPACE_ID, {
+      orderId: order.id,
+      assignments: [
+        { agentId: firstAgent.id },
+        { agentId: secondAgent.id },
+      ],
+    });
+
+    const activeAssignments = (await db.sales_order_agent_assignments
+      .where("orderId")
+      .equals(order.id)
+      .toArray())
+      .filter((assignment) => !assignment.isDeleted && !assignment.unassignedAt);
+    const accruals = (await db.agent_commission_entries
+      .where("orderId")
+      .equals(order.id)
+      .toArray())
+      .filter((entry) => entry.kind === "accrual");
+
+    expect(activeAssignments.map((assignment) => assignment.agentId).sort()).toEqual([
+      firstAgent.id,
+      secondAgent.id,
+    ].sort());
+    expect(accruals).toHaveLength(2);
+    expect(accruals.map((entry) => entry.agentId).sort()).toEqual([
+      firstAgent.id,
+      secondAgent.id,
+    ].sort());
+    expect(accruals.every((entry) => entry.amount === 40)).toBe(true);
+
+    await commissions.replaceSalesOrderAgentAssignments(WORKSPACE_ID, {
+      orderId: order.id,
+      assignments: [{ agentId: firstAgent.id }],
+    });
+
+    const remainingAssignments = (await db.sales_order_agent_assignments
+      .where("orderId")
+      .equals(order.id)
+      .toArray())
+      .filter((assignment) => !assignment.isDeleted && !assignment.unassignedAt);
+    const recognizedByAgent = (await db.agent_commission_entries
+      .where("orderId")
+      .equals(order.id)
+      .toArray())
+      .reduce((totals, entry) => {
+        totals.set(entry.agentId, (totals.get(entry.agentId) ?? 0) + entry.amount);
+        return totals;
+      }, new Map<string, number>());
+
+    expect(remainingAssignments.map((assignment) => assignment.agentId)).toEqual([firstAgent.id]);
+    expect(recognizedByAgent.get(firstAgent.id)).toBe(40);
+    expect(recognizedByAgent.get(secondAgent.id)).toBe(0);
+  });
+
   it("records same-agent snapshot edits as assignment history", async () => {
     const agent = fieldAgent(crypto.randomUUID());
     const order = completedOrder(crypto.randomUUID());

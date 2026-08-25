@@ -8,7 +8,7 @@ import { createManualLoan, type CurrencyCode, type LoanDirection } from '@/local
 import { buildOrderExchangeRatesSnapshot } from '@/lib/orderCurrency'
 import { getLoanCounterpartyNameLabel, getLoanDirectionLabel } from '@/lib/loanPresentation'
 import { getLoanLinkedPartyTypeLabel, type LoanPartySelection } from '@/lib/loanParties'
-import { formatLocalDateValue, formatNumericInput, parseFormattedNumber, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
+import { formatLocalDateTimeValue, formatLocalDateValue, formatNumericInput, parseFormattedNumber, parseLocalDateTimeValue, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
 import {
     Button,
     CurrencySelector,
@@ -65,6 +65,7 @@ export function CreateSimpleLoanModal({
     const [selectedParty, setSelectedParty] = useState<LoanPartySelection | null>(null)
     const [isPartyPickerOpen, setIsPartyPickerOpen] = useState(false)
     const [principalAmount, setPrincipalAmount] = useState('')
+    const [createdAt, setCreatedAt] = useState('')
     const [dueDate, setDueDate] = useState<string | null>(null)
     const [notes, setNotes] = useState('')
     const [savePartnerData, setSavePartnerData] = usePendingSavePartnerPrompt()
@@ -81,6 +82,7 @@ export function CreateSimpleLoanModal({
         setSelectedParty(null)
         setIsPartyPickerOpen(false)
         setPrincipalAmount('')
+        setCreatedAt(formatLocalDateTimeValue(new Date()))
         setDueDate(null)
         setNotes('')
     }, [isOpen, settlementCurrency])
@@ -91,7 +93,10 @@ export function CreateSimpleLoanModal({
         }))
     }, [selectedCurrency])
 
-    const canSubmit = borrowerName.trim() && parseFormattedNumber(principalAmount || '0') > 0
+    const selectedCreatedAt = parseLocalDateTimeValue(createdAt)
+    const canSubmit = borrowerName.trim()
+        && parseFormattedNumber(principalAmount || '0') > 0
+        && !!selectedCreatedAt
 
     const counterpartyNameLabel = useMemo(
         () => getLoanCounterpartyNameLabel({ loanCategory: 'simple', direction }, t),
@@ -115,7 +120,7 @@ export function CreateSimpleLoanModal({
     }
 
     const handleCreate = async () => {
-        if (!canSubmit || isSaving) return
+        if (!canSubmit || !selectedCreatedAt || isSaving) return
 
         setIsSaving(true)
         try {
@@ -136,6 +141,7 @@ export function CreateSimpleLoanModal({
                 installmentCount: 1,
                 installmentFrequency: 'monthly',
                 firstDueDate: dueDate,
+                createdAt: selectedCreatedAt.toISOString(),
                 notes: notes.trim() || undefined,
                 createdBy: user?.id
             })
@@ -174,7 +180,9 @@ export function CreateSimpleLoanModal({
     }
 
     return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+        <Dialog open={isOpen} onOpenChange={(open) => {
+            if (!isSaving) onOpenChange(open)
+        }}>
             <DialogContent layout="structured" className="max-w-3xl">
                 <DialogHeader layout="structured">
                     <DialogTitle>{t('loans.createSimpleLoan', { defaultValue: 'Create Simple Loan' })}</DialogTitle>
@@ -282,7 +290,7 @@ export function CreateSimpleLoanModal({
                                         allowedCurrencies={Array.from(new Set([settlementCurrency, ...features.allowed_currencies])) as CurrencyCode[]}
                                     />
                                 </div>
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                                     <div className="grid gap-2">
                                         <Label>{t('loans.principal', { defaultValue: 'Principal' })} <span className="text-destructive">*</span></Label>
                                         <Input
@@ -293,6 +301,16 @@ export function CreateSimpleLoanModal({
                                             onChange={e => setPrincipalAmount(sanitizeNumericInput(e.target.value, {
                                                 allowDecimal: selectedCurrency !== 'iqd'
                                             }))}
+                                        />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label>{t('loans.createdAt', { defaultValue: 'Created At' })}</Label>
+                                        <DateTimePicker
+                                            id="simple-loan-created-at"
+                                            date={selectedCreatedAt}
+                                            setDate={(value) => setCreatedAt(value ? formatLocalDateTimeValue(value) : '')}
+                                            placeholder={t('loans.pickCreatedAt', { defaultValue: 'Pick creation time' })}
+                                            disabled={isSaving}
                                         />
                                     </div>
                                     <div className="grid gap-2">

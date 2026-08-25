@@ -306,6 +306,36 @@ describe('Price Book sync recovery', () => {
     })
 })
 
+describe('agent deletion ordering', () => {
+    it('retires an agent before its business partner when both deletes are queued together', () => {
+        const ordered = orderMutationsForSync([
+            {
+                id: 'a-partner-delete',
+                workspaceId: 'workspace-1',
+                entityType: 'business_partners',
+                entityId: 'partner-1',
+                operation: 'delete',
+                payload: { id: 'partner-1' },
+                createdAt: '2026-08-26T00:00:00.000Z'
+            },
+            {
+                id: 'z-agent-delete',
+                workspaceId: 'workspace-1',
+                entityType: 'agents',
+                entityId: 'agent-1',
+                operation: 'delete',
+                payload: { id: 'agent-1', businessPartnerId: 'partner-1' },
+                createdAt: '2026-08-26T00:00:00.000Z'
+            }
+        ])
+
+        expect(ordered.map((mutation) => mutation.id)).toEqual([
+            'z-agent-delete',
+            'a-partner-delete'
+        ])
+    })
+})
+
 describe('delivery mutation ordering', () => {
     it('replays a shipment before its event when parallel writes queued the event first', () => {
         const ordered = orderMutationsForSync([

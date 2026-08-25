@@ -4800,6 +4800,7 @@ interface LoanCreateInput {
     installmentCount: number
     installmentFrequency: InstallmentFrequency
     firstDueDate?: string | null
+    createdAt?: string
     notes?: string
     createdBy?: string
 }
@@ -4851,6 +4852,11 @@ async function appendLoanOriginationTransactionBestEffort(workspaceId: string, l
 
 async function createLoanAggregate(workspaceId: string, input: LoanCreateInput): Promise<{ loan: Loan; installments: LoanInstallment[] }> {
     const now = new Date().toISOString()
+    const requestedCreatedAt = input.createdAt ? new Date(input.createdAt) : null
+    if (requestedCreatedAt && Number.isNaN(requestedCreatedAt.getTime())) {
+        throw new Error('Invalid creation time')
+    }
+    const createdAt = requestedCreatedAt?.toISOString() || now
     const loanId = generateId()
     const firstDueDate = normalizeDueDate(input.firstDueDate)
     const principalAmount = roundLoanAmount(Math.max(0, Number(input.principalAmount || 0)), input.settlementCurrency)
@@ -4916,7 +4922,7 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
             balanceAmount: entry.plannedAmount,
             status,
             paidAt: null,
-            createdAt: now,
+            createdAt,
             updatedAt: now,
             syncStatus: 'pending',
             lastSyncedAt: null,
@@ -4932,7 +4938,7 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
         saleId: input.saleId ?? null,
         orderId: input.orderId ?? null,
         orderType: input.orderType ?? null,
-        loanNo: generateLoanNo(loanId, new Date(now), loanCategory),
+        loanNo: generateLoanNo(loanId, new Date(createdAt), loanCategory),
         source: input.source,
         loanCategory,
         direction,
@@ -4957,7 +4963,7 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
         status: computeLoanStatus(nextDueDate, principalAmount),
         notes: input.notes?.trim(),
         createdBy: input.createdBy,
-        createdAt: now,
+        createdAt,
         updatedAt: now,
         syncStatus: 'pending',
         lastSyncedAt: null,

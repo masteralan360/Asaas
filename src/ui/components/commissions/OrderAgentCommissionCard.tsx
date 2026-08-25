@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { formatCurrency, formatDateTime } from '@/lib/utils'
 import {
-    getActiveSalesOrderAgentAssignment,
+    getActiveSalesOrderAgentAssignments,
     useAgentCommissionEntries,
     useSalesOrderAgentAssignments,
     type CurrencyCode,
@@ -41,16 +41,23 @@ export function OrderAgentCommissionCard({
     const entries = useAgentCommissionEntries(workspaceId)
     const directory = useCommissionAgentDirectory(workspaceId)
     const [dialogOpen, setDialogOpen] = useState(false)
-    const assignment = getActiveSalesOrderAgentAssignment(assignments, orderId)
+    const activeAssignments = getActiveSalesOrderAgentAssignments(assignments, orderId)
+    const visibleAssignments = activeAssignments.filter((candidate) => {
+        const candidateAgent = directory.agentById.get(candidate.agentId)
+        return canViewAllCommission || (canViewOwnCommission && Boolean(userId) && candidateAgent?.agent.linkedUserId === userId)
+    })
+    const assignment = (canAssign || canViewAllCommission ? activeAssignments : visibleAssignments)[0] ?? null
     const assignedAgent = assignment ? directory.agentById.get(assignment.agentId) : undefined
     const canViewCommission = canViewAllCommission
         || (canViewOwnCommission && Boolean(userId) && assignedAgent?.agent.linkedUserId === userId)
-    const canViewAssignment = canAssign || canViewAllCommission || canViewCommission
+    const canViewAssignment = canAssign || canViewAllCommission || visibleAssignments.length > 0
     const orderEntries = useMemo(() => entries
         .filter((entry) => !entry.isDeleted && entry.orderId === orderId)
         .sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime()),
     [entries, orderId])
-    const latestEntry = orderEntries[0]
+    const latestEntry = assignment
+        ? orderEntries.find((entry) => entry.assignmentId === assignment.id)
+        : undefined
 
     if (!canViewAssignment) return null
 
@@ -60,12 +67,16 @@ export function OrderAgentCommissionCard({
                 <CardHeader className="flex flex-row items-center justify-between gap-3">
                     <CardTitle className="flex items-center gap-2">
                         <UserRoundCheck className="h-5 w-5 text-violet-600" />
-                        {t('salesAgentCommissions.salesAgent')}
+                        {activeAssignments.length > 1
+                            ? t('salesAgentCommissions.salesAgentBeneficiaries')
+                            : t('salesAgentCommissions.salesAgent')}
                     </CardTitle>
                     {canAssign ? (
                         <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setDialogOpen(true)}>
                             <Pencil className="h-3.5 w-3.5" />
-                            {assignment ? t('salesAgentCommissions.change') : t('salesAgentCommissions.assign')}
+                            {activeAssignments.length > 1
+                                ? t('salesAgentCommissions.manage')
+                                : assignment ? t('salesAgentCommissions.change') : t('salesAgentCommissions.assign')}
                         </Button>
                     ) : null}
                 </CardHeader>
@@ -107,6 +118,26 @@ export function OrderAgentCommissionCard({
                                     </div>
                                 </div>
                             </div>
+                            {(canAssign || canViewAllCommission ? activeAssignments : visibleAssignments).length > 1 ? (
+                                <div className="space-y-2 rounded-2xl border bg-background/70 p-3">
+                                    <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                                        {t('salesAgentCommissions.salesAgentBeneficiaries')}
+                                    </div>
+                                    {(canAssign || canViewAllCommission ? activeAssignments : visibleAssignments)
+                                        .filter((otherAssignment) => otherAssignment.id !== assignment.id)
+                                        .map((otherAssignment) => {
+                                        const otherAgent = directory.agentById.get(otherAssignment.agentId)
+                                        return (
+                                            <div key={otherAssignment.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                                                <span className="font-medium">{otherAgent?.name || t('salesAgentCommissions.assignedFieldAgent')}</span>
+                                                <span className="text-xs text-muted-foreground">
+                                                    {otherAgent?.plan?.name || t('salesAgentCommissions.noCommissionPlan')}
+                                                </span>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            ) : null}
                             {canViewCommission ? (
                                 latestEntry ? (
                                     <div className="rounded-2xl border bg-background/80 p-4">
@@ -149,7 +180,6 @@ export function OrderAgentCommissionCard({
                     onOpenChange={setDialogOpen}
                     workspaceId={workspaceId}
                     orderId={orderId}
-                    activeAssignment={assignment}
                     defaultCustomerCity={defaultCustomerCity}
                     assignedBy={userId}
                 />

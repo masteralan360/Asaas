@@ -113,6 +113,15 @@ export interface AssignSalesOrderAgentInput {
   manualCommission?: ManualSalesAgentCommissionInput | null;
 }
 
+export interface ReplaceSalesOrderAgentAssignmentsInput {
+  orderId: string;
+  assignments: Array<Omit<AssignSalesOrderAgentInput, "orderId" | "agentId" | "assignedBy"> & {
+    agentId: string;
+  }>;
+  assignedBy?: string | null;
+  reason?: string | null;
+}
+
 export interface ManualSalesAgentCommissionInput {
   type: ManualSalesAgentCommissionType;
   /** Fixed amount or percentage, depending on `type`. */
@@ -631,9 +640,16 @@ export function getActiveSalesOrderAgentAssignment(
   assignments: readonly SalesOrderAgentAssignment[],
   orderId: string,
 ) {
+  return getActiveSalesOrderAgentAssignments(assignments, orderId)[0] ?? null;
+}
+
+export function getActiveSalesOrderAgentAssignments(
+  assignments: readonly SalesOrderAgentAssignment[],
+  orderId: string,
+) {
   return assignments
     .filter((row) => !row.isDeleted && row.orderId === orderId && !row.unassignedAt)
-    .sort((left, right) => right.assignedAt.localeCompare(left.assignedAt))[0] ?? null;
+    .sort((left, right) => right.assignedAt.localeCompare(left.assignedAt) || left.agentId.localeCompare(right.agentId));
 }
 
 export function getEffectiveAgentCommissionMembership(
@@ -1240,8 +1256,20 @@ export async function accrueSalesOrderCommission(
     .equals([workspaceId, orderId])
     .and((row) => !row.isDeleted)
     .toArray();
-  const assignment = getActiveSalesOrderAgentAssignment(assignments, orderId);
-  if (!assignment) return null;
+  const activeAssignments = getActiveSalesOrderAgentAssignments(assignments, orderId);
+  const entries: AgentCommissionEntry[] = [];
+  for (const assignment of activeAssignments) {
+    const entry = await accrueSalesOrderAssignmentCommission(order, assignment, createdBy);
+    if (entry) entries.push(entry);
+  }
+  return entries[0] ?? null;
+}
+
+async function accrueSalesOrderAssignmentCommission(
+  order: SalesOrder,
+  assignment: SalesOrderAgentAssignment,
+  createdBy?: string | null,
+) {
   const existing = await db.agent_commission_entries
     .where("assignmentId")
     .equals(assignment.id)
@@ -1267,7 +1295,7 @@ export async function accrueSalesOrderCommission(
     : calculateSalesOrderCommission(order, terms!.plan, assignment);
   if (!calculation) return null;
 
-  return appendEntry(workspaceId, {
+  return appendEntry(order.workspaceId, {
     orderId: order.id,
     assignmentId: assignment.id,
     agentId: assignment.agentId,
@@ -1363,8 +1391,19 @@ export async function reconcileSalesOrderCommission(
     .equals([workspaceId, orderId])
     .and((assignment) => !assignment.isDeleted)
     .toArray();
-  const assignment = getActiveSalesOrderAgentAssignment(assignments, orderId);
-  if (!assignment) return null;
+  const entries: AgentCommissionEntry[] = [];
+  for (const assignment of assignments) {
+    const entry = await reconcileSalesOrderAssignmentCommission(order, assignment, createdBy);
+    if (entry) entries.push(entry);
+  }
+  return entries[0] ?? null;
+}
+
+async function reconcileSalesOrderAssignmentCommission(
+  order: SalesOrder,
+  assignment: SalesOrderAgentAssignment,
+  createdBy?: string | null,
+) {
 
   const entries = await db.agent_commission_entries
     .where("assignmentId")
@@ -1375,15 +1414,15 @@ export async function reconcileSalesOrderCommission(
   const isEligible = order.status === "completed"
     && (order.isPaid || order.paymentStatus === "paid");
   if (!accrual) {
-    return isEligible
-      ? accrueSalesOrderCommission(workspaceId, orderId, createdBy)
+    return isEligible && !assignment.unassignedAt
+      ? accrueSalesOrderAssignmentCommission(order, assignment, createdBy)
       : null;
   }
 
   const accrualPlan = accrual.planId
     ? await db.agent_commission_plans.get(accrual.planId)
     : null;
-  const calculation = isEligible
+  const calculation = isEligible && !assignment.unassignedAt
     ? accrual.membershipId == null && accrual.planId == null
       ? calculateManualSalesOrderCommission(order, assignment)
       : calculateSalesOrderCommission(order, accrualPlan ?? {
@@ -1409,7 +1448,7 @@ export async function reconcileSalesOrderCommission(
   const delta = roundCommissionAmount(calculation.commissionAmount - recognized);
   if (Math.abs(delta) <= 0.000001) return null;
 
-  return appendEntry(workspaceId, {
+  return appendEntry(order.workspaceId, {
     orderId: order.id,
     assignmentId: assignment.id,
     agentId: assignment.agentId,
@@ -1469,6 +1508,87 @@ export async function reconcileWorkspaceSalesOrderCommissions(
   return entries;
 }
 
+export interface UnassignSalesOrderAgentInput {
+  orderId: string;
+  agentId: string;
+  unassignedAt?: string;
+  unassignedBy?: string | null;
+  reason?: string | null;
+}
+
+async function reverseClosedSalesOrderAssignmentCommission(
+  assignment: SalesOrderAgentAssignment,
+  order: SalesOrder,
+  occurredAt: string,
+  reason: string | null,
+  createdBy?: string | null,
+) {
+  if (order.status !== "completed") return;
+  const entries = await db.agent_commission_entries
+    .where("assignmentId")
+    .equals(assignment.id)
+    .and((entry) => !entry.isDeleted)
+    .toArray();
+  const recognized = roundCommissionAmount(entries.filter(isOrderTargetCommissionEntry)
+    .reduce((sum, entry) => sum + entry.amount, 0));
+  const accrual = entries.find((entry) => entry.kind === "accrual");
+  if (recognized > 0 && accrual) {
+    await reverseRecognizedAssignmentCommission(assignment, order, accrual, -recognized, {
+      occurredAt,
+      reason: reason || "Commission reversed after sales order assignment was removed",
+      createdBy,
+    });
+  }
+}
+
+export async function unassignSalesOrderAgent(
+  workspaceId: string,
+  input: UnassignSalesOrderAgentInput,
+) {
+  const order = await db.sales_orders.get(input.orderId);
+  if (!order || order.isDeleted || order.workspaceId !== workspaceId) {
+    throw new Error("Sales order not found");
+  }
+  const activeAssignments = getActiveSalesOrderAgentAssignments(
+    await db.sales_order_agent_assignments
+      .where("[workspaceId+orderId]")
+      .equals([workspaceId, input.orderId])
+      .and((row) => !row.isDeleted)
+      .toArray(),
+    input.orderId,
+  );
+  const current = activeAssignments.find((assignment) => assignment.agentId === input.agentId);
+  if (!current) return null;
+
+  const now = new Date().toISOString();
+  const unassignedAt = closeTimestampAfter(current.assignedAt, normalizeTimestamp(input.unassignedAt));
+  const closed: SalesOrderAgentAssignment = {
+    ...current,
+    unassignedAt,
+    unassignedBy: input.unassignedBy ?? null,
+    reassignmentReason: normalizeText(input.reason),
+    updatedAt: now,
+    version: current.version + 1,
+    ...getSyncMetadata(workspaceId, now),
+  };
+  await db.sales_order_agent_assignments.put(closed);
+  await syncUpsert(ASSIGNMENT_TABLE, closed);
+
+  if (shouldUseCloudData(workspaceId)) {
+    await requestServerCommissionReconciliation(workspaceId, order.id, { assignmentId: closed.id });
+    return closed;
+  }
+
+  await reverseClosedSalesOrderAssignmentCommission(
+    current,
+    order,
+    unassignedAt,
+    normalizeText(input.reason),
+    input.unassignedBy,
+  );
+  return closed;
+}
+
 export async function assignSalesOrderAgent(
   workspaceId: string,
   input: AssignSalesOrderAgentInput,
@@ -1477,14 +1597,32 @@ export async function assignSalesOrderAgent(
   if (!order || order.isDeleted || order.workspaceId !== workspaceId) {
     throw new Error("Sales order not found");
   }
-  if (order.status === "cancelled" && input.agentId) {
+  if (!input.agentId) {
+    const activeAssignments = getActiveSalesOrderAgentAssignments(
+      await db.sales_order_agent_assignments
+        .where("[workspaceId+orderId]")
+        .equals([workspaceId, input.orderId])
+        .and((row) => !row.isDeleted)
+        .toArray(),
+      input.orderId,
+    );
+    for (const assignment of activeAssignments) {
+      await unassignSalesOrderAgent(workspaceId, {
+        orderId: input.orderId,
+        agentId: assignment.agentId,
+        unassignedAt: input.assignedAt,
+        unassignedBy: input.assignedBy,
+        reason: input.reason,
+      });
+    }
+    return null;
+  }
+  if (order.status === "cancelled") {
     throw new Error("Cancelled sales orders cannot be assigned");
   }
-  if (input.agentId) {
-    const agent = await db.agents.get(input.agentId);
-    if (!agent || agent.isDeleted || agent.workspaceId !== workspaceId || agent.agentType !== "field_agent") {
-      throw new Error("Select a field agent from this workspace");
-    }
+  const agent = await db.agents.get(input.agentId);
+  if (!agent || agent.isDeleted || agent.workspaceId !== workspaceId || agent.agentType !== "field_agent") {
+    throw new Error("Select a field agent from this workspace");
   }
 
   const history = await db.sales_order_agent_assignments
@@ -1492,12 +1630,13 @@ export async function assignSalesOrderAgent(
     .equals([workspaceId, input.orderId])
     .and((row) => !row.isDeleted)
     .toArray();
-  const current = getActiveSalesOrderAgentAssignment(history, input.orderId);
+  const current = getActiveSalesOrderAgentAssignments(history, input.orderId)
+    .find((assignment) => assignment.agentId === input.agentId) ?? null;
 
   let citySnapshot = input.customerCitySnapshot === undefined
     ? current?.customerCitySnapshot ?? null
     : normalizeText(input.customerCitySnapshot);
-  if (input.agentId && input.customerCitySnapshot === undefined && !current) {
+  if (input.customerCitySnapshot === undefined && !current) {
     const [partner, customer] = await Promise.all([
       order.businessPartnerId ? db.business_partners.get(order.businessPartnerId) : null,
       order.customerId ? db.customers.get(order.customerId) : null,
@@ -1511,18 +1650,18 @@ export async function assignSalesOrderAgent(
     ? current?.internalDeliveryCostAmount ?? 0
     : assertMoney(input.internalDeliveryCostAmount, "Internal delivery cost");
   const requestedAssignedAt = normalizeTimestamp(input.assignedAt);
-  const manualCommission = input.agentId && input.manualCommission === undefined && current?.agentId === input.agentId
+  const manualCommission = input.manualCommission === undefined && current
     ? getAssignmentManualSalesAgentCommission(current)
-    : input.agentId && input.manualCommission
+    : input.manualCommission
       ? resolveManualSalesAgentCommission(order, input.manualCommission)
       : null;
-  if (input.agentId && manualCommission) {
+  if (manualCommission) {
     const existingTerms = await findMembershipAndPlan(input.agentId, requestedAssignedAt);
     if (existingTerms) {
       throw new Error("This sales agent has a commission plan; remove the manual order commission");
     }
   }
-  const keepsCurrentSnapshots = current?.agentId === input.agentId
+  const keepsCurrentSnapshots = current
     && current.customerCitySnapshot === citySnapshot
     && current.deliveryChargeAmount === deliveryChargeAmount
     && current.internalDeliveryCostAmount === internalDeliveryCostAmount
@@ -1540,8 +1679,7 @@ export async function assignSalesOrderAgent(
     ...getSyncMetadata(workspaceId, now),
   } satisfies SalesOrderAgentAssignment : null;
   const assignedAt = closed?.unassignedAt ?? requestedAssignedAt;
-
-  const assignment: SalesOrderAgentAssignment | null = input.agentId ? {
+  const assignment: SalesOrderAgentAssignment = {
     id: generateId(),
     workspaceId,
     orderId: input.orderId,
@@ -1568,43 +1706,81 @@ export async function assignSalesOrderAgent(
     version: 1,
     isDeleted: false,
     ...getSyncMetadata(workspaceId, now),
-  } : null;
+  };
 
   await db.transaction("rw", db.sales_order_agent_assignments, async () => {
     if (closed) await db.sales_order_agent_assignments.put(closed);
-    if (assignment) await db.sales_order_agent_assignments.put(assignment);
+    await db.sales_order_agent_assignments.put(assignment);
   });
   if (closed) await syncUpsert(ASSIGNMENT_TABLE, closed);
-  if (assignment) await syncUpsert(ASSIGNMENT_TABLE, assignment);
+  await syncUpsert(ASSIGNMENT_TABLE, assignment);
 
   if (shouldUseCloudData(workspaceId)) {
-    await requestServerCommissionReconciliation(workspaceId, order.id, {
-      assignmentId: assignment?.id ?? closed?.id ?? null,
-    });
+    await requestServerCommissionReconciliation(workspaceId, order.id, { assignmentId: assignment.id });
     return assignment;
   }
 
-  if (current && order.status === "completed") {
-    const entries = await db.agent_commission_entries
-      .where("assignmentId")
-      .equals(current.id)
-      .and((entry) => !entry.isDeleted)
-      .toArray();
-    const recognized = roundCommissionAmount(entries.filter(isOrderTargetCommissionEntry)
-      .reduce((sum, entry) => sum + entry.amount, 0));
-    const accrual = entries.find((entry) => entry.kind === "accrual");
-    if (recognized > 0 && accrual) {
-      await reverseRecognizedAssignmentCommission(current, order, accrual, -recognized, {
-        occurredAt: assignedAt,
-        reason: normalizeText(input.reason) || "Commission reversed after sales order reassignment",
-        createdBy: input.assignedBy,
-      });
-    }
+  if (current) {
+    await reverseClosedSalesOrderAssignmentCommission(
+      current,
+      order,
+      assignedAt,
+      normalizeText(input.reason) || "Commission reversed after sales order assignment changed",
+      input.assignedBy,
+    );
   }
-  if (assignment && order.status === "completed") {
+  if (order.status === "completed") {
     await accrueSalesOrderCommission(workspaceId, order.id, input.assignedBy);
   }
   return assignment;
+}
+
+export async function replaceSalesOrderAgentAssignments(
+  workspaceId: string,
+  input: ReplaceSalesOrderAgentAssignmentsInput,
+) {
+  const requestedAgentIds = new Set<string>();
+  for (const assignment of input.assignments) {
+    if (requestedAgentIds.has(assignment.agentId)) {
+      throw new Error("A sales agent can only be added once to an order");
+    }
+    requestedAgentIds.add(assignment.agentId);
+  }
+
+  const activeAssignments = getActiveSalesOrderAgentAssignments(
+    await db.sales_order_agent_assignments
+      .where("[workspaceId+orderId]")
+      .equals([workspaceId, input.orderId])
+      .and((row) => !row.isDeleted)
+      .toArray(),
+    input.orderId,
+  );
+  for (const assignment of activeAssignments) {
+    if (requestedAgentIds.has(assignment.agentId)) continue;
+    await unassignSalesOrderAgent(workspaceId, {
+      orderId: input.orderId,
+      agentId: assignment.agentId,
+      unassignedBy: input.assignedBy,
+      reason: input.reason,
+    });
+  }
+  for (const assignment of input.assignments) {
+    await assignSalesOrderAgent(workspaceId, {
+      ...assignment,
+      orderId: input.orderId,
+      assignedBy: input.assignedBy,
+      reason: assignment.reason ?? input.reason,
+    });
+  }
+
+  return getActiveSalesOrderAgentAssignments(
+    await db.sales_order_agent_assignments
+      .where("[workspaceId+orderId]")
+      .equals([workspaceId, input.orderId])
+      .and((row) => !row.isDeleted)
+      .toArray(),
+    input.orderId,
+  );
 }
 
 export async function reverseCommissionForOrderReturn(
