@@ -51,6 +51,10 @@ const SYNC_PULL_TABLES = [
   "suppliers",
   "agents",
   "agent_excluded_categories",
+  "agent_commission_plans",
+  "agent_commission_memberships",
+  "sales_order_agent_assignments",
+  "agent_commission_entries",
   "fleet_vehicles",
   "fleet_vehicle_assignments",
   "delivery_merchant_profiles",
@@ -171,6 +175,14 @@ export function isRecoverablePriceBookMutation(mutation: {
     );
 }
 
+export function isExistingCommissionEntryRetry(
+  error: { code?: unknown } | null | undefined,
+  existingId: unknown,
+  requestedId: string,
+) {
+  return error?.code === "23505" && existingId === requestedId;
+}
+
 interface MutationSyncOrderItem {
   id: string;
   workspaceId: string;
@@ -215,6 +227,31 @@ function getMutationParentKeys(mutation: MutationSyncOrderItem) {
   };
 
   switch (entityType) {
+    case "agent_commission_memberships":
+      addParent("agents", "agentId", "agent_id");
+      addParent("agent_commission_plans", "planId", "plan_id");
+      break;
+    case "sales_order_agent_assignments":
+      addParent("sales_orders", "orderId", "order_id");
+      addParent("agents", "agentId", "agent_id");
+      addParent("sales_order_agent_assignments", "previousAssignmentId", "previous_assignment_id");
+      break;
+    case "agent_commission_entries":
+      addParent("sales_orders", "orderId", "order_id");
+      addParent("sales_order_agent_assignments", "assignmentId", "assignment_id");
+      addParent("agents", "agentId", "agent_id");
+      addParent("agent_commission_memberships", "membershipId", "membership_id");
+      addParent("agent_commission_plans", "planId", "plan_id");
+      addParent("order_returns", "orderReturnId", "order_return_id");
+      addParent("agent_commission_entries", "relatedEntryId", "related_entry_id");
+      break;
+    case "sales_agent_commission_reconciliation":
+      addParent("sales_orders", "orderId", "order_id");
+      addParent("sales_order_agent_assignments", "assignmentId", "assignment_id");
+      addParent("agent_commission_memberships", "membershipId", "membership_id");
+      addParent("agent_commission_plans", "planId", "plan_id");
+      addParent("order_returns", "orderReturnId", "order_return_id");
+      break;
     case "delivery_merchant_profiles":
       addParent("business_partners", "businessPartnerId", "business_partner_id");
       break;
@@ -297,6 +334,39 @@ export function orderMutationsForSync<T extends MutationSyncOrderItem>(mutations
       ) ?? activeParentIndices[0];
       if (parentIndex !== undefined) addEdge(parentIndex, index);
     }
+  });
+
+  // Effective-dated commission revisions must close the previous open row
+  // before inserting its replacement. Offline writes can share the same
+  // millisecond timestamp, so make this ordering explicit instead of relying
+  // on random mutation ids to satisfy the partial unique indexes.
+  chronological.forEach((closingMutation, closingIndex) => {
+    const closesPlan = closingMutation.entityType === "agent_commission_plans"
+      && closingMutation.operation === "update"
+      && !!payloadReference(closingMutation.payload, "effectiveTo", "effective_to");
+    const closesMembership = closingMutation.entityType === "agent_commission_memberships"
+      && closingMutation.operation === "update"
+      && !!payloadReference(closingMutation.payload, "effectiveTo", "effective_to");
+    if (!closesPlan && !closesMembership) return;
+
+    chronological.forEach((replacementMutation, replacementIndex) => {
+      if (replacementMutation.workspaceId !== closingMutation.workspaceId
+        || replacementMutation.entityType !== closingMutation.entityType
+        || replacementMutation.operation !== "create") return;
+      if (closesPlan) {
+        const closingLevel = payloadReference(closingMutation.payload, "level");
+        const replacementLevel = payloadReference(replacementMutation.payload, "level");
+        if (closingLevel && closingLevel === replacementLevel) {
+          addEdge(closingIndex, replacementIndex);
+        }
+        return;
+      }
+      const closingAgentId = payloadReference(closingMutation.payload, "agentId", "agent_id");
+      const replacementAgentId = payloadReference(replacementMutation.payload, "agentId", "agent_id");
+      if (closingAgentId && closingAgentId === replacementAgentId) {
+        addEdge(closingIndex, replacementIndex);
+      }
+    });
   });
 
   const available = chronological
@@ -645,8 +715,49 @@ export async function processMutationQueue(
   const errors: string[] = [];
   const failedPriceBookIds = new Set<string>();
   const integrityBlockedEntities = new Map<string, string>();
+  const deferredCommissionReconciliations: typeof orderedMutations = [];
+  const touchedCommissionOrders = new Map<string, {
+    workspaceId: string;
+    orderId: string;
+    orderReturnId: string | null;
+  }>();
 
   for (const mutation of orderedMutations) {
+    // Reconcile only after every order/return/assignment/plan mutation in this
+    // batch has committed. Offline entity compaction then converges directly
+    // to the final server state without replaying stale ledger snapshots.
+    if (mutation.entityType === "sales_agent_commission_reconciliation") {
+      deferredCommissionReconciliations.push(mutation);
+      continue;
+    }
+    if (
+      mutation.entityType === "agent_commission_entries"
+      && (
+        mutation.payload.kind === "accrual"
+        || mutation.payload.kind === "reversal"
+        || (
+          mutation.payload.kind === "adjustment"
+          && Boolean(mutation.payload.relatedEntryId ?? mutation.payload.related_entry_id)
+        )
+      )
+    ) {
+      const orderId = mutation.payload.orderId ?? mutation.payload.order_id;
+      if (typeof orderId === "string" && orderId) {
+        touchedCommissionOrders.set(`${mutation.workspaceId}:${orderId}`, {
+          workspaceId: mutation.workspaceId,
+          orderId,
+          orderReturnId: typeof (mutation.payload.orderReturnId ?? mutation.payload.order_return_id) === "string"
+            ? String(mutation.payload.orderReturnId ?? mutation.payload.order_return_id)
+            : null,
+        });
+      }
+      await db.offline_mutations.update(mutation.id, { status: "synced", error: undefined });
+      const legacyEntryTable = (db as any).agent_commission_entries;
+      if (legacyEntryTable) await legacyEntryTable.delete(mutation.entityId);
+      successCount++;
+      reportCompleted();
+      continue;
+    }
     const mutationKey = `${mutation.entityType}:${mutation.entityId}`;
     const priorIntegrityIssue = integrityBlockedEntities.get(mutationKey);
     if (priorIntegrityIssue) {
@@ -868,6 +979,25 @@ export async function processMutationQueue(
 
           await db.inventory.put(localInventoryRow);
           entityHandledInline = true;
+        } else if (entityType === "agent_commission_entries") {
+          if (operation !== "create") {
+            throw new Error("Commission ledger entries are immutable and cannot be updated");
+          }
+          const { error } = await client.from(tableName).insert(dbPayload);
+          if (error) {
+            const { data: existingEntry, error: lookupError } = await client
+              .from(tableName)
+              .select("id")
+              .eq("id", entityId)
+              .maybeSingle();
+            if (lookupError || !isExistingCommissionEntryRetry(
+              error as { code?: unknown },
+              (existingEntry as { id?: unknown } | null)?.id,
+              entityId,
+            )) {
+              throw error;
+            }
+          }
         } else if (entityType === "business_partner_merge_candidates") {
           const { data: remoteMergeCandidateRow, error } = await client
             .from(tableName)
@@ -1080,6 +1210,27 @@ export async function processMutationQueue(
         await syncProductBarcodeCachesForWorkspace(workspaceId);
       }
 
+      if (entityType === "sales_orders") {
+        touchedCommissionOrders.set(`${workspaceId}:${entityId}`, {
+          workspaceId,
+          orderId: entityId,
+          orderReturnId: null,
+        });
+      } else if (entityType === "order_returns" || entityType === "sales_order_agent_assignments") {
+        const orderId = payload.orderId ?? payload.order_id;
+        if (typeof orderId === "string" && orderId) {
+          const key = `${workspaceId}:${orderId}`;
+          const previous = touchedCommissionOrders.get(key);
+          touchedCommissionOrders.set(key, {
+            workspaceId,
+            orderId,
+            orderReturnId: entityType === "order_returns"
+              ? entityId
+              : previous?.orderReturnId ?? null,
+          });
+        }
+      }
+
       successCount++;
       reportCompleted();
     } catch (err: any) {
@@ -1124,6 +1275,59 @@ export async function processMutationQueue(
       // Stop processing on first error to maintain order integrity
       reportCompleted();
       return { success: successCount, failed: failedCount + 1, errors: [...errors, errorMessage] };
+    }
+  }
+
+  const explicitlyReconciledOrderKeys = new Set<string>();
+  for (const mutation of deferredCommissionReconciliations) {
+    await db.offline_mutations.update(mutation.id, {
+      status: "syncing",
+      error: undefined,
+    });
+    try {
+      const orderId = mutation.payload.orderId ?? mutation.payload.order_id ?? mutation.entityId;
+      const orderReturnId = mutation.payload.orderReturnId ?? mutation.payload.order_return_id ?? null;
+      if (typeof orderId !== "string" || !orderId) {
+        throw new Error("Commission reconciliation is missing its sales order reference");
+      }
+      explicitlyReconciledOrderKeys.add(`${mutation.workspaceId}:${orderId}`);
+      const { error } = await supabase.rpc("reconcile_sales_agent_commission", {
+        p_order_id: orderId,
+        p_order_return_id: typeof orderReturnId === "string" ? orderReturnId : null,
+      });
+      if (error) throw error;
+      await db.offline_mutations.update(mutation.id, {
+        status: "synced",
+        error: undefined,
+      });
+      successCount++;
+      reportCompleted();
+    } catch (err: any) {
+      const errorMessage = err?.message || "Commission reconciliation failed";
+      console.error(`[Sync] Failed commission reconciliation ${mutation.id}:`, err);
+      await db.offline_mutations.update(mutation.id, {
+        status: "pending",
+        error: errorMessage,
+      });
+      failedCount++;
+      errors.push(errorMessage);
+      reportCompleted();
+    }
+  }
+
+  // A safety net for older clients or a crash between the business mutation
+  // and queuing its explicit request. This is still deferred until the full
+  // batch is committed, and the RPC is state-derived/idempotent.
+  for (const touched of touchedCommissionOrders.values()) {
+    if (explicitlyReconciledOrderKeys.has(`${touched.workspaceId}:${touched.orderId}`)) continue;
+    try {
+      const { error } = await supabase.rpc("reconcile_sales_agent_commission", {
+        p_order_id: touched.orderId,
+        p_order_return_id: touched.orderReturnId,
+      });
+      if (error) throw error;
+    } catch (error) {
+      console.error(`[Sync] Deferred commission safety reconciliation failed for ${touched.orderId}:`, error);
     }
   }
 

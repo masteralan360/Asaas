@@ -8,9 +8,10 @@ import {
     ToastTitle,
     ToastViewport,
 } from "@/ui/components/toast"
-import { useToast } from "@/ui/components/use-toast"
+import { useToast, type ToastRecord } from "@/ui/components/use-toast"
 
 import { cn } from "@/lib/utils"
+import { isDesktop } from '@/lib/platform'
 
 const variantMeta = {
     default: {
@@ -41,12 +42,14 @@ const variantMeta = {
 
 type ToastVariant = keyof typeof variantMeta
 
-export function Toaster() {
-    const { toasts } = useToast()
+type ToastPopupPlacement = 'floating' | 'sticky-bar'
+
+function ToastPopup({ toasts, placement }: { toasts: ToastRecord[]; placement: ToastPopupPlacement }) {
+    const isStickyBar = placement === 'sticky-bar'
 
     return (
         <ToastProvider duration={5000} swipeDirection="right">
-            {toasts.map(({ id, title, description, action, variant, duration, ...props }, index) => {
+            {toasts.map(({ id, title, description, action, variant, duration, placement: _toastPlacement, motion: _toastMotion, ...props }, index) => {
                 const meta = variantMeta[(variant ?? "default") as ToastVariant]
                 const Icon = meta.icon
                 const toastDuration = duration ?? 5000
@@ -55,11 +58,11 @@ export function Toaster() {
                     <div
                         key={id}
                         className={cn(
-                            "w-full max-w-[420px] origin-bottom transition-[transform,opacity] duration-300",
+                            "w-full max-w-[420px] transition-[transform,opacity] duration-300",
                             index > 0 && "scale-[0.97] opacity-75"
                         )}
                     >
-                        <Toast {...props} variant={(variant ?? "default") as ToastVariant}>
+                        <Toast {...props} duration={duration} variant={(variant ?? "default") as ToastVariant} motion={isStickyBar ? 'drop' : 'default'}>
                             <span
                                 aria-hidden
                                 className={cn(
@@ -98,7 +101,29 @@ export function Toaster() {
                     </div>
                 )
             })}
-            <ToastViewport />
+            <ToastViewport
+                className={cn(
+                    isStickyBar && "bottom-auto right-auto left-[clamp(480px,31vw,50%)] top-[calc(var(--titlebar-height)+0.75rem)] w-[min(520px,calc(100vw-2rem))] max-h-[calc(100vh-var(--titlebar-height)-1rem)] -translate-x-1/2 flex-col items-center gap-2 p-0 rtl:left-auto rtl:right-[clamp(480px,31vw,50%)] rtl:translate-x-1/2"
+                )}
+            />
         </ToastProvider>
+    )
+}
+
+export function Toaster() {
+    const { toasts } = useToast()
+    const isTauriDesktop = isDesktop()
+    const stickyBarToasts = isTauriDesktop
+        ? toasts.filter((toast) => toast.placement !== 'floating')
+        : []
+    const floatingToasts = isTauriDesktop
+        ? toasts.filter((toast) => toast.placement === 'floating')
+        : toasts
+
+    return (
+        <>
+            {stickyBarToasts.length > 0 && <ToastPopup toasts={stickyBarToasts} placement="sticky-bar" />}
+            {floatingToasts.length > 0 && <ToastPopup toasts={floatingToasts} placement="floating" />}
+        </>
     )
 }

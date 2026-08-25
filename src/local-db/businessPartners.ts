@@ -20,6 +20,7 @@ import { db } from './database'
 import { fetchTableFromSupabase } from './hooks'
 import { addToOfflineMutations } from './offlineMutations'
 import { getOrderBalanceAmount } from './orderInstallments'
+import { isDirectTransactionPartnerAccountEffect } from './payments'
 import {
     endActiveFleetAssignmentsForAgent,
     ensureDriverFleetAssignment
@@ -958,18 +959,70 @@ async function getDeliveryOutstandingBalances(workspaceId: string, partner: Busi
     return { payable, receivable }
 }
 
+/**
+ * Cash-only direct transactions never alter a partner balance. Explicit
+ * partner-account movements are included here so the profile and statement
+ * use the same treatment.
+ */
+async function getPartnerDirectAccountEffects(workspaceId: string, partner: BusinessPartner) {
+    const transactions = await db.payment_transactions
+        .where('workspaceId')
+        .equals(workspaceId)
+        .and((transaction) => (
+            !transaction.isDeleted
+            && transaction.sourceType === 'direct_transaction'
+            && transaction.metadata?.businessPartnerId === partner.id
+            && isDirectTransactionPartnerAccountEffect(transaction.metadata?.partnerAccountEffect)
+        ))
+        .toArray()
+
+    let receivable = 0
+    let payable = 0
+
+    for (const transaction of transactions) {
+        const effect = transaction.metadata?.partnerAccountEffect
+        if (!isDirectTransactionPartnerAccountEffect(effect)) continue
+
+        // Reversal rows retain their effect and have a negative amount, so this
+        // exact same calculation reverses the partner balance as well.
+        const amount = convertCurrencyAmountWithSnapshot(
+            Number(transaction.amount || 0),
+            transaction.currency,
+            partner.defaultCurrency,
+            undefined
+        )
+        switch (effect) {
+            case 'increase_receivable':
+                receivable += amount
+                break
+            case 'decrease_receivable':
+                receivable -= amount
+                break
+            case 'increase_payable':
+                payable += amount
+                break
+            case 'decrease_payable':
+                payable -= amount
+                break
+        }
+    }
+
+    return { receivable, payable }
+}
+
 export async function recalculateBusinessPartnerSummary(workspaceId: string, partnerId: string) {
     const partner = await db.business_partners.get(partnerId)
     if (!partner || partner.isDeleted) {
         return partner
     }
 
-    const [salesOrders, purchaseOrders, travelSales, loans, deliveryBalances] = await Promise.all([
+    const [salesOrders, purchaseOrders, travelSales, loans, deliveryBalances, directAccountEffects] = await Promise.all([
         getPartnerSalesOrders(partner),
         getPartnerPurchaseOrders(partner),
         getPartnerTravelSales(partner),
         getPartnerLoans(partner),
-        getDeliveryOutstandingBalances(workspaceId, partner)
+        getDeliveryOutstandingBalances(workspaceId, partner),
+        getPartnerDirectAccountEffects(workspaceId, partner)
     ])
 
     const activeSalesOrders = salesOrders.filter((order) => order.status !== 'cancelled')
@@ -996,7 +1049,7 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
             ),
         partner.defaultCurrency
     )
-    const receivableBalance = roundAmount(
+    const baseReceivableBalance = roundAmount(
         activeSalesOrders
             .filter((order) =>
                 (order.status === 'pending' || order.status === 'completed')
@@ -1037,7 +1090,7 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
     )
     const totalPurchaseOrders = activePurchaseOrders.length + activeTravelSales.length
     const totalPurchaseValue = roundAmount(purchaseOrderValue + travelSaleValue, partner.defaultCurrency)
-    const payableBalance = roundAmount(
+    const basePayableBalance = roundAmount(
         activePurchaseOrders
             .filter((order) =>
                 (order.status === 'ordered' || order.status === 'received' || order.status === 'completed')
@@ -1072,6 +1125,15 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
                 (sum, [currency, amount]) => sum + convertCurrencyAmountWithSnapshot(amount, currency, partner.defaultCurrency, undefined),
                 0
             ),
+        partner.defaultCurrency
+    )
+
+    const receivableBalance = roundAmount(
+        Math.max(0, baseReceivableBalance + directAccountEffects.receivable),
+        partner.defaultCurrency
+    )
+    const payableBalance = roundAmount(
+        Math.max(0, basePayableBalance + directAccountEffects.payable),
         partner.defaultCurrency
     )
 
@@ -1379,7 +1441,8 @@ export function useBusinessPartners(workspaceId: string | undefined, filters?: P
                     fetchTableFromSupabase('sales_orders', db.sales_orders, workspaceId),
                     fetchTableFromSupabase('purchase_orders', db.purchase_orders, workspaceId),
                     fetchTableFromSupabase('travel_agency_sales', db.travel_agency_sales, workspaceId),
-                    fetchTableFromSupabase('loans', db.loans, workspaceId)
+                    fetchTableFromSupabase('loans', db.loans, workspaceId),
+                    fetchTableFromSupabase('payment_transactions', db.payment_transactions, workspaceId)
                 ])
             }
 

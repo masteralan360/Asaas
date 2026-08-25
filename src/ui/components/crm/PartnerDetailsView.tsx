@@ -34,6 +34,7 @@ import {
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
     useAgent,
+    getActiveSalesOrderAgentAssignment,
     useBusinessPartner,
     useBusinessPartners,
     useClinicalAppointments,
@@ -75,6 +76,7 @@ import {
     TableRow
 } from '@/ui/components/table'
 import { useWorkspace } from '@/workspace'
+import { hasEffectiveSalesAgentCommissionPermission, useWorkspacePermissions } from '@/permissions'
 import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { getDateRangeBounds } from '@/lib/dateRangeFilters'
@@ -82,9 +84,12 @@ import type { PartnerDetailsPrintData } from '@/ui/components/crm/PartnerDetails
 import type { PartnerOrderItemsPrintData } from '@/ui/components/crm/PartnerOrderItemsPrintTemplate'
 import type { PrintFormat } from '@/services/pdfGenerator'
 import { platformService } from '@/services/platformService'
+import { AgentCommissionPerformanceCard } from '@/ui/components/commissions/AgentCommissionPerformanceCard'
+import { useOptionalCommissionFeatureData } from '@/ui/components/commissions/useCommissionAgentDirectory'
 
 type PartnerKind = 'customer' | 'supplier' | 'agent' | 'business_partner'
-type PartnerPrintTemplateKey = typeof PARTNER_DETAILS_TEMPLATE_KEY | typeof PARTNER_ORDER_ITEMS_TEMPLATE_KEY
+type PartnerPrintTemplateKey = typeof PARTNER_DETAILS_TEMPLATE_KEY
+    | typeof PARTNER_ORDER_ITEMS_TEMPLATE_KEY
 type RelatedProductOrder = SalesOrder | PurchaseOrder
 type ActivitySource = RelatedTransaction['source'] | 'pos_sale'
 type AgentSoldRow = {
@@ -569,6 +574,7 @@ export function PartnerDetailsView({
         workspaceName,
         isLocalMode
     } = useWorkspace()
+    const { permissionKeys } = useWorkspacePermissions()
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
     const conversionRates = useMemo(() => buildConversionRates(exchangeData, eurRates, tryRates), [exchangeData, eurRates, tryRates])
     const [, navigate] = useLocation()
@@ -578,6 +584,12 @@ export function PartnerDetailsView({
     const workspaceContacts = useWorkspaceContacts(workspaceId)
     const customerOrders = useCustomerSalesOrders(partnerId, workspaceId)
     const allSalesOrders = useSalesOrders(workspaceId)
+    const commissionFeatureData = useOptionalCommissionFeatureData()
+    const salesAgentCommissionsEnabled = Boolean(commissionFeatureData)
+    const salesOrderAgentAssignments = useMemo(
+        () => commissionFeatureData?.assignments || [],
+        [commissionFeatureData?.assignments]
+    )
     const supplierOrders = useSupplierPurchaseOrders(partnerId, workspaceId)
     const supplierTravelSales = useSupplierTravelAgencySales(partnerId, workspaceId)
     const sales = useSales(workspaceId)
@@ -798,6 +810,10 @@ export function PartnerDetailsView({
         : undefined
     const isAgentProfile = partner?.role === 'agent'
     const agentLinkedUserId = agent?.linkedUserId || null
+    const canViewAgentCommission = salesAgentCommissionsEnabled
+        && (hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.viewAll')
+            || (hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.viewOwn')
+                && agentLinkedUserId === user?.id))
     const emptyRelatedLabel = t('businessPartners.noActivity', { defaultValue: 'No related activity yet.' })
     const completedLabel = t('businessPartners.completedItems', { defaultValue: 'Completed Items' })
     const paidLabel = t('businessPartners.settledItems', { defaultValue: 'Settled Items' })
@@ -820,10 +836,17 @@ export function PartnerDetailsView({
         [dateFilteredCustomerOrders, dateFilteredSupplierOrders]
     )
     const agentSalesOrders = useMemo(
-        () => agentLinkedUserId
-            ? allSalesOrders.filter((order) => !order.isDeleted && order.createdBy === agentLinkedUserId)
-            : [],
-        [agentLinkedUserId, allSalesOrders]
+        () => salesAgentCommissionsEnabled
+            ? agent
+                ? allSalesOrders.filter((order) =>
+                    !order.isDeleted
+                    && getActiveSalesOrderAgentAssignment(salesOrderAgentAssignments, order.id)?.agentId === agent.id
+                )
+                : []
+            : agentLinkedUserId
+                ? allSalesOrders.filter((order) => !order.isDeleted && order.createdBy === agentLinkedUserId)
+                : [],
+        [agent, agentLinkedUserId, allSalesOrders, salesAgentCommissionsEnabled, salesOrderAgentAssignments]
     )
     const agentPosSales = useMemo(
         () => agentLinkedUserId
@@ -1862,16 +1885,27 @@ export function PartnerDetailsView({
                     <span>/</span>
                     <span className="font-semibold text-foreground">{partner.name}</span>
                 </div>
-                <Button
-                    variant="outline"
-                    className="h-10 gap-2 rounded-xl px-4 print:hidden"
-                    allowViewer={true}
-                    onClick={handlePrintClick}
-                    disabled={!partnerPrintPreview || !activePrintLayout}
-                >
-                    <Printer className="h-4 w-4" />
-                    <span className="hidden sm:inline">{t('common.print', { defaultValue: 'Print' })}</span>
-                </Button>
+                <div className="flex items-center gap-2 print:hidden">
+                    <Button
+                        variant="outline"
+                        className="h-10 gap-2 rounded-xl px-4"
+                        allowViewer={true}
+                        onClick={() => navigate(`/business-partners/account-statement?partnerId=${encodeURIComponent(partner.id)}&partnerName=${encodeURIComponent(partner.name)}`)}
+                    >
+                        <Receipt className="h-4 w-4" />
+                        <span className="hidden sm:inline">{t('businessPartners.accountStatement.title', { defaultValue: 'Account Statement' })}</span>
+                    </Button>
+                    <Button
+                        variant="outline"
+                        className="h-10 gap-2 rounded-xl px-4"
+                        allowViewer={true}
+                        onClick={handlePrintClick}
+                        disabled={!partnerPrintPreview || !activePrintLayout}
+                    >
+                        <Printer className="h-4 w-4" />
+                        <span className="hidden sm:inline">{t('common.print', { defaultValue: 'Print' })}</span>
+                    </Button>
+                </div>
             </div>
 
             <DateRangeFilters />
@@ -2093,12 +2127,21 @@ export function PartnerDetailsView({
                 <div className="space-y-4 lg:col-span-2">
                     {isAgentProfile ? (
                         <>
+                            {canViewAgentCommission && agent ? (
+                                <AgentCommissionPerformanceCard
+                                    workspaceId={workspaceId}
+                                    agentId={agent.id}
+                                    iqdPreference={iqdPreference}
+                                    startDate={dateBounds.startDate}
+                                    endDate={dateBounds.endDate}
+                                />
+                            ) : null}
                             <Card>
                                 <CardHeader>
                                     <CardTitle>{t('agents.salesPerformance', { defaultValue: 'Sales Performance' })}</CardTitle>
                                 </CardHeader>
                                 <CardContent>
-                                    {!agentLinkedUserId ? (
+                                    {!salesAgentCommissionsEnabled && !agentLinkedUserId ? (
                                         <div className="mb-5 rounded-2xl border border-amber-200/60 bg-amber-500/[0.06] p-4 text-sm font-medium text-amber-800 dark:text-amber-300">
                                             {t('agents.noLinkedSalesUser', { defaultValue: 'No workspace user is linked to this agent, so sales attribution is unavailable.' })}
                                         </div>

@@ -64,7 +64,7 @@ import {
     type WorkspacePaymentMethod
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
-import { useHideCosts, useViewOwnRecordScope } from '@/permissions'
+import { hasEffectiveSalesAgentCommissionPermission, useHideCosts, useViewOwnRecordScope, useWorkspacePermissions } from '@/permissions'
 import {
     Button,
     Card,
@@ -107,6 +107,7 @@ import {
 import { OrderStatusBadge } from './OrderStatusBadge'
 import { useOrderCustomPrint } from './useOrderCustomPrint'
 import { PostReturnAdjustmentDialog } from './PostReturnAdjustmentDialog'
+import { OrderAgentCommissionCard } from '@/ui/components/commissions/OrderAgentCommissionCard'
 
 function statusLabel(t: (key: string) => string, status: string) {
     const translated = t(`orders.status.${status}`)
@@ -230,7 +231,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const { user } = useAuth()
     const hideCosts = useHideCosts()
     const invoiceViewOwnScope = useViewOwnRecordScope('invoice_history.view_own')
-    const { features, workspaceName, isLocalMode } = useWorkspace()
+    const { features, workspaceName, isLocalMode, hasFeature } = useWorkspace()
     const [, navigate] = useLocation()
     const { toast } = useToast()
     const demoTutorial = useDemoTutorial()
@@ -338,6 +339,17 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
         || (creatorId === user?.id ? user?.name?.trim() : '')
         || null
 
+    const { permissionKeys } = useWorkspacePermissions()
+    const salesAgentCommissionsEnabled = hasFeature('sales_agent_commissions')
+    const canAssignSalesAgents = salesAgentCommissionsEnabled
+        && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.assignOrders')
+    const canViewAllAgentCommissions = salesAgentCommissionsEnabled
+        && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.viewAll')
+    const canViewOwnAgentCommissions = salesAgentCommissionsEnabled
+        && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.viewOwn')
+    const canAccessSalesAgentCommissions = canAssignSalesAgents
+        || canViewAllAgentCommissions
+        || canViewOwnAgentCommissions
     const canManage = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
     const canApproveOrderRequests = user?.role === 'admin'
@@ -1248,6 +1260,20 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                             )}
                         </CardContent>
                     </Card>
+
+                    {isSales && canAccessSalesAgentCommissions ? (
+                        <OrderAgentCommissionCard
+                            workspaceId={workspaceId}
+                            orderId={order.id}
+                            iqdPreference={iqd}
+                            orderCurrency={currency}
+                            defaultCustomerCity={bizPartner?.city || ''}
+                            canAssign={canAssignSalesAgents}
+                            canViewAllCommission={canViewAllAgentCommissions}
+                            canViewOwnCommission={canViewOwnAgentCommissions}
+                            userId={user?.id}
+                        />
+                    ) : null}
 
                     {installments.length > 0 ? (
                         <Card>

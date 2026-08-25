@@ -1,0 +1,344 @@
+import { useMemo } from 'react'
+import { BadgeCheck, BadgePercent, CircleDollarSign, Eye, ReceiptText, RotateCcw } from 'lucide-react'
+import { Link } from 'wouter'
+
+import { formatCurrency, formatDateTime } from '@/lib/utils'
+import {
+    calculateSalesOrderCommission,
+    useAgentCommissionEntries,
+    useSalesOrders,
+    useSalesOrderAgentAssignments,
+    type CurrencyCode,
+    type IQDDisplayPreference
+} from '@/local-db'
+import {
+    Badge,
+    Button,
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow
+} from '@/ui/components'
+import { CommissionCurrencyTotalsView } from './CommissionCurrencyTotals'
+import {
+    commissionStatusClass,
+    commissionStatusLabel,
+    summarizeCommissionEntries
+} from './agentCommissionPresentation'
+import { useCommissionAgentDirectory } from './useCommissionAgentDirectory'
+
+export function AgentCommissionPerformanceCard({
+    workspaceId,
+    agentId,
+    iqdPreference,
+    startDate,
+    endDate
+}: {
+    workspaceId: string
+    agentId: string
+    iqdPreference: IQDDisplayPreference
+    startDate?: string
+    endDate?: string
+}) {
+    const directory = useCommissionAgentDirectory(workspaceId)
+    const allEntries = useAgentCommissionEntries(workspaceId)
+    const assignments = useSalesOrderAgentAssignments(workspaceId)
+    const salesOrders = useSalesOrders(workspaceId)
+    const agent = directory.agentById.get(agentId)
+    const entries = useMemo(() => allEntries
+        .filter((entry) => {
+            if (entry.agentId !== agentId || entry.isDeleted) return false
+            if (startDate && entry.occurredAt < startDate) return false
+            if (endDate && entry.occurredAt >= endDate) return false
+            return true
+        })
+        .sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime()),
+    [agentId, allEntries, endDate, startDate])
+    const summary = useMemo(() => summarizeCommissionEntries(entries), [entries])
+    const entriesByOrderId = useMemo(() => {
+        const rows = new Map<string, typeof allEntries>()
+        for (const entry of allEntries) {
+            if (!entry.orderId || entry.agentId !== agentId || entry.isDeleted) continue
+            const current = rows.get(entry.orderId) || []
+            current.push(entry)
+            rows.set(entry.orderId, current)
+        }
+        return rows
+    }, [agentId, allEntries])
+    const assignmentByOrderId = useMemo(() => {
+        const selected = new Map<string, (typeof assignments)[number]>()
+        for (const assignment of assignments) {
+            if (assignment.agentId !== agentId || assignment.isDeleted) continue
+            const isRecognizedHistory = !assignment.unassignedAt || (entriesByOrderId.get(assignment.orderId) || [])
+                .some((entry) => entry.assignmentId === assignment.id)
+            if (!isRecognizedHistory) continue
+            const current = selected.get(assignment.orderId)
+            if (
+                !current
+                || (!assignment.unassignedAt && Boolean(current.unassignedAt))
+                || (Boolean(assignment.unassignedAt) === Boolean(current.unassignedAt)
+                    && assignment.assignedAt > current.assignedAt)
+            ) {
+                selected.set(assignment.orderId, assignment)
+            }
+        }
+        return selected
+    }, [agentId, assignments, entriesByOrderId])
+    const assignedOrders = useMemo(() => salesOrders
+        .filter((order) => {
+            if (!assignmentByOrderId.has(order.id) || order.isDeleted) return false
+            if (startDate && order.createdAt < startDate) return false
+            if (endDate && order.createdAt >= endDate) return false
+            return true
+        })
+        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
+    [assignmentByOrderId, endDate, salesOrders, startDate])
+    const commissionBasisTotals = useMemo(() => assignedOrders.reduce<Record<string, number>>((totals, order) => {
+        const assignment = assignmentByOrderId.get(order.id)
+        const sourceEntry = (entriesByOrderId.get(order.id) || []).find((entry) => (
+            entry.kind === 'accrual' && entry.assignmentId === assignment?.id
+        ))
+        if (!assignment || !sourceEntry) return totals
+
+        const isEligible = !assignment.unassignedAt
+            && order.status === 'completed'
+            && (order.isPaid || order.paymentStatus === 'paid')
+        const basisAmount = isEligible
+            ? calculateSalesOrderCommission(order, {
+                ratePercent: sourceEntry.ratePercent,
+                calculationBasis: sourceEntry.calculationBasis,
+                includeTax: sourceEntry.includeTax,
+                includeDeliveryCharge: sourceEntry.includeDeliveryCharge
+            }, assignment).basisAmount
+            : 0
+        totals[sourceEntry.currency] = (totals[sourceEntry.currency] || 0) + basisAmount
+        return totals
+    }, {}), [assignmentByOrderId, assignedOrders, entriesByOrderId])
+    const completedOrderCount = assignedOrders.filter((order) => order.status === 'completed').length
+    const openOrderCount = assignedOrders.filter((order) => order.status === 'draft' || order.status === 'pending').length
+    const cancelledOrderCount = assignedOrders.filter((order) => order.status === 'cancelled').length
+    const returnedOrderCount = assignedOrders.filter((order) => order.returnStatus === 'partial' || order.returnStatus === 'full').length
+    const zeroValueOrderCount = assignedOrders.filter((order) => order.total <= 0).length
+
+    return (
+        <Card className="border-violet-500/20 bg-violet-500/[0.02]">
+            <CardHeader className="space-y-1">
+                <CardTitle className="flex flex-wrap items-center gap-2">
+                    <BadgePercent className="h-5 w-5 text-violet-600" />
+                    Commission Performance
+                    {agent?.plan ? (
+                        <Badge variant="outline" className="border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300">
+                            {agent.plan.name} · {agent.plan.ratePercent}%
+                        </Badge>
+                    ) : null}
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                    Based on explicit sales-order assignment, independently from order creator and courier assignment.
+                    Ledger totals use each entry's occurrence date; operational order metrics use the order creation date.
+                </p>
+            </CardHeader>
+            <CardContent className="space-y-5">
+                {!agent?.membership ? (
+                    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] p-4 text-sm text-amber-800 dark:text-amber-200">
+                        This field agent can be credited with orders, but no commission plan is currently assigned.
+                    </div>
+                ) : null}
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    <PerformanceMetric label="Assigned orders" icon={ReceiptText} value={String(assignedOrders.length)} />
+                    <PerformanceMetric label="Recognized earned" icon={BadgeCheck} value={<CommissionCurrencyTotalsView totals={summary.earned} iqdPreference={iqdPreference} />} />
+                    <PerformanceMetric label="Approved" icon={BadgePercent} value={<CommissionCurrencyTotalsView totals={summary.approved} iqdPreference={iqdPreference} />} />
+                    <PerformanceMetric
+                        label="Paid / reversed"
+                        icon={RotateCcw}
+                        value={(
+                            <span className="flex flex-col gap-0.5">
+                                <CommissionCurrencyTotalsView totals={summary.paid} iqdPreference={iqdPreference} />
+                                <span className="text-xs text-rose-600"><CommissionCurrencyTotalsView totals={summary.reversed} iqdPreference={iqdPreference} /></span>
+                            </span>
+                        )}
+                    />
+                    <PerformanceMetric label="Due" icon={CircleDollarSign} value={<CommissionCurrencyTotalsView totals={summary.due} iqdPreference={iqdPreference} />} />
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                    <OperationalMetric label="Completed" value={completedOrderCount} tone="emerald" />
+                    <OperationalMetric label="Open / incomplete" value={openOrderCount} tone="amber" />
+                    <OperationalMetric label="Cancelled" value={cancelledOrderCount} tone="rose" />
+                    <OperationalMetric label="Returned" value={returnedOrderCount} tone="orange" />
+                    <OperationalMetric label="Zero value" value={zeroValueOrderCount} />
+                    <div className="rounded-2xl border bg-background/80 p-4">
+                        <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Profit / commission basis</div>
+                        <div className="mt-2 text-sm font-black">
+                            <CommissionCurrencyTotalsView totals={commissionBasisTotals} iqdPreference={iqdPreference} />
+                        </div>
+                    </div>
+                </div>
+
+                {assignedOrders.length > 0 ? (
+                    <div className="space-y-2">
+                        <div>
+                            <h3 className="font-semibold">Assigned order details</h3>
+                            <p className="text-sm text-muted-foreground">Reference, city and delivery snapshots stay attached to the selling-agent assignment.</p>
+                        </div>
+                        <div className="overflow-x-auto rounded-2xl border bg-background">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Order</TableHead>
+                                        <TableHead>City</TableHead>
+                                        <TableHead>Customer</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead className="text-end">Delivery</TableHead>
+                                        <TableHead className="text-end">Order total</TableHead>
+                                        <TableHead className="text-end">Basis</TableHead>
+                                        <TableHead className="text-end">Commission</TableHead>
+                                        <TableHead className="text-end">Action</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {assignedOrders.slice(0, 10).map((order) => {
+                                        const assignment = assignmentByOrderId.get(order.id)
+                                        const orderEntries = entriesByOrderId.get(order.id) || []
+                                        const recognizedEntries = orderEntries.filter((entry) => ['accrual', 'reversal', 'adjustment'].includes(entry.kind))
+                                        const commissionAmount = recognizedEntries.reduce((total, entry) => total + entry.amount, 0)
+                                        const sourceEntry = recognizedEntries.find((entry) => (
+                                            entry.kind === 'accrual' && entry.assignmentId === assignment?.id
+                                        ))
+                                        const isEligible = !assignment?.unassignedAt
+                                            && order.status === 'completed'
+                                            && (order.isPaid || order.paymentStatus === 'paid')
+                                        const currentBasisAmount = sourceEntry && assignment && isEligible
+                                            ? calculateSalesOrderCommission(order, {
+                                                ratePercent: sourceEntry.ratePercent,
+                                                calculationBasis: sourceEntry.calculationBasis,
+                                                includeTax: sourceEntry.includeTax,
+                                                includeDeliveryCharge: sourceEntry.includeDeliveryCharge
+                                            }, assignment).basisAmount
+                                            : null
+                                        return (
+                                            <TableRow key={order.id}>
+                                                <TableCell className="font-semibold">{order.orderNumber}</TableCell>
+                                                <TableCell>{assignment?.customerCitySnapshot || '—'}</TableCell>
+                                                <TableCell>{order.customerName}</TableCell>
+                                                <TableCell>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        <Badge variant="outline">{order.status}</Badge>
+                                                        {order.returnStatus && order.returnStatus !== 'none' ? (
+                                                            <Badge variant="outline" className="border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300">
+                                                                {order.returnStatus === 'full' ? 'Returned' : 'Partial return'}
+                                                            </Badge>
+                                                        ) : null}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-end">{formatCurrency(assignment?.deliveryChargeAmount || 0, order.currency, iqdPreference)}</TableCell>
+                                                <TableCell className="text-end font-semibold">{formatCurrency(order.total, order.currency, iqdPreference)}</TableCell>
+                                                <TableCell className="text-end">{currentBasisAmount !== null && sourceEntry ? formatCurrency(currentBasisAmount, sourceEntry.currency as CurrencyCode, iqdPreference) : '—'}</TableCell>
+                                                <TableCell className="text-end font-black">{orderEntries.length > 0 ? formatCurrency(commissionAmount, order.currency, iqdPreference) : '—'}</TableCell>
+                                                <TableCell className="text-end">
+                                                    <Button asChild variant="ghost" size="sm">
+                                                        <Link href={`/orders/${order.id}`}>
+                                                            <Eye className="me-1.5 h-3.5 w-3.5" /> View
+                                                        </Link>
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
+                ) : null}
+
+                {entries.length > 0 ? (
+                    <div className="overflow-x-auto rounded-2xl border bg-background">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Date</TableHead>
+                                    <TableHead>Order</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead className="text-end">Basis</TableHead>
+                                    <TableHead className="text-end">Rate</TableHead>
+                                    <TableHead className="text-end">Commission</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {entries.slice(0, 8).map((entry) => (
+                                    <TableRow key={entry.id}>
+                                        <TableCell>{formatDateTime(entry.occurredAt)}</TableCell>
+                                        <TableCell className="font-medium">{entry.orderId ? entry.orderId.slice(0, 8).toUpperCase() : entry.payoutReference || '—'}</TableCell>
+                                        <TableCell>
+                                            <Badge variant="outline" className={commissionStatusClass(entry.status)}>
+                                                {commissionStatusLabel(entry.status)}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-end">{formatCurrency(entry.basisAmount, entry.currency as CurrencyCode, iqdPreference)}</TableCell>
+                                        <TableCell className="text-end">{entry.ratePercent}%</TableCell>
+                                        <TableCell className="text-end font-black">{formatCurrency(entry.amount, entry.currency as CurrencyCode, iqdPreference)}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                ) : (
+                    <div className="rounded-2xl border border-dashed py-8 text-center text-sm text-muted-foreground">
+                        Commission entries will appear as assigned orders move through their lifecycle.
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    )
+}
+
+function OperationalMetric({
+    label,
+    value,
+    tone
+}: {
+    label: string
+    value: number
+    tone?: 'emerald' | 'amber' | 'rose' | 'orange'
+}) {
+    const toneClass = tone === 'emerald'
+        ? 'text-emerald-700 dark:text-emerald-300'
+        : tone === 'amber'
+            ? 'text-amber-700 dark:text-amber-300'
+            : tone === 'rose'
+                ? 'text-rose-700 dark:text-rose-300'
+                : tone === 'orange'
+                    ? 'text-orange-700 dark:text-orange-300'
+                    : ''
+    return (
+        <div className="rounded-2xl border bg-background/80 p-4">
+            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
+            <div className={`mt-2 text-2xl font-black ${toneClass}`}>{value}</div>
+        </div>
+    )
+}
+
+function PerformanceMetric({
+    label,
+    icon: Icon,
+    value
+}: {
+    label: string
+    icon: typeof ReceiptText
+    value: React.ReactNode
+}) {
+    return (
+        <div className="rounded-2xl border bg-background/80 p-4">
+            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                <Icon className="h-4 w-4" />
+                {label}
+            </div>
+            <div className="mt-2 text-lg font-black">{value}</div>
+        </div>
+    )
+}

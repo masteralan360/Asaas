@@ -194,7 +194,33 @@ vi.mock('@/workspace/workspaceMode', () => ({
     isLocalWorkspaceMode: workspaceModeMock.isLocalWorkspaceMode
 }))
 
-import { fullSync, isRecoverablePriceBookMutation, orderMutationsForSync, shouldApplyRemoteItem } from './syncEngine'
+import {
+    fullSync,
+    isExistingCommissionEntryRetry,
+    isRecoverablePriceBookMutation,
+    orderMutationsForSync,
+    shouldApplyRemoteItem
+} from './syncEngine'
+
+describe('immutable commission entry retry detection', () => {
+    it('accepts only a duplicate-key retry for the same ledger entry id', () => {
+        expect(isExistingCommissionEntryRetry(
+            { code: '23505' },
+            'entry-1',
+            'entry-1'
+        )).toBe(true)
+        expect(isExistingCommissionEntryRetry(
+            { code: '23505' },
+            'another-entry',
+            'entry-1'
+        )).toBe(false)
+        expect(isExistingCommissionEntryRetry(
+            { code: '42501' },
+            'entry-1',
+            'entry-1'
+        )).toBe(false)
+    })
+})
 import { inspectRemoteMutationPayload, prepareRemoteMutationPayload } from './syncPayloadContract'
 
 describe('Price Book sync recovery', () => {
@@ -393,6 +419,93 @@ describe('delivery mutation ordering', () => {
             'payment-create',
             'settlement-update'
         ])
+    })
+})
+
+describe('sales-agent commission reconciliation ordering', () => {
+    it('closes used plan and membership revisions before inserting replacements', () => {
+        const mutations = [
+            {
+                id: 'new-membership', workspaceId: 'workspace-1', entityType: 'agent_commission_memberships',
+                entityId: 'membership-2', operation: 'create',
+                payload: { id: 'membership-2', agentId: 'agent-1', planId: 'plan-2' },
+                createdAt: '2026-08-24T10:00:00.000Z'
+            },
+            {
+                id: 'new-plan', workspaceId: 'workspace-1', entityType: 'agent_commission_plans',
+                entityId: 'plan-2', operation: 'create',
+                payload: { id: 'plan-2', level: 'level_1' },
+                createdAt: '2026-08-24T10:00:00.000Z'
+            },
+            {
+                id: 'close-membership', workspaceId: 'workspace-1', entityType: 'agent_commission_memberships',
+                entityId: 'membership-1', operation: 'update',
+                payload: { id: 'membership-1', agentId: 'agent-1', effectiveTo: '2026-08-24T10:00:00.000Z' },
+                createdAt: '2026-08-24T10:00:00.000Z'
+            },
+            {
+                id: 'close-plan', workspaceId: 'workspace-1', entityType: 'agent_commission_plans',
+                entityId: 'plan-1', operation: 'update',
+                payload: { id: 'plan-1', level: 'level_1', effectiveTo: '2026-08-24T10:00:00.000Z' },
+                createdAt: '2026-08-24T10:00:00.000Z'
+            }
+        ]
+
+        const orderedIds = orderMutationsForSync(mutations).map((mutation) => mutation.id)
+        expect(orderedIds.indexOf('close-plan')).toBeLessThan(orderedIds.indexOf('new-plan'))
+        expect(orderedIds.indexOf('close-membership')).toBeLessThan(orderedIds.indexOf('new-membership'))
+        expect(orderedIds.indexOf('new-plan')).toBeLessThan(orderedIds.indexOf('new-membership'))
+    })
+
+    it('puts committed order, assignment, membership, plan, and return state before reconciliation', () => {
+        const reconciliation = {
+            id: 'reconcile',
+            workspaceId: 'workspace-1',
+            entityType: 'sales_agent_commission_reconciliation',
+            entityId: 'order-1',
+            operation: 'update',
+            payload: {
+                orderId: 'order-1',
+                assignmentId: 'assignment-1',
+                membershipId: 'membership-1',
+                planId: 'plan-1',
+                orderReturnId: 'return-1'
+            },
+            createdAt: '2026-08-24T10:00:00.000Z'
+        } as const
+        const ordered = orderMutationsForSync([
+            reconciliation,
+            {
+                ...reconciliation,
+                id: 'return', entityType: 'order_returns', entityId: 'return-1', operation: 'create',
+                payload: { id: 'return-1', orderId: 'order-1' }, createdAt: '2026-08-24T10:00:01.000Z'
+            },
+            {
+                ...reconciliation,
+                id: 'assignment', entityType: 'sales_order_agent_assignments', entityId: 'assignment-1', operation: 'create',
+                payload: { id: 'assignment-1', orderId: 'order-1' }, createdAt: '2026-08-24T10:00:02.000Z'
+            },
+            {
+                ...reconciliation,
+                id: 'membership', entityType: 'agent_commission_memberships', entityId: 'membership-1', operation: 'create',
+                payload: { id: 'membership-1', planId: 'plan-1' }, createdAt: '2026-08-24T10:00:03.000Z'
+            },
+            {
+                ...reconciliation,
+                id: 'plan', entityType: 'agent_commission_plans', entityId: 'plan-1', operation: 'update',
+                payload: { id: 'plan-1' }, createdAt: '2026-08-24T10:00:04.000Z'
+            },
+            {
+                ...reconciliation,
+                id: 'order', entityType: 'sales_orders', entityId: 'order-1', operation: 'update',
+                payload: { id: 'order-1' }, createdAt: '2026-08-24T10:00:05.000Z'
+            }
+        ])
+
+        expect(ordered.at(-1)?.id).toBe('reconcile')
+        expect(new Set(ordered.slice(0, -1).map((mutation) => mutation.id))).toEqual(new Set([
+            'return', 'assignment', 'membership', 'plan', 'order'
+        ]))
     })
 })
 

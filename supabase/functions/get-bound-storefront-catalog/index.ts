@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
                 .eq('workspace_id', context.workspace.id)
                 .order('is_primary', { ascending: false })
                 .order('created_at', { ascending: true }),
-            loadVisibleModeProducts(adminClient, context, mode)
+            loadVisibleModeProducts(adminClient, context, mode, { includeVariantParents: true })
         ])
 
         if (contactsError) {

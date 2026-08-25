@@ -31,6 +31,7 @@ import {
     getOrderBalanceAmount,
     getOrderPaidAmount,
     getOrderPaymentStatus,
+    getActiveSalesOrderAgentAssignment,
     getPrimaryStorageFromList,
     isOrderApprovalRequested,
     findLatestUnreversedPaymentTransaction,
@@ -61,6 +62,7 @@ import {
     type WorkspacePaymentMethod
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
+import { hasEffectiveSalesAgentCommissionPermission, useWorkspacePermissions } from '@/permissions'
 import { isMobile } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import {
@@ -114,6 +116,10 @@ import { OrderDetailsView } from '@/ui/components/orders/OrderDetailsView'
 import { OrderListPrintTemplate } from '@/ui/components/orders/OrderPrintTemplates'
 import { OrderStatusBadge } from '@/ui/components/orders/OrderStatusBadge'
 import { useUnitRegistry } from '@/ui/components/unitRegistry'
+import {
+    CommissionFeatureBoundary,
+    useOptionalCommissionFeatureData
+} from '@/ui/components/commissions/useCommissionAgentDirectory'
 
 type OrderTab = 'sales' | 'purchase'
 type StatusFilter = 'all' | 'draft' | 'pending' | 'ordered' | 'received' | 'completed' | 'cancelled'
@@ -379,6 +385,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
     const pageDirection = getLanguageDirection(i18n.resolvedLanguage || i18n.language)
     const { user } = useAuth()
     const { features, workspaceName } = useWorkspace()
+    const { permissionKeys } = useWorkspacePermissions()
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
     const { toast } = useToast()
     const [, navigate] = useLocation()
@@ -395,6 +402,32 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
     const suppliers = useSuppliers(workspaceId)
     const salesOrders = useSalesOrders(workspaceId)
     const purchaseOrders = usePurchaseOrders(workspaceId)
+    const commissionData = useOptionalCommissionFeatureData()
+    const salesAgentCommissionsEnabled = Boolean(commissionData)
+    const canViewAllSalesAgentAssignments = hasEffectiveSalesAgentCommissionPermission(
+        user?.role,
+        permissionKeys,
+        'salesAgentCommissions.viewAll'
+    ) || hasEffectiveSalesAgentCommissionPermission(
+        user?.role,
+        permissionKeys,
+        'salesAgentCommissions.assignOrders'
+    )
+    const canViewOwnSalesAgentAssignments = hasEffectiveSalesAgentCommissionPermission(
+        user?.role,
+        permissionKeys,
+        'salesAgentCommissions.viewOwn'
+    )
+    const activeSalesAgentAssignmentByOrderId = useMemo(() => new Map(salesOrders.flatMap((order) => {
+        const assignment = getActiveSalesOrderAgentAssignment(commissionData?.assignments || [], order.id)
+        return assignment ? [[order.id, assignment] as const] : []
+    })), [commissionData?.assignments, salesOrders])
+    const visibleCommissionAgentByOrderId = useMemo(() => new Map(Array.from(activeSalesAgentAssignmentByOrderId, ([orderId, assignment]) => {
+        const agent = commissionData?.agentById.get(assignment.agentId)
+        const canSeeAgent = canViewAllSalesAgentAssignments
+            || (canViewOwnSalesAgentAssignments && agent?.agent.linkedUserId === user?.id)
+        return [orderId, canSeeAgent ? agent : undefined] as const
+    })), [activeSalesAgentAssignmentByOrderId, canViewAllSalesAgentAssignments, canViewOwnSalesAgentAssignments, commissionData?.agentById, user?.id])
     const defaultStorageId = getPrimaryStorageFromList(storages)?.id || ''
     const unitRegistry = useUnitRegistry(workspaceId)
 
@@ -571,9 +604,11 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         return items.filter((order) =>
             order.orderNumber.toLowerCase().includes(query)
             || order.customerName.toLowerCase().includes(query)
+            || (salesAgentCommissionsEnabled
+                && visibleCommissionAgentByOrderId.get(order.id)?.name.toLowerCase().includes(query))
             || order.items.some((item) => item.productName.toLowerCase().includes(query))
         )
-    }, [dateFilteredSalesOrders, search, statusFilter, paymentFilter, ecommerceFilter])
+    }, [dateFilteredSalesOrders, ecommerceFilter, paymentFilter, salesAgentCommissionsEnabled, search, statusFilter, visibleCommissionAgentByOrderId])
 
     const filteredPurchaseOrders = useMemo(() => {
         let items = [...dateFilteredPurchaseOrders]
@@ -1395,6 +1430,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                         <TableRow>
                             <TableHead>{t('orders.table.orderNumber') || 'Order #'}</TableHead>
                             <TableHead>{activeTab === 'sales' ? (t('orders.table.customer') || 'Customer') : (t('suppliers.title') || 'Supplier')}</TableHead>
+                            {activeTab === 'sales' && salesAgentCommissionsEnabled ? <TableHead>Sales agent</TableHead> : null}
                             <TableHead>{t('orders.table.items') || 'Items'}</TableHead>
                             <TableHead>{t('common.status') || 'Status'}</TableHead>
                             <TableHead>{t('common.total') || 'Total'}</TableHead>
@@ -1407,7 +1443,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                     <TableBody>
                         {rows.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={9} className="py-12 text-center text-muted-foreground">
+                                <TableCell colSpan={9 + (activeTab === 'sales' && salesAgentCommissionsEnabled ? 1 : 0)} className="py-12 text-center text-muted-foreground">
                                     {t('common.noData') || 'No data available'}
                                 </TableCell>
                             </TableRow>
@@ -1439,6 +1475,20 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         </div>
                                     </TableCell>
                                     <TableCell>{activeTab === 'sales' ? (row as SalesOrder).customerName : (row as PurchaseOrder).supplierName}</TableCell>
+                                    {activeTab === 'sales' && salesAgentCommissionsEnabled ? (
+                                        <TableCell>
+                                            {(() => {
+                                                const assignment = activeSalesAgentAssignmentByOrderId.get(row.id)
+                                                const agent = visibleCommissionAgentByOrderId.get(row.id)
+                                                return agent ? (
+                                                    <div>
+                                                        <div className="font-medium">{agent.name}</div>
+                                                        <div className="text-xs text-muted-foreground">{agent.plan?.name || 'No commission plan'}</div>
+                                                    </div>
+                                                ) : <span className="text-muted-foreground">{assignment ? 'Restricted' : 'Unassigned'}</span>
+                                            })()}
+                                        </TableCell>
+                                    ) : null}
                                     <TableCell>{row.items.length}</TableCell>
                                     <TableCell>
                                         <div className="flex flex-wrap gap-1.5">
@@ -1544,9 +1594,19 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                 </span>
                                             ) : null}
                                         </div>
-                                        <div className="text-base font-bold text-foreground">
-                                            {activeTab === 'sales' ? (row as SalesOrder).customerName : (row as PurchaseOrder).supplierName}
-                                        </div>
+                                         <div className="text-base font-bold text-foreground">
+                                             {activeTab === 'sales' ? (row as SalesOrder).customerName : (row as PurchaseOrder).supplierName}
+                                         </div>
+                                         {activeTab === 'sales' && salesAgentCommissionsEnabled ? (
+                                             <div className="flex items-center gap-1.5 text-xs text-violet-700 dark:text-violet-300">
+                                                 <UsersRound className="h-3.5 w-3.5" />
+                                                 {(() => {
+                                                     const assignment = activeSalesAgentAssignmentByOrderId.get(row.id)
+                                                     const agent = visibleCommissionAgentByOrderId.get(row.id)
+                                                     return agent?.name || (assignment ? 'Restricted' : 'Unassigned')
+                                                 })()}
+                                             </div>
+                                         ) : null}
                                         <div className="text-xs text-muted-foreground truncate max-w-[200px]">
                                             {summary}
                                         </div>
@@ -2784,6 +2844,8 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
 
 export function Orders() {
     const { user } = useAuth()
+    const { hasFeature } = useWorkspace()
+    const { permissionKeys } = useWorkspacePermissions()
     const [, navigate] = useLocation()
     const [salesNewMatch] = useRoute('/orders/new/sales')
     const [purchaseNewMatch] = useRoute('/orders/new/purchase')
@@ -2793,6 +2855,12 @@ export function Orders() {
     const [purchaseTabMatch] = useRoute('/orders/purchase')
     const [detailMatch, params] = useRoute('/orders/:orderId')
     const workspaceId = user?.workspaceId
+    const salesAgentCommissionsEnabled = hasFeature('sales_agent_commissions')
+    const hasSalesAgentCommissionAccess = salesAgentCommissionsEnabled && (
+        hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.viewAll')
+        || hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.viewOwn')
+        || hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.assignOrders')
+    )
 
     if (!workspaceId) {
         return null
@@ -2845,5 +2913,9 @@ export function Orders() {
     }
 
     const initialTab: OrderTab = salesTabMatch ? 'sales' : purchaseTabMatch ? 'purchase' : 'sales'
-    return <OrdersListView workspaceId={workspaceId} initialTab={initialTab} />
+    return (
+        <CommissionFeatureBoundary enabled={hasSalesAgentCommissionAccess} workspaceId={workspaceId}>
+            <OrdersListView workspaceId={workspaceId} initialTab={initialTab} />
+        </CommissionFeatureBoundary>
+    )
 }

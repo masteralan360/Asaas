@@ -19,3 +19,27 @@ CREATE TABLE public.order_return_items (
   CONSTRAINT order_return_items_return_line_key UNIQUE (return_id, order_item_id),
   PRIMARY KEY (id)
 );
+
+ALTER TABLE public.order_return_items ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS order_return_items_select ON public.order_return_items;
+CREATE POLICY order_return_items_select
+  ON public.order_return_items
+  FOR SELECT
+  TO authenticated
+  USING (
+    workspace_id = public.current_workspace_id()
+    AND EXISTS (
+      SELECT 1 FROM crm.sales_orders AS sales_order
+      WHERE sales_order.id = order_return_items.order_id
+        AND sales_order.workspace_id = order_return_items.workspace_id
+        AND (
+          NOT (SELECT public.current_user_has_view_own_permission('orders.view_own'))
+          OR sales_order.created_by = (SELECT auth.uid())
+          OR private.sales_agent_commissions_can_view_assigned_order(
+            order_return_items.workspace_id,
+            sales_order.id
+          )
+        )
+    )
+  );

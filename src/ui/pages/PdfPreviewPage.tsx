@@ -52,6 +52,7 @@ import { AttachedShapesOverlay } from '@/ui/components/AttachedShapesOverlay'
 import { PDF_SHAPE_OPTIONS } from '@/ui/components/PdfShapeGraphic'
 import { PdfJsViewer } from '@/ui/components/PdfJsViewer'
 import { useToast } from '@/ui/components/use-toast'
+import { ProgressToast } from '@/ui/components/ProgressToast'
 import { subscribePdfProgress } from '@/services/pdfProgress'
 import type { PdfShapeKind } from '@/types'
 
@@ -363,39 +364,6 @@ function EditableInvoicePreview({
     )
 }
 
-function SaveProgressBar({
-    fraction,
-    stageKey,
-    page,
-    total
-}: {
-    fraction: number
-    stageKey?: string
-    page?: number
-    total?: number
-}) {
-    const { t } = useTranslation()
-    const percent = Math.min(100, Math.max(0, Math.round(fraction * 100)))
-    const stage = stageKey
-        ? t(stageKey, { defaultValue: '', page, total })
-        : ''
-
-    return (
-        <div className="w-full space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-xs text-muted-foreground">{stage}</span>
-                <span className="text-xs font-medium tabular-nums">{percent}%</span>
-            </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                    className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
-                    style={{ width: `${percent}%` }}
-                />
-            </div>
-        </div>
-    )
-}
-
 export function PdfPreviewPage() {
     const { t } = useTranslation()
     const { hasRole } = useAuth()
@@ -425,8 +393,9 @@ export function PdfPreviewPage() {
         lastProgressStageRef.current = ''
         progressToastRef.current = toast({
             title: toastTitle,
-            description: <SaveProgressBar fraction={0} />,
-            duration: 600000
+            description: <ProgressToast fraction={0} />,
+            duration: 600000,
+            placement: 'floating',
         })
         const progressToast = progressToastRef.current
         unsubscribeProgressRef.current = subscribePdfProgress((report) => {
@@ -438,7 +407,7 @@ export function PdfPreviewPage() {
             progressToastRef.current?.update({
                 id: progressToast.id,
                 description: (
-                    <SaveProgressBar
+                    <ProgressToast
                         fraction={report.fraction}
                         stageKey={report.stageKey}
                         page={report.page}

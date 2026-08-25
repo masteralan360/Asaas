@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Users, X } from 'lucide-react'
-import { type CurrencyCode, type WorkspacePaymentMethod } from '@/local-db'
+import { CircleHelp, Users, X } from 'lucide-react'
+import { type CurrencyCode, type DirectTransactionPartnerAccountEffect, type WorkspacePaymentMethod } from '@/local-db'
 import { getLoanLinkedPartyTypeLabel, type LoanPartySelection } from '@/lib/loanParties'
 import { STANDARD_PAYMENT_METHODS } from '@/lib/paymentMethods'
 import { formatLocalDateTimeValue, formatNumericInput, parseFormattedNumber, parseLocalDateTimeValue, sanitizeNumericInput } from '@/lib/utils'
@@ -23,13 +23,60 @@ import {
     SelectItem,
     SelectTrigger,
     SelectValue,
-    Textarea
+    Textarea,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger
 } from '@/ui/components'
 import { useWorkspace } from '@/workspace'
 import { LoanPartyPickerDialog } from '@/ui/components/loans/LoanPartyPickerDialog'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import type { BusinessPartner } from '@/local-db'
 import { PaymentMethodSelect } from './PaymentMethodSelect'
+
+type PartnerAccountTreatment = 'unselected' | 'cash_only' | 'account_movement'
+type PartnerAccountEffect = Exclude<DirectTransactionPartnerAccountEffect, 'none'>
+
+interface PartnerAccountEffectOption {
+    value: PartnerAccountEffect
+    labelKey: string
+    descriptionKey: string
+}
+
+const PARTNER_ACCOUNT_EFFECT_OPTIONS: Record<'incoming' | 'outgoing', PartnerAccountEffectOption[]> = {
+    outgoing: [
+        {
+            value: 'increase_receivable',
+            labelKey: 'increaseReceivable',
+            descriptionKey: 'increaseReceivableDescription'
+        },
+        {
+            value: 'decrease_payable',
+            labelKey: 'decreasePayable',
+            descriptionKey: 'decreasePayableDescription'
+        }
+    ],
+    incoming: [
+        {
+            value: 'decrease_receivable',
+            labelKey: 'decreaseReceivable',
+            descriptionKey: 'decreaseReceivableDescription'
+        },
+        {
+            value: 'increase_payable',
+            labelKey: 'increasePayable',
+            descriptionKey: 'increasePayableDescription'
+        }
+    ]
+}
+
+function isPartnerAccountEffectAvailableForDirection(
+    effect: DirectTransactionPartnerAccountEffect,
+    direction: 'incoming' | 'outgoing'
+) {
+    return PARTNER_ACCOUNT_EFFECT_OPTIONS[direction].some((option) => option.value === effect)
+}
 
 interface DirectTransactionDialogProps {
     open: boolean
@@ -46,6 +93,7 @@ interface DirectTransactionDialogProps {
         note?: string
         counterpartyName?: string
         businessPartnerId?: string | null
+        partnerAccountEffect?: DirectTransactionPartnerAccountEffect
     }) => Promise<void> | void
 }
 
@@ -71,6 +119,8 @@ export function DirectTransactionDialog({
         id: string | null
         name: string | null
     }>({ type: null, id: null, name: null })
+    const [partnerAccountTreatment, setPartnerAccountTreatment] = useState<PartnerAccountTreatment>('unselected')
+    const [partnerAccountEffect, setPartnerAccountEffect] = useState<DirectTransactionPartnerAccountEffect>('none')
     const [isPartyPickerOpen, setIsPartyPickerOpen] = useState(false)
 
     useEffect(() => {
@@ -87,23 +137,59 @@ export function DirectTransactionDialog({
         setNote('')
         setCounterpartyName('')
         setLinkedPartner({ type: null, id: null, name: null })
+        setPartnerAccountTreatment('unselected')
+        setPartnerAccountEffect('none')
         setIsPartyPickerOpen(false)
     }, [features.default_currency, open])
 
     const selectedPaidAt = parseLocalDateTimeValue(paidAt)
+    const partnerAccountEffectOptions = PARTNER_ACCOUNT_EFFECT_OPTIONS[direction]
+    const selectedPartnerAccountEffect = partnerAccountEffectOptions.find((option) => option.value === partnerAccountEffect)
 
     const isValid = parseFormattedNumber(amount) > 0 &&
         reason.trim() !== '' &&
         counterpartyName.trim() !== '' &&
-        !!selectedPaidAt
+        !!selectedPaidAt &&
+        (
+            !linkedPartner.id ||
+            (
+                partnerAccountTreatment !== 'unselected'
+                && (
+                    partnerAccountTreatment === 'cash_only'
+                    || partnerAccountEffect !== 'none'
+                )
+            )
+        )
+
+    const clearPartnerLink = () => {
+        setLinkedPartner({ type: null, id: null, name: null })
+        setPartnerAccountTreatment('unselected')
+        setPartnerAccountEffect('none')
+    }
+
+    const selectPartner = (partner: Pick<BusinessPartner, 'id' | 'name'>) => {
+        setCounterpartyName(partner.name)
+        setLinkedPartner({
+            type: 'business_partner',
+            id: partner.id,
+            name: partner.name
+        })
+        setPartnerAccountTreatment('unselected')
+        setPartnerAccountEffect('none')
+    }
+
+    const handleDirectionChange = (value: 'incoming' | 'outgoing') => {
+        setDirection(value)
+        if (!isPartnerAccountEffectAvailableForDirection(partnerAccountEffect, value)) {
+            setPartnerAccountEffect('none')
+        }
+    }
 
     const handlePartySelect = (selection: LoanPartySelection) => {
-        setLinkedPartner({
-            type: selection.linkedPartyType,
+        selectPartner({
             id: selection.linkedPartyId,
             name: selection.linkedPartyName
         })
-        setCounterpartyName(selection.borrowerName)
     }
 
     const handleSubmit = (event: React.FormEvent) => {
@@ -117,12 +203,19 @@ export function DirectTransactionDialog({
             reason: reason.trim(),
             note: note.trim() || undefined,
             counterpartyName: counterpartyName.trim() || undefined,
-            businessPartnerId: linkedPartner.id
+            businessPartnerId: linkedPartner.id,
+            partnerAccountEffect: linkedPartner.id && partnerAccountTreatment === 'account_movement'
+                ? partnerAccountEffect
+                : 'none'
         })
     }
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
+        <Dialog open={open} onOpenChange={(nextOpen) => {
+            if (!isSubmitting) {
+                onOpenChange(nextOpen)
+            }
+        }}>
             <DialogContent layout="structured" className="max-w-4xl">
                 <DialogHeader layout="structured">
                     <DialogTitle>{t('directTransactionModal.title', { defaultValue: 'New Direct Transaction' })}</DialogTitle>
@@ -137,7 +230,7 @@ export function DirectTransactionDialog({
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <div className="grid gap-2">
                                     <Label>{t('directTransactionModal.fields.direction', { defaultValue: 'Direction' })}</Label>
-                                    <Select value={direction} onValueChange={(value: 'incoming' | 'outgoing') => setDirection(value)}>
+                                    <Select value={direction} onValueChange={handleDirectionChange} disabled={isSubmitting}>
                                         <SelectTrigger>
                                             <SelectValue />
                                         </SelectTrigger>
@@ -166,6 +259,7 @@ export function DirectTransactionDialog({
                                         inputMode={currency === 'iqd' ? 'numeric' : 'decimal'}
                                         placeholder="0"
                                         value={formatNumericInput(amount)}
+                                        disabled={isSubmitting}
                                         onChange={(event) => setAmount(sanitizeNumericInput(event.target.value, {
                                             allowDecimal: currency !== 'iqd'
                                         }))}
@@ -173,7 +267,7 @@ export function DirectTransactionDialog({
                                 </div>
                                 <div className="grid gap-2">
                                     <Label>{t('products.form.currency') || 'Currency'}</Label>
-                                    <CurrencySelector value={currency} onChange={setCurrency} iqdDisplayPreference={features.iqd_display_preference} />
+                                    <CurrencySelector value={currency} onChange={setCurrency} iqdDisplayPreference={features.iqd_display_preference} disabled={isSubmitting} />
                                 </div>
                             </div>
 
@@ -181,6 +275,7 @@ export function DirectTransactionDialog({
                                 <Label>{t('directTransactionModal.fields.reason', { defaultValue: 'Reason' })} <span className="text-destructive">*</span></Label>
                                 <Input 
                                     value={reason} 
+                                    disabled={isSubmitting}
                                     onChange={(event) => setReason(event.target.value)} 
                                     placeholder={t('directTransactionModal.fields.reasonPlaceholder', { defaultValue: 'Why did this payment happen?' })} 
                                 />
@@ -191,17 +286,18 @@ export function DirectTransactionDialog({
                                 <div className="flex flex-col gap-2 md:flex-row md:items-center">
                                     <PartnerAutocompleteInput
                                         value={counterpartyName}
-                                        onChange={setCounterpartyName}
+                                        onChange={(value) => {
+                                            setCounterpartyName(value)
+                                            if (linkedPartner.id && value !== linkedPartner.name) {
+                                                clearPartnerLink()
+                                            }
+                                        }}
                                         onSelectPartner={(partner: BusinessPartner) => {
-                                            setCounterpartyName(partner.name)
-                                            setLinkedPartner({
-                                                type: 'business_partner',
-                                                id: partner.id,
-                                                name: partner.name
-                                            })
+                                            selectPartner(partner)
                                         }}
                                         workspaceId={workspaceId}
                                         placeholder={t('directTransactionModal.fields.counterpartyPlaceholder', { defaultValue: 'Who received or paid this amount?' })}
+                                        disabled={isSubmitting}
                                     />
                                     {features.crm ? (
                                         <Button
@@ -209,6 +305,7 @@ export function DirectTransactionDialog({
                                             variant="outline"
                                             className="w-full shrink-0 gap-2 md:w-auto"
                                             onClick={() => setIsPartyPickerOpen(true)}
+                                            disabled={isSubmitting}
                                         >
                                             <Users className="h-4 w-4" />
                                             {t('loans.selectParty', { defaultValue: 'Business Partner' })}
@@ -230,11 +327,111 @@ export function DirectTransactionDialog({
                                             variant="ghost"
                                             size="sm"
                                             className="h-8 shrink-0 px-2 text-muted-foreground"
-                                            onClick={() => setLinkedPartner({ type: null, id: null, name: null })}
+                                            onClick={clearPartnerLink}
+                                            disabled={isSubmitting}
                                         >
                                             <X className="h-4 w-4" />
                                             {t('loans.clearParty', { defaultValue: 'Clear Link' })}
                                         </Button>
+                                    </div>
+                                ) : null}
+                                {linkedPartner.id ? (
+                                    <div className="grid gap-3 rounded-xl border border-border bg-muted/20 p-3">
+                                        <div className="flex items-center gap-1.5">
+                                            <Label>{t('directTransactionModal.partnerAccount.title', { defaultValue: 'Partner account treatment' })}</Label>
+                                            <TooltipProvider delayDuration={150}>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                            aria-label={t('directTransactionModal.partnerAccount.tooltip', { defaultValue: 'Cash-only records stay out of the partner statement. Choose an account movement only when this transaction changes what either side owes.' })}
+                                                        >
+                                                            <CircleHelp className="h-3.5 w-3.5" />
+                                                        </button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="top" align="start" className="max-w-xs text-xs leading-relaxed">
+                                                        {t('directTransactionModal.partnerAccount.tooltip', { defaultValue: 'Cash-only records stay out of the partner statement. Choose an account movement only when this transaction changes what either side owes.' })}
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                        </div>
+
+                                        <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label={t('directTransactionModal.partnerAccount.title', { defaultValue: 'Partner account treatment' })}>
+                                            <label
+                                                className={`cursor-pointer rounded-lg border p-3 transition-colors ${partnerAccountTreatment === 'cash_only' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'} ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="partner-account-treatment"
+                                                    value="cash_only"
+                                                    className="sr-only"
+                                                    checked={partnerAccountTreatment === 'cash_only'}
+                                                    onChange={() => {
+                                                        setPartnerAccountTreatment('cash_only')
+                                                        setPartnerAccountEffect('none')
+                                                    }}
+                                                    disabled={isSubmitting}
+                                                />
+                                                <span className="block text-sm font-semibold">{t('directTransactionModal.partnerAccount.cashOnly', { defaultValue: 'Cash record only' })}</span>
+                                                <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{t('directTransactionModal.partnerAccount.cashOnlyDescription', { defaultValue: 'Keep this in cash flow only; do not change the partner account statement.' })}</span>
+                                            </label>
+                                            <label
+                                                className={`cursor-pointer rounded-lg border p-3 transition-colors ${partnerAccountTreatment === 'account_movement' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'} ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="partner-account-treatment"
+                                                    value="account_movement"
+                                                    className="sr-only"
+                                                    checked={partnerAccountTreatment === 'account_movement'}
+                                                    onChange={() => setPartnerAccountTreatment('account_movement')}
+                                                    disabled={isSubmitting}
+                                                />
+                                                <span className="block text-sm font-semibold">{t('directTransactionModal.partnerAccount.accountMovement', { defaultValue: 'Partner account movement' })}</span>
+                                                <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{t('directTransactionModal.partnerAccount.accountMovementDescription', { defaultValue: 'Post this as a debit or credit in the selected partner’s account statement.' })}</span>
+                                            </label>
+                                        </div>
+
+                                        {partnerAccountTreatment === 'unselected' ? (
+                                            <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                                                {t('directTransactionModal.partnerAccount.selectionRequired', { defaultValue: 'Select one option to continue.' })}
+                                            </p>
+                                        ) : null}
+
+                                        {partnerAccountTreatment === 'account_movement' ? (
+                                            <fieldset className="grid gap-2">
+                                                <legend className="text-sm font-medium">{t('directTransactionModal.partnerAccount.movementType', { defaultValue: 'How should it affect the partner account?' })}</legend>
+                                                <div className="grid gap-2 sm:grid-cols-2">
+                                                    {partnerAccountEffectOptions.map((option) => (
+                                                        <label
+                                                            key={option.value}
+                                                            className={`cursor-pointer rounded-lg border p-3 transition-colors ${partnerAccountEffect === option.value ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'} ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
+                                                        >
+                                                            <input
+                                                                type="radio"
+                                                                name="partner-account-effect"
+                                                                value={option.value}
+                                                                className="sr-only"
+                                                                checked={partnerAccountEffect === option.value}
+                                                                onChange={() => setPartnerAccountEffect(option.value)}
+                                                                disabled={isSubmitting}
+                                                            />
+                                                            <span className="block text-sm font-semibold">{t(`directTransactionModal.partnerAccount.${option.labelKey}`)}</span>
+                                                            <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{t(`directTransactionModal.partnerAccount.${option.descriptionKey}`)}</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                                {selectedPartnerAccountEffect ? (
+                                                    <p role="status" className="text-xs text-primary">
+                                                        {t('directTransactionModal.partnerAccount.effectPreview', {
+                                                            defaultValue: 'Account statement: {{effect}}',
+                                                            effect: t(`directTransactionModal.partnerAccount.${selectedPartnerAccountEffect.descriptionKey}`)
+                                                        })}
+                                                    </p>
+                                                ) : null}
+                                            </fieldset>
+                                        ) : null}
                                     </div>
                                 ) : null}
                             </div>
@@ -246,6 +443,7 @@ export function DirectTransactionDialog({
                                     date={selectedPaidAt}
                                     setDate={(value) => setPaidAt(value ? formatLocalDateTimeValue(value) : '')}
                                     placeholder={t('directTransactionModal.fields.paidAtPlaceholder', { defaultValue: 'Pick transaction time' })}
+                                    disabled={isSubmitting}
                                 />
                             </div>
 
@@ -254,6 +452,7 @@ export function DirectTransactionDialog({
                                 <Textarea 
                                     rows={3} 
                                     value={note} 
+                                    disabled={isSubmitting}
                                     onChange={(event) => setNote(event.target.value)} 
                                     placeholder={t('directTransactionModal.fields.notePlaceholder', { defaultValue: 'Optional note' })} 
                                 />

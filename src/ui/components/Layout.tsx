@@ -9,6 +9,7 @@ import { useWorkspacePermissions } from '@/permissions'
 import { SyncStatusIndicator } from './SyncStatusIndicator'
 import { ExchangeRateIndicator } from './ExchangeRateIndicator'
 import { GlobalSearch } from './GlobalSearch'
+import { PageFind } from './PageFind'
 import { P2PSyncIndicator } from './P2PSyncStatus'
 import { assetManager } from '@/lib/assetManager'
 import { startR2BackupInterval, stopR2BackupInterval } from '@/local-db/sqliteBackup'
@@ -151,6 +152,7 @@ export function Layout({ children }: LayoutProps) {
     const { hasFeature, hasCapability, workspaceName, isFullscreen, features, activeWorkspace, isLocalMode, isDemoMode, isLocked, isLoading: isWorkspaceLoading, loadedWorkspaceId } = useWorkspace()
     const { hasPermission } = useWorkspacePermissions()
     const demoExpiryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const pageContentRef = useRef<HTMLElement>(null)
     const {
         branchInfo,
         branches,
@@ -1535,7 +1537,7 @@ export function Layout({ children }: LayoutProps) {
                         </header>
 
                         {/* Page content */}
-                        <main className={cn(
+                        <main ref={pageContentRef} className={cn(
                             "page-enter flex-1 min-h-0",
                             location === '/whatsapp' ? "p-0" :
                                 isPosLikeRoute ? "p-0 lg:p-6" : "p-4 lg:p-6 overflow-y-auto overscroll-contain custom-scrollbar"
@@ -1544,6 +1546,7 @@ export function Layout({ children }: LayoutProps) {
                                 {children}
                             </Suspense>
                         </main>
+                        <PageFind contentRef={pageContentRef} />
                     </div>
 
                     {/* Sign Out Confirmation Modal */}

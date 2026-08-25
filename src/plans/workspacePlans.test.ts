@@ -31,6 +31,67 @@ describe('Agents workspace module access', () => {
     })
 })
 
+describe('Sales Agent Commissions workspace module access', () => {
+    it('is not included in any workspace subscription plan', () => {
+        for (const plan of WORKSPACE_PLANS) {
+            expect(planHasModule(plan, 'sales_agent_commissions')).toBe(false)
+            expect(planHasWorkspaceFeature(plan, 'sales_agent_commissions')).toBe(false)
+        }
+    })
+
+    it('is enabled only by an explicit grant with Agents and Orders available', () => {
+        const resolved = applyWorkspaceOverrides(getPlanCapabilities('enterprise'), [
+            {
+                id: 'override-agents',
+                workspace_id: 'workspace-1',
+                type: 'module',
+                key: 'agents',
+                value: 'grant',
+                created_by: null,
+                created_at: new Date(0).toISOString()
+            },
+            {
+                id: 'override-sales-agent-commissions',
+                workspace_id: 'workspace-1',
+                type: 'module',
+                key: 'sales_agent_commissions',
+                value: 'grant',
+                created_by: null,
+                created_at: new Date(0).toISOString()
+            }
+        ])
+
+        expect(resolved.modules).toContain('sales_agent_commissions')
+    })
+
+    it('ignores an orphaned grant when Agents or Orders is unavailable', () => {
+        const override = {
+            id: 'override-sales-agent-commissions',
+            workspace_id: 'workspace-1',
+            type: 'module' as const,
+            key: 'sales_agent_commissions',
+            value: 'grant',
+            created_by: null,
+            created_at: new Date(0).toISOString()
+        }
+
+        expect(
+            applyWorkspaceOverrides(getPlanCapabilities('enterprise'), [override]).modules
+        ).not.toContain('sales_agent_commissions')
+
+        expect(
+            applyWorkspaceOverrides(getPlanCapabilities('basic'), [
+                {
+                    ...override,
+                    id: 'override-agents',
+                    key: 'agents'
+                },
+                override
+            ]).modules
+        ).not.toContain('sales_agent_commissions')
+    })
+})
+
 describe('Post Service workspace module access', () => {
     it('is not included in any workspace subscription plan', () => {
         for (const plan of WORKSPACE_PLANS) {

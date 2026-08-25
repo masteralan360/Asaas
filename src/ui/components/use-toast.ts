@@ -6,15 +6,19 @@ import type {
 } from "@/ui/components/toast"
 
 const TOAST_LIMIT = 3
-const TOAST_REMOVE_DELAY = 1000000
+const TOAST_DEFAULT_DURATION = 5000
+const TOAST_REMOVE_DELAY = 300
 const TOAST_OVERFLOW_DELAY = 500
 const STANDING_HEIGHT_PER_TOAST = 96
 
-type ToasterToast = ToastProps & {
+export type ToastPlacement = 'floating' | 'sticky-bar'
+
+export type ToastRecord = ToastProps & {
     id: string
     title?: React.ReactNode
     description?: React.ReactNode
     action?: ToastActionElement
+    placement?: ToastPlacement
 }
 
 const actionTypes = {
@@ -36,26 +40,53 @@ type ActionType = typeof actionTypes
 type Action =
     | {
         type: ActionType["ADD_TOAST"]
-        toast: ToasterToast
+        toast: ToastRecord
     }
     | {
         type: ActionType["UPDATE_TOAST"]
-        toast: Partial<ToasterToast>
+        toast: Partial<ToastRecord>
     }
     | {
         type: ActionType["DISMISS_TOAST"]
-        toastId?: ToasterToast["id"]
+        toastId?: ToastRecord["id"]
     }
     | {
         type: ActionType["REMOVE_TOAST"]
-        toastId?: ToasterToast["id"]
+        toastId?: ToastRecord["id"]
     }
 
 interface State {
-    toasts: ToasterToast[]
+    toasts: ToastRecord[]
 }
 
 const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+const autoDismissTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+
+const clearAutoDismissTimeout = (toastId: string) => {
+    const timeout = autoDismissTimeouts.get(toastId)
+    if (timeout) {
+        clearTimeout(timeout)
+        autoDismissTimeouts.delete(toastId)
+    }
+}
+
+const scheduleAutoDismiss = (toastId: string, duration: number) => {
+    clearAutoDismissTimeout(toastId)
+
+    if (!Number.isFinite(duration) || duration <= 0) {
+        return
+    }
+
+    const timeout = setTimeout(() => {
+        autoDismissTimeouts.delete(toastId)
+        dispatch({
+            type: "DISMISS_TOAST",
+            toastId,
+        })
+    }, duration)
+
+    autoDismissTimeouts.set(toastId, timeout)
+}
 
 const addToRemoveQueue = (toastId: string, delay: number = TOAST_REMOVE_DELAY) => {
     if (toastTimeouts.has(toastId)) {
@@ -119,9 +150,11 @@ export const reducer = (state: State, action: Action): State => {
             // ! Side effects ! - This could be extracted into a dismissToast() action,
             // but I'll keep it here for simplicity
             if (toastId) {
+                clearAutoDismissTimeout(toastId)
                 addToRemoveQueue(toastId)
             } else {
                 state.toasts.forEach((toast) => {
+                    clearAutoDismissTimeout(toast.id)
                     addToRemoveQueue(toast.id)
                 })
             }
@@ -139,6 +172,12 @@ export const reducer = (state: State, action: Action): State => {
             }
         }
         case "REMOVE_TOAST": {
+            if (action.toastId) {
+                clearAutoDismissTimeout(action.toastId)
+            } else {
+                state.toasts.forEach((toast) => clearAutoDismissTimeout(toast.id))
+            }
+
             // Restore webview to full height when all toasts are gone
             const remainingToasts = action.toastId === undefined
                 ? []
@@ -173,16 +212,20 @@ function dispatch(action: Action) {
     })
 }
 
-type Toast = Omit<ToasterToast, "id">
+type Toast = Omit<ToastRecord, "id">
 
 function toast({ ...props }: Toast) {
     const id = genId()
 
-    const update = (props: ToasterToast) =>
+    const update = (props: ToastRecord) => {
         dispatch({
             type: "UPDATE_TOAST",
             toast: { ...props, id },
         })
+        if (typeof props.duration === "number") {
+            scheduleAutoDismiss(id, props.duration)
+        }
+    }
     const dismiss = () =>
         dispatch({ type: "DISMISS_TOAST", toastId: id })
 
@@ -197,6 +240,7 @@ function toast({ ...props }: Toast) {
             },
         },
     })
+    scheduleAutoDismiss(id, props.duration ?? TOAST_DEFAULT_DURATION)
 
     return {
         id,

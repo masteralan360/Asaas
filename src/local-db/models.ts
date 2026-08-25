@@ -815,6 +815,116 @@ export interface OrderAdjustment {
   createdBy?: string | null;
 }
 
+export type CommissionPlanLevel = "level_1" | "level_2" | "level_3";
+export type CommissionCalculationBasis = "net_profit" | "net_revenue";
+export type ManualSalesAgentCommissionType = "fixed_amount" | "percentage";
+export type CommissionEntryKind =
+  | "estimate"
+  | "accrual"
+  | "approval"
+  | "reversal"
+  | "payout"
+  | "adjustment";
+export type CommissionEntryStatus =
+  | "estimated"
+  | "earned"
+  | "approved"
+  | "paid"
+  | "reversed";
+
+/** Effective-dated commission terms. No commission fields are added to Agent. */
+export interface AgentCommissionPlan extends BaseEntity {
+  name: string;
+  level: CommissionPlanLevel;
+  ratePercent: number;
+  calculationBasis: CommissionCalculationBasis;
+  includeTax: boolean;
+  includeDeliveryCharge: boolean;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  isActive: boolean;
+  notes?: string | null;
+  createdBy?: string | null;
+}
+
+/** Effective-dated link between an existing field agent and a commission plan. */
+export interface AgentCommissionMembership extends BaseEntity {
+  agentId: string;
+  planId: string;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  assignedBy?: string | null;
+  endedBy?: string | null;
+  notes?: string | null;
+}
+
+/** Historical sales attribution; only one assignment may be active per order. */
+export interface SalesOrderAgentAssignment extends BaseEntity {
+  orderId: string;
+  agentId: string;
+  assignedAt: string;
+  unassignedAt?: string | null;
+  assignedBy?: string | null;
+  unassignedBy?: string | null;
+  reassignmentReason?: string | null;
+  previousAssignmentId?: string | null;
+  customerCitySnapshot?: string | null;
+  deliveryChargeAmount: number;
+  internalDeliveryCostAmount: number;
+  /**
+   * Optional order-only fallback for an assigned field agent without an
+   * effective commission membership. Fixed amounts retain the original input
+   * currency and a locked conversion into the order currency.
+   */
+  manualCommissionType?: ManualSalesAgentCommissionType | null;
+  manualCommissionSourceAmount?: number | null;
+  manualCommissionSourceCurrency?: CurrencyCode | null;
+  manualCommissionConvertedAmount?: number | null;
+  manualCommissionExchangeRate?: number | null;
+  manualCommissionExchangeRateSource?: string | null;
+  manualCommissionExchangeRateTimestamp?: string | null;
+  manualCommissionExchangeRates?: ExchangeRateSnapshot[] | null;
+}
+
+/** Append-only commission event. Financial events use signed `amount` values. */
+export interface AgentCommissionEntry extends BaseEntity {
+  orderId?: string | null;
+  assignmentId?: string | null;
+  agentId: string;
+  membershipId?: string | null;
+  planId?: string | null;
+  orderReturnId?: string | null;
+  relatedEntryId?: string | null;
+  kind: CommissionEntryKind;
+  status: CommissionEntryStatus;
+  currency: CurrencyCode;
+  calculationBasis: CommissionCalculationBasis;
+  includeTax: boolean;
+  includeDeliveryCharge: boolean;
+  basisAmount: number;
+  revenueAmount: number;
+  costAmount: number;
+  taxAmount: number;
+  deliveryChargeAmount: number;
+  ratePercent: number;
+  amount: number;
+  occurredAt: string;
+  payoutReference?: string | null;
+  notes?: string | null;
+  createdBy?: string | null;
+}
+
+export interface CommissionCalculation {
+  currency: CurrencyCode;
+  revenueAmount: number;
+  costAmount: number;
+  taxAmount: number;
+  deliveryChargeAmount: number;
+  basisAmount: number;
+  ratePercent: number;
+  commissionAmount: number;
+}
+
 export interface SalesOrder extends BaseEntity {
   orderNumber: string;
   businessPartnerId?: string | null;
@@ -1786,6 +1896,7 @@ export type PaymentTransactionSourceType =
   | "real_estate_payment"
   | "real_estate_installment"
   | "real_estate_commission"
+  | "agent_commission_payout"
   | "activity_transaction"
   | "activity_refund"
   | "clinical_appointment"
@@ -1882,6 +1993,11 @@ export interface SyncQueueItem {
     | "suppliers"
     | "agents"
     | "agent_excluded_categories"
+    | "agent_commission_plans"
+    | "agent_commission_memberships"
+    | "sales_order_agent_assignments"
+    | "agent_commission_entries"
+    | "sales_agent_commission_reconciliation"
     | "fleet_vehicles"
     | "fleet_vehicle_assignments"
     | "delivery_merchant_profiles"
@@ -2030,6 +2146,11 @@ export interface OfflineMutation {
     | "suppliers"
     | "agents"
     | "agent_excluded_categories"
+    | "agent_commission_plans"
+    | "agent_commission_memberships"
+    | "sales_order_agent_assignments"
+    | "agent_commission_entries"
+    | "sales_agent_commission_reconciliation"
     | "fleet_vehicles"
     | "fleet_vehicle_assignments"
     | "delivery_merchant_profiles"

@@ -34,6 +34,8 @@ interface RenderResult {
     widthMm: number
     heightMm: number
     keepTogetherBlocks: A4KeepTogetherBlock[]
+    pageCanvases?: HTMLCanvasElement[]
+    pageHeightsMm?: number[]
 }
 
 type JsPDFConstructor = typeof import('jspdf').jsPDF
@@ -73,7 +75,30 @@ interface TemplatePdfOptions {
 const A4_WIDTH_MM = 210
 const A4_HEIGHT_MM = A4_PAGE_HEIGHT_MM
 const RECEIPT_WIDTH_MM = 80
-const RENDER_SCALE = 2.5
+const RENDER_SCALE = 4
+const MAX_RENDER_SCALE = 6
+const TARGET_CANVAS_WIDTH_PX = 1600
+const MAX_CANVAS_DIMENSION_PX = 16_384
+const CSS_PX_PER_MM = 96 / 25.4
+
+function createCanvasSlice(
+    source: HTMLCanvasElement,
+    sourceHeightMm: number,
+    pageStartMm: number,
+    pageEndMm: number
+) {
+    const sourceHeightPx = source.height
+    const topPx = Math.max(0, Math.floor((pageStartMm / sourceHeightMm) * sourceHeightPx))
+    const bottomPx = Math.min(sourceHeightPx, Math.ceil((pageEndMm / sourceHeightMm) * sourceHeightPx))
+    const heightPx = Math.max(1, bottomPx - topPx)
+    const slice = document.createElement('canvas')
+    slice.width = source.width
+    slice.height = heightPx
+    const context = slice.getContext('2d', { alpha: false })
+    if (!context) return slice
+    context.drawImage(source, 0, topPx, source.width, heightPx, 0, 0, source.width, heightPx)
+    return slice
+}
 // html-to-image needs a valid data URL when an image cannot be downloaded.
 // An empty source makes its cloned <img> emit an error event, which rejects
 // the entire PDF render. This transparent GIF preserves the image's layout
@@ -212,6 +237,51 @@ async function expandContainerToRenderedBounds(container: HTMLElement) {
     }
 }
 
+function resolveRenderScale(containerPixelWidth: number) {
+    if (!Number.isFinite(containerPixelWidth) || containerPixelWidth <= 0) {
+        return RENDER_SCALE
+    }
+
+    const dynamicScale = Math.ceil(TARGET_CANVAS_WIDTH_PX / containerPixelWidth)
+    return Math.min(MAX_RENDER_SCALE, Math.max(RENDER_SCALE, dynamicScale))
+}
+
+async function renderTemplateCanvasSlice(
+    container: HTMLElement,
+    toCanvas: (node: HTMLElement, options: Record<string, unknown>) => Promise<HTMLCanvasElement>,
+    widthPx: number,
+    heightPx: number,
+    offsetPx: number,
+    renderScale: number
+) {
+    const originalTransform = container.style.transform
+    const originalWillChange = container.style.willChange
+
+    container.style.transform = `translateY(-${offsetPx}px)`
+    container.style.willChange = 'transform'
+
+    try {
+        return await toCanvas(container, {
+            width: widthPx,
+            height: heightPx,
+            pixelRatio: renderScale,
+            backgroundColor: '#ffffff',
+            // Product image providers such as Google thumbnails use a shared
+            // path and identify the actual image entirely through query
+            // parameters. html-to-image otherwise drops those parameters from
+            // its cache key, causing a previously downloaded product photo to
+            // be reused for different rows in the same PDF.
+            includeQueryParams: true,
+            imagePlaceholder: TRANSPARENT_IMAGE_PLACEHOLDER,
+            skipAutoScale: true,
+            style: { opacity: '1' }
+        })
+    } finally {
+        container.style.transform = originalTransform
+        container.style.willChange = originalWillChange
+    }
+}
+
 async function reflowTemplateTextAfterContent(container: HTMLElement, widthMm: number) {
     const anchor = container.querySelector<HTMLElement>('[data-template-text-flow-anchor]')
     if (!anchor) return
@@ -248,6 +318,13 @@ function collectA4KeepTogetherBlocks(container: HTMLElement, widthMm: number): A
     ])
 
     return Array.from(candidates).flatMap((element) => {
+        // Statement templates which deliberately chunk their ledgers into
+        // page-safe tables must be allowed to flow at their intended page
+        // positions. Treating their enclosing table (or any of its rows) as
+        // one generic keep-together block can produce an oversized canvas
+        // slice and a non-A4 PDF page.
+        if (element.closest('[data-pdf-page-chunk]')) return []
+
         const rect = element.getBoundingClientRect()
         if (rect.width <= 0 || rect.height <= 0) return []
 
@@ -257,31 +334,6 @@ function collectA4KeepTogetherBlocks(container: HTMLElement, widthMm: number): A
             ? [{ topMm, bottomMm }]
             : []
     })
-}
-
-function createCanvasSlice(
-    source: HTMLCanvasElement,
-    sourceHeightMm: number,
-    pageStartMm: number,
-    pageEndMm: number
-) {
-    const topPx = Math.max(0, Math.floor((pageStartMm / sourceHeightMm) * source.height))
-    const bottomPx = Math.min(source.height, Math.ceil((pageEndMm / sourceHeightMm) * source.height))
-    const slice = document.createElement('canvas')
-    slice.width = source.width
-    slice.height = Math.max(1, bottomPx - topPx)
-    slice.getContext('2d')?.drawImage(
-        source,
-        0,
-        topPx,
-        source.width,
-        slice.height,
-        0,
-        0,
-        source.width,
-        slice.height
-    )
-    return slice
 }
 
 /**
@@ -301,7 +353,7 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     container.style.position = 'absolute'
     container.style.left = '0'
     container.style.top = '0'
-    container.style.width = `${widthMm}mm`
+    container.style.width = `${Math.max(1, Math.round(widthMm * CSS_PX_PER_MM))}px`
     container.style.background = '#ffffff'
     container.style.zIndex = '-9999'
     container.style.pointerEvents = 'none'
@@ -353,9 +405,59 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     // The container is invisible (opacity 0) while it lives in the viewport;
     // restore the clone's opacity so the SVG foreignObject paints it.
     reportPdfProgress(0.4, 'print.progressRendering')
+
+    const containerPixelWidth = container.offsetWidth
+    const containerPixelHeight = Math.max(container.scrollHeight, container.offsetHeight, 1)
+    const renderScale = resolveRenderScale(containerPixelWidth)
     const { toCanvas } = await import('html-to-image')
+
+    if (widthMm === A4_WIDTH_MM) {
+        const pxToMm = widthMm / containerPixelWidth
+        const heightMm = containerPixelHeight * pxToMm
+        const pageStarts = getA4PageStarts(heightMm, keepTogetherBlocks, A4_HEIGHT_MM)
+        const pageCanvases: HTMLCanvasElement[] = []
+        const pageHeightsMm: number[] = []
+        const safeRenderScale = Math.min(
+            renderScale,
+            Math.max(1, Math.floor(MAX_CANVAS_DIMENSION_PX / containerPixelWidth))
+        )
+
+        for (let pageIndex = 0; pageIndex < pageStarts.length; pageIndex += 1) {
+            const pageOffset = pageStarts[pageIndex]
+            const pageEnd = pageStarts[pageIndex + 1] || heightMm
+            const pageOffsetPx = Math.floor(pageOffset / pxToMm)
+            const pageHeightPx = Math.max(1, Math.ceil((pageEnd / pxToMm)) - pageOffsetPx)
+
+            const pageSlice = await renderTemplateCanvasSlice(
+                container,
+                toCanvas,
+                containerPixelWidth,
+                pageHeightPx,
+                pageOffsetPx,
+                Math.min(safeRenderScale, Math.max(1, Math.floor(MAX_CANVAS_DIMENSION_PX / pageHeightPx)))
+            )
+
+            pageCanvases.push(pageSlice)
+            pageHeightsMm.push(pageHeightPx * pxToMm)
+        }
+
+        root.unmount()
+        container.remove()
+
+        return {
+            background: pageCanvases[0],
+            widthMm,
+            heightMm,
+            keepTogetherBlocks,
+            pageCanvases,
+            pageHeightsMm
+        }
+    }
+
     const background = await toCanvas(container, {
-        pixelRatio: RENDER_SCALE,
+        width: containerPixelWidth,
+        height: containerPixelHeight,
+        pixelRatio: renderScale,
         backgroundColor: '#ffffff',
         // Product image providers such as Google thumbnails use a shared path
         // and identify the actual image entirely through query parameters.
@@ -364,11 +466,11 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
         // different rows in the same PDF.
         includeQueryParams: true,
         imagePlaceholder: TRANSPARENT_IMAGE_PLACEHOLDER,
+        skipAutoScale: false,
         style: { opacity: '1' }
     })
     reportPdfProgress(0.6, 'print.progressRendering')
 
-    const containerPixelWidth = container.offsetWidth
     const pxToMm = widthMm / containerPixelWidth
 
     root.unmount()
@@ -377,13 +479,44 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     return {
         background,
         widthMm,
-        heightMm: (background.height * pxToMm) / RENDER_SCALE,
+        heightMm: background.width > 0
+            ? (background.height * widthMm) / background.width
+            : (background.height * pxToMm),
         keepTogetherBlocks
     }
 }
 
 function canvasToA4Pdf(renderResult: RenderResult, PdfDocument: JsPDFConstructor) {
     const pdf = new PdfDocument({ orientation: 'p', unit: 'mm', format: 'a4' })
+
+    if (renderResult.pageCanvases?.length) {
+        for (let pageIndex = 0; pageIndex < renderResult.pageCanvases.length; pageIndex += 1) {
+            reportPdfProgress(
+                0.65 + (0.3 * (pageIndex + 1)) / renderResult.pageCanvases.length,
+                'print.progressBuildingPdf',
+                { page: pageIndex + 1, total: renderResult.pageCanvases.length }
+            )
+
+            if (pageIndex > 0) {
+                pdf.addPage('a4', 'p')
+            }
+
+            const pageHeight = renderResult.pageHeightsMm?.[pageIndex] || A4_HEIGHT_MM
+            pdf.addImage(
+                renderResult.pageCanvases[pageIndex].toDataURL('image/jpeg', 0.92),
+                'JPEG',
+                0,
+                0,
+                renderResult.widthMm,
+                pageHeight,
+                undefined,
+                'FAST'
+            )
+        }
+
+        return pdf.output('blob') as Blob
+    }
+
     const pageStarts = getA4PageStarts(renderResult.heightMm, renderResult.keepTogetherBlocks, A4_HEIGHT_MM)
 
     for (let pageIndex = 0; pageIndex < pageStarts.length; pageIndex += 1) {
@@ -400,8 +533,14 @@ function canvasToA4Pdf(renderResult: RenderResult, PdfDocument: JsPDFConstructor
         const pageOffset = pageStarts[pageIndex]
         const pageEnd = pageStarts[pageIndex + 1] || renderResult.heightMm
         const pageContentHeight = pageEnd - pageOffset
+        const pageSlice = createCanvasSlice(
+            renderResult.background,
+            renderResult.heightMm,
+            pageOffset,
+            pageEnd
+        )
         pdf.addImage(
-            createCanvasSlice(renderResult.background, renderResult.heightMm, pageOffset, pageEnd),
+            pageSlice.toDataURL('image/jpeg', 0.92),
             'JPEG',
             0,
             0,
@@ -424,8 +563,17 @@ function canvasToReceiptPdf(renderResult: RenderResult, PdfDocument: JsPDFConstr
 
     reportPdfProgress(0.95, 'print.progressBuildingPdf', { page: 1, total: 1 })
 
-    // Add background JPEG
-    pdf.addImage(renderResult.background, 'JPEG', 0, 0, renderResult.widthMm, renderResult.heightMm, undefined, 'FAST')
+    // JPEG keeps very long receipt PDFs within browser memory limits while preserving readable text.
+    pdf.addImage(
+        renderResult.background.toDataURL('image/jpeg', 0.92),
+        'JPEG',
+        0,
+        0,
+        renderResult.widthMm,
+        renderResult.heightMm,
+        undefined,
+        'FAST'
+    )
 
     return pdf.output('blob') as Blob
 }

@@ -212,7 +212,13 @@ async function loadStorefrontStorageIds(
 export async function loadVisibleModeProducts(
     adminClient: ReturnType<typeof createAdminClient>,
     context: WebsiteStorefrontContext,
-    mode: WebsiteStorefrontMode
+    mode: WebsiteStorefrontMode,
+    options?: {
+        // Catalogs need the parent as a display shell when its sellable
+        // variants carry all of the inventory. Order placement deliberately
+        // leaves this disabled so a parent can never be ordered directly.
+        includeVariantParents?: boolean
+    }
 ): Promise<VisibleModeProducts> {
     const marketplaceStorageIds = await loadStorefrontStorageIds(adminClient, context)
     const marketplaceStorageId = marketplaceStorageIds[0] ?? ''
@@ -347,13 +353,43 @@ export async function loadVisibleModeProducts(
         throw productsError
     }
 
+    const visibleProducts = (products ?? []) as MarketplaceProductRow[]
+    let productRows = visibleProducts
+
+    if (options?.includeVariantParents) {
+        const visibleProductIdSet = new Set(visibleProductIds)
+        const missingParentIds = Array.from(new Set(
+            visibleProducts
+                .map((product) => product.parent_product_id)
+                .filter((productId): productId is string => Boolean(productId && !visibleProductIdSet.has(productId)))
+        ))
+
+        if (missingParentIds.length > 0) {
+            const { data: parentProducts, error: parentProductsError } = await adminClient
+                .from('products')
+                .select('id, parent_product_id, name, sku, description, price, cost_price, currency, unit, category_id, image_url, created_at')
+                .eq('workspace_id', context.workspace.id)
+                .eq('is_deleted', false)
+                .eq('is_service', false)
+                .in('id', missingParentIds)
+                .order('name', { ascending: true })
+
+            if (parentProductsError) {
+                throw parentProductsError
+            }
+
+            productRows = [...visibleProducts, ...(parentProducts ?? []) as MarketplaceProductRow[]]
+                .sort((left, right) => left.name.localeCompare(right.name))
+        }
+    }
+
     return {
         marketplaceStorageId,
         marketplaceStorageIds,
         inventoryRows: resolvedInventoryRows,
         inventoryQuantityByProductId,
         inventoryAllocationsByProductId,
-        productRows: (products ?? []) as MarketplaceProductRow[],
+        productRows,
         priceBookItemsByProductId: resolvedPriceBookItems,
         marketplaceAddedAtByProductId
     }

@@ -16,8 +16,10 @@ import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { generateId } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
+import { readWorkspaceCache } from '@/workspace/workspaceCache'
 import { supabase } from '@/auth/supabase'
 import { useViewOwnRecordScope } from '@/permissions/useViewOwnRecordScope'
+import { useOptionalWorkspacePermissions } from '@/permissions/workspacePermissionsState'
 
 import { db } from './database'
 import {
@@ -97,6 +99,34 @@ type SyncableTableName = SimpleEntityTableName
     | 'loan_payments'
     | 'order_returns'
     | 'order_return_items'
+
+async function reconcileSalesOrderCommissionBestEffort(
+    workspaceId: string,
+    orderId: string,
+    createdBy?: string | null
+) {
+    if (!hasCachedSalesAgentCommissionFeature(workspaceId)) return
+    try {
+        const { reconcileSalesOrderCommission } = await import('./agentCommissions')
+        await reconcileSalesOrderCommission(workspaceId, orderId, createdBy)
+    } catch (error) {
+        console.error('[Orders] Failed to reconcile optional sales-agent commission:', error)
+    }
+}
+
+async function reverseSalesOrderCommissionForReturnBestEffort(
+    workspaceId: string,
+    orderReturnId: string,
+    createdBy?: string | null
+) {
+    if (!hasCachedSalesAgentCommissionFeature(workspaceId)) return
+    try {
+        const { reverseCommissionForOrderReturn } = await import('./agentCommissions')
+        await reverseCommissionForOrderReturn(workspaceId, orderReturnId, createdBy)
+    } catch (error) {
+        console.error('[Orders] Failed to reconcile optional returned-order commission:', error)
+    }
+}
 
 const PURCHASE_BATCH_UUID_NAMESPACE = '82244d4d-29dd-55b5-a907-50f74e8b49bb'
 
@@ -1229,6 +1259,11 @@ export async function mirrorLinkedOrderPaymentState(loan: Loan) {
 
     if (loan.orderType === 'sales') {
         const salesOrder = updated as SalesOrder
+        await reconcileSalesOrderCommissionBestEffort(
+            order.workspaceId,
+            salesOrder.id,
+            latestLoanPayment?.createdBy ?? null
+        )
         await recalculateCustomerAndPartnerSummaries(order.workspaceId, salesOrder.customerId, salesOrder.businessPartnerId)
     } else {
         const purchaseOrder = updated as PurchaseOrder
@@ -1419,17 +1454,115 @@ async function syncPurchaseReceiptResult(workspaceId: string, result: PurchaseRe
     ])
 }
 
+async function getSalesOrderIdsAssignedToLinkedFieldAgent(
+    workspaceId: string,
+    userId: string | undefined,
+    access: 'none' | 'own' | 'assigned' | 'all'
+) {
+    if (access === 'none' || !userId) return new Set<string>()
+    if (access === 'all') {
+        const orders = await db.sales_orders
+            .where('workspaceId')
+            .equals(workspaceId)
+            .and((order) => !order.isDeleted)
+            .toArray()
+        return new Set(orders.map((order) => order.id))
+    }
+    const linkedAgentIds = access === 'own'
+        ? new Set((await db.agents
+            .where('workspaceId')
+            .equals(workspaceId)
+            .and((agent) => (
+                !agent.isDeleted
+                && agent.agentType === 'field_agent'
+                && agent.linkedUserId === userId
+            ))
+            .toArray()).map((agent) => agent.id))
+        : null
+    if (linkedAgentIds?.size === 0) return new Set<string>()
+    const assignments = await db.sales_order_agent_assignments
+        .where('workspaceId')
+        .equals(workspaceId)
+        .and((assignment) => (
+            !assignment.isDeleted
+            && (!linkedAgentIds || linkedAgentIds.has(assignment.agentId))
+        ))
+        .toArray()
+    const historicalAssignmentIds = new Set(assignments
+        .filter((assignment) => Boolean(assignment.unassignedAt))
+        .map((assignment) => assignment.id))
+    const recognizedHistoricalAssignmentIds = historicalAssignmentIds.size > 0
+        ? new Set((await db.agent_commission_entries
+            .where('workspaceId')
+            .equals(workspaceId)
+            .and((entry) => (
+                !entry.isDeleted
+                && Boolean(entry.assignmentId)
+                && historicalAssignmentIds.has(entry.assignmentId as string)
+            ))
+            .toArray()).map((entry) => entry.assignmentId as string))
+        : new Set<string>()
+    return new Set(assignments
+        .filter((assignment) => !assignment.unassignedAt || recognizedHistoricalAssignmentIds.has(assignment.id))
+        .map((assignment) => assignment.orderId))
+}
+
+function getCommissionAssignedOrderAccess(
+    workspaceId: string | undefined,
+    permissionKeys: readonly string[] | undefined
+): 'none' | 'own' | 'assigned' | 'all' {
+    if (!hasCachedSalesAgentCommissionFeature(workspaceId)) return 'none'
+    const hasAgentsAccess = permissionKeys?.includes('agents.access') ?? false
+    const hasSalesOrderAccess = permissionKeys?.includes('orders.saleOrdersAccess') ?? false
+    if (permissionKeys?.includes('salesAgentCommissions.assignOrders') && hasSalesOrderAccess) {
+        return 'all'
+    }
+    if (
+        (
+            permissionKeys?.includes('salesAgentCommissions.viewAll')
+            || permissionKeys?.includes('salesAgentCommissions.pay')
+        )
+        && hasAgentsAccess
+        && hasSalesOrderAccess
+    ) return 'assigned'
+    return permissionKeys?.includes('salesAgentCommissions.viewOwn')
+        && hasAgentsAccess
+        && hasSalesOrderAccess
+        ? 'own'
+        : 'none'
+}
+
+function hasCachedSalesAgentCommissionFeature(workspaceId: string | undefined) {
+    return Boolean(workspaceId && readWorkspaceCache<{
+        sales_agent_commissions?: boolean
+    }>(workspaceId)?.features.sales_agent_commissions)
+}
+
 export function useSalesOrders(workspaceId: string | undefined, startDate?: string, endDate?: string) {
     const online = useNetworkStatus()
     const viewOwnScope = useViewOwnRecordScope('orders.view_own')
+    const permissions = useOptionalWorkspacePermissions()
+    const assignedOrderAccess = getCommissionAssignedOrderAccess(
+        workspaceId,
+        permissions?.permissionKeys
+    )
 
     const orders = useLiveQuery(
         async () => {
             if (!workspaceId) return []
 
+            const assignedOrderIds = await getSalesOrderIdsAssignedToLinkedFieldAgent(
+                workspaceId,
+                viewOwnScope.userId,
+                viewOwnScope.isRestricted ? assignedOrderAccess : 'none'
+            )
             let query = db.sales_orders.where('workspaceId').equals(workspaceId).and((order) => (
                 !order.isDeleted
-                && (!viewOwnScope.isRestricted || order.createdBy === viewOwnScope.userId)
+                && (
+                    !viewOwnScope.isRestricted
+                    || order.createdBy === viewOwnScope.userId
+                    || assignedOrderIds.has(order.id)
+                )
             ))
 
             if (startDate && endDate) {
@@ -1443,14 +1576,17 @@ export function useSalesOrders(workspaceId: string | undefined, startDate?: stri
             const rows = await query.toArray()
             return rows.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
         },
-        [workspaceId, startDate, endDate, viewOwnScope.isRestricted, viewOwnScope.userId]
+        [workspaceId, startDate, endDate, viewOwnScope.isRestricted, viewOwnScope.userId, assignedOrderAccess]
     )
 
     useEffect(() => {
         if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
             fetchTableFromSupabase('sales_orders', db.sales_orders, workspaceId)
+            if (assignedOrderAccess !== 'none') {
+                fetchTableFromSupabase('sales_order_agent_assignments', db.sales_order_agent_assignments, workspaceId)
+            }
         }
-    }, [online, workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId])
+    }, [online, workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId, assignedOrderAccess])
 
     return orders ?? []
 }
@@ -1485,13 +1621,21 @@ export function usePurchaseOrders(workspaceId: string | undefined) {
 
 export function useSalesOrder(orderId: string | undefined) {
     const viewOwnScope = useViewOwnRecordScope('orders.view_own')
+    const permissions = useOptionalWorkspacePermissions()
+    const permissionKeys = permissions?.permissionKeys
     return useLiveQuery(async () => {
         if (!orderId) return undefined
         const order = await db.sales_orders.get(orderId)
-        return order && (!viewOwnScope.isRestricted || order.createdBy === viewOwnScope.userId)
-            ? order
-            : undefined
-    }, [orderId, viewOwnScope.isRestricted, viewOwnScope.userId])
+        if (!order || !viewOwnScope.isRestricted || order.createdBy === viewOwnScope.userId) {
+            return order
+        }
+        const assignedOrderIds = await getSalesOrderIdsAssignedToLinkedFieldAgent(
+            order.workspaceId,
+            viewOwnScope.userId,
+            getCommissionAssignedOrderAccess(order.workspaceId, permissionKeys)
+        )
+        return assignedOrderIds.has(order.id) ? order : undefined
+    }, [orderId, viewOwnScope.isRestricted, viewOwnScope.userId, permissionKeys])
 }
 
 export function useSalesOrderReturns(orderId: string | undefined, workspaceId?: string) {
@@ -1656,7 +1800,7 @@ export function useWorkspaceOrderInstallments(workspaceId: string | undefined) {
 export async function rebuildOrderPaymentState(
     orderType: OrderType,
     orderId: string,
-    options: { throwOnOrderSyncError?: boolean } = {}
+    options: { throwOnOrderSyncError?: boolean; skipCommissionReconcile?: boolean } = {}
 ) {
     const orderTable = orderType === 'sales' ? db.sales_orders : db.purchase_orders
     const sourceType = orderType === 'sales' ? 'sales_order' : 'purchase_order'
@@ -1746,6 +1890,13 @@ export async function rebuildOrderPaymentState(
 
     if (orderType === 'sales') {
         const salesOrder = updated as SalesOrder
+        if (!options.skipCommissionReconcile) {
+            await reconcileSalesOrderCommissionBestEffort(
+                order.workspaceId,
+                salesOrder.id,
+                latestPayment?.createdBy ?? null
+            )
+        }
         await recalculateCustomerAndPartnerSummaries(
             order.workspaceId,
             salesOrder.customerId,
@@ -1943,6 +2094,10 @@ export async function createSalesOrder(
         await appendInitialOrderPaymentTransaction('sales', createdOrder)
     }
 
+    if (createdOrder.status === 'completed') {
+        await reconcileSalesOrderCommissionBestEffort(workspaceId, createdOrder.id, createdBy)
+    }
+
     return createdOrder
 }
 
@@ -2051,6 +2206,11 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
                 businessPartnerId || null
             )
         })
+    )
+    await reconcileSalesOrderCommissionBestEffort(
+        existing.workspaceId,
+        updated.id,
+        updated.createdBy
     )
     return updated
 }
@@ -2292,6 +2452,9 @@ export async function updateSalesOrderStatus(id: string, status: SalesOrderStatu
             )
         })
     )
+    if (updated.status === 'completed') {
+        await reconcileSalesOrderCommissionBestEffort(existing.workspaceId, updated.id, updated.createdBy)
+    }
     return updated
 }
 
@@ -2377,6 +2540,11 @@ export async function setSalesOrderPaymentStatus(
                 businessPartnerId || null
             )
         })
+    )
+    await reconcileSalesOrderCommissionBestEffort(
+        existing.workspaceId,
+        updated.id,
+        updated.createdBy
     )
     return updated
 }
@@ -2482,6 +2650,11 @@ export async function createPostReturnSalesOrderAdjustment(input: CreatePostRetu
         'sales_orders',
         [updatedOrder] as unknown as Array<Record<string, unknown> & { id: string; version: number }>,
         order.workspaceId
+    )
+    await reconcileSalesOrderCommissionBestEffort(
+        order.workspaceId,
+        order.id,
+        input.createdBy
     )
 
     return { order: updatedOrder, adjustment }
@@ -3081,6 +3254,12 @@ async function returnUnpaidEcommerceOrder(order: SalesOrder, input: ReturnSalesO
         )
     ])
 
+    await reverseSalesOrderCommissionForReturnBestEffort(
+        order.workspaceId,
+        orderReturn.id,
+        input.returnedBy
+    )
+
     return { order: updatedOrder, return: orderReturn, items: orderReturnItems }
 }
 
@@ -3252,7 +3431,9 @@ export async function returnSalesOrder(input: ReturnSalesOrderInput) {
         if (remainingPaymentReversal > ORDER_AMOUNT_EPSILON) {
             throw new Error('The order does not have enough posted payments to reverse this return')
         }
-        finalOrder = await rebuildOrderPaymentState('sales', order.id) as SalesOrder
+        finalOrder = await rebuildOrderPaymentState('sales', order.id, {
+            skipCommissionReconcile: true
+        }) as SalesOrder
     } else {
         await recalculateCustomerAndPartnerSummaries(order.workspaceId, order.customerId, order.businessPartnerId)
     }
@@ -3274,6 +3455,12 @@ export async function returnSalesOrder(input: ReturnSalesOrderInput) {
             order.workspaceId
         )
     ])
+
+    await reverseSalesOrderCommissionForReturnBestEffort(
+        order.workspaceId,
+        orderReturn.id,
+        input.returnedBy
+    )
 
     return { order: finalOrder, return: orderReturn, items: orderReturnItems }
 }

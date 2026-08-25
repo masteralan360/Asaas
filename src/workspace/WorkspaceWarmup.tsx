@@ -81,6 +81,7 @@ export function WorkspaceWarmup() {
             tasks.push(
                 () => import('@/ui/pages/BusinessPartners'),
                 () => import('@/ui/pages/BusinessPartnerDetails'),
+                () => import('@/ui/pages/AccountStatements'),
                 () => import('@/ui/pages/Customers'),
                 () => import('@/ui/pages/CustomerDetails'),
                 () => import('@/ui/pages/Suppliers'),

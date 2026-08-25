@@ -46,6 +46,36 @@ CREATE POLICY crm_order_installments_select
       (SELECT w.plan::text FROM public.workspaces w WHERE w.id = order_installments.workspace_id),
       'orders'
     )
+    AND (
+      (
+        order_type = 'sales'
+        AND EXISTS (
+          SELECT 1 FROM crm.sales_orders AS sales_order
+          WHERE sales_order.id = order_installments.order_id
+            AND sales_order.workspace_id = order_installments.workspace_id
+            AND (
+              NOT (SELECT public.current_user_has_view_own_permission('orders.view_own'))
+              OR sales_order.created_by = (SELECT auth.uid())
+              OR private.sales_agent_commissions_can_view_assigned_order(
+                order_installments.workspace_id,
+                sales_order.id
+              )
+            )
+        )
+      )
+      OR (
+        order_type = 'purchase'
+        AND EXISTS (
+          SELECT 1 FROM crm.purchase_orders AS purchase_order
+          WHERE purchase_order.id = order_installments.order_id
+            AND purchase_order.workspace_id = order_installments.workspace_id
+            AND (
+              NOT (SELECT public.current_user_has_view_own_permission('orders.view_own'))
+              OR purchase_order.created_by = (SELECT auth.uid())
+            )
+        )
+      )
+    )
   );
 
 DROP POLICY IF EXISTS crm_order_installments_insert ON crm.order_installments;

@@ -20,6 +20,7 @@ export type PlanModuleKey =
     | 'members'
     | 'business_partners'
     | 'agents'
+    | 'sales_agent_commissions'
     | 'post_service'
     | 'customers'
     | 'suppliers'
@@ -51,6 +52,7 @@ export type WorkspaceFeatureKey =
     | 'crm'
     | 'orders'
     | 'agents'
+    | 'sales_agent_commissions'
     | 'post_service'
     | 'ecommerce'
     | 'travel_agency'
@@ -237,6 +239,7 @@ export const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModul
     sales_history: 'sales_history',
     crm: 'customers',
     agents: 'agents',
+    sales_agent_commissions: 'sales_agent_commissions',
     post_service: 'post_service',
     ecommerce: 'ecommerce',
     orders: 'orders',
@@ -396,6 +399,16 @@ export function applyWorkspaceOverrides(
                 break
             }
         }
+    }
+
+    // Sales Agent Commissions is an add-on workflow over the existing Agents
+    // and Orders modules. An orphaned or legacy override must never make the
+    // add-on appear available when either base module is unavailable.
+    if (
+        modules.includes('sales_agent_commissions')
+        && (!modules.includes('agents') || !modules.includes('orders'))
+    ) {
+        modules = modules.filter(module => module !== 'sales_agent_commissions')
     }
 
     return {

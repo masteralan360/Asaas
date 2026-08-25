@@ -1,0 +1,378 @@
+import { describe, expect, it, vi } from 'vitest'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+
+vi.mock('@/lib/utils', () => ({
+    formatCurrency: (amount: number, currency: string) => `${amount} ${currency}`,
+    formatDate: (value: string) => value,
+    formatDateTime: (value: string) => value
+}))
+
+vi.mock('@/services/platformService', () => ({
+    platformService: { convertFileSrc: (path: string) => path }
+}))
+
+vi.mock('react-i18next', () => ({
+    useTranslation: () => ({
+        i18n: {
+            getFixedT: () => (key: string, options?: { defaultValue?: string }) => options?.defaultValue || key
+        }
+    })
+}))
+
+import type { PartnerOrderItemsPrintData } from './PartnerOrderItemsPrintTemplate'
+import { buildPartnerAccountStatementLedger } from '@/lib/partnerAccountStatement'
+import {
+    getPartnerAccountStatementEntryDescription,
+    getPartnerAccountStatementEntryDetail
+} from '@/lib/partnerAccountStatementPresentation'
+import { PartnerAccountStatementPrintTemplate } from './PartnerAccountStatementPrintTemplate'
+
+function statementData(): PartnerOrderItemsPrintData {
+    return {
+        partner: { name: 'Sample Partner' },
+        period: { type: 'custom', start: '2026-01-01', end: '2026-01-31' },
+        generatedAt: '2026-02-01T10:00:00.000Z',
+        balanceSummary: { receivable: [], payable: [] },
+        salesOrders: [],
+        purchaseOrders: [],
+        statementOrders: [
+            {
+                id: 'sales-before-period',
+                orderNumber: 'SO-0001',
+                customerId: 'partner-1',
+                total: 100,
+                currency: 'usd',
+                status: 'completed',
+                createdAt: '2025-12-15T10:00:00.000Z',
+                isDeleted: false,
+                linkedLoanId: null
+            },
+            {
+                id: 'sales-in-period',
+                orderNumber: 'SO-0002',
+                customerId: 'partner-1',
+                total: 50,
+                currency: 'usd',
+                status: 'completed',
+                createdAt: '2026-01-04T10:00:00.000Z',
+                isDeleted: false,
+                linkedLoanId: null
+            },
+            {
+                id: 'purchase-in-period',
+                orderNumber: 'PO-0001',
+                supplierId: 'partner-1',
+                total: 20,
+                currency: 'usd',
+                status: 'received',
+                createdAt: '2026-01-05T10:00:00.000Z',
+                isDeleted: false,
+                linkedLoanId: null
+            }
+        ] as any,
+        settlementTransactions: [
+            {
+                id: 'opening-payment',
+                sourceType: 'sales_order',
+                sourceRecordId: 'sales-before-period',
+                direction: 'incoming',
+                amount: 30,
+                currency: 'usd',
+                paidAt: '2025-12-20T10:00:00.000Z',
+                createdAt: '2025-12-20T10:00:00.000Z',
+                isDeleted: false
+            },
+            {
+                id: 'period-payment',
+                sourceType: 'sales_order',
+                sourceRecordId: 'sales-in-period',
+                direction: 'incoming',
+                amount: 10,
+                currency: 'usd',
+                paidAt: '2026-01-06T10:00:00.000Z',
+                createdAt: '2026-01-06T10:00:00.000Z',
+                isDeleted: false
+            },
+            {
+                id: 'period-direct-payment',
+                sourceType: 'direct_transaction',
+                sourceRecordId: 'direct-1',
+                referenceLabel: 'Cash advance',
+                direction: 'outgoing',
+                amount: 5,
+                currency: 'usd',
+                paidAt: '2026-01-07T10:00:00.000Z',
+                createdAt: '2026-01-07T10:00:00.000Z',
+                isDeleted: false
+            },
+            {
+                id: 'period-reversal',
+                sourceType: 'sales_order',
+                sourceRecordId: 'sales-in-period',
+                direction: 'incoming',
+                amount: -2,
+                currency: 'usd',
+                paidAt: '2026-01-08T10:00:00.000Z',
+                createdAt: '2026-01-08T10:00:00.000Z',
+                isDeleted: false,
+                reversalOfTransactionId: 'period-payment'
+            }
+        ] as any
+    }
+}
+
+describe('buildPartnerAccountStatementLedger', () => {
+    it('keeps a single-currency running balance from opening activity through payments and reversals', () => {
+        const [ledger] = buildPartnerAccountStatementLedger(statementData())
+
+        expect(ledger).toMatchObject({
+            currency: 'usd',
+            openingBalance: 70,
+            debitTotal: 57,
+            creditTotal: 30,
+            closingBalance: 97
+        })
+        expect(ledger.entries.map((entry) => [entry.reference, entry.runningBalance])).toEqual([
+            ['SO-0002', 120],
+            ['PO-0001', 100],
+            ['sales-in-period', 90],
+            ['Cash advance', 95],
+            ['sales-in-period', 97]
+        ])
+        expect(ledger.entries.find((entry) => entry.reference === 'SO-0002')?.source).toEqual({
+            recordType: 'order',
+            recordId: 'sales-in-period'
+        })
+        expect(ledger.entries.find((entry) => entry.reference === 'Cash advance')?.source).toEqual({
+            recordType: 'payment_transaction',
+            recordId: 'period-direct-payment'
+        })
+    })
+
+    it('retains independent balances for every currency instead of converting an audit trail', () => {
+        const data = statementData()
+        data.statementOrders?.push({
+            id: 'iqd-sales-order',
+            orderNumber: 'SO-IQD',
+            customerId: 'partner-1',
+            total: 150000,
+            currency: 'iqd',
+            status: 'completed',
+            createdAt: '2026-01-09T10:00:00.000Z',
+            isDeleted: false,
+            linkedLoanId: null
+        } as any)
+
+        expect(buildPartnerAccountStatementLedger(data).map((ledger) => ({
+            currency: ledger.currency,
+            closingBalance: ledger.closingBalance
+        }))).toEqual([
+            { currency: 'iqd', closingBalance: 150000 },
+            { currency: 'usd', closingBalance: 97 }
+        ])
+    })
+
+    it('prints an order loan once and keeps its source order reference', () => {
+        const data = statementData()
+        data.statementOrders = [{
+            id: 'financed-sales-order',
+            orderNumber: 'SO-LOAN',
+            customerId: 'partner-1',
+            total: 200000,
+            currency: 'iqd',
+            status: 'completed',
+            createdAt: '2026-01-10T10:00:00.000Z',
+            isDeleted: false,
+            linkedLoanId: 'order-loan'
+        } as any]
+        data.settlementTransactions = []
+        data.loans = [{
+            id: 'order-loan',
+            loanNo: 'SL-0001',
+            source: 'order',
+            orderId: 'financed-sales-order',
+            direction: 'lent',
+            principalAmount: 200000,
+            settlementCurrency: 'iqd',
+            status: 'active',
+            createdAt: '2026-01-10T10:00:00.000Z',
+            isDeleted: false
+        } as any]
+        data.linkedOrderCodes = { 'financed-sales-order': 'SO-LOAN' }
+
+        const ledgers = buildPartnerAccountStatementLedger(data)
+        const iqdLedger = ledgers.find((ledger) => ledger.currency === 'iqd')
+
+        expect(iqdLedger?.entries).toMatchObject([{
+            reference: 'SO-LOAN · SL-0001',
+            description: 'Order loan provided',
+            delta: 200000,
+            runningBalance: 200000
+        }])
+        expect(iqdLedger?.entries).toHaveLength(1)
+    })
+
+    it('replaces generated return and reversal notes with structured statement events', () => {
+        const data = statementData()
+        data.statementOrders = []
+        data.settlementTransactions = [
+            {
+                id: 'order-return-reversal',
+                sourceType: 'sales_order',
+                sourceRecordId: 'sales-in-period',
+                referenceLabel: 'SO-RETURN',
+                direction: 'incoming',
+                amount: -20,
+                currency: 'usd',
+                paidAt: '2026-01-10T10:00:00.000Z',
+                createdAt: '2026-01-10T10:00:00.000Z',
+                isDeleted: false,
+                reversalOfTransactionId: 'original-payment',
+                note: 'Order return 67438441-6dbc-4b99-9f81-f64270a3752e: customer_returned',
+                metadata: {
+                    orderReturnId: '67438441-6dbc-4b99-9f81-f64270a3752e',
+                    returnReason: 'customer_returned'
+                }
+            },
+            {
+                id: 'manual-reversal',
+                sourceType: 'sales_order',
+                sourceRecordId: 'sales-in-period',
+                referenceLabel: 'SO-REVERSAL',
+                direction: 'incoming',
+                amount: -10,
+                currency: 'usd',
+                paidAt: '2026-01-11T10:00:00.000Z',
+                createdAt: '2026-01-11T10:00:00.000Z',
+                isDeleted: false,
+                reversalOfTransactionId: 'another-payment',
+                note: 'Reversal of SO-REVERSAL',
+                metadata: { reversal: true }
+            }
+        ] as any
+        data.loans = [{
+            id: 'return-credit-loan',
+            loanNo: 'SL-RETURN',
+            direction: 'lent',
+            principalAmount: 100,
+            settlementCurrency: 'usd',
+            status: 'active',
+            createdAt: '2026-01-01T10:00:00.000Z',
+            isDeleted: false
+        } as any]
+        data.loanPayments = [{
+            id: 'return-credit-payment',
+            loanId: 'return-credit-loan',
+            amount: 20,
+            paymentMethod: 'loan_adjustment',
+            paidAt: '2026-01-12T10:00:00.000Z',
+            createdAt: '2026-01-12T10:00:00.000Z',
+            isDeleted: false,
+            note: 'Return Credit (Reason: customer_returned)'
+        } as any]
+
+        const entries = buildPartnerAccountStatementLedger(data).flatMap((ledger) => ledger.entries)
+        expect(entries.find((entry) => entry.id === 'payment:order-return-reversal')).toMatchObject({
+            descriptionKey: 'orderReturnRefund',
+            note: null,
+            returnReason: 'customer_returned'
+        })
+        expect(entries.find((entry) => entry.id === 'payment:manual-reversal')).toMatchObject({
+            descriptionKey: 'paymentReversal',
+            note: null
+        })
+        expect(entries.find((entry) => entry.id === 'loan-payment:return-credit-payment')).toMatchObject({
+            descriptionKey: 'returnCredit',
+            note: null,
+            returnReason: 'customer_returned'
+        })
+    })
+
+    it('localizes the structured statement event and return reason at display time', () => {
+        const t = (key: string, options?: { defaultValue?: string }) => ({
+            'businessPartners.accountStatement.descriptions.orderReturnRefund': 'گەڕاندنەوەی پارەی داواکاری',
+            'businessPartners.accountStatement.reason': 'هۆکار',
+            'businessPartners.accountStatement.reasonNotProvided': 'دیاری نەکراوە'
+        }[key] || options?.defaultValue || key)
+        const i18n = {
+            getFixedT: (language: string) => (key: string) => (
+                language === 'ku' && key === 'sales.return.reasons.customerReturned'
+                    ? 'گەڕاندنەوەی کاڵا لەلایەن کڕیارەوە'
+                    : key
+            )
+        } as any
+        const entry = {
+            description: 'Order return refund',
+            descriptionKey: 'orderReturnRefund' as const,
+            returnReason: 'customer_returned'
+        }
+
+        expect(getPartnerAccountStatementEntryDescription(entry, t)).toBe('گەڕاندنەوەی پارەی داواکاری')
+        expect(getPartnerAccountStatementEntryDetail(entry, { t, i18n, language: 'ku' }))
+            .toBe('هۆکار: گەڕاندنەوەی کاڵا لەلایەن کڕیارەوە')
+    })
+
+    it('uses conservative, page-safe chunks and marks every continuation ledger table for Atlas Standard-style page centering', () => {
+        const data = statementData()
+        data.statementOrders = Array.from({ length: 26 }, (_, index) => ({
+            id: `sales-${index + 1}`,
+            orderNumber: `SO-${index + 1}`,
+            customerId: 'partner-1',
+            total: 10,
+            currency: 'usd',
+            status: 'completed',
+            createdAt: `2026-01-${String((index % 28) + 1).padStart(2, '0')}T10:00:00.000Z`,
+            isDeleted: false,
+            linkedLoanId: null
+        })) as any
+        data.settlementTransactions = []
+
+        const html = renderToStaticMarkup(createElement(PartnerAccountStatementPrintTemplate, {
+            printLang: 'en',
+            data: data as any
+        }))
+
+        expect(html).toContain('data-centered-table=""')
+        expect(html.match(/data-centered-table/g)).toHaveLength(2)
+        expect(html.match(/data-pdf-page-chunk/g)).toHaveLength(3)
+        expect(html).not.toContain('aria-hidden="true"')
+    })
+
+    it('marks a different-currency ledger as a centered continuation table', () => {
+        const data = statementData()
+        data.statementOrders = [
+            {
+                id: 'usd-order',
+                orderNumber: 'SO-USD',
+                customerId: 'partner-1',
+                total: 10,
+                currency: 'usd',
+                status: 'completed',
+                createdAt: '2026-01-03T10:00:00.000Z',
+                isDeleted: false,
+                linkedLoanId: null
+            },
+            {
+                id: 'iqd-order',
+                orderNumber: 'SO-IQD',
+                customerId: 'partner-1',
+                total: 10000,
+                currency: 'iqd',
+                status: 'completed',
+                createdAt: '2026-01-04T10:00:00.000Z',
+                isDeleted: false,
+                linkedLoanId: null
+            }
+        ] as any
+        data.settlementTransactions = []
+
+        const html = renderToStaticMarkup(createElement(PartnerAccountStatementPrintTemplate, {
+            printLang: 'en',
+            data: data as any
+        }))
+
+        expect(html.match(/data-centered-table/g)).toHaveLength(1)
+        expect(html).toContain('Account Activity · USD')
+    })
+})

@@ -230,6 +230,11 @@ const BusinessPartnerDetails = lazy(() =>
     default: m.BusinessPartnerDetails,
   })),
 );
+const AccountStatements = lazy(() =>
+  import("@/ui/pages/AccountStatements").then((m) => ({
+    default: m.AccountStatements,
+  })),
+);
 const OnlineCustomers = lazy(() =>
   import("@/ui/pages/OnlineCustomers").then((m) => ({
     default: m.OnlineCustomers,
@@ -1499,6 +1504,17 @@ function App() {
                         >
                           <Layout>
                             <BusinessPartners />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/business-partners/account-statement">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="crm"
+                          requiredPermission="businessPartners.access"
+                        >
+                          <Layout>
+                            <AccountStatements />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

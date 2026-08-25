@@ -196,6 +196,15 @@ export function buildWorkspaceNavigation({
                     },
                   ]
                   : []),
+                ...(canAccessPermission("businessPartners.access")
+                  ? [
+                    {
+                      name: t("businessPartners.accountStatement.title", { defaultValue: "Account Statement" }),
+                      href: "/business-partners/account-statement",
+                      icon: FileText,
+                    },
+                  ]
+                  : []),
                 ...(canUseEcommerce && canAccessPermission("ecommerce.access")
                   ? [
                     {

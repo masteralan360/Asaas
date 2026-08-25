@@ -47,7 +47,7 @@ import {
     type StockBatch
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
-import { useHideCosts, useWorkspacePermissions } from '@/permissions'
+import { hasEffectiveSalesAgentCommissionPermission, useHideCosts, useWorkspacePermissions } from '@/permissions'
 import { getMissingPriceBookCostMessage, getMissingProductCostMessage, hasValidProductCost } from '@/lib/productCost'
 import {
     Button,
@@ -89,6 +89,10 @@ import { OrderAdjustmentsDialog } from './OrderAdjustmentsDialog'
 import { OrderLineItemNoteDialog } from './OrderLineItemNoteDialog'
 import { FreeBonusUnitSelect } from './FreeBonusUnitSelect'
 import { useUnitRegistry } from '@/ui/components/unitRegistry'
+import {
+    SalesOrderCommissionAssignmentSection,
+    type SalesOrderCommissionAssignmentHandle
+} from '@/ui/components/commissions/SalesOrderCommissionAssignmentSection'
 
 interface SalesOrderFormPageProps {
     workspaceId: string
@@ -219,6 +223,9 @@ export function SalesOrderFormPage({
     const { isDynamicUnit, options: unitOptions } = useUnitRegistry(workspaceId)
     const customerPartners = useBusinessPartners(workspaceId, { roles: ['customer'] })
     const editingOrder = useSalesOrder(editingOrderId)
+    const salesAgentCommissionsEnabled = hasFeature('sales_agent_commissions')
+    const canAssignSalesAgents = salesAgentCommissionsEnabled
+        && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.assignOrders')
     const defaultStorageId = getPrimaryStorageFromList(storages)?.id || ''
     const storageOptionsForModal = useMemo(() => {
         if (!hasFeature('services')) return storages
@@ -250,6 +257,7 @@ export function SalesOrderFormPage({
     } = usePriceBookCatalogState(priceBooksEnabled ? workspaceId : undefined, { enabled: priceBooksEnabled })
     const { isAccessKeyHeld } = useUiAccess()
     const formOpenedAtRef = useRef(new Date().toISOString())
+    const commissionAssignmentRef = useRef<SalesOrderCommissionAssignmentHandle>(null)
     const [isOrderCreationPickerOpen, setIsOrderCreationPickerOpen] = useState(false)
     const canEditOrderCreation = user?.role === 'admin' && (isAccessKeyHeld || isOrderCreationPickerOpen)
     const [prioritizedMethod, setPrioritizedMethod] = useState<string | null>(getPrioritizedPaymentMethod)
@@ -849,7 +857,13 @@ export function SalesOrderFormPage({
             }
             const hasMultiCurrency = orderItems.some(item => item.originalCurrency !== item.settlementCurrency)
             const hasAdjustmentCurrencyConversion = orderAdjustments.some((adjustment) => adjustment.currency !== currency)
-            const snapshot = hasMultiCurrency || usesPriceBookPricing || hasAdjustmentCurrencyConversion ? adjustmentExchangeRates : []
+            const manualCommissionValidation = commissionAssignmentRef.current?.validate()
+            const hasManualCommissionCurrencyConversion = Boolean(manualCommissionValidation?.hasManualCommissionCurrencyConversion)
+            const hasOrderRateSnapshot = hasMultiCurrency
+                || usesPriceBookPricing
+                || hasAdjustmentCurrencyConversion
+                || hasManualCommissionCurrencyConversion
+            const snapshot = hasOrderRateSnapshot ? adjustmentExchangeRates : []
             const primaryRate = hasMultiCurrency ? getPrimaryExchangeDetails(currency, features.default_currency, snapshot) : null
             const commonStorageId = getCommonStorageId(orderItems)
             const subtotal = roundFormAmount(orderItems.reduce((sum, item) => sum + item.lineTotal, 0))
@@ -878,7 +892,7 @@ export function SalesOrderFormPage({
                 exchangeRate: primaryRate?.exchangeRate ?? null,
                 exchangeRateSource: primaryRate?.exchangeRateSource ?? null,
                 exchangeRateTimestamp: primaryRate?.exchangeRateTimestamp ?? null,
-                exchangeRates: hasMultiCurrency ? snapshot : null,
+                exchangeRates: hasOrderRateSnapshot ? snapshot : null,
                 status: 'draft' as SalesOrderStatus,
                 expectedDeliveryDate: expectedDeliveryDate || null,
                 createdAt: parseLocalDateTimeValue(orderCreationDate)?.toISOString() || formOpenedAtRef.current,
@@ -912,11 +926,28 @@ export function SalesOrderFormPage({
                 ? await updateSalesOrder(editingOrderId, payload)
                 : await createSalesOrder(workspaceId, payload, user?.id ?? null)
 
-            toast({
-                title: requiresApprovalRequest
-                    ? t('orders.form.requestSent', { defaultValue: 'Request sent' })
-                    : editingOrderId ? (t('common.save') || 'Saved') : (t('common.create') || 'Created')
-            })
+            let commissionAssignmentError: unknown = null
+            try {
+                await commissionAssignmentRef.current?.save(savedOrder)
+            } catch (error) {
+                commissionAssignmentError = error
+            }
+
+            if (commissionAssignmentError) {
+                toast({
+                    title: 'Order saved; sales-agent assignment needs attention',
+                    description: commissionAssignmentError instanceof Error
+                        ? commissionAssignmentError.message
+                        : 'Open the saved order and retry the assignment.',
+                    variant: 'destructive'
+                })
+            } else {
+                toast({
+                    title: requiresApprovalRequest
+                        ? t('orders.form.requestSent', { defaultValue: 'Request sent' })
+                        : editingOrderId ? (t('common.save') || 'Saved') : (t('common.create') || 'Created')
+                })
+            }
             if (!editingOrderId) {
                 demoTutorial.completeOrderCreated(savedOrder.id, 'sales')
             }
@@ -1052,6 +1083,21 @@ export function SalesOrderFormPage({
                                 </div>
                             </CardContent>
                         </Card>
+                        {canAssignSalesAgents ? (
+                            <SalesOrderCommissionAssignmentSection
+                                ref={commissionAssignmentRef}
+                                workspaceId={workspaceId}
+                                editingOrderId={editingOrderId}
+                                customerCity={selectedCustomer?.city || ''}
+                                assignedBy={user?.id}
+                                orderCurrency={currency}
+                                orderTotal={preview}
+                                exchangeRates={adjustmentExchangeRates}
+                                availableCurrencies={Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]}
+                                iqdDisplayPreference={features.iqd_display_preference}
+                                disabled={isSaving}
+                            />
+                        ) : null}
                         <LoanPartyPickerDialog
                             isOpen={isCustomerPickerOpen}
                             onOpenChange={setIsCustomerPickerOpen}

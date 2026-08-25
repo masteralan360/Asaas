@@ -23,7 +23,7 @@ const ToastViewport = React.forwardRef<
 ToastViewport.displayName = ToastPrimitives.Viewport.displayName
 
 const toastVariants = cva(
-    "group pointer-events-auto relative flex w-full max-w-[420px] items-start justify-between gap-3 overflow-hidden rounded-2xl border p-4 pr-9 shadow-[0_10px_34px_-12px_rgba(0,0,0,0.3)] ring-1 ring-inset ring-black/5 backdrop-blur-xl transition-[transform,opacity] duration-300 ease-out origin-bottom data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-toast-in data-[state=closed]:animate-toast-out",
+    "group pointer-events-auto relative flex w-full max-w-[420px] items-start justify-between gap-3 overflow-hidden rounded-2xl border p-4 pr-9 shadow-[0_10px_34px_-12px_rgba(0,0,0,0.3)] ring-1 ring-inset ring-black/5 backdrop-blur-xl transition-[transform,opacity] duration-300 ease-out data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none",
     {
         variants: {
             variant: {
@@ -43,15 +43,23 @@ const toastVariants = cva(
     }
 )
 
+type ToastMotion = 'default' | 'drop'
+
 const Toast = React.forwardRef<
     React.ElementRef<typeof ToastPrimitives.Root>,
     React.ComponentPropsWithoutRef<typeof ToastPrimitives.Root> &
-    VariantProps<typeof toastVariants>
->(({ className, variant, ...props }, ref) => {
+    VariantProps<typeof toastVariants> & { motion?: ToastMotion }
+>(({ className, variant, motion = 'default', ...props }, ref) => {
     return (
         <ToastPrimitives.Root
             ref={ref}
-            className={cn(toastVariants({ variant }), className)}
+            className={cn(
+                toastVariants({ variant }),
+                motion === 'drop'
+                    ? 'origin-top data-[state=open]:animate-toast-drop-in data-[state=closed]:animate-toast-drop-out'
+                    : 'origin-bottom data-[state=open]:animate-toast-in data-[state=closed]:animate-toast-out',
+                className
+            )}
             {...props}
         />
     )

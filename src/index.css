@@ -33,6 +33,16 @@
 @tailwind components;
 @tailwind utilities;
 
+::highlight(atlas-page-find-match) {
+  background-color: rgba(250, 204, 21, 0.48);
+  color: inherit;
+}
+
+::highlight(atlas-page-find-active-match) {
+  background-color: rgba(245, 158, 11, 0.9);
+  color: #1c1917;
+}
+
 @font-face {
   font-family: 'Noto Kufi Arabic';
   src: url('/fonts/NotoKufiArabic-Regular.ttf') format('truetype');
@@ -845,6 +855,8 @@ html[lang] pre {
 @media (prefers-reduced-motion: reduce) {
   .animate-toast-in,
   .animate-toast-out,
+  .animate-toast-drop-in,
+  .animate-toast-drop-out,
   .animate-toast-progress {
     animation: none !important;
   }

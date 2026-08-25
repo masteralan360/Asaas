@@ -52,6 +52,10 @@ import {
     type PartnerOrderItemsPrintData
 } from '@/ui/components/crm/PartnerOrderItemsPrintTemplate'
 import {
+    PartnerAccountStatementPrintTemplate,
+    type PartnerAccountStatementPrintData
+} from '@/ui/components/crm/PartnerAccountStatementPrintTemplate'
+import {
     ORDER_DETAILS_MOVABLE_COMPONENT_KEYS,
     ORDER_PRINT_COMMON_FIELD_KEYS,
     ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS,
@@ -87,6 +91,7 @@ export const SALES_HISTORY_A4_TEMPLATE_KEYS = [
 ] as const
 export const PARTNER_DETAILS_TEMPLATE_KEY = 'businessPartners.Details'
 export const PARTNER_ORDER_ITEMS_TEMPLATE_KEY = 'businessPartners.OrderItems'
+export const PARTNER_ACCOUNT_STATEMENT_TEMPLATE_KEY = 'businessPartners.AccountStatement'
 export const ORDER_ATLAS_STANDARD_TEMPLATE_KEY = 'orders.AtlasStandard'
 export const ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY = 'orders.AtlasStandardReturn'
 export const ORDER_DETAILS_TEMPLATE_KEY = 'orders.Details'
@@ -260,6 +265,17 @@ export const CUSTOM_TEMPLATE_TARGETS: CustomTemplateTarget[] = [
         typeLabel: 'Atlas Standard Return',
         description: 'Atlas Standard partial and fully returned sales-order A4 print layout.',
         nativeTemplateKey: ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
+        nativeTemplateAvailable: true,
+        printFormat: 'a4',
+        page: { widthMm: 210, heightMm: 297 }
+    },
+    {
+        moduleTypeKey: PARTNER_ACCOUNT_STATEMENT_TEMPLATE_KEY,
+        workspaceModuleKey: 'crm',
+        moduleLabel: 'Business Partners',
+        typeLabel: 'Account Statement',
+        description: 'Chronological debit, credit, and running-balance partner account statement.',
+        nativeTemplateKey: PARTNER_ACCOUNT_STATEMENT_TEMPLATE_KEY,
         nativeTemplateAvailable: true,
         printFormat: 'a4',
         page: { widthMm: 210, heightMm: 297 }
@@ -530,6 +546,7 @@ export type CustomTemplatePreviewOptions = {
     receiptData?: UniversalInvoice
     partnerDetailsData?: PartnerDetailsPrintData
     partnerOrderItemsData?: PartnerOrderItemsPrintData
+    partnerAccountStatementData?: PartnerAccountStatementPrintData
     order?: SalesOrder | PurchaseOrder
     orderKind?: 'sales' | 'purchase'
     orderReturnPrintData?: SalesOrderReturnPrintData | null
@@ -1502,6 +1519,40 @@ function createPartnerOrderItemsPreview(options: CustomTemplatePreviewOptions): 
     }
 }
 
+function createPartnerAccountStatementPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
+    const partnerAccountStatementData = options.partnerAccountStatementData || SAMPLE_PARTNER_ORDER_ITEMS_DATA
+    const configuredPrintLang = options.features?.print_lang
+    const printLang = options.printLang
+        || (configuredPrintLang && configuredPrintLang !== 'auto' ? configuredPrintLang : 'en')
+    const fixedPrintLang: TemplatePreview['fixedPrintLang'] = printLang.startsWith('ar')
+        ? 'ar'
+        : printLang.startsWith('ku')
+            ? 'ku'
+            : 'en'
+
+    return {
+        fields: [],
+        movableComponents: [],
+        page: { widthMm: 210, heightMm: 297 },
+        fixedPrintLang,
+        createElement: (_data, _effectiveId, printLangOverride) => (
+            <PartnerAccountStatementPrintTemplate
+                workspaceName={options.workspaceName}
+                workspaceDescription={options.features?.store_description}
+                printLang={printLangOverride || fixedPrintLang}
+                data={partnerAccountStatementData}
+                iqdPreference={options.features?.iqd_display_preference}
+                logoUrl={options.features?.logo_url}
+            />
+        ),
+        buildPdf: (element, printLangOverride) => generateTemplatePdf({
+            element,
+            format: 'a4',
+            printLang: printLangOverride || fixedPrintLang
+        })
+    }
+}
+
 function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
     const order = options.order || SAMPLE_ORDER_DATA
     const kind = options.orderKind || 'sales'
@@ -1731,6 +1782,10 @@ export function createCustomTemplatePreview(
 
     if (target.moduleTypeKey === PARTNER_ORDER_ITEMS_TEMPLATE_KEY) {
         return createPartnerOrderItemsPreview(options)
+    }
+
+    if (target.moduleTypeKey === PARTNER_ACCOUNT_STATEMENT_TEMPLATE_KEY) {
+        return createPartnerAccountStatementPreview(options)
     }
 
     if (target.moduleTypeKey === ORDER_ATLAS_STANDARD_TEMPLATE_KEY) {

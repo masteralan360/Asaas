@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
-import { Car, Eye, Pencil, Plus, Search, Trash2, UserRound, UsersRound, type LucideIcon } from 'lucide-react'
+import { BadgePercent, Car, Eye, Pencil, Plus, Search, Settings2, Trash2, UserRound, UsersRound, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 
@@ -37,6 +37,13 @@ import {
 import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
 import { useWorkspace } from '@/workspace'
+import { hasEffectiveSalesAgentCommissionPermission, useWorkspacePermissions } from '@/permissions'
+import { AgentCommissionAdminOverview } from '@/ui/components/commissions/AgentCommissionAdminOverview'
+import { AgentCommissionSettingsDialog } from '@/ui/components/commissions/AgentCommissionSettingsDialog'
+import {
+    CommissionFeatureBoundary,
+    useOptionalCommissionFeatureData
+} from '@/ui/components/commissions/useCommissionAgentDirectory'
 
 function statusClass(status: AgentStatus) {
     if (status === 'active') {
@@ -51,7 +58,8 @@ function statusClass(status: AgentStatus) {
 export function Agents() {
     const { t } = useTranslation()
     const { user } = useAuth()
-    const { features } = useWorkspace()
+    const { features, hasFeature } = useWorkspace()
+    const { permissionKeys } = useWorkspacePermissions()
     const { toast } = useToast()
     const [, navigate] = useLocation()
     const partners = useBusinessPartners(user?.workspaceId, {
@@ -62,12 +70,27 @@ export function Agents() {
     const workspaceUsers = useWorkspaceUsers(user?.workspaceId)
     const [search, setSearch] = useState('')
     const [dialogOpen, setDialogOpen] = useState(false)
+    const [commissionSettingsOpen, setCommissionSettingsOpen] = useState(false)
     const [editingPartner, setEditingPartner] = useState<BusinessPartner | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<BusinessPartner | null>(null)
     const [isSaving, setIsSaving] = useState(false)
 
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
+    const salesAgentCommissionsEnabled = hasFeature('sales_agent_commissions')
+    const canManageCommissionPlans = salesAgentCommissionsEnabled
+        && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.managePlans')
+    const canViewAllCommissions = salesAgentCommissionsEnabled
+        && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.viewAll')
+    const canViewOwnCommissions = salesAgentCommissionsEnabled
+        && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.viewOwn')
+    const canSettleCommissions = salesAgentCommissionsEnabled
+        && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.pay')
+    const canAssignCommissionOrders = salesAgentCommissionsEnabled
+        && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.assignOrders')
+    const canShowCommissionPlanColumn = canViewAllCommissions || canViewOwnCommissions
+    const canMountCommissionOverview = canViewAllCommissions || canSettleCommissions
+    const canReconcileCommissionLifecycle = canViewAllCommissions || canSettleCommissions || canAssignCommissionOrders
     const availableCurrencies = useMemo(
         () => Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[],
         [features.allowed_currencies, features.default_currency]
@@ -162,6 +185,7 @@ export function Agents() {
     }
 
     return (
+        <CommissionFeatureBoundary enabled={canShowCommissionPlanColumn || canReconcileCommissionLifecycle} workspaceId={user?.workspaceId}>
         <div className="space-y-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
@@ -173,18 +197,26 @@ export function Agents() {
                         {t('agents.subtitle', { defaultValue: 'Manage drivers and field agents, territories, vehicles, and linked workspace users.' })} <ModulePageFreshness className="ms-2" />
                     </p>
                 </div>
-                {canEdit ? (
-                    <Button
-                        onClick={() => {
-                            setEditingPartner(null)
-                            setDialogOpen(true)
-                        }}
-                        className="gap-2 self-start rounded-xl"
-                    >
-                        <Plus className="h-4 w-4" />
-                        {t('agents.addAgent', { defaultValue: 'Add Agent' })}
-                    </Button>
-                ) : null}
+                <div className="flex flex-wrap gap-2 self-start">
+                    {canManageCommissionPlans ? (
+                        <Button variant="outline" onClick={() => setCommissionSettingsOpen(true)} className="gap-2 rounded-xl">
+                            <Settings2 className="h-4 w-4" />
+                            Commission settings
+                        </Button>
+                    ) : null}
+                    {canEdit ? (
+                        <Button
+                            onClick={() => {
+                                setEditingPartner(null)
+                                setDialogOpen(true)
+                            }}
+                            className="gap-2 rounded-xl"
+                        >
+                            <Plus className="h-4 w-4" />
+                            {t('agents.addAgent', { defaultValue: 'Add Agent' })}
+                        </Button>
+                    ) : null}
+                </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -193,6 +225,16 @@ export function Agents() {
                 <AgentMetric title={t('agents.drivers', { defaultValue: 'Drivers' })} value={driverCount} icon={Car} />
                 <AgentMetric title={t('agents.blocked', { defaultValue: 'Blocked' })} value={blockedCount} icon={UserRound} />
             </div>
+
+            {canMountCommissionOverview && user?.workspaceId ? (
+                <AgentCommissionAdminOverview
+                    workspaceId={user.workspaceId}
+                    iqdPreference={features.iqd_display_preference}
+                    defaultCurrency={features.default_currency}
+                    canSettle={canSettleCommissions}
+                    userId={user.id}
+                />
+            ) : null}
 
             <Card>
                 <CardHeader className="gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -219,13 +261,14 @@ export function Agents() {
                                     <TableHead>{t('agents.vehicle', { defaultValue: 'Vehicle' })}</TableHead>
                                     <TableHead>{t('businessPartners.agent.linkedUser', { defaultValue: 'Workspace User' })}</TableHead>
                                     <TableHead>{t('businessPartners.agent.status', { defaultValue: 'Status' })}</TableHead>
+                                    {canShowCommissionPlanColumn ? <TableHead>Commission plan</TableHead> : null}
                                     <TableHead className="text-right">{t('common.actions', { defaultValue: 'Actions' })}</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {visibleAgents.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
+                                        <TableCell colSpan={7 + (canShowCommissionPlanColumn ? 1 : 0)} className="py-12 text-center text-muted-foreground">
                                             {t('agents.empty', { defaultValue: 'No agents found.' })}
                                         </TableCell>
                                     </TableRow>
@@ -266,6 +309,13 @@ export function Agents() {
                                                     </Badge>
                                                 ) : 'N/A'}
                                             </TableCell>
+                                            {canShowCommissionPlanColumn ? (
+                                                <AgentCommissionPlanCell
+                                                    agentId={agent?.id}
+                                                    viewerUserId={user?.id}
+                                                    canViewAll={canViewAllCommissions}
+                                                />
+                                            ) : null}
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-1">
                                                     <Button variant="ghost" size="icon" allowViewer={true} onClick={() => navigate(`/agents/${partner.id}`)}>
@@ -321,6 +371,15 @@ export function Agents() {
                 onSubmit={handleSubmit}
             />
 
+            {salesAgentCommissionsEnabled && canManageCommissionPlans && commissionSettingsOpen && user?.workspaceId ? (
+                <AgentCommissionSettingsDialog
+                    open={true}
+                    onOpenChange={setCommissionSettingsOpen}
+                    workspaceId={user.workspaceId}
+                    userId={user.id}
+                />
+            ) : null}
+
             <DeleteConfirmationModal
                 isOpen={!!deleteTarget}
                 onClose={() => setDeleteTarget(null)}
@@ -330,6 +389,34 @@ export function Agents() {
                 description={t('agents.deleteWarning', { defaultValue: 'Agents with transaction history cannot be deleted.' })}
             />
         </div>
+        </CommissionFeatureBoundary>
+    )
+}
+
+function AgentCommissionPlanCell({
+    agentId,
+    viewerUserId,
+    canViewAll
+}: {
+    agentId?: string
+    viewerUserId?: string
+    canViewAll: boolean
+}) {
+    const commissionData = useOptionalCommissionFeatureData()
+    const commissionAgent = agentId ? commissionData?.agentById.get(agentId) : undefined
+    const canView = canViewAll || commissionAgent?.agent.linkedUserId === viewerUserId
+
+    return (
+        <TableCell>
+            {!agentId ? 'N/A' : !canView ? (
+                <span className="text-sm text-muted-foreground">Restricted</span>
+            ) : commissionAgent?.plan ? (
+                <Badge variant="outline" className="gap-1.5 border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300">
+                    <BadgePercent className="h-3.5 w-3.5" />
+                    {commissionAgent.plan.name} · {commissionAgent.plan.ratePercent}%
+                </Badge>
+            ) : <span className="text-sm text-muted-foreground">Optional · none</span>}
+        </TableCell>
     )
 }
 

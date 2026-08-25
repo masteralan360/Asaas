@@ -108,6 +108,11 @@ CREATE POLICY crm_sales_orders_select
       (SELECT w.plan::text FROM public.workspaces w WHERE w.id = sales_orders.workspace_id),
       'orders'
     )
+    AND (
+      NOT (SELECT public.current_user_has_view_own_permission('orders.view_own'))
+      OR created_by = (SELECT auth.uid())
+      OR private.sales_agent_commissions_can_view_assigned_order(workspace_id, id)
+    )
   );
 
 DROP POLICY IF EXISTS crm_sales_orders_insert ON crm.sales_orders;

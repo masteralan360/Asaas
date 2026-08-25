@@ -86,7 +86,35 @@ export interface RecordDirectTransactionInput {
     note?: string
     counterpartyName?: string
     businessPartnerId?: string | null
+    /** Explicit partner-subledger treatment; cash-only is the safe default. */
+    partnerAccountEffect?: DirectTransactionPartnerAccountEffect
     createdBy?: string | null
+}
+
+export const DIRECT_TRANSACTION_PARTNER_ACCOUNT_EFFECTS = [
+    'increase_receivable',
+    'decrease_receivable',
+    'increase_payable',
+    'decrease_payable'
+] as const
+
+export type DirectTransactionPartnerAccountEffect = 'none' | typeof DIRECT_TRANSACTION_PARTNER_ACCOUNT_EFFECTS[number]
+
+export function isDirectTransactionPartnerAccountEffect(
+    value: unknown
+): value is typeof DIRECT_TRANSACTION_PARTNER_ACCOUNT_EFFECTS[number] {
+    return typeof value === 'string'
+        && (DIRECT_TRANSACTION_PARTNER_ACCOUNT_EFFECTS as readonly string[]).includes(value)
+}
+
+function isDirectTransactionEffectCompatibleWithDirection(
+    effect: DirectTransactionPartnerAccountEffect,
+    direction: PaymentTransactionDirection
+) {
+    if (effect === 'none') return true
+    return direction === 'outgoing'
+        ? effect === 'increase_receivable' || effect === 'decrease_payable'
+        : effect === 'decrease_receivable' || effect === 'increase_payable'
 }
 
 export interface PartnerSettlementBalanceGroup {
@@ -242,6 +270,10 @@ function getMetadataString(metadata: Record<string, unknown> | null | undefined,
 }
 
 function getTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceModule' | 'sourceType' | 'sourceRecordId' | 'metadata'>) {
+    if (transaction.sourceType === 'agent_commission_payout') {
+        return '/agents'
+    }
+
     if (transaction.sourceModule === 'sales') {
         return '/sales'
     }
@@ -1635,6 +1667,7 @@ export async function recordDirectTransaction(
 
     let counterpartyName = input.counterpartyName?.trim() || null
     let businessPartnerId = input.businessPartnerId || null
+    let partnerAccountEffect: DirectTransactionPartnerAccountEffect = input.partnerAccountEffect || 'none'
 
     if (businessPartnerId) {
         const partner = await db.business_partners.get(businessPartnerId)
@@ -1646,11 +1679,23 @@ export async function recordDirectTransaction(
         businessPartnerId = partner.id
     }
 
+    if (!businessPartnerId) {
+        partnerAccountEffect = 'none'
+    }
+
+    if (!isDirectTransactionPartnerAccountEffect(partnerAccountEffect) && partnerAccountEffect !== 'none') {
+        throw new Error('Invalid partner account effect')
+    }
+
+    if (!isDirectTransactionEffectCompatibleWithDirection(partnerAccountEffect, input.direction)) {
+        throw new Error('Partner account effect does not match the transaction direction')
+    }
+
     if (!counterpartyName) {
         throw new Error('Counterparty is required')
     }
 
-    return appendPaymentTransaction(workspaceId, {
+    const transaction = await appendPaymentTransaction(workspaceId, {
         sourceModule: 'payments',
         sourceType: 'direct_transaction',
         sourceRecordId: generateId(),
@@ -1666,9 +1711,17 @@ export async function recordDirectTransaction(
         createdBy: input.createdBy || null,
         metadata: {
             reason,
-            businessPartnerId
+            businessPartnerId,
+            partnerAccountEffect
         }
     })
+
+    if (businessPartnerId && partnerAccountEffect !== 'none') {
+        const { recalculateBusinessPartnerSummary } = await import('./businessPartners')
+        await recalculateBusinessPartnerSummary(workspaceId, businessPartnerId)
+    }
+
+    return transaction
 }
 
 const PARTNER_SETTLEMENT_SOURCE_TYPES = new Set<PaymentTransactionSourceType>([
@@ -2474,7 +2527,7 @@ export async function reversePaymentTransaction(
         case 'direct_transaction':
             break
     }
-    return replacePaymentTransactionForSource(workspaceId, {
+    const reversal = await replacePaymentTransactionForSource(workspaceId, {
         sourceType: transaction.sourceType,
         sourceRecordId: transaction.sourceRecordId,
         sourceSubrecordId: transaction.sourceSubrecordId ?? null,
@@ -2499,6 +2552,20 @@ export async function reversePaymentTransaction(
             reversal: true
         }
     })
+
+    const businessPartnerId = typeof transaction.metadata?.businessPartnerId === 'string'
+        ? transaction.metadata.businessPartnerId
+        : null
+    if (
+        transaction.sourceType === 'direct_transaction'
+        && businessPartnerId
+        && isDirectTransactionPartnerAccountEffect(transaction.metadata?.partnerAccountEffect)
+    ) {
+        const { recalculateBusinessPartnerSummary } = await import('./businessPartners')
+        await recalculateBusinessPartnerSummary(workspaceId, businessPartnerId)
+    }
+
+    return reversal
 }
 
 export function getPaymentTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceModule' | 'sourceType' | 'sourceRecordId' | 'metadata'>) {

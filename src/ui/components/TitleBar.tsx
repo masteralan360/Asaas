@@ -8,6 +8,7 @@ import { cn, formatDate } from '@/lib/utils'
 import { GlobalSearch } from './GlobalSearch'
 import { NotificationCenter } from './NotificationCenter'
 import { ThemeAwareTitleLogo } from './ThemeAwareTitleLogo'
+import { LanguageSwitcher } from './LanguageSwitcher'
 import { useSubscriptionExpiryWarning } from '@/hooks/useSubscriptionExpiryWarning'
 import { WorkspaceUsageButton, WorkspaceUsageCircleButton, WorkspaceUsageModal } from './WorkspaceUsageModal'
 import { useWorkspaceUsageMeter } from './workspaceUsageMeter'
@@ -230,6 +231,11 @@ export function TitleBar() {
                         <ArrowUpCircle className="w-3.5 h-3.5 group-hover:animate-bounce" />
                         <span className="text-xs font-medium">{t('updater.available')}</span>
                     </button>
+                )}
+                {import.meta.env.DEV && (
+                    <div className="mr-2">
+                        <LanguageSwitcher className="h-8 w-[118px] text-xs" />
+                    </div>
                 )}
                 <button
                     onClick={() => window.location.reload()}

@@ -406,6 +406,11 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     description: "View trading entities, balances, and relationship data.",
     badge: "Network",
   },
+  "/business-partners/account-statement": {
+    section: "partners-and-demand",
+    description: "Review and print a business partner's account activity and running balance.",
+    badge: "Statement",
+  },
   "/customers": {
     section: "partners-and-demand",
     description: "Track customer records, histories, and engagement context.",

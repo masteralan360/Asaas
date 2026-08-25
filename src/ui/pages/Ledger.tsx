@@ -102,6 +102,7 @@ type LedgerEntryType =
     | 'installment_received'
     | 'installment_paid'
     | 'real_estate_commission'
+    | 'agent_commission_payout'
     | 'activity_transaction'
     | 'activity_refund'
     | 'clinical_appointment_payment'
@@ -292,6 +293,8 @@ function ledgerTypeLabel(type: LedgerEntryType, t: any) {
             return t('ledger.type.installmentPaid', { defaultValue: 'Installment Paid' })
         case 'real_estate_commission':
             return t('ledger.type.realEstateCommission', { defaultValue: 'Real Estate Commission' })
+        case 'agent_commission_payout':
+            return t('ledger.type.agentCommissionPayout', { defaultValue: 'Agent Commission Payout' })
         case 'activity_transaction':
             return t('ledger.type.activityTransaction', { defaultValue: 'Activity Transaction' })
         case 'activity_refund':
@@ -1338,6 +1341,30 @@ function buildPaymentLedgerEntry(
                 ...relation
             }
         }
+        case 'agent_commission_payout': {
+            const metadataAgentId = typeof transaction.metadata?.agentId === 'string' ? transaction.metadata.agentId : null
+            const linkedBusinessPartnerId = metadataAgentId
+                ? context.agentBusinessPartnerIdById.get(metadataAgentId) ?? null
+                : context.businessPartnerByName.get(transaction.counterpartyName?.trim().toLowerCase() ?? '') ?? null
+            return {
+                id: `payment:${transaction.id}`,
+                transactionId: transaction.id,
+                date: transaction.paidAt,
+                type: 'agent_commission_payout',
+                direction: 'outgoing',
+                amount: transaction.amount,
+                currency: transaction.currency,
+                sourceModule: 'orders',
+                referenceId: buildTransactionReference(transaction),
+                partner: transaction.counterpartyName || null,
+                businessPartnerId: linkedBusinessPartnerId,
+                paymentMethod: transaction.paymentMethod || 'unknown',
+                notes: transaction.note?.trim() || null,
+                description: buildTransactionDescription(transaction, t),
+                routePath: getPaymentTransactionRoutePath(transaction),
+                ...relation
+            }
+        }
         default:
             return null
     }
@@ -1747,28 +1774,86 @@ export function Ledger() {
         setCurrentPage(1)
     }
 
+    const inflowEntries = useMemo(
+        () => filteredEntries.filter((entry) => entry.direction === 'incoming'),
+        [filteredEntries]
+    )
+    const outflowEntries = useMemo(
+        () => filteredEntries.filter((entry) => entry.direction === 'outgoing'),
+        [filteredEntries]
+    )
     const totalInflow = useMemo(
-        () => formatAmountSummary(
-            filteredEntries
-                .filter((entry) => entry.direction === 'incoming')
-                .map((entry) => ({ amount: entry.amount, currency: entry.currency })),
-            features.iqd_display_preference
-        ),
-        [features.iqd_display_preference, filteredEntries]
+        () => formatAmountSummary(inflowEntries, features.iqd_display_preference),
+        [features.iqd_display_preference, inflowEntries]
     )
     const totalOutflow = useMemo(
-        () => formatAmountSummary(
-            filteredEntries
-                .filter((entry) => entry.direction === 'outgoing')
-                .map((entry) => ({ amount: entry.amount, currency: entry.currency })),
-            features.iqd_display_preference
-        ),
-        [features.iqd_display_preference, filteredEntries]
+        () => formatAmountSummary(outflowEntries, features.iqd_display_preference),
+        [features.iqd_display_preference, outflowEntries]
     )
     const netFlow = useMemo(
         () => formatNetSummary(filteredEntries, features.iqd_display_preference),
         [features.iqd_display_preference, filteredEntries]
     )
+    const totalInflowInBaseCurrency = useMemo(
+        () => inflowEntries.reduce(
+            (total, entry) => total + convertToStoreBase(entry.amount, entry.currency, baseCurrency, rates),
+            0
+        ),
+        [baseCurrency, inflowEntries, rates]
+    )
+    const totalOutflowInBaseCurrency = useMemo(
+        () => outflowEntries.reduce(
+            (total, entry) => total + convertToStoreBase(entry.amount, entry.currency, baseCurrency, rates),
+            0
+        ),
+        [baseCurrency, outflowEntries, rates]
+    )
+    const netFlowInBaseCurrency = useMemo(
+        () => filteredEntries.reduce(
+            (total, entry) => total + (entry.direction === 'incoming' ? 1 : -1)
+                * convertToStoreBase(entry.amount, entry.currency, baseCurrency, rates),
+            0
+        ),
+        [baseCurrency, filteredEntries, rates]
+    )
+    const hasMultipleInflowCurrencies = new Set(inflowEntries.map((entry) => entry.currency)).size > 1
+    const hasMultipleOutflowCurrencies = new Set(outflowEntries.map((entry) => entry.currency)).size > 1
+    const hasMultipleNetFlowCurrencies = new Set(filteredEntries.map((entry) => entry.currency)).size > 1
+
+    const renderCurrencySummary = (
+        values: string[],
+        convertedTotal: number,
+        hasMultipleCurrencies: boolean,
+        valueClassName: string
+    ) => {
+        const summary = (
+            <div className={cn('space-y-1', hasMultipleCurrencies && 'cursor-help')}>
+                {values.map((value, index) => (
+                    <div key={index} className={valueClassName}>
+                        {value}
+                    </div>
+                ))}
+            </div>
+        )
+
+        if (!hasMultipleCurrencies) {
+            return summary
+        }
+
+        return (
+            <Tooltip>
+                <TooltipTrigger asChild>{summary}</TooltipTrigger>
+                <TooltipContent side="bottom" align="start" className="space-y-1 p-3">
+                    <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                        {t('common.totalIn', 'Total in')} {baseCurrency.toUpperCase()}
+                    </div>
+                    <div className="text-base font-black tabular-nums">
+                        {formatCurrency(convertedTotal, baseCurrency, features.iqd_display_preference)}
+                    </div>
+                </TooltipContent>
+            </Tooltip>
+        )
+    }
 
     const trendStats = useMemo(() => {
         const now = new Date()
@@ -2292,7 +2377,8 @@ export function Ledger() {
                 </Card>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <TooltipProvider delayDuration={300}>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <Card className="rounded-3xl border border-border/50 bg-card/60 overflow-hidden relative group dark:bg-zinc-950">
                     <div className="absolute top-0 end-0 p-4 opacity-5 pointer-events-none group-hover:scale-110 transition-transform duration-500">
                         <ArrowDownLeft className="w-24 h-24 text-emerald-500" />
@@ -2307,11 +2393,12 @@ export function Ledger() {
                     </CardHeader>
                     <CardContent className="z-10 relative space-y-4">
                         <div className="space-y-1">
-                            {totalInflow.map((value, index) => (
-                                <div key={index} className="text-2xl font-black tabular-nums tracking-tighter text-emerald-600 leading-none">
-                                    {value}
-                                </div>
-                            ))}
+                            {renderCurrencySummary(
+                                totalInflow,
+                                totalInflowInBaseCurrency,
+                                hasMultipleInflowCurrencies,
+                                'text-2xl font-black tabular-nums tracking-tighter text-emerald-600 leading-none'
+                            )}
                             <div className="flex items-center gap-2">
                                 <span className={cn(
                                     "flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-full border",
@@ -2344,11 +2431,12 @@ export function Ledger() {
                     </CardHeader>
                     <CardContent className="z-10 relative space-y-4">
                         <div className="space-y-1">
-                            {totalOutflow.map((value, index) => (
-                                <div key={index} className="text-2xl font-black tabular-nums tracking-tighter text-amber-600 leading-none">
-                                    {value}
-                                </div>
-                            ))}
+                            {renderCurrencySummary(
+                                totalOutflow,
+                                totalOutflowInBaseCurrency,
+                                hasMultipleOutflowCurrencies,
+                                'text-2xl font-black tabular-nums tracking-tighter text-amber-600 leading-none'
+                            )}
                             <div className="flex items-center gap-2">
                                 <span className={cn(
                                     "flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-full border",
@@ -2383,11 +2471,15 @@ export function Ledger() {
                     </CardHeader>
                     <CardContent className="z-10 relative space-y-4">
                         <div className="space-y-1">
-                            {netFlow.map((value, index) => (
-                                <div key={index} className={cn("text-2xl font-black tabular-nums tracking-tighter leading-none", netFlowIsNegative ? "text-rose-600" : "text-sky-600")}>
-                                    {value}
-                                </div>
-                            ))}
+                            {renderCurrencySummary(
+                                netFlow,
+                                netFlowInBaseCurrency,
+                                hasMultipleNetFlowCurrencies,
+                                cn(
+                                    'text-2xl font-black tabular-nums tracking-tighter leading-none',
+                                    netFlowIsNegative ? 'text-rose-600' : 'text-sky-600'
+                                )
+                            )}
                             <div className="flex items-center gap-2">
                                 <span className={cn(
                                     "flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-full border",
@@ -2439,7 +2531,8 @@ export function Ledger() {
                         </div>
                     </CardContent>
                 </Card>
-            </div>
+                </div>
+            </TooltipProvider>
 
             <div className="grid gap-4 lg:grid-cols-4">
                 <Card className="col-span-1 rounded-3xl border border-border/50 bg-card/60 dark:bg-zinc-950 flex flex-col relative overflow-hidden">
