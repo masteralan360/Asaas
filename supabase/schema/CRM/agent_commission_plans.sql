@@ -2,7 +2,7 @@ CREATE TABLE crm.agent_commission_plans (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
   name text NOT NULL,
-  level text NOT NULL CHECK (level IN ('level_1', 'level_2', 'level_3')),
+  level text NOT NULL CHECK (NULLIF(btrim(level), '') IS NOT NULL),
   rate_percent numeric(9, 6) NOT NULL CHECK (rate_percent >= 0 AND rate_percent <= 100),
   calculation_basis text NOT NULL DEFAULT 'net_profit' CHECK (calculation_basis IN ('net_profit', 'net_revenue')),
   include_tax boolean NOT NULL DEFAULT false,
@@ -19,6 +19,9 @@ CREATE TABLE crm.agent_commission_plans (
   is_deleted boolean NOT NULL DEFAULT false,
   CONSTRAINT agent_commission_plans_name_check CHECK (NULLIF(btrim(name), '') IS NOT NULL)
 );
+
+COMMENT ON COLUMN crm.agent_commission_plans.level IS
+  'Stable user-defined commission-level key. The matching name column is the user-visible level name.';
 
 CREATE INDEX agent_commission_plans_workspace_idx ON crm.agent_commission_plans (workspace_id);
 CREATE INDEX agent_commission_plans_workspace_level_idx

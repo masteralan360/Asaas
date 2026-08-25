@@ -496,13 +496,13 @@ describe("sales agent commission lifecycle", () => {
     const driver = fieldAgent(crypto.randomUUID(), "driver");
     await db.agents.bulkPut([agent, driver]);
     const level1 = await commissions.createAgentCommissionPlan(WORKSPACE_ID, {
-      name: "Level 1",
-      level: "level_1",
+      name: "Starter sales",
+      level: "starter-sales",
       ratePercent: 5,
     });
     const level2 = await commissions.createAgentCommissionPlan(WORKSPACE_ID, {
-      name: "Level 2",
-      level: "level_2",
+      name: "Senior sales",
+      level: "senior-sales",
       ratePercent: 7.5,
     });
 
@@ -526,15 +526,15 @@ describe("sales agent commission lifecycle", () => {
     expect(history.filter((row) => !row.effectiveTo)).toHaveLength(1);
   });
 
-  it("allows only one configured plan for each commission level", async () => {
+  it("supports a named user-defined level while keeping its active revision unique", async () => {
     await commissions.createAgentCommissionPlan(WORKSPACE_ID, {
-      name: "Level 1",
-      level: "level_1",
+      name: "Enterprise sales",
+      level: "enterprise-sales",
       ratePercent: 5,
     });
     await expect(commissions.createAgentCommissionPlan(WORKSPACE_ID, {
-      name: "Duplicate level",
-      level: "level_1",
+      name: "Another enterprise revision",
+      level: "enterprise-sales",
       ratePercent: 7,
     })).rejects.toThrow("already has a commission plan");
   });

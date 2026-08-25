@@ -6,16 +6,6 @@ import type {
     CommissionPlanLevel
 } from '@/local-db'
 
-export const COMMISSION_LEVELS: CommissionPlanLevel[] = ['level_1', 'level_2', 'level_3']
-
-export function getCommissionLevelLabel(level: CommissionPlanLevel) {
-    switch (level) {
-        case 'level_1': return 'Level 1'
-        case 'level_2': return 'Level 2'
-        case 'level_3': return 'Level 3'
-    }
-}
-
 export function getActiveAgentCommissionMembership(
     memberships: AgentCommissionMembership[],
     agentId: string,
@@ -129,13 +119,13 @@ export function summarizeCommissionEntries(entries: AgentCommissionEntry[]): Com
     return summary
 }
 
-export function commissionStatusLabel(status: CommissionEntryStatus) {
+export function commissionStatusLabel(status: CommissionEntryStatus, translate?: (key: string) => string) {
     switch (status) {
-        case 'estimated': return 'Estimated'
-        case 'earned': return 'Earned'
-        case 'approved': return 'Approved'
-        case 'paid': return 'Paid'
-        case 'reversed': return 'Reversed'
+        case 'estimated': return translate?.('salesAgentCommissions.estimated') || 'Estimated'
+        case 'earned': return translate?.('salesAgentCommissions.earned') || 'Earned'
+        case 'approved': return translate?.('salesAgentCommissions.approved') || 'Approved'
+        case 'paid': return translate?.('salesAgentCommissions.paid') || 'Paid'
+        case 'reversed': return translate?.('salesAgentCommissions.reversed') || 'Reversed'
     }
 }
 

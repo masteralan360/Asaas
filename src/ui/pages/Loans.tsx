@@ -80,6 +80,8 @@ import { LoanNoDisplay } from '@/ui/components/loans/LoanNoDisplay'
 import { useLoanPaymentModal } from '@/ui/components/loans/LoanPaymentModalProvider'
 import { SimpleLoanListView } from '@/ui/components/loans/SimpleLoanListView'
 import { LoanSourceBadge } from '@/ui/components/loans/LoanSourceBadge'
+import { LoanNoteActionButton } from '@/ui/components/loans/LoanNoteActionButton'
+import { LoanNoteDialog } from '@/ui/components/loans/LoanNoteDialog'
 import { RealEstateInstallmentsMirror } from '@/ui/components/real-estate/RealEstateInstallmentsMirror'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
@@ -157,6 +159,7 @@ function LoanListView({
     const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
     const [loanToPrint, setLoanToPrint] = useState<Loan | null>(null)
     const [showLoanPrintPreview, setShowLoanPrintPreview] = useState(false)
+    const [loanForNote, setLoanForNote] = useState<Loan | null>(null)
 
     const handleShareOnWhatsApp = (phone: string, dialogLanguage: string) => {
         if (!loanForWhatsApp) return
@@ -705,13 +708,14 @@ function LoanListView({
                                         <TableHead className="text-end">{t('loans.balance') || 'Balance'}</TableHead>
                                         <TableHead>{t('loans.nextDue') || 'Next Due'}</TableHead>
                                         <TableHead>{t('loans.status') || 'Status'}</TableHead>
+                                        <TableHead>{t('sales.notes.title') || 'Notes'}</TableHead>
                                         <TableHead className="text-end print:hidden">{t('common.actions') || 'Actions'}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {paginated.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
+                                            <TableCell colSpan={10} className="text-center text-muted-foreground py-10">
                                                 {t('common.noData') || 'No data'}
                                             </TableCell>
                                         </TableRow>
@@ -740,6 +744,13 @@ function LoanListView({
                                                 <span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize', statusClass(isLoanOverdue(loan) ? 'overdue' : loan.status))}>
                                                     {isLoanOverdue(loan) ? (t('loans.statuses.overdue') || 'Overdue') : (t(`loans.statuses.${loan.status}`) || loan.status)}
                                                 </span>
+                                            </TableCell>
+                                            <TableCell>
+                                                <LoanNoteActionButton
+                                                    loan={loan}
+                                                    isReadOnly={isReadOnly}
+                                                    onClick={() => setLoanForNote(loan)}
+                                                />
                                             </TableCell>
                                             <TableCell className="text-end print:hidden">
                                                 <div className="flex items-center justify-end gap-1">
@@ -820,6 +831,15 @@ function LoanListView({
                     onCreated={(loanId) => navigate(getLoanDetailsPath('standard', loanId))}
                 />
             )}
+
+            <LoanNoteDialog
+                open={!!loanForNote}
+                onOpenChange={(open) => {
+                    if (!open) setLoanForNote(null)
+                }}
+                loan={loanForNote}
+                isReadOnly={isReadOnly}
+            />
 
             <DeleteConfirmationModal
                 isOpen={!!loanToDelete}

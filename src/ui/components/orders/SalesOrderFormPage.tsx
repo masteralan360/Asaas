@@ -935,10 +935,10 @@ export function SalesOrderFormPage({
 
             if (commissionAssignmentError) {
                 toast({
-                    title: 'Order saved; sales-agent assignment needs attention',
+                    title: t('salesAgentCommissions.assignmentNeedsAttention'),
                     description: commissionAssignmentError instanceof Error
                         ? commissionAssignmentError.message
-                        : 'Open the saved order and retry the assignment.',
+                        : t('salesAgentCommissions.assignmentNeedsAttentionDescription'),
                     variant: 'destructive'
                 })
             } else {

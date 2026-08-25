@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { UserRoundCheck } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import {
     assignSalesOrderAgent,
@@ -61,6 +62,7 @@ export function OrderAgentAssignmentDialog({
     defaultCustomerCity = '',
     assignedBy
 }: OrderAgentAssignmentDialogProps) {
+    const { t } = useTranslation()
     const { toast } = useToast()
     const { features } = useWorkspace()
     const order = useSalesOrder(orderId)
@@ -105,12 +107,12 @@ export function OrderAgentAssignmentDialog({
                     }
                     : null
             })
-            toast({ title: value.agentId ? 'Sales agent assignment saved' : 'Sales agent assignment cleared' })
+            toast({ title: value.agentId ? t('salesAgentCommissions.assignmentSaved') : t('salesAgentCommissions.assignmentCleared') })
             onOpenChange(false)
         } catch (error: any) {
             toast({
-                title: 'Could not save assignment',
-                description: error?.message || 'Try again.',
+                title: t('salesAgentCommissions.couldNotSaveAssignment'),
+                description: error?.message || t('salesAgentCommissions.tryAgain'),
                 variant: 'destructive'
             })
         } finally {
@@ -130,9 +132,9 @@ export function OrderAgentAssignmentDialog({
                             <UserRoundCheck className="h-5 w-5" />
                         </div>
                         <div className="space-y-1">
-                            <AppDialogTitle>Assign sales agent</AppDialogTitle>
+                            <AppDialogTitle>{t('salesAgentCommissions.assignSalesAgent')}</AppDialogTitle>
                             <AppDialogDescription>
-                                The selling agent is separate from the order creator and from any Post Service courier.
+                                {t('salesAgentCommissions.assignSalesAgentDescription')}
                             </AppDialogDescription>
                         </div>
                     </div>
@@ -152,15 +154,15 @@ export function OrderAgentAssignmentDialog({
                         disabled={isSaving}
                     />
                     <div className="rounded-2xl border border-sky-500/20 bg-sky-500/[0.06] p-4 text-sm text-sky-800 dark:text-sky-200">
-                        Post Service is optional. Delivery tracking and courier assignment remain a separate workflow.
+                        {t('salesAgentCommissions.postServiceOptionalDescription')}
                     </div>
                 </AppDialogBody>
                 <AppDialogFooter>
                     <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
-                        Cancel
+                        {t('salesAgentCommissions.cancel')}
                     </Button>
                     <Button type="button" onClick={() => void handleSave()} disabled={isSaving}>
-                        {isSaving ? 'Saving…' : 'Save assignment'}
+                        {isSaving ? t('salesAgentCommissions.saving') : t('salesAgentCommissions.saveAssignment')}
                     </Button>
                 </AppDialogFooter>
             </AppDialogContent>

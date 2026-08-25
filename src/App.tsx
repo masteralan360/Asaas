@@ -248,6 +248,11 @@ const OnlineCustomerDetails = lazy(() =>
 const Agents = lazy(() =>
   import("@/ui/pages/Agents").then((m) => ({ default: m.Agents })),
 );
+const AgentCommissionSettings = lazy(() =>
+  import("@/ui/pages/AgentCommissionSettings").then((m) => ({
+    default: m.AgentCommissionSettings,
+  })),
+);
 const PostService = lazy(() =>
   import("@/ui/pages/PostService").then((m) => ({ default: m.PostService })),
 );
@@ -1559,6 +1564,17 @@ function App() {
                         >
                           <Layout>
                             <Agents />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/agents/commission-settings">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="agents"
+                          requiredPermission="agents.access"
+                        >
+                          <Layout>
+                            <AgentCommissionSettings />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

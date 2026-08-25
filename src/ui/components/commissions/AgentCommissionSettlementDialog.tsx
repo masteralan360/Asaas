@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BadgeCheck, Banknote, SlidersHorizontal } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { formatCurrency, formatDateTime, formatNumericInput, sanitizeNumericInput } from '@/lib/utils'
 import {
@@ -67,6 +68,7 @@ export function AgentCommissionSettlementDialog({
     userId?: string | null
     defaultCurrency: CurrencyCode
 }) {
+    const { t } = useTranslation()
     const { toast } = useToast()
     const salesOrders = useSalesOrders(workspaceId)
     const assignments = useSalesOrderAgentAssignments(workspaceId)
@@ -149,19 +151,19 @@ export function AgentCommissionSettlementDialog({
         setIsSaving(true)
         try {
             if (tab === 'approve') {
-                if (selectedEntryIds.size === 0) throw new Error('Select at least one earned entry to approve.')
+                if (selectedEntryIds.size === 0) throw new Error(t('salesAgentCommissions.errors.selectEarnedEntry'))
                 await Promise.all(Array.from(selectedEntryIds, (entryId) => recordCommissionApproval(workspaceId, {
                     entryId,
                     approvedBy: userId || null,
                     notes: notes.trim() || null
                 })))
-                toast({ title: `${selectedEntryIds.size} commission ${selectedEntryIds.size === 1 ? 'entry' : 'entries'} approved` })
+                toast({ title: t('salesAgentCommissions.entriesApproved', { count: selectedEntryIds.size }) })
             } else if (tab === 'payout') {
                 const payoutAmount = Number(amount)
-                if (!(payoutAmount > 0)) throw new Error('Enter a positive payout amount.')
-                if (!selectedPayoutOrder) throw new Error('Select a sales order with commission due.')
+                if (!(payoutAmount > 0)) throw new Error(t('salesAgentCommissions.errors.positivePayout'))
+                if (!selectedPayoutOrder) throw new Error(t('salesAgentCommissions.errors.selectPayableOrder'))
                 if (payoutAmount - selectedPayoutOrder.due > 0.000001) {
-                    throw new Error('Payout amount exceeds the selected order\'s outstanding commission.')
+                    throw new Error(t('salesAgentCommissions.errors.payoutExceedsDue'))
                 }
                 await recordCommissionPayout(workspaceId, {
                     agentId,
@@ -172,11 +174,11 @@ export function AgentCommissionSettlementDialog({
                     notes: notes.trim() || null,
                     createdBy: userId || null
                 })
-                toast({ title: 'Commission payout recorded' })
+                toast({ title: t('salesAgentCommissions.payoutRecorded') })
             } else {
                 const adjustmentAmount = Number(amount)
-                if (!Number.isFinite(adjustmentAmount) || adjustmentAmount === 0) throw new Error('Enter a non-zero signed adjustment amount.')
-                if (!notes.trim()) throw new Error('Enter the adjustment reason.')
+                if (!Number.isFinite(adjustmentAmount) || adjustmentAmount === 0) throw new Error(t('salesAgentCommissions.errors.nonZeroAdjustment'))
+                if (!notes.trim()) throw new Error(t('salesAgentCommissions.errors.adjustmentReason'))
                 await recordCommissionAdjustment(workspaceId, {
                     agentId,
                     amount: adjustmentAmount,
@@ -185,13 +187,13 @@ export function AgentCommissionSettlementDialog({
                     notes: notes.trim(),
                     createdBy: userId || null
                 })
-                toast({ title: 'Commission adjustment recorded' })
+                toast({ title: t('salesAgentCommissions.adjustmentRecorded') })
             }
             onOpenChange(false)
         } catch (error: any) {
             toast({
-                title: 'Could not update commission',
-                description: error?.message || 'Try again.',
+                title: t('salesAgentCommissions.couldNotUpdate'),
+                description: error?.message || t('salesAgentCommissions.tryAgain'),
                 variant: 'destructive'
             })
         } finally {
@@ -200,10 +202,10 @@ export function AgentCommissionSettlementDialog({
     }
 
     const actionLabel = tab === 'approve'
-        ? `Approve ${selectedEntryIds.size || ''}`.trim()
+        ? t('salesAgentCommissions.approveCount', { count: selectedEntryIds.size })
         : tab === 'payout'
-            ? 'Record payout'
-            : 'Record adjustment'
+            ? t('salesAgentCommissions.recordPayout')
+            : t('salesAgentCommissions.recordAdjustment')
 
     return (
         <AppDialog open={open} onOpenChange={(nextOpen) => {
@@ -212,29 +214,29 @@ export function AgentCommissionSettlementDialog({
         }}>
             <AppDialogContent className="max-w-3xl">
                 <AppDialogHeader>
-                    <AppDialogTitle>Manage {agentName}'s commission</AppDialogTitle>
+                    <AppDialogTitle>{t('salesAgentCommissions.manageAgentCommission', { name: agentName })}</AppDialogTitle>
                     <AppDialogDescription>
-                        Approvals, payouts and corrections create auditable ledger entries; existing records are not overwritten.
+                        {t('salesAgentCommissions.settlementDescription')}
                     </AppDialogDescription>
                 </AppDialogHeader>
                 <AppDialogBody className="space-y-5">
                     <div className="grid gap-3 sm:grid-cols-3">
-                        <SummaryTile label="Recognized" totals={summary.earned} iqdPreference={iqdPreference} />
-                        <SummaryTile label="Paid" totals={summary.paid} iqdPreference={iqdPreference} />
-                        <SummaryTile label="Due" totals={summary.due} iqdPreference={iqdPreference} />
+                        <SummaryTile label={t('salesAgentCommissions.recognized')} totals={summary.earned} iqdPreference={iqdPreference} />
+                        <SummaryTile label={t('salesAgentCommissions.paid')} totals={summary.paid} iqdPreference={iqdPreference} />
+                        <SummaryTile label={t('salesAgentCommissions.due')} totals={summary.due} iqdPreference={iqdPreference} />
                     </div>
 
                     <Tabs value={tab} onValueChange={(value) => setTab(value as SettlementTab)}>
                         <TabsList className="grid h-auto w-full grid-cols-3">
-                            <TabsTrigger value="approve" className="gap-1.5"><BadgeCheck className="h-4 w-4" /> Approve</TabsTrigger>
-                            <TabsTrigger value="payout" className="gap-1.5"><Banknote className="h-4 w-4" /> Payout</TabsTrigger>
-                            <TabsTrigger value="adjustment" className="gap-1.5"><SlidersHorizontal className="h-4 w-4" /> Adjustment</TabsTrigger>
+                            <TabsTrigger value="approve" className="gap-1.5"><BadgeCheck className="h-4 w-4" /> {t('salesAgentCommissions.approve')}</TabsTrigger>
+                            <TabsTrigger value="payout" className="gap-1.5"><Banknote className="h-4 w-4" /> {t('salesAgentCommissions.payout')}</TabsTrigger>
+                            <TabsTrigger value="adjustment" className="gap-1.5"><SlidersHorizontal className="h-4 w-4" /> {t('salesAgentCommissions.adjustment')}</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="approve" className="mt-4 space-y-4">
                             {approvalCandidates.length === 0 ? (
                                 <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-                                    No earned accruals or adjustments are waiting for approval.
+                                    {t('salesAgentCommissions.noApprovalCandidates')}
                                 </div>
                             ) : (
                                 <div className="divide-y overflow-hidden rounded-2xl border">
@@ -247,7 +249,7 @@ export function AgentCommissionSettlementDialog({
                                             />
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                                    <span className="font-semibold">{entry.orderId ? orderNumberById.get(entry.orderId) || entry.orderId.slice(0, 8).toUpperCase() : 'Manual adjustment'}</span>
+                                                    <span className="font-semibold">{entry.orderId ? orderNumberById.get(entry.orderId) || entry.orderId.slice(0, 8).toUpperCase() : t('salesAgentCommissions.manualAdjustment')}</span>
                                                     <span className="font-black">{formatCurrency(entry.amount, entry.currency as CurrencyCode, iqdPreference)}</span>
                                                 </div>
                                                 <div className="mt-1 text-xs text-muted-foreground">
@@ -259,7 +261,7 @@ export function AgentCommissionSettlementDialog({
                                 </div>
                             )}
                             <div className="space-y-2">
-                                <Label htmlFor="commission-approval-notes">Approval note</Label>
+                                <Label htmlFor="commission-approval-notes">{t('salesAgentCommissions.approvalNote')}</Label>
                                 <Textarea id="commission-approval-notes" value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} disabled={isSaving} />
                             </div>
                         </TabsContent>
@@ -267,7 +269,7 @@ export function AgentCommissionSettlementDialog({
                         <TabsContent value="payout" className="mt-4 space-y-4">
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <div className="space-y-2">
-                                    <Label htmlFor="commission-payout-order">Sales order</Label>
+                                    <Label htmlFor="commission-payout-order">{t('salesAgentCommissions.salesOrder')}</Label>
                                     <Select
                                         value={payoutOrderId || '__none__'}
                                         onValueChange={(value) => {
@@ -279,24 +281,24 @@ export function AgentCommissionSettlementDialog({
                                         }}
                                         disabled={isSaving || payoutOrders.length === 0}
                                     >
-                                        <SelectTrigger id="commission-payout-order"><SelectValue placeholder="Select a payable sales order" /></SelectTrigger>
+                                        <SelectTrigger id="commission-payout-order"><SelectValue placeholder={t('salesAgentCommissions.selectPayableOrder')} /></SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="__none__" disabled>Select a payable sales order</SelectItem>
+                                            <SelectItem value="__none__" disabled>{t('salesAgentCommissions.selectPayableOrder')}</SelectItem>
                                             {payoutOrders.map((order) => (
                                                 <SelectItem key={order.orderId} value={order.orderId}>
-                                                    {order.orderNumber} · {order.customerName} · Due {formatCurrency(order.due, order.currency, iqdPreference)}
+                                                    {t('salesAgentCommissions.payableOrderOption', { order: order.orderNumber, customer: order.customerName, due: formatCurrency(order.due, order.currency, iqdPreference) })}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
                                     {selectedPayoutOrder ? (
                                         <p className="text-xs text-muted-foreground">
-                                            Reference: <span className="font-semibold text-foreground">{selectedPayoutOrder.orderNumber}</span> · set automatically from the sales order.
+                                            {t('salesAgentCommissions.payoutReferenceHint', { reference: selectedPayoutOrder.orderNumber })}
                                         </p>
-                                    ) : <p className="text-xs text-muted-foreground">No order-specific commission is currently due.</p>}
+                                    ) : <p className="text-xs text-muted-foreground">{t('salesAgentCommissions.noOrderDue')}</p>}
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="commission-payout-amount">Payout amount</Label>
+                                    <Label htmlFor="commission-payout-amount">{t('salesAgentCommissions.payoutAmount')}</Label>
                                     <Input
                                         id="commission-payout-amount"
                                         type="text"
@@ -309,17 +311,17 @@ export function AgentCommissionSettlementDialog({
                                         placeholder="0"
                                         disabled={isSaving || !selectedPayoutOrder}
                                     />
-                                    {selectedPayoutOrder ? <p className="text-xs text-muted-foreground">Due: {formatCurrency(selectedPayoutOrder.due, selectedPayoutOrder.currency, iqdPreference)}</p> : null}
+                                    {selectedPayoutOrder ? <p className="text-xs text-muted-foreground">{t('salesAgentCommissions.dueAmount', { amount: formatCurrency(selectedPayoutOrder.due, selectedPayoutOrder.currency, iqdPreference) })}</p> : null}
                                 </div>
                             </div>
                             <div className="space-y-2">
-                                <Label>Payment method</Label>
+                                <Label>{t('salesAgentCommissions.paymentMethod')}</Label>
                                 <Select value={paymentMethod} onValueChange={setPaymentMethod} disabled={isSaving}>
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         {[
-                                            ['cash', 'Cash'],
-                                            ['bank_transfer', 'Bank transfer'],
+                                            ['cash', t('salesAgentCommissions.paymentMethods.cash')],
+                                            ['bank_transfer', t('salesAgentCommissions.paymentMethods.bankTransfer')],
                                             ['fib', 'FIB'],
                                             ['qicard', 'QiCard'],
                                             ['zaincash', 'ZainCash'],
@@ -331,7 +333,7 @@ export function AgentCommissionSettlementDialog({
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="commission-payout-notes">Notes</Label>
+                                <Label htmlFor="commission-payout-notes">{t('salesAgentCommissions.notes')}</Label>
                                 <Textarea id="commission-payout-notes" value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} disabled={isSaving} />
                             </div>
                         </TabsContent>
@@ -339,7 +341,7 @@ export function AgentCommissionSettlementDialog({
                         <TabsContent value="adjustment" className="mt-4 space-y-4">
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <div className="space-y-2">
-                                    <Label>Currency</Label>
+                                <Label>{t('salesAgentCommissions.currency')}</Label>
                                     <Select value={currency} onValueChange={(value) => setCurrency(value as CurrencyCode)} disabled={isSaving}>
                                         <SelectTrigger><SelectValue /></SelectTrigger>
                                         <SelectContent>
@@ -353,31 +355,31 @@ export function AgentCommissionSettlementDialog({
                                     </Select>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="commission-adjustment-amount">Signed amount</Label>
-                                    <Input id="commission-adjustment-amount" type="number" step="any" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="Use a negative number to reduce commission" disabled={isSaving} />
+                                    <Label htmlFor="commission-adjustment-amount">{t('salesAgentCommissions.signedAmount')}</Label>
+                                    <Input id="commission-adjustment-amount" type="number" step="any" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={t('salesAgentCommissions.signedAmountPlaceholder')} disabled={isSaving} />
                                 </div>
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="commission-adjustment-order">Related order (optional)</Label>
+                                <Label htmlFor="commission-adjustment-order">{t('salesAgentCommissions.relatedOrderOptional')}</Label>
                                 <Select value={adjustmentOrderId || '__none__'} onValueChange={(value) => setAdjustmentOrderId(value === '__none__' ? '' : value)} disabled={isSaving}>
-                                    <SelectTrigger id="commission-adjustment-order"><SelectValue placeholder="No related order" /></SelectTrigger>
+                                    <SelectTrigger id="commission-adjustment-order"><SelectValue placeholder={t('salesAgentCommissions.noRelatedOrder')} /></SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="__none__">No related order</SelectItem>
+                                        <SelectItem value="__none__">{t('salesAgentCommissions.noRelatedOrder')}</SelectItem>
                                         {assignedSalesOrders.map((order) => <SelectItem key={order.id} value={order.id}>{order.orderNumber} · {order.customerName}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="commission-adjustment-notes">Reason</Label>
+                                <Label htmlFor="commission-adjustment-notes">{t('salesAgentCommissions.reason')}</Label>
                                 <Textarea id="commission-adjustment-notes" value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} required disabled={isSaving} />
                             </div>
                         </TabsContent>
                     </Tabs>
                 </AppDialogBody>
                 <AppDialogFooter>
-                    <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>Cancel</Button>
+                    <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>{t('salesAgentCommissions.cancel')}</Button>
                     <Button type="button" onClick={() => void handleSubmit()} disabled={isSaving || (tab === 'approve' && approvalCandidates.length === 0) || (tab === 'payout' && !selectedPayoutOrder)}>
-                        {isSaving ? 'Saving…' : actionLabel}
+                        {isSaving ? t('salesAgentCommissions.saving') : actionLabel}
                     </Button>
                 </AppDialogFooter>
             </AppDialogContent>

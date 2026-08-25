@@ -1,4 +1,5 @@
 import { BadgePercent, MapPin, Truck, UserRound } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { getAppliedCurrencyConversion } from '@/lib/orderCurrency'
 import { formatCurrency, formatNumericInput, sanitizeNumericInput } from '@/lib/utils'
@@ -57,6 +58,7 @@ export function SalesAgentAssignmentFields({
     showReason = false,
     disabled = false
 }: SalesAgentAssignmentFieldsProps) {
+    const { t } = useTranslation()
     const selectedAgent = agents.find((entry) => entry.agent.id === value.agentId)
         || (currentAgent?.agent.id === value.agentId ? currentAgent : undefined)
     const selectableAgents = currentAgent && !agents.some((entry) => entry.agent.id === currentAgent.agent.id)
@@ -91,30 +93,30 @@ export function SalesAgentAssignmentFields({
     return (
         <div className="space-y-4">
             <div className="space-y-2">
-                <Label htmlFor="sales-agent-assignment">Assigned sales agent</Label>
+                <Label htmlFor="sales-agent-assignment">{t('salesAgentCommissions.assignedSalesAgent')}</Label>
                 <Select
                     value={value.agentId || UNASSIGNED_VALUE}
                     onValueChange={selectAgent}
                     disabled={disabled}
                 >
                     <SelectTrigger id="sales-agent-assignment" className="min-h-11">
-                        <SelectValue placeholder="No sales agent assigned" />
+                        <SelectValue placeholder={t('salesAgentCommissions.noSalesAgentAssigned')} />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value={UNASSIGNED_VALUE}>No sales agent assigned</SelectItem>
+                        <SelectItem value={UNASSIGNED_VALUE}>{t('salesAgentCommissions.noSalesAgentAssigned')}</SelectItem>
                         {selectableAgents.map((entry) => (
                             <SelectItem
                                 key={entry.agent.id}
                                 value={entry.agent.id}
                                 disabled={!entry.isEligible && entry.agent.id !== currentAgent?.agent.id}
                             >
-                                {entry.name}{entry.plan ? ` · ${entry.plan.name} (${entry.plan.ratePercent}%)` : ' · No commission plan'}
+                                {entry.name}{entry.plan ? ` · ${entry.plan.name} (${entry.plan.ratePercent}%)` : ` · ${t('salesAgentCommissions.noCommissionPlan')}`}
                             </SelectItem>
                         ))}
                     </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                    This credits the sale independently from the workspace user who created the order.
+                    {t('salesAgentCommissions.assignmentHelp')}
                 </p>
             </div>
 
@@ -131,7 +133,7 @@ export function SalesAgentAssignmentFields({
                         </Badge>
                     ) : (
                         <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                            Assignment only · no commission plan
+                            {t('salesAgentCommissions.assignmentOnlyNoPlan')}
                         </Badge>
                     )}
                 </div>
@@ -140,14 +142,14 @@ export function SalesAgentAssignmentFields({
             {usesManualCommission ? (
                 <div className="space-y-4 rounded-2xl border border-amber-500/30 bg-amber-500/[0.06] p-4">
                     <div>
-                        <h3 className="font-semibold text-amber-950 dark:text-amber-100">Manual order commission</h3>
+                        <h3 className="font-semibold text-amber-950 dark:text-amber-100">{t('salesAgentCommissions.manualOrderCommission')}</h3>
                         <p className="mt-1 text-sm text-amber-900/80 dark:text-amber-100/80">
-                            This agent has no commission plan. Set an optional commission for this order only.
+                            {t('salesAgentCommissions.manualOrderCommissionDescription')}
                         </p>
                     </div>
                     <div className="space-y-4">
                         <div className="space-y-2">
-                            <Label htmlFor="sales-agent-manual-commission-type">Commission Type</Label>
+                            <Label htmlFor="sales-agent-manual-commission-type">{t('salesAgentCommissions.commissionType')}</Label>
                             <Select
                                 value={value.manualCommissionType}
                                 onValueChange={(type) => onChange({
@@ -162,15 +164,15 @@ export function SalesAgentAssignmentFields({
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="fixed_amount">Fixed Amount</SelectItem>
-                                    <SelectItem value="percentage">Percentage</SelectItem>
+                                    <SelectItem value="fixed_amount">{t('salesAgentCommissions.fixedAmount')}</SelectItem>
+                                    <SelectItem value="percentage">{t('salesAgentCommissions.percentage')}</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
                         {value.manualCommissionType === 'fixed_amount' ? (
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <div className="space-y-2">
-                                    <Label htmlFor="sales-agent-manual-commission-amount">Commission amount</Label>
+                                    <Label htmlFor="sales-agent-manual-commission-amount">{t('salesAgentCommissions.commissionAmount')}</Label>
                                     <Input
                                         id="sales-agent-manual-commission-amount"
                                         inputMode="decimal"
@@ -186,7 +188,7 @@ export function SalesAgentAssignmentFields({
                                 <CurrencySelector
                                     value={value.manualCommissionCurrency}
                                     onChange={(currency) => update('manualCommissionCurrency', currency)}
-                                    label="Commission currency"
+                                    label={t('salesAgentCommissions.commissionCurrency')}
                                     iqdDisplayPreference={iqdDisplayPreference}
                                     allowedCurrencies={availableCurrencies}
                                     disabled={disabled}
@@ -194,7 +196,7 @@ export function SalesAgentAssignmentFields({
                             </div>
                         ) : (
                             <div className="space-y-2">
-                                <Label htmlFor="sales-agent-manual-commission-amount">Commission percentage</Label>
+                                <Label htmlFor="sales-agent-manual-commission-amount">{t('salesAgentCommissions.commissionPercentage')}</Label>
                                 <Input
                                     id="sales-agent-manual-commission-amount"
                                     inputMode="decimal"
@@ -210,14 +212,14 @@ export function SalesAgentAssignmentFields({
                         )}
                         <div className="space-y-2 rounded-xl border bg-background/70 p-3">
                             <div className="text-xs font-medium text-muted-foreground">
-                                {value.manualCommissionType === 'fixed_amount' ? 'Applied commission' : 'Commission on order total'}
+                                {value.manualCommissionType === 'fixed_amount' ? t('salesAgentCommissions.appliedCommission') : t('salesAgentCommissions.commissionOnOrderTotal')}
                             </div>
                             <div className="text-base font-bold">
                                 {value.manualCommissionType === 'fixed_amount'
                                     ? manualConversion
                                         ? formatCurrency(manualConversion.convertedAmount, orderCurrency, iqdDisplayPreference)
                                         : manualAmount > 0
-                                            ? 'Exchange rate unavailable'
+                                            ? t('salesAgentCommissions.exchangeRateUnavailable')
                                             : formatCurrency(0, orderCurrency, iqdDisplayPreference)
                                     : percentageCommission !== null
                                         ? formatCurrency(percentageCommission, orderCurrency, iqdDisplayPreference)
@@ -225,8 +227,8 @@ export function SalesAgentAssignmentFields({
                             </div>
                             <p className="mt-1 text-xs text-muted-foreground">
                                 {value.manualCommissionType === 'fixed_amount'
-                                    ? `Converted and stored in ${orderCurrency.toUpperCase()} using the order rate snapshot.`
-                                    : `Calculated from the current order total: ${formatCurrency(orderTotal, orderCurrency, iqdDisplayPreference)}.`}
+                                    ? t('salesAgentCommissions.convertedCommissionHint', { currency: orderCurrency.toUpperCase() })
+                                    : t('salesAgentCommissions.percentageCommissionHint', { total: formatCurrency(orderTotal, orderCurrency, iqdDisplayPreference) })}
                             </p>
                         </div>
                     </div>
@@ -237,20 +239,20 @@ export function SalesAgentAssignmentFields({
                 <div className="space-y-2 sm:col-span-2">
                     <Label htmlFor="sales-agent-customer-city" className="flex items-center gap-2">
                         <MapPin className="h-4 w-4 text-muted-foreground" />
-                        Customer city snapshot
+                        {t('salesAgentCommissions.customerCitySnapshot')}
                     </Label>
                     <Input
                         id="sales-agent-customer-city"
                         value={value.customerCity}
                         onChange={(event) => update('customerCity', event.target.value)}
                         disabled={disabled || !value.agentId}
-                        placeholder="City credited with this order"
+                        placeholder={t('salesAgentCommissions.customerCityPlaceholder')}
                     />
                 </div>
                 <div className="space-y-2">
                     <Label htmlFor="sales-agent-delivery-charge" className="flex items-center gap-2">
                         <Truck className="h-4 w-4 text-muted-foreground" />
-                        Customer delivery charge
+                        {t('salesAgentCommissions.customerDeliveryCharge')}
                     </Label>
                     <Input
                         id="sales-agent-delivery-charge"
@@ -265,7 +267,7 @@ export function SalesAgentAssignmentFields({
                     />
                 </div>
                 <div className="space-y-2">
-                    <Label htmlFor="sales-agent-internal-delivery-cost">Internal delivery cost</Label>
+                    <Label htmlFor="sales-agent-internal-delivery-cost">{t('salesAgentCommissions.internalDeliveryCost')}</Label>
                     <Input
                         id="sales-agent-internal-delivery-cost"
                         type="number"
@@ -282,14 +284,14 @@ export function SalesAgentAssignmentFields({
 
             {showReason ? (
                 <div className="space-y-2">
-                    <Label htmlFor="sales-agent-reassignment-reason">Reassignment reason</Label>
+                    <Label htmlFor="sales-agent-reassignment-reason">{t('salesAgentCommissions.reassignmentReason')}</Label>
                     <Textarea
                         id="sales-agent-reassignment-reason"
                         value={value.reassignmentReason}
                         onChange={(event) => update('reassignmentReason', event.target.value)}
                         disabled={disabled}
                         rows={3}
-                        placeholder="Optional audit note"
+                        placeholder={t('salesAgentCommissions.optionalAuditNote')}
                     />
                 </div>
             ) : null}

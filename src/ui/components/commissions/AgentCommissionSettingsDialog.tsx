@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BadgePercent, ShieldCheck, Truck } from 'lucide-react'
-import { formatLocalDateValue, parseLocalDateValue } from '@/lib/utils'
+import { Plus, ShieldCheck, Trash2, Truck } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { formatLocalDateValue, formatNumericInput, generateId, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
 
 import {
     createAgentCommissionPlan,
@@ -11,15 +12,10 @@ import {
     type CommissionPlanLevel
 } from '@/local-db'
 import {
-    AppDialog,
-    AppDialogBody,
-    AppDialogContent,
-    AppDialogDescription,
-    AppDialogFooter,
-    AppDialogHeader,
-    AppDialogTitle,
     Badge,
     Button,
+    Card,
+    CardContent,
     DateTimePicker,
     Input,
     Label,
@@ -32,11 +28,7 @@ import {
     Textarea,
     useToast
 } from '@/ui/components'
-import {
-    COMMISSION_LEVELS,
-    getCommissionLevelLabel,
-    getCurrentCommissionPlanRevision
-} from './agentCommissionPresentation'
+import { getCurrentCommissionPlanRevision } from './agentCommissionPresentation'
 import { useCommissionAgentDirectory } from './useCommissionAgentDirectory'
 
 const NO_PLAN_VALUE = '__no_plan__'
@@ -55,22 +47,16 @@ type PlanDraft = {
     notes: string
 }
 
-const DEFAULT_RATES: Record<CommissionPlanLevel, number> = {
-    level_1: 5,
-    level_2: 7.5,
-    level_3: 10
-}
-
 function dateInputValue(value?: string | null) {
     return formatLocalDateValue(value)
 }
 
-function createPlanDraft(level: CommissionPlanLevel, plan?: AgentCommissionPlan): PlanDraft {
+function createPlanDraft(plan?: AgentCommissionPlan): PlanDraft {
     return {
         id: plan?.id,
-        level,
-        name: plan?.name || getCommissionLevelLabel(level),
-        ratePercent: String(plan?.ratePercent ?? DEFAULT_RATES[level]),
+        level: plan?.level || `commission-level-${generateId()}`,
+        name: plan?.name || '',
+        ratePercent: String(plan?.ratePercent ?? 0),
         calculationBasis: plan?.calculationBasis || 'net_profit',
         includeTax: plan?.includeTax || false,
         includeDeliveryCharge: plan?.includeDeliveryCharge || false,
@@ -82,25 +68,24 @@ function createPlanDraft(level: CommissionPlanLevel, plan?: AgentCommissionPlan)
 }
 
 function planToken(draft: Pick<PlanDraft, 'id' | 'level'>) {
-    return draft.id || `new:${draft.level}`
+    return draft.id || draft.level
 }
 
-interface AgentCommissionSettingsDialogProps {
-    open: boolean
-    onOpenChange: (open: boolean) => void
+interface AgentCommissionSettingsFormProps {
     workspaceId: string
     userId?: string | null
+    onCancel?: () => void
 }
 
-export function AgentCommissionSettingsDialog({
-    open,
-    onOpenChange,
+export function AgentCommissionSettingsForm({
     workspaceId,
-    userId
-}: AgentCommissionSettingsDialogProps) {
+    userId,
+    onCancel
+}: AgentCommissionSettingsFormProps) {
+    const { t } = useTranslation()
     const { toast } = useToast()
-    const directory = useCommissionAgentDirectory(open ? workspaceId : undefined)
-    const [planDrafts, setPlanDrafts] = useState<PlanDraft[]>(() => COMMISSION_LEVELS.map((level) => createPlanDraft(level)))
+    const directory = useCommissionAgentDirectory(workspaceId)
+    const [planDrafts, setPlanDrafts] = useState<PlanDraft[]>([])
     const [membershipSelections, setMembershipSelections] = useState<Record<string, string>>({})
     const [isSaving, setIsSaving] = useState(false)
     const fieldAgents = useMemo(
@@ -109,28 +94,45 @@ export function AgentCommissionSettingsDialog({
     )
 
     useEffect(() => {
-        if (!open) return
-        const nextDrafts = COMMISSION_LEVELS.map((level) => createPlanDraft(
-            level,
-            getCurrentCommissionPlanRevision(directory.plans, level)
-        ))
+        const levels = Array.from(new Set(directory.plans
+            .filter((plan) => !plan.isDeleted)
+            .map((plan) => plan.level)))
+        const nextDrafts = levels
+            .map((level) => getCurrentCommissionPlanRevision(directory.plans, level))
+            .filter((plan): plan is AgentCommissionPlan => Boolean(plan))
+            .sort((left, right) => left.name.localeCompare(right.name))
+            .map((plan) => createPlanDraft(plan))
         setPlanDrafts(nextDrafts)
         setMembershipSelections(Object.fromEntries(fieldAgents.map((entry) => [
             entry.agent.id,
             entry.membership?.planId || NO_PLAN_VALUE
         ])))
-    }, [directory.plans, fieldAgents, open])
+    }, [directory.plans, fieldAgents])
 
     function updateDraft(level: CommissionPlanLevel, patch: Partial<PlanDraft>) {
         setPlanDrafts((current) => current.map((draft) => draft.level === level ? { ...draft, ...patch } : draft))
+    }
+
+    function addPlanDraft() {
+        setPlanDrafts((current) => [...current, createPlanDraft()])
+    }
+
+    function removeUnsavedPlanDraft(level: CommissionPlanLevel) {
+        setPlanDrafts((current) => current.filter((draft) => draft.id || draft.level !== level))
+        setMembershipSelections((current) => Object.fromEntries(Object.entries(current).map(([agentId, planId]) => [
+            agentId,
+            planId === level ? NO_PLAN_VALUE : planId
+        ])))
     }
 
     async function handleSave() {
         const invalidDraft = planDrafts.find((draft) => !draft.name.trim() || !Number.isFinite(Number(draft.ratePercent)) || Number(draft.ratePercent) < 0 || Number(draft.ratePercent) > 100)
         if (invalidDraft) {
             toast({
-                title: 'Check commission plans',
-                description: `${getCommissionLevelLabel(invalidDraft.level)} needs a name and a rate between 0% and 100%.`,
+                title: t('salesAgentCommissions.checkPlans'),
+                description: t('salesAgentCommissions.invalidPlanDescription', {
+                    level: invalidDraft.name.trim() || t('salesAgentCommissions.newCommissionLevel')
+                }),
                 variant: 'destructive'
             })
             return
@@ -181,12 +183,11 @@ export function AgentCommissionSettingsDialog({
                 })]
             }))
 
-            toast({ title: 'Commission settings saved' })
-            onOpenChange(false)
+            toast({ title: t('salesAgentCommissions.settingsSaved') })
         } catch (error: any) {
             toast({
-                title: 'Could not save commission settings',
-                description: error?.message || 'Try again.',
+                title: t('salesAgentCommissions.couldNotSaveSettings'),
+                description: error?.message || t('salesAgentCommissions.tryAgain'),
                 variant: 'destructive'
             })
         } finally {
@@ -195,44 +196,51 @@ export function AgentCommissionSettingsDialog({
     }
 
     return (
-        <AppDialog open={open} onOpenChange={(nextOpen) => {
-            if (isSaving && !nextOpen) return
-            onOpenChange(nextOpen)
-        }}>
-            <AppDialogContent className="max-w-5xl">
-                <AppDialogHeader>
-                    <div className="flex items-start gap-3">
-                        <div className="rounded-xl bg-violet-500/10 p-2 text-violet-700 dark:text-violet-300">
-                            <BadgePercent className="h-5 w-5" />
-                        </div>
-                        <div className="space-y-1">
-                            <AppDialogTitle>Sales agent commission settings</AppDialogTitle>
-                            <AppDialogDescription>
-                                Configure three workspace-only plans, then optionally assign a plan to each field agent.
-                            </AppDialogDescription>
-                        </div>
-                    </div>
-                </AppDialogHeader>
-
-                <AppDialogBody className="space-y-6">
+        <form onSubmit={(event) => {
+            event.preventDefault()
+            void handleSave()
+        }} className="space-y-6">
+            <Card className="overflow-hidden border-violet-500/20">
+                <CardContent className="space-y-6 pt-6">
                     <section className="space-y-3" aria-labelledby="commission-plans-heading">
-                        <div>
-                            <h3 id="commission-plans-heading" className="font-semibold">Commission plans</h3>
-                            <p className="text-sm text-muted-foreground">
-                                Rates are examples until you save them. Net profit excludes tax and delivery unless explicitly included.
-                                Once a plan has been used, financial or effective-date changes create a new effective-dated revision.
-                                Prior revisions and accrued ledger amounts stay frozen; changes apply only to future or otherwise unaccrued orders.
-                            </p>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <h3 id="commission-plans-heading" className="font-semibold">{t('salesAgentCommissions.commissionPlans')}</h3>
+                                <p className="text-sm text-muted-foreground">
+                                    {t('salesAgentCommissions.plansHelp')}
+                                </p>
+                            </div>
+                            <Button type="button" variant="outline" className="gap-2 self-start" onClick={addPlanDraft} disabled={isSaving}>
+                                <Plus className="h-4 w-4" />
+                                {t('salesAgentCommissions.addCommissionLevel')}
+                            </Button>
                         </div>
-                        <div className="grid gap-4 xl:grid-cols-3">
+                        {planDrafts.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                                {t('salesAgentCommissions.noCommissionLevels')}
+                            </div>
+                        ) : <div className="grid gap-4 xl:grid-cols-3">
                             {planDrafts.map((draft) => (
                                 <div key={draft.level} className="space-y-4 rounded-2xl border bg-muted/15 p-4">
                                     <div className="flex items-center justify-between gap-3">
                                         <Badge variant="outline" className="border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300">
-                                            {getCommissionLevelLabel(draft.level)}
+                                            {draft.name.trim() || t('salesAgentCommissions.newCommissionLevel')}
                                         </Badge>
                                         <div className="flex items-center gap-2">
-                                            <Label htmlFor={`commission-active-${draft.level}`} className="text-xs">Active</Label>
+                                            {!draft.id ? (
+                                                <Button
+                                                    type="button"
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                                    onClick={() => removeUnsavedPlanDraft(draft.level)}
+                                                    disabled={isSaving}
+                                                    title={t('salesAgentCommissions.removeLevel')}
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            ) : null}
+                                            <Label htmlFor={`commission-active-${draft.level}`} className="text-xs">{t('salesAgentCommissions.active')}</Label>
                                             <Switch
                                                 id={`commission-active-${draft.level}`}
                                                 checked={draft.isActive}
@@ -242,31 +250,34 @@ export function AgentCommissionSettingsDialog({
                                         </div>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor={`commission-name-${draft.level}`}>Plan name</Label>
+                                        <Label htmlFor={`commission-name-${draft.level}`}>{t('salesAgentCommissions.levelName')}</Label>
                                         <Input
                                             id={`commission-name-${draft.level}`}
                                             value={draft.name}
                                             onChange={(event) => updateDraft(draft.level, { name: event.target.value })}
                                             disabled={isSaving}
+                                            placeholder={t('salesAgentCommissions.levelNamePlaceholder')}
                                         />
                                     </div>
                                     <div className="grid gap-3 sm:grid-cols-2">
                                         <div className="space-y-2">
-                                            <Label htmlFor={`commission-rate-${draft.level}`}>Rate %</Label>
+                                            <Label htmlFor={`commission-rate-${draft.level}`}>{t('salesAgentCommissions.ratePercent')}</Label>
                                             <Input
                                                 id={`commission-rate-${draft.level}`}
-                                                type="number"
-                                                min="0"
-                                                max="100"
-                                                step="0.01"
+                                                type="text"
                                                 inputMode="decimal"
-                                                value={draft.ratePercent}
-                                                onChange={(event) => updateDraft(draft.level, { ratePercent: event.target.value })}
+                                                value={formatNumericInput(draft.ratePercent)}
+                                                onChange={(event) => updateDraft(draft.level, {
+                                                    ratePercent: sanitizeNumericInput(event.target.value, {
+                                                        allowDecimal: true,
+                                                        maxFractionDigits: 2
+                                                    })
+                                                })}
                                                 disabled={isSaving}
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label>Basis</Label>
+                                            <Label>{t('salesAgentCommissions.basis')}</Label>
                                             <Select
                                                 value={draft.calculationBasis}
                                                 onValueChange={(calculationBasis) => updateDraft(draft.level, { calculationBasis: calculationBasis as CommissionCalculationBasis })}
@@ -274,15 +285,15 @@ export function AgentCommissionSettingsDialog({
                                             >
                                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="net_profit">Net profit</SelectItem>
-                                                    <SelectItem value="net_revenue">Net revenue</SelectItem>
+                                                    <SelectItem value="net_profit">{t('salesAgentCommissions.netProfit')}</SelectItem>
+                                                    <SelectItem value="net_revenue">{t('salesAgentCommissions.netRevenue')}</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
                                     </div>
                                     <div className="grid gap-3 sm:grid-cols-2">
                                         <div className="space-y-2">
-                                            <Label htmlFor={`commission-start-${draft.level}`}>Effective from</Label>
+                                            <Label htmlFor={`commission-start-${draft.level}`}>{t('salesAgentCommissions.effectiveFrom')}</Label>
                                             <DateTimePicker
                                                 id={`commission-start-${draft.level}`}
                                                 mode="date"
@@ -292,7 +303,7 @@ export function AgentCommissionSettingsDialog({
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label htmlFor={`commission-end-${draft.level}`}>Effective to</Label>
+                                            <Label htmlFor={`commission-end-${draft.level}`}>{t('salesAgentCommissions.effectiveTo')}</Label>
                                             <DateTimePicker
                                                 id={`commission-end-${draft.level}`}
                                                 mode="date"
@@ -304,7 +315,7 @@ export function AgentCommissionSettingsDialog({
                                     </div>
                                     <div className="space-y-3 rounded-xl border bg-background/70 p-3">
                                         <div className="flex items-center justify-between gap-3">
-                                            <Label htmlFor={`commission-tax-${draft.level}`} className="text-sm">Include tax</Label>
+                                            <Label htmlFor={`commission-tax-${draft.level}`} className="text-sm">{t('salesAgentCommissions.includeTax')}</Label>
                                             <Switch
                                                 id={`commission-tax-${draft.level}`}
                                                 checked={draft.includeTax}
@@ -313,7 +324,7 @@ export function AgentCommissionSettingsDialog({
                                             />
                                         </div>
                                         <div className="flex items-center justify-between gap-3">
-                                            <Label htmlFor={`commission-delivery-${draft.level}`} className="text-sm">Include customer delivery charge</Label>
+                                            <Label htmlFor={`commission-delivery-${draft.level}`} className="text-sm">{t('salesAgentCommissions.includeCustomerDeliveryCharge')}</Label>
                                             <Switch
                                                 id={`commission-delivery-${draft.level}`}
                                                 checked={draft.includeDeliveryCharge}
@@ -323,7 +334,7 @@ export function AgentCommissionSettingsDialog({
                                         </div>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor={`commission-notes-${draft.level}`}>Notes</Label>
+                                        <Label htmlFor={`commission-notes-${draft.level}`}>{t('salesAgentCommissions.notes')}</Label>
                                         <Textarea
                                             id={`commission-notes-${draft.level}`}
                                             value={draft.notes}
@@ -334,19 +345,19 @@ export function AgentCommissionSettingsDialog({
                                     </div>
                                 </div>
                             ))}
-                        </div>
+                        </div>}
                     </section>
 
                     <section className="space-y-3" aria-labelledby="commission-memberships-heading">
                         <div>
-                            <h3 id="commission-memberships-heading" className="font-semibold">Field-agent memberships</h3>
+                            <h3 id="commission-memberships-heading" className="font-semibold">{t('salesAgentCommissions.fieldAgentMemberships')}</h3>
                             <p className="text-sm text-muted-foreground">
-                                Commission level is optional and does not create a new agent type.
+                                {t('salesAgentCommissions.membershipDescription')}
                             </p>
                         </div>
                         {fieldAgents.length === 0 ? (
                             <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-                                Add a field agent to assign a commission plan.
+                                {t('salesAgentCommissions.noFieldAgents')}
                             </div>
                         ) : (
                             <div className="divide-y overflow-hidden rounded-2xl border">
@@ -359,7 +370,7 @@ export function AgentCommissionSettingsDialog({
                                                     ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
                                                     : 'text-muted-foreground'}
                                                 >
-                                                    {entry.agent.status}
+                                                    {entry.agent.status === 'active' ? t('salesAgentCommissions.active') : t('salesAgentCommissions.inactive')}
                                                 </Badge>
                                             </div>
                                             <div className="mt-1 text-xs text-muted-foreground">{entry.agent.zone}</div>
@@ -369,12 +380,12 @@ export function AgentCommissionSettingsDialog({
                                             onValueChange={(planId) => setMembershipSelections((current) => ({ ...current, [entry.agent.id]: planId }))}
                                             disabled={isSaving}
                                         >
-                                            <SelectTrigger><SelectValue placeholder="No commission plan" /></SelectTrigger>
+                                            <SelectTrigger><SelectValue placeholder={t('salesAgentCommissions.noCommissionPlan')} /></SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value={NO_PLAN_VALUE}>No commission plan</SelectItem>
+                                                <SelectItem value={NO_PLAN_VALUE}>{t('salesAgentCommissions.noCommissionPlan')}</SelectItem>
                                                 {planDrafts.map((draft) => (
                                                     <SelectItem key={draft.level} value={planToken(draft)} disabled={!draft.isActive}>
-                                                        {draft.name || getCommissionLevelLabel(draft.level)} · {Number(draft.ratePercent) || 0}%
+                                                        {draft.name || t('salesAgentCommissions.unnamedCommissionLevel')} · {Number(draft.ratePercent) || 0}%
                                                     </SelectItem>
                                                 ))}
                                             </SelectContent>
@@ -389,29 +400,31 @@ export function AgentCommissionSettingsDialog({
                         <div className="flex gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4 text-sm">
                             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700 dark:text-emerald-300" />
                             <div>
-                                <div className="font-semibold">Workspace-only feature</div>
-                                <p className="mt-1 text-muted-foreground">When access is disabled, orders and agents keep their existing behavior.</p>
+                                <div className="font-semibold">{t('salesAgentCommissions.workspaceOnly')}</div>
+                                <p className="mt-1 text-muted-foreground">{t('salesAgentCommissions.workspaceOnlyDescription')}</p>
                             </div>
                         </div>
                         <div className="flex gap-3 rounded-2xl border border-sky-500/20 bg-sky-500/[0.06] p-4 text-sm">
                             <Truck className="mt-0.5 h-5 w-5 shrink-0 text-sky-700 dark:text-sky-300" />
                             <div>
-                                <div className="font-semibold">Post Service is optional</div>
-                                <p className="mt-1 text-muted-foreground">Sales-agent credit and customer delivery snapshots work directly from Sales Orders.</p>
+                                <div className="font-semibold">{t('salesAgentCommissions.postServiceIsOptional')}</div>
+                                <p className="mt-1 text-muted-foreground">{t('salesAgentCommissions.postServiceSettingsDescription')}</p>
                             </div>
                         </div>
                     </div>
-                </AppDialogBody>
+                </CardContent>
+            </Card>
 
-                <AppDialogFooter>
-                    <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
-                        Cancel
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
+                {onCancel ? (
+                    <Button type="button" variant="outline" onClick={onCancel} disabled={isSaving}>
+                        {t('salesAgentCommissions.cancel')}
                     </Button>
-                    <Button type="button" onClick={() => void handleSave()} disabled={isSaving}>
-                        {isSaving ? 'Saving…' : 'Save commission settings'}
-                    </Button>
-                </AppDialogFooter>
-            </AppDialogContent>
-        </AppDialog>
+                ) : null}
+                <Button type="submit" disabled={isSaving}>
+                    {isSaving ? t('salesAgentCommissions.saving') : t('salesAgentCommissions.saveSettings')}
+                </Button>
+            </div>
+        </form>
     )
 }

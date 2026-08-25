@@ -815,7 +815,8 @@ export interface OrderAdjustment {
   createdBy?: string | null;
 }
 
-export type CommissionPlanLevel = "level_1" | "level_2" | "level_3";
+/** Stable, user-defined commission-level key. The plan name is its visible label. */
+export type CommissionPlanLevel = string;
 export type CommissionCalculationBasis = "net_profit" | "net_revenue";
 export type ManualSalesAgentCommissionType = "fixed_amount" | "percentage";
 export type CommissionEntryKind =

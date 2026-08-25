@@ -39,7 +39,6 @@ import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal
 import { useWorkspace } from '@/workspace'
 import { hasEffectiveSalesAgentCommissionPermission, useWorkspacePermissions } from '@/permissions'
 import { AgentCommissionAdminOverview } from '@/ui/components/commissions/AgentCommissionAdminOverview'
-import { AgentCommissionSettingsDialog } from '@/ui/components/commissions/AgentCommissionSettingsDialog'
 import {
     CommissionFeatureBoundary,
     useOptionalCommissionFeatureData
@@ -70,7 +69,6 @@ export function Agents() {
     const workspaceUsers = useWorkspaceUsers(user?.workspaceId)
     const [search, setSearch] = useState('')
     const [dialogOpen, setDialogOpen] = useState(false)
-    const [commissionSettingsOpen, setCommissionSettingsOpen] = useState(false)
     const [editingPartner, setEditingPartner] = useState<BusinessPartner | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<BusinessPartner | null>(null)
     const [isSaving, setIsSaving] = useState(false)
@@ -199,9 +197,9 @@ export function Agents() {
                 </div>
                 <div className="flex flex-wrap gap-2 self-start">
                     {canManageCommissionPlans ? (
-                        <Button variant="outline" onClick={() => setCommissionSettingsOpen(true)} className="gap-2 rounded-xl">
+                        <Button variant="outline" onClick={() => navigate('/agents/commission-settings')} className="gap-2 rounded-xl">
                             <Settings2 className="h-4 w-4" />
-                            Commission settings
+                            {t('salesAgentCommissions.settings')}
                         </Button>
                     ) : null}
                     {canEdit ? (
@@ -261,7 +259,7 @@ export function Agents() {
                                     <TableHead>{t('agents.vehicle', { defaultValue: 'Vehicle' })}</TableHead>
                                     <TableHead>{t('businessPartners.agent.linkedUser', { defaultValue: 'Workspace User' })}</TableHead>
                                     <TableHead>{t('businessPartners.agent.status', { defaultValue: 'Status' })}</TableHead>
-                                    {canShowCommissionPlanColumn ? <TableHead>Commission plan</TableHead> : null}
+                                    {canShowCommissionPlanColumn ? <TableHead>{t('salesAgentCommissions.commissionPlan')}</TableHead> : null}
                                     <TableHead className="text-right">{t('common.actions', { defaultValue: 'Actions' })}</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -371,15 +369,6 @@ export function Agents() {
                 onSubmit={handleSubmit}
             />
 
-            {salesAgentCommissionsEnabled && canManageCommissionPlans && commissionSettingsOpen && user?.workspaceId ? (
-                <AgentCommissionSettingsDialog
-                    open={true}
-                    onOpenChange={setCommissionSettingsOpen}
-                    workspaceId={user.workspaceId}
-                    userId={user.id}
-                />
-            ) : null}
-
             <DeleteConfirmationModal
                 isOpen={!!deleteTarget}
                 onClose={() => setDeleteTarget(null)}
@@ -402,6 +391,7 @@ function AgentCommissionPlanCell({
     viewerUserId?: string
     canViewAll: boolean
 }) {
+    const { t } = useTranslation()
     const commissionData = useOptionalCommissionFeatureData()
     const commissionAgent = agentId ? commissionData?.agentById.get(agentId) : undefined
     const canView = canViewAll || commissionAgent?.agent.linkedUserId === viewerUserId
@@ -409,13 +399,13 @@ function AgentCommissionPlanCell({
     return (
         <TableCell>
             {!agentId ? 'N/A' : !canView ? (
-                <span className="text-sm text-muted-foreground">Restricted</span>
+                <span className="text-sm text-muted-foreground">{t('salesAgentCommissions.restricted')}</span>
             ) : commissionAgent?.plan ? (
                 <Badge variant="outline" className="gap-1.5 border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300">
                     <BadgePercent className="h-3.5 w-3.5" />
                     {commissionAgent.plan.name} · {commissionAgent.plan.ratePercent}%
                 </Badge>
-            ) : <span className="text-sm text-muted-foreground">Optional · none</span>}
+            ) : <span className="text-sm text-muted-foreground">{t('salesAgentCommissions.optionalNone')}</span>}
         </TableCell>
     )
 }

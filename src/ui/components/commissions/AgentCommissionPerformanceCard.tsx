@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { BadgeCheck, BadgePercent, CircleDollarSign, Eye, ReceiptText, RotateCcw } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'wouter'
 
 import { formatCurrency, formatDateTime } from '@/lib/utils'
@@ -46,6 +47,7 @@ export function AgentCommissionPerformanceCard({
     startDate?: string
     endDate?: string
 }) {
+    const { t } = useTranslation()
     const directory = useCommissionAgentDirectory(workspaceId)
     const allEntries = useAgentCommissionEntries(workspaceId)
     const assignments = useSalesOrderAgentAssignments(workspaceId)
@@ -131,7 +133,7 @@ export function AgentCommissionPerformanceCard({
             <CardHeader className="space-y-1">
                 <CardTitle className="flex flex-wrap items-center gap-2">
                     <BadgePercent className="h-5 w-5 text-violet-600" />
-                    Commission Performance
+                    {t('salesAgentCommissions.performance')}
                     {agent?.plan ? (
                         <Badge variant="outline" className="border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300">
                             {agent.plan.name} · {agent.plan.ratePercent}%
@@ -139,22 +141,21 @@ export function AgentCommissionPerformanceCard({
                     ) : null}
                 </CardTitle>
                 <p className="text-sm text-muted-foreground">
-                    Based on explicit sales-order assignment, independently from order creator and courier assignment.
-                    Ledger totals use each entry's occurrence date; operational order metrics use the order creation date.
+                    {t('salesAgentCommissions.performanceDescription')}
                 </p>
             </CardHeader>
             <CardContent className="space-y-5">
                 {!agent?.membership ? (
                     <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] p-4 text-sm text-amber-800 dark:text-amber-200">
-                        This field agent can be credited with orders, but no commission plan is currently assigned.
+                        {t('salesAgentCommissions.noPlanPerformanceNotice')}
                     </div>
                 ) : null}
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                    <PerformanceMetric label="Assigned orders" icon={ReceiptText} value={String(assignedOrders.length)} />
-                    <PerformanceMetric label="Recognized earned" icon={BadgeCheck} value={<CommissionCurrencyTotalsView totals={summary.earned} iqdPreference={iqdPreference} />} />
-                    <PerformanceMetric label="Approved" icon={BadgePercent} value={<CommissionCurrencyTotalsView totals={summary.approved} iqdPreference={iqdPreference} />} />
+                    <PerformanceMetric label={t('salesAgentCommissions.assignedOrders')} icon={ReceiptText} value={String(assignedOrders.length)} />
+                    <PerformanceMetric label={t('salesAgentCommissions.recognizedEarned')} icon={BadgeCheck} value={<CommissionCurrencyTotalsView totals={summary.earned} iqdPreference={iqdPreference} />} />
+                    <PerformanceMetric label={t('salesAgentCommissions.approved')} icon={BadgePercent} value={<CommissionCurrencyTotalsView totals={summary.approved} iqdPreference={iqdPreference} />} />
                     <PerformanceMetric
-                        label="Paid / reversed"
+                        label={t('salesAgentCommissions.paidReversed')}
                         icon={RotateCcw}
                         value={(
                             <span className="flex flex-col gap-0.5">
@@ -163,17 +164,17 @@ export function AgentCommissionPerformanceCard({
                             </span>
                         )}
                     />
-                    <PerformanceMetric label="Due" icon={CircleDollarSign} value={<CommissionCurrencyTotalsView totals={summary.due} iqdPreference={iqdPreference} />} />
+                    <PerformanceMetric label={t('salesAgentCommissions.due')} icon={CircleDollarSign} value={<CommissionCurrencyTotalsView totals={summary.due} iqdPreference={iqdPreference} />} />
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-                    <OperationalMetric label="Completed" value={completedOrderCount} tone="emerald" />
-                    <OperationalMetric label="Open / incomplete" value={openOrderCount} tone="amber" />
-                    <OperationalMetric label="Cancelled" value={cancelledOrderCount} tone="rose" />
-                    <OperationalMetric label="Returned" value={returnedOrderCount} tone="orange" />
-                    <OperationalMetric label="Zero value" value={zeroValueOrderCount} />
+                    <OperationalMetric label={t('salesAgentCommissions.completed')} value={completedOrderCount} tone="emerald" />
+                    <OperationalMetric label={t('salesAgentCommissions.openIncomplete')} value={openOrderCount} tone="amber" />
+                    <OperationalMetric label={t('salesAgentCommissions.cancelled')} value={cancelledOrderCount} tone="rose" />
+                    <OperationalMetric label={t('salesAgentCommissions.returned')} value={returnedOrderCount} tone="orange" />
+                    <OperationalMetric label={t('salesAgentCommissions.zeroValue')} value={zeroValueOrderCount} />
                     <div className="rounded-2xl border bg-background/80 p-4">
-                        <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Profit / commission basis</div>
+                        <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{t('salesAgentCommissions.profitCommissionBasis')}</div>
                         <div className="mt-2 text-sm font-black">
                             <CommissionCurrencyTotalsView totals={commissionBasisTotals} iqdPreference={iqdPreference} />
                         </div>
@@ -183,22 +184,22 @@ export function AgentCommissionPerformanceCard({
                 {assignedOrders.length > 0 ? (
                     <div className="space-y-2">
                         <div>
-                            <h3 className="font-semibold">Assigned order details</h3>
-                            <p className="text-sm text-muted-foreground">Reference, city and delivery snapshots stay attached to the selling-agent assignment.</p>
+                            <h3 className="font-semibold">{t('salesAgentCommissions.assignedOrderDetails')}</h3>
+                            <p className="text-sm text-muted-foreground">{t('salesAgentCommissions.assignedOrderDetailsDescription')}</p>
                         </div>
                         <div className="overflow-x-auto rounded-2xl border bg-background">
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead>Order</TableHead>
-                                        <TableHead>City</TableHead>
-                                        <TableHead>Customer</TableHead>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead className="text-end">Delivery</TableHead>
-                                        <TableHead className="text-end">Order total</TableHead>
-                                        <TableHead className="text-end">Basis</TableHead>
-                                        <TableHead className="text-end">Commission</TableHead>
-                                        <TableHead className="text-end">Action</TableHead>
+                                        <TableHead>{t('salesAgentCommissions.order')}</TableHead>
+                                        <TableHead>{t('salesAgentCommissions.city')}</TableHead>
+                                        <TableHead>{t('salesAgentCommissions.customer')}</TableHead>
+                                        <TableHead>{t('salesAgentCommissions.status')}</TableHead>
+                                        <TableHead className="text-end">{t('salesAgentCommissions.delivery')}</TableHead>
+                                        <TableHead className="text-end">{t('salesAgentCommissions.orderTotal')}</TableHead>
+                                        <TableHead className="text-end">{t('salesAgentCommissions.basis')}</TableHead>
+                                        <TableHead className="text-end">{t('salesAgentCommissions.commission')}</TableHead>
+                                        <TableHead className="text-end">{t('salesAgentCommissions.action')}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -228,10 +229,10 @@ export function AgentCommissionPerformanceCard({
                                                 <TableCell>{order.customerName}</TableCell>
                                                 <TableCell>
                                                     <div className="flex flex-wrap gap-1">
-                                                        <Badge variant="outline">{order.status}</Badge>
+                                                        <Badge variant="outline">{t(`orders.status.${order.status}`, { defaultValue: order.status })}</Badge>
                                                         {order.returnStatus && order.returnStatus !== 'none' ? (
                                                             <Badge variant="outline" className="border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300">
-                                                                {order.returnStatus === 'full' ? 'Returned' : 'Partial return'}
+                                                                {order.returnStatus === 'full' ? t('salesAgentCommissions.returned') : t('salesAgentCommissions.partialReturn')}
                                                             </Badge>
                                                         ) : null}
                                                     </div>
@@ -243,7 +244,7 @@ export function AgentCommissionPerformanceCard({
                                                 <TableCell className="text-end">
                                                     <Button asChild variant="ghost" size="sm">
                                                         <Link href={`/orders/${order.id}`}>
-                                                            <Eye className="me-1.5 h-3.5 w-3.5" /> View
+                                                            <Eye className="me-1.5 h-3.5 w-3.5" /> {t('salesAgentCommissions.view')}
                                                         </Link>
                                                     </Button>
                                                 </TableCell>
@@ -261,12 +262,12 @@ export function AgentCommissionPerformanceCard({
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Order</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead className="text-end">Basis</TableHead>
-                                    <TableHead className="text-end">Rate</TableHead>
-                                    <TableHead className="text-end">Commission</TableHead>
+                                    <TableHead>{t('salesAgentCommissions.date')}</TableHead>
+                                    <TableHead>{t('salesAgentCommissions.order')}</TableHead>
+                                    <TableHead>{t('salesAgentCommissions.status')}</TableHead>
+                                    <TableHead className="text-end">{t('salesAgentCommissions.basis')}</TableHead>
+                                    <TableHead className="text-end">{t('salesAgentCommissions.rate')}</TableHead>
+                                    <TableHead className="text-end">{t('salesAgentCommissions.commission')}</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -276,7 +277,7 @@ export function AgentCommissionPerformanceCard({
                                         <TableCell className="font-medium">{entry.orderId ? entry.orderId.slice(0, 8).toUpperCase() : entry.payoutReference || '—'}</TableCell>
                                         <TableCell>
                                             <Badge variant="outline" className={commissionStatusClass(entry.status)}>
-                                                {commissionStatusLabel(entry.status)}
+                                                {commissionStatusLabel(entry.status, t)}
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="text-end">{formatCurrency(entry.basisAmount, entry.currency as CurrencyCode, iqdPreference)}</TableCell>
@@ -289,7 +290,7 @@ export function AgentCommissionPerformanceCard({
                     </div>
                 ) : (
                     <div className="rounded-2xl border border-dashed py-8 text-center text-sm text-muted-foreground">
-                        Commission entries will appear as assigned orders move through their lifecycle.
+                        {t('salesAgentCommissions.entriesEmpty')}
                     </div>
                 )}
             </CardContent>

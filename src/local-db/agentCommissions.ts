@@ -604,6 +604,8 @@ export async function createAgentCommissionPlan(
 ) {
   const name = normalizeText(input.name);
   if (!name) throw new Error("Commission plan name is required");
+  const level = normalizeText(input.level);
+  if (!level) throw new Error("Commission level is required");
   const effectiveFrom = normalizeTimestamp(input.effectiveFrom);
   const effectiveTo = input.effectiveTo ? normalizeTimestamp(input.effectiveTo) : null;
   if (effectiveTo && effectiveTo <= effectiveFrom) {
@@ -611,7 +613,7 @@ export async function createAgentCommissionPlan(
   }
   const existingLevel = await db.agent_commission_plans
     .where("[workspaceId+level]")
-    .equals([workspaceId, input.level])
+    .equals([workspaceId, level])
     .and(isCurrentPlanRevision)
     .first();
   if (existingLevel) {
@@ -622,7 +624,7 @@ export async function createAgentCommissionPlan(
     id: generateId(),
     workspaceId,
     name,
-    level: input.level,
+    level,
     ratePercent: assertRate(input.ratePercent),
     calculationBasis: input.calculationBasis ?? "net_profit",
     includeTax: input.includeTax ?? false,
@@ -662,7 +664,8 @@ export async function updateAgentCommissionPlan(
   if (effectiveTo && effectiveTo <= effectiveFrom) {
     throw new Error("Commission plan end date must be after its start date");
   }
-  const nextLevel = input.level ?? existing.level;
+  const nextLevel = input.level === undefined ? existing.level : normalizeText(input.level);
+  if (!nextLevel) throw new Error("Commission level is required");
   const ratePercent = input.ratePercent === undefined ? existing.ratePercent : assertRate(input.ratePercent);
   const calculationBasis = input.calculationBasis ?? existing.calculationBasis;
   const includeTax = input.includeTax ?? existing.includeTax;

@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import {
     assignSalesOrderAgent,
@@ -62,6 +63,7 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
     iqdDisplayPreference,
     disabled = false
 }, ref) {
+    const { t } = useTranslation()
     const directory = useCommissionAgentDirectory(workspaceId)
     const assignments = useSalesOrderAgentAssignments(workspaceId)
     const activeAssignment = useMemo(
@@ -110,10 +112,10 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
         const amount = Number(value.manualCommissionAmount)
         if (!value.manualCommissionAmount.trim()) return null
         if (!Number.isFinite(amount) || amount <= 0) {
-            throw new Error('Enter a manual commission greater than zero')
+            throw new Error(t('salesAgentCommissions.errors.manualCommissionPositive'))
         }
         if (value.manualCommissionType === 'percentage') {
-            if (amount > 100) throw new Error('Manual commission percentage cannot exceed 100%')
+            if (amount > 100) throw new Error(t('salesAgentCommissions.errors.manualCommissionPercentageMax'))
             return {
                 type: 'percentage' as const,
                 amount,
@@ -127,14 +129,14 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
             order.currency,
             order.exchangeRates ?? exchangeRates
         )
-        if (!conversion) throw new Error('Exchange rate unavailable for the selected commission currency')
+        if (!conversion) throw new Error(t('salesAgentCommissions.errors.commissionExchangeRateUnavailable'))
         return {
             type: 'fixed_amount' as const,
             amount,
             currency: value.manualCommissionCurrency,
             exchangeRates: conversion.exchangeRates
         }
-    }, [exchangeRates, selectedAgent?.plan, value.agentId, value.manualCommissionAmount, value.manualCommissionCurrency, value.manualCommissionType])
+    }, [exchangeRates, selectedAgent?.plan, t, value.agentId, value.manualCommissionAmount, value.manualCommissionCurrency, value.manualCommissionType])
 
     const validate = useCallback(() => {
         const manual = getManualCommissionInput({
@@ -170,9 +172,9 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
     return (
         <Card className="border-violet-500/20 bg-violet-500/[0.02]">
             <CardHeader className="space-y-1">
-                <CardTitle>Sales agent assignment</CardTitle>
+                <CardTitle>{t('salesAgentCommissions.salesAgentAssignment')}</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                    Optional workspace attribution and delivery snapshots. Post Service is not required.
+                    {t('salesAgentCommissions.salesAgentAssignmentDescription')}
                 </p>
             </CardHeader>
             <CardContent>

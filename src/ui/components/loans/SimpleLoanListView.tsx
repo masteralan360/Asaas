@@ -45,6 +45,8 @@ import { CreateSimpleLoanModal } from './CreateSimpleLoanModal'
 import { LoanDetailsPrintTemplate, LoanListPrintTemplate } from './LoanPrintTemplates'
 import { LoanNoDisplay } from './LoanNoDisplay'
 import { LoanSourceBadge } from './LoanSourceBadge'
+import { LoanNoteActionButton } from './LoanNoteActionButton'
+import { LoanNoteDialog } from './LoanNoteDialog'
 
 type SimpleLoanFilter = 'all' | 'lent' | 'borrowed' | 'completed'
 
@@ -102,6 +104,7 @@ export function SimpleLoanListView({
     const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
     const [loanToPrint, setLoanToPrint] = useState<Loan | null>(null)
     const [showLoanPrintPreview, setShowLoanPrintPreview] = useState(false)
+    const [loanForNote, setLoanForNote] = useState<Loan | null>(null)
 
     const handleShareOnWhatsApp = (phone: string, dialogLanguage: string) => {
         if (!loanForWhatsApp) return
@@ -645,13 +648,14 @@ export function SimpleLoanListView({
                                         <TableHead className="text-end">{t('loans.balance') || 'Balance'}</TableHead>
                                         <TableHead>{t('loans.nextDue') || 'Next Due'}</TableHead>
                                         <TableHead>{t('loans.status') || 'Status'}</TableHead>
+                                        <TableHead>{t('sales.notes.title') || 'Notes'}</TableHead>
                                         <TableHead className="text-end">{t('common.actions') || 'Actions'}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {paginated.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
+                                            <TableCell colSpan={10} className="py-10 text-center text-muted-foreground">
                                                 {t('common.noData') || 'No data'}
                                             </TableCell>
                                         </TableRow>
@@ -692,6 +696,13 @@ export function SimpleLoanListView({
                                                     <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize', statusClass(overdue ? 'overdue' : loan.status))}>
                                                         {overdue ? (t('loans.statuses.overdue') || 'Overdue') : (t(`loans.statuses.${loan.status}`) || loan.status)}
                                                     </span>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <LoanNoteActionButton
+                                                        loan={loan}
+                                                        isReadOnly={isReadOnly}
+                                                        onClick={() => setLoanForNote(loan)}
+                                                    />
                                                 </TableCell>
                                                 <TableCell className="text-end">
                                                     <div className="flex items-center justify-end gap-1">
@@ -774,6 +785,15 @@ export function SimpleLoanListView({
                     onCreated={(loanId) => navigate(`/loans/${loanId}`)}
                 />
             ) : null}
+
+            <LoanNoteDialog
+                open={!!loanForNote}
+                onOpenChange={(open) => {
+                    if (!open) setLoanForNote(null)
+                }}
+                loan={loanForNote}
+                isReadOnly={isReadOnly}
+            />
 
             <PrintPreviewModal
                 isOpen={showPrintPreview}

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { BadgeCheck, BadgePercent, CircleDollarSign, ReceiptText, RotateCcw, SlidersHorizontal } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { useAgentCommissionEntries, useSalesOrderAgentAssignments, useSalesOrders, type CurrencyCode, type IQDDisplayPreference } from '@/local-db'
 import {
@@ -34,6 +35,7 @@ export function AgentCommissionAdminOverview({
     canSettle?: boolean
     userId?: string | null
 }) {
+    const { t } = useTranslation()
     const entries = useAgentCommissionEntries(workspaceId)
     const assignments = useSalesOrderAgentAssignments(workspaceId)
     const salesOrders = useSalesOrders(workspaceId)
@@ -72,31 +74,31 @@ export function AgentCommissionAdminOverview({
             <CardHeader className="space-y-1">
                 <CardTitle className="flex items-center gap-2">
                     <BadgePercent className="h-5 w-5 text-violet-600" />
-                    Sales Agent Commissions
+                    {t('salesAgentCommissions.title')}
                 </CardTitle>
                 <p className="text-sm text-muted-foreground">
-                    Workspace-wide assignment and commission pipeline. Currency totals remain separate.
+                    {t('salesAgentCommissions.overviewDescription')}
                 </p>
             </CardHeader>
             <CardContent className="space-y-5">
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                     <OverviewMetric
-                        label="Assigned orders"
+                        label={t('salesAgentCommissions.assignedOrders')}
                         icon={ReceiptText}
                         value={String(currentAssignments.length)}
                     />
                     <OverviewMetric
-                        label="Recognized earned"
+                        label={t('salesAgentCommissions.recognizedEarned')}
                         icon={BadgeCheck}
                         value={<CommissionCurrencyTotalsView totals={summary.earned} iqdPreference={iqdPreference} />}
                     />
                     <OverviewMetric
-                        label="Approved"
+                        label={t('salesAgentCommissions.approved')}
                         icon={BadgePercent}
                         value={<CommissionCurrencyTotalsView totals={summary.approved} iqdPreference={iqdPreference} />}
                     />
                     <OverviewMetric
-                        label="Paid / reversed"
+                        label={t('salesAgentCommissions.paidReversed')}
                         icon={RotateCcw}
                         value={(
                             <span className="flex flex-col gap-0.5">
@@ -108,7 +110,7 @@ export function AgentCommissionAdminOverview({
                         )}
                     />
                     <OverviewMetric
-                        label="Due"
+                        label={t('salesAgentCommissions.due')}
                         icon={CircleDollarSign}
                         value={<CommissionCurrencyTotalsView totals={summary.due} iqdPreference={iqdPreference} />}
                     />
@@ -116,25 +118,25 @@ export function AgentCommissionAdminOverview({
 
                 {rows.length === 0 ? (
                     <div className="rounded-2xl border border-dashed py-8 text-center text-sm text-muted-foreground">
-                        Configure plans and assign sales orders to start the commission dashboard.
+                        {t('salesAgentCommissions.overviewEmpty')}
                     </div>
                 ) : (
                     <div className="overflow-x-auto rounded-2xl border bg-background">
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Agent</TableHead>
-                                    <TableHead>Plan</TableHead>
-                                    <TableHead className="text-end">Orders</TableHead>
-                                    <TableHead className="text-end">Open</TableHead>
-                                    <TableHead className="text-end">Returned</TableHead>
-                                    <TableHead className="text-end">Cancelled / zero</TableHead>
-                                    <TableHead className="text-end">Recognized</TableHead>
-                                    <TableHead className="text-end">Approved</TableHead>
-                                    <TableHead className="text-end">Paid</TableHead>
-                                    <TableHead className="text-end">Reversed</TableHead>
-                                    <TableHead className="text-end">Due</TableHead>
-                                    {canSettle ? <TableHead className="text-end">Action</TableHead> : null}
+                                    <TableHead>{t('salesAgentCommissions.agent')}</TableHead>
+                                    <TableHead>{t('salesAgentCommissions.plan')}</TableHead>
+                                    <TableHead className="text-end">{t('salesAgentCommissions.orders')}</TableHead>
+                                    <TableHead className="text-end">{t('salesAgentCommissions.open')}</TableHead>
+                                    <TableHead className="text-end">{t('salesAgentCommissions.returned')}</TableHead>
+                                    <TableHead className="text-end">{t('salesAgentCommissions.cancelledZero')}</TableHead>
+                                    <TableHead className="text-end">{t('salesAgentCommissions.recognized')}</TableHead>
+                                    <TableHead className="text-end">{t('salesAgentCommissions.approved')}</TableHead>
+                                    <TableHead className="text-end">{t('salesAgentCommissions.paid')}</TableHead>
+                                    <TableHead className="text-end">{t('salesAgentCommissions.reversed')}</TableHead>
+                                    <TableHead className="text-end">{t('salesAgentCommissions.due')}</TableHead>
+                                    {canSettle ? <TableHead className="text-end">{t('salesAgentCommissions.action')}</TableHead> : null}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -149,7 +151,7 @@ export function AgentCommissionAdminOverview({
                                                 <Badge variant="outline" className="border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300">
                                                     {entry.plan.name} · {entry.plan.ratePercent}%
                                                 </Badge>
-                                            ) : <span className="text-sm text-muted-foreground">No plan</span>}
+                                            ) : <span className="text-sm text-muted-foreground">{t('salesAgentCommissions.noPlan')}</span>}
                                         </TableCell>
                                         <TableCell className="text-end font-semibold">{assignedOrders}</TableCell>
                                         <TableCell className="text-end font-semibold text-amber-600">{openOrders}</TableCell>
@@ -163,7 +165,7 @@ export function AgentCommissionAdminOverview({
                                         {canSettle ? (
                                             <TableCell className="text-end">
                                                 <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setSettlementAgentId(entry.agent.id)}>
-                                                    <SlidersHorizontal className="h-3.5 w-3.5" /> Manage
+                                                    <SlidersHorizontal className="h-3.5 w-3.5" /> {t('salesAgentCommissions.manage')}
                                                 </Button>
                                             </TableCell>
                                         ) : null}
@@ -180,7 +182,7 @@ export function AgentCommissionAdminOverview({
                     onOpenChange={(open) => { if (!open) setSettlementAgentId(null) }}
                     workspaceId={workspaceId}
                     agentId={settlementAgentId}
-                    agentName={directory.agentById.get(settlementAgentId)?.name || 'Agent'}
+                    agentName={directory.agentById.get(settlementAgentId)?.name || t('salesAgentCommissions.agent')}
                     entries={entries.filter((entry) => entry.agentId === settlementAgentId && !entry.isDeleted)}
                     iqdPreference={iqdPreference}
                     defaultCurrency={defaultCurrency}

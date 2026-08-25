@@ -5623,6 +5623,76 @@ export async function updateLoanReminderSnooze(
     }
 }
 
+export async function updateLoanNote(loanId: string, note: string): Promise<Loan> {
+    const existing = await db.loans.get(loanId)
+    if (!existing || existing.isDeleted) {
+        throw new Error('Loan not found')
+    }
+
+    const now = new Date().toISOString()
+    const notes = note.trim()
+    const updatedLoan: Loan = {
+        ...existing,
+        notes,
+        updatedAt: now,
+        version: existing.version + 1,
+        syncStatus: 'pending',
+        lastSyncedAt: null
+    }
+
+    await db.loans.put(updatedLoan)
+
+    const enqueueMutation = async () => {
+        await addToOfflineMutations(
+            'loans',
+            updatedLoan.id,
+            'update',
+            updatedLoan as unknown as Record<string, unknown>,
+            existing.workspaceId
+        )
+    }
+
+    if (!isOnline(existing.workspaceId)) {
+        await enqueueMutation()
+        return updatedLoan
+    }
+
+    try {
+        const { error } = await runMutation('loans.note.update', () =>
+            supabase
+                .from('loans')
+                .update(toSnakeCase({
+                    notes,
+                    updatedAt: updatedLoan.updatedAt,
+                    version: updatedLoan.version
+                }))
+                .eq('id', updatedLoan.id)
+        )
+        if (error) throw error
+
+        const syncedAt = new Date().toISOString()
+        await db.loans.update(updatedLoan.id, {
+            syncStatus: 'synced',
+            lastSyncedAt: syncedAt
+        })
+
+        return {
+            ...updatedLoan,
+            syncStatus: 'synced',
+            lastSyncedAt: syncedAt
+        }
+    } catch (error) {
+        if (shouldUseOfflineMutationFallback(error)) {
+            console.error('[Loans] Note sync failed, queued offline mutation:', error)
+            await enqueueMutation()
+            return updatedLoan
+        }
+
+        await db.loans.put(existing)
+        throw normalizeSupabaseActionError(error)
+    }
+}
+
 export async function deleteLoan(loanId: string): Promise<void> {
     const loan = await db.loans.get(loanId)
     if (!loan || loan.isDeleted) {

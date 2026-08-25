@@ -1430,7 +1430,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                         <TableRow>
                             <TableHead>{t('orders.table.orderNumber') || 'Order #'}</TableHead>
                             <TableHead>{activeTab === 'sales' ? (t('orders.table.customer') || 'Customer') : (t('suppliers.title') || 'Supplier')}</TableHead>
-                            {activeTab === 'sales' && salesAgentCommissionsEnabled ? <TableHead>Sales agent</TableHead> : null}
+                            {activeTab === 'sales' && salesAgentCommissionsEnabled ? <TableHead>{t('salesAgentCommissions.salesAgent')}</TableHead> : null}
                             <TableHead>{t('orders.table.items') || 'Items'}</TableHead>
                             <TableHead>{t('common.status') || 'Status'}</TableHead>
                             <TableHead>{t('common.total') || 'Total'}</TableHead>
@@ -1483,9 +1483,9 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                 return agent ? (
                                                     <div>
                                                         <div className="font-medium">{agent.name}</div>
-                                                        <div className="text-xs text-muted-foreground">{agent.plan?.name || 'No commission plan'}</div>
+                                                        <div className="text-xs text-muted-foreground">{agent.plan?.name || t('salesAgentCommissions.noCommissionPlan')}</div>
                                                     </div>
-                                                ) : <span className="text-muted-foreground">{assignment ? 'Restricted' : 'Unassigned'}</span>
+                                                ) : <span className="text-muted-foreground">{assignment ? t('salesAgentCommissions.restricted') : t('salesAgentCommissions.unassigned')}</span>
                                             })()}
                                         </TableCell>
                                     ) : null}
@@ -1603,7 +1603,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                  {(() => {
                                                      const assignment = activeSalesAgentAssignmentByOrderId.get(row.id)
                                                      const agent = visibleCommissionAgentByOrderId.get(row.id)
-                                                     return agent?.name || (assignment ? 'Restricted' : 'Unassigned')
+                                                     return agent?.name || (assignment ? t('salesAgentCommissions.restricted') : t('salesAgentCommissions.unassigned'))
                                                  })()}
                                              </div>
                                          ) : null}
