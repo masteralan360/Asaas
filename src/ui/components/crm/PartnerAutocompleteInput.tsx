@@ -14,6 +14,7 @@ interface PartnerAutocompleteInputProps {
     placeholder?: string
     className?: string
     disabled?: boolean
+    required?: boolean
     includeRealEstateRoles?: boolean
     includeAgentRoles?: boolean
     excludePartnerIds?: string[]
@@ -28,6 +29,7 @@ export function PartnerAutocompleteInput({
     placeholder,
     className,
     disabled,
+    required,
     includeRealEstateRoles = false,
     includeAgentRoles = false,
     excludePartnerIds = [],
@@ -86,6 +88,7 @@ export function PartnerAutocompleteInput({
                 onFocus={() => setIsFocused(true)}
                 placeholder={placeholder}
                 disabled={disabled}
+                required={required}
                 className="flex-1"
             />
             {showDropdown ? (

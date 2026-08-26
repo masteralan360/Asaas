@@ -1,6 +1,7 @@
 import type { TFunction } from "i18next";
 import {
   ArrowRightLeft,
+  Car,
   BarChart3,
   Boxes,
   Building2,
@@ -287,6 +288,32 @@ export function buildWorkspaceNavigation({
           name: t("nav.postService", { defaultValue: "Post Service" }),
           href: "/post-service",
           icon: PackageCheck,
+        },
+      ]
+      : []),
+    ...(isCoreRole && hasFeature("car_rental") && canAccessPermission("carRental.access")
+      ? [
+        {
+          name: t("carRental.title"),
+          href: "/car-rental",
+          icon: Car,
+          children: [
+            {
+              name: t("carRental.tabs.vehicles"),
+              href: "/car-rental/vehicles",
+              icon: Car,
+            },
+            {
+              name: t("carRental.tabs.requests"),
+              href: "/car-rental/requests",
+              icon: CalendarClock,
+            },
+            {
+              name: t("carRental.tabs.contracts"),
+              href: "/car-rental/contracts",
+              icon: FileText,
+            },
+          ],
         },
       ]
       : []),

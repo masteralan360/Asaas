@@ -42,7 +42,7 @@ function mergeChunks(chunks: readonly Float32Array[]) {
 
 function encodePcmInWorker(pcm: Float32Array, sampleRate: number, workerRef: MutableRefObject<Worker | null>) {
   return new Promise<FlacVoiceRecording>((resolve, reject) => {
-    const worker = new Worker(new URL("../workers/deliveryFlacEncoder.worker.ts", import.meta.url), { type: "module" });
+    const worker = new Worker(new URL("../workers/flacEncoder.worker.ts", import.meta.url), { type: "module" });
     workerRef.current = worker;
     const finish = () => {
       worker.terminate();

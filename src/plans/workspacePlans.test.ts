@@ -114,6 +114,29 @@ describe('Post Service workspace module access', () => {
     })
 })
 
+describe('Car Rental Service workspace module access', () => {
+    it('is not included in any workspace subscription plan', () => {
+        for (const plan of WORKSPACE_PLANS) {
+            expect(planHasModule(plan, 'car_rental')).toBe(false)
+            expect(planHasWorkspaceFeature(plan, 'car_rental')).toBe(false)
+        }
+    })
+
+    it('is enabled only by a workspace module grant override', () => {
+        const resolved = applyWorkspaceOverrides(getPlanCapabilities('enterprise'), [{
+            id: 'override-car-rental',
+            workspace_id: 'workspace-1',
+            type: 'module',
+            key: 'car_rental',
+            value: 'grant',
+            created_by: null,
+            created_at: new Date(0).toISOString()
+        }])
+
+        expect(resolved.modules).toContain('car_rental')
+    })
+})
+
 describe('Instant POS and KDS workspace module access', () => {
     it('is not included in any workspace subscription plan', () => {
         for (const plan of WORKSPACE_PLANS) {

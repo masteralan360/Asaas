@@ -4,8 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { Sale } from '@/types'
-import { applySalesOrderReturnQuantities, useCategories, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, useBusinessPartners, useDeliveryMerchantProfiles, useDeliveryShipments, toUISale, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, toUISaleFromDeliveryShipment } from '@/local-db'
-import { formatCurrency, formatDateTime, formatDate, formatOriginLabel, formatTime } from '@/lib/utils'
+import { applySalesOrderReturnQuantities, useCategories, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, useBusinessPartners, useDeliveryMerchantProfiles, useDeliveryShipments, useRentalContracts, useRentalVehicles, toUISale, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, toUISaleFromDeliveryShipment, toUISaleFromRentalContract } from '@/local-db'
+import { formatCurrency, formatDateTime, formatDate, formatTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getDateRangeBounds } from '@/lib/dateRangeFilters'
@@ -340,6 +340,8 @@ function revenueOriginLabel(origin: string | null | undefined, sourceChannel: st
             return t('revenue.filters.origins.exchange', { defaultValue: 'Exchange' })
         case 'post_service':
             return t('revenue.filters.origins.postService', { defaultValue: 'Post Service' })
+        case 'car_rental':
+            return t('revenue.filters.origins.carRental')
         default:
             return humanizeRevenueFilterValue(origin)
     }
@@ -443,7 +445,8 @@ function revenueHourLabel(value: string, t: any) {
 function applyRevenueFilters(
     records: RevenueAnalysisRecord[],
     filters: RevenueFilterState,
-    userNameById?: ReadonlyMap<string, string>
+    userNameById?: ReadonlyMap<string, string>,
+    t?: any
 ) {
     const normalizedSearch = normalizeRevenueFilterValue(filters.search)
     const minRevenue = parseOptionalNumber(filters.minRevenue)
@@ -502,7 +505,7 @@ function applyRevenueFilters(
             record.sourceRecordId,
             record.referenceCode,
             record.origin,
-            formatOriginLabel(record.origin, record.sourceChannel),
+            revenueOriginLabel(record.origin, record.sourceChannel, t),
             record.sourceChannel,
             record.currency,
             record.paymentMethod,
@@ -527,8 +530,8 @@ function applyRevenueFilters(
         const totalsB = getRevenueAnalysisTotals(b)
         const staffA = getRevenueStaffLabel(a, userNameById)
         const staffB = getRevenueStaffLabel(b, userNameById)
-        const originA = formatOriginLabel(a.origin, a.sourceChannel)
-        const originB = formatOriginLabel(b.origin, b.sourceChannel)
+        const originA = revenueOriginLabel(a.origin, a.sourceChannel, t)
+        const originB = revenueOriginLabel(b.origin, b.sourceChannel, t)
 
         switch (filters.sort) {
             case 'date_asc':
@@ -591,6 +594,8 @@ export function Revenue() {
     const deliveryShipments = useDeliveryShipments(user?.workspaceId)
     const deliveryMerchantProfiles = useDeliveryMerchantProfiles(user?.workspaceId)
     const deliveryBusinessPartners = useBusinessPartners(user?.workspaceId)
+    const rentalVehicles = useRentalVehicles(user?.workspaceId)
+    const rentalContracts = useRentalContracts(user?.workspaceId)
     const rawExchangeTransactions = useExchangeTransactions(user?.workspaceId)
     const realEstateCommissionTransactions = usePaymentTransactions(user?.workspaceId, {
         direction: 'incoming',
@@ -622,6 +627,10 @@ export function Revenue() {
     const deliveryMerchantBusinessPartnerIdByProfileId = useMemo(
         () => new Map(deliveryMerchantProfiles.map((profile) => [profile.id, profile.businessPartnerId] as const)),
         [deliveryMerchantProfiles]
+    )
+    const rentalVehicleById = useMemo(
+        () => new Map(rentalVehicles.map((vehicle) => [vehicle.id, vehicle] as const)),
+        [rentalVehicles]
     )
     const salesOrders = useMemo(
         () => applySalesOrderReturnQuantities(rawSalesOrders || [], salesOrderReturnItems),
@@ -660,8 +669,19 @@ export function Revenue() {
                     defaultValue: `Fee charged to ${shipment.feePayer}`
                 })
             }))
-        return [...sales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales, ...activitySales, ...deliverySales]
-    }, [rawSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines, userNameById, dateBounds.endDate, dateBounds.startDate, deliveryMerchantBusinessPartnerIdByProfileId, deliveryMerchantNameByProfileId, deliveryShipments, t])
+        const rentalSales = rentalContracts
+            .filter((contract) => ['active', 'returned', 'closed'].includes(contract.status))
+            .filter((contract) => {
+                const recognitionDate = contract.actualPickupAt || contract.plannedPickupAt
+                return (!dateBounds.startDate || recognitionDate >= dateBounds.startDate)
+                    && (!dateBounds.endDate || recognitionDate <= dateBounds.endDate)
+            })
+            .map((contract) => toUISaleFromRentalContract(contract, rentalVehicleById.get(contract.vehicleId), {
+                serviceName: t('carRental.reporting.serviceName'),
+                serviceCategory: t('carRental.reporting.serviceCategory'),
+            }))
+        return [...sales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales, ...activitySales, ...deliverySales, ...rentalSales]
+    }, [rawSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines, userNameById, dateBounds.endDate, dateBounds.startDate, deliveryMerchantBusinessPartnerIdByProfileId, deliveryMerchantNameByProfileId, deliveryShipments, rentalContracts, rentalVehicleById, t])
     const travelSales = useMemo<Sale[]>(() =>
         (rawTravelSales || [])
             .filter(s => s.isPaid && !s.isDeleted)
@@ -781,16 +801,16 @@ export function Revenue() {
         [revenueRecords, dateRange, customDates]
     )
     const filteredRevenueRecords = useMemo(
-        () => applyRevenueFilters(filterRevenueRecordsByStorage(dateScopedRevenueRecords, filters.storage), filters, userNameById),
-        [dateScopedRevenueRecords, filters, userNameById]
+        () => applyRevenueFilters(filterRevenueRecordsByStorage(dateScopedRevenueRecords, filters.storage), filters, userNameById, t),
+        [dateScopedRevenueRecords, filters, t, userNameById]
     )
     const allTimeFilteredRevenueRecords = useMemo(
-        () => applyRevenueFilters(filterRevenueRecordsByStorage(revenueRecords, filters.storage), filters, userNameById),
-        [filters, revenueRecords, userNameById]
+        () => applyRevenueFilters(filterRevenueRecordsByStorage(revenueRecords, filters.storage), filters, userNameById, t),
+        [filters, revenueRecords, t, userNameById]
     )
     const draftPreviewRevenueRecords = useMemo(
-        () => applyRevenueFilters(filterRevenueRecordsByStorage(dateScopedRevenueRecords, draftFilters.storage), draftFilters, userNameById),
-        [dateScopedRevenueRecords, draftFilters, userNameById]
+        () => applyRevenueFilters(filterRevenueRecordsByStorage(dateScopedRevenueRecords, draftFilters.storage), draftFilters, userNameById, t),
+        [dateScopedRevenueRecords, draftFilters, t, userNameById]
     )
     const filteredSales = useMemo(() => {
         const visibleSaleIds = new Set(
@@ -928,7 +948,7 @@ export function Revenue() {
         const saleStats: {
             key: string,
             id: string,
-            source: 'sale' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate' | 'activities' | 'clinical_appointment',
+            source: 'sale' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate' | 'activities' | 'clinical_appointment' | 'post_service' | 'car_rental',
             sourceRecordId?: string | null,
             referenceCode: string,
             date: string,
@@ -1957,7 +1977,7 @@ export function Revenue() {
                                         const isFullyReturned = !!sale.isReturned || sale.returnStatus === 'returned'
                                         const hasAnyReturn = isFullyReturned || !!sale.hasPartialReturn || sale.returnStatus === 'partial'
                                         const totalReturnedQuantity = sale.totalReturnedQuantity || 0
-                                        const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'activities' || sale.source === 'clinical_appointment'
+                                        const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'activities' || sale.source === 'clinical_appointment' || sale.source === 'post_service' || sale.source === 'car_rental'
 
                                         const handleRecordClick = () => {
                                             if (sale.source === 'travel_agency') {
@@ -1972,6 +1992,10 @@ export function Revenue() {
                                                 setLocation(`/activities?transaction=${sale.sourceRecordId || sale.id}`)
                                             } else if (sale.source === 'clinical_appointment') {
                                                 setLocation(`/clinical-appointments/${sale.sourceRecordId || sale.id}/edit`)
+                                            } else if (sale.source === 'post_service') {
+                                                setLocation('/post-service')
+                                            } else if (sale.source === 'car_rental') {
+                                                setLocation('/car-rental/contracts')
                                             } else if (originalSale) {
                                                 setSelectedSale(originalSale)
                                             }
@@ -2029,7 +2053,7 @@ export function Revenue() {
                                                             )}
 
                                                             <span className="px-1.5 py-0.5 rounded-full text-[8px] font-bold bg-secondary uppercase">
-                                                                {formatOriginLabel(sale.origin, sale.sourceChannel)}
+                                                                {revenueOriginLabel(sale.origin, sale.sourceChannel, t)}
                                                             </span>
                                                         </div>
                                                         {sale.partyName && (
@@ -2111,7 +2135,7 @@ export function Revenue() {
                                             const isFullyReturned = !!sale.isReturned || sale.returnStatus === 'returned'
                                             const hasAnyReturn = isFullyReturned || !!sale.hasPartialReturn || sale.returnStatus === 'partial'
                                             const totalReturnedQuantity = sale.totalReturnedQuantity || 0
-                                            const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'activities' || sale.source === 'clinical_appointment'
+                                            const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'activities' || sale.source === 'clinical_appointment' || sale.source === 'post_service' || sale.source === 'car_rental'
 
                                             const handleRecordClick = () => {
                                                 if (sale.source === 'travel_agency') {
@@ -2126,6 +2150,10 @@ export function Revenue() {
                                                     setLocation(`/activities?transaction=${sale.sourceRecordId || sale.id}`)
                                                 } else if (sale.source === 'clinical_appointment') {
                                                     setLocation(`/clinical-appointments/${sale.sourceRecordId || sale.id}/edit`)
+                                                } else if (sale.source === 'post_service') {
+                                                    setLocation('/post-service')
+                                                } else if (sale.source === 'car_rental') {
+                                                    setLocation('/car-rental/contracts')
                                                 } else if (originalSale) {
                                                     setSelectedSale(originalSale)
                                                 }
@@ -2217,7 +2245,7 @@ export function Revenue() {
                                                     </TableCell>
                                                     <TableCell className="text-start">
                                                         <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-secondary uppercase">
-                                                            {formatOriginLabel(sale.origin, sale.sourceChannel)}
+                                                            {revenueOriginLabel(sale.origin, sale.sourceChannel, t)}
                                                         </span>
                                                     </TableCell>
                                                     <TableCell className="text-end font-medium">

@@ -251,6 +251,26 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     description: "Manage travel-related bookings and service sales.",
     badge: "Service",
   },
+  "/car-rental": {
+    section: "sell-and-serve",
+    description: "Manage rental vehicles, availability, customer requests, and rental contracts.",
+    badge: "Rental",
+  },
+  "/car-rental/vehicles": {
+    section: "sell-and-serve",
+    description: "Register rental vehicles, rates, condition, and availability.",
+    badge: "Vehicles",
+  },
+  "/car-rental/requests": {
+    section: "sell-and-serve",
+    description: "Review customer rental requests and convert approved demand into contracts.",
+    badge: "Requests",
+  },
+  "/car-rental/contracts": {
+    section: "sell-and-serve",
+    description: "Reserve, hand over, receive, collect, and close vehicle rental contracts.",
+    badge: "Contracts",
+  },
   "/real-estate": {
     section: "real-estate",
     description: "Record property deals, parties, balances, and installment schedules.",

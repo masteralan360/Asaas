@@ -68,6 +68,7 @@ export interface WorkspaceFeatures {
     agents: boolean
     sales_agent_commissions: boolean
     post_service: boolean
+    car_rental: boolean
     ecommerce: boolean
     travel_agency: boolean
     real_estate: boolean
@@ -171,6 +172,7 @@ const PLAN_DERIVED_FEATURE_KEYS: ModuleFeatureKey[] = [
     'agents',
     'sales_agent_commissions',
     'post_service',
+    'car_rental',
     'ecommerce',
     'travel_agency',
     'real_estate',
@@ -254,6 +256,7 @@ const defaultFeatures: WorkspaceFeatures = {
     currency_exchange: false,
     agents: false,
     post_service: false,
+    car_rental: false,
     clinical_appointments: false,
     print_lang: 'auto',
     print_qr: false,
@@ -376,6 +379,7 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
         currency_exchange: localWorkspace.currency_exchange ?? false,
         agents: localWorkspace.agents ?? false,
         post_service: localWorkspace.post_service ?? false,
+        car_rental: localWorkspace.car_rental ?? false,
         clinical_appointments: localWorkspace.clinical_appointments ?? false,
         is_configured: localWorkspace.is_configured,
         default_currency: localWorkspace.default_currency,
@@ -545,6 +549,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             currency_exchange: nextFeatures.currency_exchange,
             agents: nextFeatures.agents,
             post_service: nextFeatures.post_service,
+            car_rental: nextFeatures.car_rental,
             clinical_appointments: nextFeatures.clinical_appointments,
             loans: nextFeatures.loans,
             net_revenue: nextFeatures.net_revenue,
@@ -759,6 +764,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 currency_exchange: currentFeatures.currency_exchange,
                 agents: currentFeatures.agents,
                 post_service: currentFeatures.post_service,
+                car_rental: currentFeatures.car_rental,
                 clinical_appointments: currentFeatures.clinical_appointments,
                 is_configured: workspaceRow.is_configured ?? currentFeatures.is_configured,
                 default_currency: resolvedLocallyOwned.default_currency ?? workspaceRow.default_currency ?? currentFeatures.default_currency,
@@ -992,6 +998,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             currency_exchange: currentFeatures.currency_exchange,
                             agents: currentFeatures.agents,
                             post_service: currentFeatures.post_service,
+                            car_rental: currentFeatures.car_rental,
                             clinical_appointments: currentFeatures.clinical_appointments,
                             is_configured: data.is_configured ?? currentFeatures.is_configured,
                             default_currency: resolvedLocallyOwnedUpdate.default_currency ?? (data.default_currency || currentFeatures.default_currency),

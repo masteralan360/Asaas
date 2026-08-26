@@ -346,6 +346,22 @@
                 "description": "Operate COD shipments, courier dispatch, cash handovers, and merchant payouts.",
                 "badge": "Delivery"
             },
+            "/car-rental": {
+                "description": "Manage rental vehicles, availability, customer requests, and rental contracts.",
+                "badge": "Rental"
+            },
+            "/car-rental/vehicles": {
+                "description": "Register rental vehicles, rates, condition, and availability.",
+                "badge": "Vehicles"
+            },
+            "/car-rental/requests": {
+                "description": "Review customer rental requests and convert approved demand into contracts.",
+                "badge": "Requests"
+            },
+            "/car-rental/contracts": {
+                "description": "Reserve, hand over, receive, collect, and close vehicle rental contracts.",
+                "badge": "Contracts"
+            },
             "/": {
                 "description": "Return to the main business overview and headline numbers.",
                 "badge": "Overview"
@@ -1502,7 +1518,11 @@
             "role": "Role",
             "contactName": "Contact Name"
         },
+        "receivableCreditLimit": "Receivable credit limit",
+        "payableCreditLimit": "Payable credit limit",
+        "unlimited": "Blank means unlimited",
         "agent": {
+            "name": "Agent name",
             "zone": "Operational Territory",
             "type": "Agent Type",
             "carModel": "Car Model",
@@ -1510,8 +1530,16 @@
             "courierDeliveryFee": "Courier delivery fee",
             "courierDeliveryFeeHint": "The courier keeps this amount per delivered post. It is deducted from the expected cash handover.",
             "linkedUser": "Linked User",
+            "noLinkedUser": "Not linked",
+            "alreadyLinked": "Already linked",
             "status": "Status",
             "image": "Profile Picture",
+            "excludedCategories": "Excluded product categories",
+            "excludedCategoriesDescription": "The linked user can view these products but cannot select or sell them.",
+            "manageExcludedCategories": "Excluded categories",
+            "excludedCategoriesModalDescription": "Select categories this agent's linked user cannot select or sell. Products remain visible elsewhere.",
+            "excludedCategoriesSaveError": "Unable to save excluded categories",
+            "noCategoriesFound": "No product categories found.",
             "types": {
                 "driver": "Driver",
                 "field_agent": "Field agent",
@@ -1524,6 +1552,7 @@
             }
         },
         "roles": {
+            "agent": "Agent",
             "both": "Customer & Supplier",
             "customer": "Customer",
             "supplier": "Supplier",
@@ -1565,6 +1594,7 @@
         "status": "Status",
         "actions": "Actions",
         "viewProfile": "View Profile",
+        "addAgent": "Add Agent",
         "edit": "Edit",
         "delete": "Delete",
         "deleteTitle": "Delete Agent",
@@ -1810,6 +1840,7 @@
             "accountingHr": "Accounting / HR",
             "directManual": "Direct / Manual",
             "activities": "Activities",
+            "carRental": "Car Rental Service",
             "allStatuses": "All Open Statuses",
             "open": "Open",
             "overdue": "Overdue"
@@ -1848,7 +1879,10 @@
             "activityTransaction": "Activity Transaction",
             "activityRefund": "Activity Refund",
             "deliveryCourierRemittance": "Courier Remittance",
-            "deliveryMerchantPayout": "Merchant Payout"
+            "deliveryMerchantPayout": "Merchant Payout",
+            "rentalPayment": "Rental Payment",
+            "rentalDeposit": "Security Deposit",
+            "rentalDepositRefund": "Deposit Refund"
         },
         "status": {
             "reversal": "Reversal",
@@ -2004,7 +2038,10 @@
             "activityTransaction": "Activity Transaction",
             "activityRefund": "Activity Refund",
             "deliveryCourierRemittance": "Courier Remittance",
-            "deliveryMerchantPayout": "Merchant Payout"
+            "deliveryMerchantPayout": "Merchant Payout",
+            "rentalPayment": "Rental Payment",
+            "rentalDeposit": "Security Deposit",
+            "rentalDepositRefund": "Deposit Refund"
         },
         "sourceModule": {
             "pos": "POS",
@@ -2015,14 +2052,16 @@
             "loans": "Loans",
             "manual": "Manual",
             "activities": "Activities",
-            "postService": "Post Service"
+            "postService": "Post Service",
+            "carRental": "Car Rental Service"
         },
         "description": {
             "deliveryCourierRemittance": "Courier cash handover",
             "deliveryMerchantPayout": "Merchant payout",
             "deliveryPostCourierRelation": "Post {{tracking}} · courier cash handover for {{recipient}}.",
             "deliveryPostMerchantRelation": "Post {{tracking}} · merchant payout for {{recipient}}.",
-            "deliverySettlementRelation": "Post Service settlement {{reference}}."
+            "deliverySettlementRelation": "Post Service settlement {{reference}}.",
+            "carRentalRelation": "Original source: rental contract {{reference}}."
         },
         "paymentMethod": {
             "bankTransfer": "Bank Transfer",
@@ -2125,14 +2164,14 @@
             "successPartial": "Order items returned and payment adjusted.",
             "itemConfirmation": "Return {{itemName}} from this completed order?",
             "wholeConfirmation": "Return all remaining items from this completed order?",
-      "returnedQuantity": "Returned: {{returned}} / {{total}}",
-      "returnedStatus": "Returned",
-      "returnsReflected": "Returns reflected",
-      "printVersion": "Print version",
-      "adjustedPrint": "Returns reflected",
-      "originalPrint": "Original",
-      "returnedPrint": "Returned",
-      "history": "Returns ({{count}})"
+            "returnedQuantity": "Returned: {{returned}} / {{total}}",
+            "returnedStatus": "Returned",
+            "returnsReflected": "Returns reflected",
+            "printVersion": "Print version",
+            "adjustedPrint": "Returns reflected",
+            "originalPrint": "Original",
+            "returnedPrint": "Returned",
+            "history": "Returns ({{count}})"
         },
         "table": {
             "orderNumber": "Order #",
@@ -3153,6 +3192,8 @@
             "postServiceDispatchDescription": "Create courier manifests and assign shipments to couriers.",
             "postServiceSettle": "Settle delivery cash",
             "postServiceSettleDescription": "Record courier handovers and merchant payouts.",
+            "carRentalAccess": "Car Rental Service",
+            "carRentalAccessDescription": "Access rental vehicles, requests, contracts, and rental payments.",
             "fleetAccess": "Fleet Management",
             "fleetAccessDescription": "Access fleet vehicles, assignments, and operational views.",
             "fleetViewLiveLocations": "View live agent locations",
@@ -4163,7 +4204,8 @@
                 "upload": "Upload",
                 "exchange": "Exchange",
                 "activities": "Activities",
-                "postService": "Post Service"
+                "postService": "Post Service",
+                "carRental": "Car Rental Service"
             },
             "sourceChannels": {
                 "manual": "Manual",
@@ -6847,6 +6889,176 @@
             "merchantNotFound": "Merchant not found.",
             "postNoOutstanding": "This post has no outstanding amount to settle.",
             "merchantDeleteHistory": "A merchant with delivery history cannot be permanently deleted. Make it inactive instead."
+        }
+    },
+    "carRental": {
+        "title": "Car Rental Service",
+        "subtitle": "Manage rental vehicles, customer requests, contracts, handovers, returns, and payments.",
+        "tabs": {
+            "calendar": "Rental Calendar",
+            "vehicles": "Vehicles",
+            "requests": "Requested Vehicles",
+            "contracts": "Contracts"
+        },
+        "actions": {
+            "addVehicle": "Add vehicle",
+            "newRequest": "New request",
+            "newContract": "New contract",
+            "createContract": "Create contract",
+            "createAndReserve": "Create & reserve",
+            "reserve": "Reserve",
+            "handover": "Handover",
+            "returnVehicle": "Return vehicle",
+            "recordPayment": "Record payment",
+            "closeContract": "Close contract",
+            "cancelContract": "Cancel contract",
+            "markContacted": "Mark contacted",
+            "saving": "Saving..."
+        },
+        "calendar": {
+            "title": "Rental Calendar",
+            "description": "See availability, reservations, rentals, and maintenance for the next seven days.",
+            "vehicle": "Vehicle",
+            "previousWeek": "Previous week",
+            "nextWeek": "Next week"
+        },
+        "vehicles": {
+            "description": "Register cars available for rental and keep their pricing and condition current."
+        },
+        "requests": {
+            "description": "Record customer interest first, then turn an approved request into a reserved contract."
+        },
+        "contracts": {
+            "description": "Reserve a vehicle, hand it over, receive it back, and close the rental after collection.",
+            "days": "{{count}} day",
+            "days_other": "{{count}} days"
+        },
+        "dialogs": {
+            "addVehicle": "Add rental vehicle",
+            "editVehicle": "Edit rental vehicle",
+            "newRequest": "New rental request",
+            "newContract": "New rental contract",
+            "convertRequest": "Create contract from request",
+            "handover": "Vehicle handover",
+            "returnVehicle": "Vehicle return",
+            "recordPayment": "Record rental payment",
+            "cancelContract": "Cancel rental contract"
+        },
+        "fields": {
+            "vehicle": "Vehicle",
+            "plateNumber": "Plate number",
+            "model": "Model",
+            "make": "Make",
+            "year": "Year",
+            "category": "Category",
+            "color": "Color",
+            "dailyRate": "Daily rate",
+            "currency": "Currency",
+            "odometer": "Odometer",
+            "fuelLevel": "Fuel level",
+            "vin": "VIN / chassis number",
+            "status": "Status",
+            "notes": "Notes",
+            "request": "Request",
+            "contract": "Contract",
+            "customer": "Customer",
+            "phone": "Phone",
+            "businessPartner": "Business partner",
+            "preferredVehicle": "Preferred vehicle",
+            "requestedPeriod": "Requested period",
+            "period": "Rental period",
+            "pickup": "Pickup date & time",
+            "returnDate": "Planned return date & time",
+            "actualReturn": "Actual return date & time",
+            "driverLicense": "Driver licence number",
+            "discount": "Discount",
+            "deposit": "Security deposit",
+            "total": "Rental total",
+            "balance": "Rental balance",
+            "condition": "Vehicle condition",
+            "returnAdjustment": "Return adjustment",
+            "paymentKind": "Payment type",
+            "paymentMethod": "Payment method",
+            "maximumAmount": "Maximum amount"
+        },
+        "vehicleStatuses": {
+            "available": "Available",
+            "maintenance": "Maintenance",
+            "inactive": "Inactive",
+            "reserved": "Reserved",
+            "onRent": "On rent"
+        },
+        "requestStatuses": {
+            "new": "New",
+            "contacted": "Contacted",
+            "offered": "Offer sent",
+            "converted": "Converted",
+            "rejected": "Rejected",
+            "cancelled": "Cancelled",
+            "expired": "Expired"
+        },
+        "contractStatuses": {
+            "draft": "Draft",
+            "reserved": "Reserved",
+            "active": "On rent",
+            "returned": "Returned",
+            "closed": "Closed",
+            "cancelled": "Cancelled"
+        },
+        "paymentKinds": {
+            "rental": "Rental payment",
+            "deposit": "Security deposit",
+            "deposit_refund": "Deposit refund"
+        },
+        "filters": {
+            "createdDate": "Created date"
+        },
+        "placeholders": {
+            "searchContracts": "Search contract, customer, phone, or vehicle...",
+            "searchCustomer": "Search existing customer...",
+            "searchVehicle": "Search registered vehicle..."
+        },
+        "partnerLink": {
+            "linked": "Linked",
+            "unlink": "Unlink"
+        },
+        "cancelConfirmation": {
+            "description": "Cancel {{contractNo}}? This keeps the contract in history, but it can no longer be reserved or handed over."
+        },
+        "syncRecovery": {
+            "title": "Correct vehicle year",
+            "description": "Supabase accepts vehicle years from {{min}} to {{max}}. Enter the real model year, or remove it if it is unknown.",
+            "fixVehicleYear": "Fix vehicle year",
+            "yearRequired": "Enter the vehicle year.",
+            "yearInvalid": "Enter a whole year from {{min}} to {{max}}.",
+            "removeYear": "Remove year",
+            "saveAndRetry": "Save & retry sync",
+            "vehicleUnavailable": "This vehicle is not available in the local workspace.",
+            "couldNotRepair": "Could not correct this vehicle year."
+        },
+        "empty": {
+            "vehicles": "No rental vehicles yet.",
+            "requests": "No rental requests in this period.",
+            "contracts": "No rental contracts in this period."
+        },
+        "reporting": {
+            "serviceName": "Car rental",
+            "serviceCategory": "Car rental"
+        },
+        "messages": {
+            "vehicleCreated": "Rental vehicle created",
+            "vehicleUpdated": "Rental vehicle updated",
+            "requestCreated": "Rental request created",
+            "requestUpdated": "Rental request updated",
+            "contractCreated": "Rental contract created and reserved",
+            "contractReserved": "Vehicle reserved",
+            "contractCancelled": "Rental contract cancelled",
+            "vehicleHandedOver": "Vehicle handed over",
+            "vehicleReturned": "Vehicle return recorded",
+            "paymentRecorded": "Rental payment recorded",
+            "contractClosed": "Rental contract closed",
+            "saveFailed": "Could not save the rental record.",
+            "vehicleYearCorrected": "Vehicle year corrected"
         }
     },
     "salesAgentCommissions": {

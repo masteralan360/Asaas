@@ -84,7 +84,7 @@ import { useTheme } from '@/ui/components/theme-provider'
 import { getDateRangeBounds, isDateInDateRange } from '@/lib/dateRangeFilters'
 
 type LedgerDirection = 'incoming' | 'outgoing'
-type LedgerSourceModule = 'pos' | 'instant_pos' | 'orders' | 'expenses' | 'payroll' | 'loans' | 'real_estate' | 'activities' | 'clinical_appointments' | 'manual' | 'exchange' | 'post_service'
+type LedgerSourceModule = 'pos' | 'instant_pos' | 'orders' | 'expenses' | 'payroll' | 'loans' | 'real_estate' | 'activities' | 'clinical_appointments' | 'manual' | 'exchange' | 'post_service' | 'car_rental'
 type LedgerRelationRole = 'origin' | 'repayment' | 'settlement'
 type LedgerEntryType =
     | 'pos_sale'
@@ -111,6 +111,9 @@ type LedgerEntryType =
     | 'exchange_profit'
     | 'delivery_courier_remittance'
     | 'delivery_merchant_payout'
+    | 'rental_payment'
+    | 'rental_deposit'
+    | 'rental_deposit_refund'
 
 interface LedgerEntry {
     id: string
@@ -311,6 +314,12 @@ function ledgerTypeLabel(type: LedgerEntryType, t: any) {
             return t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
         case 'delivery_merchant_payout':
             return t('ledger.type.deliveryMerchantPayout', { defaultValue: 'Merchant Payout' })
+        case 'rental_payment':
+            return t('ledger.type.rentalPayment')
+        case 'rental_deposit':
+            return t('ledger.type.rentalDeposit')
+        case 'rental_deposit_refund':
+            return t('ledger.type.rentalDepositRefund')
         default:
             return type
     }
@@ -342,6 +351,8 @@ function sourceModuleLabel(module: LedgerSourceModule, t: any) {
             return t('ledger.sourceModule.exchange', { defaultValue: 'Exchange' })
         case 'post_service':
             return t('ledger.sourceModule.postService', { defaultValue: 'Post Service' })
+        case 'car_rental':
+            return t('ledger.sourceModule.carRental')
         default:
             return module
     }
@@ -798,6 +809,10 @@ function buildTransactionReference(transaction: PaymentTransaction) {
             return buildReferenceId('CR', transaction.sourceRecordId)
         case 'delivery_merchant_payout':
             return buildReferenceId('MP', transaction.sourceRecordId)
+        case 'rental_payment':
+        case 'rental_deposit':
+        case 'rental_deposit_refund':
+            return buildReferenceId('RNT', transaction.sourceRecordId)
         default:
             return buildReferenceId('LOAN', transaction.sourceRecordId)
     }
@@ -850,7 +865,8 @@ function buildTransactionDescription(transaction: PaymentTransaction, t: any) {
 
 function buildLedgerRelationDescriptor(
     transaction: PaymentTransaction,
-    context: LedgerBuildContext
+    context: LedgerBuildContext,
+    t: any
 ): Pick<LedgerEntry, 'relationKey' | 'relationRole' | 'relationTitle' | 'relationDescription' | 'relationIsCompleted'> {
     const reference = buildTransactionReference(transaction)
 
@@ -947,6 +963,20 @@ function buildLedgerRelationDescriptor(
                 relationDescription: `Original source: Appointment ${reference}.`
             }
 
+        case 'rental_payment':
+        case 'rental_deposit':
+        case 'rental_deposit_refund':
+            return {
+                relationKey: `rental-contract:${transaction.sourceRecordId}`,
+                relationRole: 'settlement',
+                relationTitle: transaction.sourceType === 'rental_payment'
+                    ? t('ledger.type.rentalPayment')
+                    : transaction.sourceType === 'rental_deposit'
+                        ? t('ledger.type.rentalDeposit')
+                        : t('ledger.type.rentalDepositRefund'),
+                relationDescription: t('ledger.description.carRentalRelation', { reference })
+            }
+
         case 'sales_order': {
             const isReceivable = Boolean(transaction.metadata?.receivable)
             const sourceChannel = typeof transaction.metadata?.sourceChannel === 'string'
@@ -1033,7 +1063,7 @@ function buildPaymentLedgerEntry(
         }
     }
 
-    const relation = buildLedgerRelationDescriptor(transaction, context)
+    const relation = buildLedgerRelationDescriptor(transaction, context, t)
 
     switch (transaction.sourceType) {
         case 'delivery_courier_remittance':
@@ -1229,6 +1259,33 @@ function buildPaymentLedgerEntry(
         case 'real_estate_payment':
         case 'real_estate_installment':
             return null
+        case 'rental_payment':
+        case 'rental_deposit':
+        case 'rental_deposit_refund': {
+            const linkedBusinessPartnerId = typeof transaction.metadata?.businessPartnerId === 'string'
+                ? transaction.metadata.businessPartnerId
+                : null
+            return {
+                id: `payment:${transaction.id}`,
+                transactionId: transaction.id,
+                date: transaction.paidAt,
+                type: transaction.sourceType,
+                direction: transaction.direction,
+                amount: transaction.amount,
+                currency: transaction.currency,
+                sourceModule: 'car_rental',
+                referenceId: buildTransactionReference(transaction),
+                partner: transaction.counterpartyName || null,
+                businessPartnerId: linkedBusinessPartnerId
+                    || context.businessPartnerByName.get(transaction.counterpartyName?.trim().toLowerCase() ?? '')
+                    || null,
+                paymentMethod: transaction.paymentMethod || 'unknown',
+                notes: transaction.note?.trim() || null,
+                description: buildTransactionDescription(transaction, t),
+                routePath: getPaymentTransactionRoutePath(transaction),
+                ...relation
+            }
+        }
         case 'real_estate_commission': {
             const realEstateTransaction = context.realEstateTransactionById.get(transaction.sourceRecordId)
             const linkedBusinessPartnerId = typeof transaction.metadata?.businessPartnerId === 'string' && transaction.metadata.businessPartnerId
@@ -1404,6 +1461,7 @@ export function Ledger() {
         || features.activities
         || features.clinical_appointments
         || features.post_service
+        || features.car_rental
 
     const dateBounds = useMemo<{ startDate?: string; endDate?: string }>(() => {
         const { start, end } = getDateRangeBounds(dateRange, customDates)

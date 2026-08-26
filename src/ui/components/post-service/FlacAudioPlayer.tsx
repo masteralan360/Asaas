@@ -3,7 +3,7 @@ import { AlertCircle, Loader2, Pause, Play, Volume2 } from "lucide-react";
 import { FLACDecoderWebWorker, type FLACDecodedAudio } from "@wasm-audio-decoders/flac";
 import { useTranslation } from "react-i18next";
 
-import { downloadDeliveryVoiceReason } from "@/services/deliveryVoiceReasons";
+import { downloadVoiceStorageObject } from "@/services/voiceStorage";
 import { cn } from "@/lib/utils";
 import { Button } from "@/ui/components/button";
 
@@ -28,7 +28,7 @@ function createAudioContext() {
 async function loadAudioData(source: FlacAudioSource, signal: AbortSignal) {
   if (source.kind === "blob") return source.blob.arrayBuffer();
   if (signal.aborted) throw new DOMException("Audio loading was cancelled.", "AbortError");
-  return (await downloadDeliveryVoiceReason(source.path)).arrayBuffer();
+  return (await downloadVoiceStorageObject(source.path)).arrayBuffer();
 }
 
 export function FlacAudioPlayer({ source, className }: { source: FlacAudioSource; className?: string }) {

@@ -339,6 +339,22 @@
                 "description": "بەڕێوەبردنی پۆستەکانی پارە لە کاتی وەرگرتن، دابەشکردنی مەندوب، تەسلیمکردنی نەقد و پارەدانی بازرگان.",
                 "badge": "گەیاندن"
             },
+            "/car-rental": {
+                "description": "بەڕێوەبردنی ئۆتۆمبێلەکانی بەکرێدان، بەردەستبوون، داواکاریی کڕیار و گرێبەستەکان.",
+                "badge": "بەکرێدان"
+            },
+            "/car-rental/vehicles": {
+                "description": "تۆمارکردنی ئۆتۆمبێلەکانی بەکرێدان، نرخ، دۆخ و بەردەستبوون.",
+                "badge": "ئۆتۆمبێلەکان"
+            },
+            "/car-rental/requests": {
+                "description": "پێداچوونەوەی داواکارییەکانی کڕیار و گۆڕینی داواکاریی پەسەندکراو بۆ گرێبەست.",
+                "badge": "داواکارییەکان"
+            },
+            "/car-rental/contracts": {
+                "description": "تەرخانکردن، تەسلیمکردن، وەرگرتنەوە، وەرگرتنی پارە و داخستنی گرێبەستی بەکرێدان.",
+                "badge": "گرێبەستەکان"
+            },
             "/": {
                 "description": "گەڕانەوە بۆ پێداچوونەوەی گشتی بزنس و ژمارە سەرەکییەکان.",
                 "badge": "پێداچوونەوە"
@@ -2120,6 +2136,8 @@
             "postServiceDispatchDescription": "دروستکردنی لیستی مەندوب و دیاریکردنی پۆست بۆیان.",
             "postServiceSettle": "تەسویەکردنی نەقدی گەیاندن",
             "postServiceSettleDescription": "تۆمارکردنی تەسلیمکردنی مەندوب و پارەدانی بازرگان.",
+            "carRentalAccess": "خزمەتگوزاری بەکرێدانی ئۆتۆمبێل",
+            "carRentalAccessDescription": "دەستگەیشتن بە ئۆتۆمبێلەکان، داواکارییەکان، گرێبەستەکان و پارەدانەکانی بەکرێدان.",
             "fleetAccess": "بەڕێوەبردنی ئۆتۆمبێلەکان",
             "fleetAccessDescription": "دەستگەیشتن بە ئۆتۆمبێلەکان، تەرخانکارییەکان و بینینە کارگێرییەکان.",
             "fleetViewLiveLocations": "بینینی شوێنی ڕاستەوخۆی وێرەکان",
@@ -3091,7 +3109,8 @@
                 "upload": "بارکردن",
                 "exchange": "ئاڵوگۆڕ",
                 "activities": "چالاکییەکان",
-                "postService": "خزمەتگوزاریی پۆست"
+                "postService": "خزمەتگوزاریی پۆست",
+                "carRental": "خزمەتگوزاری بەکرێدانی ئۆتۆمبێل"
             },
             "sourceChannels": {
                 "manual": "دەستی",
@@ -4184,6 +4203,7 @@
             "contactName": "ناوی پەیوەندی"
         },
         "agent": {
+            "name": "ناوی بریکار",
             "zone": "ناوچەی ئۆپەراسیۆن",
             "type": "جۆری بریکار",
             "carModel": "مودێلی ئۆتۆمبێل",
@@ -4191,8 +4211,16 @@
             "courierDeliveryFee": "کرێی گەیاندنی مەندوب",
             "courierDeliveryFeeHint": "مەندوب ئەم بڕەیە بۆ هەر پۆستێکی گەیشتوو لەخۆی دەهێڵێتەوە؛ لە پارەی تەسلیمی چاوەڕوانکراو کەم دەکرێتەوە.",
             "linkedUser": "بەکارهێنەری پەیوەستکراو",
+            "noLinkedUser": "نەبەستراوەتەوە",
+            "alreadyLinked": "پێشتر پەیوەست کراوە",
             "status": "ڕەوش",
             "image": "وێنەی پرۆفایل",
+            "excludedCategories": "پۆلێنە دەرخراوەکانی بەرهەم",
+            "excludedCategoriesDescription": "بەکارهێنەری پەیوەستکراو دەتوانێت ئەم بەرهەمانە ببینێت، بەڵام ناتوانێت هەڵیبژێرێت یان بیفرۆشێت.",
+            "manageExcludedCategories": "پۆلێنە دەرخراوەکان",
+            "excludedCategoriesModalDescription": "پۆلێنەکان هەڵبژێرە کە بەکارهێنەری پەیوەستکراوی ئەم بریکارە ناتوانێت هەڵیبژێرێت یان بیفرۆشێت. بەرهەمەکان لە شوێنەکانی تر بەردەست دەمێنن.",
+            "excludedCategoriesSaveError": "نەتوانرا پۆلێنە دەرخراوەکان پاشەکەوت بکرێن",
+            "noCategoriesFound": "هیچ پۆلێنێکی بەرهەم نەدۆزرایەوە.",
             "types": {
                 "driver": "شۆفێر",
                 "field_agent": "وێرەی مەیدانی",
@@ -4205,6 +4233,7 @@
             }
         },
         "roles": {
+            "agent": "بریکار",
             "both": "کڕیار و دابینکەر",
             "customer": "کڕیار",
             "supplier": "دابینکەر",
@@ -4246,6 +4275,7 @@
         "status": "ڕەوش",
         "actions": "کردارەکان",
         "viewProfile": "بینینی پرۆفایل",
+        "addAgent": "زیادکردنی بریکار",
         "edit": "دەستکاری",
         "delete": "سڕینەوە",
         "deleteTitle": "سڕینەوەی بریکار",
@@ -4488,6 +4518,7 @@
             "accountingHr": "ژمێریاری / چاوگی مرۆیی",
             "directManual": "ڕاستەوخۆ / دەستی",
             "activities": "چالاکییەکان",
+            "carRental": "خزمەتگوزاری بەکرێدانی ئۆتۆمبێل",
             "allStatuses": "هەموو دۆخە کراوەکان",
             "open": "کراوە",
             "overdue": "دواکەوتوو"
@@ -4526,7 +4557,10 @@
             "activityTransaction": "مامەڵەی چالاکی",
             "activityRefund": "گەڕاندنەوەی پارەی چالاکی",
             "deliveryCourierRemittance": "تەسلیمکردنی نەقدی مەندوب",
-            "deliveryMerchantPayout": "پارەدانی بازرگان"
+            "deliveryMerchantPayout": "پارەدانی بازرگان",
+            "rentalPayment": "پارەدانی بەکرێدان",
+            "rentalDeposit": "پارەی دەستەبەر",
+            "rentalDepositRefund": "گەڕاندنەوەی پارەی دەستەبەر"
         },
         "status": {
             "reversal": "هەڵوەشاندنەوە",
@@ -4674,7 +4708,10 @@
             "activityTransaction": "مامەڵەی چالاکی",
             "activityRefund": "گەڕاندنەوەی پارەی چالاکی",
             "deliveryCourierRemittance": "تەسلیمکردنی نەقدی مەندوب",
-            "deliveryMerchantPayout": "پارەدانی بازرگان"
+            "deliveryMerchantPayout": "پارەدانی بازرگان",
+            "rentalPayment": "پارەدانی بەکرێدان",
+            "rentalDeposit": "پارەی دەستەبەر",
+            "rentalDepositRefund": "گەڕاندنەوەی پارەی دەستەبەر"
         },
         "sourceModule": {
             "pos": "خاڵی فڕۆشتن",
@@ -4685,14 +4722,16 @@
             "loans": "قەرزەکان",
             "manual": "دەستی",
             "activities": "چالاکییەکان",
-            "postService": "خزمەتگوزاریی پۆست"
+            "postService": "خزمەتگوزاریی پۆست",
+            "carRental": "خزمەتگوزاری بەکرێدانی ئۆتۆمبێل"
         },
         "description": {
             "deliveryCourierRemittance": "تەسلیمکردنی نەقدی لەلایەن مەندوبەوە",
             "deliveryMerchantPayout": "پارەدانی بازرگان",
             "deliveryPostCourierRelation": "پۆستی {{tracking}} · تەسلیمی نەقدی مەندوب بۆ {{recipient}}.",
             "deliveryPostMerchantRelation": "پۆستی {{tracking}} · پارەدانی بازرگان بۆ {{recipient}}.",
-            "deliverySettlementRelation": "تەسویەی خزمەتگوزاریی پۆست {{reference}}."
+            "deliverySettlementRelation": "تەسویەی خزمەتگوزاریی پۆست {{reference}}.",
+            "carRentalRelation": "سەرچاوەی سەرەکی: گرێبەستی بەکرێدان {{reference}}."
         },
         "paymentMethod": {
             "bankTransfer": "گواستنەوەی بانکی",
@@ -6647,6 +6686,176 @@
             "merchantNotFound": "بازرگان نەدۆزرایەوە.",
             "postNoOutstanding": "ئەم پۆستە هیچ بڕێکی ماوەی تەسویەی نییە.",
             "merchantDeleteHistory": "بازرگانێک کە مێژووی گەیاندنی هەیە ناتوانرێت بە هەمیشەیی بسڕدرێتەوە. لەبری ئەوە ناچالاکی بکە."
+        }
+    },
+    "carRental": {
+        "title": "خزمەتگوزاری بەکرێدانی ئۆتۆمبێل",
+        "subtitle": "بەڕێوەبردنی ئۆتۆمبێلەکانی بەکرێدان، داواکاریی کڕیار، گرێبەست، تەسلیمکردن، وەرگرتنەوە و پارەدانەکان.",
+        "tabs": {
+            "calendar": "ساڵنامەی بەکرێدان",
+            "vehicles": "ئۆتۆمبێلەکان",
+            "requests": "داواکارییەکانی ئۆتۆمبێل",
+            "contracts": "گرێبەستەکان"
+        },
+        "actions": {
+            "addVehicle": "زیادکردنی ئۆتۆمبێل",
+            "newRequest": "داواکاریی نوێ",
+            "newContract": "گرێبەستی نوێ",
+            "createContract": "دروستکردنی گرێبەست",
+            "createAndReserve": "دروستکردن و تەرخانکردن",
+            "reserve": "تەرخانکردن",
+            "handover": "تەسلیمکردن",
+            "returnVehicle": "وەرگرتنەوەی ئۆتۆمبێل",
+            "recordPayment": "تۆمارکردنی پارەدان",
+            "closeContract": "داخستنی گرێبەست",
+            "cancelContract": "هەڵوەشاندنەوەی گرێبەست",
+            "markContacted": "پەیوەندی کرا",
+            "saving": "پاشەکەوت دەکرێت..."
+        },
+        "calendar": {
+            "title": "ساڵنامەی بەکرێدان",
+            "description": "بەردەستبوون، تەرخانکردن، بەکرێدراو و چاکسازی لە حەوت ڕۆژی داهاتوودا ببینە.",
+            "vehicle": "ئۆتۆمبێل",
+            "previousWeek": "هەفتەی پێشوو",
+            "nextWeek": "هەفتەی داهاتوو"
+        },
+        "vehicles": {
+            "description": "ئۆتۆمبێلە بەردەستەکانی بەکرێدان تۆمار بکە و نرخ و دۆخیان نوێ ڕابگرە."
+        },
+        "requests": {
+            "description": "سەرەتا ئارەزووی کڕیار تۆمار بکە، پاشان داواکاریی پەسەندکراو بکە بە گرێبەستی تەرخانکراو."
+        },
+        "contracts": {
+            "description": "ئۆتۆمبێل تەرخان بکە، تەسلیمی بکە، وەریبگرەوە و دوای وەرگرتنی پارە کرێدانەکە دابخە.",
+            "days": "{{count}} ڕۆژ",
+            "days_other": "{{count}} ڕۆژ"
+        },
+        "dialogs": {
+            "addVehicle": "زیادکردنی ئۆتۆمبێلی بەکرێدان",
+            "editVehicle": "دەستکاریکردنی ئۆتۆمبێلی بەکرێدان",
+            "newRequest": "داواکاریی نوێی بەکرێدان",
+            "newContract": "گرێبەستی نوێی بەکرێدان",
+            "convertRequest": "دروستکردنی گرێبەست لە داواکاری",
+            "handover": "تەسلیمکردنی ئۆتۆمبێل",
+            "returnVehicle": "وەرگرتنەوەی ئۆتۆمبێل",
+            "recordPayment": "تۆمارکردنی پارەدانی بەکرێدان",
+            "cancelContract": "هەڵوەشاندنەوەی گرێبەستی بەکرێدان"
+        },
+        "fields": {
+            "vehicle": "ئۆتۆمبێل",
+            "plateNumber": "ژمارەی پلاک",
+            "model": "مۆدێل",
+            "make": "دروستکەر",
+            "year": "ساڵ",
+            "category": "پۆل",
+            "color": "ڕەنگ",
+            "dailyRate": "نرخی ڕۆژانە",
+            "currency": "دراو",
+            "odometer": "مێتر",
+            "fuelLevel": "ئاستی سووتەمەنی",
+            "vin": "ژمارەی شاسی",
+            "status": "دۆخ",
+            "notes": "تێبینی",
+            "request": "داواکاری",
+            "contract": "گرێبەست",
+            "customer": "کڕیار",
+            "phone": "تەلەفۆن",
+            "businessPartner": "هاوبەشی بازرگانی",
+            "preferredVehicle": "ئۆتۆمبێلی پەسەندکراو",
+            "requestedPeriod": "ماوەی داواکراو",
+            "period": "ماوەی بەکرێدان",
+            "pickup": "بەروار و کاتی تەسلیمکردن",
+            "returnDate": "بەروار و کاتی وەرگرتنەوەی پلانکراو",
+            "actualReturn": "بەروار و کاتی وەرگرتنەوەی ڕاستەقینە",
+            "driverLicense": "ژمارەی مۆڵەتی شۆفێری",
+            "discount": "داشکاندن",
+            "deposit": "پارەی دەستەبەر",
+            "total": "کۆی بەکرێدان",
+            "balance": "باڵانسی بەکرێدان",
+            "condition": "دۆخی ئۆتۆمبێل",
+            "returnAdjustment": "ڕاستکردنەوەی وەرگرتنەوە",
+            "paymentKind": "جۆری پارەدان",
+            "paymentMethod": "شێوازی پارەدان",
+            "maximumAmount": "زۆرترین بڕ"
+        },
+        "vehicleStatuses": {
+            "available": "بەردەست",
+            "maintenance": "چاکسازی",
+            "inactive": "ناچالاک",
+            "reserved": "تەرخانکراو",
+            "onRent": "بەکرێدراو"
+        },
+        "requestStatuses": {
+            "new": "نوێ",
+            "contacted": "پەیوەندی کرا",
+            "offered": "پێشنیار نێردرا",
+            "converted": "گۆڕدرا",
+            "rejected": "ڕەتکرایەوە",
+            "cancelled": "هەڵوەشاوە",
+            "expired": "بەسەرچوو"
+        },
+        "contractStatuses": {
+            "draft": "ڕەشنووس",
+            "reserved": "تەرخانکراو",
+            "active": "بەکرێدراو",
+            "returned": "گەڕێندرایەوە",
+            "closed": "داخراو",
+            "cancelled": "هەڵوەشاوە"
+        },
+        "paymentKinds": {
+            "rental": "پارەدانی بەکرێدان",
+            "deposit": "پارەی دەستەبەر",
+            "deposit_refund": "گەڕاندنەوەی پارەی دەستەبەر"
+        },
+        "filters": {
+            "createdDate": "بەرواری دروستکردن"
+        },
+        "placeholders": {
+            "searchContracts": "لە گرێبەست، کڕیار، تەلەفۆن یان ئۆتۆمبێل بگەڕێ...",
+            "searchCustomer": "بەدوای کڕیاری هەبوو بگەڕێ...",
+            "searchVehicle": "بەدوای ئۆتۆمبێلی تۆمارکراو بگەڕێ..."
+        },
+        "partnerLink": {
+            "linked": "بەستراو",
+            "unlink": "پچڕاندنی بەستەر"
+        },
+        "cancelConfirmation": {
+            "description": "{{contractNo}} هەڵبوەشێنەوە؟ گرێبەستەکە لە مێژوودا دەمێنێت، بەڵام دوای ئەوە ناتوانرێت تەرخان بکرێت یان ئۆتۆمبێل بە پێی ئەوە تەسلیم بکرێت."
+        },
+        "syncRecovery": {
+            "title": "ساڵی ئۆتۆمبێل ڕاست بکەرەوە",
+            "description": "Supabase ساڵی ئۆتۆمبێل لە {{min}} تا {{max}} وەردەگرێت. ساڵی ڕاستەقینەی مۆدێل بنووسە، یان ئەگەر نازانرێت بیسڕەوە.",
+            "fixVehicleYear": "ساڵی ئۆتۆمبێل ڕاست بکەرەوە",
+            "yearRequired": "ساڵی ئۆتۆمبێل بنووسە.",
+            "yearInvalid": "ساڵێکی تەواو لە {{min}} تا {{max}} بنووسە.",
+            "removeYear": "سڕینەوەی ساڵ",
+            "saveAndRetry": "پاشەکەوت و هەوڵدانەوەی هاوکاتکردن",
+            "vehicleUnavailable": "ئەم ئۆتۆمبێلە لە شوێنی کاری ناوخۆدا بەردەست نییە.",
+            "couldNotRepair": "نەتوانرا ساڵی ئەم ئۆتۆمبێلە ڕاست بکرێتەوە."
+        },
+        "empty": {
+            "vehicles": "هێشتا هیچ ئۆتۆمبێلێکی بەکرێدان نییە.",
+            "requests": "لەو ماوەیەدا هیچ داواکارییەکی بەکرێدان نییە.",
+            "contracts": "لەو ماوەیەدا هیچ گرێبەستێکی بەکرێدان نییە."
+        },
+        "reporting": {
+            "serviceName": "بەکرێدانی ئۆتۆمبێل",
+            "serviceCategory": "بەکرێدانی ئۆتۆمبێل"
+        },
+        "messages": {
+            "vehicleCreated": "ئۆتۆمبێلی بەکرێدان دروست کرا",
+            "vehicleUpdated": "ئۆتۆمبێلی بەکرێدان نوێ کرایەوە",
+            "requestCreated": "داواکاریی بەکرێدان دروست کرا",
+            "requestUpdated": "داواکاریی بەکرێدان نوێ کرایەوە",
+            "contractCreated": "گرێبەستی بەکرێدان دروست و تەرخان کرا",
+            "contractReserved": "ئۆتۆمبێل تەرخان کرا",
+            "contractCancelled": "گرێبەستی بەکرێدان هەڵوەشایەوە",
+            "vehicleHandedOver": "ئۆتۆمبێل تەسلیم کرا",
+            "vehicleReturned": "وەرگرتنەوەی ئۆتۆمبێل تۆمار کرا",
+            "paymentRecorded": "پارەدانی بەکرێدان تۆمار کرا",
+            "contractClosed": "گرێبەستی بەکرێدان داخرا",
+            "saveFailed": "نەتوانرا تۆماری بەکرێدان پاشەکەوت بکرێت.",
+            "vehicleYearCorrected": "ساڵی ئۆتۆمبێل ڕاست کرایەوە"
         }
     },
     "salesAgentCommissions": {

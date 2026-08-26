@@ -904,6 +904,89 @@ export interface SalesOrderAgentAssignment extends BaseEntity {
   manualCommissionExchangeRates?: ExchangeRateSnapshot[] | null;
 }
 
+// Car Rental Service
+// Rental vehicles intentionally live apart from Fleet Management: Fleet is an
+// internal assignment and location domain, while these records are rented to
+// customers and must carry availability and contract history.
+export type RentalVehicleStatus = "available" | "maintenance" | "inactive";
+export type RentalRequestStatus =
+  | "new"
+  | "contacted"
+  | "offered"
+  | "converted"
+  | "rejected"
+  | "cancelled"
+  | "expired";
+export type RentalContractStatus =
+  | "draft"
+  | "reserved"
+  | "active"
+  | "returned"
+  | "closed"
+  | "cancelled";
+export type RentalPaymentKind = "rental" | "deposit" | "deposit_refund";
+
+export interface RentalVehicle extends BaseEntity {
+  plateNumber: string;
+  make?: string | null;
+  model: string;
+  year?: number | null;
+  color?: string | null;
+  vin?: string | null;
+  category?: string | null;
+  dailyRate: number;
+  currency: CurrencyCode;
+  currentOdometer?: number | null;
+  currentFuelLevel?: string | null;
+  status: RentalVehicleStatus;
+  notes?: string | null;
+}
+
+export interface RentalRequest extends BaseEntity {
+  requestNo: string;
+  customerName: string;
+  customerPhone: string;
+  businessPartnerId?: string | null;
+  preferredVehicleId?: string | null;
+  requestedStartAt: string;
+  requestedEndAt: string;
+  status: RentalRequestStatus;
+  notes?: string | null;
+  convertedContractId?: string | null;
+  createdBy?: string | null;
+}
+
+export interface RentalContract extends BaseEntity {
+  contractNo: string;
+  requestId?: string | null;
+  vehicleId: string;
+  customerName: string;
+  customerPhone: string;
+  businessPartnerId?: string | null;
+  driverLicenseNo?: string | null;
+  plannedPickupAt: string;
+  plannedReturnAt: string;
+  actualPickupAt?: string | null;
+  actualReturnAt?: string | null;
+  dailyRate: number;
+  rentalDays: number;
+  discountAmount: number;
+  rentalAmount: number;
+  returnAdjustmentAmount: number;
+  finalAmount: number;
+  depositAmount: number;
+  currency: CurrencyCode;
+  status: RentalContractStatus;
+  handoverOdometer?: number | null;
+  handoverFuelLevel?: string | null;
+  handoverCondition?: string | null;
+  returnOdometer?: number | null;
+  returnFuelLevel?: string | null;
+  returnCondition?: string | null;
+  notes?: string | null;
+  createdBy?: string | null;
+}
+
 /** Append-only commission event. Financial events use signed `amount` values. */
 export interface AgentCommissionEntry extends BaseEntity {
   orderId?: string | null;
@@ -1631,6 +1714,7 @@ export type InvoiceOrigin =
   | "clinical_appointment"
   | "activities"
   | "post_service"
+  | "car_rental"
   | "upload";
 
 export interface Invoice extends BaseEntity {
@@ -1904,6 +1988,7 @@ export type PaymentTransactionSourceModule =
   | "clinical_appointments"
   | "currency_exchange"
   | "post_service"
+  | "car_rental"
   | "payments";
 export type PaymentTransactionSourceType =
   | "sale_exchange"
@@ -1926,7 +2011,10 @@ export type PaymentTransactionSourceType =
   | "direct_transaction"
   | "exchange_transaction"
   | "delivery_courier_remittance"
-  | "delivery_merchant_payout";
+  | "delivery_merchant_payout"
+  | "rental_payment"
+  | "rental_deposit"
+  | "rental_deposit_refund";
 export type PaymentTransactionDirection = "incoming" | "outgoing";
 
 export interface PaymentTransaction extends BaseEntity {
@@ -2026,6 +2114,9 @@ export interface SyncQueueItem {
     | "delivery_settlements"
     | "delivery_ledger_entries"
     | "delivery_voice_cleanup"
+    | "rental_vehicles"
+    | "rental_requests"
+    | "rental_contracts"
     | "business_partners"
     | "business_partner_merge_candidates"
     | "sales_orders"
@@ -2072,6 +2163,7 @@ export interface Workspace extends BaseEntity {
   currency_exchange?: boolean;
   agents?: boolean;
   post_service?: boolean;
+  car_rental?: boolean;
   clinical_appointments?: boolean;
   loans?: boolean;
   installments?: boolean;
@@ -2181,6 +2273,9 @@ export interface OfflineMutation {
     | "delivery_settlements"
     | "delivery_ledger_entries"
     | "delivery_voice_cleanup"
+    | "rental_vehicles"
+    | "rental_requests"
+    | "rental_contracts"
     | "business_partners"
     | "business_partner_merge_candidates"
     | "sales_orders"

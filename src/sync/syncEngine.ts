@@ -65,6 +65,9 @@ const SYNC_PULL_TABLES = [
   "agent_commission_entries",
   "fleet_vehicles",
   "fleet_vehicle_assignments",
+  "rental_vehicles",
+  "rental_requests",
+  "rental_contracts",
   "delivery_merchant_profiles",
   "delivery_shipments",
   "delivery_shipment_events",
@@ -296,6 +299,15 @@ function getMutationParentKeys(mutation: MutationSyncOrderItem) {
       addParent("delivery_settlements", "settlementId", "settlement_id");
       addParent("agents", "agentId", "agent_id");
       addParent("delivery_merchant_profiles", "merchantProfileId", "merchant_profile_id");
+      addParent("business_partners", "businessPartnerId", "business_partner_id");
+      break;
+    case "rental_requests":
+      addParent("business_partners", "businessPartnerId", "business_partner_id");
+      addParent("rental_vehicles", "preferredVehicleId", "preferred_vehicle_id");
+      break;
+    case "rental_contracts":
+      addParent("rental_requests", "requestId", "request_id");
+      addParent("rental_vehicles", "vehicleId", "vehicle_id");
       addParent("business_partners", "businessPartnerId", "business_partner_id");
       break;
     case "delivery_voice_cleanup": {

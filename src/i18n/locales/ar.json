@@ -337,6 +337,22 @@
                 "description": "إدارة شحنات الدفع عند الاستلام وتوزيع المندوبين وتسليم النقد ودفعات التجار.",
                 "badge": "توصيل"
             },
+            "/car-rental": {
+                "description": "إدارة سيارات التأجير والتوفر وطلبات العملاء وعقود التأجير.",
+                "badge": "تأجير"
+            },
+            "/car-rental/vehicles": {
+                "description": "تسجيل سيارات التأجير وأسعارها وحالتها وتوفرها.",
+                "badge": "السيارات"
+            },
+            "/car-rental/requests": {
+                "description": "مراجعة طلبات تأجير العملاء وتحويل الطلب الموافق عليه إلى عقد.",
+                "badge": "الطلبات"
+            },
+            "/car-rental/contracts": {
+                "description": "حجز السيارة وتسليمها واستلامها وتحصيل المبلغ وإغلاق عقد التأجير.",
+                "badge": "العقود"
+            },
             "/": {
                 "description": "العودة إلى نظرة عامة على الأعمال والأرقام الرئيسية.",
                 "badge": "نظرة عامة"
@@ -1346,14 +1362,14 @@
             "successPartial": "تم إرجاع عناصر الطلب وتعديل الدفعة.",
             "itemConfirmation": "هل تريد إرجاع {{itemName}} من هذا الطلب المكتمل؟",
             "wholeConfirmation": "هل تريد إرجاع جميع العناصر المتبقية من هذا الطلب المكتمل؟",
-      "returnedQuantity": "تم إرجاع: {{returned}} / {{total}}",
-      "returnedStatus": "مرتجع",
-      "returnsReflected": "تم احتساب المرتجعات",
-      "printVersion": "نسخة الطباعة",
-      "adjustedPrint": "تم احتساب المرتجعات",
-      "originalPrint": "الأصلي",
-      "returnedPrint": "مرتجع",
-      "history": "المرتجعات ({{count}})"
+            "returnedQuantity": "تم إرجاع: {{returned}} / {{total}}",
+            "returnedStatus": "مرتجع",
+            "returnsReflected": "تم احتساب المرتجعات",
+            "printVersion": "نسخة الطباعة",
+            "adjustedPrint": "تم احتساب المرتجعات",
+            "originalPrint": "الأصلي",
+            "returnedPrint": "مرتجع",
+            "history": "المرتجعات ({{count}})"
         },
         "table": {
             "orderNumber": "رقم الطلب",
@@ -2105,6 +2121,8 @@
             "postServiceDispatchDescription": "إنشاء كشوفات المندوبين وتعيين الشحنات إليهم.",
             "postServiceSettle": "تسوية نقد التوصيل",
             "postServiceSettleDescription": "تسجيل تسليمات المندوبين ودفعات التجار.",
+            "carRentalAccess": "خدمة تأجير السيارات",
+            "carRentalAccessDescription": "الوصول إلى سيارات التأجير والطلبات والعقود ودفعات التأجير.",
             "fleetAccess": "إدارة الأسطول",
             "fleetAccessDescription": "الوصول إلى مركبات الأسطول والتعيينات والعروض التشغيلية.",
             "fleetViewLiveLocations": "عرض مواقع الوكلاء المباشرة",
@@ -3095,7 +3113,8 @@
                 "upload": "رفع",
                 "exchange": "الصرافة",
                 "activities": "الأنشطة",
-                "postService": "خدمة التوصيل"
+                "postService": "خدمة التوصيل",
+                "carRental": "خدمة تأجير السيارات"
             },
             "sourceChannels": {
                 "manual": "يدوي",
@@ -4179,7 +4198,11 @@
             "role": "الدور",
             "contactName": "اسم جهة الاتصال"
         },
+        "receivableCreditLimit": "حد الائتمان المستحق",
+        "payableCreditLimit": "حد الائتمان الواجب دفعه",
+        "unlimited": "اترك الحقل فارغًا بلا حد",
         "agent": {
+            "name": "اسم الوكيل",
             "zone": "منطقة العمليات",
             "type": "نوع الوكيل",
             "carModel": "موديل السيارة",
@@ -4187,8 +4210,16 @@
             "courierDeliveryFee": "أجرة توصيل المندوب",
             "courierDeliveryFeeHint": "يحتفظ المندوب بهذا المبلغ عن كل شحنة مُسلّمة، ويُخصم من تسليم النقد المتوقع.",
             "linkedUser": "المستخدم المرتبط",
+            "noLinkedUser": "غير مرتبط",
+            "alreadyLinked": "مرتبط بالفعل",
             "status": "الحالة",
             "image": "صورة البروفايل",
+            "excludedCategories": "فئات المنتجات المستثناة",
+            "excludedCategoriesDescription": "يمكن للمستخدم المرتبط عرض هذه المنتجات، لكنه لا يستطيع اختيارها أو بيعها.",
+            "manageExcludedCategories": "الفئات المستثناة",
+            "excludedCategoriesModalDescription": "اختر الفئات التي لا يمكن للمستخدم المرتبط بهذا الوكيل اختيارها أو بيعها. ستبقى المنتجات مرئية في أماكن أخرى.",
+            "excludedCategoriesSaveError": "تعذر حفظ الفئات المستثناة",
+            "noCategoriesFound": "لم يتم العثور على فئات منتجات.",
             "types": {
                 "driver": "سائق",
                 "field_agent": "وكيل ميداني",
@@ -4201,6 +4232,7 @@
             }
         },
         "roles": {
+            "agent": "وكيل",
             "both": "مشتري و بائع",
             "customer": "المشتري",
             "supplier": "البائع",
@@ -4242,6 +4274,7 @@
         "status": "الحالة",
         "actions": "الإجراءات",
         "viewProfile": "عرض الملف الشخصي",
+        "addAgent": "اضافة وكيل",
         "edit": "تعديل",
         "delete": "حذف",
         "deleteTitle": "حذف الوكيل",
@@ -4484,6 +4517,7 @@
             "accountingHr": "المحاسبة / الموارد البشرية",
             "directManual": "مباشر / يدوي",
             "activities": "الأنشطة",
+            "carRental": "خدمة تأجير السيارات",
             "allStatuses": "جميع الحالات المفتوحة",
             "open": "مفتوح",
             "overdue": "متأخر"
@@ -4522,7 +4556,10 @@
             "activityTransaction": "معاملة نشاط",
             "activityRefund": "استرداد نشاط",
             "deliveryCourierRemittance": "تسليم نقدي للمندوب",
-            "deliveryMerchantPayout": "دفعة للتاجر"
+            "deliveryMerchantPayout": "دفعة للتاجر",
+            "rentalPayment": "دفعة إيجار",
+            "rentalDeposit": "تأمين ضمان",
+            "rentalDepositRefund": "استرداد التأمين"
         },
         "status": {
             "reversal": "إلغاء",
@@ -4670,7 +4707,10 @@
             "activityTransaction": "معاملة نشاط",
             "activityRefund": "استرداد نشاط",
             "deliveryCourierRemittance": "تسليم نقدي للمندوب",
-            "deliveryMerchantPayout": "دفعة للتاجر"
+            "deliveryMerchantPayout": "دفعة للتاجر",
+            "rentalPayment": "دفعة إيجار",
+            "rentalDeposit": "تأمين ضمان",
+            "rentalDepositRefund": "استرداد التأمين"
         },
         "sourceModule": {
             "pos": "نقطة البيع",
@@ -4681,14 +4721,16 @@
             "loans": "القروض",
             "manual": "يدوي",
             "activities": "الأنشطة",
-            "postService": "خدمة التوصيل"
+            "postService": "خدمة التوصيل",
+            "carRental": "خدمة تأجير السيارات"
         },
         "description": {
             "deliveryCourierRemittance": "تسليم نقدي من المندوب",
             "deliveryMerchantPayout": "دفعة للتاجر",
             "deliveryPostCourierRelation": "الشحنة {{tracking}} · تسليم نقد المندوب للمستلم {{recipient}}.",
             "deliveryPostMerchantRelation": "الشحنة {{tracking}} · دفعة التاجر الخاصة بالمستلم {{recipient}}.",
-            "deliverySettlementRelation": "تسوية خدمة التوصيل {{reference}}."
+            "deliverySettlementRelation": "تسوية خدمة التوصيل {{reference}}.",
+            "carRentalRelation": "المصدر الأصلي: عقد تأجير {{reference}}."
         },
         "paymentMethod": {
             "bankTransfer": "تحويل بنكي",
@@ -6593,6 +6635,176 @@
             "merchantNotFound": "لم يتم العثور على التاجر.",
             "postNoOutstanding": "لا يوجد مبلغ مستحق لتسويته لهذه الشحنة.",
             "merchantDeleteHistory": "لا يمكن حذف تاجر لديه سجل توصيل نهائياً. اجعله غير نشط بدلاً من ذلك."
+        }
+    },
+    "carRental": {
+        "title": "خدمة تأجير السيارات",
+        "subtitle": "إدارة سيارات التأجير وطلبات العملاء والعقود والتسليم والاستلام والمدفوعات.",
+        "tabs": {
+            "calendar": "تقويم الإيجار",
+            "vehicles": "السيارات",
+            "requests": "طلبات السيارات",
+            "contracts": "العقود"
+        },
+        "actions": {
+            "addVehicle": "إضافة سيارة",
+            "newRequest": "طلب جديد",
+            "newContract": "عقد جديد",
+            "createContract": "إنشاء عقد",
+            "createAndReserve": "إنشاء وحجز",
+            "reserve": "حجز",
+            "handover": "تسليم",
+            "returnVehicle": "استلام السيارة",
+            "recordPayment": "تسجيل دفعة",
+            "closeContract": "إغلاق العقد",
+            "cancelContract": "إلغاء العقد",
+            "markContacted": "تم التواصل",
+            "saving": "جارٍ الحفظ..."
+        },
+        "calendar": {
+            "title": "تقويم الإيجار",
+            "description": "عرض التوفر والحجوزات والسيارات المؤجرة والصيانة خلال الأيام السبعة المقبلة.",
+            "vehicle": "السيارة",
+            "previousWeek": "الأسبوع السابق",
+            "nextWeek": "الأسبوع التالي"
+        },
+        "vehicles": {
+            "description": "سجل السيارات المتاحة للتأجير وحافظ على أسعارها وحالتها محدثة."
+        },
+        "requests": {
+            "description": "سجل اهتمام العميل أولاً، ثم حوّل الطلب الموافق عليه إلى عقد محجوز."
+        },
+        "contracts": {
+            "description": "احجز سيارة وسلمها واستلمها وأغلق التأجير بعد التحصيل.",
+            "days": "{{count}} يوم",
+            "days_other": "{{count}} أيام"
+        },
+        "dialogs": {
+            "addVehicle": "إضافة سيارة تأجير",
+            "editVehicle": "تعديل سيارة التأجير",
+            "newRequest": "طلب تأجير جديد",
+            "newContract": "عقد تأجير جديد",
+            "convertRequest": "إنشاء عقد من الطلب",
+            "handover": "تسليم السيارة",
+            "returnVehicle": "استلام السيارة",
+            "recordPayment": "تسجيل دفعة تأجير",
+            "cancelContract": "إلغاء عقد التأجير"
+        },
+        "fields": {
+            "vehicle": "السيارة",
+            "plateNumber": "رقم اللوحة",
+            "model": "الموديل",
+            "make": "الصانع",
+            "year": "السنة",
+            "category": "الفئة",
+            "color": "اللون",
+            "dailyRate": "سعر اليوم",
+            "currency": "العملة",
+            "odometer": "عداد المسافة",
+            "fuelLevel": "مستوى الوقود",
+            "vin": "رقم الهيكل",
+            "status": "الحالة",
+            "notes": "ملاحظات",
+            "request": "الطلب",
+            "contract": "العقد",
+            "customer": "العميل",
+            "phone": "الهاتف",
+            "businessPartner": "شريك الأعمال",
+            "preferredVehicle": "السيارة المفضلة",
+            "requestedPeriod": "الفترة المطلوبة",
+            "period": "فترة الإيجار",
+            "pickup": "تاريخ ووقت التسليم",
+            "returnDate": "تاريخ ووقت الاستلام المخطط",
+            "actualReturn": "تاريخ ووقت الاستلام الفعلي",
+            "driverLicense": "رقم رخصة السائق",
+            "discount": "الخصم",
+            "deposit": "تأمين ضمان",
+            "total": "إجمالي الإيجار",
+            "balance": "رصيد الإيجار",
+            "condition": "حالة السيارة",
+            "returnAdjustment": "تعديل الاستلام",
+            "paymentKind": "نوع الدفعة",
+            "paymentMethod": "طريقة الدفع",
+            "maximumAmount": "الحد الأقصى للمبلغ"
+        },
+        "vehicleStatuses": {
+            "available": "متاحة",
+            "maintenance": "صيانة",
+            "inactive": "غير نشطة",
+            "reserved": "محجوزة",
+            "onRent": "مؤجرة"
+        },
+        "requestStatuses": {
+            "new": "جديد",
+            "contacted": "تم التواصل",
+            "offered": "أرسل العرض",
+            "converted": "تم التحويل",
+            "rejected": "مرفوض",
+            "cancelled": "ملغى",
+            "expired": "منتهي"
+        },
+        "contractStatuses": {
+            "draft": "مسودة",
+            "reserved": "محجوز",
+            "active": "مؤجر",
+            "returned": "تم الاستلام",
+            "closed": "مغلق",
+            "cancelled": "ملغى"
+        },
+        "paymentKinds": {
+            "rental": "دفعة الإيجار",
+            "deposit": "تأمين ضمان",
+            "deposit_refund": "استرداد التأمين"
+        },
+        "filters": {
+            "createdDate": "تاريخ الإنشاء"
+        },
+        "placeholders": {
+            "searchContracts": "ابحث بالعقد أو العميل أو الهاتف أو السيارة...",
+            "searchCustomer": "ابحث عن عميل موجود...",
+            "searchVehicle": "ابحث عن سيارة مسجلة..."
+        },
+        "partnerLink": {
+            "linked": "مرتبط",
+            "unlink": "إلغاء الربط"
+        },
+        "cancelConfirmation": {
+            "description": "هل تريد إلغاء {{contractNo}}؟ سيبقى العقد في السجل، لكن لا يمكن حجزه أو تسليم السيارة بموجبه بعد الآن."
+        },
+        "syncRecovery": {
+            "title": "تصحيح سنة السيارة",
+            "description": "يقبل Supabase سنوات السيارات من {{min}} إلى {{max}}. أدخل سنة الموديل الصحيحة، أو أزلها إذا كانت غير معروفة.",
+            "fixVehicleYear": "تصحيح سنة السيارة",
+            "yearRequired": "أدخل سنة السيارة.",
+            "yearInvalid": "أدخل سنة صحيحة من {{min}} إلى {{max}}.",
+            "removeYear": "إزالة السنة",
+            "saveAndRetry": "حفظ وإعادة محاولة المزامنة",
+            "vehicleUnavailable": "هذه السيارة غير متاحة في مساحة العمل المحلية.",
+            "couldNotRepair": "تعذر تصحيح سنة هذه السيارة."
+        },
+        "empty": {
+            "vehicles": "لا توجد سيارات تأجير بعد.",
+            "requests": "لا توجد طلبات تأجير في هذه الفترة.",
+            "contracts": "لا توجد عقود تأجير في هذه الفترة."
+        },
+        "reporting": {
+            "serviceName": "تأجير السيارات",
+            "serviceCategory": "تأجير السيارات"
+        },
+        "messages": {
+            "vehicleCreated": "تم إنشاء سيارة التأجير",
+            "vehicleUpdated": "تم تحديث سيارة التأجير",
+            "requestCreated": "تم إنشاء طلب التأجير",
+            "requestUpdated": "تم تحديث طلب التأجير",
+            "contractCreated": "تم إنشاء وحجز عقد التأجير",
+            "contractReserved": "تم حجز السيارة",
+            "contractCancelled": "تم إلغاء عقد التأجير",
+            "vehicleHandedOver": "تم تسليم السيارة",
+            "vehicleReturned": "تم تسجيل استلام السيارة",
+            "paymentRecorded": "تم تسجيل دفعة التأجير",
+            "contractClosed": "تم إغلاق عقد التأجير",
+            "saveFailed": "تعذر حفظ سجل التأجير.",
+            "vehicleYearCorrected": "تم تصحيح سنة السيارة"
         }
     },
     "salesAgentCommissions": {

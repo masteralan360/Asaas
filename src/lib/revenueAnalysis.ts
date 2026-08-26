@@ -20,7 +20,7 @@ export interface RevenueAnalysisItem {
 export interface RevenueAnalysisRecord {
     key: string
     id: string
-    source: 'sale' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate' | 'activities' | 'clinical_appointment' | 'post_service'
+    source: 'sale' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate' | 'activities' | 'clinical_appointment' | 'post_service' | 'car_rental'
     sourceRecordId?: string | null
     referenceCode: string
     date: string
@@ -73,6 +73,7 @@ function getSaleRevenueSource(sale: Sale) {
     if (sale.origin === 'activities') return 'activities'
     if (sale.origin === 'clinical_appointment') return 'clinical_appointment'
     if (sale.origin === 'post_service') return 'post_service'
+    if (sale.origin === 'car_rental') return 'car_rental'
     return 'sale'
 }
 
@@ -109,9 +110,11 @@ export function toRevenueRecordFromSale(sale: Sale, options: RevenueCategoryLook
         _realEstateTransactionId?: string | null
         _clinicalAppointmentId?: string | null
         _activityTransactionId?: string | null
+        _rentalContractId?: string | null
     })._realEstateTransactionId
         || (sale as Sale & { _clinicalAppointmentId?: string | null })._clinicalAppointmentId
         || (sale as Sale & { _activityTransactionId?: string | null })._activityTransactionId
+        || (sale as Sale & { _rentalContractId?: string | null })._rentalContractId
         || null
     const transactionNo = (sale as Sale & { _transactionNo?: string | null })._transactionNo
     const cashierId = sale.cashier_id || (sale as Sale & { cashierId?: string | null }).cashierId || null

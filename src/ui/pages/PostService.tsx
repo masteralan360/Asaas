@@ -1,4 +1,4 @@
-import { type FormEvent, Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Banknote, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, Clock, History, Inbox, LayoutGrid, List, ListFilter, Package, PackageCheck, Pencil, Play, Plus, Route, Search, Send, Store, Trash2, Truck, Undo2, Users, WalletCards, X, XCircle, type LucideIcon } from "lucide-react";
@@ -30,10 +30,7 @@ import {
   TabsTrigger, Textarea, useToast,
 } from "@/ui/components";
 import { useWorkspace } from "@/workspace";
-import { deleteDeliveryVoiceReason, uploadDeliveryVoiceReason } from "@/services/deliveryVoiceReasons";
 import { DeliveryVoicePlaybackDialog } from "@/ui/components/post-service/DeliveryVoicePlaybackDialog";
-import { VoiceReasonRecorder } from "@/ui/components/post-service/VoiceReasonRecorder";
-import type { FlacVoiceRecording } from "@/hooks/useFlacVoiceRecorder";
 
 type ShipmentForm = {
   merchantProfileId: string; recipientPhone: string; recipientAddress: string; description: string; currency: CurrencyCode;
@@ -58,9 +55,6 @@ type PostSettlementDraft = {
   merchantMethod: WorkspacePaymentMethod;
   merchantNote: string;
 };
-
-type StatusReasonMethod = "voice" | "text";
-type StatusVoiceReason = { path: string; durationMs: number };
 
 type CourierRow = {
   agent: Agent;
@@ -245,11 +239,6 @@ export function PostService() {
   const [statusTarget, setStatusTarget] = useState<DeliveryShipment | null>(null);
   const [nextStatus, setNextStatus] = useState<"delivered" | "postponed" | "returned">("delivered");
   const [statusNote, setStatusNote] = useState("");
-  const [statusReasonMethod, setStatusReasonMethod] = useState<StatusReasonMethod>("voice");
-  const [statusVoiceReason, setStatusVoiceReason] = useState<StatusVoiceReason | null>(null);
-  const statusVoiceReasonRef = useRef<StatusVoiceReason | null>(null);
-  const [isVoiceReasonBusy, setIsVoiceReasonBusy] = useState(false);
-  const [isDiscardingStatusVoice, setIsDiscardingStatusVoice] = useState(false);
   const [voicePlaybackEvent, setVoicePlaybackEvent] = useState<DeliveryShipmentEvent | null>(null);
   const [settlementTarget, setSettlementTarget] = useState<{ kind: "courier" | "merchant"; id: string; currency: CurrencyCode; amount: number; name: string; shipmentId?: string | null; shipmentLabel?: string } | null>(null);
   const [settlementAmount, setSettlementAmount] = useState("");
@@ -263,7 +252,6 @@ export function PostService() {
   const [submittingPostSettlement, setSubmittingPostSettlement] = useState<"courier" | "merchant" | null>(null);
   const [settlementNetTarget, setSettlementNetTarget] = useState<DeliveryShipment | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  useEffect(() => { statusVoiceReasonRef.current = statusVoiceReason; }, [statusVoiceReason]);
   const partnerById = useMemo(() => new Map(partners.map((partner) => [partner.id, partner])), [partners]);
   const agentNameById = useMemo(() => new Map(agents.map((agent) => [agent.id, partnerById.get(agent.businessPartnerId)?.name ?? t("postService.unknownCourier")])), [agents, partnerById, t]);
   const profileById = useMemo(() => new Map(merchantProfiles.map((profile) => [profile.id, profile])), [merchantProfiles]);
@@ -451,9 +439,6 @@ export function PostService() {
     setStatusTarget(shipment);
     setNextStatus(status);
     setStatusNote("");
-    setStatusReasonMethod(status === "postponed" || status === "returned" ? "voice" : "text");
-    setStatusVoiceReason(null);
-    setIsVoiceReasonBusy(false);
   }
   function openSettlement(target: NonNullable<typeof settlementTarget>) {
     setSettlementTarget(target); setSettlementAmount(String(target.amount)); setSettlementMethod("cash"); setSettlementNote("");
@@ -632,68 +617,21 @@ export function PostService() {
       setIsTransferring(false);
     }
   }
-  const discardStatusVoiceReason = useCallback(async () => {
-    const voiceReason = statusVoiceReasonRef.current;
-    if (!voiceReason) return;
-    await deleteDeliveryVoiceReason(voiceReason.path);
-    statusVoiceReasonRef.current = null;
-    setStatusVoiceReason(null);
-  }, []);
-  const closeStatusDialog = useCallback(async () => {
-    if (isSubmitting || isVoiceReasonBusy || isDiscardingStatusVoice) return;
-    if (statusVoiceReasonRef.current) {
-      setIsDiscardingStatusVoice(true);
-      try {
-        await discardStatusVoiceReason();
-      } catch (_error) {
-        toast({
-          title: t("postService.messages.updatePostFailed"),
-          description: t("postService.voiceReason.errors.discardFailed"),
-          variant: "destructive",
-        });
-        return;
-      } finally {
-        setIsDiscardingStatusVoice(false);
-      }
-    }
+  function closeStatusDialog() {
+    if (isSubmitting) return;
     setStatusTarget(null);
     setStatusNote("");
-    setStatusVoiceReason(null);
-  }, [discardStatusVoiceReason, isDiscardingStatusVoice, isSubmitting, isVoiceReasonBusy, t, toast]);
-  const handleVoiceReasonUpload = useCallback(async (recording: FlacVoiceRecording) => {
-    if (!workspaceId || !statusTarget || (nextStatus !== "postponed" && nextStatus !== "returned")) throw new Error("Voice reason cannot be attached to this post");
-    const uploaded = await uploadDeliveryVoiceReason({
-      workspaceId,
-      shipmentId: statusTarget.id,
-      status: nextStatus,
-      recordingId: recording.id,
-      blob: recording.blob,
-      durationMs: recording.durationMs,
-    });
-    const voiceReason = { path: uploaded.path, durationMs: uploaded.durationMs };
-    statusVoiceReasonRef.current = voiceReason;
-    setStatusVoiceReason(voiceReason);
-  }, [nextStatus, statusTarget, workspaceId]);
-  async function handleStatusUpdate(event: FormEvent) {
-    event.preventDefault();
+  }
+  async function handleStatusUpdate() {
     if (!statusTarget) return;
-    const requiresReason = nextStatus === "postponed" || nextStatus === "returned";
-    if (requiresReason && !statusNote.trim() && !statusVoiceReason?.path) {
-      toast({ title: t("postService.messages.updatePostFailed"), description: t("postService.voiceReason.reasonRequired"), variant: "destructive" });
-      return;
-    }
     setIsSubmitting(true);
     try {
       await updateDeliveryShipmentStatus(statusTarget.id, {
         status: nextStatus,
-        note: statusNote || null,
-        voiceReasonPath: statusVoiceReason?.path ?? null,
-        voiceReasonDurationMs: statusVoiceReason?.durationMs ?? null,
+        note: nextStatus === "delivered" ? statusNote || null : null,
         actorUserId: user?.id ?? null,
         actorAgentId: linkedCourier?.id ?? null,
       });
-      statusVoiceReasonRef.current = null;
-      setStatusVoiceReason(null);
       toast({ title: t("postService.messages.postMarked", { status: shipmentStatusLabel(t, nextStatus) }) }); setStatusTarget(null);
     } catch (error) { toast({ title: t("postService.messages.updatePostFailed"), description: localizedError(t, error), variant: "destructive" }); } finally { setIsSubmitting(false); }
   }
@@ -742,9 +680,7 @@ export function PostService() {
     catch (error) { toast({ title: t("postService.messages.closeRunFailed"), description: localizedError(t, error), variant: "destructive" }); }
   }
 
-  const statusRequiresReason = nextStatus === "postponed" || nextStatus === "returned";
-  const hasStatusReason = Boolean(statusNote.trim() || statusVoiceReason?.path);
-  const isStatusDialogBusy = isSubmitting || isVoiceReasonBusy || isDiscardingStatusVoice;
+  const isStatusDialogBusy = isSubmitting;
 
   if (!workspaceId) return null;
   return <div className="w-full min-w-0 space-y-6 overflow-x-hidden">
@@ -1005,40 +941,21 @@ export function PostService() {
         </form>
       </DialogContent>
     </Dialog>
-    <AppDialog open={!!statusTarget} onOpenChange={(open) => { if (!open) void closeStatusDialog(); }}>
+    <AppDialog open={!!statusTarget} onOpenChange={(open) => { if (!open) closeStatusDialog(); }}>
       <AppDialogContent
         className="max-w-xl"
         showCloseButton={!isStatusDialogBusy}
         onPointerDownOutside={(event) => event.preventDefault()}
-        onEscapeKeyDown={(event) => { event.preventDefault(); if (!isStatusDialogBusy) void closeStatusDialog(); }}
+        onEscapeKeyDown={(event) => { event.preventDefault(); if (!isStatusDialogBusy) closeStatusDialog(); }}
       >
         <AppDialogHeader>
           <AppDialogTitle>{t("postService.dialogs.status.title", { status: shipmentStatusLabel(t, nextStatus) })}</AppDialogTitle>
           <AppDialogDescription>{statusTarget?.trackingNumber} · {statusTarget?.recipientPhone}</AppDialogDescription>
         </AppDialogHeader>
-        <AppDialogBody>
-          <form id="delivery-status-reason-form" onSubmit={handleStatusUpdate} className="space-y-4">
-            {statusRequiresReason ? <>
-              <div className="grid grid-cols-2 rounded-lg border bg-muted/30 p-1" role="group" aria-label={t("postService.form.reason")}>
-                <Button type="button" size="sm" variant={statusReasonMethod === "voice" ? "secondary" : "ghost"} disabled={isVoiceReasonBusy || isSubmitting} aria-pressed={statusReasonMethod === "voice"} onClick={() => setStatusReasonMethod("voice")}>{t("postService.voiceReason.voiceRecording")}</Button>
-                <Button type="button" size="sm" variant={statusReasonMethod === "text" ? "secondary" : "ghost"} disabled={isVoiceReasonBusy || isSubmitting} aria-pressed={statusReasonMethod === "text"} onClick={() => setStatusReasonMethod("text")}>{t("postService.voiceReason.textReason")}</Button>
-              </div>
-              <div hidden={statusReasonMethod !== "voice"} aria-hidden={statusReasonMethod !== "voice"}>
-                <VoiceReasonRecorder
-                  onUpload={handleVoiceReasonUpload}
-                  onDiscard={discardStatusVoiceReason}
-                  onBusyChange={setIsVoiceReasonBusy}
-                  disabled={isSubmitting || isDiscardingStatusVoice}
-                />
-              </div>
-              {statusReasonMethod === "text" && <Field label={t("postService.form.reason")}><Textarea value={statusNote} onChange={(event) => setStatusNote(event.target.value)} placeholder={nextStatus === "postponed" ? t("postService.placeholders.postponedReason") : t("postService.placeholders.returnedReason")} /></Field>}
-              {!hasStatusReason && <p className="text-sm text-destructive" role="status">{t("postService.voiceReason.reasonRequired")}</p>}
-            </> : <Field label={t("postService.form.optionalNote")}><Textarea value={statusNote} onChange={(event) => setStatusNote(event.target.value)} placeholder={t("postService.placeholders.deliveryNote")} /></Field>}
-          </form>
-        </AppDialogBody>
+        {nextStatus === "delivered" && <AppDialogBody><Field label={t("postService.form.optionalNote")}><Textarea value={statusNote} onChange={(event) => setStatusNote(event.target.value)} placeholder={t("postService.placeholders.deliveryNote")} /></Field></AppDialogBody>}
         <AppDialogFooter>
-          <Button type="button" variant="outline" disabled={isStatusDialogBusy} onClick={() => void closeStatusDialog()}>{t("postService.actions.cancel")}</Button>
-          <Button form="delivery-status-reason-form" disabled={isStatusDialogBusy || (statusRequiresReason && !hasStatusReason)} type="submit">{t("postService.actions.confirmStatus", { status: shipmentStatusLabel(t, nextStatus) })}</Button>
+          <Button type="button" variant="outline" disabled={isStatusDialogBusy} onClick={closeStatusDialog}>{t("postService.actions.cancel")}</Button>
+          <Button type="button" disabled={isStatusDialogBusy} onClick={() => void handleStatusUpdate()}>{t("postService.actions.confirmStatus", { status: shipmentStatusLabel(t, nextStatus) })}</Button>
         </AppDialogFooter>
       </AppDialogContent>
     </AppDialog>

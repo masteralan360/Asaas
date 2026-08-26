@@ -234,7 +234,7 @@ export function BusinessPartnerFormDialog({
         if (enableAgentRole) {
             options.push({
                 value: 'agent',
-                label: t('businessPartners.roles.agent', { defaultValue: 'Agent' })
+                label: t('businessPartners.roles.agent')
             })
         }
 
@@ -352,7 +352,7 @@ export function BusinessPartnerFormDialog({
                             <div className="space-y-2">
                                 <Label htmlFor="business-partner-name">
                                     {isAgentRole
-                                        ? t('businessPartners.agent.name', { defaultValue: 'Agent Name' })
+                                        ? t('businessPartners.agent.name')
                                         : (t('suppliers.form.name') || 'Company Name')}{' '}
                                     <span className="text-destructive">*</span>
                                 </Label>
@@ -475,7 +475,7 @@ export function BusinessPartnerFormDialog({
                                 <>
                                     <div className="space-y-2">
                                         <Label htmlFor="business-partner-agent-zone">
-                                            {t('businessPartners.agent.zone', { defaultValue: 'Operational Territory' })}{' '}
+                                            {t('businessPartners.agent.zone')}{' '}
                                             <span className="text-destructive">*</span>
                                         </Label>
                                         <Input
@@ -486,15 +486,15 @@ export function BusinessPartnerFormDialog({
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>{t('businessPartners.agent.type', { defaultValue: 'Agent Type' })}</Label>
+                                        <Label>{t('businessPartners.agent.type')}</Label>
                                         <Select value={formState.agentType} onValueChange={(value) => setFormState((current) => ({ ...current, agentType: value as AgentType }))}>
                                             <SelectTrigger>
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="driver">{t('businessPartners.agent.types.driver', { defaultValue: 'Driver' })}</SelectItem>
-                                                <SelectItem value="courier">{t('businessPartners.agent.types.courier', { defaultValue: 'Courier' })}</SelectItem>
-                                                <SelectItem value="field_agent">{t('businessPartners.agent.types.fieldAgent', { defaultValue: 'Field Agent' })}</SelectItem>
+                                                <SelectItem value="driver">{t('businessPartners.agent.types.driver')}</SelectItem>
+                                                <SelectItem value="courier">{t('businessPartners.agent.types.courier')}</SelectItem>
+                                                <SelectItem value="field_agent">{t('businessPartners.agent.types.field_agent')}</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -502,7 +502,7 @@ export function BusinessPartnerFormDialog({
                                         <>
                                             <div className="space-y-2">
                                                 <Label htmlFor="business-partner-agent-car-model">
-                                                    {t('businessPartners.agent.carModel', { defaultValue: 'Car Model' })}{' '}
+                                                    {t('businessPartners.agent.carModel')}{' '}
                                                     <span className="text-destructive">*</span>
                                                 </Label>
                                                 <Input
@@ -514,7 +514,7 @@ export function BusinessPartnerFormDialog({
                                             </div>
                                             <div className="space-y-2">
                                                 <Label htmlFor="business-partner-agent-plate-number">
-                                                    {t('businessPartners.agent.plateNumber', { defaultValue: 'Plate Number' })}{' '}
+                                                    {t('businessPartners.agent.plateNumber')}{' '}
                                                     <span className="text-destructive">*</span>
                                                 </Label>
                                                 <Input
@@ -529,7 +529,7 @@ export function BusinessPartnerFormDialog({
                                     {formState.agentType === 'courier' ? (
                                         <div className="space-y-2">
                                             <Label htmlFor="business-partner-agent-courier-delivery-fee">
-                                                {t('businessPartners.agent.courierDeliveryFee', { defaultValue: 'Courier delivery fee' })}
+                                                {t('businessPartners.agent.courierDeliveryFee')}
                                             </Label>
                                             <Input
                                                 id="business-partner-agent-courier-delivery-fee"
@@ -542,12 +542,12 @@ export function BusinessPartnerFormDialog({
                                                 placeholder="0"
                                             />
                                             <p className="text-xs text-muted-foreground">
-                                                {t('businessPartners.agent.courierDeliveryFeeHint', { defaultValue: 'The courier keeps this amount per delivered post. It is deducted from the expected cash handover.' })}
+                                                {t('businessPartners.agent.courierDeliveryFeeHint')}
                                             </p>
                                         </div>
                                     ) : null}
                                     <div className="space-y-2">
-                                        <Label>{t('businessPartners.agent.linkedUser', { defaultValue: 'Workspace User' })}</Label>
+                                        <Label>{t('businessPartners.agent.linkedUser')}</Label>
                                         <Select
                                             value={formState.agentLinkedUserId || 'unlinked'}
                                             onValueChange={(value) => setFormState((current) => ({
@@ -559,7 +559,7 @@ export function BusinessPartnerFormDialog({
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="unlinked">{t('businessPartners.agent.noLinkedUser', { defaultValue: 'Not linked' })}</SelectItem>
+                                                <SelectItem value="unlinked">{t('businessPartners.agent.noLinkedUser')}</SelectItem>
                                                 {workspaceUsers.map((workspaceUser) => {
                                                     const isLinkedElsewhere = linkedUserIds.has(workspaceUser.id)
                                                     return (
@@ -570,7 +570,7 @@ export function BusinessPartnerFormDialog({
                                                         >
                                                             {workspaceUser.name || workspaceUser.email || workspaceUser.id}
                                                             {isLinkedElsewhere
-                                                                ? ` (${t('businessPartners.agent.alreadyLinked', { defaultValue: 'Already linked' })})`
+                                                                ? ` (${t('businessPartners.agent.alreadyLinked')})`
                                                                 : ''}
                                                         </SelectItem>
                                                     )
@@ -579,15 +579,15 @@ export function BusinessPartnerFormDialog({
                                         </Select>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>{t('businessPartners.agent.status', { defaultValue: 'Operational Status' })}</Label>
+                                        <Label>{t('businessPartners.agent.status')}</Label>
                                         <Select value={formState.agentStatus} onValueChange={(value) => setFormState((current) => ({ ...current, agentStatus: value as AgentStatus }))}>
                                             <SelectTrigger>
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="active">{t('businessPartners.agent.statuses.active', { defaultValue: 'Active' })}</SelectItem>
-                                                <SelectItem value="inactive">{t('businessPartners.agent.statuses.inactive', { defaultValue: 'Inactive' })}</SelectItem>
-                                                <SelectItem value="blocked">{t('businessPartners.agent.statuses.blocked', { defaultValue: 'Blocked' })}</SelectItem>
+                                                <SelectItem value="active">{t('businessPartners.agent.statuses.active')}</SelectItem>
+                                                <SelectItem value="inactive">{t('businessPartners.agent.statuses.inactive')}</SelectItem>
+                                                <SelectItem value="blocked">{t('businessPartners.agent.statuses.blocked')}</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -635,25 +635,25 @@ export function BusinessPartnerFormDialog({
                                 />
                             </div>
                             {formState.role === 'customer' || formState.role === 'both' ? <div className="space-y-2">
-                                <Label htmlFor="business-partner-receivable-limit">{t('businessPartners.receivableCreditLimit', { defaultValue: 'Receivable credit limit' })}</Label>
+                                <Label htmlFor="business-partner-receivable-limit">{t('businessPartners.receivableCreditLimit')}</Label>
                                 <Input
                                     id="business-partner-receivable-limit"
                                     type="number"
                                     min="0"
                                     step="0.01"
-                                    placeholder={t('businessPartners.unlimited', { defaultValue: 'Blank means unlimited' })}
+                                    placeholder={t('businessPartners.unlimited')}
                                     value={formState.receivableCreditLimit}
                                     onChange={(event) => setFormState((current) => ({ ...current, receivableCreditLimit: event.target.value }))}
                                 />
                             </div> : null}
                             {formState.role === 'supplier' || formState.role === 'both' ? <div className="space-y-2">
-                                <Label htmlFor="business-partner-payable-limit">{t('businessPartners.payableCreditLimit', { defaultValue: 'Payable credit limit' })}</Label>
+                                <Label htmlFor="business-partner-payable-limit">{t('businessPartners.payableCreditLimit')}</Label>
                                 <Input
                                     id="business-partner-payable-limit"
                                     type="number"
                                     min="0"
                                     step="0.01"
-                                    placeholder={t('businessPartners.unlimited', { defaultValue: 'Blank means unlimited' })}
+                                    placeholder={t('businessPartners.unlimited')}
                                     value={formState.payableCreditLimit}
                                     onChange={(event) => setFormState((current) => ({ ...current, payableCreditLimit: event.target.value }))}
                                 />
@@ -747,7 +747,7 @@ function AgentExcludedCategoriesButton({
         } catch (error) {
             toast({
                 variant: 'destructive',
-                title: t('messages.error', { defaultValue: 'Unable to save excluded categories' }),
+                title: t('businessPartners.agent.excludedCategoriesSaveError'),
                 description: error instanceof Error ? error.message : String(error)
             })
         } finally {
@@ -762,28 +762,24 @@ function AgentExcludedCategoriesButton({
         <>
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/20 p-3">
                 <div className="space-y-0.5">
-                    <Label>{t('businessPartners.agent.excludedCategories', { defaultValue: 'Excluded product categories' })}</Label>
+                    <Label>{t('businessPartners.agent.excludedCategories')}</Label>
                     <p className="text-xs text-muted-foreground">
-                        {t('businessPartners.agent.excludedCategoriesDescription', {
-                            defaultValue: 'The linked user can view these products but cannot select or sell them.'
-                        })}
+                        {t('businessPartners.agent.excludedCategoriesDescription')}
                     </p>
                 </div>
                 <Button type="button" variant="outline" onClick={() => setOpen(true)} disabled={!canConfigure}>
-                    {t('businessPartners.agent.manageExcludedCategories', { defaultValue: 'Excluded categories' })}
+                    {t('businessPartners.agent.manageExcludedCategories')}
                     {exclusionCount > 0 ? ` (${exclusionCount})` : ''}
                 </Button>
             </div>
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>{t('businessPartners.agent.excludedCategories', { defaultValue: 'Excluded product categories' })}</DialogTitle>
+                        <DialogTitle>{t('businessPartners.agent.excludedCategories')}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4">
                         <p className="text-sm text-muted-foreground">
-                            {t('businessPartners.agent.excludedCategoriesModalDescription', {
-                                defaultValue: 'Select categories this agent\'s linked user cannot select or sell. Products remain visible elsewhere.'
-                            })}
+                            {t('businessPartners.agent.excludedCategoriesModalDescription')}
                         </p>
                         <Input
                             value={search}
@@ -804,7 +800,7 @@ function AgentExcludedCategoriesButton({
                                 )
                             }) : (
                                 <p className="px-2 py-6 text-center text-sm text-muted-foreground">
-                                    {t('categories.noCategories', { defaultValue: 'No categories found.' })}
+                                    {t('businessPartners.agent.noCategoriesFound')}
                                 </p>
                             )}
                         </div>

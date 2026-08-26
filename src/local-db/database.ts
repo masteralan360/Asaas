@@ -44,6 +44,9 @@ import type {
   AgentCommissionEntry,
   FleetVehicle,
   FleetVehicleAssignment,
+  RentalVehicle,
+  RentalRequest,
+  RentalContract,
   DeliveryMerchantProfile,
   DeliveryShipment,
   DeliveryShipmentEvent,
@@ -462,6 +465,9 @@ export class AtlasDatabase extends Dexie {
   agent_commission_entries!: EntityTable<AgentCommissionEntry, "id">;
   fleet_vehicles!: EntityTable<FleetVehicle, "id">;
   fleet_vehicle_assignments!: EntityTable<FleetVehicleAssignment, "id">;
+  rental_vehicles!: EntityTable<RentalVehicle, "id">;
+  rental_requests!: EntityTable<RentalRequest, "id">;
+  rental_contracts!: EntityTable<RentalContract, "id">;
   delivery_merchant_profiles!: EntityTable<DeliveryMerchantProfile, "id">;
   delivery_shipments!: EntityTable<DeliveryShipment, "id">;
   delivery_shipment_events!: EntityTable<DeliveryShipmentEvent, "id">;
@@ -3245,6 +3251,15 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, orderId, assignmentId, agentId, membershipId, planId, orderReturnId, relatedEntryId, kind, status, currency, occurredAt, updatedAt, isDeleted, syncStatus, [workspaceId+agentId], [workspaceId+orderId], [workspaceId+status], [agentId+occurredAt]",
     });
 
+    this.version(98).stores({
+      rental_vehicles:
+        "id, workspaceId, plateNumber, status, currency, updatedAt, isDeleted, syncStatus, [workspaceId+plateNumber], [workspaceId+status]",
+      rental_requests:
+        "id, workspaceId, requestNo, status, preferredVehicleId, requestedStartAt, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+requestNo], [workspaceId+status], [workspaceId+createdAt], [workspaceId+preferredVehicleId]",
+      rental_contracts:
+        "id, workspaceId, contractNo, requestId, vehicleId, businessPartnerId, status, plannedPickupAt, plannedReturnAt, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+contractNo], [workspaceId+vehicleId], [workspaceId+status], [workspaceId+createdAt]",
+    });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }
@@ -3400,6 +3415,9 @@ export class AtlasDatabase extends Dexie {
       "agent_commission_entries",
       "fleet_vehicles",
       "fleet_vehicle_assignments",
+      "rental_vehicles",
+      "rental_requests",
+      "rental_contracts",
       "delivery_merchant_profiles",
       "delivery_shipments",
       "delivery_shipment_events",
@@ -3609,6 +3627,9 @@ export async function clearDatabase(): Promise<void> {
       db.manual_entries,
       db.fleet_vehicles,
       db.fleet_vehicle_assignments,
+      db.rental_vehicles,
+      db.rental_requests,
+      db.rental_contracts,
       db.delivery_merchant_profiles,
       db.delivery_shipments,
       db.delivery_shipment_events,
@@ -3663,6 +3684,9 @@ export async function clearDatabase(): Promise<void> {
       await db.manual_entries.clear();
       await db.fleet_vehicles.clear();
       await db.fleet_vehicle_assignments.clear();
+      await db.rental_vehicles.clear();
+      await db.rental_requests.clear();
+      await db.rental_contracts.clear();
       await db.delivery_merchant_profiles.clear();
       await db.delivery_shipments.clear();
       await db.delivery_shipment_events.clear();

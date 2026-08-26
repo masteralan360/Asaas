@@ -311,7 +311,7 @@ describe("Post Service COD accounting", () => {
     expect(settledMerchant?.payableBalance).toBe(0);
   });
 
-  it("requires a reason when a courier postpones a post", async () => {
+  it.each(["postponed", "returned"] as const)("allows a courier to mark a post %s without a reason", async (status) => {
     const merchant = partner(crypto.randomUUID());
     const deliveryCourier = courier(crypto.randomUUID());
     await db.business_partners.put(merchant);
@@ -322,7 +322,7 @@ describe("Post Service COD accounting", () => {
       recipientAddress: "Baghdad", currency: "iqd", codAmount: 1,
     });
     await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
-    await expect(updateDeliveryShipmentStatus(shipment.id, { status: "postponed", actorAgentId: deliveryCourier.id })).rejects.toThrow("reason is required");
+    await expect(updateDeliveryShipmentStatus(shipment.id, { status, actorAgentId: deliveryCourier.id })).resolves.toBeDefined();
   });
 
   it("accepts and persists a voice-only returned or postponed reason", async () => {

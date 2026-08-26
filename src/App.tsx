@@ -256,6 +256,9 @@ const AgentCommissionSettings = lazy(() =>
 const PostService = lazy(() =>
   import("@/ui/pages/PostService").then((m) => ({ default: m.PostService })),
 );
+const CarRental = lazy(() =>
+  import("@/ui/pages/CarRental").then((m) => ({ default: m.CarRental })),
+);
 const AgentDetails = lazy(() =>
   import("@/ui/pages/AgentDetails").then((m) => ({ default: m.AgentDetails })),
 );
@@ -1586,6 +1589,50 @@ function App() {
                         >
                           <Layout>
                             <PostService />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/car-rental">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="car_rental"
+                          requiredPermission="carRental.access"
+                        >
+                          <Layout>
+                            <CarRental />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/car-rental/vehicles">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="car_rental"
+                          requiredPermission="carRental.access"
+                        >
+                          <Layout>
+                            <CarRental initialTab="vehicles" />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/car-rental/requests">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="car_rental"
+                          requiredPermission="carRental.access"
+                        >
+                          <Layout>
+                            <CarRental initialTab="requests" />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/car-rental/contracts">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="car_rental"
+                          requiredPermission="carRental.access"
+                        >
+                          <Layout>
+                            <CarRental initialTab="contracts" />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

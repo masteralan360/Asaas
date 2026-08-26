@@ -311,6 +311,10 @@ function getTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceMo
         return '/post-service'
     }
 
+    if (transaction.sourceModule === 'car_rental') {
+        return '/car-rental/contracts'
+    }
+
     if (transaction.sourceType === 'simple_loan') {
         return `/loans/${transaction.sourceRecordId}`
     }
@@ -505,6 +509,8 @@ async function hydratePaymentSourceTables(workspaceId: string) {
         fetchTableFromSupabase('loans', db.loans, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('loan_installments', db.loan_installments, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('real_estate_transactions', db.real_estate_transactions, workspaceId, { includeDeleted: true }),
+        fetchTableFromSupabase('rental_vehicles', db.rental_vehicles, workspaceId, { includeDeleted: true }),
+        fetchTableFromSupabase('rental_contracts', db.rental_contracts, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('sales_orders', db.sales_orders, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('purchase_orders', db.purchase_orders, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('order_installments', db.order_installments, workspaceId, { includeDeleted: true }),

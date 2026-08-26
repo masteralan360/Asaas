@@ -14,10 +14,8 @@ import { db } from "./database";
 import { fetchTableFromSupabase } from "./hooks";
 import { addToOfflineMutations } from "./offlineMutations";
 import { appendPaymentTransaction } from "./payments";
-import {
-  deleteDeliveryVoiceReasons,
-  getPostponedVoiceReasonCleanupPaths,
-} from "@/services/deliveryVoiceReasons";
+import { getPostponedVoiceReasonCleanupPaths } from "@/services/deliveryVoiceReasons";
+import { deleteVoiceStorageObjects } from "@/services/voiceStorage";
 import type {
   CurrencyCode,
   DeliveryFeePayer,
@@ -1099,7 +1097,7 @@ export async function createDeliveryRun(workspaceId: string, input: CreateDelive
       // Every run item and status event is synced before this point. The
       // recording is now irrelevant and can safely be removed through the
       // authenticated Storage API.
-      await deleteDeliveryVoiceReasons(cleanup.paths);
+      await deleteVoiceStorageObjects(cleanup.paths);
     } catch {
       await queuePostponedVoiceReasonCleanup({ workspaceId, shipmentId, ...cleanup });
     }
@@ -1138,11 +1136,11 @@ export async function updateDeliveryShipmentStatus(
   }
   const note = normalizeText(input.note);
   const voiceReasonPath = normalizeText(input.voiceReasonPath);
-  const requiresVoiceOrTextReason = ["postponed", "returned"].includes(input.status);
-  if ((requiresVoiceOrTextReason && !note && !voiceReasonPath) || (input.status === "cancelled" && !note)) {
+  const allowsVoiceReason = ["postponed", "returned"].includes(input.status);
+  if (input.status === "cancelled" && !note) {
     throw new Error("A reason is required for this status");
   }
-  if (voiceReasonPath && !requiresVoiceOrTextReason) {
+  if (voiceReasonPath && !allowsVoiceReason) {
     throw new Error("Voice reasons are only supported for returned or postponed posts");
   }
   const voiceReasonDurationMs = voiceReasonPath ? Number(input.voiceReasonDurationMs) : null;

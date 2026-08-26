@@ -35,6 +35,16 @@ import {
 
 export const WORKSPACE_PERMISSION_DEFINITIONS = [
   {
+    key: "carRental.access",
+    module: "carRental",
+    labelKey: "members.permissions.carRentalAccess",
+    defaultLabel: "Car Rental Service",
+    descriptionKey: "members.permissions.carRentalAccessDescription",
+    defaultDescription: "Access rental vehicles, requests, contracts, and rental payments.",
+    icon: Car,
+    section: "sell-and-serve",
+  },
+  {
     key: "postService.access",
     module: "postService",
     labelKey: "members.permissions.postServiceAccess",
