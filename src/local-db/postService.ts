@@ -24,6 +24,7 @@ import type {
   DeliveryLedgerEntryKind,
   DeliveryMerchantProfile,
   DeliveryPayoutSchedule,
+  DeliveryRecipientPayoutFunding,
   DeliveryRun,
   DeliveryRunItem,
   DeliverySettlement,
@@ -97,6 +98,8 @@ export interface CreateDeliveryShipmentInput {
   codAmount: number;
   customerPaymentStatus?: DeliveryCustomerPaymentStatus;
   recipientPayoutAmount?: number;
+  /** Defaults to a courier advance for new posts. */
+  recipientPayoutFunding?: DeliveryRecipientPayoutFunding;
   deliveryFee?: number;
   feePayer?: DeliveryFeePayer;
   sourceSalesOrderId?: string | null;
@@ -177,6 +180,22 @@ export interface PayDeliveryCourierFeeInput {
   actualAmount: number;
   paymentMethod: WorkspacePaymentMethod;
   /** An optional post link is available for an explicit per-post fee payout. */
+  shipmentId?: string | null;
+  settledAt?: string;
+  note?: string | null;
+  varianceNote?: string | null;
+  createdBy?: string | null;
+  accountId?: string | null;
+  accountNameSnapshot?: string | null;
+}
+
+/** Reimburses a courier who advanced their own cash to a recipient. */
+export interface PayDeliveryCourierReimbursementInput {
+  agentId: string;
+  currency: CurrencyCode;
+  actualAmount: number;
+  paymentMethod: WorkspacePaymentMethod;
+  /** An optional post link reimburses this exact delivery advance. */
   shipmentId?: string | null;
   settledAt?: string;
   note?: string | null;
@@ -729,8 +748,9 @@ function merchantDeliveryAccountBalance(
 }
 
 /**
- * Courier custody is also signed: positive cash must be handed over, while a
- * negative balance is an uncovered earned fee that the workspace must pay.
+ * Courier delivery accounting is signed: positive cash must be handed over,
+ * while a negative amount is money the workspace owes the courier (earned
+ * fees and recipient advances paid from the courier's own cash).
  */
 function courierDeliveryAccountBalance(
   entries: DeliveryLedgerEntry[],
@@ -745,6 +765,26 @@ function courierDeliveryAccountBalance(
       || entry.agentId !== agentId
       || entry.currency !== currency
       || (shipmentId && entry.shipmentId !== shipmentId)
+    ) return total;
+    return total + Number(entry.amount || 0);
+  }, 0);
+}
+
+/** The legacy fee-only payout is intentionally isolated from recipient advances. */
+function courierFeeAccountBalance(
+  entries: DeliveryLedgerEntry[],
+  agentId: string | null | undefined,
+  currency: CurrencyCode,
+  shipmentId?: string | null,
+) {
+  if (!agentId) return 0;
+  return entries.reduce((total, entry) => {
+    if (
+      entry.isDeleted
+      || entry.agentId !== agentId
+      || entry.currency !== currency
+      || (shipmentId && entry.shipmentId !== shipmentId)
+      || !["courier_delivery_fee", "courier_fee_payout"].includes(entry.kind)
     ) return total;
     return total + Number(entry.amount || 0);
   }, 0);
@@ -948,8 +988,9 @@ export function useMerchantDeliveryBalances(workspaceId?: string) {
 }
 
 /**
- * Preserves negative courier balances so a fee that cannot be retained from
- * collected cash becomes payable instead of silently disappearing.
+ * Preserves negative courier balances so earned fees and recipient advances
+ * that cannot be retained from collected cash become payable instead of
+ * silently disappearing.
  */
 export function useCourierDeliveryAccountBalances(workspaceId?: string) {
   const entries = useDeliveryLedgerEntries(workspaceId);
@@ -1087,6 +1128,10 @@ export async function createDeliveryShipment(
     codAmount: customerPaymentStatus === "prepaid_electronically" ? 0 : positiveMoney(input.codAmount, "COD amount"),
     customerPaymentStatus,
     recipientPayoutAmount: positiveMoney(input.recipientPayoutAmount ?? 0, "Recipient payout amount"),
+    // New posts are normally handed to the courier, who advances any recipient
+    // payout. Existing cloud rows are deliberately read as workspace-funded in
+    // the delivery workflow below so historical payments retain their meaning.
+    recipientPayoutFunding: input.recipientPayoutFunding ?? "courier_advance",
     recipientPayoutPaymentTransactionId: null,
     deliveryFee: positiveMoney(input.deliveryFee ?? profile.defaultFeeAmount, "Delivery fee"),
     feePayer: input.feePayer ?? profile.defaultFeePayer,
@@ -1307,8 +1352,11 @@ export async function updateDeliveryShipmentStatus(
   const operationKey = `${original.id}:${original.version}:${input.status}`;
   const now = new Date().toISOString();
   const recipientPayoutAmount = positiveMoney(original.recipientPayoutAmount ?? 0, "Recipient payout amount");
+  // Rows created before this field existed recorded an immediate workspace
+  // payment, so preserve that historical accounting treatment by default.
+  const recipientPayoutFunding = original.recipientPayoutFunding ?? "workspace_payment";
   let recipientPayoutPaymentTransactionId: string | null = null;
-  if (input.status === "delivered" && recipientPayoutAmount > 0) {
+  if (input.status === "delivered" && recipientPayoutAmount > 0 && recipientPayoutFunding === "workspace_payment") {
     const payment = await appendPaymentTransaction(original.workspaceId, {
       sourceModule: "post_service",
       sourceType: "delivery_recipient_payout",
@@ -1397,6 +1445,23 @@ export async function updateDeliveryShipmentStatus(
           currency: original.currency,
           occurredAt: now,
           note: `Courier delivery fee for ${original.trackingNumber}`,
+          createdBy: input.actorUserId ?? null,
+        }),
+      );
+    }
+    if (recipientPayoutAmount > 0 && recipientPayoutFunding === "courier_advance") {
+      ledgerEntries.push(
+        makeLedgerEntry(original.workspaceId, {
+          kind: "courier_recipient_advance",
+          shipmentId: original.id,
+          settlementId: null,
+          agentId: original.assignedAgentId,
+          merchantProfileId: null,
+          businessPartnerId: null,
+          amount: -recipientPayoutAmount,
+          currency: original.currency,
+          occurredAt: now,
+          note: `Courier recipient advance for ${original.trackingNumber}`,
           createdBy: input.actorUserId ?? null,
         }),
       );
@@ -1499,11 +1564,20 @@ async function createSettlement(
     : null;
   const isCourierRemittance = type === "courier_remittance";
   const isCourierFeePayout = type === "courier_fee_payout";
-  const isCourierSettlement = isCourierRemittance || isCourierFeePayout;
+  const isCourierReimbursement = type === "courier_reimbursement";
+  const isCourierSettlement = isCourierRemittance || isCourierFeePayout || isCourierReimbursement;
   const isMerchantRepayment = type === "merchant_repayment";
   let expectedAmount: number;
   if (options.shipmentId) {
     if (isCourierFeePayout) {
+      const balance = courierFeeAccountBalance(
+        entries,
+        options.agentId,
+        options.currency,
+        options.shipmentId,
+      );
+      expectedAmount = balance < -0.000001 ? -balance : 0;
+    } else if (isCourierReimbursement) {
       const balance = courierDeliveryAccountBalance(
         entries,
         options.agentId,
@@ -1531,6 +1605,9 @@ async function createSettlement(
     }
   } else {
     if (isCourierFeePayout) {
+      const balance = courierFeeAccountBalance(entries, options.agentId, options.currency);
+      expectedAmount = balance < -0.000001 ? -balance : 0;
+    } else if (isCourierReimbursement) {
       const balance = courierDeliveryAccountBalance(entries, options.agentId, options.currency);
       expectedAmount = balance < -0.000001 ? -balance : 0;
     } else if (isMerchantRepayment) {
@@ -1547,7 +1624,7 @@ async function createSettlement(
   const settledAt = options.settledAt ? new Date(options.settledAt).toISOString() : new Date().toISOString();
   const settlement = makeBase(workspaceId, {
     settlementNumber: makeReference(
-      isCourierRemittance ? "CR" : isCourierFeePayout ? "CF" : isMerchantRepayment ? "MR" : "MP",
+      isCourierRemittance ? "CR" : isCourierFeePayout ? "CF" : isCourierReimbursement ? "CP" : isMerchantRepayment ? "MR" : "MP",
       new Date(settledAt),
     ),
     type,
@@ -1576,6 +1653,8 @@ async function createSettlement(
     ? "courier_remittance"
     : isCourierFeePayout
       ? "courier_fee_payout"
+    : isCourierReimbursement
+      ? "courier_reimbursement"
     : isMerchantRepayment
       ? "merchant_repayment"
       : "merchant_payout";
@@ -1586,7 +1665,7 @@ async function createSettlement(
     agentId: isCourierSettlement ? options.agentId ?? null : null,
     merchantProfileId: isCourierSettlement ? null : options.merchantProfileId ?? null,
     businessPartnerId: isCourierSettlement ? null : options.businessPartnerId ?? null,
-    amount: isMerchantRepayment || isCourierFeePayout ? actual : -actual,
+    amount: isMerchantRepayment || isCourierFeePayout || isCourierReimbursement ? actual : -actual,
     currency: options.currency,
     occurredAt: settledAt,
     note: normalizeText(options.note),
@@ -1617,6 +1696,8 @@ async function createSettlement(
       ? "delivery_courier_remittance"
       : isCourierFeePayout
         ? "delivery_courier_fee_payout"
+      : isCourierReimbursement
+        ? "delivery_courier_reimbursement"
       : isMerchantRepayment
         ? "delivery_merchant_repayment"
         : "delivery_merchant_payout",
@@ -1670,6 +1751,18 @@ export async function payDeliveryCourierFee(workspaceId: string, input: PayDeliv
     throw new Error("Courier not found");
   }
   return createSettlement(workspaceId, "courier_fee_payout", input);
+}
+
+/** Records the real outgoing payment that reimburses a courier's own advance. */
+export async function payDeliveryCourierReimbursement(
+  workspaceId: string,
+  input: PayDeliveryCourierReimbursementInput,
+) {
+  const agent = await db.agents.get(input.agentId);
+  if (!agent || agent.isDeleted || agent.workspaceId !== workspaceId || agent.agentType !== "courier") {
+    throw new Error("Courier not found");
+  }
+  return createSettlement(workspaceId, "courier_reimbursement", input);
 }
 
 export async function payDeliveryMerchant(workspaceId: string, input: PayDeliveryMerchantInput) {

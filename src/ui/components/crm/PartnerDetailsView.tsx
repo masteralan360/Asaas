@@ -462,10 +462,10 @@ function normalizePaymentTransaction(
     t: TranslationFn
 ): RelatedTransaction {
     const isIncoming = tx.direction === 'incoming'
-    const isDeliverySettlement = tx.sourceType === 'delivery_courier_remittance' || tx.sourceType === 'delivery_courier_fee_payout' || tx.sourceType === 'delivery_merchant_payout' || tx.sourceType === 'delivery_merchant_repayment'
+    const isDeliverySettlement = tx.sourceType === 'delivery_courier_remittance' || tx.sourceType === 'delivery_courier_fee_payout' || tx.sourceType === 'delivery_courier_reimbursement' || tx.sourceType === 'delivery_merchant_payout' || tx.sourceType === 'delivery_merchant_repayment'
     const isRecipientPayout = tx.sourceType === 'delivery_recipient_payout'
     const deliverySettlementLabel = isDeliverySettlement
-        ? t(`postService.settlementType.${tx.metadata?.deliverySettlementType === 'merchant_payout' ? 'merchantPayout' : tx.metadata?.deliverySettlementType === 'merchant_repayment' ? 'merchantRepayment' : tx.metadata?.deliverySettlementType === 'courier_fee_payout' ? 'courierFeePayout' : 'courierRemittance'}`, { defaultValue: 'Settlement' })
+        ? t(`postService.settlementType.${tx.metadata?.deliverySettlementType === 'merchant_payout' ? 'merchantPayout' : tx.metadata?.deliverySettlementType === 'merchant_repayment' ? 'merchantRepayment' : tx.metadata?.deliverySettlementType === 'courier_fee_payout' ? 'courierFeePayout' : tx.metadata?.deliverySettlementType === 'courier_reimbursement' ? 'courierReimbursement' : 'courierRemittance'}`, { defaultValue: 'Settlement' })
         : null
     return {
         id: tx.id,
@@ -697,6 +697,7 @@ export function PartnerDetailsView({
         () => paymentTransactions.filter(tx => (tx.sourceType === 'direct_transaction'
             || tx.sourceType === 'delivery_courier_remittance'
             || tx.sourceType === 'delivery_courier_fee_payout'
+            || tx.sourceType === 'delivery_courier_reimbursement'
             || tx.sourceType === 'delivery_merchant_payout'
             || tx.sourceType === 'delivery_merchant_repayment'
             || tx.sourceType === 'delivery_recipient_payout') && tx.metadata?.businessPartnerId === partnerId),

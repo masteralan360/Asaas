@@ -17,6 +17,7 @@ let transferReturnedDeliveryShipment: typeof import("./postService").transferRet
 let updateDeliveryShipmentStatus: typeof import("./postService").updateDeliveryShipmentStatus;
 let settleDeliveryCourier: typeof import("./postService").settleDeliveryCourier;
 let payDeliveryCourierFee: typeof import("./postService").payDeliveryCourierFee;
+let payDeliveryCourierReimbursement: typeof import("./postService").payDeliveryCourierReimbursement;
 let payDeliveryMerchant: typeof import("./postService").payDeliveryMerchant;
 let receiveDeliveryMerchantRepayment: typeof import("./postService").receiveDeliveryMerchantRepayment;
 let updateDeliveryMerchantProfile: typeof import("./postService").updateDeliveryMerchantProfile;
@@ -68,7 +69,7 @@ describe("Post Service COD accounting", () => {
   beforeAll(async () => {
     installBrowserEnvironment();
     const postService = await import("./postService");
-    ({ createDeliveryMerchantProfile, createDeliveryShipment, createDeliveryRun, transferReturnedDeliveryShipment, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryCourierFee, payDeliveryMerchant, receiveDeliveryMerchantRepayment, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment } = postService);
+    ({ createDeliveryMerchantProfile, createDeliveryShipment, createDeliveryRun, transferReturnedDeliveryShipment, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryCourierFee, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment } = postService);
   });
 
   beforeEach(async () => {
@@ -247,6 +248,7 @@ describe("Post Service COD accounting", () => {
       customerPaymentStatus: "prepaid_electronically",
       codAmount: 35000,
       recipientPayoutAmount: 10000,
+      recipientPayoutFunding: "workspace_payment",
     });
     expect(shipment.codAmount).toBe(0);
     await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
@@ -314,6 +316,7 @@ describe("Post Service COD accounting", () => {
       customerPaymentStatus: "prepaid_electronically",
       codAmount: 0,
       recipientPayoutAmount: 10000,
+      recipientPayoutFunding: "workspace_payment",
       deliveryFee: 3000,
       feePayer: "merchant",
     });
@@ -363,6 +366,86 @@ describe("Post Service COD accounting", () => {
       paymentMethod: "fib",
       metadata: expect.objectContaining({
         deliverySettlementType: "courier_fee_payout",
+        deliveryShipmentId: shipment.id,
+        deliveryAgentId: deliveryCourier.id,
+      }),
+    });
+  });
+
+  it("records a courier-funded recipient payout as a payable reimbursement, not an immediate workspace payment", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const deliveryCourier = { ...courier(crypto.randomUUID()), courierDeliveryFee: 2000 };
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, {
+      businessPartnerId: merchant.id,
+      defaultFeeAmount: 3000,
+      defaultFeePayer: "merchant",
+    });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientPhone: "07500000000",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      customerPaymentStatus: "prepaid_electronically",
+      codAmount: 0,
+      recipientPayoutAmount: 10000,
+      recipientPayoutFunding: "courier_advance",
+      deliveryFee: 3000,
+      feePayer: "merchant",
+    });
+    await createDeliveryRun(WORKSPACE_ID, {
+      agentId: deliveryCourier.id,
+      shipmentIds: [shipment.id],
+      courierDeliveryFee: 2000,
+    });
+    await updateDeliveryShipmentStatus(shipment.id, {
+      status: "delivered",
+      actorAgentId: deliveryCourier.id,
+    });
+
+    const entriesBeforeReimbursement = await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray();
+    expect(entriesBeforeReimbursement).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "courier_recipient_advance", amount: -10000, shipmentId: shipment.id }),
+      expect.objectContaining({ kind: "courier_delivery_fee", amount: -2000, shipmentId: shipment.id }),
+      expect.objectContaining({ kind: "merchant_fee", amount: -3000, shipmentId: shipment.id }),
+      expect.objectContaining({ kind: "merchant_recipient_payout", amount: -10000, shipmentId: shipment.id }),
+    ]));
+    expect(entriesBeforeReimbursement.filter((entry) => entry.agentId === deliveryCourier.id).reduce((sum, entry) => sum + entry.amount, 0)).toBe(-12000);
+    expect(entriesBeforeReimbursement.filter((entry) => entry.merchantProfileId === profile.id).reduce((sum, entry) => sum + entry.amount, 0)).toBe(-13000);
+    expect(await db.payment_transactions
+      .where("workspaceId")
+      .equals(WORKSPACE_ID)
+      .and((item) => item.sourceRecordId === shipment.id && item.sourceType === "delivery_recipient_payout")
+      .count()).toBe(0);
+
+    const settlement = await payDeliveryCourierReimbursement(WORKSPACE_ID, {
+      agentId: deliveryCourier.id,
+      shipmentId: shipment.id,
+      currency: "iqd",
+      actualAmount: 12000,
+      paymentMethod: "fib",
+    });
+    expect(settlement).toMatchObject({ type: "courier_reimbursement", expectedAmount: 12000, actualAmount: 12000 });
+
+    const entries = await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray();
+    expect(entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "courier_reimbursement", amount: 12000, shipmentId: shipment.id, settlementId: settlement.id }),
+    ]));
+    expect(entries.filter((entry) => entry.agentId === deliveryCourier.id).reduce((sum, entry) => sum + entry.amount, 0)).toBe(0);
+
+    const payment = await db.payment_transactions
+      .where("workspaceId")
+      .equals(WORKSPACE_ID)
+      .and((item) => item.sourceRecordId === settlement.id && item.sourceType === "delivery_courier_reimbursement")
+      .first();
+    expect(payment).toMatchObject({
+      direction: "outgoing",
+      amount: 12000,
+      currency: "iqd",
+      paymentMethod: "fib",
+      metadata: expect.objectContaining({
+        deliverySettlementType: "courier_reimbursement",
         deliveryShipmentId: shipment.id,
         deliveryAgentId: deliveryCourier.id,
       }),

@@ -104,6 +104,8 @@ function sourceTypeLabel(
             return t('payments.sourceType.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
         case 'delivery_courier_fee_payout':
             return t('payments.sourceType.deliveryCourierFeePayout', { defaultValue: 'Courier Fee Payment' })
+        case 'delivery_courier_reimbursement':
+            return t('payments.sourceType.deliveryCourierReimbursement', { defaultValue: 'Courier Reimbursement' })
         case 'delivery_merchant_payout':
             return t('payments.sourceType.deliveryMerchantPayout', { defaultValue: 'Merchant Payout' })
         case 'delivery_recipient_payout':

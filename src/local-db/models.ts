@@ -521,6 +521,8 @@ export interface DeliveryMerchantProfile extends BaseEntity {
 export type DeliveryFeePayer = "merchant" | "recipient";
 /** Whether the courier must collect the COD amount from the recipient. */
 export type DeliveryCustomerPaymentStatus = "cash_on_delivery" | "prepaid_electronically";
+/** Who advances a recipient payout before the merchant reimburses the workspace. */
+export type DeliveryRecipientPayoutFunding = "courier_advance" | "workspace_payment";
 export type DeliveryPayoutSchedule = "daily" | "weekly" | "on_request";
 export type DeliveryShipmentStatus =
   | "received"
@@ -531,7 +533,7 @@ export type DeliveryShipmentStatus =
   | "returned"
   | "cancelled";
 export type DeliveryRunStatus = "open" | "closed" | "cancelled";
-export type DeliverySettlementType = "courier_remittance" | "courier_fee_payout" | "merchant_payout" | "merchant_repayment";
+export type DeliverySettlementType = "courier_remittance" | "courier_fee_payout" | "courier_reimbursement" | "merchant_payout" | "merchant_repayment";
 
 export interface DeliveryShipment extends BaseEntity {
   trackingNumber: string;
@@ -552,8 +554,10 @@ export interface DeliveryShipment extends BaseEntity {
   /** Zero for an electronically prepaid delivery. */
   codAmount: number;
   customerPaymentStatus: DeliveryCustomerPaymentStatus;
-  /** Company-funded amount paid to the recipient when the post is delivered. */
+  /** Amount paid to the recipient when the post is delivered. */
   recipientPayoutAmount: number;
+  /** Courier advances are reimbursed later; workspace payments are paid immediately. */
+  recipientPayoutFunding: DeliveryRecipientPayoutFunding;
   recipientPayoutPaymentTransactionId?: string | null;
   deliveryFee: number;
   /** Courier fee snapshot from the manifest; charged only on delivery. */
@@ -634,8 +638,10 @@ export interface DeliverySettlement extends BaseEntity {
 export type DeliveryLedgerEntryKind =
   | "courier_collection"
   | "courier_delivery_fee"
+  | "courier_recipient_advance"
   | "courier_remittance"
   | "courier_fee_payout"
+  | "courier_reimbursement"
   | "merchant_cod_payable"
   | "merchant_fee"
   | "merchant_recipient_payout"
@@ -2032,6 +2038,7 @@ export type PaymentTransactionSourceType =
   | "exchange_transaction"
   | "delivery_courier_remittance"
   | "delivery_courier_fee_payout"
+  | "delivery_courier_reimbursement"
   | "delivery_merchant_payout"
   | "delivery_recipient_payout"
   | "delivery_merchant_repayment"

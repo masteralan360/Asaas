@@ -964,7 +964,13 @@ async function getDeliveryOutstandingBalances(workspaceId: string, partner: Busi
             payable.set(currency, 0)
             receivable.set(currency, receivableAmount + Math.abs(payableAmount))
         }
-        if (receivableAmount < 0) receivable.set(currency, 0)
+        // A negative courier account is not a receivable from the courier. It
+        // is a genuine payable: the courier advanced cash to the recipient or
+        // earned a fee that could not be retained from COD cash.
+        if (receivableAmount < 0) {
+            receivable.set(currency, 0)
+            payable.set(currency, (payable.get(currency) ?? 0) + Math.abs(receivableAmount))
+        }
     }
 
     return { payable, receivable }

@@ -112,6 +112,7 @@ type LedgerEntryType =
     | 'exchange_profit'
     | 'delivery_courier_remittance'
     | 'delivery_courier_fee_payout'
+    | 'delivery_courier_reimbursement'
     | 'delivery_merchant_payout'
     | 'delivery_recipient_payout'
     | 'delivery_merchant_repayment'
@@ -321,6 +322,8 @@ function ledgerTypeLabel(type: LedgerEntryType, t: any) {
             return t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
         case 'delivery_courier_fee_payout':
             return t('ledger.type.deliveryCourierFeePayout', { defaultValue: 'Courier Fee Payment' })
+        case 'delivery_courier_reimbursement':
+            return t('ledger.type.deliveryCourierReimbursement', { defaultValue: 'Courier Reimbursement' })
         case 'delivery_merchant_payout':
             return t('ledger.type.deliveryMerchantPayout', { defaultValue: 'Merchant Payout' })
         case 'delivery_recipient_payout':
@@ -825,6 +828,8 @@ function buildTransactionReference(transaction: PaymentTransaction) {
             return buildReferenceId('CR', transaction.sourceRecordId)
         case 'delivery_courier_fee_payout':
             return buildReferenceId('CF', transaction.sourceRecordId)
+        case 'delivery_courier_reimbursement':
+            return buildReferenceId('CP', transaction.sourceRecordId)
         case 'delivery_merchant_payout':
             return buildReferenceId('MP', transaction.sourceRecordId)
         case 'delivery_recipient_payout':
@@ -1112,11 +1117,13 @@ function buildPaymentLedgerEntry(
     switch (transaction.sourceType) {
         case 'delivery_courier_remittance':
         case 'delivery_courier_fee_payout':
+        case 'delivery_courier_reimbursement':
         case 'delivery_merchant_payout':
         case 'delivery_recipient_payout':
         case 'delivery_merchant_repayment': {
             const isCourierRemittance = transaction.sourceType === 'delivery_courier_remittance'
             const isCourierFeePayout = transaction.sourceType === 'delivery_courier_fee_payout'
+            const isCourierReimbursement = transaction.sourceType === 'delivery_courier_reimbursement'
             const isRecipientPayout = transaction.sourceType === 'delivery_recipient_payout'
             const isMerchantRepayment = transaction.sourceType === 'delivery_merchant_repayment'
             const settlement = context.deliverySettlementById.get(transaction.sourceRecordId)
@@ -1155,6 +1162,8 @@ function buildPaymentLedgerEntry(
                         ? t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
                         : isCourierFeePayout
                             ? t('ledger.type.deliveryCourierFeePayout', { defaultValue: 'Courier Fee Payment' })
+                        : isCourierReimbursement
+                            ? t('ledger.type.deliveryCourierReimbursement', { defaultValue: 'Courier Reimbursement' })
                         : isRecipientPayout
                             ? t('ledger.type.deliveryRecipientPayout', { defaultValue: 'Recipient Payout' })
                             : isMerchantRepayment
@@ -1169,6 +1178,12 @@ function buildPaymentLedgerEntry(
                         : isCourierFeePayout
                             ? t('ledger.description.deliveryPostCourierFeePayoutRelation', {
                                 defaultValue: 'Post {{tracking}} · courier fee paid to {{recipient}}.',
+                                tracking: shipment?.trackingNumber || shipmentId,
+                                recipient: shipment?.recipientPhone || t('common.unknown', { defaultValue: 'Unknown recipient' })
+                            })
+                        : isCourierReimbursement
+                            ? t('ledger.description.deliveryPostCourierReimbursementRelation', {
+                                defaultValue: 'Post {{tracking}} · courier reimbursed for their advance to {{recipient}}.',
                                 tracking: shipment?.trackingNumber || shipmentId,
                                 recipient: shipment?.recipientPhone || t('common.unknown', { defaultValue: 'Unknown recipient' })
                             })
@@ -1199,6 +1214,8 @@ function buildPaymentLedgerEntry(
                         ? t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
                         : isCourierFeePayout
                             ? t('ledger.type.deliveryCourierFeePayout', { defaultValue: 'Courier Fee Payment' })
+                        : isCourierReimbursement
+                            ? t('ledger.type.deliveryCourierReimbursement', { defaultValue: 'Courier Reimbursement' })
                         : isRecipientPayout
                             ? t('ledger.type.deliveryRecipientPayout', { defaultValue: 'Recipient Payout' })
                             : isMerchantRepayment
@@ -1226,6 +1243,8 @@ function buildPaymentLedgerEntry(
                         ? t('ledger.description.deliveryCourierRemittance', { defaultValue: 'Courier cash handover' })
                         : isCourierFeePayout
                             ? t('ledger.description.deliveryCourierFeePayout', { defaultValue: 'Courier fee payment' })
+                        : isCourierReimbursement
+                            ? t('ledger.description.deliveryCourierReimbursement', { defaultValue: 'Courier reimbursement' })
                         : isRecipientPayout
                             ? t('ledger.description.deliveryRecipientPayout', { defaultValue: 'Recipient payout' })
                             : isMerchantRepayment

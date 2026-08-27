@@ -136,9 +136,10 @@ function toBreakdown(breakdown: ReadonlyMap<string, FifoRow[]>) {
 export function courierHandoverStatusByShipment(entries: DeliveryLedgerEntry[]) {
   return toStatuses(computeSettlementBreakdown(
     entries,
-    // The courier's delivery fee is a negative custody entry, so it reduces
-    // the cash amount due for that exact post before any remittance is made.
-    ["courier_collection", "courier_delivery_fee"],
+    // Both the courier's fee and a recipient payout the courier funded are
+    // negative custody entries, so they reduce the cash due for that exact
+    // post before any remittance is made.
+    ["courier_collection", "courier_delivery_fee", "courier_recipient_advance"],
     ["courier_remittance", "adjustment"],
     (entry) => entry.agentId,
   ));
@@ -158,7 +159,7 @@ export function merchantPayoutStatusByShipment(entries: DeliveryLedgerEntry[]) {
 export function courierSettlementBreakdownByParty(entries: DeliveryLedgerEntry[]) {
   return toBreakdown(computeSettlementBreakdown(
     entries,
-    ["courier_collection", "courier_delivery_fee"],
+    ["courier_collection", "courier_delivery_fee", "courier_recipient_advance"],
     ["courier_remittance", "adjustment"],
     (entry) => entry.agentId,
   ));
