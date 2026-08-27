@@ -83,7 +83,8 @@ function entryLabel(kind: PartnerAccountStatementEntryKind, t: (key: string, opt
         outgoing_payment: t('businessPartners.accountStatement.paymentMade', { defaultValue: 'Payment made' }),
         direct_transaction: t('ledger.type.direct_transaction', { defaultValue: 'Direct Transaction' }),
         loan_disbursal: t('businessPartners.accountStatement.loanMovement', { defaultValue: 'Loan movement' }),
-        loan_repayment: t('businessPartners.accountStatement.loanRepayment', { defaultValue: 'Loan repayment' })
+        loan_repayment: t('businessPartners.accountStatement.loanRepayment', { defaultValue: 'Loan repayment' }),
+        delivery_post: t('postService.title', { defaultValue: 'Post Service' })
     }
     return labels[kind]
 }

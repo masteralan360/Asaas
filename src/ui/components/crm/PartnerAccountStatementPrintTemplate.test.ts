@@ -3,6 +3,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 vi.mock('@/lib/utils', () => ({
+    cn: (...classes: Array<string | false | null | undefined>) => classes.filter(Boolean).join(' '),
     formatCurrency: (amount: number, currency: string) => `${amount} ${currency}`,
     formatDate: (value: string) => value,
     formatDateTime: (value: string) => value
@@ -21,14 +22,17 @@ vi.mock('react-i18next', () => ({
 }))
 
 import type { PartnerOrderItemsPrintData } from './PartnerOrderItemsPrintTemplate'
-import { buildPartnerAccountStatementLedger } from '@/lib/partnerAccountStatement'
+import {
+    buildPartnerAccountStatementLedger,
+    type PartnerAccountStatementData
+} from '@/lib/partnerAccountStatement'
 import {
     getPartnerAccountStatementEntryDescription,
     getPartnerAccountStatementEntryDetail
 } from '@/lib/partnerAccountStatementPresentation'
 import { PartnerAccountStatementPrintTemplate } from './PartnerAccountStatementPrintTemplate'
 
-function statementData(): PartnerOrderItemsPrintData {
+function statementData(): PartnerOrderItemsPrintData & PartnerAccountStatementData {
     return {
         partner: { name: 'Sample Partner' },
         period: { type: 'custom', start: '2026-01-01', end: '2026-01-31' },
@@ -147,6 +151,68 @@ describe('buildPartnerAccountStatementLedger', () => {
         expect(ledger.entries.find((entry) => entry.reference === 'Cash advance')?.source).toEqual({
             recordType: 'payment_transaction',
             recordId: 'period-direct-payment'
+        })
+    })
+
+    it('includes every merchant-facing Post Service movement once with the inverse delivery-ledger sign', () => {
+        const data = statementData()
+        data.statementOrders = []
+        data.settlementTransactions = []
+        data.deliveryShipmentReferences = { 'post-1': 'PST-20260827-00001' }
+        data.deliveryLedgerEntries = [
+            {
+                id: 'delivery-cod',
+                kind: 'merchant_cod_payable',
+                shipmentId: 'post-1',
+                amount: 50000,
+                currency: 'iqd',
+                occurredAt: '2026-01-05T10:00:00.000Z',
+                createdAt: '2026-01-05T10:00:00.000Z',
+                isDeleted: false
+            },
+            {
+                id: 'delivery-fee',
+                kind: 'merchant_fee',
+                shipmentId: 'post-1',
+                amount: -3000,
+                currency: 'iqd',
+                occurredAt: '2026-01-05T10:00:00.000Z',
+                createdAt: '2026-01-05T10:00:00.000Z',
+                isDeleted: false
+            },
+            {
+                id: 'recipient-payout',
+                kind: 'merchant_recipient_payout',
+                shipmentId: 'post-1',
+                amount: -10000,
+                currency: 'iqd',
+                occurredAt: '2026-01-05T10:00:00.000Z',
+                createdAt: '2026-01-05T10:00:00.000Z',
+                isDeleted: false
+            },
+            {
+                id: 'merchant-payout',
+                kind: 'merchant_payout',
+                amount: -37000,
+                currency: 'iqd',
+                occurredAt: '2026-01-06T10:00:00.000Z',
+                createdAt: '2026-01-06T10:00:00.000Z',
+                isDeleted: false
+            }
+        ] as any
+
+        const [ledger] = buildPartnerAccountStatementLedger(data)
+
+        expect(ledger).toMatchObject({ currency: 'iqd', closingBalance: 0 })
+        expect(ledger.entries.map((entry) => [entry.reference, entry.delta, entry.descriptionKey])).toEqual([
+            ['PST-20260827-00001', -50000, 'deliveryCodPayable'],
+            ['PST-20260827-00001', 3000, 'deliveryFee'],
+            ['PST-20260827-00001', 10000, 'deliveryRecipientPayout'],
+            ['merchant-payout', 37000, 'deliveryMerchantPayout']
+        ])
+        expect(ledger.entries.find((entry) => entry.descriptionKey === 'deliveryRecipientPayout')?.source).toEqual({
+            recordType: 'delivery_ledger_entry',
+            recordId: 'recipient-payout'
         })
     })
 

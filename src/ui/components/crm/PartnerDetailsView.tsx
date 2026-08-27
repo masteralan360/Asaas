@@ -115,7 +115,7 @@ type AgentSoldRow = {
 type AgentTopProduct = { id: string; name: string; quantity: number; amount: number }
 type RelatedTransaction = {
     id: string
-    source: 'sales_order' | 'purchase_order' | 'travel_sale' | 'loan' | 'simple_loan' | 'direct_transaction' | 'clinical_appointment' | 'delivery_shipment' | 'delivery_settlement'
+    source: 'sales_order' | 'purchase_order' | 'travel_sale' | 'loan' | 'simple_loan' | 'direct_transaction' | 'clinical_appointment' | 'delivery_shipment' | 'delivery_settlement' | 'delivery_recipient_payout'
     reference: string
     displayDate: string
     sortDate: string
@@ -190,6 +190,8 @@ function sourceLabel(source: ActivitySource, t: TranslationFn) {
             return t('postService.title', { defaultValue: 'Post Service' })
         case 'delivery_settlement':
             return t('businessPartners.sources.settlement', { defaultValue: 'Settlement' })
+        case 'delivery_recipient_payout':
+            return t('ledger.type.deliveryRecipientPayout', { defaultValue: 'Recipient Payout' })
         default:
             return t('loans.installmentRepayment', { defaultValue: 'Installment Repayment' })
     }
@@ -213,6 +215,8 @@ function sourceBadgeClass(source: ActivitySource) {
             return 'border-teal-200 bg-teal-500/10 text-teal-700'
         case 'delivery_settlement':
             return 'border-slate-300 bg-slate-500/10 text-slate-700'
+        case 'delivery_recipient_payout':
+            return 'border-rose-200 bg-rose-500/10 text-rose-700'
         default:
             return 'border-orange-200 bg-orange-500/10 text-orange-700'
     }
@@ -458,13 +462,18 @@ function normalizePaymentTransaction(
     t: TranslationFn
 ): RelatedTransaction {
     const isIncoming = tx.direction === 'incoming'
-    const isDeliverySettlement = tx.sourceType === 'delivery_courier_remittance' || tx.sourceType === 'delivery_merchant_payout'
+    const isDeliverySettlement = tx.sourceType === 'delivery_courier_remittance' || tx.sourceType === 'delivery_merchant_payout' || tx.sourceType === 'delivery_merchant_repayment'
+    const isRecipientPayout = tx.sourceType === 'delivery_recipient_payout'
     const deliverySettlementLabel = isDeliverySettlement
-        ? t(`postService.settlementType.${tx.metadata?.deliverySettlementType === 'merchant_payout' ? 'merchantPayout' : 'courierRemittance'}`, { defaultValue: 'Settlement' })
+        ? t(`postService.settlementType.${tx.metadata?.deliverySettlementType === 'merchant_payout' ? 'merchantPayout' : tx.metadata?.deliverySettlementType === 'merchant_repayment' ? 'merchantRepayment' : 'courierRemittance'}`, { defaultValue: 'Settlement' })
         : null
     return {
         id: tx.id,
-        source: isDeliverySettlement ? 'delivery_settlement' : 'direct_transaction',
+        source: isDeliverySettlement
+            ? 'delivery_settlement'
+            : isRecipientPayout
+                ? 'delivery_recipient_payout'
+                : 'direct_transaction',
         reference: tx.referenceLabel || tx.note || t('ledger.type.direct_transaction', { defaultValue: 'Direct Transaction' }),
         displayDate: tx.paidAt || tx.createdAt,
         sortDate: tx.updatedAt || tx.paidAt || tx.createdAt,
@@ -473,6 +482,9 @@ function normalizePaymentTransaction(
         statusLabel: t('ledger.directionFilter.' + tx.direction, { defaultValue: isIncoming ? 'Inflow' : 'Outflow' }),
         isPaid: true,
         summary: deliverySettlementLabel
+            || (isRecipientPayout
+                ? t('ledger.type.deliveryRecipientPayout', { defaultValue: 'Recipient Payout' })
+                : null)
             || tx.note
             || (isIncoming ? t('ledger.type.direct_inflow', { defaultValue: 'Direct Inflow' }) : t('ledger.type.direct_outflow', { defaultValue: 'Direct Outflow' })),
         total: tx.amount,
@@ -684,7 +696,9 @@ export function PartnerDetailsView({
     const directTransactions = useMemo(
         () => paymentTransactions.filter(tx => (tx.sourceType === 'direct_transaction'
             || tx.sourceType === 'delivery_courier_remittance'
-            || tx.sourceType === 'delivery_merchant_payout') && tx.metadata?.businessPartnerId === partnerId),
+            || tx.sourceType === 'delivery_merchant_payout'
+            || tx.sourceType === 'delivery_merchant_repayment'
+            || tx.sourceType === 'delivery_recipient_payout') && tx.metadata?.businessPartnerId === partnerId),
         [paymentTransactions, partnerId]
     )
     const dateFilteredPayments = useMemo(

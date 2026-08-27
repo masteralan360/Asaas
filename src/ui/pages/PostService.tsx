@@ -1,11 +1,11 @@
 import { type FormEvent, Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { Banknote, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, Clock, History, Inbox, LayoutGrid, List, ListFilter, Package, PackageCheck, Pencil, Play, Plus, Route, Search, Send, Store, Trash2, Truck, Undo2, Users, WalletCards, X, XCircle, type LucideIcon } from "lucide-react";
+import { Banknote, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, Clock, HandCoins, History, Inbox, LayoutGrid, List, ListFilter, Package, PackageCheck, Pencil, Play, Plus, Route, Search, Send, Store, Trash2, Truck, Undo2, Users, WalletCards, X, XCircle, type LucideIcon } from "lucide-react";
 
 import { useAuth } from "@/auth";
 import {
-  closeDeliveryRun, createBusinessPartner, createDeliveryMerchantProfile, createDeliveryRun, createDeliveryShipment, hardDeleteDeliveryMerchantProfile, payDeliveryMerchant,
+  closeDeliveryRun, createBusinessPartner, createDeliveryMerchantProfile, createDeliveryRun, createDeliveryShipment, hardDeleteDeliveryMerchantProfile, payDeliveryMerchant, receiveDeliveryMerchantRepayment,
   refreshPostServiceTab, settleDeliveryCourier, updateBusinessPartner, updateDeliveryMerchantProfile, updateDeliveryShipmentStatus, useAgents, useBusinessPartners, useCourierDeliveryBalances,
   useDeliveryMerchantProfiles, useDeliveryRuns, useDeliverySettlements, useDeliveryShipmentEvents, useDeliveryShipments, useFleetVehicles,
   transferReturnedDeliveryShipment, useMerchantDeliveryAccountBalances, useMerchantDeliveryBalances, useDeliveryLedgerEntries, type Agent, type BusinessPartner, type CurrencyCode, type DeliveryCustomerPaymentStatus, type DeliveryMerchantProfile, type DeliveryShipment, type DeliveryShipmentEvent, type DeliveryShipmentStatus, type PaymentAccount, type PostServiceTab, type WorkspacePaymentMethod,
@@ -61,6 +61,16 @@ type PostSettlementDraft = {
   merchantMethod: WorkspacePaymentMethod;
   merchantNote: string;
   merchantAccount: PaymentAccount | null;
+};
+
+type SettlementTarget = {
+  kind: "courier" | "merchant" | "merchant_repayment";
+  id: string;
+  currency: CurrencyCode;
+  amount: number;
+  name: string;
+  shipmentId?: string | null;
+  shipmentLabel?: string;
 };
 
 type CourierRow = {
@@ -223,6 +233,7 @@ export function PostService() {
   const visibleShipments = useMemo(() => shipments.filter((shipment) => isDateInDateRange(shipment.createdAt, dateRange, customDates) && (showCompleted || !isCompletedShipment(shipment)) && (statusFilter === "all" || shipment.status === statusFilter) && (handoverFilter === "all" || (courierHandoverStatuses.get(shipment.id) ?? null) === handoverFilter) && (payoutFilter === "all" || (merchantPayoutStatuses.get(shipment.id) ?? null) === payoutFilter)), [shipments, statusFilter, handoverFilter, payoutFilter, showCompleted, isCompletedShipment, dateRange, customDates, courierHandoverStatuses, merchantPayoutStatuses]);
   const [shipmentDialogOpen, setShipmentDialogOpen] = useState(false);
   const [shipmentForm, setShipmentForm] = useState<ShipmentForm>(() => initialShipmentForm(features.default_currency));
+  const [showRecipientPayout, setShowRecipientPayout] = useState(false);
   const [merchantDialogOpen, setMerchantDialogOpen] = useState(false);
   const [supplierPartnerDialogOpen, setSupplierPartnerDialogOpen] = useState(false);
   const [isSavingSupplierPartner, setIsSavingSupplierPartner] = useState(false);
@@ -252,7 +263,7 @@ export function PostService() {
   const [recipientPayoutMethod, setRecipientPayoutMethod] = useState<StandardPaymentMethod>("cash");
   const [recipientPayoutAccount, setRecipientPayoutAccount] = useState<PaymentAccount | null>(null);
   const [voicePlaybackEvent, setVoicePlaybackEvent] = useState<DeliveryShipmentEvent | null>(null);
-  const [settlementTarget, setSettlementTarget] = useState<{ kind: "courier" | "merchant"; id: string; currency: CurrencyCode; amount: number; name: string; shipmentId?: string | null; shipmentLabel?: string } | null>(null);
+  const [settlementTarget, setSettlementTarget] = useState<SettlementTarget | null>(null);
   const [settlementAmount, setSettlementAmount] = useState("");
   const [settlementMethod, setSettlementMethod] = useState<WorkspacePaymentMethod>("cash");
   const [settlementAccount, setSettlementAccount] = useState<PaymentAccount | null>(null);
@@ -294,6 +305,31 @@ export function PostService() {
     }
     return result;
   }, [merchantAccountBalances]);
+  const merchantRepaymentsByProfile = useMemo(() => {
+    const result = new Map<string, Array<{ currency: CurrencyCode; amount: number }>>();
+    for (const balance of merchantAccountBalances) {
+      if (balance.amount >= -0.000001) continue;
+      const repayments = result.get(balance.id) ?? [];
+      repayments.push({ currency: balance.currency, amount: Math.abs(balance.amount) });
+      result.set(balance.id, repayments);
+    }
+    for (const repayments of result.values()) {
+      repayments.sort((left, right) => left.currency.localeCompare(right.currency));
+    }
+    return result;
+  }, [merchantAccountBalances]);
+  const merchantRepaymentAmountByShipment = useMemo(() => {
+    const balances = new Map<string, number>();
+    for (const entry of ledgerEntries) {
+      if (!entry.shipmentId || !entry.merchantProfileId || entry.isDeleted) continue;
+      balances.set(entry.shipmentId, (balances.get(entry.shipmentId) ?? 0) + Number(entry.amount || 0));
+    }
+    const results = new Map<string, number>();
+    for (const [shipmentId, balance] of balances) {
+      if (balance < -0.000001) results.set(shipmentId, Math.abs(balance));
+    }
+    return results;
+  }, [ledgerEntries]);
   const merchantShipmentStatsByProfile = useMemo(() => {
     const stats = new Map<string, { openPosts: number; deliveredPosts: number }>();
     for (const shipment of shipments) {
@@ -477,6 +513,21 @@ export function PostService() {
   function updateShipmentForm<Key extends keyof ShipmentForm>(key: Key, value: ShipmentForm[Key]) {
     setShipmentForm((current) => ({ ...current, [key]: value }));
   }
+  function resetShipmentForm() {
+    setShipmentForm(initialShipmentForm(features.default_currency));
+    setShowRecipientPayout(false);
+  }
+  function handleCustomerPaymentStatusChange(value: DeliveryCustomerPaymentStatus) {
+    setShipmentForm((current) => ({
+      ...current,
+      customerPaymentStatus: value,
+      codAmount: value === "prepaid_electronically" ? "" : current.codAmount,
+      // Avoid submitting a payout the user can no longer see after changing
+      // back to a normal cash-on-delivery post.
+      recipientPayoutAmount: value === "cash_on_delivery" ? "" : current.recipientPayoutAmount,
+    }));
+    setShowRecipientPayout(value === "prepaid_electronically");
+  }
   function toggleShipment(shipmentId: string, checked: boolean) {
     setSelectedShipmentIds((current) => { const next = new Set(current); if (checked) next.add(shipmentId); else next.delete(shipmentId); return next; });
   }
@@ -487,8 +538,11 @@ export function PostService() {
     setRecipientPayoutMethod("cash");
     setRecipientPayoutAccount(null);
   }
-  function openSettlement(target: NonNullable<typeof settlementTarget>) {
+  function openSettlement(target: SettlementTarget) {
     setSettlementTarget(target); setSettlementAmount(String(target.amount)); setSettlementMethod("cash"); setSettlementAccount(null); setSettlementNote("");
+  }
+  function openMerchantRepayment(target: Omit<SettlementTarget, "kind">) {
+    openSettlement({ ...target, kind: "merchant_repayment" });
   }
   function openPostSettlement(balance: { kind: "courier" | "merchant"; id: string; currency: CurrencyCode; name: string }, post: ShipmentSettlementBreakdown) {
     setSettlementTarget({ kind: balance.kind, id: balance.id, currency: balance.currency, amount: post.outstanding, name: balance.name, shipmentId: post.shipmentId, shipmentLabel: shipmentLabelById.get(post.shipmentId) ?? "" });
@@ -543,6 +597,16 @@ export function PostService() {
       merchantAccount: null,
     });
   }
+  function openPostMerchantRepayment(shipment: DeliveryShipment, amount: number) {
+    openMerchantRepayment({
+      id: shipment.merchantProfileId,
+      currency: shipment.currency,
+      amount,
+      name: profileNameById.get(shipment.merchantProfileId) ?? t("postService.unknownMerchant"),
+      shipmentId: shipment.id,
+      shipmentLabel: shipmentLabelById.get(shipment.id) ?? shipment.trackingNumber,
+    });
+  }
   function handleDispatchCourierChange(agentId: string) {
     setDispatchAgentId(agentId);
     const courier = agents.find((agent) => agent.id === agentId);
@@ -580,7 +644,7 @@ export function PostService() {
     try {
       await createDeliveryShipment(workspaceId, { merchantProfileId: shipmentForm.merchantProfileId, recipientPhone: shipmentForm.recipientPhone, recipientAddress: shipmentForm.recipientAddress, description: shipmentForm.description || null, currency: shipmentForm.currency, codAmount: parseFormattedNumber(shipmentForm.codAmount || "0"), customerPaymentStatus: shipmentForm.customerPaymentStatus, recipientPayoutAmount: parseFormattedNumber(shipmentForm.recipientPayoutAmount || "0"), deliveryFee: parseFormattedNumber(shipmentForm.deliveryFee || "0"), feePayer: shipmentForm.feePayer, createdBy: user?.id ?? null });
       toast({ title: t("postService.messages.postCreated"), description: t("postService.messages.postCreatedDescription") });
-      setShipmentDialogOpen(false); setShipmentForm(initialShipmentForm(features.default_currency));
+      setShipmentDialogOpen(false); resetShipmentForm();
     } catch (error) { toast({ title: t("postService.messages.createPostFailed"), description: localizedError(t, error), variant: "destructive" }); } finally { setIsSubmitting(false); }
   }
   function openMerchantEditor(profile: DeliveryMerchantProfile) {
@@ -695,8 +759,13 @@ export function PostService() {
     try {
       const payload = { currency: settlementTarget.currency, actualAmount: numericValue(settlementAmount), paymentMethod: settlementMethod, note: settlementNote || null, varianceNote: numericValue(settlementAmount) === settlementTarget.amount ? null : settlementNote || null, shipmentId: settlementTarget.shipmentId ?? null, createdBy: user?.id ?? null, accountId: settlementAccount?.id ?? null, accountNameSnapshot: settlementAccount?.name ?? null };
       if (settlementTarget.kind === "courier") await settleDeliveryCourier(workspaceId, { ...payload, agentId: settlementTarget.id });
-      else await payDeliveryMerchant(workspaceId, { ...payload, merchantProfileId: settlementTarget.id });
-      toast({ title: t(settlementTarget.kind === "courier" ? "postService.messages.courierHandoverRecorded" : "postService.messages.merchantPayoutRecorded") }); setSettlementTarget(null); setSettlementAccount(null);
+      else if (settlementTarget.kind === "merchant") await payDeliveryMerchant(workspaceId, { ...payload, merchantProfileId: settlementTarget.id });
+      else await receiveDeliveryMerchantRepayment(workspaceId, { ...payload, merchantProfileId: settlementTarget.id });
+      toast({ title: t(settlementTarget.kind === "courier"
+        ? "postService.messages.courierHandoverRecorded"
+        : settlementTarget.kind === "merchant"
+          ? "postService.messages.merchantPayoutRecorded"
+          : "postService.messages.merchantRepaymentRecorded") }); setSettlementTarget(null); setSettlementAccount(null);
     } catch (error) { toast({ title: t("postService.messages.settlementFailed"), description: localizedError(t, error), variant: "destructive" }); } finally { setIsSubmitting(false); }
   }
   async function handlePostSettlement(kind: "courier" | "merchant") {
@@ -774,15 +843,15 @@ export function PostService() {
               <Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="ps-9" placeholder={t("postService.placeholders.searchPosts")} />
             </div>
             <div className={cn("grid grid-cols-1 gap-4", postsViewMode === "grid" ? "md:grid-cols-2 2xl:grid-cols-3" : "md:hidden")}>
-              <ShipmentGrid t={t} shipments={searchedShipments} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} />
+              <ShipmentGrid t={t} shipments={searchedShipments} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} />
             </div>
-            {postsViewMode === "details" && <div className="hidden overflow-x-auto md:block"><ShipmentTable t={t} shipments={searchedShipments} footer={postsTotalsFooter} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} /></div>}
+            {postsViewMode === "details" && <div className="hidden overflow-x-auto md:block"><ShipmentTable t={t} shipments={searchedShipments} footer={postsTotalsFooter} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} /></div>}
           </CardContent>
         </Card>
       </TabsContent>
       {isAdmin && <>
       <TabsContent value="dispatch" className="mt-4 space-y-4"><Card><CardHeader><CardTitle>{t("postService.cards.createManifest")}</CardTitle></CardHeader><CardContent>{canDispatch ? <form className="grid gap-4 md:grid-cols-2" onSubmit={handleDispatch}><Field label={t("postService.form.postsSelected")}><div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">{t("postService.selectedAndAvailable", { selected: selectedCount, available: assignableShipments.length })}</div></Field><Field label={t("postService.form.courier")}><Select value={dispatchAgentId} onValueChange={handleDispatchCourierChange}><SelectTrigger><SelectValue placeholder={t("postService.placeholders.selectCourier")} /></SelectTrigger><SelectContent>{agents.filter((agent) => agent.status === "active" && agent.agentType === "courier").map((agent) => <SelectItem key={agent.id} value={agent.id}>{agentNameById.get(agent.id)} · {agent.zone}</SelectItem>)}</SelectContent></Select></Field><Field label={t("postService.form.courierDeliveryFee")}><div className="grid gap-1"><div className="relative"><Input className="pe-12" value={formatNumericInput(dispatchCourierDeliveryFee)} onChange={(event) => setDispatchCourierDeliveryFee(sanitizeNumericInput(event.target.value, { allowDecimal: true }))} inputMode="decimal" placeholder="0" disabled={!dispatchAgentId} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(features.default_currency, features.iqd_display_preference)}</span></div><p className="text-xs text-muted-foreground">{t("postService.form.courierDeliveryFeeHint")}</p></div></Field><Field label={t("postService.form.vehicleOptional")}><Select value={dispatchVehicleId} onValueChange={setDispatchVehicleId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">{t("postService.options.noVehicle")}</SelectItem>{vehicles.filter((vehicle) => vehicle.status === "active").map((vehicle) => <SelectItem key={vehicle.id} value={vehicle.id}>{vehicle.plateNumber} · {vehicle.model}</SelectItem>)}</SelectContent></Select></Field><Field label={t("postService.form.manifestNote")}><Input value={dispatchNotes} onChange={(event) => setDispatchNotes(event.target.value)} placeholder={t("postService.placeholders.manifestNote")} /></Field><div className="md:col-span-2"><Button disabled={isSubmitting || !dispatchAgentId || selectedCount === 0} type="submit"><Send className="me-2 h-4 w-4" />{t("postService.actions.assignSelected")}</Button></div></form> : <p className="text-sm text-muted-foreground">{t("postService.permissionRequired.dispatch")}</p>}</CardContent></Card><Card><CardHeader><CardTitle>{t("postService.cards.recentRuns")}</CardTitle></CardHeader><CardContent className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>{t("postService.table.run")}</TableHead><TableHead>{t("postService.table.courier")}</TableHead><TableHead>{t("postService.table.courierDeliveryFee")}</TableHead><TableHead>{t("postService.table.dispatched")}</TableHead><TableHead>{t("postService.table.status")}</TableHead><TableHead /></TableRow></TableHeader><TableBody>{runs.length === 0 ? <EmptyRow columns={6} label={t("postService.empty.noRuns")} /> : runs.map((run) => <TableRow key={run.id}><TableCell className="font-medium">{run.runNumber}</TableCell><TableCell>{agentNameById.get(run.agentId)}</TableCell><TableCell>{formatCurrency(run.courierDeliveryFee ?? 0, features.default_currency, features.iqd_display_preference)}</TableCell><TableCell>{formatDateTime(run.dispatchedAt)}</TableCell><TableCell><Badge variant="outline">{t(`postService.runStatus.${run.status}`)}</Badge></TableCell><TableCell className="text-end">{canDispatch && run.status === "open" && <Button size="sm" variant="outline" onClick={() => void handleCloseRun(run.id)}>{t("postService.actions.closeRun")}</Button>}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card></TabsContent>
-      <TabsContent value="my-deliveries" className="mt-4"><Card><CardHeader><CardTitle>{t("postService.cards.myAssignedPosts")}</CardTitle></CardHeader><CardContent className="overflow-x-auto">{linkedCourier ? <ShipmentTable t={t} shipments={shipments.filter((shipment) => shipment.assignedAgentId === linkedCourier.id)} selectedIds={new Set()} onToggle={() => undefined} canSelect={false} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} /> : <div className="py-10 text-center text-sm text-muted-foreground">{t("postService.empty.noLinkedCourier")}</div>}</CardContent></Card></TabsContent>
+      <TabsContent value="my-deliveries" className="mt-4"><Card><CardHeader><CardTitle>{t("postService.cards.myAssignedPosts")}</CardTitle></CardHeader><CardContent className="overflow-x-auto">{linkedCourier ? <ShipmentTable t={t} shipments={shipments.filter((shipment) => shipment.assignedAgentId === linkedCourier.id)} selectedIds={new Set()} onToggle={() => undefined} canSelect={false} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} /> : <div className="py-10 text-center text-sm text-muted-foreground">{t("postService.empty.noLinkedCourier")}</div>}</CardContent></Card></TabsContent>
       <TabsContent value="merchants" className="mt-4">
         <Card>
           <CardHeader className="flex-row items-center justify-between"><CardTitle>{t("postService.cards.deliveryMerchants")}</CardTitle>{isAdmin && <Button size="sm" onClick={() => setMerchantDialogOpen(true)}><Plus className="me-2 h-4 w-4" />{t("postService.actions.enableMerchant")}</Button>}</CardHeader>
@@ -790,7 +859,7 @@ export function PostService() {
             <div className="relative mb-4"><Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={merchantSearchQuery} onChange={(event) => setMerchantSearchQuery(event.target.value)} className="ps-9" placeholder={t("postService.placeholders.searchMerchants")} /></div>
             <Table>
               <TableHeader><TableRow><TableHead>{t("postService.table.merchant")}</TableHead><TableHead>{t("postService.table.defaultFee")}</TableHead><TableHead>{t("postService.table.feePayer")}</TableHead><TableHead>{t("postService.table.payoutSchedule")}</TableHead><TableHead className="text-end">{t("postService.table.openPosts")}</TableHead><TableHead className="text-end">{t("postService.table.deliveredPosts")}</TableHead><TableHead>{t("postService.table.merchantBalance")}</TableHead><TableHead>{t("postService.table.status")}</TableHead><TableHead className="text-end">{t("postService.table.actions")}</TableHead></TableRow></TableHeader>
-              <TableBody>{merchantProfiles.length === 0 ? <EmptyRow columns={9} label={t("postService.empty.noMerchants")} /> : searchedMerchants.length === 0 ? <EmptyRow columns={9} label={t("postService.empty.noMerchantSearchResults")} /> : searchedMerchants.map((profile) => { const merchantStats = merchantShipmentStatsByProfile.get(profile.id) ?? { openPosts: 0, deliveredPosts: 0 }; return <TableRow key={profile.id}><TableCell className="font-medium">{profileNameById.get(profile.id)}</TableCell><TableCell>{formatCurrency(profile.defaultFeeAmount, features.default_currency, features.iqd_display_preference)}</TableCell><TableCell>{t(`postService.feePayer.${profile.defaultFeePayer}`)}</TableCell><TableCell>{t(`postService.payoutSchedule.${profile.payoutSchedule}`)}</TableCell><TableCell className="text-end tabular-nums">{merchantStats.openPosts}</TableCell><TableCell className="text-end tabular-nums">{merchantStats.deliveredPosts}</TableCell><TableCell><MerchantAccountBalanceAmounts t={t} balances={merchantAccountBalancesByProfile.get(profile.id) ?? []} iqdPreference={features.iqd_display_preference} /></TableCell><TableCell><Badge variant="outline" className={profile.isActive ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700" : "text-muted-foreground"}>{t(profile.isActive ? "postService.active" : "postService.inactive")}</Badge></TableCell><TableCell className="text-end"><div className="flex flex-wrap justify-end gap-1">{canSettle && (merchantPayablesByProfile.get(profile.id) ?? []).map((payable) => <Button key={payable.currency} type="button" size="sm" className="gap-1.5" onClick={() => openSettlement({ kind: "merchant", id: profile.id, currency: payable.currency, amount: payable.amount, name: profileNameById.get(profile.id) ?? t("postService.unknownMerchant") })}><Banknote className="h-4 w-4" />{t("postService.actions.payMerchant")}<span className="tabular-nums">{formatCurrency(payable.amount, payable.currency, features.iqd_display_preference)}</span></Button>)}{isEditor && <><Button type="button" size="icon" variant="ghost" title={t("postService.actions.editMerchant")} onClick={() => openMerchantEditor(profile)}><Pencil className="h-4 w-4" /></Button><Button type="button" size="icon" variant="ghost" className="text-destructive hover:text-destructive" title={t("postService.actions.deleteMerchant")} onClick={() => setMerchantDeleteTarget(profile)}><Trash2 className="h-4 w-4" /></Button></>}</div></TableCell></TableRow>; })}</TableBody>
+              <TableBody>{merchantProfiles.length === 0 ? <EmptyRow columns={9} label={t("postService.empty.noMerchants")} /> : searchedMerchants.length === 0 ? <EmptyRow columns={9} label={t("postService.empty.noMerchantSearchResults")} /> : searchedMerchants.map((profile) => { const merchantStats = merchantShipmentStatsByProfile.get(profile.id) ?? { openPosts: 0, deliveredPosts: 0 }; const merchantName = profileNameById.get(profile.id) ?? t("postService.unknownMerchant"); return <TableRow key={profile.id}><TableCell className="font-medium">{merchantName}</TableCell><TableCell>{formatCurrency(profile.defaultFeeAmount, features.default_currency, features.iqd_display_preference)}</TableCell><TableCell>{t(`postService.feePayer.${profile.defaultFeePayer}`)}</TableCell><TableCell>{t(`postService.payoutSchedule.${profile.payoutSchedule}`)}</TableCell><TableCell className="text-end tabular-nums">{merchantStats.openPosts}</TableCell><TableCell className="text-end tabular-nums">{merchantStats.deliveredPosts}</TableCell><TableCell><MerchantAccountBalanceAmounts t={t} balances={merchantAccountBalancesByProfile.get(profile.id) ?? []} iqdPreference={features.iqd_display_preference} /></TableCell><TableCell><Badge variant="outline" className={profile.isActive ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700" : "text-muted-foreground"}>{t(profile.isActive ? "postService.active" : "postService.inactive")}</Badge></TableCell><TableCell className="text-end"><div className="flex flex-wrap justify-end gap-1">{canSettle && (merchantPayablesByProfile.get(profile.id) ?? []).map((payable) => <Button key={`payout-${payable.currency}`} type="button" size="sm" className="gap-1.5" onClick={() => openSettlement({ kind: "merchant", id: profile.id, currency: payable.currency, amount: payable.amount, name: merchantName })}><Banknote className="h-4 w-4" />{t("postService.actions.payMerchant")}<span className="tabular-nums">{formatCurrency(payable.amount, payable.currency, features.iqd_display_preference)}</span></Button>)}{canSettle && (merchantRepaymentsByProfile.get(profile.id) ?? []).map((repayment) => <Button key={`repayment-${repayment.currency}`} type="button" size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => openMerchantRepayment({ id: profile.id, currency: repayment.currency, amount: repayment.amount, name: merchantName })}><HandCoins className="h-4 w-4" />{t("postService.actions.receiveMerchantRepayment")}<span className="tabular-nums">{formatCurrency(repayment.amount, repayment.currency, features.iqd_display_preference)}</span></Button>)}{isEditor && <><Button type="button" size="icon" variant="ghost" title={t("postService.actions.editMerchant")} onClick={() => openMerchantEditor(profile)}><Pencil className="h-4 w-4" /></Button><Button type="button" size="icon" variant="ghost" className="text-destructive hover:text-destructive" title={t("postService.actions.deleteMerchant")} onClick={() => setMerchantDeleteTarget(profile)}><Trash2 className="h-4 w-4" /></Button></>}</div></TableCell></TableRow>; })}</TableBody>
             </Table>
           </CardContent>
         </Card>
@@ -812,7 +881,7 @@ export function PostService() {
           onSettlePost={openPostSettlement}
         />
       </TabsContent>
-      <TabsContent value="settlements" className="mt-4 space-y-4"><SettlementBalances t={t} title={t("postService.cards.courierHandovers")} icon={WalletCards} kind="courier" balances={courierBalances} breakdownByParty={courierBreakdownByParty} shipmentLabelById={shipmentLabelById} obligationLabel={t("postService.table.collected")} getName={(id) => agentNameById.get(id) ?? t("postService.unknownCourier")} action={t("postService.actions.recordHandover")} canSettle={canSettle} onSettleParty={openSettlement} onSettlePost={openPostSettlement} iqdPreference={features.iqd_display_preference} /><SettlementBalances t={t} title={t("postService.cards.merchantPayouts")} icon={CircleDollarSign} kind="merchant" balances={merchantBalances} breakdownByParty={merchantBreakdownByParty} shipmentLabelById={shipmentLabelById} obligationLabel={t("postService.table.paid")} getName={(id) => profileNameById.get(id) ?? t("postService.unknownMerchant")} action={t("postService.actions.payMerchant")} canSettle={canSettle} onSettleParty={openSettlement} onSettlePost={openPostSettlement} iqdPreference={features.iqd_display_preference} /><Card><CardHeader><CardTitle>{t("postService.cards.settlementHistory")}</CardTitle></CardHeader><CardContent className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>{t("postService.table.reference")}</TableHead><TableHead>{t("postService.table.type")}</TableHead><TableHead>{t("postService.table.amount")}</TableHead><TableHead>{t("postService.table.time")}</TableHead></TableRow></TableHeader><TableBody>{settlements.length === 0 ? <EmptyRow columns={4} label={t("postService.empty.noSettlements")} /> : settlements.slice(0, 20).map((settlement) => <TableRow key={settlement.id}><TableCell className="font-medium">{settlement.settlementNumber}</TableCell><TableCell>{t(settlement.type === "courier_remittance" ? "postService.settlementType.courierRemittance" : "postService.settlementType.merchantPayout")}</TableCell><TableCell>{formatCurrency(settlement.actualAmount, settlement.currency, features.iqd_display_preference)}</TableCell><TableCell>{formatDateTime(settlement.settledAt)}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card></TabsContent>
+      <TabsContent value="settlements" className="mt-4 space-y-4"><SettlementBalances t={t} title={t("postService.cards.courierHandovers")} icon={WalletCards} kind="courier" balances={courierBalances} breakdownByParty={courierBreakdownByParty} shipmentLabelById={shipmentLabelById} obligationLabel={t("postService.table.collected")} getName={(id) => agentNameById.get(id) ?? t("postService.unknownCourier")} action={t("postService.actions.recordHandover")} canSettle={canSettle} onSettleParty={openSettlement} onSettlePost={openPostSettlement} iqdPreference={features.iqd_display_preference} /><SettlementBalances t={t} title={t("postService.cards.merchantPayouts")} icon={CircleDollarSign} kind="merchant" balances={merchantBalances} breakdownByParty={merchantBreakdownByParty} shipmentLabelById={shipmentLabelById} obligationLabel={t("postService.table.paid")} getName={(id) => profileNameById.get(id) ?? t("postService.unknownMerchant")} action={t("postService.actions.payMerchant")} canSettle={canSettle} onSettleParty={openSettlement} onSettlePost={openPostSettlement} iqdPreference={features.iqd_display_preference} /><Card><CardHeader><CardTitle>{t("postService.cards.settlementHistory")}</CardTitle></CardHeader><CardContent className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>{t("postService.table.reference")}</TableHead><TableHead>{t("postService.table.type")}</TableHead><TableHead>{t("postService.table.amount")}</TableHead><TableHead>{t("postService.table.time")}</TableHead></TableRow></TableHeader><TableBody>{settlements.length === 0 ? <EmptyRow columns={4} label={t("postService.empty.noSettlements")} /> : settlements.slice(0, 20).map((settlement) => <TableRow key={settlement.id}><TableCell className="font-medium">{settlement.settlementNumber}</TableCell><TableCell>{t(`postService.settlementType.${settlement.type === "courier_remittance" ? "courierRemittance" : settlement.type === "merchant_repayment" ? "merchantRepayment" : "merchantPayout"}`)}</TableCell><TableCell>{formatCurrency(settlement.actualAmount, settlement.currency, features.iqd_display_preference)}</TableCell><TableCell>{formatDateTime(settlement.settledAt)}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card></TabsContent>
       </>}
     </Tabs>
     <AppDialog open={!!transferTarget} onOpenChange={(open) => { if (!open) closeTransferDialog(); }}>
@@ -958,7 +1027,7 @@ export function PostService() {
         : t("postService.dialogs.addCourier.title", { defaultValue: "Add Courier" })}
       onSubmit={handleAgentSubmit}
     />
-    <Dialog open={shipmentDialogOpen} onOpenChange={setShipmentDialogOpen}>
+    <Dialog open={shipmentDialogOpen} onOpenChange={(open) => { if (!open && isSubmitting) return; setShipmentDialogOpen(open); if (!open) resetShipmentForm(); }}>
       <DialogContent layout="structured" className="sm:max-w-2xl">
         <DialogHeader layout="structured">
           <DialogTitle>{t("postService.dialogs.newPost.title")}</DialogTitle>
@@ -981,13 +1050,13 @@ export function PostService() {
             <Field label={t("postService.form.description")}><Input value={shipmentForm.description} onChange={(event) => updateShipmentForm("description", event.target.value)} placeholder={t("postService.placeholders.parcelDescription")} /></Field>
             <CurrencySelector value={shipmentForm.currency} onChange={(value: CurrencyCode) => updateShipmentForm("currency", value)} label={t("postService.form.currency")} iqdDisplayPreference={features.iqd_display_preference} allowedCurrencies={currencies} />
             <Field label={t("postService.form.customerPaymentStatus")}>
-              <Select value={shipmentForm.customerPaymentStatus} onValueChange={(value: DeliveryCustomerPaymentStatus) => { updateShipmentForm("customerPaymentStatus", value); if (value === "prepaid_electronically") updateShipmentForm("codAmount", ""); }}>
+              <Select value={shipmentForm.customerPaymentStatus} onValueChange={handleCustomerPaymentStatusChange}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent><SelectItem value="cash_on_delivery">{t("postService.customerPaymentStatus.cash_on_delivery")}</SelectItem><SelectItem value="prepaid_electronically">{t("postService.customerPaymentStatus.prepaid_electronically")}</SelectItem></SelectContent>
               </Select>
             </Field>
             <Field label={t("postService.form.codAmount")}><div className="relative"><Input className="pe-12" value={formatNumericInput(shipmentForm.codAmount)} onChange={(event) => updateShipmentForm("codAmount", sanitizeNumericInput(event.target.value, { allowDecimal: shipmentForm.currency !== "iqd" }))} inputMode={shipmentForm.currency === "iqd" ? "numeric" : "decimal"} placeholder="0" disabled={shipmentForm.customerPaymentStatus === "prepaid_electronically"} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(shipmentForm.currency, features.iqd_display_preference)}</span></div></Field>
-            <Field label={t("postService.form.recipientPayoutAmount")}><div className="relative"><Input className="pe-12" value={formatNumericInput(shipmentForm.recipientPayoutAmount)} onChange={(event) => updateShipmentForm("recipientPayoutAmount", sanitizeNumericInput(event.target.value, { allowDecimal: shipmentForm.currency !== "iqd" }))} inputMode={shipmentForm.currency === "iqd" ? "numeric" : "decimal"} placeholder="0" /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(shipmentForm.currency, features.iqd_display_preference)}</span></div><p className="mt-1 text-xs text-muted-foreground">{t("postService.form.recipientPayoutAmountHint")}</p></Field>
+            {showRecipientPayout || shipmentForm.customerPaymentStatus === "prepaid_electronically" ? <div className="grid gap-2"><div className="flex items-center justify-between gap-2"><Label>{t("postService.form.recipientPayoutAmount")}</Label>{shipmentForm.customerPaymentStatus === "cash_on_delivery" ? <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 px-2 text-muted-foreground" onClick={() => { updateShipmentForm("recipientPayoutAmount", ""); setShowRecipientPayout(false); }}><X className="h-3.5 w-3.5" />{t("common.remove")}</Button> : null}</div><div className="relative"><Input className="pe-12" value={formatNumericInput(shipmentForm.recipientPayoutAmount)} onChange={(event) => updateShipmentForm("recipientPayoutAmount", sanitizeNumericInput(event.target.value, { allowDecimal: shipmentForm.currency !== "iqd" }))} inputMode={shipmentForm.currency === "iqd" ? "numeric" : "decimal"} placeholder="0" /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(shipmentForm.currency, features.iqd_display_preference)}</span></div><p className="text-xs text-muted-foreground">{t("postService.form.recipientPayoutAmountHint")}</p></div> : <Button type="button" variant="outline" className="h-auto min-h-10 justify-start gap-2 border-dashed text-muted-foreground hover:text-foreground" onClick={() => setShowRecipientPayout(true)}><HandCoins className="h-4 w-4" />{t("postService.actions.addRecipientPayout")}</Button>}
             <Field label={t("postService.form.deliveryFee")}><div className="relative"><Input className="pe-12" value={formatNumericInput(shipmentForm.deliveryFee)} onChange={(event) => updateShipmentForm("deliveryFee", sanitizeNumericInput(event.target.value, { allowDecimal: shipmentForm.currency !== "iqd" }))} inputMode={shipmentForm.currency === "iqd" ? "numeric" : "decimal"} placeholder="0" /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(shipmentForm.currency, features.iqd_display_preference)}</span></div></Field>
             <Field label={t("postService.form.feePayer")}>
               <Select value={shipmentForm.feePayer} onValueChange={(value: "merchant" | "recipient") => updateShipmentForm("feePayer", value)}>
@@ -1000,7 +1069,7 @@ export function PostService() {
             </Field>
           </DialogBody>
           <DialogFooter layout="structured">
-            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setShipmentDialogOpen(false)}>{t("postService.actions.cancel")}</Button>
+            <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={isSubmitting} onClick={() => { setShipmentDialogOpen(false); resetShipmentForm(); }}>{t("postService.actions.cancel")}</Button>
             <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || !shipmentForm.merchantProfileId}>{t("postService.actions.createPost")}</Button>
           </DialogFooter>
         </form>
@@ -1066,7 +1135,46 @@ export function PostService() {
         <DialogFooter layout="structured"><Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setPostSettlementTarget(null)}>{t("common.close")}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
-    <Dialog open={!!settlementTarget} onOpenChange={(open) => !open && setSettlementTarget(null)}><DialogContent layout="structured" className="sm:max-w-md"><form onSubmit={handleSettlement}><DialogHeader layout="structured"><DialogTitle>{t(settlementTarget?.kind === "courier" ? "postService.dialogs.courierSettlement.title" : "postService.dialogs.merchantSettlement.title")}</DialogTitle><DialogDescription>{settlementTarget?.shipmentLabel ? <span className="mb-1 block font-medium text-foreground">{settlementTarget.shipmentLabel}</span> : null}{t("postService.dialogs.settlementOutstanding", { name: settlementTarget?.name, amount: settlementTarget && formatCurrency(settlementTarget.amount, settlementTarget.currency, features.iqd_display_preference) })}</DialogDescription></DialogHeader><DialogBody className="grid gap-4 py-5"><Field label={t("postService.form.amountReceivedPaid")}><CurrencyAmountInput value={settlementAmount} onChange={setSettlementAmount} currency={settlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} /></Field><Field label={t("postService.form.paymentMethod")}><SettlementPaymentMethodSelect t={t} value={settlementMethod} onChange={setSettlementMethod} /></Field><PaymentAccountSelector workspaceId={workspaceId} value={settlementAccount?.id ?? null} onValueChange={setSettlementAccount} disabled={isSubmitting} cashDrawerOnly={settlementMethod === "cash"} /><Field label={t("postService.form.noteVariance")}><Textarea value={settlementNote} onChange={(event) => setSettlementNote(event.target.value)} placeholder={t("postService.placeholders.varianceNote")} /></Field></DialogBody><DialogFooter layout="structured"><Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setSettlementTarget(null)}>{t("postService.actions.cancel")}</Button><Button className="w-full sm:w-auto" disabled={isSubmitting} type="submit">{t("postService.actions.confirmSettlement")}</Button></DialogFooter></form></DialogContent></Dialog>
+    <AppDialog open={!!settlementTarget} onOpenChange={(open) => { if (!open && !isSubmitting) setSettlementTarget(null); }}>
+      <AppDialogContent
+        className="sm:max-w-md"
+        showCloseButton={!isSubmitting}
+        onEscapeKeyDown={(event) => { if (isSubmitting) event.preventDefault(); }}
+        onPointerDownOutside={(event) => { if (isSubmitting) event.preventDefault(); }}
+      >
+        <form onSubmit={handleSettlement} className="flex min-h-0 flex-1 flex-col">
+          <AppDialogHeader>
+            <AppDialogTitle>{t(settlementTarget?.kind === "courier"
+              ? "postService.dialogs.courierSettlement.title"
+              : settlementTarget?.kind === "merchant_repayment"
+                ? "postService.dialogs.merchantRepayment.title"
+                : "postService.dialogs.merchantSettlement.title")}</AppDialogTitle>
+            <AppDialogDescription>
+              {settlementTarget?.shipmentLabel ? <span className="mb-1 block font-medium text-foreground">{settlementTarget.shipmentLabel}</span> : null}
+              {settlementTarget?.kind === "merchant_repayment"
+                ? t("postService.dialogs.merchantRepayment.outstanding", { name: settlementTarget?.name, amount: settlementTarget && formatCurrency(settlementTarget.amount, settlementTarget.currency, features.iqd_display_preference) })
+                : t("postService.dialogs.settlementOutstanding", { name: settlementTarget?.name, amount: settlementTarget && formatCurrency(settlementTarget.amount, settlementTarget.currency, features.iqd_display_preference) })}
+            </AppDialogDescription>
+          </AppDialogHeader>
+          <AppDialogBody className="grid gap-4 py-5">
+            <Field label={t(settlementTarget?.kind === "merchant_repayment" ? "postService.form.amountReceived" : "postService.form.amountReceivedPaid")}>
+              <CurrencyAmountInput value={settlementAmount} onChange={setSettlementAmount} currency={settlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} />
+            </Field>
+            <Field label={t("postService.form.paymentMethod")}><PaymentMethodSelector value={settlementMethod as StandardPaymentMethod} methods={STANDARD_PAYMENT_METHODS} workspaceId={workspaceId} disabled={isSubmitting} onValueChange={(method) => setSettlementMethod(method as WorkspacePaymentMethod)} onLinkedPaymentAccountSelect={setSettlementAccount} /></Field>
+            <PaymentAccountSelector workspaceId={workspaceId} value={settlementAccount?.id ?? null} onValueChange={setSettlementAccount} disabled={isSubmitting} cashDrawerOnly={settlementMethod === "cash"} />
+            <Field label={t("postService.form.noteVariance")}>
+              <Textarea value={settlementNote} onChange={(event) => setSettlementNote(event.target.value)} placeholder={t(settlementTarget?.kind === "merchant_repayment" ? "postService.placeholders.repaymentVarianceNote" : "postService.placeholders.varianceNote")} disabled={isSubmitting} />
+            </Field>
+          </AppDialogBody>
+          <AppDialogFooter>
+            <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={isSubmitting} onClick={() => setSettlementTarget(null)}>{t("postService.actions.cancel")}</Button>
+            <Button className="w-full sm:w-auto" disabled={isSubmitting || numericValue(settlementAmount) <= 0} type="submit">
+              {t(settlementTarget?.kind === "merchant_repayment" ? "postService.actions.receiveMerchantRepayment" : "postService.actions.confirmSettlement")}
+            </Button>
+          </AppDialogFooter>
+        </form>
+      </AppDialogContent>
+    </AppDialog>
     <Dialog open={!!settlementNetTarget} onOpenChange={(open) => !open && setSettlementNetTarget(null)}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -1166,7 +1274,7 @@ function PostsViewModeToggle({ t, value, onChange }: { t: TFunction; value: Post
     <Button type="button" size="sm" variant={value === "grid" ? "secondary" : "ghost"} className="gap-1.5" aria-pressed={value === "grid"} onClick={() => onChange("grid")}><LayoutGrid className="h-4 w-4" />{t("postService.view.grid")}</Button>
   </div>;
 }
-function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onOpenSettlementNet, onOpenPostSettlements, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, settlementNetByShipment, footer }: {
+function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onOpenSettlementNet, onOpenPostSettlements, onReceiveMerchantRepayment, merchantRepaymentAmountByShipment, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, settlementNetByShipment, footer }: {
   t: TFunction;
   shipments: DeliveryShipment[];
   selectedIds: Set<string>;
@@ -1178,6 +1286,8 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
   onTransfer: (shipment: DeliveryShipment) => void;
   onOpenSettlementNet: (shipment: DeliveryShipment) => void;
   onOpenPostSettlements: (shipment: DeliveryShipment) => void;
+  onReceiveMerchantRepayment: (shipment: DeliveryShipment, amount: number) => void;
+  merchantRepaymentAmountByShipment: ReadonlyMap<string, number>;
   onPlayVoiceReason: (event: DeliveryShipmentEvent) => void;
   voiceReasonEventByShipment: ReadonlyMap<string, DeliveryShipmentEvent>;
   canPlayVoiceReason: boolean;
@@ -1197,6 +1307,7 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
     </TableRow></TableHeader>
     <TableBody>{shipments.length === 0 ? <EmptyRow columns={canSelect ? 12 : 11} label={t("postService.empty.noPosts")} /> : shipments.map((shipment) => {
       const voiceReasonEvent = voiceReasonEventByShipment.get(shipment.id);
+      const merchantRepaymentAmount = merchantRepaymentAmountByShipment.get(shipment.id) ?? 0;
       return <TableRow key={shipment.id}>
         {canSelect && <TableCell><Checkbox className="h-5 w-5 rounded-[6px]" checked={selectedIds.has(shipment.id)} disabled={!['received', 'ready_for_dispatch', 'postponed'].includes(shipment.status)} onCheckedChange={(checked) => onToggle(shipment.id, checked === true)} /></TableCell>}
         <TableCell><div className="font-medium">{shipment.trackingNumber}</div><div className="max-w-48 truncate text-xs text-muted-foreground">{shipment.recipientAddress}</div></TableCell>
@@ -1214,13 +1325,14 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
           {canUpdate && shipment.status === "assigned" && <><Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "delivered")} title={t("postService.actions.markDelivered")}><CheckCircle2 className="h-4 w-4 text-emerald-600" /></Button><Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "postponed")} title={t("postService.actions.postpone")}><History className="h-4 w-4 text-amber-600" /></Button><Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "returned")} title={t("postService.actions.return")}><Undo2 className="h-4 w-4 text-rose-600" /></Button></>}
           {canTransfer && shipment.status === "returned" && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onTransfer(shipment)}><Send className="h-4 w-4" />{t("postService.actions.transferPost")}</Button>}
           {canSettle && shipment.status === "delivered" && <Button size="sm" variant="outline" onClick={() => onOpenPostSettlements(shipment)}><Banknote className="me-1.5 h-4 w-4" />{t("postService.actions.settlements")}</Button>}
+          {canSettle && shipment.status === "delivered" && merchantRepaymentAmount > 0.000001 && <Button size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => onReceiveMerchantRepayment(shipment, merchantRepaymentAmount)}><HandCoins className="h-4 w-4" />{t("postService.actions.receiveMerchantRepayment")}</Button>}
         </div></TableCell>
       </TableRow>;
     })}</TableBody>
     {footer ? <TableFooter><TableRow className="hover:bg-transparent"><TableCell colSpan={canSelect ? 12 : 11} className="bg-muted/40 py-3">{footer}</TableCell></TableRow></TableFooter> : null}
   </Table>;
 }
-function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onOpenSettlementNet, onOpenPostSettlements, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, settlementNetByShipment }: {
+function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onOpenSettlementNet, onOpenPostSettlements, onReceiveMerchantRepayment, merchantRepaymentAmountByShipment, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, settlementNetByShipment }: {
   t: TFunction;
   shipments: DeliveryShipment[];
   selectedIds: Set<string>;
@@ -1232,6 +1344,8 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
   onTransfer: (shipment: DeliveryShipment) => void;
   onOpenSettlementNet: (shipment: DeliveryShipment) => void;
   onOpenPostSettlements: (shipment: DeliveryShipment) => void;
+  onReceiveMerchantRepayment: (shipment: DeliveryShipment, amount: number) => void;
+  merchantRepaymentAmountByShipment: ReadonlyMap<string, number>;
   onPlayVoiceReason: (event: DeliveryShipmentEvent) => void;
   voiceReasonEventByShipment: ReadonlyMap<string, DeliveryShipmentEvent>;
   canPlayVoiceReason: boolean;
@@ -1251,6 +1365,7 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
       const merchantName = profileNameById.get(shipment.merchantProfileId) ?? t("postService.unknownMerchant");
       const courierName = shipment.assignedAgentId ? agentNameById.get(shipment.assignedAgentId) ?? t("postService.unknownCourier") : "—";
       const voiceReasonEvent = voiceReasonEventByShipment.get(shipment.id);
+      const merchantRepaymentAmount = merchantRepaymentAmountByShipment.get(shipment.id) ?? 0;
 
       return <article key={shipment.id} className="group rounded-2xl border bg-card p-4 shadow-sm transition-shadow hover:shadow-md">
         <div className="flex items-start justify-between gap-3">
@@ -1311,6 +1426,7 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
           </>}
           {canTransfer && shipment.status === "returned" && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onTransfer(shipment)}><Send className="h-4 w-4" />{t("postService.actions.transferPost")}</Button>}
           {canSettle && shipment.status === "delivered" && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onOpenPostSettlements(shipment)}><Banknote className="h-4 w-4" />{t("postService.actions.settlements")}</Button>}
+          {canSettle && shipment.status === "delivered" && merchantRepaymentAmount > 0.000001 && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => onReceiveMerchantRepayment(shipment, merchantRepaymentAmount)}><HandCoins className="h-4 w-4" />{t("postService.actions.receiveMerchantRepayment")}</Button>}
         </div>}
       </article>;
     })}

@@ -1404,7 +1404,13 @@
                 "loanRepaymentRefund": "Loan repayment refund",
                 "financingDownPaymentRefund": "Financing down payment refund",
                 "fullSaleReturnRefund": "Full sale return refund",
-                "returnCredit": "Return credit"
+                "returnCredit": "Return credit",
+                "deliveryCodPayable": "Delivery COD payable",
+                "deliveryFee": "Delivery fee",
+                "deliveryRecipientPayout": "Recipient payout",
+                "deliveryMerchantPayout": "Merchant payout",
+                "deliveryMerchantRepayment": "Merchant repayment",
+                "deliveryAdjustment": "Delivery adjustment"
             }
         },
         "orderItemsPrint": {
@@ -1881,6 +1887,8 @@
             "activityRefund": "Activity Refund",
             "deliveryCourierRemittance": "Courier Remittance",
             "deliveryMerchantPayout": "Merchant Payout",
+            "deliveryRecipientPayout": "Recipient Payout",
+            "deliveryMerchantRepayment": "Merchant Repayment",
             "rentalPayment": "Rental Payment",
             "rentalDeposit": "Security Deposit",
             "rentalDepositRefund": "Deposit Refund"
@@ -2040,6 +2048,8 @@
             "activityRefund": "Activity Refund",
             "deliveryCourierRemittance": "Courier Remittance",
             "deliveryMerchantPayout": "Merchant Payout",
+            "deliveryRecipientPayout": "Recipient Payout",
+            "deliveryMerchantRepayment": "Merchant Repayment",
             "rentalPayment": "Rental Payment",
             "rentalDeposit": "Security Deposit",
             "rentalDepositRefund": "Deposit Refund"
@@ -2059,8 +2069,12 @@
         "description": {
             "deliveryCourierRemittance": "Courier cash handover",
             "deliveryMerchantPayout": "Merchant payout",
+            "deliveryRecipientPayout": "Recipient payout",
+            "deliveryMerchantRepayment": "Merchant repayment received",
             "deliveryPostCourierRelation": "Post {{tracking}} · courier cash handover for {{recipient}}.",
             "deliveryPostMerchantRelation": "Post {{tracking}} · merchant payout for {{recipient}}.",
+            "deliveryPostMerchantRepaymentRelation": "Post {{tracking}} · payment received from the merchant for {{recipient}}.",
+            "deliveryPostRecipientPayoutRelation": "Post {{tracking}} · payout made to {{recipient}}.",
             "deliverySettlementRelation": "Post Service settlement {{reference}}.",
             "carRentalRelation": "Original source: rental contract {{reference}}."
         },
@@ -6569,7 +6583,9 @@
             "addCourier": "Add Courier",
             "editCourier": "Edit courier",
             "addBusinessPartner": "Add business partner",
+            "addRecipientPayout": "Add recipient payout",
             "payMerchant": "Pay merchant",
+            "receiveMerchantRepayment": "Receive merchant payment",
             "editMerchant": "Edit merchant",
             "saveMerchant": "Save merchant",
             "deleteMerchant": "Delete merchant",
@@ -6639,6 +6655,7 @@
             "optionalNote": "Optional note",
             "reason": "Reason",
             "amountReceivedPaid": "Amount received / paid",
+            "amountReceived": "Amount received",
             "paymentMethod": "Payment method",
             "status": "Status",
             "noteVariance": "Note / variance explanation"
@@ -6653,6 +6670,7 @@
             "returnedReason": "Address incorrect, customer refused…",
             "deliveryNote": "Proof or delivery note",
             "varianceNote": "Required when paying less than the outstanding balance",
+            "repaymentVarianceNote": "Required when receiving less than the outstanding balance",
             "searchPosts": "Search tracking number, recipient, merchant, or courier...",
             "searchMerchants": "Search merchants...",
             "searchCouriers": "Search couriers..."
@@ -6784,7 +6802,8 @@
         },
         "settlementType": {
             "courierRemittance": "Courier handover",
-            "merchantPayout": "Merchant payout"
+            "merchantPayout": "Merchant payout",
+            "merchantRepayment": "Merchant repayment"
         },
         "reporting": {
             "serviceName": "Delivery service",
@@ -6833,6 +6852,10 @@
             },
             "merchantSettlement": {
                 "title": "Pay merchant"
+            },
+            "merchantRepayment": {
+                "title": "Receive merchant payment",
+                "outstanding": "{{name}} owes {{amount}} to the workspace."
             },
             "postSettlement": {
                 "title": "Settlements",
@@ -6883,6 +6906,7 @@
             "updatePostFailed": "Could not update post",
             "courierHandoverRecorded": "Courier handover recorded",
             "merchantPayoutRecorded": "Merchant payout recorded",
+            "merchantRepaymentRecorded": "Merchant payment received",
             "settlementFailed": "Could not record settlement",
             "runClosed": "Dispatch run closed",
             "closeRunFailed": "Could not close run",

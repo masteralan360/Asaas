@@ -100,6 +100,14 @@ function sourceTypeLabel(
             return t('payments.sourceType.directTransaction', { defaultValue: 'Direct Transaction' })
         case 'payment_account_opening_balance':
             return t('paymentAccounts.openingBalance', { defaultValue: 'Opening Balance' })
+        case 'delivery_courier_remittance':
+            return t('payments.sourceType.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
+        case 'delivery_merchant_payout':
+            return t('payments.sourceType.deliveryMerchantPayout', { defaultValue: 'Merchant Payout' })
+        case 'delivery_recipient_payout':
+            return t('payments.sourceType.deliveryRecipientPayout', { defaultValue: 'Recipient Payout' })
+        case 'delivery_merchant_repayment':
+            return t('payments.sourceType.deliveryMerchantRepayment', { defaultValue: 'Merchant Repayment' })
         case 'rental_payment':
             return t('payments.sourceType.rentalPayment')
         case 'rental_deposit':

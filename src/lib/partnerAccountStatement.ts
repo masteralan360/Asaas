@@ -1,4 +1,5 @@
 import type {
+    DeliveryLedgerEntry,
     Loan,
     LoanPayment,
     PaymentTransaction,
@@ -28,6 +29,10 @@ export type PartnerAccountStatementData = {
     loanPayments?: LoanPayment[]
     linkedOrderCodes?: Record<string, string>
     settlementTransactions?: PaymentTransaction[]
+    /** Merchant-facing Post Service subledger entries. */
+    deliveryLedgerEntries?: DeliveryLedgerEntry[]
+    deliveryShipmentReferences?: Record<string, string>
+    deliverySettlementReferences?: Record<string, string>
 }
 
 export type PartnerAccountStatementEntryKind =
@@ -38,6 +43,7 @@ export type PartnerAccountStatementEntryKind =
     | 'direct_transaction'
     | 'loan_disbursal'
     | 'loan_repayment'
+    | 'delivery_post'
 
 export type PartnerAccountStatementEntryDescriptionKey =
     | 'salesOrder'
@@ -58,11 +64,18 @@ export type PartnerAccountStatementEntryDescriptionKey =
     | 'financingDownPaymentRefund'
     | 'fullSaleReturnRefund'
     | 'returnCredit'
+    | 'deliveryCodPayable'
+    | 'deliveryFee'
+    | 'deliveryRecipientPayout'
+    | 'deliveryMerchantPayout'
+    | 'deliveryMerchantRepayment'
+    | 'deliveryAdjustment'
 
 export type PartnerAccountStatementEntrySource =
     | { recordType: 'order'; recordId: string }
     | { recordType: 'loan'; recordId: string; loanCategory: Loan['loanCategory'] }
     | { recordType: 'payment_transaction'; recordId: string }
+    | { recordType: 'delivery_ledger_entry'; recordId: string }
 
 export type PartnerAccountStatementEntry = {
     id: string
@@ -331,6 +344,59 @@ function createLoanEntries(data: PartnerAccountStatementData): PartnerAccountSta
     return entries
 }
 
+function deliveryEntryPresentation(kind: DeliveryLedgerEntry['kind']): {
+    description: string
+    descriptionKey: PartnerAccountStatementEntryDescriptionKey
+} | null {
+    switch (kind) {
+        case 'merchant_cod_payable':
+            return { description: 'Delivery COD payable', descriptionKey: 'deliveryCodPayable' }
+        case 'merchant_fee':
+            return { description: 'Delivery fee', descriptionKey: 'deliveryFee' }
+        case 'merchant_recipient_payout':
+            return { description: 'Recipient payout', descriptionKey: 'deliveryRecipientPayout' }
+        case 'merchant_payout':
+            return { description: 'Merchant payout', descriptionKey: 'deliveryMerchantPayout' }
+        case 'merchant_repayment':
+            return { description: 'Merchant repayment', descriptionKey: 'deliveryMerchantRepayment' }
+        case 'adjustment':
+            return { description: 'Delivery adjustment', descriptionKey: 'deliveryAdjustment' }
+        default:
+            return null
+    }
+}
+
+function createDeliveryEntries(data: PartnerAccountStatementData): PartnerAccountStatementEntry[] {
+    return (data.deliveryLedgerEntries || [])
+        .filter((entry) => !entry.isDeleted)
+        .flatMap((entry) => {
+            const presentation = deliveryEntryPresentation(entry.kind)
+            if (!presentation) return []
+
+            const shipmentReference = entry.shipmentId
+                ? data.deliveryShipmentReferences?.[entry.shipmentId]
+                : null
+            const settlementReference = entry.settlementId
+                ? data.deliverySettlementReferences?.[entry.settlementId]
+                : null
+
+            return [{
+                id: `delivery-ledger:${entry.id}`,
+                date: entry.occurredAt || entry.createdAt,
+                reference: shipmentReference || settlementReference || entry.shipmentId || entry.settlementId || entry.id,
+                kind: 'delivery_post' as const,
+                ...presentation,
+                note: entry.note?.trim() || null,
+                currency: entry.currency,
+                // Delivery uses the inverse merchant sign convention: positive
+                // means we owe the merchant, while a positive statement delta
+                // means the merchant owes the workspace.
+                delta: -Number(entry.amount || 0),
+                source: { recordType: 'delivery_ledger_entry' as const, recordId: entry.id }
+            }]
+        })
+}
+
 /**
  * Builds an auditable per-currency partner ledger. A positive balance means
  * the partner owes the workspace; a negative balance means the workspace owes
@@ -340,7 +406,8 @@ export function buildPartnerAccountStatementLedger(data: PartnerAccountStatement
     const entries = [
         ...createOrderEntries(data),
         ...createPaymentEntries(data.settlementTransactions),
-        ...createLoanEntries(data)
+        ...createLoanEntries(data),
+        ...createDeliveryEntries(data)
     ].filter((entry) => Math.abs(entry.delta) > 0.000001)
 
     const entriesByCurrency = new Map<string, PartnerAccountStatementEntry[]>()

@@ -4094,7 +4094,13 @@
                 "loanRepaymentRefund": "استرداد سداد القرض",
                 "financingDownPaymentRefund": "استرداد الدفعة المقدمة للتمويل",
                 "fullSaleReturnRefund": "استرداد إرجاع بيع كامل",
-                "returnCredit": "رصيد مرتجع"
+                "returnCredit": "رصيد مرتجع",
+                "deliveryCodPayable": "مبلغ COD مستحق للتوصيل",
+                "deliveryFee": "رسوم التوصيل",
+                "deliveryRecipientPayout": "دفعة للمستلم",
+                "deliveryMerchantPayout": "دفعة للتاجر",
+                "deliveryMerchantRepayment": "سداد التاجر",
+                "deliveryAdjustment": "تعديل التوصيل"
             }
         },
         "orderItemsPrint": {
@@ -4564,6 +4570,8 @@
             "activityRefund": "استرداد نشاط",
             "deliveryCourierRemittance": "تسليم نقدي للمندوب",
             "deliveryMerchantPayout": "دفعة للتاجر",
+            "deliveryRecipientPayout": "دفعة للمستلم",
+            "deliveryMerchantRepayment": "سداد التاجر",
             "rentalPayment": "دفعة إيجار",
             "rentalDeposit": "تأمين ضمان",
             "rentalDepositRefund": "استرداد التأمين"
@@ -4715,6 +4723,8 @@
             "activityRefund": "استرداد نشاط",
             "deliveryCourierRemittance": "تسليم نقدي للمندوب",
             "deliveryMerchantPayout": "دفعة للتاجر",
+            "deliveryRecipientPayout": "دفعة للمستلم",
+            "deliveryMerchantRepayment": "سداد التاجر",
             "rentalPayment": "دفعة إيجار",
             "rentalDeposit": "تأمين ضمان",
             "rentalDepositRefund": "استرداد التأمين"
@@ -4734,8 +4744,12 @@
         "description": {
             "deliveryCourierRemittance": "تسليم نقدي من المندوب",
             "deliveryMerchantPayout": "دفعة للتاجر",
+            "deliveryRecipientPayout": "دفعة للمستلم",
+            "deliveryMerchantRepayment": "تم استلام سداد التاجر",
             "deliveryPostCourierRelation": "الشحنة {{tracking}} · تسليم نقد المندوب للمستلم {{recipient}}.",
             "deliveryPostMerchantRelation": "الشحنة {{tracking}} · دفعة التاجر الخاصة بالمستلم {{recipient}}.",
+            "deliveryPostMerchantRepaymentRelation": "الشحنة {{tracking}} · تم استلام دفعة من التاجر تخص المستلم {{recipient}}.",
+            "deliveryPostRecipientPayoutRelation": "الشحنة {{tracking}} · دفعة صُرفت للمستلم {{recipient}}.",
             "deliverySettlementRelation": "تسوية خدمة التوصيل {{reference}}.",
             "carRentalRelation": "المصدر الأصلي: عقد تأجير {{reference}}."
         },
@@ -6315,7 +6329,9 @@
             "addCourier": "إضافة مندوب",
             "editCourier": "تعديل المندوب",
             "addBusinessPartner": "إضافة شريك أعمال",
+            "addRecipientPayout": "إضافة دفعة للمستلم",
             "payMerchant": "دفع التاجر",
+            "receiveMerchantRepayment": "استلام دفعة التاجر",
             "editMerchant": "تعديل التاجر",
             "saveMerchant": "حفظ التاجر",
             "deleteMerchant": "حذف التاجر",
@@ -6385,6 +6401,7 @@
             "optionalNote": "ملاحظة اختيارية",
             "reason": "السبب",
             "amountReceivedPaid": "المبلغ المستلم / المدفوع",
+            "amountReceived": "المبلغ المستلم",
             "paymentMethod": "طريقة الدفع",
             "status": "الحالة",
             "noteVariance": "ملاحظة / توضيح الفرق"
@@ -6399,6 +6416,7 @@
             "returnedReason": "العنوان غير صحيح أو رفض العميل…",
             "deliveryNote": "إثبات أو ملاحظة التوصيل",
             "varianceNote": "مطلوب عند دفع مبلغ أقل من الرصيد المستحق",
+            "repaymentVarianceNote": "مطلوب عند استلام مبلغ أقل من الرصيد المستحق",
             "searchPosts": "ابحث برقم التتبع أو المستلم أو التاجر أو المندوب...",
             "searchMerchants": "ابحث عن التجار...",
             "searchCouriers": "ابحث عن المندوبين..."
@@ -6530,7 +6548,8 @@
         },
         "settlementType": {
             "courierRemittance": "تسليم المندوب",
-            "merchantPayout": "دفعة التاجر"
+            "merchantPayout": "دفعة التاجر",
+            "merchantRepayment": "سداد التاجر"
         },
         "reporting": {
             "serviceName": "خدمة التوصيل",
@@ -6579,6 +6598,10 @@
             },
             "merchantSettlement": {
                 "title": "دفع التاجر"
+            },
+            "merchantRepayment": {
+                "title": "استلام دفعة التاجر",
+                "outstanding": "{{name}} مدين بمبلغ {{amount}} لمساحة العمل."
             },
             "postSettlement": {
                 "title": "التسويات",
@@ -6629,6 +6652,7 @@
             "updatePostFailed": "تعذر تحديث الشحنة",
             "courierHandoverRecorded": "تم تسجيل تسليم المندوب",
             "merchantPayoutRecorded": "تم تسجيل دفعة التاجر",
+            "merchantRepaymentRecorded": "تم استلام دفعة التاجر",
             "settlementFailed": "تعذر تسجيل التسوية",
             "runClosed": "تم إغلاق جولة التوزيع",
             "closeRunFailed": "تعذر إغلاق جولة التوزيع",

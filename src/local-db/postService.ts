@@ -63,10 +63,10 @@ export type PostServiceTab = "posts" | "dispatch" | "my-deliveries" | "merchants
 type PostServiceRefreshTableName = DeliveryTableName | "business_partners" | "agents" | "fleet_vehicles";
 
 const POST_SERVICE_TAB_REFRESH_TABLES: Record<PostServiceTab, readonly PostServiceRefreshTableName[]> = {
-  posts: ["business_partners", PROFILE_TABLE, SHIPMENT_TABLE, EVENT_TABLE],
+  posts: ["business_partners", PROFILE_TABLE, SHIPMENT_TABLE, EVENT_TABLE, LEDGER_TABLE],
   dispatch: ["business_partners", "agents", "fleet_vehicles", SHIPMENT_TABLE, RUN_TABLE],
-  "my-deliveries": ["business_partners", "agents", SHIPMENT_TABLE],
-  merchants: ["business_partners", PROFILE_TABLE],
+  "my-deliveries": ["business_partners", "agents", SHIPMENT_TABLE, LEDGER_TABLE],
+  merchants: ["business_partners", PROFILE_TABLE, LEDGER_TABLE],
   courier: ["business_partners", "agents", SHIPMENT_TABLE, LEDGER_TABLE],
   settlements: ["business_partners", "agents", PROFILE_TABLE, SETTLEMENT_TABLE, LEDGER_TABLE],
 };
@@ -161,6 +161,22 @@ export interface PayDeliveryMerchantInput {
   actualAmount: number;
   paymentMethod: WorkspacePaymentMethod;
   /** When set, pays exactly this post's remaining outstanding amount. */
+  shipmentId?: string | null;
+  settledAt?: string;
+  note?: string | null;
+  varianceNote?: string | null;
+  createdBy?: string | null;
+  accountId?: string | null;
+  accountNameSnapshot?: string | null;
+}
+
+/** Records money the merchant pays into the workspace's delivery account. */
+export interface ReceiveDeliveryMerchantRepaymentInput {
+  merchantProfileId: string;
+  currency: CurrencyCode;
+  actualAmount: number;
+  paymentMethod: WorkspacePaymentMethod;
+  /** When set, clears the delivery debt created by this exact post only. */
   shipmentId?: string | null;
   settledAt?: string;
   note?: string | null;
@@ -664,6 +680,29 @@ function assertSettlementAmount(expectedAmount: number, actualAmount: number, va
     throw new Error("Explain a partial settlement before confirming it");
   }
   return { expected, actual };
+}
+
+/**
+ * The merchant delivery ledger is signed: a positive balance is money that we
+ * owe the merchant, while a negative balance is money the merchant owes the
+ * workspace.  Repayments only clear the latter and never create a credit.
+ */
+function merchantDeliveryAccountBalance(
+  entries: DeliveryLedgerEntry[],
+  merchantProfileId: string | null | undefined,
+  currency: CurrencyCode,
+  shipmentId?: string | null,
+) {
+  if (!merchantProfileId) return 0;
+  return entries.reduce((total, entry) => {
+    if (
+      entry.isDeleted
+      || entry.merchantProfileId !== merchantProfileId
+      || entry.currency !== currency
+      || (shipmentId && entry.shipmentId !== shipmentId)
+    ) return total;
+    return total + Number(entry.amount || 0);
+  }, 0);
 }
 
 export function useDeliveryMerchantProfiles(workspaceId?: string) {
@@ -1394,26 +1433,46 @@ async function createSettlement(
   const settlementShipment = options.shipmentId
     ? await db.delivery_shipments.get(options.shipmentId)
     : null;
+  const isCourierRemittance = type === "courier_remittance";
+  const isMerchantRepayment = type === "merchant_repayment";
   let expectedAmount: number;
   if (options.shipmentId) {
-    const breakdown = type === "courier_remittance"
-      ? courierSettlementBreakdownByParty(entries).get(`${options.agentId}:${options.currency}`)
-      : merchantSettlementBreakdownByParty(entries).get(`${options.merchantProfileId}:${options.currency}`);
-    const post = breakdown?.find((row) => row.shipmentId === options.shipmentId);
-    if (!post || post.outstanding <= 0.000001) {
+    if (isMerchantRepayment) {
+      const balance = merchantDeliveryAccountBalance(
+        entries,
+        options.merchantProfileId,
+        options.currency,
+        options.shipmentId,
+      );
+      expectedAmount = balance < -0.000001 ? -balance : 0;
+    } else {
+      const breakdown = isCourierRemittance
+        ? courierSettlementBreakdownByParty(entries).get(`${options.agentId}:${options.currency}`)
+        : merchantSettlementBreakdownByParty(entries).get(`${options.merchantProfileId}:${options.currency}`);
+      const post = breakdown?.find((row) => row.shipmentId === options.shipmentId);
+      expectedAmount = post?.outstanding ?? 0;
+    }
+    if (expectedAmount <= 0.000001) {
       throw new Error("The post has no outstanding amount to settle");
     }
-    expectedAmount = post.outstanding;
   } else {
-    const partyTotals = type === "courier_remittance"
-      ? partyTotalsFromBreakdown(courierSettlementBreakdownByParty(entries)).get(options.agentId ?? "")
-      : partyTotalsFromBreakdown(merchantSettlementBreakdownByParty(entries)).get(options.merchantProfileId ?? "");
-    expectedAmount = partyTotals && options.currency === partyTotals.currency ? partyTotals.amount : 0;
+    if (isMerchantRepayment) {
+      const balance = merchantDeliveryAccountBalance(entries, options.merchantProfileId, options.currency);
+      expectedAmount = balance < -0.000001 ? -balance : 0;
+    } else {
+      const partyTotals = isCourierRemittance
+        ? partyTotalsFromBreakdown(courierSettlementBreakdownByParty(entries)).get(options.agentId ?? "")
+        : partyTotalsFromBreakdown(merchantSettlementBreakdownByParty(entries)).get(options.merchantProfileId ?? "");
+      expectedAmount = partyTotals && options.currency === partyTotals.currency ? partyTotals.amount : 0;
+    }
   }
   const { expected, actual } = assertSettlementAmount(expectedAmount, options.actualAmount, options.varianceNote);
   const settledAt = options.settledAt ? new Date(options.settledAt).toISOString() : new Date().toISOString();
   const settlement = makeBase(workspaceId, {
-    settlementNumber: makeReference(type === "courier_remittance" ? "CR" : "MP", new Date(settledAt)),
+    settlementNumber: makeReference(
+      isCourierRemittance ? "CR" : isMerchantRepayment ? "MR" : "MP",
+      new Date(settledAt),
+    ),
     type,
     agentId: options.agentId ?? null,
     merchantProfileId: options.merchantProfileId ?? null,
@@ -1436,17 +1495,19 @@ async function createSettlement(
     paymentTransactionId: null,
     createdBy: options.createdBy ?? null,
   }) as DeliverySettlement;
-  const entryKind: DeliveryLedgerEntryKind = type === "courier_remittance"
+  const entryKind: DeliveryLedgerEntryKind = isCourierRemittance
     ? "courier_remittance"
-    : "merchant_payout";
+    : isMerchantRepayment
+      ? "merchant_repayment"
+      : "merchant_payout";
   const ledgerEntry = makeLedgerEntry(workspaceId, {
     kind: entryKind,
     shipmentId: options.shipmentId ?? null,
     settlementId: settlement.id,
-    agentId: type === "courier_remittance" ? options.agentId ?? null : null,
-    merchantProfileId: type === "merchant_payout" ? options.merchantProfileId ?? null : null,
-    businessPartnerId: type === "merchant_payout" ? options.businessPartnerId ?? null : null,
-    amount: -actual,
+    agentId: isCourierRemittance ? options.agentId ?? null : null,
+    merchantProfileId: isCourierRemittance ? null : options.merchantProfileId ?? null,
+    businessPartnerId: isCourierRemittance ? null : options.businessPartnerId ?? null,
+    amount: isMerchantRepayment ? actual : -actual,
     currency: options.currency,
     occurredAt: settledAt,
     note: normalizeText(options.note),
@@ -1462,7 +1523,7 @@ async function createSettlement(
     [LEDGER_TABLE, [ledgerEntry]],
   ]);
 
-  const linkedBusinessPartnerId = type === "courier_remittance"
+  const linkedBusinessPartnerId = isCourierRemittance
     ? (options.agentId ? (await db.agents.get(options.agentId))?.businessPartnerId ?? null : null)
     : options.businessPartnerId ?? (options.merchantProfileId
       ? (await db.delivery_merchant_profiles.get(options.merchantProfileId))?.businessPartnerId ?? null
@@ -1473,9 +1534,13 @@ async function createSettlement(
 
   const payment = await appendPaymentTransaction(workspaceId, {
     sourceModule: "post_service",
-    sourceType: type === "courier_remittance" ? "delivery_courier_remittance" : "delivery_merchant_payout",
+    sourceType: isCourierRemittance
+      ? "delivery_courier_remittance"
+      : isMerchantRepayment
+        ? "delivery_merchant_repayment"
+        : "delivery_merchant_payout",
     sourceRecordId: settlement.id,
-    direction: type === "courier_remittance" ? "incoming" : "outgoing",
+    direction: isMerchantRepayment || isCourierRemittance ? "incoming" : "outgoing",
     amount: actual,
     currency: options.currency,
     paymentMethod: options.paymentMethod,
@@ -1524,6 +1589,20 @@ export async function payDeliveryMerchant(workspaceId: string, input: PayDeliver
     throw new Error("Merchant not found");
   }
   return createSettlement(workspaceId, "merchant_payout", {
+    ...input,
+    businessPartnerId: profile.businessPartnerId,
+  });
+}
+
+export async function receiveDeliveryMerchantRepayment(
+  workspaceId: string,
+  input: ReceiveDeliveryMerchantRepaymentInput,
+) {
+  const profile = await db.delivery_merchant_profiles.get(input.merchantProfileId);
+  if (!profile || profile.isDeleted || profile.workspaceId !== workspaceId) {
+    throw new Error("Merchant not found");
+  }
+  return createSettlement(workspaceId, "merchant_repayment", {
     ...input,
     businessPartnerId: profile.businessPartnerId,
   });

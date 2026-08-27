@@ -160,6 +160,8 @@ function movementTypeLabel(transaction: PaymentTransaction | null, t: ReturnType
     case 'payment_account_opening_balance': return t('paymentAccounts.openingBalance', { defaultValue: 'Opening Balance' })
     case 'delivery_courier_remittance': return t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
     case 'delivery_merchant_payout': return t('ledger.type.deliveryMerchantPayout', { defaultValue: 'Merchant Payout' })
+    case 'delivery_recipient_payout': return t('ledger.type.deliveryRecipientPayout', { defaultValue: 'Recipient Payout' })
+    case 'delivery_merchant_repayment': return t('ledger.type.deliveryMerchantRepayment', { defaultValue: 'Merchant Repayment' })
     case 'rental_payment': return t('ledger.type.rentalPayment', { defaultValue: 'Rental Payment' })
     case 'rental_deposit': return t('ledger.type.rentalDeposit', { defaultValue: 'Security Deposit' })
     case 'rental_deposit_refund': return t('ledger.type.rentalDepositRefund', { defaultValue: 'Security Deposit Refund' })

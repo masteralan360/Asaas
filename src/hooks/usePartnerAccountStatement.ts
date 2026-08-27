@@ -4,6 +4,10 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import {
     db,
     useBusinessPartner,
+    useDeliveryLedgerEntries,
+    useDeliveryMerchantProfiles,
+    useDeliverySettlements,
+    useDeliveryShipments,
     useLoans,
     usePaymentTransactions,
     usePurchaseOrders,
@@ -29,6 +33,10 @@ export function usePartnerAccountStatement(
     const purchaseOrders = usePurchaseOrders(workspaceId)
     const loans = useLoans(workspaceId)
     const paymentTransactions = usePaymentTransactions(workspaceId)
+    const deliveryMerchantProfiles = useDeliveryMerchantProfiles(workspaceId)
+    const deliveryLedgerEntries = useDeliveryLedgerEntries(workspaceId)
+    const deliveryShipments = useDeliveryShipments(workspaceId)
+    const deliverySettlements = useDeliverySettlements(workspaceId)
 
     const partner = rawPartner && rawPartner.workspaceId === workspaceId && !rawPartner.isDeleted
         ? rawPartner
@@ -86,6 +94,45 @@ export function usePartnerAccountStatement(
         })
     }, [partnerId, partnerPurchaseOrders, partnerSalesOrders, paymentTransactions])
 
+    const merchantDeliveryEntries = useMemo(() => {
+        if (!partnerId) return []
+        const merchantProfileIds = new Set(
+            deliveryMerchantProfiles
+                .filter((profile) => !profile.isDeleted && profile.businessPartnerId === partnerId)
+                .map((profile) => profile.id)
+        )
+        const merchantKinds = new Set([
+            'merchant_cod_payable',
+            'merchant_fee',
+            'merchant_recipient_payout',
+            'merchant_payout',
+            'merchant_repayment',
+            'adjustment'
+        ])
+
+        return deliveryLedgerEntries.filter((entry) => (
+            !entry.isDeleted
+            && merchantKinds.has(entry.kind)
+            && (
+                (entry.merchantProfileId != null && merchantProfileIds.has(entry.merchantProfileId))
+                || entry.businessPartnerId === partnerId
+            )
+        ))
+    }, [deliveryLedgerEntries, deliveryMerchantProfiles, partnerId])
+
+    const deliveryShipmentReferences = useMemo(
+        () => Object.fromEntries(deliveryShipments
+            .filter((shipment) => !shipment.isDeleted)
+            .map((shipment) => [shipment.id, shipment.trackingNumber])),
+        [deliveryShipments]
+    )
+    const deliverySettlementReferences = useMemo(
+        () => Object.fromEntries(deliverySettlements
+            .filter((settlement) => !settlement.isDeleted)
+            .map((settlement) => [settlement.id, settlement.settlementNumber])),
+        [deliverySettlements]
+    )
+
     const statementData = useMemo<PartnerAccountStatementData | null>(() => {
         if (!partner) return null
 
@@ -102,9 +149,12 @@ export function usePartnerAccountStatement(
                     .filter((order) => !order.isDeleted)
                     .map((order) => [order.id, order.orderNumber])
             ),
-            settlementTransactions
+            settlementTransactions,
+            deliveryLedgerEntries: merchantDeliveryEntries,
+            deliveryShipmentReferences,
+            deliverySettlementReferences
         }
-    }, [loanPayments, partner, partnerLoans, partnerPurchaseOrders, partnerSalesOrders, period, settlementTransactions])
+    }, [deliverySettlementReferences, deliveryShipmentReferences, loanPayments, merchantDeliveryEntries, partner, partnerLoans, partnerPurchaseOrders, partnerSalesOrders, period, settlementTransactions])
 
     return {
         partner,
@@ -112,7 +162,7 @@ export function usePartnerAccountStatement(
         sourceCounts: {
             orders: partnerSalesOrders.length + partnerPurchaseOrders.length,
             loans: partnerLoans.length,
-            payments: settlementTransactions.length + loanPayments.length
+            payments: settlementTransactions.length + loanPayments.length + merchantDeliveryEntries.length
         }
     }
 }

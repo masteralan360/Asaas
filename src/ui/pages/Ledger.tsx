@@ -112,6 +112,8 @@ type LedgerEntryType =
     | 'exchange_profit'
     | 'delivery_courier_remittance'
     | 'delivery_merchant_payout'
+    | 'delivery_recipient_payout'
+    | 'delivery_merchant_repayment'
     | 'rental_payment'
     | 'rental_deposit'
     | 'rental_deposit_refund'
@@ -318,6 +320,10 @@ function ledgerTypeLabel(type: LedgerEntryType, t: any) {
             return t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
         case 'delivery_merchant_payout':
             return t('ledger.type.deliveryMerchantPayout', { defaultValue: 'Merchant Payout' })
+        case 'delivery_recipient_payout':
+            return t('ledger.type.deliveryRecipientPayout', { defaultValue: 'Recipient Payout' })
+        case 'delivery_merchant_repayment':
+            return t('ledger.type.deliveryMerchantRepayment', { defaultValue: 'Merchant Repayment' })
         case 'rental_payment':
             return t('ledger.type.rentalPayment')
         case 'rental_deposit':
@@ -816,6 +822,10 @@ function buildTransactionReference(transaction: PaymentTransaction) {
             return buildReferenceId('CR', transaction.sourceRecordId)
         case 'delivery_merchant_payout':
             return buildReferenceId('MP', transaction.sourceRecordId)
+        case 'delivery_recipient_payout':
+            return buildReferenceId('RP', transaction.sourceRecordId)
+        case 'delivery_merchant_repayment':
+            return buildReferenceId('MR', transaction.sourceRecordId)
         case 'rental_payment':
         case 'rental_deposit':
         case 'rental_deposit_refund':
@@ -1096,8 +1106,12 @@ function buildPaymentLedgerEntry(
 
     switch (transaction.sourceType) {
         case 'delivery_courier_remittance':
-        case 'delivery_merchant_payout': {
+        case 'delivery_merchant_payout':
+        case 'delivery_recipient_payout':
+        case 'delivery_merchant_repayment': {
             const isCourierRemittance = transaction.sourceType === 'delivery_courier_remittance'
+            const isRecipientPayout = transaction.sourceType === 'delivery_recipient_payout'
+            const isMerchantRepayment = transaction.sourceType === 'delivery_merchant_repayment'
             const settlement = context.deliverySettlementById.get(transaction.sourceRecordId)
             const metadataAgentId = typeof transaction.metadata?.deliveryAgentId === 'string'
                 ? transaction.metadata.deliveryAgentId
@@ -1112,7 +1126,9 @@ function buildPaymentLedgerEntry(
             const merchantProfileId = settlement?.merchantProfileId || metadataProfileId
             const shipmentId = settlement?.shipmentId || metadataShipmentId
             const shipment = shipmentId ? context.deliveryShipmentById.get(shipmentId) : null
-            const linkedBusinessPartnerId = settlement?.businessPartnerId
+            const linkedBusinessPartnerId = isRecipientPayout
+                ? null
+                : settlement?.businessPartnerId
                 || (typeof transaction.metadata?.businessPartnerId === 'string' ? transaction.metadata.businessPartnerId : null)
                 || (agentId ? context.agentBusinessPartnerIdById.get(agentId) : null)
                 || (merchantProfileId ? context.merchantBusinessPartnerIdByProfileId.get(merchantProfileId) : null)
@@ -1127,21 +1143,37 @@ function buildPaymentLedgerEntry(
                     // same visual chain in Ledger, even when each is settled
                     // in several partial payments.
                     relationKey: `delivery-shipment:${shipmentId}`,
-                    relationRole: isCourierRemittance ? 'origin' as const : 'settlement' as const,
+                    relationRole: isCourierRemittance || isRecipientPayout ? 'origin' as const : 'settlement' as const,
                     relationTitle: isCourierRemittance
                         ? t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
-                        : t('ledger.type.deliveryMerchantPayout', { defaultValue: 'Merchant Payout' }),
+                        : isRecipientPayout
+                            ? t('ledger.type.deliveryRecipientPayout', { defaultValue: 'Recipient Payout' })
+                            : isMerchantRepayment
+                                ? t('ledger.type.deliveryMerchantRepayment', { defaultValue: 'Merchant Repayment' })
+                            : t('ledger.type.deliveryMerchantPayout', { defaultValue: 'Merchant Payout' }),
                     relationDescription: isCourierRemittance
                         ? t('ledger.description.deliveryPostCourierRelation', {
                             defaultValue: 'Post {{tracking}} · courier cash handover for {{recipient}}.',
                             tracking: shipment?.trackingNumber || shipmentId,
                             recipient: shipment?.recipientPhone || t('common.unknown', { defaultValue: 'Unknown recipient' })
                         })
-                        : t('ledger.description.deliveryPostMerchantRelation', {
-                            defaultValue: 'Post {{tracking}} · merchant payout for {{recipient}}.',
-                            tracking: shipment?.trackingNumber || shipmentId,
-                            recipient: shipment?.recipientPhone || t('common.unknown', { defaultValue: 'Unknown recipient' })
-                        })
+                        : isRecipientPayout
+                            ? t('ledger.description.deliveryPostRecipientPayoutRelation', {
+                                defaultValue: 'Post {{tracking}} · payout made to {{recipient}}.',
+                                tracking: shipment?.trackingNumber || shipmentId,
+                                recipient: shipment?.recipientPhone || t('common.unknown', { defaultValue: 'Unknown recipient' })
+                            })
+                            : isMerchantRepayment
+                                ? t('ledger.description.deliveryPostMerchantRepaymentRelation', {
+                                    defaultValue: 'Post {{tracking}} · payment received from the merchant for {{recipient}}.',
+                                    tracking: shipment?.trackingNumber || shipmentId,
+                                    recipient: shipment?.recipientPhone || t('common.unknown', { defaultValue: 'Unknown recipient' })
+                                })
+                            : t('ledger.description.deliveryPostMerchantRelation', {
+                                defaultValue: 'Post {{tracking}} · merchant payout for {{recipient}}.',
+                                tracking: shipment?.trackingNumber || shipmentId,
+                                recipient: shipment?.recipientPhone || t('common.unknown', { defaultValue: 'Unknown recipient' })
+                            })
                 }
                 : {
                     // A party-level settlement has no truthful per-post
@@ -1150,7 +1182,11 @@ function buildPaymentLedgerEntry(
                     relationRole: 'settlement' as const,
                     relationTitle: isCourierRemittance
                         ? t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
-                        : t('ledger.type.deliveryMerchantPayout', { defaultValue: 'Merchant Payout' }),
+                        : isRecipientPayout
+                            ? t('ledger.type.deliveryRecipientPayout', { defaultValue: 'Recipient Payout' })
+                            : isMerchantRepayment
+                                ? t('ledger.type.deliveryMerchantRepayment', { defaultValue: 'Merchant Repayment' })
+                            : t('ledger.type.deliveryMerchantPayout', { defaultValue: 'Merchant Payout' }),
                     relationDescription: t('ledger.description.deliverySettlementRelation', { defaultValue: 'Post Service settlement {{reference}}.', reference: buildTransactionReference(transaction) })
                 }
 
@@ -1171,7 +1207,11 @@ function buildPaymentLedgerEntry(
                 description: buildTransactionDescription(transaction, t)
                     || (isCourierRemittance
                         ? t('ledger.description.deliveryCourierRemittance', { defaultValue: 'Courier cash handover' })
-                        : t('ledger.description.deliveryMerchantPayout', { defaultValue: 'Merchant payout' })),
+                        : isRecipientPayout
+                            ? t('ledger.description.deliveryRecipientPayout', { defaultValue: 'Recipient payout' })
+                            : isMerchantRepayment
+                                ? t('ledger.description.deliveryMerchantRepayment', { defaultValue: 'Merchant repayment received' })
+                            : t('ledger.description.deliveryMerchantPayout', { defaultValue: 'Merchant payout' })),
                 routePath: getPaymentTransactionRoutePath(transaction),
                 ...relation
             }

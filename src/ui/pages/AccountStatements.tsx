@@ -81,7 +81,8 @@ function entryLabel(
         outgoing_payment: t('businessPartners.accountStatement.paymentMade', { defaultValue: 'Payment made' }),
         direct_transaction: t('ledger.type.direct_transaction', { defaultValue: 'Direct Transaction' }),
         loan_disbursal: t('businessPartners.accountStatement.loanMovement', { defaultValue: 'Loan movement' }),
-        loan_repayment: t('businessPartners.accountStatement.loanRepayment', { defaultValue: 'Loan repayment' })
+        loan_repayment: t('businessPartners.accountStatement.loanRepayment', { defaultValue: 'Loan repayment' }),
+        delivery_post: t('postService.title', { defaultValue: 'Post Service' })
     }
     return labels[kind]
 }
@@ -104,6 +105,9 @@ function entrySourcePath(entry: PartnerAccountStatementEntry) {
     }
     if (entry.source?.recordType === 'loan') {
         return getLoanDetailsPath(entry.source.loanCategory, entry.source.recordId)
+    }
+    if (entry.source?.recordType === 'delivery_ledger_entry') {
+        return '/post-service'
     }
     return null
 }

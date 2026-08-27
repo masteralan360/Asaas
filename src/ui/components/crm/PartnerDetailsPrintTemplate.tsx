@@ -18,6 +18,7 @@ export type PartnerDetailsPrintTransactionSource =
     | 'clinical_appointment'
     | 'delivery_shipment'
     | 'delivery_settlement'
+    | 'delivery_recipient_payout'
 
 export type PartnerDetailsPrintTransaction = {
     id: string
@@ -203,6 +204,8 @@ function resolveSourceLabel(
             return t('postService.title', { defaultValue: 'Post Service' })
         case 'delivery_settlement':
             return t('businessPartners.sources.settlement', { defaultValue: 'Settlement' })
+        case 'delivery_recipient_payout':
+            return t('ledger.type.deliveryRecipientPayout', { defaultValue: 'Recipient Payout' })
         default:
             return t('loans.installmentRepayment', { defaultValue: 'Installment Repayment' })
     }
