@@ -158,8 +158,21 @@ export function CashierShifts() {
   )
 
   const weekdayLabel = (day: number) => t(`paymentAccounts.weekdays.${day}`)
-  const workingDayList = (days: number[]) => new Intl.ListFormat(i18n.language, { style: 'long', type: 'conjunction' })
-    .format([...days].sort((left, right) => left - right).map(weekdayLabel))
+  const workingDayList = (days: number[]) => {
+    const labels = [...days].sort((left, right) => left - right).map(weekdayLabel)
+    if (labels.length < 2) return labels[0] ?? ''
+
+    return labels.reduce((list, day, index) => {
+      if (index === 0) return day
+      if (index === 1 && labels.length === 2) {
+        return t('paymentAccounts.weekdayListPair', { first: list, last: day })
+      }
+      if (index === labels.length - 1) {
+        return t('paymentAccounts.weekdayListEnd', { list, last: day })
+      }
+      return t('paymentAccounts.weekdayListContinue', { list, next: day })
+    }, '')
+  }
   const formatScheduleTime = (value: Date | undefined) => value ? formatTime(value) : t('paymentAccounts.timeNotSet')
   const formatOccurrenceDateTime = (value: string) => new Intl.DateTimeFormat(i18n.language, {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',

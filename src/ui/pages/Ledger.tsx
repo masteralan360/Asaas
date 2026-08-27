@@ -1620,14 +1620,16 @@ export function Ledger() {
             merchantNameByProfileId,
             merchantBusinessPartnerIdByProfileId
         }
-        const rows = [
+        const paymentEntries: LedgerEntry[] = activePaymentTransactions
+            .map<LedgerEntry | null>((transaction) => {
+                const entry = buildPaymentLedgerEntry(transaction, context, t)
+                return entry ? { ...entry, paymentAccount: transaction.accountNameSnapshot || null } : null
+            })
+            .filter((entry): entry is LedgerEntry => entry !== null)
+
+        const rows: LedgerEntry[] = [
             ...sales.map(s => buildSaleLedgerEntry(s, t)).filter((entry): entry is LedgerEntry => !!entry),
-            ...activePaymentTransactions
-                .map((transaction) => {
-                    const entry = buildPaymentLedgerEntry(transaction, context, t)
-                    return entry ? { ...entry, paymentAccount: transaction.accountNameSnapshot || null } : null
-                })
-                .filter((entry): entry is LedgerEntry => !!entry),
+            ...paymentEntries,
             ...(rawExchangeTransactions || [])
                 .map(tx => buildExchangeLedgerEntry(tx))
                 .filter((entry): entry is LedgerEntry => !!entry)

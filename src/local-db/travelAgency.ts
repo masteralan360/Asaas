@@ -350,7 +350,7 @@ async function syncTravelSalePayment(
                 sourceSubrecordId: null, direction: 'incoming', amount: -Math.abs(current.amount),
                 currency: current.currency, paymentMethod: current.paymentMethod, paidAt,
                 counterpartyName: null, referenceLabel: sale.saleNumber, note: 'Travel sale payment reversed',
-                createdBy: sale.createdBy ?? null, reversalOfTransactionId: current.id,
+                reversalOfTransactionId: current.id,
                 accountId: current.accountId ?? null, accountNameSnapshot: current.accountNameSnapshot ?? null,
                 metadata: { travelAgencySaleId: sale.id, reversal: true },
             })
@@ -375,7 +375,7 @@ async function syncTravelSalePayment(
             sourceSubrecordId: null, direction: 'incoming', amount: -Math.abs(current.amount),
             currency: current.currency, paymentMethod: current.paymentMethod, paidAt,
             counterpartyName: null, referenceLabel: sale.saleNumber, note: 'Travel sale payment corrected',
-            createdBy: sale.createdBy ?? null, reversalOfTransactionId: current.id,
+            reversalOfTransactionId: current.id,
             accountId: current.accountId ?? null, accountNameSnapshot: current.accountNameSnapshot ?? null,
             metadata: { travelAgencySaleId: sale.id, correction: true },
         })
@@ -385,7 +385,7 @@ async function syncTravelSalePayment(
         sourceModule: 'travel_agency', sourceType: 'travel_agency_sale', sourceRecordId: sale.id,
         sourceSubrecordId: null, direction: 'incoming', amount, currency: sale.currency,
         paymentMethod: method, paidAt, counterpartyName: null, referenceLabel: sale.saleNumber,
-        note: sale.notes || null, createdBy: sale.createdBy ?? null,
+        note: sale.notes || null,
         accountId: effectiveAccountId, accountNameSnapshot: effectiveAccountName,
         metadata: { travelAgencySaleId: sale.id },
     })

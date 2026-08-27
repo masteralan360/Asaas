@@ -14,14 +14,13 @@ import { getDateRangeBounds } from '@/lib/dateRangeFilters'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, applySalesOrderReturnQuantities, appendPaymentTransaction, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, usePriceBookCatalogState, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, useBusinessPartners, useDeliveryMerchantProfiles, useDeliveryShipments, useRentalContracts, useRentalVehicles, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, toUISaleFromDeliveryShipment, toUISaleFromRentalContract, type Loan, type PaymentAccount, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation, type WorkspacePaymentMethod } from '@/local-db'
+import { adjustInventoryQuantity, applySalesOrderReturnQuantities, appendPaymentTransaction, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, usePriceBookCatalogState, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, useBusinessPartners, useDeliveryMerchantProfiles, useDeliveryShipments, useRentalContracts, useRentalVehicles, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, toUISaleFromDeliveryShipment, toUISaleFromRentalContract, type CurrencyCode, type Loan, type PaymentAccount, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation, type WorkspacePaymentMethod } from '@/local-db'
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
-import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import { useTheme } from '@/ui/components/theme-provider'
 import {
     Table,
@@ -1551,6 +1550,10 @@ export function Sales() {
         const originalPayment = salePayments
             .filter((payment) => !payment.isDeleted && !payment.reversalOfTransactionId)
             .sort((left, right) => right.paidAt.localeCompare(left.paidAt) || right.createdAt.localeCompare(left.createdAt))[0]
+        const saleCurrency = input.sale.settlement_currency?.toLowerCase()
+        const paymentCurrency: CurrencyCode = saleCurrency === 'usd' || saleCurrency === 'eur' || saleCurrency === 'iqd' || saleCurrency === 'try'
+            ? saleCurrency
+            : 'usd'
 
         await appendPaymentTransaction(input.sale.workspace_id, {
             sourceModule: 'sales',
@@ -1559,11 +1562,11 @@ export function Sales() {
             sourceSubrecordId: input.returnId,
             direction: 'incoming',
             amount: -Math.abs(input.refundAmount),
-            currency: input.sale.settlement_currency || 'usd',
+            currency: paymentCurrency,
             paymentMethod: (input.sale.payment_method || 'cash') as WorkspacePaymentMethod,
             paidAt: input.timestamp,
-            counterpartyName: input.sale.customer_name || null,
-            referenceLabel: input.sale.invoice_number || input.sale.id,
+            counterpartyName: input.sale._counterpartyName || null,
+            referenceLabel: input.sale._orderNumber || input.sale.id,
             note: `Sale return ${input.returnId}: ${input.reason || 'Return'}`,
             createdBy: user?.id || null,
             reversalOfTransactionId: originalPayment?.id ?? null,

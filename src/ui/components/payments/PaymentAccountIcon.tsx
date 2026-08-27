@@ -98,5 +98,13 @@ export function PaymentAccountIcon({ iconKey, accountType, className, title }: P
   }
 
   const Icon = ICONS[key] ?? Banknote
-  return <Icon aria-hidden={title ? undefined : true} aria-label={title} title={title} className={className} />
+  if (title) {
+    return (
+      <span title={title} aria-label={title} className="inline-flex shrink-0">
+        <Icon aria-hidden="true" className={className} />
+      </span>
+    )
+  }
+
+  return <Icon aria-hidden="true" className={className} />
 }
