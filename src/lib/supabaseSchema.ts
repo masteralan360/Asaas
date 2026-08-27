@@ -68,6 +68,25 @@ const rentalTables = new Set([
     'rental_contracts'
 ])
 
+const paymentAccountTables = new Set([
+    'payment_accounts',
+    'payment_account_balances',
+    'payment_account_movements',
+    'cashier_shifts',
+    'cashier_shift_currency_counts',
+    'cashier_shift_templates',
+    'cashier_shift_assignments',
+    'cashier_shift_occurrences'
+])
+
+// The client-side names remain explicit and descriptive, while three physical
+// table names inside the isolated payment_accounts schema are shorter.
+const paymentAccountRemoteTableNames: Record<string, string> = {
+    payment_accounts: 'accounts',
+    payment_account_balances: 'account_balances',
+    payment_account_movements: 'account_movements',
+}
+
 const deliveryTables = new Set([
     'delivery_merchant_profiles',
     'delivery_shipments',
@@ -87,6 +106,7 @@ const clinicsClient = supabase.schema('clinics')
 const fleetClient = supabase.schema('fleet')
 const rentalClient = supabase.schema('car_rental')
 const deliveryClient = supabase.schema('delivery')
+const paymentAccountsClient = supabase.schema('payment_accounts')
 
 export function isBudgetTable(tableName: string): boolean {
     return budgetTables.has(tableName)
@@ -122,6 +142,14 @@ export function isRentalTable(tableName: string): boolean {
 
 export function isDeliveryTable(tableName: string): boolean {
     return deliveryTables.has(tableName)
+}
+
+export function isPaymentAccountTable(tableName: string): boolean {
+    return paymentAccountTables.has(tableName)
+}
+
+export function getSupabaseRemoteTableName(tableName: string): string {
+    return paymentAccountRemoteTableNames[tableName] ?? tableName
 }
 
 export function getFleetSupabaseClient() {
@@ -163,6 +191,10 @@ export function getSupabaseClientForTable(tableName: string) {
 
     if (isDeliveryTable(tableName)) {
         return deliveryClient
+    }
+
+    if (isPaymentAccountTable(tableName)) {
+        return paymentAccountsClient
     }
 
     return supabase

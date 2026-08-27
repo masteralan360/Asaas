@@ -22,7 +22,7 @@ import {
     type ActivityCatalogInput,
     type ActivityTransactionInput
 } from '@/local-db/activities'
-import type { ActivityCatalogItem, ActivityTransaction, ActivityTransactionLine, IQDDisplayPreference, WorkspacePaymentMethod } from '@/local-db/models'
+import type { ActivityCatalogItem, ActivityTransaction, ActivityTransactionLine, IQDDisplayPreference, PaymentAccount, WorkspacePaymentMethod } from '@/local-db/models'
 import { isDateInDateRange } from '@/lib/dateRangeFilters'
 import { ACTIVITY_PAYMENT_METHODS } from '@/lib/paymentMethods'
 import { assetManager } from '@/lib/assetManager'
@@ -34,6 +34,7 @@ import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import type { TemplatePreview } from '@/lib/pdfPreviewStore'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
+import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import {
     Badge,
     Button,
@@ -340,10 +341,14 @@ export function Activities() {
     const activityImageInputRef = useRef<HTMLInputElement>(null)
     const [transactionOpen, setTransactionOpen] = useState(false)
     const [transactionDraft, setTransactionDraft] = useState<TransactionDraft>(() => createTransactionDraft())
+    const [transactionPaymentAccount, setTransactionPaymentAccount] = useState<PaymentAccount | null>(null)
+    const [hasTransactionPaymentAccountSelection, setHasTransactionPaymentAccountSelection] = useState(false)
     const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null)
     const [receiptOpen, setReceiptOpen] = useState(false)
     const [activityPrintOpen, setActivityPrintOpen] = useState(false)
     const [reverseAction, setReverseAction] = useState<'cancelled' | 'refunded' | null>(null)
+    const [reversePaymentAccount, setReversePaymentAccount] = useState<PaymentAccount | null>(null)
+    const [hasReversePaymentAccountSelection, setHasReversePaymentAccountSelection] = useState(false)
     const [deleteOpen, setDeleteOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -514,6 +519,8 @@ export function Activities() {
         if (!selectedTransaction) return
         setEditingTransactionId(selectedTransaction.id)
         setTransactionDraft(createTransactionDraft(selectedTransaction, selectedLines))
+        setTransactionPaymentAccount(null)
+        setHasTransactionPaymentAccountSelection(false)
         setTransactionOpen(true)
     }
 
@@ -601,7 +608,13 @@ export function Activities() {
                     quantity: Number(line.quantity),
                     unitPrice: Number(line.unitPrice)
                 })),
-                createdBy: user?.id ?? null
+                createdBy: user?.id ?? null,
+                ...(hasTransactionPaymentAccountSelection
+                    ? {
+                        accountId: transactionPaymentAccount?.id ?? null,
+                        accountNameSnapshot: transactionPaymentAccount?.name ?? null
+                    }
+                    : {})
             }
             const result = await updateActivityTransaction(workspaceId, editingTransactionId, input)
             setSelectedId(result.transaction.id)
@@ -627,8 +640,12 @@ export function Activities() {
 
         setIsSubmitting(true)
         try {
-            await reverseActivityTransaction(workspaceId, selectedTransaction.id, status, user?.id ?? null)
+            await reverseActivityTransaction(workspaceId, selectedTransaction.id, status, user?.id ?? null, hasReversePaymentAccountSelection
+                ? { accountId: reversePaymentAccount?.id ?? null, accountNameSnapshot: reversePaymentAccount?.name ?? null }
+                : {})
             setReverseAction(null)
+            setReversePaymentAccount(null)
+            setHasReversePaymentAccountSelection(false)
             toast({ title: t(status === 'cancelled' ? 'activities.messages.transactionCancelled' : 'activities.messages.transactionRefunded', { defaultValue: status === 'cancelled' ? 'Transaction cancelled' : 'Transaction refunded' }) })
         } catch (error) {
             toast({
@@ -755,7 +772,7 @@ export function Activities() {
                             <div className="flex flex-wrap gap-2 border-t pt-4">
                                 {canPrint ? <Button variant="outline" onClick={() => setReceiptOpen(true)}><Printer className="mr-2 h-4 w-4" />{t('common.print', { defaultValue: 'Print receipt' })}</Button> : null}
                                 {canEdit && selectedTransaction.status === 'completed' ? <Button variant="outline" onClick={openEditTransaction}><Edit3 className="mr-2 h-4 w-4" />{t('common.edit', { defaultValue: 'Edit' })}</Button> : null}
-                                {canRefund && selectedTransaction.status === 'completed' ? <><Button variant="outline" onClick={() => setReverseAction('cancelled')}><XCircle className="mr-2 h-4 w-4" />{t('activities.cancel', { defaultValue: 'Cancel' })}</Button><Button variant="outline" onClick={() => setReverseAction('refunded')}><RotateCcw className="mr-2 h-4 w-4" />{t('activities.refund', { defaultValue: 'Refund' })}</Button></> : null}
+                                {canRefund && selectedTransaction.status === 'completed' ? <><Button variant="outline" onClick={() => { setReversePaymentAccount(null); setHasReversePaymentAccountSelection(false); setReverseAction('cancelled') }}><XCircle className="mr-2 h-4 w-4" />{t('activities.cancel', { defaultValue: 'Cancel' })}</Button><Button variant="outline" onClick={() => { setReversePaymentAccount(null); setHasReversePaymentAccountSelection(false); setReverseAction('refunded') }}><RotateCcw className="mr-2 h-4 w-4" />{t('activities.refund', { defaultValue: 'Refund' })}</Button></> : null}
                                 {canDelete ? <UiAccessGate><Button variant="destructive" onClick={() => setDeleteOpen(true)}><Trash2 className="mr-2 h-4 w-4" />{t('common.delete', { defaultValue: 'Delete' })}</Button></UiAccessGate> : null}
                             </div>
                         </CardContent>
@@ -817,7 +834,17 @@ export function Activities() {
                                     <div className="grid gap-2"><Label htmlFor="transaction-name">{t('activities.transactionName', { defaultValue: 'Transaction name' })}</Label><Input id="transaction-name" value={transactionDraft.name} onChange={(event) => setTransactionDraft((current) => ({ ...current, name: event.target.value }))} /></div>
                                     <div className="grid gap-2"><Label htmlFor="transaction-customer">{t('activities.customerName', { defaultValue: 'Customer name (optional)' })}</Label><Input id="transaction-customer" value={transactionDraft.customerName} onChange={(event) => setTransactionDraft((current) => ({ ...current, customerName: event.target.value }))} /></div>
                                     <div className="grid gap-2"><Label>{t('activities.dateTime', { defaultValue: 'Date and time' })}</Label><DateTimePicker date={transactionDraft.occurredAt} setDate={(date) => date && setTransactionDraft((current) => ({ ...current, occurredAt: date }))} /></div>
-                                    <div className="grid gap-2"><Label>{t('activities.paymentMethod', { defaultValue: 'Payment method' })}</Label><PaymentMethodSelect value={transactionDraft.paymentMethod} onValueChange={(value) => setTransactionDraft((current) => ({ ...current, paymentMethod: value as WorkspacePaymentMethod }))} methods={PAYMENT_METHODS} /></div>
+                                    <div className="grid gap-2"><Label>{t('activities.paymentMethod', { defaultValue: 'Payment method' })}</Label><PaymentMethodSelect value={transactionDraft.paymentMethod} onValueChange={(value) => setTransactionDraft((current) => ({ ...current, paymentMethod: value as WorkspacePaymentMethod }))} onLinkedPaymentAccountSelect={(account) => { setTransactionPaymentAccount(account); setHasTransactionPaymentAccountSelection(true) }} workspaceId={workspaceId} methods={PAYMENT_METHODS} /></div>
+                                    <PaymentAccountSelector
+                                        workspaceId={workspaceId}
+                                        value={transactionPaymentAccount?.id ?? null}
+                                        onValueChange={(account) => {
+                                            setTransactionPaymentAccount(account)
+                                            setHasTransactionPaymentAccountSelection(true)
+                                        }}
+                                        disabled={isSubmitting}
+                                        cashDrawerOnly={transactionDraft.paymentMethod === 'cash'}
+                                    />
                                 </div>
                                 <div className="space-y-3 rounded-lg border p-3">
                                     <div className="flex items-center justify-between"><div><Label>{t('activities.lines', { defaultValue: 'Activity lines' })}</Label><p className="text-xs text-muted-foreground">{t('activities.linesDescription', { defaultValue: 'Add one activity or combine several in the same transaction.' })}</p></div><Button type="button" size="sm" variant="outline" onClick={addDraftLine}><Plus className="mr-1 h-4 w-4" />{t('common.add', { defaultValue: 'Add' })}</Button></div>
@@ -888,6 +915,18 @@ export function Activities() {
                             transactionNo: selectedTransaction.transactionNo
                         }) : null}</DialogDescription>
                     </DialogHeader>
+                    <DialogBody>
+                        <PaymentAccountSelector
+                            workspaceId={workspaceId}
+                            value={reversePaymentAccount?.id ?? null}
+                            onValueChange={(account) => {
+                                setReversePaymentAccount(account)
+                                setHasReversePaymentAccountSelection(true)
+                            }}
+                            disabled={isSubmitting}
+                            cashDrawerOnly={selectedTransaction?.paymentMethod === 'cash'}
+                        />
+                    </DialogBody>
                     <DialogFooter layout="structured">
                         <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => setReverseAction(null)}>
                             {t('common.cancel', { defaultValue: 'Cancel' })}

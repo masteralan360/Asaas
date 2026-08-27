@@ -20,10 +20,12 @@ import {
     useStorages,
     createActivityTransaction,
     createCompletedSalesOrder,
+    appendPaymentTransaction,
     isOrderFinancingMethod,
     updateActivityTransactionNotes,
     useActivityCatalog,
     usePriceBookCatalogState,
+    usePaymentAccounts,
     useProducts,
     toUISaleFromActivityTransaction,
     type BatchAwareInventoryProduct,
@@ -33,6 +35,7 @@ import {
     type PriceBook,
     type ActivityTransaction,
     type ActivityTransactionLine,
+    type PaymentAccount,
     type SalesOrder,
     type SalesOrderItem
 } from '@/local-db'
@@ -138,6 +141,7 @@ import { useWebHaptics } from 'web-haptics/react'
 import { getLanguageDirection } from '@/lib/i18nRouting'
 import { useDemoTutorial } from '@/demo'
 import { ActivityReceiptPrintTemplate, createActivityReceiptLabels } from '@/ui/components/activities/ActivityReceiptPrintTemplate'
+import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import { generateTemplatePdf } from '@/services/pdfGenerator'
 import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
 import { useUnitRegistry, getDynamicUnitAdjustmentLabel, type UnitRegistry } from '@/ui/components/unitRegistry'
@@ -903,6 +907,17 @@ export function POS() {
     const [freeBonusUnitInput, setFreeBonusUnitInput] = useState('')
     const isTutorialPosTask = demoTutorial.isCurrentTask('pos-sale')
     const [digitalProvider, setDigitalProvider] = useState<'fib' | 'qicard' | 'zaincash' | 'fastpay'>('fib')
+    const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
+    const paymentAccounts = usePaymentAccounts(user?.workspaceId)
+    const selectDigitalProvider = useCallback((provider: 'fib' | 'qicard' | 'zaincash' | 'fastpay') => {
+        setDigitalProvider(provider)
+        const linkedWallet = paymentAccounts.find((account) => (
+            account.isActive
+            && account.accountType === 'digital_wallet'
+            && account.linkedPaymentMethod === provider
+        ))
+        if (linkedWallet) setPaymentAccount(linkedWallet)
+    }, [paymentAccounts])
     const [isLoanRegistrationModalOpen, setIsLoanRegistrationModalOpen] = useState(false)
     const [isQuickOrderModalOpen, setIsQuickOrderModalOpen] = useState(false)
     const [quickOrderProgressStage, setQuickOrderProgressStage] = useState<QuickOrderProgressStage>(null)
@@ -2398,6 +2413,8 @@ export function POS() {
                 currency: settlementCurrency as CurrencyCode,
                 paymentMethod: paymentType === 'digital' ? digitalProvider : 'cash',
                 notes: null,
+                accountId: paymentAccount?.id ?? null,
+                accountNameSnapshot: paymentAccount?.name ?? null,
                 lines: cart.map((item) => ({
                     activityId: item.product_id,
                     quantity: item.quantity,
@@ -2714,6 +2731,33 @@ export function POS() {
                     : digitalProvider) as 'cash' | 'fib' | 'qicard' | 'zaincash' | 'fastpay' | 'loan'
         }
 
+        const recordPosPayment = async (referenceLabel: string) => {
+            // A financed POS sale creates its own loan obligation; it is not a
+            // cash receipt at checkout. Every immediately paid sale is posted
+            // through the payment transaction layer and then mirrored to Ledger.
+            if (paymentType === 'loan') return
+            await appendPaymentTransaction(user.workspaceId, {
+                sourceModule: 'sales',
+                sourceType: 'pos_sale',
+                sourceRecordId: saleId,
+                sourceSubrecordId: null,
+                direction: 'incoming',
+                amount: totalAmount,
+                currency: settlementCurrency as CurrencyCode,
+                paymentMethod: checkoutPayload.payment_method,
+                paidAt: checkoutTimestamp,
+                counterpartyName: null,
+                referenceLabel,
+                note: null,
+                createdBy: user.id,
+                accountId: paymentAccount?.id ?? null,
+                accountNameSnapshot: paymentAccount?.name ?? null,
+                metadata: { saleId, origin: 'pos' }
+            })
+        }
+
+        let saleCommitted = false
+
         try {
             if (isLocalMode || !isOnline(user.workspaceId)) {
                 throw new Error(isLocalMode ? 'local_workspace_sale' : 'offline_workspace_sale')
@@ -2730,10 +2774,14 @@ export function POS() {
                 throw normalizeSupabaseActionError(error)
             }
 
+            saleCommitted = true
+
             // Capture sequence_id and result from server
             const serverResult = data as any
             const sequenceId = serverResult?.sequence_id
             const formattedInvoiceId = sequenceId ? `#${String(sequenceId).padStart(5, '0')}` : `#${saleId.slice(0, 8)}`
+
+            await recordPosPayment(formattedInvoiceId)
 
             // 1. Update local inventory
             await Promise.all(physicalCart.map(async (item) => {
@@ -2837,6 +2885,7 @@ export function POS() {
 
             setCart([])
             setDiscountValue('')
+            setPaymentAccount(null)
             setIsLoanRegistrationModalOpen(false)
             setCompletedActivityCheckout(null)
             setCompletedSaleData(saleData)
@@ -2850,6 +2899,18 @@ export function POS() {
         } catch (err: any) {
             console.error('Checkout failed, attempting offline save:', err)
             const normalizedError = normalizeSupabaseActionError(err)
+
+            // The sale RPC already succeeded. Never fall through to the offline
+            // sale path here or the customer would be charged twice. Surface the
+            // posting fault for recovery instead.
+            if (saleCommitted) {
+                toast({
+                    variant: 'destructive',
+                    title: t('messages.error'),
+                    description: normalizedError.message
+                })
+                return
+            }
 
             if (isLocalMode || !isOnline(user.workspaceId) || isRetriableWebRequestError(normalizedError)) {
                 try {
@@ -3021,6 +3082,7 @@ export function POS() {
 
                     // 5. Add to Sync Queue (server will compute authoritative review fields)
                     await addToOfflineMutations('sales', saleId, 'create', checkoutPayload, user.workspaceId)
+                    await recordPosPayment(localFormattedInvoiceId)
 
                     if (paymentType === 'loan' && validLoanRegistrationData) {
                         try {
@@ -3064,6 +3126,7 @@ export function POS() {
 
                     setCart([])
                     setDiscountValue('')
+                    setPaymentAccount(null)
                     setIsLoanRegistrationModalOpen(false)
                     setCompletedActivityCheckout(null)
                     setCompletedSaleData(saleDataOffline)
@@ -3211,6 +3274,8 @@ export function POS() {
                 paidAt: isFinanced ? null : checkoutTimestamp,
                 paymentMethod,
                 initialPaymentAmount: 0,
+                initialPaymentAccountId: checkout.paymentAccountId ?? null,
+                initialPaymentAccountNameSnapshot: checkout.paymentAccountNameSnapshot ?? null,
                 linkedLoanId: null,
                 isInstallmentBased: paymentMethod === 'installments',
                 installmentCount: paymentMethod === 'installments' ? checkout.installmentCount : 0,
@@ -3331,10 +3396,13 @@ export function POS() {
                                 settlementCurrency={settlementCurrency}
                                 paymentType={paymentType}
                                 setPaymentType={setPaymentType}
+                                workspaceId={user?.workspaceId}
+                                paymentAccount={paymentAccount}
+                                setPaymentAccount={setPaymentAccount}
                                 isTutorialPosTask={isTutorialPosTask}
                                 tutorialProductId={demoTutorial.state?.productId}
                                 digitalProvider={digitalProvider}
-                                setDigitalProvider={setDigitalProvider}
+                                setDigitalProvider={selectDigitalProvider}
                                 quickOrderEnabled={quickOrderEnabled}
                                 handleCheckout={handleCheckout}
                                 handleHoldSale={handleHoldSale}
@@ -4013,7 +4081,10 @@ export function POS() {
                                     <div className="flex bg-muted rounded-lg p-0.5 gap-0.5">
                                         <button
                                             data-tour-id="tutorial-pos-payment-cash"
-                                            onClick={() => setPaymentType('cash')}
+                                            onClick={() => {
+                                                setPaymentType('cash')
+                                                setPaymentAccount((current) => current?.accountType === 'cash_drawer' ? current : null)
+                                            }}
                                             className={cn(
                                                 "px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 border transition-all",
                                                 paymentType === 'cash'
@@ -4038,7 +4109,10 @@ export function POS() {
                                         </button> : null}
                                         <button
                                             data-tour-id="tutorial-pos-payment-digital"
-                                            onClick={() => setPaymentType('digital')}
+                                            onClick={() => {
+                                                setPaymentType('digital')
+                                                selectDigitalProvider(digitalProvider)
+                                            }}
                                             className={cn(
                                                 "px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 border transition-all",
                                                 paymentType === 'digital'
@@ -4075,7 +4149,7 @@ export function POS() {
                                     <div className="flex justify-end" data-tour-id="tutorial-pos-digital-provider">
                                         <div className="flex bg-muted/50 rounded-lg p-0.5 gap-1">
                                             <button
-                                                onClick={() => setDigitalProvider('fib')}
+                                                onClick={() => selectDigitalProvider('fib')}
                                                 className={cn(
                                                     "p-1.5 rounded-md transition-colors flex items-center gap-1",
                                                     digitalProvider === 'fib'
@@ -4091,7 +4165,7 @@ export function POS() {
                                                 />
                                             </button>
                                             <button
-                                                onClick={() => setDigitalProvider('qicard')}
+                                                onClick={() => selectDigitalProvider('qicard')}
                                                 className={cn(
                                                     "p-1.5 rounded-md transition-colors flex items-center gap-1",
                                                     digitalProvider === 'qicard'
@@ -4108,7 +4182,7 @@ export function POS() {
                                             </button>
 
                                             <button
-                                                onClick={() => setDigitalProvider('zaincash')}
+                                                onClick={() => selectDigitalProvider('zaincash')}
                                                 className={cn(
                                                     "p-1.5 rounded-md transition-colors flex items-center gap-1",
                                                     digitalProvider === 'zaincash'
@@ -4125,7 +4199,7 @@ export function POS() {
                                             </button>
 
                                             <button
-                                                onClick={() => setDigitalProvider('fastpay')}
+                                                onClick={() => selectDigitalProvider('fastpay')}
                                                 className={cn(
                                                     "p-1.5 rounded-md transition-colors flex items-center gap-1",
                                                     digitalProvider === 'fastpay'
@@ -4143,6 +4217,15 @@ export function POS() {
                                         </div>
                                     </div>
                                 )}
+                                {paymentType !== 'loan' && paymentType !== 'order' ? (
+                                    <PaymentAccountSelector
+                                        workspaceId={user?.workspaceId}
+                                        value={paymentAccount?.id ?? null}
+                                        onValueChange={setPaymentAccount}
+                                        disabled={isLoading}
+                                        cashDrawerOnly={paymentType === 'cash'}
+                                    />
+                                ) : null}
                             </div>
 
                             {hasTrulyMissingRates ? (
@@ -5462,6 +5545,9 @@ interface MobileCartProps {
     settlementCurrency: string
     paymentType: PosPaymentType
     setPaymentType: (t: PosPaymentType) => void
+    workspaceId?: string
+    paymentAccount: PaymentAccount | null
+    setPaymentAccount: (account: PaymentAccount | null) => void
     isTutorialPosTask: boolean
     tutorialProductId?: string
     digitalProvider: 'fib' | 'qicard' | 'zaincash' | 'fastpay'
@@ -5498,7 +5584,7 @@ interface MobileCartProps {
 function MobileCart({
     cart, removeFromCart, updateQuantity, features, totalAmount,
     settlementCurrency, paymentType, setPaymentType, isTutorialPosTask, tutorialProductId, digitalProvider,
-    setDigitalProvider, quickOrderEnabled, handleCheckout, handleHoldSale, isLoading,
+    setDigitalProvider, workspaceId, paymentAccount, setPaymentAccount, quickOrderEnabled, handleCheckout, handleHoldSale, isLoading,
     canPreprintReceipt, handlePreprintReceipt, isPreprinting, isLoadingPreprintTemplate,
     getDisplayImageUrl, products, convertPrice, openPriceEdit,
     clearNegotiatedPrice, isAdmin,
@@ -5887,7 +5973,10 @@ function MobileCart({
                         <div className="flex bg-muted p-1 rounded-2xl gap-1" data-tour-id="tutorial-pos-payment-area">
                             <button
                                 data-tour-id="tutorial-pos-payment-cash"
-                                onClick={() => setPaymentType('cash')}
+                                onClick={() => {
+                                    setPaymentType('cash')
+                                    setPaymentAccount(paymentAccount?.accountType === 'cash_drawer' ? paymentAccount : null)
+                                }}
                                 className={cn(
                                     "flex-1 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all border",
                                     paymentType === 'cash'
@@ -5910,7 +5999,10 @@ function MobileCart({
                             </button> : null}
                             <button
                                 data-tour-id="tutorial-pos-payment-digital"
-                                onClick={() => setPaymentType('digital')}
+                                onClick={() => {
+                                    setPaymentType('digital')
+                                    setDigitalProvider(digitalProvider)
+                                }}
                                 className={cn(
                                     "flex-1 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all border",
                                     paymentType === 'digital'
@@ -5945,7 +6037,7 @@ function MobileCart({
                                 {['fib', 'qicard', 'zaincash', 'fastpay'].map((provider) => (
                                     <button
                                         key={provider}
-                                        onClick={() => setDigitalProvider(provider as any)}
+                                        onClick={() => setDigitalProvider(provider as 'fib' | 'qicard' | 'zaincash' | 'fastpay')}
                                         className={cn(
                                             "p-1 rounded-xl transition-all border-2",
                                             digitalProvider === provider ? "border-primary scale-110 shadow-lg" : "border-transparent opacity-40 grayscale"
@@ -5959,6 +6051,16 @@ function MobileCart({
                                 ))}
                             </div>
                         )}
+
+                        {paymentType !== 'loan' && paymentType !== 'order' ? (
+                            <PaymentAccountSelector
+                                workspaceId={workspaceId}
+                                value={paymentAccount?.id ?? null}
+                                onValueChange={setPaymentAccount}
+                                disabled={isLoading}
+                                cashDrawerOnly={paymentType === 'cash'}
+                            />
+                        ) : null}
 
                         {/* Total Discount Input - Mobile Optimized */}
                         <div className="flex flex-col gap-3">

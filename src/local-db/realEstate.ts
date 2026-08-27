@@ -497,6 +497,8 @@ export interface RecordRealEstatePaymentInput {
     paidAt?: string
     note?: string | null
     createdBy?: string | null
+    accountId?: string | null
+    accountNameSnapshot?: string | null
 }
 
 export interface RecordRealEstateCommissionPaymentInput {
@@ -508,6 +510,8 @@ export interface RecordRealEstateCommissionPaymentInput {
     businessPartnerId?: string | null
     note?: string | null
     createdBy?: string | null
+    accountId?: string | null
+    accountNameSnapshot?: string | null
 }
 
 export async function getRealEstateCommissionPaidAmount(workspaceId: string, transactionId: string) {
@@ -583,6 +587,8 @@ export async function recordRealEstateCommissionPayment(
         referenceLabel: `${transaction.transactionNo} / Commission`,
         note: input.note?.trim() || null,
         createdBy: input.createdBy || null,
+        accountId: input.accountId ?? null,
+        accountNameSnapshot: input.accountNameSnapshot ?? null,
         metadata: {
             realEstateTransactionId: transaction.id,
             realEstateCommissionPaymentId: commissionPaymentId,
@@ -693,6 +699,35 @@ export async function recordRealEstatePayment(
             await db.real_estate_installments.bulkPut(updatedInstallments)
         }
         await db.real_estate_payments.put(payment)
+    })
+
+    // The installment record describes the contract state; the payment
+    // transaction is the authoritative incoming-money record and derives any
+    // optional payment-account movement.
+    const { appendPaymentTransaction } = await import('./payments')
+    await appendPaymentTransaction(workspaceId, {
+        sourceModule: 'real_estate',
+        sourceType: firstTouchedInstallment ? 'real_estate_installment' : 'real_estate_payment',
+        sourceRecordId: transaction.id,
+        sourceSubrecordId: payment.id,
+        direction: 'incoming',
+        amount,
+        currency: transaction.currency,
+        paymentMethod: input.paymentMethod,
+        paidAt,
+        counterpartyName: transaction.buyerName || transaction.sellerName || null,
+        referenceLabel: transaction.transactionNo,
+        note: input.note?.trim() || null,
+        createdBy: input.createdBy || null,
+        accountId: input.accountId ?? null,
+        accountNameSnapshot: input.accountNameSnapshot ?? null,
+        metadata: {
+            realEstateTransactionId: transaction.id,
+            realEstatePaymentId: payment.id,
+            realEstateInstallmentId: payment.installmentId,
+            transactionType: transaction.transactionType,
+            propertyLocation: transaction.location
+        }
     })
 
     await Promise.all([

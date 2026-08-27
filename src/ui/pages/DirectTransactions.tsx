@@ -157,6 +157,8 @@ export function DirectTransactions() {
         note?: string
         counterpartyName?: string
         businessPartnerId?: string | null
+        accountId?: string | null
+        accountNameSnapshot?: string | null
     }) => {
         if (!workspaceId) {
             return

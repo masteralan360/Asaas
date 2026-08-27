@@ -111,6 +111,8 @@ function getPermissionDisplayModule(module: WorkspacePermissionModule) {
 const PERMISSION_MODULE_DEFAULT_LABELS: Record<string, string> = {
     global: 'Global',
     payment: 'Payments',
+    paymentAccounts: 'Payment Accounts',
+    cashierShiftControl: 'Cashier Shift Control',
     directTransaction: 'Direct Transactions',
     businessPartners: 'Business Partners',
     agents: 'Agents',

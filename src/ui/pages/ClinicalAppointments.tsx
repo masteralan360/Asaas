@@ -15,6 +15,7 @@ import {
   usePaymentTransactions,
   type PaymentObligation,
   type CurrencyCode,
+  type PaymentAccount,
   type WorkspacePaymentMethod,
 } from '@/local-db'
 import type { ClinicalAppointment, ClinicalAppointmentStatus, ClinicalAppointmentType, ClinicalAppointmentPriority, ClinicalConfirmationMethod } from '@/local-db/clinicalAppointments'
@@ -24,6 +25,7 @@ import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, Select
 import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit, Check, ChevronDown, LayoutGrid, List, HandCoins, UserPlus, Phone, X } from 'lucide-react'
 import { generateId, formatCurrency, formatLocalDateValue, formatNumberWithCommas, formatTime, formatNumericInput, parseFormattedNumber, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
+import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import { createBusinessPartner, useBusinessPartners, recalculateBusinessPartnerSummary } from '@/local-db'
 import { useDateRange } from '@/context/DateRangeContext'
@@ -500,6 +502,8 @@ function Beauty2AppointmentForm({ workspaceId, appointment, onCancel, onSaved }:
   const [showSavePartner, setShowSavePartner] = useState(false)
   const [savePartnerPhone, setSavePartnerPhone] = useState('')
   const [saving, setSaving] = useState(false)
+  const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
+  const [hasPaymentAccountSelection, setHasPaymentAccountSelection] = useState(false)
   const supplierPartners = useBusinessPartners(workspaceId, { roles: ['supplier'] })
   const sentByPartner = useMemo(() => supplierPartners.find(p => p.id === sentByPartnerId), [supplierPartners, sentByPartnerId])
 
@@ -546,7 +550,9 @@ function Beauty2AppointmentForm({ workspaceId, appointment, onCancel, onSaved }:
         }, workspaceId)
       }
       if (!savedAppointment) throw new Error('Appointment could not be saved')
-      await syncBeauty2AppointmentPayment(workspaceId, savedAppointment, user?.id || null)
+      await syncBeauty2AppointmentPayment(workspaceId, savedAppointment, user?.id || null, hasPaymentAccountSelection
+        ? { accountId: paymentAccount?.id ?? null, accountNameSnapshot: paymentAccount?.name ?? null }
+        : {})
       const typedCustomName = sentByName.trim() && !sentByPartnerId
       if (typedCustomName) {
         setSavePartnerPhone(phoneNumber)
@@ -603,6 +609,17 @@ function Beauty2AppointmentForm({ workspaceId, appointment, onCancel, onSaved }:
             </Select>
           </div>
         </div>
+        {parseFormattedNumber(calculatedAmount || '0') > 0 ? (
+          <PaymentAccountSelector
+            workspaceId={workspaceId}
+            value={paymentAccount?.id ?? null}
+            onValueChange={(account) => {
+              setPaymentAccount(account)
+              setHasPaymentAccountSelection(true)
+            }}
+            disabled={saving}
+          />
+        ) : null}
         <div className="grid gap-2">
           <Label htmlFor="beauty2-phone">{t('clinicalAppointments.phoneNumber', { defaultValue: 'Phone Number' })}</Label>
           <Input id="beauty2-phone" type="tel" value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} />
@@ -858,6 +875,8 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
     paidAt: string
     amount?: number
     note?: string
+    accountId?: string | null
+    accountNameSnapshot?: string | null
   }) => {
     if (!paymentObligation) return
 

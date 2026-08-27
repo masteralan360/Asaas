@@ -6,6 +6,7 @@ import {
     getPartnerSettlementBalance,
     type BusinessPartner,
     type CurrencySettlementAmount,
+    type PaymentAccount,
     type PartnerSettlementBalance,
     type PartnerSettlementProgress,
     type PaymentTransactionDirection,
@@ -38,7 +39,8 @@ import {
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
 import { useWorkspace } from '@/workspace'
-import { PaymentMethodSelect } from './PaymentMethodSelect'
+import { PaymentMethodSelector } from '@/ui/components/PaymentMethodSelector'
+import { PaymentAccountSelector } from './PaymentAccountSelector'
 
 interface PartnerSettlementDialogProps {
     open: boolean
@@ -54,6 +56,8 @@ interface PartnerSettlementDialogProps {
         note?: string
         amountsByCurrency?: CurrencySettlementAmount[]
         onProgress?: (progress: PartnerSettlementProgress) => void
+        accountId?: string | null
+        accountNameSnapshot?: string | null
     }) => Promise<void> | void
 }
 
@@ -73,6 +77,7 @@ export function PartnerSettlementDialog({
     const [partner, setPartner] = useState<BusinessPartner | null>(null)
     const [direction, setDirection] = useState<PaymentTransactionDirection | null>(defaultDirection)
     const [paymentMethod, setPaymentMethod] = useState<WorkspacePaymentMethod>('cash')
+    const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
     const [paidAt, setPaidAt] = useState('')
     const [note, setNote] = useState('')
     const [balance, setBalance] = useState<PartnerSettlementBalance | null>(null)
@@ -90,6 +95,7 @@ export function PartnerSettlementDialog({
         setPartner(null)
         setDirection(defaultDirection || null)
         setPaymentMethod('cash')
+        setPaymentAccount(null)
         setPaidAt(formatLocalDateTimeValue(new Date()))
         setNote('')
         setBalance(null)
@@ -284,7 +290,9 @@ export function PartnerSettlementDialog({
             paidAt: selectedPaidAt.toISOString(),
             note: note.trim() || undefined,
             amountsByCurrency: amountsByCurrency.length > 0 ? amountsByCurrency : undefined,
-            onProgress: setSettleProgress
+            onProgress: setSettleProgress,
+            accountId: paymentAccount?.id ?? null,
+            accountNameSnapshot: paymentAccount?.name ?? null
         })
     }
 
@@ -516,13 +524,22 @@ export function PartnerSettlementDialog({
 
                             <div className="grid gap-2">
                                 <Label>{t('partnerSettlement.paymentMethod', { defaultValue: 'Payment Method' })}</Label>
-                                <PaymentMethodSelect
+                                <PaymentMethodSelector
                                     value={paymentMethod}
                                     onValueChange={(value) => setPaymentMethod(value as WorkspacePaymentMethod)}
+                                    onLinkedPaymentAccountSelect={setPaymentAccount}
+                                    workspaceId={workspaceId}
                                     methods={STANDARD_PAYMENT_METHODS}
                                     disabled={isSubmitting}
                                 />
                             </div>
+
+                            <PaymentAccountSelector
+                                workspaceId={workspaceId}
+                                value={paymentAccount?.id}
+                                onValueChange={setPaymentAccount}
+                                disabled={isSubmitting}
+                            />
 
                             <div className="grid gap-2">
                                 <Label>{t('partnerSettlement.paidAt', { defaultValue: 'Paid At' })}</Label>

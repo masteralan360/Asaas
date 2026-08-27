@@ -11,6 +11,7 @@ import { getInventoryQuantityForProductStorage, putInventoryQuantity, syncProduc
 import { addToOfflineMutations, fetchTableFromSupabase, syncSalesFromSupabase } from './hooks'
 import { refreshStockBatchesFromSupabase, getStockBatchSalePlan, splitStockBatchAllocationsForReturn } from './stockBatches'
 import { resolveReturnStorageId } from './storageUtils'
+import { mirrorPaymentAccountTransactionLocally } from './paymentAccounts'
 import type {
     Loan,
     LoanInstallment,
@@ -40,6 +41,8 @@ export interface ProcessSaleProductExchangeInput {
     note?: string | null
     returnReason?: string | null
     createdBy?: string | null
+    accountId?: string | null
+    accountNameSnapshot?: string | null
 }
 
 export interface ProcessSaleProductExchangeResult {
@@ -435,6 +438,7 @@ async function applyLocalSaleProductExchange(input: ProcessSaleProductExchangeIn
                         paymentMethod: 'loan_adjustment', paidAt: timestamp,
                         counterpartyName: loan.borrowerName, referenceLabel: loan.loanNo,
                         note: 'Product exchange credit', createdBy: input.createdBy || null,
+                        accountId: null, accountNameSnapshot: null,
                         metadata: {
                             saleId: sale.id,
                             saleProductExchangeId: ids.exchangeId,
@@ -444,6 +448,7 @@ async function applyLocalSaleProductExchange(input: ProcessSaleProductExchangeIn
                         version: 1, isDeleted: false, ...sync,
                     }
                     await db.payment_transactions.put(loanLedger)
+                    await mirrorPaymentAccountTransactionLocally(loanLedger)
                 }
             } else {
                 cashSettlementAmount = Math.abs(differenceAmount)
@@ -462,11 +467,14 @@ async function applyLocalSaleProductExchange(input: ProcessSaleProductExchangeIn
                 paymentMethod: input.settlementMethod, paidAt: timestamp,
                 counterpartyName: null, referenceLabel: ids.exchangeId,
                 note: 'Product exchange settlement', createdBy: input.createdBy || null,
+                accountId: input.accountId ?? null,
+                accountNameSnapshot: input.accountNameSnapshot ?? null,
                 metadata: { saleId: sale.id, saleProductExchangeId: ids.exchangeId },
                 reversalOfTransactionId: null, createdAt: timestamp, updatedAt: timestamp,
                 version: 1, isDeleted: false, ...sync,
             }
             await db.payment_transactions.put(transaction)
+            await mirrorPaymentAccountTransactionLocally(transaction)
         }
 
         const exchange: SaleProductExchange = {
@@ -511,7 +519,7 @@ export async function processSaleProductExchange(input: ProcessSaleProductExchan
     const online = isOnline()
 
     if (!localMode && online) {
-        const { data, error } = await supabase.rpc('process_sale_product_exchange', {
+        const { data, error } = await supabase.rpc('process_sale_product_exchange_with_account', {
             p_exchange_id: ids.exchangeId,
             p_return_id: ids.returnId,
             p_sale_id: input.saleId,
@@ -522,6 +530,8 @@ export async function processSaleProductExchange(input: ProcessSaleProductExchan
             p_replacement_quantity: normalizeQuantity(input.replacementQuantity, 'Replacement quantity'),
             p_replacement_unit_amount: normalizeAmount(input.replacementUnitAmount, 'Replacement unit amount'),
             p_settlement_method: input.settlementMethod || null,
+            p_account_id: input.accountId || null,
+            p_account_name_snapshot: input.accountNameSnapshot || null,
             p_note: input.note?.trim() || null,
             p_return_reason: input.returnReason?.trim() || 'Product exchange',
         })
@@ -543,12 +553,13 @@ export async function processSaleProductExchange(input: ProcessSaleProductExchan
     const result = await applyLocalSaleProductExchange(input, ids)
     if (!localMode) {
         await addToOfflineMutations('sales', input.saleId, 'update', {
-            __rpc_action: 'process_sale_product_exchange',
+            __rpc_action: 'process_sale_product_exchange_with_account',
             p_exchange_id: ids.exchangeId, p_return_id: ids.returnId, p_sale_id: input.saleId,
             p_return_sale_item_id: input.returnSaleItemId, p_return_quantity: input.returnQuantity,
             p_replacement_product_id: input.replacementProductId, p_replacement_storage_id: input.replacementStorageId,
             p_replacement_quantity: input.replacementQuantity, p_replacement_unit_amount: input.replacementUnitAmount,
             p_settlement_method: input.settlementMethod || null, p_note: input.note?.trim() || null,
+            p_account_id: input.accountId || null, p_account_name_snapshot: input.accountNameSnapshot || null,
             p_return_reason: input.returnReason?.trim() || 'Product exchange',
         }, input.workspaceId)
     }

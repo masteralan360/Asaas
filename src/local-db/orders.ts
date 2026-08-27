@@ -1128,6 +1128,8 @@ async function appendInitialOrderPaymentTransaction(orderType: OrderType, order:
             : (order as PurchaseOrder).supplierName,
         referenceLabel: order.orderNumber,
         note: order.notes || null,
+        accountId: order.initialPaymentAccountId ?? null,
+        accountNameSnapshot: order.initialPaymentAccountNameSnapshot ?? null,
         metadata: {
             orderStatus: order.status,
             ...(orderType === 'sales' ? { sourceChannel: (order as SalesOrder).sourceChannel || 'manual' } : {}),
@@ -1925,6 +1927,8 @@ export async function recordOrderPayment(
         paidAt: string
         note?: string | null
         createdBy?: string | null
+        accountId?: string | null
+        accountNameSnapshot?: string | null
     }
 ) {
     const orderTable = input.orderType === 'sales' ? db.sales_orders : db.purchase_orders
@@ -2002,6 +2006,8 @@ export async function recordOrderPayment(
         referenceLabel: order.orderNumber,
         note: input.note || null,
         createdBy: input.createdBy || null,
+        accountId: input.accountId ?? null,
+        accountNameSnapshot: input.accountNameSnapshot ?? null,
         metadata: {
             orderStatus: order.status,
             orderType: input.orderType,
@@ -2584,6 +2590,8 @@ export type ReturnSalesOrderInput = {
     reason: string
     returnedBy?: string | null
     actorRole?: string | null
+    accountId?: string | null
+    accountNameSnapshot?: string | null
 }
 
 export type CreatePostReturnOrderAdjustmentInput = {
@@ -2705,6 +2713,8 @@ async function appendOrderReturnPaymentReversal(input: {
     returnId: string
     reason: string
     returnedBy?: string | null
+    accountId?: string | null
+    accountNameSnapshot?: string | null
 }) {
     if (input.amount <= ORDER_AMOUNT_EPSILON) return null
 
@@ -2723,6 +2733,8 @@ async function appendOrderReturnPaymentReversal(input: {
         note: `Order return ${input.returnId}: ${input.reason}`,
         createdBy: input.returnedBy || null,
         reversalOfTransactionId: input.transaction.id,
+        accountId: input.accountId ?? input.transaction.accountId ?? null,
+        accountNameSnapshot: input.accountNameSnapshot ?? input.transaction.accountNameSnapshot ?? null,
         metadata: {
             ...(input.transaction.metadata || {}),
             orderReturnId: input.returnId,
@@ -2825,6 +2837,8 @@ async function applySalesOrderReturnToFinancing(input: {
     returnAmount: number
     reason: string
     returnedBy?: string | null
+    accountId?: string | null
+    accountNameSnapshot?: string | null
     timestamp: string
 }) {
     const loan = input.order.linkedLoanId ? await db.loans.get(input.order.linkedLoanId) : null
@@ -2960,7 +2974,9 @@ async function applySalesOrderReturnToFinancing(input: {
             amount,
             returnId: input.returnId,
             reason: input.reason,
-            returnedBy: input.returnedBy
+            returnedBy: input.returnedBy,
+            accountId: input.accountId,
+            accountNameSnapshot: input.accountNameSnapshot
         })
     ))
     if (unmappedLoanPaymentRefund > ORDER_AMOUNT_EPSILON) {
@@ -2977,6 +2993,8 @@ async function applySalesOrderReturnToFinancing(input: {
             referenceLabel: input.order.orderNumber,
             note: `Order return ${input.returnId}: loan repayment refund`,
             createdBy: input.returnedBy || null,
+            accountId: input.accountId ?? null,
+            accountNameSnapshot: input.accountNameSnapshot ?? null,
             metadata: {
                 orderId: input.order.id,
                 orderReturnId: input.returnId,
@@ -3003,7 +3021,9 @@ async function applySalesOrderReturnToFinancing(input: {
                 amount: applied,
                 returnId: input.returnId,
                 reason: input.reason,
-                returnedBy: input.returnedBy
+                returnedBy: input.returnedBy,
+                accountId: input.accountId,
+                accountNameSnapshot: input.accountNameSnapshot
             })
             remainingInitialRefund = roundAmount(Math.max(0, remainingInitialRefund - applied), input.order.currency)
         }
@@ -3021,6 +3041,8 @@ async function applySalesOrderReturnToFinancing(input: {
                 referenceLabel: input.order.orderNumber,
                 note: `Order return ${input.returnId}: financing down payment refund`,
                 createdBy: input.returnedBy || null,
+                accountId: input.accountId ?? null,
+                accountNameSnapshot: input.accountNameSnapshot ?? null,
                 metadata: {
                     orderId: input.order.id,
                     orderReturnId: input.returnId,
@@ -3331,6 +3353,8 @@ export async function returnSalesOrder(input: ReturnSalesOrderInput) {
             returnAmount,
             reason,
             returnedBy: input.returnedBy,
+            accountId: input.accountId,
+            accountNameSnapshot: input.accountNameSnapshot,
             timestamp
         })
         : null
@@ -3424,7 +3448,9 @@ export async function returnSalesOrder(input: ReturnSalesOrderInput) {
                 amount: applied,
                 returnId,
                 reason,
-                returnedBy: input.returnedBy
+                returnedBy: input.returnedBy,
+                accountId: input.accountId,
+                accountNameSnapshot: input.accountNameSnapshot
             })
             remainingPaymentReversal = roundAmount(Math.max(0, remainingPaymentReversal - applied), order.currency)
         }

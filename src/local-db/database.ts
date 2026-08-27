@@ -62,6 +62,14 @@ import type {
   LoanInstallment,
   LoanPayment,
   PaymentTransaction,
+  PaymentAccount,
+  PaymentAccountBalance,
+  PaymentAccountMovement,
+  CashierShift,
+  CashierShiftCurrencyCount,
+  CashierShiftTemplate,
+  CashierShiftAssignment,
+  CashierShiftOccurrence,
   BudgetSettings,
   BudgetAllocation,
   ExpenseSeries,
@@ -495,6 +503,14 @@ export class AtlasDatabase extends Dexie {
   loan_installments!: EntityTable<LoanInstallment, "id">;
   loan_payments!: EntityTable<LoanPayment, "id">;
   payment_transactions!: EntityTable<PaymentTransaction, "id">;
+  payment_accounts!: EntityTable<PaymentAccount, "id">;
+  payment_account_balances!: EntityTable<PaymentAccountBalance, "id">;
+  payment_account_movements!: EntityTable<PaymentAccountMovement, "id">;
+  cashier_shifts!: EntityTable<CashierShift, "id">;
+  cashier_shift_currency_counts!: EntityTable<CashierShiftCurrencyCount, "id">;
+  cashier_shift_templates!: EntityTable<CashierShiftTemplate, "id">;
+  cashier_shift_assignments!: EntityTable<CashierShiftAssignment, "id">;
+  cashier_shift_occurrences!: EntityTable<CashierShiftOccurrence, "id">;
   sales_orders!: EntityTable<SalesOrder, "id">;
   purchase_orders!: EntityTable<PurchaseOrder, "id">;
   order_installments!: EntityTable<OrderInstallment, "id">;
@@ -3260,6 +3276,96 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, contractNo, requestId, vehicleId, businessPartnerId, status, plannedPickupAt, plannedReturnAt, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+contractNo], [workspaceId+vehicleId], [workspaceId+status], [workspaceId+createdAt]",
     });
 
+    this.version(99).stores({
+      payment_transactions:
+        "id, workspaceId, paidAt, accountId, sourceModule, sourceType, sourceRecordId, sourceSubrecordId, direction, reversalOfTransactionId, updatedAt, isDeleted, syncStatus, [workspaceId+paidAt], [workspaceId+accountId], [workspaceId+sourceType+sourceRecordId]",
+      payment_accounts:
+        "id, workspaceId, name, accountType, isActive, updatedAt, isDeleted, syncStatus, [workspaceId+name], [workspaceId+isActive]",
+      payment_account_balances:
+        "id, workspaceId, accountId, currency, updatedAt, isDeleted, syncStatus, [workspaceId+accountId], [accountId+currency]",
+      payment_account_movements:
+        "id, workspaceId, accountId, paymentTransactionId, currency, occurredAt, updatedAt, isDeleted, syncStatus, [workspaceId+accountId], [accountId+occurredAt], [workspaceId+occurredAt]",
+      cashier_shifts:
+        "id, workspaceId, accountId, cashierUserId, status, openedAt, closedAt, updatedAt, isDeleted, syncStatus, [workspaceId+accountId], [workspaceId+status], [accountId+cashierUserId]",
+      cashier_shift_currency_counts:
+        "id, workspaceId, shiftId, currency, updatedAt, isDeleted, syncStatus, [workspaceId+shiftId], [shiftId+currency]",
+    });
+
+    this.version(100).stores({
+      payment_transactions:
+        "id, workspaceId, paidAt, accountId, sourceModule, sourceType, sourceRecordId, sourceSubrecordId, direction, reversalOfTransactionId, updatedAt, isDeleted, syncStatus, [workspaceId+paidAt], [workspaceId+accountId], [workspaceId+sourceType+sourceRecordId]",
+      payment_accounts:
+        "id, workspaceId, name, accountType, iconKey, isPrimary, isDefaultForPaymentSelector, isActive, updatedAt, isDeleted, syncStatus, [workspaceId+name], [workspaceId+isActive]",
+      payment_account_balances:
+        "id, workspaceId, accountId, currency, updatedAt, isDeleted, syncStatus, [workspaceId+accountId], [accountId+currency]",
+      payment_account_movements:
+        "id, workspaceId, accountId, paymentTransactionId, currency, occurredAt, updatedAt, isDeleted, syncStatus, [workspaceId+accountId], [accountId+occurredAt], [workspaceId+occurredAt]",
+      cashier_shifts:
+        "id, workspaceId, accountId, cashierUserId, status, openedAt, closedAt, updatedAt, isDeleted, syncStatus, [workspaceId+accountId], [workspaceId+status], [accountId+cashierUserId]",
+      cashier_shift_currency_counts:
+        "id, workspaceId, shiftId, currency, updatedAt, isDeleted, syncStatus, [workspaceId+shiftId], [shiftId+currency]",
+    }).upgrade(async (transaction) => {
+      const accounts = await transaction.table('payment_accounts').toArray() as PaymentAccount[];
+      const updates = new Map<string, PaymentAccount>();
+
+      for (const account of accounts) {
+        const iconKey = account.iconKey
+          ?? (account.accountType === 'bank_account' ? 'bank' : account.accountType === 'digital_wallet' ? 'wallet' : account.accountType === 'other' ? 'card' : 'cash_drawer');
+        if (account.iconKey !== iconKey) updates.set(account.id, { ...account, iconKey });
+      }
+
+      const accountsByWorkspace = new Map<string, PaymentAccount[]>();
+      for (const account of accounts) {
+        if (account.isDeleted || !account.isActive) continue;
+        const workspaceAccounts = accountsByWorkspace.get(account.workspaceId) ?? [];
+        workspaceAccounts.push(account);
+        accountsByWorkspace.set(account.workspaceId, workspaceAccounts);
+      }
+      for (const workspaceAccounts of accountsByWorkspace.values()) {
+        if (workspaceAccounts.some((account) => account.isPrimary)) continue;
+        const firstAccount = [...workspaceAccounts].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name))[0];
+        updates.set(firstAccount.id, { ...(updates.get(firstAccount.id) ?? firstAccount), isPrimary: true });
+      }
+
+      if (updates.size) await transaction.table('payment_accounts').bulkPut([...updates.values()]);
+    });
+
+    this.version(101).stores({
+      payment_transactions:
+        "id, workspaceId, paidAt, accountId, sourceModule, sourceType, sourceRecordId, sourceSubrecordId, direction, reversalOfTransactionId, updatedAt, isDeleted, syncStatus, [workspaceId+paidAt], [workspaceId+accountId], [workspaceId+sourceType+sourceRecordId]",
+      payment_accounts:
+        "id, workspaceId, name, accountType, linkedPaymentMethod, iconKey, isPrimary, isDefaultForPaymentSelector, isActive, updatedAt, isDeleted, syncStatus, [workspaceId+name], [workspaceId+isActive], [workspaceId+linkedPaymentMethod]",
+      payment_account_balances:
+        "id, workspaceId, accountId, currency, updatedAt, isDeleted, syncStatus, [workspaceId+accountId], [accountId+currency]",
+      payment_account_movements:
+        "id, workspaceId, accountId, paymentTransactionId, currency, occurredAt, updatedAt, isDeleted, syncStatus, [workspaceId+accountId], [accountId+occurredAt], [workspaceId+occurredAt]",
+      cashier_shifts:
+        "id, workspaceId, accountId, cashierUserId, status, openedAt, closedAt, updatedAt, isDeleted, syncStatus, [workspaceId+accountId], [workspaceId+status], [accountId+cashierUserId]",
+      cashier_shift_currency_counts:
+        "id, workspaceId, shiftId, currency, updatedAt, isDeleted, syncStatus, [workspaceId+shiftId], [shiftId+currency]",
+    });
+
+    this.version(102).stores({
+      payment_transactions:
+        "id, workspaceId, paidAt, accountId, sourceModule, sourceType, sourceRecordId, sourceSubrecordId, direction, reversalOfTransactionId, updatedAt, isDeleted, syncStatus, [workspaceId+paidAt], [workspaceId+accountId], [workspaceId+sourceType+sourceRecordId]",
+      payment_accounts:
+        "id, workspaceId, name, accountType, linkedPaymentMethod, iconKey, isPrimary, isDefaultForPaymentSelector, isActive, updatedAt, isDeleted, syncStatus, [workspaceId+name], [workspaceId+isActive], [workspaceId+linkedPaymentMethod]",
+      payment_account_balances:
+        "id, workspaceId, accountId, currency, updatedAt, isDeleted, syncStatus, [workspaceId+accountId], [accountId+currency]",
+      payment_account_movements:
+        "id, workspaceId, accountId, paymentTransactionId, currency, occurredAt, updatedAt, isDeleted, syncStatus, [workspaceId+accountId], [accountId+occurredAt], [workspaceId+occurredAt]",
+      cashier_shifts:
+        "id, workspaceId, accountId, cashierUserId, status, openedAt, closedAt, updatedAt, isDeleted, syncStatus, [workspaceId+accountId], [workspaceId+status], [accountId+cashierUserId]",
+      cashier_shift_currency_counts:
+        "id, workspaceId, shiftId, currency, updatedAt, isDeleted, syncStatus, [workspaceId+shiftId], [shiftId+currency]",
+      cashier_shift_templates:
+        "id, workspaceId, name, isActive, updatedAt, isDeleted, syncStatus, [workspaceId+name], [workspaceId+isActive]",
+      cashier_shift_assignments:
+        "id, workspaceId, templateId, accountId, cashierUserId, isActive, updatedAt, isDeleted, syncStatus, [workspaceId+cashierUserId], [workspaceId+isActive], [cashierUserId+isActive]",
+      cashier_shift_occurrences:
+        "id, workspaceId, assignmentId, cashierUserId, scheduledStartAt, status, updatedAt, isDeleted, syncStatus, [workspaceId+cashierUserId], [workspaceId+scheduledStartAt], [cashierUserId+scheduledStartAt], [assignmentId+scheduledStartAt]",
+    });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }
@@ -3433,6 +3539,14 @@ export class AtlasDatabase extends Dexie {
       "loan_installments",
       "loan_payments",
       "payment_transactions",
+      "payment_accounts",
+      "payment_account_balances",
+      "payment_account_movements",
+      "cashier_shifts",
+      "cashier_shift_currency_counts",
+      "cashier_shift_templates",
+      "cashier_shift_assignments",
+      "cashier_shift_occurrences",
       "sales_orders",
       "purchase_orders",
       "order_installments",
@@ -3638,6 +3752,14 @@ export async function clearDatabase(): Promise<void> {
       db.delivery_settlements,
       db.delivery_ledger_entries,
       db.payment_transactions,
+      db.payment_accounts,
+      db.payment_account_balances,
+      db.payment_account_movements,
+      db.cashier_shifts,
+      db.cashier_shift_currency_counts,
+      db.cashier_shift_templates,
+      db.cashier_shift_assignments,
+      db.cashier_shift_occurrences,
       db.order_installments,
       db.order_returns,
       db.order_return_items,
@@ -3695,6 +3817,14 @@ export async function clearDatabase(): Promise<void> {
       await db.delivery_settlements.clear();
       await db.delivery_ledger_entries.clear();
       await db.payment_transactions.clear();
+      await db.payment_accounts.clear();
+      await db.payment_account_balances.clear();
+      await db.payment_account_movements.clear();
+      await db.cashier_shifts.clear();
+      await db.cashier_shift_currency_counts.clear();
+      await db.cashier_shift_templates.clear();
+      await db.cashier_shift_assignments.clear();
+      await db.cashier_shift_occurrences.clear();
       await db.order_installments.clear();
       await db.order_returns.clear();
       await db.order_return_items.clear();

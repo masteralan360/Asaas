@@ -14,13 +14,14 @@ import { getDateRangeBounds } from '@/lib/dateRangeFilters'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, applySalesOrderReturnQuantities, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, usePriceBookCatalogState, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, useBusinessPartners, useDeliveryMerchantProfiles, useDeliveryShipments, useRentalContracts, useRentalVehicles, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, toUISaleFromDeliveryShipment, toUISaleFromRentalContract, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
+import { adjustInventoryQuantity, applySalesOrderReturnQuantities, appendPaymentTransaction, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, usePriceBookCatalogState, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, useBusinessPartners, useDeliveryMerchantProfiles, useDeliveryShipments, useRentalContracts, useRentalVehicles, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, toUISaleFromDeliveryShipment, toUISaleFromRentalContract, type Loan, type PaymentAccount, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation, type WorkspacePaymentMethod } from '@/local-db'
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
+import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import { useTheme } from '@/ui/components/theme-provider'
 import {
     Table,
@@ -398,6 +399,7 @@ export function Sales() {
     const [printingSale, setPrintingSale] = useState<Sale | null>(null)
     const [returnModalOpen, setReturnModalOpen] = useState(false)
     const [saleToReturn, setSaleToReturn] = useState<Sale | null>(null)
+    const [returnPaymentAccount, setReturnPaymentAccount] = useState<PaymentAccount | null>(null)
     const [saleForReturnAction, setSaleForReturnAction] = useState<Sale | null>(null)
     const [saleForProductExchange, setSaleForProductExchange] = useState<Sale | null>(null)
     const [lockedProductExchangeSaleItemId, setLockedProductExchangeSaleItemId] = useState<string | null>(null)
@@ -1178,6 +1180,7 @@ export function Sales() {
 
     const finalizeReturn = (sale: Sale, items: SaleItem[], isWholeSale: boolean, isPartial: boolean = false) => {
         const filteredSale = { ...sale, items, _isWholeSaleReturn: isWholeSale, _isPartialReturn: isPartial } as any
+        setReturnPaymentAccount(null)
 
         const rules = items
             .filter(item => item.product && item.product.return_rules)
@@ -1289,6 +1292,8 @@ export function Sales() {
                 replacementQuantity: draft.replacementQuantity,
                 replacementUnitAmount: draft.replacementUnitAmount,
                 settlementMethod: draft.settlementMethod,
+                accountId: draft.accountId ?? null,
+                accountNameSnapshot: draft.accountNameSnapshot ?? null,
                 returnReason: 'Product exchange',
                 createdBy: user.id,
             })
@@ -1484,6 +1489,8 @@ export function Sales() {
             restoredBatchAllocations: StockBatchAllocation[]
         }>
         pendingSync: boolean
+        paymentAccount?: PaymentAccount | null
+        hasPaymentAccountSelection?: boolean
     }) => {
         const syncStatus = input.pendingSync ? 'pending' : 'synced'
         const saleReturn: LocalSaleReturn = {
@@ -1531,6 +1538,42 @@ export function Sales() {
         await db.transaction('rw', [db.sale_returns, db.sale_return_items], async () => {
             await db.sale_returns.put(saleReturn)
             await db.sale_return_items.bulkPut(saleReturnItems)
+        })
+
+        if (input.sale.origin !== 'pos' || input.sale.payment_method === 'loan' || input.refundAmount <= 0) {
+            return
+        }
+
+        const salePayments = await db.payment_transactions
+            .where('[workspaceId+sourceType+sourceRecordId]')
+            .equals([input.sale.workspace_id, 'pos_sale', input.sale.id])
+            .toArray()
+        const originalPayment = salePayments
+            .filter((payment) => !payment.isDeleted && !payment.reversalOfTransactionId)
+            .sort((left, right) => right.paidAt.localeCompare(left.paidAt) || right.createdAt.localeCompare(left.createdAt))[0]
+
+        await appendPaymentTransaction(input.sale.workspace_id, {
+            sourceModule: 'sales',
+            sourceType: 'pos_sale',
+            sourceRecordId: input.sale.id,
+            sourceSubrecordId: input.returnId,
+            direction: 'incoming',
+            amount: -Math.abs(input.refundAmount),
+            currency: input.sale.settlement_currency || 'usd',
+            paymentMethod: (input.sale.payment_method || 'cash') as WorkspacePaymentMethod,
+            paidAt: input.timestamp,
+            counterpartyName: input.sale.customer_name || null,
+            referenceLabel: input.sale.invoice_number || input.sale.id,
+            note: `Sale return ${input.returnId}: ${input.reason || 'Return'}`,
+            createdBy: user?.id || null,
+            reversalOfTransactionId: originalPayment?.id ?? null,
+            ...(input.hasPaymentAccountSelection
+                ? {
+                    accountId: input.paymentAccount?.id ?? null,
+                    accountNameSnapshot: input.paymentAccount?.name ?? null
+                }
+                : {}),
+            metadata: { saleReturnId: input.returnId, returnReason: input.reason || 'Return' }
         })
     }, [user?.id])
 
@@ -1633,7 +1676,9 @@ export function Sales() {
                         refundAmount: returnValue,
                         linePayloads: returnLinePayloads,
                         restoredPlans,
-                        pendingSync: shouldQueueOfflineReturn
+                        pendingSync: shouldQueueOfflineReturn,
+                        paymentAccount: returnPaymentAccount,
+                        hasPaymentAccountSelection: returnPaymentAccount !== null
                     })
 
                     const updateSale = (s: Sale): Sale => {
@@ -1755,7 +1800,9 @@ export function Sales() {
                         refundAmount: returnValue,
                         linePayloads: returnLinePayloads,
                         restoredPlans,
-                        pendingSync: shouldQueueOfflineReturn
+                        pendingSync: shouldQueueOfflineReturn,
+                        paymentAccount: returnPaymentAccount,
+                        hasPaymentAccountSelection: returnPaymentAccount !== null
                     })
 
                     const updateSale = (s: Sale): Sale => {
@@ -1909,7 +1956,9 @@ export function Sales() {
                         refundAmount: returnValue,
                         linePayloads: returnLinePayloads,
                         restoredPlans,
-                        pendingSync: false
+                        pendingSync: false,
+                        paymentAccount: returnPaymentAccount,
+                        hasPaymentAccountSelection: returnPaymentAccount !== null
                     })
 
                     const updateSale = (s: Sale): Sale => {
@@ -2028,7 +2077,9 @@ export function Sales() {
                         refundAmount: returnValue,
                         linePayloads: returnLinePayloads,
                         restoredPlans,
-                        pendingSync: false
+                        pendingSync: false,
+                        paymentAccount: returnPaymentAccount,
+                        hasPaymentAccountSelection: returnPaymentAccount !== null
                     })
 
                     const updateSale = (s: Sale): Sale => {
@@ -3132,6 +3183,7 @@ export function Sales() {
                     productCatalog={products}
                     replacementProducts={productExchangeReplacementProducts}
                     settlementCurrency={saleForProductExchange?.settlement_currency || 'usd'}
+                    workspaceId={user?.workspaceId || ''}
                     lockedSaleItemId={lockedProductExchangeSaleItemId}
                     resolvePriceBookReplacementAmount={resolvePriceBookReplacementAmount}
                     isSubmitting={isSubmittingProductExchange}
@@ -3172,13 +3224,21 @@ export function Sales() {
                 {/* Return Confirmation Modal */}
                 <ReturnConfirmationModal
                     isOpen={returnModalOpen}
-                    onClose={() => setReturnModalOpen(false)}
+                    onClose={() => {
+                        setReturnModalOpen(false)
+                        setReturnPaymentAccount(null)
+                    }}
                     onConfirm={handleReturnConfirm}
                     title={saleToReturn ? t('sales.return.confirmTitle') || 'Return Sale' : ''}
                     message={saleToReturn ? (t('sales.return.confirmMessage') || 'Are you sure you want to return this sale?') : ''}
                     isItemReturn={saleToReturn?.items?.length === 1 && saleToReturn?.items?.[0]?.quantity > 1 && selectedSale?.items?.filter(i => i.product_id === saleToReturn?.items?.[0]?.product_id).length === 1}
                     maxQuantity={saleToReturn?.items?.[0]?.quantity || 1}
                     itemName={saleToReturn?.items?.[0]?.product_name || ''}
+                    workspaceId={user?.workspaceId}
+                    paymentAccount={returnPaymentAccount}
+                    onPaymentAccountChange={setReturnPaymentAccount}
+                    showPaymentAccount={saleToReturn?.origin === 'pos' && saleToReturn.payment_method !== 'loan'}
+                    cashDrawerOnly={saleToReturn?.payment_method === 'cash'}
                 />
 
                 {/* Sales Note Modal */}

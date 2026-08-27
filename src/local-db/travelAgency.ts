@@ -16,7 +16,8 @@ import {
     recalculateBusinessPartnerSummary
 } from './businessPartners'
 import { recalculateSupplierSummary } from './orders'
-import type { TravelAgencySale } from './models'
+import type { TravelAgencySale, WorkspacePaymentMethod } from './models'
+import { appendPaymentTransaction } from './payments'
 
 const TABLE_NAME = 'travel_agency_sales'
 
@@ -317,9 +318,83 @@ function computeSnapshots(data: { groupRevenue: number; supplierCost: number; to
     return { snapshotRevenue: revenue, snapshotCost: cost, snapshotProfit: revenue - cost }
 }
 
+export type TravelAgencyPaymentAccountInput = {
+    accountId?: string | null
+    accountNameSnapshot?: string | null
+}
+
+async function getActiveTravelSalePayment(workspaceId: string, saleId: string) {
+    const rows = await db.payment_transactions
+        .where('[workspaceId+sourceType+sourceRecordId]')
+        .equals([workspaceId, 'travel_agency_sale', saleId])
+        .toArray()
+    const reversedIds = new Set(rows.map((item) => item.reversalOfTransactionId).filter(Boolean))
+    return rows
+        .filter((item) => !item.isDeleted && !item.reversalOfTransactionId && !reversedIds.has(item.id))
+        .sort((left, right) => right.paidAt.localeCompare(left.paidAt) || right.createdAt.localeCompare(left.createdAt))[0] ?? null
+}
+
+async function syncTravelSalePayment(
+    sale: TravelAgencySale,
+    selection: TravelAgencyPaymentAccountInput = {},
+) {
+    const current = await getActiveTravelSalePayment(sale.workspaceId, sale.id)
+    const amount = Math.max(0, Number(sale.paidAmount || 0))
+    const method = sale.paymentMethod as WorkspacePaymentMethod
+    const paidAt = sale.paidAt || sale.updatedAt
+
+    if (!sale.isPaid || amount <= 0) {
+        if (current) {
+            await appendPaymentTransaction(sale.workspaceId, {
+                sourceModule: 'travel_agency', sourceType: 'travel_agency_sale', sourceRecordId: sale.id,
+                sourceSubrecordId: null, direction: 'incoming', amount: -Math.abs(current.amount),
+                currency: current.currency, paymentMethod: current.paymentMethod, paidAt,
+                counterpartyName: null, referenceLabel: sale.saleNumber, note: 'Travel sale payment reversed',
+                createdBy: sale.createdBy ?? null, reversalOfTransactionId: current.id,
+                accountId: current.accountId ?? null, accountNameSnapshot: current.accountNameSnapshot ?? null,
+                metadata: { travelAgencySaleId: sale.id, reversal: true },
+            })
+        }
+        return
+    }
+
+    const effectiveAccountId = selection.accountId === undefined ? current?.accountId ?? null : selection.accountId
+    const effectiveAccountName = selection.accountNameSnapshot === undefined
+        ? current?.accountNameSnapshot ?? null
+        : selection.accountNameSnapshot
+    const unchanged = current
+        && current.amount === amount
+        && current.currency === sale.currency
+        && current.paymentMethod === method
+        && current.paidAt === paidAt
+    if (unchanged) return
+
+    if (current) {
+        await appendPaymentTransaction(sale.workspaceId, {
+            sourceModule: 'travel_agency', sourceType: 'travel_agency_sale', sourceRecordId: sale.id,
+            sourceSubrecordId: null, direction: 'incoming', amount: -Math.abs(current.amount),
+            currency: current.currency, paymentMethod: current.paymentMethod, paidAt,
+            counterpartyName: null, referenceLabel: sale.saleNumber, note: 'Travel sale payment corrected',
+            createdBy: sale.createdBy ?? null, reversalOfTransactionId: current.id,
+            accountId: current.accountId ?? null, accountNameSnapshot: current.accountNameSnapshot ?? null,
+            metadata: { travelAgencySaleId: sale.id, correction: true },
+        })
+    }
+
+    await appendPaymentTransaction(sale.workspaceId, {
+        sourceModule: 'travel_agency', sourceType: 'travel_agency_sale', sourceRecordId: sale.id,
+        sourceSubrecordId: null, direction: 'incoming', amount, currency: sale.currency,
+        paymentMethod: method, paidAt, counterpartyName: null, referenceLabel: sale.saleNumber,
+        note: sale.notes || null, createdBy: sale.createdBy ?? null,
+        accountId: effectiveAccountId, accountNameSnapshot: effectiveAccountName,
+        metadata: { travelAgencySaleId: sale.id },
+    })
+}
+
 export async function createTravelAgencySale(
     workspaceId: string,
-    data: Omit<TravelAgencySale, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'saleNumber'>
+    data: Omit<TravelAgencySale, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'saleNumber'>,
+    selection: TravelAgencyPaymentAccountInput = {},
 ) {
     const saleNumber = await generateSaleNumber(workspaceId, data.saleDate)
     const snapshots = computeSnapshots(data)
@@ -333,11 +408,12 @@ export async function createTravelAgencySale(
 
     await db.travel_agency_sales.put(sale)
     await syncUpsertEntities([sale as unknown as Record<string, unknown> & { id: string; version: number }], workspaceId)
+    await syncTravelSalePayment(sale, selection)
     await recalculateSupplierAndPartnerSummaries(workspaceId, sale.supplierId, sale.businessPartnerId)
     return sale
 }
 
-export async function updateTravelAgencySale(id: string, data: Partial<TravelAgencySale>) {
+export async function updateTravelAgencySale(id: string, data: Partial<TravelAgencySale>, selection: TravelAgencyPaymentAccountInput = {}) {
     const existing = await db.travel_agency_sales.get(id)
     if (!existing || existing.isDeleted) {
         throw new Error('Travel agency sale not found')
@@ -369,6 +445,7 @@ export async function updateTravelAgencySale(id: string, data: Partial<TravelAge
 
     await db.travel_agency_sales.put(updated)
     await syncUpsertEntities([updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
+    await syncTravelSalePayment(updated, selection)
     await Promise.all(
         Array.from(new Set([
             `${existing.supplierId || ''}::${existing.businessPartnerId || ''}`,
@@ -390,6 +467,8 @@ export async function setTravelAgencySalePaymentStatus(
     input: {
         isPaid: boolean
         paidAt?: string | null
+        accountId?: string | null
+        accountNameSnapshot?: string | null
     }
 ) {
     const existing = await db.travel_agency_sales.get(id)
@@ -415,6 +494,7 @@ export async function setTravelAgencySalePaymentStatus(
 
     await db.travel_agency_sales.put(updated)
     await syncUpsertEntities([updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
+    await syncTravelSalePayment(updated, input)
     await Promise.all(
         Array.from(new Set([
             `${existing.supplierId || ''}::${existing.businessPartnerId || ''}`,

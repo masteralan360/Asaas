@@ -466,6 +466,22 @@ export function buildWorkspaceNavigation({
             },
           ]
           : []),
+        ...(hasFeature("payment_accounts") && canAccessPermission("paymentAccounts.access")
+          ? [
+            {
+              name: t("nav.paymentAccounts", { defaultValue: "Payment Accounts" }),
+              href: "/payment-accounts",
+              icon: Wallet,
+              children: hasFeature("cashier_shift_control") && canAccessPermission("cashierShiftControl.access")
+                ? [{
+                  name: t("paymentAccounts.cashierShifts", { defaultValue: "Cashier Shifts" }),
+                  href: "/payment-accounts/cashier-shifts",
+                  icon: CalendarClock,
+                }]
+                : undefined,
+            },
+          ]
+          : []),
         ...(hasFeature("direct_transactions") && canAccessPermission("directTransaction.access")
           ? [
             {

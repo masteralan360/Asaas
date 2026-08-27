@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CircleHelp, Users, X } from 'lucide-react'
-import { type CurrencyCode, type DirectTransactionPartnerAccountEffect, type WorkspacePaymentMethod } from '@/local-db'
+import { type CurrencyCode, type DirectTransactionPartnerAccountEffect, type PaymentAccount, type WorkspacePaymentMethod } from '@/local-db'
 import { getLoanLinkedPartyTypeLabel, type LoanPartySelection } from '@/lib/loanParties'
 import { STANDARD_PAYMENT_METHODS } from '@/lib/paymentMethods'
 import { formatLocalDateTimeValue, formatNumericInput, parseFormattedNumber, parseLocalDateTimeValue, sanitizeNumericInput } from '@/lib/utils'
@@ -9,13 +9,13 @@ import {
     Button,
     CurrencySelector,
     DateTimePicker,
-    Dialog,
-    DialogBody,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
+    AppDialog,
+    AppDialogBody,
+    AppDialogContent,
+    AppDialogDescription,
+    AppDialogFooter,
+    AppDialogHeader,
+    AppDialogTitle,
     Input,
     Label,
     Select,
@@ -33,7 +33,8 @@ import { useWorkspace } from '@/workspace'
 import { LoanPartyPickerDialog } from '@/ui/components/loans/LoanPartyPickerDialog'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import type { BusinessPartner } from '@/local-db'
-import { PaymentMethodSelect } from './PaymentMethodSelect'
+import { PaymentMethodSelector } from '@/ui/components/PaymentMethodSelector'
+import { PaymentAccountSelector } from './PaymentAccountSelector'
 
 type PartnerAccountTreatment = 'unselected' | 'cash_only' | 'account_movement'
 type PartnerAccountEffect = Exclude<DirectTransactionPartnerAccountEffect, 'none'>
@@ -94,6 +95,8 @@ interface DirectTransactionDialogProps {
         counterpartyName?: string
         businessPartnerId?: string | null
         partnerAccountEffect?: DirectTransactionPartnerAccountEffect
+        accountId?: string | null
+        accountNameSnapshot?: string | null
     }) => Promise<void> | void
 }
 
@@ -110,6 +113,7 @@ export function DirectTransactionDialog({
     const [amount, setAmount] = useState('')
     const [currency, setCurrency] = useState<CurrencyCode>((features.default_currency || 'usd') as CurrencyCode)
     const [paymentMethod, setPaymentMethod] = useState<WorkspacePaymentMethod>('cash')
+    const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
     const [paidAt, setPaidAt] = useState('')
     const [reason, setReason] = useState('')
     const [note, setNote] = useState('')
@@ -132,6 +136,7 @@ export function DirectTransactionDialog({
         setAmount('')
         setCurrency((features.default_currency || 'usd') as CurrencyCode)
         setPaymentMethod('cash')
+        setPaymentAccount(null)
         setPaidAt(formatLocalDateTimeValue(new Date()))
         setReason('')
         setNote('')
@@ -206,26 +211,28 @@ export function DirectTransactionDialog({
             businessPartnerId: linkedPartner.id,
             partnerAccountEffect: linkedPartner.id && partnerAccountTreatment === 'account_movement'
                 ? partnerAccountEffect
-                : 'none'
+                : 'none',
+            accountId: paymentAccount?.id ?? null,
+            accountNameSnapshot: paymentAccount?.name ?? null
         })
     }
 
     return (
-        <Dialog open={open} onOpenChange={(nextOpen) => {
+        <AppDialog open={open} onOpenChange={(nextOpen) => {
             if (!isSubmitting) {
                 onOpenChange(nextOpen)
             }
         }}>
-            <DialogContent layout="structured" className="max-w-4xl">
-                <DialogHeader layout="structured">
-                    <DialogTitle>{t('directTransactionModal.title', { defaultValue: 'New Direct Transaction' })}</DialogTitle>
-                    <DialogDescription>
+            <AppDialogContent className="max-w-4xl" onPointerDownOutside={(event) => isSubmitting && event.preventDefault()} onEscapeKeyDown={(event) => isSubmitting && event.preventDefault()} showCloseButton={!isSubmitting}>
+                <AppDialogHeader>
+                    <AppDialogTitle>{t('directTransactionModal.title', { defaultValue: 'New Direct Transaction' })}</AppDialogTitle>
+                    <AppDialogDescription>
                         {t('directTransactionModal.description', { defaultValue: 'Manual incoming or outgoing money for activity outside the tracked system modules. Payroll does not belong here.' })}
-                    </DialogDescription>
-                </DialogHeader>
+                    </AppDialogDescription>
+                </AppDialogHeader>
 
                 <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-                    <DialogBody>
+                    <AppDialogBody>
                         <div className="grid gap-4">
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <div className="grid gap-2">
@@ -243,13 +250,22 @@ export function DirectTransactionDialog({
 
                                 <div className="grid gap-2">
                                     <Label>{t('directTransactionModal.fields.paymentMethod', { defaultValue: 'Payment Method' })}</Label>
-                                    <PaymentMethodSelect
+                                    <PaymentMethodSelector
                                         value={paymentMethod}
                                         onValueChange={(value) => setPaymentMethod(value as WorkspacePaymentMethod)}
+                                        onLinkedPaymentAccountSelect={setPaymentAccount}
+                                        workspaceId={workspaceId}
                                         methods={STANDARD_PAYMENT_METHODS}
                                     />
                                 </div>
                             </div>
+
+                            <PaymentAccountSelector
+                                workspaceId={workspaceId}
+                                value={paymentAccount?.id}
+                                onValueChange={setPaymentAccount}
+                                disabled={isSubmitting}
+                            />
 
                             <div className="grid gap-4 md:grid-cols-2">
                                 <div className="grid gap-2">
@@ -458,9 +474,9 @@ export function DirectTransactionDialog({
                                 />
                             </div>
                         </div>
-                    </DialogBody>
+                    </AppDialogBody>
 
-                    <DialogFooter layout="structured">
+                    <AppDialogFooter>
                         <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
                             {t('directTransactionModal.actions.cancel', { defaultValue: 'Cancel' })}
                         </Button>
@@ -471,9 +487,9 @@ export function DirectTransactionDialog({
                         >
                             {t('directTransactionModal.actions.save', { defaultValue: 'Save Transaction' })}
                         </Button>
-                    </DialogFooter>
+                    </AppDialogFooter>
                 </form>
-            </DialogContent>
+            </AppDialogContent>
 
             {features.crm && (
                 <LoanPartyPickerDialog
@@ -484,7 +500,7 @@ export function DirectTransactionDialog({
                     onSelect={handlePartySelect}
                 />
             )}
-        </Dialog>
+        </AppDialog>
 
     )
 }

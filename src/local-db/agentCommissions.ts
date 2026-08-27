@@ -148,6 +148,8 @@ export interface RecordCommissionPayoutInput {
   occurredAt?: string;
   notes?: string | null;
   createdBy?: string | null;
+  accountId?: string | null;
+  accountNameSnapshot?: string | null;
 }
 
 export interface RecordCommissionAdjustmentInput {
@@ -1933,6 +1935,8 @@ async function ensureCommissionPayoutTransaction(
     paymentMethod: WorkspacePaymentMethod;
     notes: string | null;
     createdBy: string | null;
+    accountId: string | null;
+    accountNameSnapshot: string | null;
   },
 ) {
   const existing = await db.payment_transactions
@@ -1960,6 +1964,8 @@ async function ensureCommissionPayoutTransaction(
     referenceLabel: `Agent commission payout ${entry.payoutReference ?? ""}`.trim(),
     note: options.notes,
     createdBy: options.createdBy,
+    accountId: options.accountId,
+    accountNameSnapshot: options.accountNameSnapshot,
     metadata: {
       agentCommissionEntryId: entry.id,
       agentId: entry.agentId,
@@ -2047,6 +2053,8 @@ export async function recordCommissionPayout(
     paymentMethod,
     notes,
     createdBy,
+    accountId: input.accountId ?? null,
+    accountNameSnapshot: input.accountNameSnapshot ?? null,
   });
   return entry;
 }

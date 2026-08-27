@@ -50,6 +50,7 @@ import {
   useRentalVehicles,
   type CurrencyCode,
   type BusinessPartner,
+  type PaymentAccount,
   type RentalContract,
   type RentalPaymentKind,
   type RentalRequest,
@@ -64,6 +65,7 @@ import { PartnerAutocompleteInput } from "@/ui/components/crm/PartnerAutocomplet
 import { VehicleAutocompleteInput } from "@/ui/components/crm/VehicleAutocompleteInput";
 import { DateRangeFilters } from "@/ui/components/DateRangeFilters";
 import { ModulePageFreshness } from "@/ui/components/ModulePageFreshness";
+import { PaymentAccountSelector } from "@/ui/components/payments/PaymentAccountSelector";
 import {
   AppDialog,
   AppDialogBody,
@@ -81,7 +83,7 @@ import {
   DateTimePicker,
   Input,
   Label,
-  PaymentMethodSelect,
+  PaymentMethodSelector,
   Select,
   SelectContent,
   SelectItem,
@@ -626,6 +628,7 @@ export function CarRental({
       <RentalPaymentDialog
         key={paymentTarget?.id || "closed-payment"}
         contract={paymentTarget}
+        workspaceId={workspaceId}
         payments={paymentTransactions}
         iqdPreference={features.iqd_display_preference}
         isSaving={isSaving}
@@ -2265,6 +2268,7 @@ function ReturnDialog({
 
 function RentalPaymentDialog({
   contract,
+  workspaceId,
   payments,
   iqdPreference,
   isSaving,
@@ -2272,6 +2276,7 @@ function RentalPaymentDialog({
   onSubmit,
 }: {
   contract: RentalContract | null;
+  workspaceId: string;
   payments: ReturnType<typeof usePaymentTransactions>;
   iqdPreference: "IQD" | "د.ع";
   isSaving: boolean;
@@ -2287,6 +2292,7 @@ function RentalPaymentDialog({
   const [kind, setKind] = useState<RentalPaymentKind>("rental");
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<WorkspacePaymentMethod>("cash");
+  const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null);
   const [note, setNote] = useState("");
   const openedContractId = useRef<string | null>(null);
   const summary = contract
@@ -2316,6 +2322,7 @@ function RentalPaymentDialog({
         : "",
     );
     setMethod("cash");
+    setPaymentAccount(null);
     setNote("");
   }, [contract, payments]);
 
@@ -2360,6 +2367,8 @@ function RentalPaymentDialog({
               amount: parseFormattedNumber(amount),
               paymentMethod: method,
               note,
+              accountId: paymentAccount?.id ?? null,
+              accountNameSnapshot: paymentAccount?.name ?? null,
             });
           }}
           className="flex min-h-0 flex-1 flex-col"
@@ -2416,14 +2425,22 @@ function RentalPaymentDialog({
               />
             </Field>
             <Field label={t("carRental.fields.paymentMethod")}>
-              <PaymentMethodSelect
+              <PaymentMethodSelector
                 value={method}
                 onValueChange={(value) =>
                   setMethod(value as WorkspacePaymentMethod)
                 }
+                onLinkedPaymentAccountSelect={setPaymentAccount}
+                workspaceId={workspaceId}
                 methods={STANDARD_PAYMENT_METHODS}
               />
             </Field>
+            <PaymentAccountSelector
+              workspaceId={workspaceId}
+              value={paymentAccount?.id}
+              onValueChange={setPaymentAccount}
+              disabled={isSaving}
+            />
             <Field label={t("carRental.fields.notes")}>
               <Textarea
                 value={note}

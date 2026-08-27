@@ -4,7 +4,7 @@ import { useAuth } from '@/auth'
 import { getLoanRecordPaymentLabel } from '@/lib/loanPresentation'
 import { LOAN_ADJUSTMENT_PAYMENT_METHOD, STANDARD_PAYMENT_METHODS } from '@/lib/paymentMethods'
 import { formatCurrency, formatDate, formatNumberWithCommas, parseFormattedNumber } from '@/lib/utils'
-import { recordLoanPayment, type Loan, type LoanInstallment, type LoanPaymentMethod } from '@/local-db'
+import { recordLoanPayment, type Loan, type LoanInstallment, type LoanPaymentMethod, type PaymentAccount } from '@/local-db'
 import {
     Dialog,
     DialogBody,
@@ -19,7 +19,8 @@ import {
 } from '@/ui/components'
 import { DateTimePicker } from '@/ui/components/ui/date-time-picker'
 import { useWorkspace } from '@/workspace'
-import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
+import { PaymentMethodSelector } from '@/ui/components/PaymentMethodSelector'
+import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 
 interface RecordLoanPaymentModalProps {
     isOpen: boolean
@@ -82,6 +83,7 @@ export function RecordLoanPaymentModal({
     const { features } = useWorkspace()
     const [amount, setAmount] = useState('')
     const [method, setMethod] = useState<LoanPaymentMethod>('cash')
+    const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
     const [note, setNote] = useState('')
     const [paymentDate, setPaymentDate] = useState<Date | undefined>(undefined)
     const [isSaving, setIsSaving] = useState(false)
@@ -93,6 +95,7 @@ export function RecordLoanPaymentModal({
         if (!isOpen || !loan) return
         setAmount(formatPaymentAmountInput(String(paymentBalance)))
         setMethod('cash')
+        setPaymentAccount(null)
         setNote('')
         setPaymentDate(new Date())
     }, [isOpen, loan, paymentBalance])
@@ -113,7 +116,9 @@ export function RecordLoanPaymentModal({
                 paymentMethod: method,
                 note: note.trim() || undefined,
                 paidAt: paymentDate ? paymentDate.toISOString() : undefined,
-                createdBy: user?.id
+                createdBy: user?.id,
+                accountId: paymentAccount?.id ?? null,
+                accountNameSnapshot: paymentAccount?.name ?? null,
             })
 
             toast({
@@ -139,8 +144,17 @@ export function RecordLoanPaymentModal({
     }
 
     return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent layout="structured" className="max-w-3xl">
+        <Dialog open={isOpen} onOpenChange={(nextOpen) => {
+            if (!isSaving) onOpenChange(nextOpen)
+        }}>
+            <DialogContent
+                layout="structured"
+                className="max-w-3xl"
+                showCloseButton={!isSaving}
+                onPointerDownOutside={(event) => isSaving && event.preventDefault()}
+                onInteractOutside={(event) => isSaving && event.preventDefault()}
+                onEscapeKeyDown={(event) => isSaving && event.preventDefault()}
+            >
                 <DialogHeader layout="structured">
                     <DialogTitle>{getLoanRecordPaymentLabel(loan, t)}</DialogTitle>
                 </DialogHeader>
@@ -188,12 +202,21 @@ export function RecordLoanPaymentModal({
 
                             <div className="grid gap-2">
                                 <Label>{t('pos.paymentMethod') || 'Payment Method'}</Label>
-                                <PaymentMethodSelect
+                                <PaymentMethodSelector
                                     value={method}
                                     onValueChange={(value) => setMethod(value as LoanPaymentMethod)}
+                                    onLinkedPaymentAccountSelect={setPaymentAccount}
+                                    workspaceId={workspaceId}
                                     methods={[...STANDARD_PAYMENT_METHODS, LOAN_ADJUSTMENT_PAYMENT_METHOD]}
                                 />
                             </div>
+
+                            <PaymentAccountSelector
+                                workspaceId={workspaceId}
+                                value={paymentAccount?.id}
+                                onValueChange={setPaymentAccount}
+                                disabled={isSaving}
+                            />
 
                             <div className="grid gap-2">
                                 <Label>{t('loans.paymentDate') || 'Payment Date'}</Label>

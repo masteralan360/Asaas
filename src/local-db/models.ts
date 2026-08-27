@@ -519,6 +519,8 @@ export interface DeliveryMerchantProfile extends BaseEntity {
 }
 
 export type DeliveryFeePayer = "merchant" | "recipient";
+/** Whether the courier must collect the COD amount from the recipient. */
+export type DeliveryCustomerPaymentStatus = "cash_on_delivery" | "prepaid_electronically";
 export type DeliveryPayoutSchedule = "daily" | "weekly" | "on_request";
 export type DeliveryShipmentStatus =
   | "received"
@@ -547,7 +549,12 @@ export interface DeliveryShipment extends BaseEntity {
   recipientLongitude?: number | null;
   description?: string | null;
   currency: CurrencyCode;
+  /** Zero for an electronically prepaid delivery. */
   codAmount: number;
+  customerPaymentStatus: DeliveryCustomerPaymentStatus;
+  /** Company-funded amount paid to the recipient when the post is delivered. */
+  recipientPayoutAmount: number;
+  recipientPayoutPaymentTransactionId?: string | null;
   deliveryFee: number;
   /** Courier fee snapshot from the manifest; charged only on delivery. */
   courierDeliveryFee?: number;
@@ -630,6 +637,7 @@ export type DeliveryLedgerEntryKind =
   | "courier_remittance"
   | "merchant_cod_payable"
   | "merchant_fee"
+  | "merchant_recipient_payout"
   | "merchant_payout"
   | "adjustment";
 
@@ -1058,6 +1066,9 @@ export interface SalesOrder extends BaseEntity {
   paidAt?: string | null;
   paymentMethod?: OrderPaymentMethod;
   initialPaymentAmount: number;
+  /** Account selected for the first posted order payment, if any. */
+  initialPaymentAccountId?: string | null;
+  initialPaymentAccountNameSnapshot?: string | null;
   linkedLoanId?: string | null;
   isInstallmentBased: boolean;
   installmentCount: number;
@@ -1111,6 +1122,9 @@ export interface PurchaseOrder extends BaseEntity {
   paidAt?: string | null;
   paymentMethod?: OrderPaymentMethod;
   initialPaymentAmount: number;
+  /** Account selected for the first posted order payment, if any. */
+  initialPaymentAccountId?: string | null;
+  initialPaymentAccountNameSnapshot?: string | null;
   linkedLoanId?: string | null;
   isInstallmentBased: boolean;
   installmentCount: number;
@@ -1989,9 +2003,12 @@ export type PaymentTransactionSourceModule =
   | "currency_exchange"
   | "post_service"
   | "car_rental"
+  | "travel_agency"
   | "payments";
 export type PaymentTransactionSourceType =
   | "sale_exchange"
+  | "pos_sale"
+  | "travel_agency_sale"
   | "loan_origination"
   | "loan_payment"
   | "simple_loan"
@@ -2009,9 +2026,11 @@ export type PaymentTransactionSourceType =
   | "expense_item"
   | "payroll_status"
   | "direct_transaction"
+  | "payment_account_opening_balance"
   | "exchange_transaction"
   | "delivery_courier_remittance"
   | "delivery_merchant_payout"
+  | "delivery_recipient_payout"
   | "rental_payment"
   | "rental_deposit"
   | "rental_deposit_refund";
@@ -2031,8 +2050,131 @@ export interface PaymentTransaction extends BaseEntity {
   referenceLabel?: string | null;
   note?: string | null;
   createdBy?: string | null;
+  /** Optional payment-account context. Undefined/null preserves legacy flows. */
+  accountId?: string | null;
+  accountNameSnapshot?: string | null;
   reversalOfTransactionId?: string | null;
   metadata?: Record<string, unknown> | null;
+}
+
+export type PaymentAccountType = 'cash_drawer' | 'bank_account' | 'digital_wallet' | 'other';
+
+/** Digital payment methods that may resolve to one linked Digital Wallet account. */
+export const DIGITAL_WALLET_PAYMENT_METHODS = ['fib', 'qicard', 'zaincash', 'fastpay'] as const;
+export type DigitalWalletPaymentMethod = (typeof DIGITAL_WALLET_PAYMENT_METHODS)[number];
+
+/** A reusable visual marker for an account, independent of its functional type. */
+export type PaymentAccountIconKey =
+  | 'cash_drawer'
+  | 'bank'
+  | 'wallet'
+  | 'card'
+  | 'phone'
+  | 'transfer'
+  | 'coins'
+  | 'receipt'
+  | 'building'
+  | 'store'
+  | 'fib'
+  | 'qicard'
+  | 'zaincash'
+  | 'fastpay';
+
+export interface PaymentAccount extends BaseEntity {
+  name: string;
+  accountType: PaymentAccountType;
+  /** Optional branded payment method this Digital Wallet should preselect for. */
+  linkedPaymentMethod?: DigitalWalletPaymentMethod | null;
+  /** User-selected visual marker. Older records fall back from accountType. */
+  iconKey?: PaymentAccountIconKey | null;
+  notes?: string | null;
+  isActive: boolean;
+  /** The one main account for this workspace. */
+  isPrimary?: boolean;
+  /** Whether a new payment form should start with this account selected. */
+  isDefaultForPaymentSelector?: boolean;
+  createdBy?: string | null;
+}
+
+export interface PaymentAccountBalance extends BaseEntity {
+  accountId: string;
+  currency: CurrencyCode;
+  balanceAmount: number;
+}
+
+export interface PaymentAccountMovement extends BaseEntity {
+  accountId: string;
+  paymentTransactionId: string;
+  accountNameSnapshot: string;
+  direction: PaymentTransactionDirection;
+  amount: number;
+  deltaAmount: number;
+  currency: CurrencyCode;
+  occurredAt: string;
+}
+
+export type CashierShiftStatus = 'open' | 'closed';
+
+export type CashierShiftOccurrenceStatus = 'active' | 'completed';
+
+export interface CashierShift extends BaseEntity {
+  accountId: string;
+  accountNameSnapshot: string;
+  cashierUserId?: string | null;
+  cashierNameSnapshot?: string | null;
+  status: CashierShiftStatus;
+  openedAt: string;
+  closedAt?: string | null;
+  closedBy?: string | null;
+  openingNote?: string | null;
+  closingNote?: string | null;
+}
+
+export interface CashierShiftCurrencyCount extends BaseEntity {
+  shiftId: string;
+  currency: CurrencyCode;
+  openingAmount: number;
+  expectedAmount: number;
+  countedAmount?: number | null;
+  varianceAmount?: number | null;
+}
+
+/** A reusable named schedule, independent from a cashier or cash drawer. */
+export interface CashierShiftTemplate extends BaseEntity {
+  name: string;
+  startTime: string;
+  endTime: string;
+  isActive: boolean;
+}
+
+/** A recurring weekday schedule assigned to one cashier and cash drawer. */
+export interface CashierShiftAssignment extends BaseEntity {
+  templateId?: string | null;
+  templateNameSnapshot?: string | null;
+  accountId: string;
+  accountNameSnapshot: string;
+  cashierUserId: string;
+  cashierNameSnapshot: string;
+  startTime: string;
+  endTime: string;
+  /** JavaScript weekday numbers: Sunday 0 through Saturday 6. */
+  workingDays: number[];
+  isActive: boolean;
+}
+
+/** A real dated shift occurrence once its assigned cashier has started it. */
+export interface CashierShiftOccurrence extends BaseEntity {
+  assignmentId: string;
+  templateId?: string | null;
+  templateNameSnapshot?: string | null;
+  accountId: string;
+  accountNameSnapshot: string;
+  cashierUserId: string;
+  cashierNameSnapshot: string;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  startedAt: string;
+  status: CashierShiftOccurrenceStatus;
 }
 
 export interface PaymentObligation {
@@ -2089,6 +2231,14 @@ export interface SyncQueueItem {
     | "loan_installments"
     | "loan_payments"
     | "payment_transactions"
+    | "payment_accounts"
+    | "payment_account_balances"
+    | "payment_account_movements"
+    | "cashier_shifts"
+    | "cashier_shift_currency_counts"
+    | "cashier_shift_templates"
+    | "cashier_shift_assignments"
+    | "cashier_shift_occurrences"
     | "budget_settings"
     | "budget_allocations"
     | "expense_series"
@@ -2248,6 +2398,14 @@ export interface OfflineMutation {
     | "loan_installments"
     | "loan_payments"
     | "payment_transactions"
+    | "payment_accounts"
+    | "payment_account_balances"
+    | "payment_account_movements"
+    | "cashier_shifts"
+    | "cashier_shift_currency_counts"
+    | "cashier_shift_templates"
+    | "cashier_shift_assignments"
+    | "cashier_shift_occurrences"
     | "budget_settings"
     | "budget_allocations"
     | "expense_series"

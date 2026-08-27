@@ -770,6 +770,8 @@ function RealEstateDetails({
         note?: string
         counterpartyName?: string
         businessPartnerId?: string | null
+        accountId?: string | null
+        accountNameSnapshot?: string | null
     }) => {
         if (!commissionObligation) {
             return
@@ -778,12 +780,7 @@ function RealEstateDetails({
         setIsSubmittingCommission(true)
         try {
             await recordObligationSettlement(commissionObligation.workspaceId, commissionObligation, {
-                paymentMethod: input.paymentMethod,
-                paidAt: input.paidAt,
-                amount: input.amount,
-                note: input.note,
-                counterpartyName: input.counterpartyName,
-                businessPartnerId: input.businessPartnerId,
+                ...input,
                 createdBy: user?.id ?? null
             })
             toast({

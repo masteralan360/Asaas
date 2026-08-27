@@ -3,8 +3,9 @@ import { AlertTriangle, ArrowDownToLine, ArrowRightLeft, ArrowUpFromLine, Circle
 import { useTranslation } from 'react-i18next'
 import { formatCurrency, cn } from '@/lib/utils'
 import { isPositiveQuantity, roundQuantity } from '@/lib/quantity'
-import type { Product, Storage } from '@/local-db'
+import type { PaymentAccount, Product, Storage } from '@/local-db'
 import { ProductAutocompleteInput } from '@/ui/components/orders/ProductAutocompleteInput'
+import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import { ProductsViewModal, ProductsViewModalTrigger } from '@/ui/components/ProductsViewModal'
 import {
     Button,
@@ -77,6 +78,8 @@ export interface ProductExchangeDraft {
     /** Positive means collect from the customer; negative means refund. */
     difference: number
     settlementMethod?: ProductExchangeSettlementMethod
+    accountId?: string | null
+    accountNameSnapshot?: string | null
 }
 
 interface ProductExchangeModalProps {
@@ -91,6 +94,7 @@ interface ProductExchangeModalProps {
     /** A preselected sale item is used when exchange begins from Sale Details. */
     lockedSaleItemId?: string | null
     settlementCurrency: string
+    workspaceId: string
     /**
      * Returns the replacement unit amount for a product under a Price Book, in
      * the sale settlement currency, or null when the book has no override or
@@ -138,6 +142,7 @@ export function ProductExchangeModal({
     replacementProducts,
     lockedSaleItemId,
     settlementCurrency,
+    workspaceId,
     resolvePriceBookReplacementAmount,
     isSubmitting = false,
     onSubmit,
@@ -151,6 +156,7 @@ export function ProductExchangeModal({
     const [replacementQuantity, setReplacementQuantity] = useState('')
     const [isReplacementProductsViewOpen, setIsReplacementProductsViewOpen] = useState(false)
     const [settlementMethod, setSettlementMethod] = useState<ProductExchangeSettlementMethod>('cash')
+    const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
     const [submitError, setSubmitError] = useState('')
 
     const selectedSaleItem = useMemo(
@@ -217,6 +223,7 @@ export function ProductExchangeModal({
         setReplacementQuantity('')
         setIsReplacementProductsViewOpen(false)
         setSettlementMethod('cash')
+        setPaymentAccount(null)
         setSubmitError('')
     }
 
@@ -298,6 +305,8 @@ export function ProductExchangeModal({
                 replacementTotal,
                 difference,
                 settlementMethod: difference === 0 ? undefined : settlementMethod,
+                accountId: difference === 0 ? null : paymentAccount?.id ?? null,
+                accountNameSnapshot: difference === 0 ? null : paymentAccount?.name ?? null,
             })
             onClose()
         } catch (error) {
@@ -520,6 +529,13 @@ export function ProductExchangeModal({
                                                 </SelectContent>
                                             </Select>
                                         </div>
+                                        <PaymentAccountSelector
+                                            workspaceId={workspaceId}
+                                            value={paymentAccount?.id ?? null}
+                                            onValueChange={setPaymentAccount}
+                                            disabled={isSubmitting}
+                                            cashDrawerOnly={settlementMethod === 'cash'}
+                                        />
                                     </div>
                                 )}
                             </section>

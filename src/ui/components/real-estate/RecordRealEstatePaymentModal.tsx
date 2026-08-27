@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { formatCurrency, formatNumericInput, parseFormattedNumber, sanitizeNumericInput } from '@/lib/utils'
 import { STANDARD_PAYMENT_METHODS } from '@/lib/paymentMethods'
-import { recordRealEstatePayment, type RealEstateInstallment, type RealEstateTransaction, type WorkspacePaymentMethod } from '@/local-db'
+import { recordRealEstatePayment, type PaymentAccount, type RealEstateInstallment, type RealEstateTransaction, type WorkspacePaymentMethod } from '@/local-db'
 import {
     Button,
     Dialog,
@@ -20,6 +20,7 @@ import {
 } from '@/ui/components'
 import { useWorkspace } from '@/workspace'
 import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
+import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 
 interface RecordRealEstatePaymentModalProps {
     isOpen: boolean
@@ -41,6 +42,7 @@ export function RecordRealEstatePaymentModal({
     const [isSaving, setIsSaving] = useState(false)
     const [amount, setAmount] = useState('')
     const [paymentMethod, setPaymentMethod] = useState<WorkspacePaymentMethod>('cash')
+    const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
     const [note, setNote] = useState('')
 
     const maxAmount = useMemo(() => {
@@ -58,6 +60,7 @@ export function RecordRealEstatePaymentModal({
         setIsSaving(false)
         setAmount(String(maxAmount || ''))
         setPaymentMethod('cash')
+        setPaymentAccount(null)
         setNote('')
     }, [isOpen, maxAmount, transaction])
 
@@ -78,7 +81,9 @@ export function RecordRealEstatePaymentModal({
                 amount: parsedAmount,
                 paymentMethod,
                 note: note.trim() || null,
-                createdBy: user?.id ?? null
+                createdBy: user?.id ?? null,
+                accountId: paymentAccount?.id ?? null,
+                accountNameSnapshot: paymentAccount?.name ?? null
             })
 
             toast({
@@ -131,9 +136,19 @@ export function RecordRealEstatePaymentModal({
                             <PaymentMethodSelect
                                 value={paymentMethod}
                                 onValueChange={(value) => setPaymentMethod(value as WorkspacePaymentMethod)}
+                                onLinkedPaymentAccountSelect={setPaymentAccount}
+                                workspaceId={transaction?.workspaceId}
                                 methods={STANDARD_PAYMENT_METHODS}
                             />
                         </div>
+
+                        <PaymentAccountSelector
+                            workspaceId={transaction?.workspaceId}
+                            value={paymentAccount?.id ?? null}
+                            onValueChange={setPaymentAccount}
+                            disabled={isSaving}
+                            cashDrawerOnly={paymentMethod === 'cash'}
+                        />
 
                         <div className="grid gap-2">
                             <Label>{t('realEstate.notes', { defaultValue: 'Notes' })}</Label>

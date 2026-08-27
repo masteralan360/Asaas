@@ -127,6 +127,8 @@ export { DirectTransactionDialog } from './payments/DirectTransactionDialog'
 export { SettlementDialog } from './payments/SettlementDialog'
 export { PartnerSettlementDialog } from './payments/PartnerSettlementDialog'
 export { PaymentMethodSelect } from './payments/PaymentMethodSelect'
+export { PaymentMethodSelector } from './PaymentMethodSelector'
+export { PaymentAccountSelector } from './payments/PaymentAccountSelector'
 export {
     ACTIVITY_PAYMENT_METHODS,
     CASH_AND_DIGITAL_PAYMENT_METHODS,

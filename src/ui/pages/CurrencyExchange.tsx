@@ -1697,6 +1697,7 @@ function CreateCurrencyExchangeTransactionPage({
                                             <PaymentMethodSelect
                                                 value={paymentMethod}
                                                 onValueChange={(value) => setPaymentMethod(value as ExchangePaymentMethod)}
+                                                workspaceId={workspaceId}
                                                 methods={CASH_AND_DIGITAL_PAYMENT_METHODS}
                                             />
                                         </div>

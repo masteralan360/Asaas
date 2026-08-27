@@ -20,6 +20,9 @@ No new module should be accessible without one of these access rules being expli
 ## Payment transactions
 
 Every incoming or outgoing payment MUST be recorded through `payment_transactions` and mirrored in the ledger. Do not update payment balances or ledger entries directly without the corresponding payment transaction.
+Every UI flow that records a real incoming or outgoing payment, rather than merely creating an unpaid obligation, MUST include the provided `PaymentAccountSelector`.
+The selector remains optional: with no selection, record the payment transaction and ledger entry normally; when selected, pass the account ID and name snapshot to the payment transaction so its account movement is created.
+Do not create a module-specific account selector or update a payment-account balance directly; account movements must be derived from the payment transaction.
 
 # Atlas UI conventions
 
@@ -79,7 +82,7 @@ Use the `react-i18next` library for all text content that appears in the UI. Do 
 
 ## Printing
 If said new print template is required to have tables, then it must use the in-app A4 pagination for tables similar to 
-'src\ui\components\orders\AtlasStandardOrderInvoiceTemplate.tsx'.
+'src\ui\components\crm\PartnerAccountStatementPrintTemplate.tsx'.
 
 it Must always have its custom template.
 
@@ -91,3 +94,6 @@ Any new module that displays a table or list of timestamped records MUST include
 
 Any field or control that allows users to delete data MUST use the app-provided delete confirmation dialog at `src/ui/components/ui/delete-confirmation-dialog.tsx`. Do not create custom delete confirmation dialogs, or native alternatives. Reuse this component consistently wherever delete confirmation is required.
 
+## Iconage 
+
+Use alot of icons, icons should be everywhere in the application. If the user cant see what he needs to do, use an icon to guide them.

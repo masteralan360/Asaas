@@ -1562,7 +1562,13 @@ export function Ecommerce() {
         }
     }
 
-    const handleCollectionSettlement = async (input: { paymentMethod: WorkspacePaymentMethod; paidAt: string; note?: string }) => {
+    const handleCollectionSettlement = async (input: {
+        paymentMethod: WorkspacePaymentMethod
+        paidAt: string
+        note?: string
+        accountId?: string | null
+        accountNameSnapshot?: string | null
+    }) => {
         if (!user?.workspaceId || !settlementTarget) {
             return
         }
@@ -1570,9 +1576,7 @@ export function Ecommerce() {
         setIsSubmittingSettlement(true)
         try {
             await recordObligationSettlement(user.workspaceId, settlementTarget, {
-                paymentMethod: input.paymentMethod,
-                paidAt: input.paidAt,
-                note: input.note,
+                ...input,
                 createdBy: user?.id || null
             })
 

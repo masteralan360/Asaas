@@ -18,7 +18,8 @@ import {
     type TravelAgencyTourist,
     type TravelAgencyTravelMethod,
     type TravelAgencyTravelPlan,
-    type TravelAgencyTripType
+    type TravelAgencyTripType,
+    type PaymentAccount
 } from '@/local-db'
 import { travelMethodOptions, travelReceiverOptions, travelStatusOptions } from '@/lib/travelAgency'
 import { fetchUSDToIQDRate } from '@/lib/exchangeRate'
@@ -26,6 +27,7 @@ import { TRAVEL_PAYMENT_METHODS } from '@/lib/paymentMethods'
 import { cn, formatCurrency, formatNumberWithCommas, generateId, parseFormattedNumber } from '@/lib/utils'
 import { TouristMrzScanDialog, type TouristMrzScanMode, type TouristMrzScanResult } from '@/ui/components/travel/TouristMrzScanDialog'
 import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
+import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { useWorkspace } from '@/workspace'
 import {
@@ -530,6 +532,8 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
     const isEditing = Boolean(saleId)
     const [packageDraft, setPackageDraft] = useState('')
     const [isSaving, setIsSaving] = useState(false)
+    const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
+    const [hasPaymentAccountSelection, setHasPaymentAccountSelection] = useState(false)
     const [supplierDialogOpen, setSupplierDialogOpen] = useState(false)
     const [mrzDialogState, setMrzDialogState] = useState<{
         touristIndex: number | null
@@ -587,6 +591,8 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
         if (sale) {
             const mapped = mapSaleToForm(sale)
             setFormState(mapped)
+            setPaymentAccount(null)
+            setHasPaymentAccountSelection(false)
             initialFormSnapshot.current = JSON.stringify(mapped)
         }
     }, [sale])
@@ -825,10 +831,14 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
             }
 
             if (isEditing && saleId) {
-                await updateTravelAgencySale(saleId, payload)
+                await updateTravelAgencySale(saleId, payload, hasPaymentAccountSelection
+                    ? { accountId: paymentAccount?.id ?? null, accountNameSnapshot: paymentAccount?.name ?? null }
+                    : {})
                 toast({ title: 'Travel sale updated' })
             } else {
-                await createTravelAgencySale(user.workspaceId, payload)
+                await createTravelAgencySale(user.workspaceId, payload, hasPaymentAccountSelection
+                    ? { accountId: paymentAccount?.id ?? null, accountNameSnapshot: paymentAccount?.name ?? null }
+                    : {})
                 toast({ title: 'Travel sale created' })
             }
 
@@ -1121,9 +1131,26 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
                                     <PaymentMethodSelect
                                         value={formState.paymentMethod}
                                         onValueChange={(value) => setFormState((current) => ({ ...current, paymentMethod: value as TravelAgencyPaymentMethod }))}
+                                        onLinkedPaymentAccountSelect={(account) => {
+                                            setPaymentAccount(account)
+                                            setHasPaymentAccountSelection(true)
+                                        }}
+                                        workspaceId={user?.workspaceId}
                                         methods={TRAVEL_PAYMENT_METHODS}
                                     />
                                 </div>
+                                {formState.isPaid && parseFormattedNumber(formState.paidAmount) > 0 ? (
+                                    <PaymentAccountSelector
+                                        workspaceId={user?.workspaceId}
+                                        value={paymentAccount?.id ?? null}
+                                        onValueChange={(account) => {
+                                            setPaymentAccount(account)
+                                            setHasPaymentAccountSelection(true)
+                                        }}
+                                        disabled={readOnly || isSaving}
+                                        cashDrawerOnly={formState.paymentMethod === 'cash'}
+                                    />
+                                ) : null}
                                 <div className="space-y-2">
                                     <Label>Receiver</Label>
                                     <Select value={formState.receiver} onValueChange={(value) => setFormState((current) => ({ ...current, receiver: value as TravelAgencyReceiver }))}>

@@ -5,7 +5,7 @@ import type { Inventory } from "@/local-db/models";
 import { syncProductBarcodeCachesForWorkspace } from "@/local-db/productBarcodes";
 import { rekeyPriceBookItemReferences } from "@/local-db/priceBookReferences";
 import { runSupabaseAction } from "@/lib/supabaseRequest";
-import { getSupabaseClientForTable } from "@/lib/supabaseSchema";
+import { getSupabaseClientForTable, getSupabaseRemoteTableName } from "@/lib/supabaseSchema";
 import {
   getSchemaMismatchError,
   getSyncIntegrityError,
@@ -114,6 +114,14 @@ const SYNC_PULL_TABLES = [
   "loans",
   "loan_installments",
   "loan_payments",
+  "payment_accounts",
+  "payment_account_balances",
+  "payment_account_movements",
+  "cashier_shifts",
+  "cashier_shift_currency_counts",
+  "cashier_shift_templates",
+  "cashier_shift_assignments",
+  "cashier_shift_occurrences",
   "payment_transactions",
   "clinical_presets",
   "manual_entry_templates",
@@ -293,6 +301,22 @@ function getMutationParentKeys(mutation: MutationSyncOrderItem) {
       addParent("delivery_merchant_profiles", "merchantProfileId", "merchant_profile_id");
       addParent("business_partners", "businessPartnerId", "business_partner_id");
       addParent("payment_transactions", "paymentTransactionId", "payment_transaction_id");
+      break;
+    case "payment_transactions":
+      addParent("payment_accounts", "accountId", "account_id");
+      break;
+    case "cashier_shifts":
+      addParent("payment_accounts", "accountId", "account_id");
+      break;
+    case "cashier_shift_currency_counts":
+      addParent("cashier_shifts", "shiftId", "shift_id");
+      break;
+    case "cashier_shift_assignments":
+      addParent("cashier_shift_templates", "templateId", "template_id");
+      addParent("payment_accounts", "accountId", "account_id");
+      break;
+    case "cashier_shift_occurrences":
+      addParent("cashier_shift_assignments", "assignmentId", "assignment_id");
       break;
     case "delivery_ledger_entries":
       addParent("delivery_shipments", "shipmentId", "shipment_id");
@@ -532,10 +556,11 @@ async function fetchPullRows(
   since: string,
 ): Promise<Array<Record<string, unknown>>> {
   const client = getSupabaseClientForTable(table);
+  const remoteTableName = getSupabaseRemoteTableName(table);
 
   if (table === "workspaces") {
     const { data, error } = (await withTimeout(
-      client.from(table).select("*").eq("id", workspaceId),
+      client.from(remoteTableName).select("*").eq("id", workspaceId),
       30000,
     )) as any;
 
@@ -557,7 +582,7 @@ async function fetchPullRows(
     const to = from + PULL_PAGE_SIZE - 1;
     const { data, error } = (await withTimeout(
       (client
-        .from(table)
+        .from(remoteTableName)
         .select("*")
         .eq("workspace_id", workspaceId)
         .gt("updated_at", since)
@@ -859,6 +884,7 @@ export async function processMutationQueue(
       }
       const tableName = getTableName(entityType);
       const client = getSupabaseClientForTable(tableName);
+      const remoteTableName = getSupabaseRemoteTableName(tableName);
       let syncedEntityId = entityId;
       let entityHandledInline = false;
       const shouldHardDelete =
@@ -1007,7 +1033,7 @@ export async function processMutationQueue(
             if (error) throw error;
           } else {
             const { error } = await client
-              .from(tableName)
+              .from(remoteTableName)
               .update(dbPayload)
               .eq("id", entityId);
             if (error) throw error;
@@ -1020,13 +1046,13 @@ export async function processMutationQueue(
           delete dbPayload.workspace_id;
           delete dbPayload.user_id;
           const { error } = await client
-            .from(tableName)
+            .from(remoteTableName)
             .update(dbPayload)
             .eq("id", entityId);
           if (error) throw error;
         } else if (entityType === "inventory") {
           const { data: remoteInventoryRow, error } = await client
-            .from(tableName)
+            .from(remoteTableName)
             .upsert(dbPayload, {
               onConflict: "workspace_id,product_id,storage_id",
             })
@@ -1075,10 +1101,10 @@ export async function processMutationQueue(
             if (reconciliationError) throw reconciliationError;
           }
 
-          const { error } = await client.from(tableName).insert(dbPayload);
+          const { error } = await client.from(remoteTableName).insert(dbPayload);
           if (error) {
             const { data: existingEntry, error: lookupError } = await client
-              .from(tableName)
+              .from(remoteTableName)
               .select("id")
               .eq("id", entityId)
               .maybeSingle();
@@ -1092,7 +1118,7 @@ export async function processMutationQueue(
           }
         } else if (entityType === "business_partner_merge_candidates") {
           const { data: remoteMergeCandidateRow, error } = await client
-            .from(tableName)
+            .from(remoteTableName)
             .upsert(dbPayload, {
               onConflict: "primary_partner_id,secondary_partner_id,merge_type",
             })
@@ -1125,7 +1151,7 @@ export async function processMutationQueue(
           }
 
           const { data: remoteExistingPriceBookItem, error: lookupError } = await client
-            .from(tableName)
+            .from(remoteTableName)
             .select("*")
             .eq("price_book_id", priceBookId)
             .eq("product_id", productId)
@@ -1143,7 +1169,7 @@ export async function processMutationQueue(
           }
 
           const { data: remotePriceBookItem, error } = await client
-            .from(tableName)
+            .from(remoteTableName)
             .upsert(dbPayload, {
               onConflict: "price_book_id,product_id",
             })
@@ -1172,7 +1198,7 @@ export async function processMutationQueue(
           entityType === "purchase_orders"
         ) {
           const { data: remoteOrders, error } = await client
-            .from(tableName)
+            .from(remoteTableName)
             .upsert(dbPayload)
             .select("id, order_number");
 
@@ -1200,7 +1226,7 @@ export async function processMutationQueue(
           }
         } else if (entityType === "delivery_shipments") {
           const { data: remoteShipments, error } = await client
-            .from(tableName)
+            .from(remoteTableName)
             .upsert(dbPayload)
             .select("id, tracking_number");
 
@@ -1226,19 +1252,19 @@ export async function processMutationQueue(
             entityHandledInline = true;
           }
         } else {
-          const { error } = await client.from(tableName).upsert(dbPayload);
+          const { error } = await client.from(remoteTableName).upsert(dbPayload);
           if (error) throw error;
         }
       } else if (operation === "delete") {
         if (shouldHardDelete) {
           const { error } = await client
-            .from(tableName)
+            .from(remoteTableName)
             .delete()
             .eq("id", entityId);
           if (error) throw error;
         } else {
           const { error } = await client
-            .from(tableName)
+            .from(remoteTableName)
             .update({ is_deleted: true, updated_at: new Date().toISOString() })
             .eq("id", entityId);
           if (error) throw error;

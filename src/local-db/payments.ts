@@ -20,6 +20,7 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { db } from './database'
 import { addToOfflineMutations, fetchTableFromSupabase } from './hooks'
 import { getOrderBalanceAmount } from './orderInstallments'
+import { mirrorPaymentAccountTransactionLocally } from './paymentAccounts'
 import type {
     CurrencyCode,
     ClinicalAppointment,
@@ -74,6 +75,8 @@ export interface RecordObligationSettlementInput {
     counterpartyName?: string
     businessPartnerId?: string | null
     createdBy?: string | null
+    accountId?: string | null
+    accountNameSnapshot?: string | null
 }
 
 export interface RecordDirectTransactionInput {
@@ -89,6 +92,8 @@ export interface RecordDirectTransactionInput {
     /** Explicit partner-subledger treatment; cash-only is the safe default. */
     partnerAccountEffect?: DirectTransactionPartnerAccountEffect
     createdBy?: string | null
+    accountId?: string | null
+    accountNameSnapshot?: string | null
 }
 
 export const DIRECT_TRANSACTION_PARTNER_ACCOUNT_EFFECTS = [
@@ -152,6 +157,8 @@ export interface SettlePartnerBalanceInput {
     amount?: number
     amountsByCurrency?: CurrencySettlementAmount[]
     onProgress?: (progress: PartnerSettlementProgress) => void
+    accountId?: string | null
+    accountNameSnapshot?: string | null
 }
 
 export interface SettlePartnerBalanceResult {
@@ -163,12 +170,11 @@ export interface SettlePartnerBalanceResult {
     groups: PartnerSettlementBalanceGroup[]
 }
 
-const PASS_THROUGH_REAL_ESTATE_SOURCE_TYPES = new Set<PaymentTransactionSourceType>([
-    'real_estate_payment',
-    'real_estate_installment'
-])
-
 export interface AppendPaymentTransactionInput {
+    /** Optional deterministic ID for a retriable, one-time operational payment. */
+    id?: string
+    /** Uses an ID upsert for an operation that may be replayed by an offline client. */
+    idempotent?: boolean
     sourceModule: PaymentTransactionSourceModule
     sourceType: PaymentTransactionSourceType
     sourceRecordId: string
@@ -182,6 +188,8 @@ export interface AppendPaymentTransactionInput {
     referenceLabel?: string | null
     note?: string | null
     createdBy?: string | null
+    accountId?: string | null
+    accountNameSnapshot?: string | null
     reversalOfTransactionId?: string | null
     metadata?: Record<string, unknown> | null
 }
@@ -296,6 +304,10 @@ function getTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceMo
             return `/business-partners/${businessPartnerId}`
         }
 
+        if (transaction.sourceType === 'payment_account_opening_balance') {
+            return '/payment-accounts'
+        }
+
         return transaction.sourceType === 'direct_transaction' ? '/direct-transactions' : '/payments'
     }
 
@@ -380,10 +392,6 @@ function filterTransactions(
 
     return items.filter((item) => {
         if (item.isDeleted) {
-            return false
-        }
-
-        if (PASS_THROUGH_REAL_ESTATE_SOURCE_TYPES.has(item.sourceType)) {
             return false
         }
 
@@ -1278,10 +1286,17 @@ export async function appendPaymentTransaction(
     workspaceId: string,
     input: AppendPaymentTransactionInput
 ): Promise<PaymentTransaction> {
+    if (input.id) {
+        const existing = await db.payment_transactions.get(input.id)
+        if (existing && !existing.isDeleted) return existing
+    }
     const now = new Date().toISOString()
     const paidAt = input.paidAt ? new Date(input.paidAt).toISOString() : now
+    const reversedTransaction = input.reversalOfTransactionId && input.accountId === undefined
+        ? await db.payment_transactions.get(input.reversalOfTransactionId)
+        : undefined
     const transaction: PaymentTransaction = {
-        id: generateId(),
+        id: input.id ?? generateId(),
         workspaceId,
         sourceModule: input.sourceModule,
         sourceType: input.sourceType,
@@ -1296,6 +1311,8 @@ export async function appendPaymentTransaction(
         referenceLabel: input.referenceLabel?.trim() || null,
         note: input.note?.trim() || null,
         createdBy: input.createdBy || null,
+        accountId: input.accountId ?? reversedTransaction?.accountId ?? null,
+        accountNameSnapshot: input.accountNameSnapshot ?? reversedTransaction?.accountNameSnapshot ?? null,
         reversalOfTransactionId: input.reversalOfTransactionId ?? null,
         metadata: input.metadata ?? null,
         createdAt: now,
@@ -1307,11 +1324,13 @@ export async function appendPaymentTransaction(
 
     if (!shouldUseCloudBusinessData(workspaceId)) {
         await db.payment_transactions.put(transaction)
+        await mirrorPaymentAccountTransactionLocally(transaction)
         return transaction
     }
 
     if (!isOnline()) {
         await db.payment_transactions.put(transaction)
+        await mirrorPaymentAccountTransactionLocally(transaction)
         await addToOfflineMutations(
             'payment_transactions',
             transaction.id,
@@ -1326,7 +1345,9 @@ export async function appendPaymentTransaction(
         const client = getSupabaseClientForTable('payment_transactions')
         const payload = sanitizeSyncPayload(transaction as unknown as Record<string, unknown>)
         const { error } = await runMutation('payment_transactions.create', () =>
-            client.from('payment_transactions').insert(payload)
+            input.idempotent
+                ? client.from('payment_transactions').upsert(payload, { onConflict: 'id' })
+                : client.from('payment_transactions').insert(payload)
         )
 
         if (error) {
@@ -1340,11 +1361,13 @@ export async function appendPaymentTransaction(
             lastSyncedAt: syncedAt
         }
         await db.payment_transactions.put(syncedTransaction)
+        await mirrorPaymentAccountTransactionLocally(syncedTransaction)
         return syncedTransaction
     } catch (error) {
         if (shouldUseOfflineMutationFallback(error)) {
             console.error('[Payments] Payment transaction sync failed, queued offline mutation:', error)
             await db.payment_transactions.put(transaction)
+            await mirrorPaymentAccountTransactionLocally(transaction)
             await addToOfflineMutations(
                 'payment_transactions',
                 transaction.id,
@@ -1371,7 +1394,8 @@ async function replaceBeauty2AppointmentPayment(
     appointment: ClinicalAppointment,
     targetAmount: number,
     targetCurrency: Extract<CurrencyCode, 'iqd' | 'usd'>,
-    createdBy?: string | null
+    createdBy?: string | null,
+    selection: { accountId?: string | null; accountNameSnapshot?: string | null } = {}
 ) {
     const relatedTransactions = await listPaymentTransactionsForSource(workspaceId, {
         sourceType: 'clinical_appointment',
@@ -1393,10 +1417,15 @@ async function replaceBeauty2AppointmentPayment(
 
     const normalizedAmount = Math.max(0, Number(targetAmount || 0))
     const current = activeAutoTransactions[0]
+    const effectiveAccountId = selection.accountId === undefined ? current?.accountId ?? null : selection.accountId
+    const effectiveAccountName = selection.accountNameSnapshot === undefined
+        ? current?.accountNameSnapshot ?? null
+        : selection.accountNameSnapshot
     if (
         activeAutoTransactions.length === 1
         && current.currency === targetCurrency
         && Math.abs(current.amount - normalizedAmount) <= 0.000001
+        && current.accountId === effectiveAccountId
     ) {
         return current
     }
@@ -1441,6 +1470,8 @@ async function replaceBeauty2AppointmentPayment(
             referenceLabel: appointment.appointmentNumber || null,
             note: appointment.internalNotes || null,
             createdBy: createdBy || null,
+            accountId: effectiveAccountId,
+            accountNameSnapshot: effectiveAccountName,
             metadata: {
                 beauty2AutoPayment: true,
                 appointmentId: appointment.id,
@@ -1459,7 +1490,8 @@ async function replaceBeauty2AppointmentPayment(
 export function syncBeauty2AppointmentPayment(
     workspaceId: string,
     appointment: ClinicalAppointment,
-    createdBy?: string | null
+    createdBy?: string | null,
+    selection: { accountId?: string | null; accountNameSnapshot?: string | null } = {}
 ) {
     const currency = appointment.calculatedAmountCurrency === 'usd' ? 'usd' : 'iqd'
     return replaceBeauty2AppointmentPayment(
@@ -1467,7 +1499,8 @@ export function syncBeauty2AppointmentPayment(
         appointment,
         appointment.calculatedAmount || 0,
         currency,
-        createdBy
+        createdBy,
+        selection
     )
 }
 
@@ -1482,7 +1515,8 @@ export function reverseBeauty2AppointmentPayment(
 
 export async function appendLoanOriginationTransactionForLoan(
     workspaceId: string,
-    loan: Pick<Loan, 'id' | 'workspaceId' | 'source' | 'loanCategory' | 'direction' | 'principalAmount' | 'settlementCurrency' | 'createdAt' | 'borrowerName' | 'loanNo' | 'notes' | 'createdBy'>
+    loan: Pick<Loan, 'id' | 'workspaceId' | 'source' | 'loanCategory' | 'direction' | 'principalAmount' | 'settlementCurrency' | 'createdAt' | 'borrowerName' | 'loanNo' | 'notes' | 'createdBy'>,
+    selection: { accountId?: string | null; accountNameSnapshot?: string | null } = {}
 ) {
     if (loan.workspaceId !== workspaceId) {
         throw new Error('Workspace mismatch')
@@ -1504,7 +1538,15 @@ export async function appendLoanOriginationTransactionForLoan(
             .sort((left, right) => right.paidAt.localeCompare(left.paidAt) || right.createdAt.localeCompare(left.createdAt))[0] || null
     }
 
-    return appendPaymentTransaction(workspaceId, input)
+    return appendPaymentTransaction(workspaceId, {
+        ...input,
+        ...(selection.accountId === undefined
+            ? {}
+            : {
+                accountId: selection.accountId,
+                accountNameSnapshot: selection.accountNameSnapshot ?? null
+            })
+    })
 }
 
 async function ensureManualLoanOriginationTransactions(workspaceId: string) {
@@ -1715,6 +1757,8 @@ export async function recordDirectTransaction(
         referenceLabel: reason,
         note: input.note?.trim() || null,
         createdBy: input.createdBy || null,
+        accountId: input.accountId ?? null,
+        accountNameSnapshot: input.accountNameSnapshot ?? null,
         metadata: {
             reason,
             businessPartnerId,
@@ -1979,7 +2023,9 @@ export async function settlePartnerBalance(
                     paymentMethod,
                     note: note || undefined,
                     paidAt,
-                    createdBy: createdBy || undefined
+                    createdBy: createdBy || undefined,
+                    accountId: input.accountId ?? null,
+                    accountNameSnapshot: input.accountNameSnapshot ?? null
                 })
                 break
             }
@@ -1995,7 +2041,9 @@ export async function settlePartnerBalance(
                     paymentMethod,
                     paidAt,
                     note,
-                    createdBy
+                    createdBy,
+                    accountId: input.accountId ?? null,
+                    accountNameSnapshot: input.accountNameSnapshot ?? null
                 })
                 break
             }
@@ -2010,7 +2058,9 @@ export async function settlePartnerBalance(
                     businessPartnerId: partner.id,
                     note,
                     paidAt,
-                    createdBy
+                    createdBy,
+                    accountId: input.accountId ?? null,
+                    accountNameSnapshot: input.accountNameSnapshot ?? null
                 })
                 break
             }
@@ -2132,7 +2182,9 @@ export async function recordObligationSettlement(
                 paymentMethod: input.paymentMethod,
                 note: note || undefined,
                 paidAt,
-                createdBy: createdBy || undefined
+                createdBy: createdBy || undefined,
+                accountId: input.accountId ?? null,
+                accountNameSnapshot: input.accountNameSnapshot ?? null,
             })
             return
         }
@@ -2151,7 +2203,9 @@ export async function recordObligationSettlement(
                 businessPartnerId: input.businessPartnerId || getMetadataString(obligation.metadata, 'businessPartnerId'),
                 note,
                 paidAt,
-                createdBy
+                createdBy,
+                accountId: input.accountId ?? null,
+                accountNameSnapshot: input.accountNameSnapshot ?? null,
             })
             return
         }
@@ -2170,7 +2224,9 @@ export async function recordObligationSettlement(
                 paymentMethod: input.paymentMethod,
                 paidAt,
                 note,
-                createdBy
+                createdBy,
+                accountId: input.accountId ?? null,
+                accountNameSnapshot: input.accountNameSnapshot ?? null
             })
             return
         }
@@ -2205,6 +2261,8 @@ export async function recordObligationSettlement(
                 referenceLabel: obligation.referenceLabel,
                 note,
                 createdBy,
+                accountId: input.accountId ?? null,
+                accountNameSnapshot: input.accountNameSnapshot ?? null,
                 metadata: {
                     appointmentId: appointment.id,
                     appointmentType: appointment.appointmentType,
@@ -2236,7 +2294,9 @@ export async function recordObligationSettlement(
                 paymentMethod: input.paymentMethod,
                 paidAt,
                 note,
-                createdBy
+                createdBy,
+                accountId: input.accountId ?? null,
+                accountNameSnapshot: input.accountNameSnapshot ?? null
             })
             return
         }
@@ -2275,6 +2335,8 @@ export async function recordObligationSettlement(
                 referenceLabel: series?.name || 'Expense',
                 note,
                 createdBy,
+                accountId: input.accountId ?? null,
+                accountNameSnapshot: input.accountNameSnapshot ?? null,
                 metadata: {
                     month: item.month,
                     seriesId: item.seriesId,
@@ -2329,6 +2391,8 @@ export async function recordObligationSettlement(
                 referenceLabel: `Payroll ${month}`,
                 note,
                 createdBy,
+                accountId: input.accountId ?? null,
+                accountNameSnapshot: input.accountNameSnapshot ?? null,
                 metadata: {
                     employeeId: employee.id,
                     month

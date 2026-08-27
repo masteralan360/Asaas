@@ -84,7 +84,7 @@ import { convertCurrencyAmountWithAvailableSnapshot, getEffectiveExchangeRatesSn
 import { QUANTITY_EPSILON, isPositiveQuantity, roundQuantity } from '@/lib/quantity'
 import { salesExchangeRowsToSnapshots } from '@/lib/salesExchange'
 import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
-import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
+import { getSupabaseClientForTable, getSupabaseRemoteTableName } from '@/lib/supabaseSchema'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { recordWorkspaceDataFetch } from '@/workspace/workspaceDataFreshness'
 
@@ -1754,11 +1754,12 @@ async function fetchTableFromSupabaseInternal<T extends { id: string, syncStatus
 
     const includeDeleted = options?.includeDeleted ?? false
     const client = getSupabaseClientForTable(tableName)
+    const remoteTableName = getSupabaseRemoteTableName(tableName)
     const remoteRows: any[] = []
 
     for (let from = 0; ; from += TABLE_FETCH_PAGE_SIZE) {
         let query = client
-            .from(tableName)
+            .from(remoteTableName)
             .select('*')
             .eq('workspace_id', workspaceId)
 
@@ -4803,6 +4804,8 @@ interface LoanCreateInput {
     createdAt?: string
     notes?: string
     createdBy?: string
+    accountId?: string | null
+    accountNameSnapshot?: string | null
 }
 
 export function isLoanDeletionAllowed(
@@ -4837,14 +4840,18 @@ async function resolveLoanExchangeRateSnapshot(input: Pick<LoanCreateInput, 'sal
     return getEffectiveExchangeRatesSnapshot(null)
 }
 
-async function appendLoanOriginationTransactionBestEffort(workspaceId: string, loan: Loan) {
+async function appendLoanOriginationTransactionBestEffort(
+    workspaceId: string,
+    loan: Loan,
+    selection: { accountId?: string | null; accountNameSnapshot?: string | null } = {}
+) {
     if (loan.source !== 'manual') {
         return
     }
 
     try {
         const { appendLoanOriginationTransactionForLoan } = await import('./payments')
-        await appendLoanOriginationTransactionForLoan(workspaceId, loan)
+        await appendLoanOriginationTransactionForLoan(workspaceId, loan, selection)
     } catch (error) {
         console.error('[Loans] Failed to append origination transaction:', error)
     }
@@ -4980,7 +4987,7 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
 
     if (!isOnline()) {
         await enqueueLoanCreateMutations(workspaceId, loan, installments)
-        await appendLoanOriginationTransactionBestEffort(workspaceId, loan)
+        await appendLoanOriginationTransactionBestEffort(workspaceId, loan, input)
         await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, loan.linkedPartyType, loan.linkedPartyId)
         return { loan, installments }
     }
@@ -5007,7 +5014,7 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
             }
         })
 
-        await appendLoanOriginationTransactionBestEffort(workspaceId, { ...loan, syncStatus: 'synced', lastSyncedAt: syncedAt })
+        await appendLoanOriginationTransactionBestEffort(workspaceId, { ...loan, syncStatus: 'synced', lastSyncedAt: syncedAt }, input)
         await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, loan.linkedPartyType, loan.linkedPartyId)
 
         return {
@@ -5018,7 +5025,7 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
         if (shouldUseOfflineMutationFallback(error)) {
             console.error('[Loans] Online create failed, queued offline mutation:', error)
             await enqueueLoanCreateMutations(workspaceId, loan, installments)
-            await appendLoanOriginationTransactionBestEffort(workspaceId, loan)
+            await appendLoanOriginationTransactionBestEffort(workspaceId, loan, input)
             await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, loan.linkedPartyType, loan.linkedPartyId)
             return { loan, installments }
         }
@@ -5982,6 +5989,8 @@ interface LoanPaymentInput {
     note?: string
     paidAt?: string
     createdBy?: string
+    accountId?: string | null
+    accountNameSnapshot?: string | null
 }
 
 export async function recordLoanPayment(workspaceId: string, input: LoanPaymentInput): Promise<{
@@ -6148,6 +6157,8 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
             referenceLabel: updatedLoan.loanNo || loan.loanNo,
             note: input.note?.trim() || null,
             createdBy: input.createdBy || null,
+            accountId: input.accountId ?? null,
+            accountNameSnapshot: input.accountNameSnapshot ?? null,
             metadata: {
                 loanPaymentId: payment.id,
                 loanCategory: loan.loanCategory || 'standard',

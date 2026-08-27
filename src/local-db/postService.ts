@@ -18,6 +18,7 @@ import { getPostponedVoiceReasonCleanupPaths } from "@/services/deliveryVoiceRea
 import { deleteVoiceStorageObjects } from "@/services/voiceStorage";
 import type {
   CurrencyCode,
+  DeliveryCustomerPaymentStatus,
   DeliveryFeePayer,
   DeliveryLedgerEntry,
   DeliveryLedgerEntryKind,
@@ -94,6 +95,8 @@ export interface CreateDeliveryShipmentInput {
   description?: string | null;
   currency: CurrencyCode;
   codAmount: number;
+  customerPaymentStatus?: DeliveryCustomerPaymentStatus;
+  recipientPayoutAmount?: number;
   deliveryFee?: number;
   feePayer?: DeliveryFeePayer;
   sourceSalesOrderId?: string | null;
@@ -130,6 +133,9 @@ export interface UpdateDeliveryShipmentStatusInput {
   note?: string | null;
   voiceReasonPath?: string | null;
   voiceReasonDurationMs?: number | null;
+  recipientPayoutPaymentMethod?: WorkspacePaymentMethod;
+  recipientPayoutAccountId?: string | null;
+  recipientPayoutAccountNameSnapshot?: string | null;
   actorUserId?: string | null;
   actorAgentId?: string | null;
 }
@@ -145,6 +151,8 @@ export interface SettleCourierInput {
   note?: string | null;
   varianceNote?: string | null;
   createdBy?: string | null;
+  accountId?: string | null;
+  accountNameSnapshot?: string | null;
 }
 
 export interface PayDeliveryMerchantInput {
@@ -158,6 +166,8 @@ export interface PayDeliveryMerchantInput {
   note?: string | null;
   varianceNote?: string | null;
   createdBy?: string | null;
+  accountId?: string | null;
+  accountNameSnapshot?: string | null;
 }
 
 export interface DeliveryBalance {
@@ -166,6 +176,13 @@ export interface DeliveryBalance {
   amount: number;
   /** Total amount already settled (handed over / paid out) in this currency. */
   paid: number;
+}
+
+/** Signed merchant account balance: positive means payable to the merchant. */
+export interface DeliveryMerchantAccountBalance {
+  id: string;
+  currency: CurrencyCode;
+  amount: number;
 }
 
 /**
@@ -846,6 +863,30 @@ export function useMerchantDeliveryBalances(workspaceId?: string) {
   }, [entries]);
 }
 
+/**
+ * Preserves a negative merchant balance for account visibility. Payout flows
+ * intentionally use `useMerchantDeliveryBalances`, which only returns money
+ * currently payable to the merchant.
+ */
+export function useMerchantDeliveryAccountBalances(workspaceId?: string) {
+  const entries = useDeliveryLedgerEntries(workspaceId);
+  return useMemo<DeliveryMerchantAccountBalance[]>(() => {
+    const totals = new Map<string, DeliveryMerchantAccountBalance>();
+    for (const entry of entries) {
+      if (!entry.merchantProfileId) continue;
+      const key = `${entry.merchantProfileId}:${entry.currency}`;
+      const total = totals.get(key) ?? {
+        id: entry.merchantProfileId,
+        currency: entry.currency,
+        amount: 0,
+      };
+      total.amount += Number(entry.amount || 0);
+      totals.set(key, total);
+    }
+    return [...totals.values()].filter((item) => Math.abs(item.amount) > 0.000001);
+  }, [entries]);
+}
+
 export async function createDeliveryMerchantProfile(
   workspaceId: string,
   input: DeliveryMerchantProfileInput,
@@ -925,6 +966,7 @@ export async function createDeliveryShipment(
   if (!input.recipientPhone.trim() || !input.recipientAddress.trim()) {
     throw new Error("Recipient phone and delivery address are required");
   }
+  const customerPaymentStatus = input.customerPaymentStatus ?? "cash_on_delivery";
   const now = new Date().toISOString();
   const trackingNumber = await getInitialShipmentTrackingNumber(workspaceId);
   const shipment = makeBase(workspaceId, {
@@ -937,7 +979,12 @@ export async function createDeliveryShipment(
     recipientLongitude: null,
     description: normalizeText(input.description),
     currency: input.currency,
-    codAmount: positiveMoney(input.codAmount, "COD amount"),
+    // A prepaid post cannot accidentally create courier custody. It may still
+    // carry a merchant-funded delivery fee or recipient payout.
+    codAmount: customerPaymentStatus === "prepaid_electronically" ? 0 : positiveMoney(input.codAmount, "COD amount"),
+    customerPaymentStatus,
+    recipientPayoutAmount: positiveMoney(input.recipientPayoutAmount ?? 0, "Recipient payout amount"),
+    recipientPayoutPaymentTransactionId: null,
     deliveryFee: positiveMoney(input.deliveryFee ?? profile.defaultFeeAmount, "Delivery fee"),
     feePayer: input.feePayer ?? profile.defaultFeePayer,
     status: "received" as const,
@@ -1154,7 +1201,37 @@ export async function updateDeliveryShipmentStatus(
     throw new Error("A courier can only update shipments assigned to them");
   }
 
+  const operationKey = `${original.id}:${original.version}:${input.status}`;
   const now = new Date().toISOString();
+  const recipientPayoutAmount = positiveMoney(original.recipientPayoutAmount ?? 0, "Recipient payout amount");
+  let recipientPayoutPaymentTransactionId: string | null = null;
+  if (input.status === "delivered" && recipientPayoutAmount > 0) {
+    const payment = await appendPaymentTransaction(original.workspaceId, {
+      sourceModule: "post_service",
+      sourceType: "delivery_recipient_payout",
+      sourceRecordId: original.id,
+      id: await deliveryOperationId(`recipient-payout:${operationKey}`),
+      idempotent: true,
+      direction: "outgoing",
+      amount: recipientPayoutAmount,
+      currency: original.currency,
+      paymentMethod: input.recipientPayoutPaymentMethod ?? "cash",
+      paidAt: now,
+      counterpartyName: original.recipientPhone,
+      referenceLabel: original.trackingNumber,
+      note: `Recipient payout for ${original.trackingNumber}`,
+      createdBy: input.actorUserId ?? null,
+      accountId: input.recipientPayoutAccountId ?? null,
+      accountNameSnapshot: input.recipientPayoutAccountNameSnapshot ?? null,
+      metadata: {
+        deliveryShipmentId: original.id,
+        deliveryMerchantProfileId: original.merchantProfileId,
+        businessPartnerId: original.merchantBusinessPartnerId,
+        recipientPayoutAmount,
+      },
+    });
+    recipientPayoutPaymentTransactionId = payment.id;
+  }
   const updated: DeliveryShipment = {
     ...original,
     status: input.status,
@@ -1162,11 +1239,13 @@ export async function updateDeliveryShipmentStatus(
     deliveredAt: input.status === "delivered" ? now : null,
     postponedAt: input.status === "postponed" ? now : original.postponedAt ?? null,
     returnedAt: input.status === "returned" ? now : null,
+    recipientPayoutPaymentTransactionId: input.status === "delivered"
+      ? recipientPayoutPaymentTransactionId
+      : original.recipientPayoutPaymentTransactionId ?? null,
     updatedAt: now,
     version: original.version + 1,
     ...getSyncMetadata(original.workspaceId, now),
   };
-  const operationKey = `${original.id}:${original.version}:${input.status}`;
   const event = {
     ...(makeBase(original.workspaceId, {
     shipmentId: original.id,
@@ -1251,6 +1330,21 @@ export async function updateDeliveryShipmentStatus(
         createdBy: input.actorUserId ?? null,
       }));
     }
+    if (recipientPayoutAmount > 0) {
+      ledgerEntries.push(makeLedgerEntry(original.workspaceId, {
+        kind: "merchant_recipient_payout",
+        shipmentId: original.id,
+        settlementId: null,
+        agentId: null,
+        merchantProfileId: original.merchantProfileId,
+        businessPartnerId: original.merchantBusinessPartnerId,
+        amount: -recipientPayoutAmount,
+        currency: original.currency,
+        occurredAt: now,
+        note: `Recipient payout for ${original.trackingNumber}`,
+        createdBy: input.actorUserId ?? null,
+      }));
+    }
 
     await Promise.all(ledgerEntries.map(async (entry) => {
       entry.id = await deliveryOperationId(`obligation:${operationKey}:${entry.kind}`);
@@ -1292,6 +1386,8 @@ async function createSettlement(
     note?: string | null;
     varianceNote?: string | null;
     createdBy?: string | null;
+    accountId?: string | null;
+    accountNameSnapshot?: string | null;
   },
 ) {
   const entries = await db.delivery_ledger_entries.where("workspaceId").equals(workspaceId).toArray();
@@ -1388,6 +1484,8 @@ async function createSettlement(
     referenceLabel: settlement.settlementNumber,
     note: normalizeText(options.note),
     createdBy: options.createdBy ?? null,
+    accountId: options.accountId ?? null,
+    accountNameSnapshot: options.accountNameSnapshot ?? null,
     metadata: {
       deliverySettlementId: settlement.id,
       deliverySettlementType: type,

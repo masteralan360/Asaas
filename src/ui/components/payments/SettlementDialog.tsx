@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 
-import { type BusinessPartner, type PaymentObligation, type WorkspacePaymentMethod, useBusinessPartners } from '@/local-db'
+import { type BusinessPartner, type PaymentAccount, type PaymentObligation, type WorkspacePaymentMethod, useBusinessPartners } from '@/local-db'
 import { formatCurrency, formatDate, formatLocalDateTimeValue, formatNumericInput, parseFormattedNumber, parseLocalDateTimeValue, sanitizeNumericInput } from '@/lib/utils'
 import { LOAN_ADJUSTMENT_PAYMENT_METHOD, STANDARD_PAYMENT_METHODS } from '@/lib/paymentMethods'
 import {
@@ -21,7 +21,8 @@ import {
 } from '@/ui/components'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import { useWorkspace } from '@/workspace'
-import { PaymentMethodSelect } from './PaymentMethodSelect'
+import { PaymentMethodSelector } from '@/ui/components/PaymentMethodSelector'
+import { PaymentAccountSelector } from './PaymentAccountSelector'
 
 interface SettlementDialogProps {
     open: boolean
@@ -36,6 +37,8 @@ interface SettlementDialogProps {
         note?: string
         counterpartyName?: string
         businessPartnerId?: string | null
+        accountId?: string | null
+        accountNameSnapshot?: string | null
     }) => Promise<void> | void
 }
 
@@ -55,6 +58,7 @@ export function SettlementDialog({
     const { t } = useTranslation()
     const { features } = useWorkspace()
     const [paymentMethod, setPaymentMethod] = useState<WorkspacePaymentMethod>('cash')
+    const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
     const [paidAt, setPaidAt] = useState('')
     const [amount, setAmount] = useState('')
     const [note, setNote] = useState('')
@@ -78,6 +82,7 @@ export function SettlementDialog({
         }
 
         setPaymentMethod('cash')
+        setPaymentAccount(null)
         setPaidAt(formatLocalDateTimeValue(new Date()))
         setAmount(String(obligation?.amount || ''))
         setNote('')
@@ -128,15 +133,29 @@ export function SettlementDialog({
             amount: showsAmountInput ? parsedAmount : undefined,
             note: note.trim() || undefined,
             counterpartyName: counterpartyName.trim() || undefined,
-            businessPartnerId: linkedCounterparty?.id || null
+            businessPartnerId: linkedCounterparty?.id || null,
+            accountId: paymentAccount?.id ?? null,
+            accountNameSnapshot: paymentAccount?.name ?? null
         })
     }
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
+        <Dialog open={open} onOpenChange={(nextOpen) => {
+            if (!isSubmitting) onOpenChange(nextOpen)
+        }}>
             <DialogContent
                 layout="structured"
                 className="max-w-3xl"
+                showCloseButton={!isSubmitting}
+                onPointerDownOutside={(event) => {
+                    if (isSubmitting) event.preventDefault()
+                }}
+                onInteractOutside={(event) => {
+                    if (isSubmitting) event.preventDefault()
+                }}
+                onEscapeKeyDown={(event) => {
+                    if (isSubmitting) event.preventDefault()
+                }}
                 onOpenAutoFocus={(e) => {
                     if (showsCounterpartyPicker) {
                         e.preventDefault()
@@ -244,14 +263,23 @@ export function SettlementDialog({
 
                                 <div className="grid gap-2">
                                     <Label>{t('settlementModal.paymentMethod', { defaultValue: 'Payment Method' })}</Label>
-                                    <PaymentMethodSelect
+                                    <PaymentMethodSelector
                                         value={paymentMethod}
                                         onValueChange={(value) => setPaymentMethod(value as WorkspacePaymentMethod)}
+                                        onLinkedPaymentAccountSelect={setPaymentAccount}
+                                        workspaceId={obligation.workspaceId}
                                         methods={includeLoanAdjustment
                                             ? [...STANDARD_PAYMENT_METHODS, LOAN_ADJUSTMENT_PAYMENT_METHOD]
                                             : STANDARD_PAYMENT_METHODS}
                                     />
                                 </div>
+
+                                <PaymentAccountSelector
+                                    workspaceId={obligation.workspaceId}
+                                    value={paymentAccount?.id}
+                                    onValueChange={setPaymentAccount}
+                                    disabled={isSubmitting}
+                                />
 
                                 <div className="grid gap-2">
                                     <Label>{t('settlementModal.paidAt', { defaultValue: 'Paid At' })}</Label>

@@ -299,6 +299,9 @@ export interface ActivityTransactionInput {
     notes?: string | null
     lines: ActivityTransactionLineInput[]
     createdBy?: string | null
+    /** Optional account context; omitted keeps this as a normal ledger payment. */
+    accountId?: string | null
+    accountNameSnapshot?: string | null
 }
 
 function validateTransactionInput(input: ActivityTransactionInput) {
@@ -411,6 +414,8 @@ export async function createActivityTransaction(workspaceId: string, input: Acti
         referenceLabel: transaction.transactionNo,
         note: transaction.name,
         createdBy: transaction.createdBy ?? null,
+        accountId: input.accountId ?? null,
+        accountNameSnapshot: input.accountNameSnapshot ?? null,
         metadata: { activityTransactionId: transaction.id, transactionNo: transaction.transactionNo }
     })
 
@@ -425,6 +430,11 @@ export async function updateActivityTransaction(workspaceId: string, transaction
     }
 
     const previousLines = await db.activity_transaction_lines.where('transactionId').equals(transactionId).and((line) => !line.isDeleted).toArray()
+    const previousPayment = await db.payment_transactions
+        .where('[workspaceId+sourceType+sourceRecordId]')
+        .equals([workspaceId, 'activity_transaction', transactionId])
+        .and((payment) => !payment.isDeleted && !payment.reversalOfTransactionId)
+        .first()
     const catalogById = await getCatalogForLines(workspaceId, input.lines)
     const existingById = new Map(previousLines.map((line) => [line.id, line]))
     const lines = buildTransactionLines(workspaceId, transactionId, input, catalogById, existingById)
@@ -476,6 +486,10 @@ export async function updateActivityTransaction(workspaceId: string, transaction
             referenceLabel: transaction.transactionNo,
             note: transaction.name,
             createdBy: transaction.createdBy ?? null,
+            // Payment-account assignment is immutable after posting. Editing the
+            // activity updates its amount/details while retaining the original account.
+            accountId: previousPayment?.accountId ?? null,
+            accountNameSnapshot: previousPayment?.accountNameSnapshot ?? null,
             metadata: { activityTransactionId: transaction.id, transactionNo: transaction.transactionNo }
         })
     ])
@@ -507,7 +521,8 @@ export async function reverseActivityTransaction(
     workspaceId: string,
     transactionId: string,
     status: Extract<ActivityTransactionStatus, 'cancelled' | 'refunded'>,
-    createdBy?: string | null
+    createdBy?: string | null,
+    selection: { accountId?: string | null; accountNameSnapshot?: string | null } = {}
 ) {
     const transaction = await db.activity_transactions.get(transactionId)
     if (!transaction || transaction.workspaceId !== workspaceId || transaction.isDeleted || transaction.status !== 'completed') {
@@ -552,6 +567,11 @@ export async function reverseActivityTransaction(
             referenceLabel: `${transaction.transactionNo} / ${status === 'cancelled' ? 'Cancellation' : 'Refund'}`,
             note: transaction.name,
             createdBy: createdBy ?? transaction.createdBy ?? null,
+            accountId: selection.accountId === undefined ? originalPayment.accountId ?? null : selection.accountId,
+            accountNameSnapshot: selection.accountNameSnapshot === undefined
+                ? originalPayment.accountNameSnapshot ?? null
+                : selection.accountNameSnapshot,
+            reversalOfTransactionId: originalPayment.id,
             metadata: { activityTransactionId: transaction.id, action: status }
         })
     }

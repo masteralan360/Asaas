@@ -512,6 +512,8 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         paidAt: string
         amount?: number
         note?: string
+        accountId?: string | null
+        accountNameSnapshot?: string | null
     }) => {
         if (!settlementTarget) return
         setIsSubmittingSettlement(true)

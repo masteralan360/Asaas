@@ -352,6 +352,12 @@ const Ledger = lazy(() =>
 const Payments = lazy(() =>
   import("@/ui/pages/Payments").then((m) => ({ default: m.Payments })),
 );
+const PaymentAccounts = lazy(() =>
+  import("@/ui/pages/PaymentAccounts").then((m) => ({ default: m.PaymentAccounts })),
+);
+const CashierShifts = lazy(() =>
+  import("@/ui/pages/CashierShifts").then((m) => ({ default: m.CashierShifts })),
+);
 const DirectTransactions = lazy(() =>
   import("@/ui/pages/DirectTransactions").then((m) => ({
     default: m.DirectTransactions,
@@ -2152,6 +2158,28 @@ function App() {
                         <ProtectedRoute requiredFeature="products" requiredPermission="products.access">
                           <Layout>
                             <ProductCreatePage />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/payment-accounts/cashier-shifts">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="cashier_shift_control"
+                          requiredPermission="cashierShiftControl.access"
+                        >
+                          <Layout>
+                            <CashierShifts />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/payment-accounts">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="payment_accounts"
+                          requiredPermission="paymentAccounts.access"
+                        >
+                          <Layout>
+                            <PaymentAccounts />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

@@ -11,7 +11,9 @@ import {
     useSalesOrders,
     type AgentCommissionEntry,
     type CurrencyCode,
-    type IQDDisplayPreference
+    type IQDDisplayPreference,
+    type PaymentAccount,
+    type WorkspacePaymentMethod,
 } from '@/local-db'
 import {
     AppDialog,
@@ -37,6 +39,8 @@ import {
     Textarea,
     useToast
 } from '@/ui/components'
+import { PaymentMethodSelector } from '@/ui/components/PaymentMethodSelector'
+import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import { CommissionCurrencyTotalsView } from './CommissionCurrencyTotals'
 import { summarizeCommissionEntries } from './agentCommissionPresentation'
 
@@ -78,6 +82,7 @@ export function AgentCommissionSettlementDialog({
     const [amount, setAmount] = useState('')
     const [payoutOrderId, setPayoutOrderId] = useState('')
     const [paymentMethod, setPaymentMethod] = useState('cash')
+    const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
     const [notes, setNotes] = useState('')
     const [adjustmentOrderId, setAdjustmentOrderId] = useState('')
     const [isSaving, setIsSaving] = useState(false)
@@ -134,6 +139,7 @@ export function AgentCommissionSettlementDialog({
         setCurrency(payoutOrders[0]?.currency || defaultCurrency)
         setAmount(payoutAmountInputValue(payoutOrders[0]?.due))
         setPaymentMethod('cash')
+        setPaymentAccount(null)
         setNotes('')
         setAdjustmentOrderId('')
     }, [approvalCandidates.length, defaultCurrency, open, payoutOrders])
@@ -170,9 +176,11 @@ export function AgentCommissionSettlementDialog({
                     orderId: selectedPayoutOrder.orderId,
                     amount: payoutAmount,
                     currency: selectedPayoutOrder.currency,
-                    paymentMethod: paymentMethod as any,
+                    paymentMethod: paymentMethod as WorkspacePaymentMethod,
                     notes: notes.trim() || null,
-                    createdBy: userId || null
+                    createdBy: userId || null,
+                    accountId: paymentAccount?.id ?? null,
+                    accountNameSnapshot: paymentAccount?.name ?? null,
                 })
                 toast({ title: t('salesAgentCommissions.payoutRecorded') })
             } else {
@@ -316,22 +324,19 @@ export function AgentCommissionSettlementDialog({
                             </div>
                             <div className="space-y-2">
                                 <Label>{t('salesAgentCommissions.paymentMethod')}</Label>
-                                <Select value={paymentMethod} onValueChange={setPaymentMethod} disabled={isSaving}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        {[
-                                            ['cash', t('salesAgentCommissions.paymentMethods.cash')],
-                                            ['bank_transfer', t('salesAgentCommissions.paymentMethods.bankTransfer')],
-                                            ['fib', 'FIB'],
-                                            ['qicard', 'QiCard'],
-                                            ['zaincash', 'ZainCash'],
-                                            ['fastpay', 'FastPay']
-                                        ].map(([value, label]) => (
-                                            <SelectItem key={value} value={value}>{label}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <PaymentMethodSelector
+                                    value={paymentMethod as WorkspacePaymentMethod}
+                                    onValueChange={(value) => setPaymentMethod(value)}
+                                    onLinkedPaymentAccountSelect={setPaymentAccount}
+                                    workspaceId={workspaceId}
+                                />
                             </div>
+                            <PaymentAccountSelector
+                                workspaceId={workspaceId}
+                                value={paymentAccount?.id}
+                                onValueChange={setPaymentAccount}
+                                disabled={isSaving}
+                            />
                             <div className="space-y-2">
                                 <Label htmlFor="commission-payout-notes">{t('salesAgentCommissions.notes')}</Label>
                                 <Textarea id="commission-payout-notes" value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} disabled={isSaving} />

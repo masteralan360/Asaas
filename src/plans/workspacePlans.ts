@@ -16,6 +16,8 @@ export type PlanModuleKey =
     | 'stock_adjustments'
     | 'ledger'
     | 'payments'
+    | 'payment_accounts'
+    | 'cashier_shift_control'
     | 'direct_transactions'
     | 'members'
     | 'business_partners'
@@ -80,6 +82,8 @@ export type WorkspaceFeatureKey =
     | 'members'
     | 'allow_whatsapp'
     | 'payments'
+    | 'payment_accounts'
+    | 'cashier_shift_control'
     | 'ledger'
     | 'direct_transactions'
     | 'manual_entry'
@@ -172,7 +176,8 @@ export const PLAN_DEFINITIONS: Record<WorkspacePlan, WorkspacePlanDefinition> = 
             'discounts',
             'revenue_analytics',
             'team_performance',
-            'invoice_history'
+            'invoice_history',
+            'payment_accounts'
         ],
         capabilities: [
             'a4PdfInvoices',
@@ -270,6 +275,8 @@ export const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModul
     members: 'members',
     allow_whatsapp: 'whatsapp',
     payments: 'payments',
+    payment_accounts: 'payment_accounts',
+    cashier_shift_control: 'cashier_shift_control',
     ledger: 'ledger',
     direct_transactions: 'direct_transactions'
 }

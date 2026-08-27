@@ -52,6 +52,7 @@ import {
     useStorages,
     useSuppliers,
     type CurrencyCode,
+    type PaymentAccount,
     type PaymentObligation,
     type PurchaseOrder,
     type PurchaseOrderItem,
@@ -112,6 +113,7 @@ import {
     useToast
 } from '@/ui/components'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
+import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import { OrderDetailsView } from '@/ui/components/orders/OrderDetailsView'
 import { OrderListPrintTemplate } from '@/ui/components/orders/OrderPrintTemplates'
 import { OrderStatusBadge } from '@/ui/components/orders/OrderStatusBadge'
@@ -503,6 +505,8 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         paymentMethod: 'cash',
         items: [createEmptyItem(defaultStorageId)]
     })
+    const [salesPaymentAccount, setSalesPaymentAccount] = useState<PaymentAccount | null>(null)
+    const [purchasePaymentAccount, setPurchasePaymentAccount] = useState<PaymentAccount | null>(null)
 
     const liveRates = useMemo(() => ({
         exchangeData,
@@ -820,6 +824,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
     function resetSalesForm(customerId?: string) {
         const customer = customerId ? customers.find((entry) => entry.id === customerId) : undefined
         setEditingSalesOrder(null)
+        setSalesPaymentAccount(null)
         setSalesForm({
             customerId: customerId || '',
             sourceStorageId: defaultStorageId,
@@ -838,6 +843,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
     function resetPurchaseForm(supplierId?: string) {
         const supplier = supplierId ? suppliers.find((entry) => entry.id === supplierId) : undefined
         setEditingPurchaseOrder(null)
+        setPurchasePaymentAccount(null)
         setPurchaseForm({
             supplierId: supplierId || '',
             destinationStorageId: defaultStorageId,
@@ -859,7 +865,14 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         navigate(`/orders/edit/purchase/${order.id}`)
     }
 
-    async function handleOrderSettlement(input: { paymentMethod: WorkspacePaymentMethod; paidAt: string; amount?: number; note?: string }) {
+    async function handleOrderSettlement(input: {
+        paymentMethod: WorkspacePaymentMethod
+        paidAt: string
+        amount?: number
+        note?: string
+        accountId?: string | null
+        accountNameSnapshot?: string | null
+    }) {
         if (!workspaceId || !settlementTarget) {
             return
         }
@@ -867,10 +880,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         setIsSubmittingSettlement(true)
         try {
             await recordObligationSettlement(workspaceId, settlementTarget, {
-                paymentMethod: input.paymentMethod,
-                paidAt: input.paidAt,
-                amount: input.amount,
-                note: input.note,
+                ...input,
                 createdBy: user?.id || null
             })
             toast({ title: settlementTarget.direction === 'incoming' ? 'Collection recorded' : 'Payment recorded' })
@@ -1070,6 +1080,8 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                 balanceAmount: salesForm.isPaid ? 0 : editingSalesOrder?.balanceAmount ?? total,
                 paidAt: salesForm.isPaid ? new Date().toISOString() : null,
                 paymentMethod: salesForm.paymentMethod as SalesOrder['paymentMethod'],
+                initialPaymentAccountId: salesForm.isPaid ? salesPaymentAccount?.id ?? null : null,
+                initialPaymentAccountNameSnapshot: salesForm.isPaid ? salesPaymentAccount?.name ?? null : null,
                 initialPaymentAmount: 0,
                 linkedLoanId: editingSalesOrder?.linkedLoanId || null,
                 isInstallmentBased: editingSalesOrder?.isInstallmentBased || false,
@@ -1139,6 +1151,8 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                 balanceAmount: purchaseForm.isPaid ? 0 : editingPurchaseOrder?.balanceAmount ?? total,
                 paidAt: purchaseForm.isPaid ? new Date().toISOString() : null,
                 paymentMethod: purchaseForm.paymentMethod as PurchaseOrder['paymentMethod'],
+                initialPaymentAccountId: purchaseForm.isPaid ? purchasePaymentAccount?.id ?? null : null,
+                initialPaymentAccountNameSnapshot: purchaseForm.isPaid ? purchasePaymentAccount?.name ?? null : null,
                 initialPaymentAmount: 0,
                 linkedLoanId: editingPurchaseOrder?.linkedLoanId || null,
                 isInstallmentBased: editingPurchaseOrder?.isInstallmentBased || false,
@@ -2357,6 +2371,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                         id="sales-payment"
                                                         value={salesForm.paymentMethod as PaymentMethodOption}
                                                         onValueChange={(value) => setSalesForm((current) => ({ ...current, paymentMethod: value }))}
+                                                        workspaceId={user?.workspaceId}
                                                         methods={['cash', 'bank_transfer'] as const}
                                                     />
                                                 </div>
@@ -2367,6 +2382,14 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                     </div>
                                                     <Switch checked={salesForm.isPaid} onCheckedChange={(checked) => setSalesForm((current) => ({ ...current, isPaid: checked }))} />
                                                 </div>
+                                                {salesForm.isPaid ? (
+                                                    <PaymentAccountSelector
+                                                        workspaceId={user?.workspaceId}
+                                                        value={salesPaymentAccount?.id ?? null}
+                                                        onValueChange={setSalesPaymentAccount}
+                                                        cashDrawerOnly={salesForm.paymentMethod === 'cash'}
+                                                    />
+                                                ) : null}
                                                 <div className="space-y-2">
                                                     <Label htmlFor="sales-shipping" className="flex items-center gap-2">
                                                         <Truck className="h-4 w-4 text-muted-foreground" />
@@ -2633,6 +2656,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                         id="purchase-payment"
                                                         value={purchaseForm.paymentMethod as PaymentMethodOption}
                                                         onValueChange={(value) => setPurchaseForm((current) => ({ ...current, paymentMethod: value }))}
+                                                        workspaceId={user?.workspaceId}
                                                         methods={['cash', 'bank_transfer'] as const}
                                                     />
                                                 </div>
@@ -2643,6 +2667,14 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                     </div>
                                                     <Switch checked={purchaseForm.isPaid} onCheckedChange={(checked) => setPurchaseForm((current) => ({ ...current, isPaid: checked }))} />
                                                 </div>
+                                                {purchaseForm.isPaid ? (
+                                                    <PaymentAccountSelector
+                                                        workspaceId={user?.workspaceId}
+                                                        value={purchasePaymentAccount?.id ?? null}
+                                                        onValueChange={setPurchasePaymentAccount}
+                                                        cashDrawerOnly={purchaseForm.paymentMethod === 'cash'}
+                                                    />
+                                                ) : null}
                                                 <div className="space-y-2">
                                                     <Label htmlFor="purchase-notes">{t('orders.form.notes') || 'Notes'}</Label>
                                                     <Textarea id="purchase-notes" rows={4} value={purchaseForm.notes} onChange={(event) => setPurchaseForm((current) => ({ ...current, notes: event.target.value }))} />

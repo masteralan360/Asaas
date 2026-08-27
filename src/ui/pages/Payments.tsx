@@ -98,6 +98,8 @@ function sourceTypeLabel(
             return t('payments.sourceType.payroll', { defaultValue: 'Payroll' })
         case 'direct_transaction':
             return t('payments.sourceType.directTransaction', { defaultValue: 'Direct Transaction' })
+        case 'payment_account_opening_balance':
+            return t('paymentAccounts.openingBalance', { defaultValue: 'Opening Balance' })
         case 'rental_payment':
             return t('payments.sourceType.rentalPayment')
         case 'rental_deposit':
@@ -299,6 +301,8 @@ export function Payments() {
         note?: string
         counterpartyName?: string
         businessPartnerId?: string | null
+        accountId?: string | null
+        accountNameSnapshot?: string | null
     }) => {
         if (!workspaceId || !selectedObligation) {
             return
@@ -313,6 +317,8 @@ export function Payments() {
                 note: input.note,
                 counterpartyName: input.counterpartyName,
                 businessPartnerId: input.businessPartnerId,
+                accountId: input.accountId,
+                accountNameSnapshot: input.accountNameSnapshot,
                 createdBy: user?.id || null
             })
             toast({ title: t('payments.settlementRecorded', { defaultValue: 'Settlement recorded' }) })
@@ -336,6 +342,8 @@ export function Payments() {
         note?: string
         amountsByCurrency?: CurrencySettlementAmount[]
         onProgress?: (progress: PartnerSettlementProgress) => void
+        accountId?: string | null
+        accountNameSnapshot?: string | null
     }) => {
         if (!workspaceId) {
             return
@@ -351,6 +359,8 @@ export function Payments() {
                 note: input.note,
                 createdBy: user?.id || null,
                 amountsByCurrency: input.amountsByCurrency,
+                accountId: input.accountId,
+                accountNameSnapshot: input.accountNameSnapshot,
                 onProgress: input.onProgress
             })
             const summaryText = result.groups

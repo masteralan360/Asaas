@@ -56,6 +56,7 @@ import {
     useWorkspaceContacts,
     type PaymentObligation,
     type OrderInstallment,
+    type PaymentAccount,
     type PurchaseOrder,
     type PurchaseOrderItem,
     type SalesOrder,
@@ -297,6 +298,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
     const [isLoadingOrderInvoice, setIsLoadingOrderInvoice] = useState(false)
     const [returnTarget, setReturnTarget] = useState<{ orderItemId: string | null; maxQuantity: number; itemName: string } | null>(null)
     const [isReturning, setIsReturning] = useState(false)
+    const [returnPaymentAccount, setReturnPaymentAccount] = useState<PaymentAccount | null>(null)
     const [isPostReturnAdjustmentOpen, setIsPostReturnAdjustmentOpen] = useState(false)
     const [isSavingPostReturnAdjustment, setIsSavingPostReturnAdjustment] = useState(false)
 
@@ -900,7 +902,14 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
         }
     }
 
-    const handleOrderSettlement = async (input: { paymentMethod: WorkspacePaymentMethod; paidAt: string; amount?: number; note?: string }) => {
+    const handleOrderSettlement = async (input: {
+        paymentMethod: WorkspacePaymentMethod
+        paidAt: string
+        amount?: number
+        note?: string
+        accountId?: string | null
+        accountNameSnapshot?: string | null
+    }) => {
         if (!settlementTarget) {
             return
         }
@@ -908,10 +917,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
         setIsSubmittingSettlement(true)
         try {
             await recordObligationSettlement(workspaceId, settlementTarget, {
-                paymentMethod: input.paymentMethod,
-                paidAt: input.paidAt,
-                amount: input.amount,
-                note: input.note,
+                ...input,
                 createdBy: user?.id || null
             })
 
@@ -1003,7 +1009,13 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                 items,
                 reason,
                 returnedBy: user?.id || null,
-                actorRole: user?.role || null
+                actorRole: user?.role || null,
+                ...(returnPaymentAccount
+                    ? {
+                        accountId: returnPaymentAccount.id,
+                        accountNameSnapshot: returnPaymentAccount.name
+                    }
+                    : {})
             })
             toast({
                 title: t('orders.return.title', { defaultValue: 'Return Order' }),
@@ -1012,6 +1024,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                     : t('orders.return.successPartial', { defaultValue: 'Order items returned and payment adjusted.' })
             })
             setReturnTarget(null)
+            setReturnPaymentAccount(null)
         } catch (error: any) {
             toast({
                 title: t('common.error') || 'Error',
@@ -1965,7 +1978,10 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
             <ReturnConfirmationModal
                 isOpen={!!returnTarget}
                 onClose={() => {
-                    if (!isReturning) setReturnTarget(null)
+                    if (!isReturning) {
+                        setReturnTarget(null)
+                        setReturnPaymentAccount(null)
+                    }
                 }}
                 onConfirm={(reason, quantity) => { void handleOrderReturnConfirm(reason, quantity) }}
                 title={t('orders.return.title', { defaultValue: 'Return Order' })}
@@ -1975,6 +1991,11 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                 isItemReturn={!!returnTarget?.orderItemId}
                 maxQuantity={returnTarget?.maxQuantity || 1}
                 itemName={returnTarget?.itemName || ''}
+                workspaceId={workspaceId}
+                paymentAccount={returnPaymentAccount}
+                onPaymentAccountChange={setReturnPaymentAccount}
+                showPaymentAccount={paidAmount > 0}
+                cashDrawerOnly={order.paymentMethod === 'cash'}
             />
 
             <PostReturnAdjustmentDialog

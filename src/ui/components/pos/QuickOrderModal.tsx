@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Link2, Loader2, ShoppingCart, UserRound } from 'lucide-react'
 
 import type { CartItem } from '@/types'
-import type { BusinessPartner, CurrencyCode, InstallmentFrequency } from '@/local-db'
+import type { BusinessPartner, CurrencyCode, InstallmentFrequency, PaymentAccount } from '@/local-db'
 import { formatCurrency } from '@/lib/utils'
 import {
     ORDER_FINANCING_PAYMENT_METHODS,
@@ -24,6 +24,7 @@ import {
 } from '@/ui/components'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
+import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 
 export type QuickOrderCheckoutData = {
     customer: BusinessPartner
@@ -31,6 +32,8 @@ export type QuickOrderCheckoutData = {
     installmentCount: number
     installmentFrequency: InstallmentFrequency
     firstDueDate: string | null
+    paymentAccountId?: string | null
+    paymentAccountNameSnapshot?: string | null
 }
 
 export type QuickOrderProgressStage = 'preparing' | 'creating' | 'reserving' | 'completing' | null
@@ -68,6 +71,7 @@ export function QuickOrderModal({
     const [customerSearch, setCustomerSearch] = useState('')
     const [customer, setCustomer] = useState<BusinessPartner | null>(null)
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethodOption>('cash')
+    const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
     const [firstDueDate, setFirstDueDate] = useState('')
     const [submitError, setSubmitError] = useState<string | null>(null)
 
@@ -92,6 +96,7 @@ export function QuickOrderModal({
         setCustomerSearch('')
         setCustomer(null)
         setPaymentMethod('cash')
+        setPaymentAccount(null)
         setFirstDueDate('')
         setSubmitError(null)
     }, [isOpen])
@@ -117,7 +122,9 @@ export function QuickOrderModal({
                 paymentMethod,
                 installmentCount: 3,
                 installmentFrequency: 'monthly',
-                firstDueDate: isInstallmentBased ? firstDueDate : null
+                firstDueDate: isInstallmentBased ? firstDueDate : null,
+                paymentAccountId: paymentAccount?.id ?? null,
+                paymentAccountNameSnapshot: paymentAccount?.name ?? null,
             })
         } catch (error) {
             setSubmitError(error instanceof Error
@@ -206,10 +213,22 @@ export function QuickOrderModal({
                             id="quick-order-payment"
                             value={paymentMethod}
                             onValueChange={setPaymentMethod}
+                            onLinkedPaymentAccountSelect={setPaymentAccount}
+                            workspaceId={workspaceId}
                             methods={paymentMethods}
                             disabled={isSubmitting}
                         />
                     </div>
+
+                    {paymentMethod !== 'loan' && paymentMethod !== 'installments' ? (
+                        <PaymentAccountSelector
+                            workspaceId={workspaceId}
+                            value={paymentAccount?.id ?? null}
+                            onValueChange={setPaymentAccount}
+                            disabled={isSubmitting}
+                            cashDrawerOnly={paymentMethod === 'cash'}
+                        />
+                    ) : null}
 
                     {isInstallmentBased ? (
                         <div className="grid gap-2 rounded-2xl border bg-muted/20 p-4">

@@ -83,6 +83,7 @@ import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocomplet
 import { PartnerBalanceSummary } from '@/ui/components/crm/PartnerBalanceSummary'
 import { ProductsViewModal, ProductsViewModalTrigger } from '@/ui/components/ProductsViewModal'
 import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
+import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import { ProductAutocompleteInput } from './ProductAutocompleteInput'
 import { LoanPartyPickerDialog } from '@/ui/components/loans/LoanPartyPickerDialog'
 import { OrderAdjustmentsDialog } from './OrderAdjustmentsDialog'
@@ -288,6 +289,8 @@ export function SalesOrderFormPage({
     const [initialPaymentAmount, setInitialPaymentAmount] = useState(
         editingOrder?.initialPaymentAmount ? String(editingOrder.initialPaymentAmount) : ''
     )
+    const [initialPaymentAccountId, setInitialPaymentAccountId] = useState<string | null>(editingOrder?.initialPaymentAccountId ?? null)
+    const [initialPaymentAccountNameSnapshot, setInitialPaymentAccountNameSnapshot] = useState<string | null>(editingOrder?.initialPaymentAccountNameSnapshot ?? null)
     const changeOrderCurrency = useCallback((nextCurrency: CurrencyCode) => {
         const adjustmentRates = buildOrderExchangeRatesSnapshot({ exchangeData, eurRates, tryRates })
         const repricedAdjustments = orderAdjustments.map((adjustment) =>
@@ -366,6 +369,8 @@ export function SalesOrderFormPage({
         setInstallmentFrequency(editingOrder.installmentFrequency || 'monthly')
         setFirstDueDate(editingOrder.firstDueDate?.slice(0, 10) || '')
         setInitialPaymentAmount(editingOrder.initialPaymentAmount ? String(editingOrder.initialPaymentAmount) : '')
+        setInitialPaymentAccountId(editingOrder.initialPaymentAccountId ?? null)
+        setInitialPaymentAccountNameSnapshot(editingOrder.initialPaymentAccountNameSnapshot ?? null)
         setItems(editingOrder.items.map((item, idx) => {
             const product = products.find((p) => p.id === item.productId)
             return {
@@ -906,6 +911,8 @@ export function SalesOrderFormPage({
                 paidAt: !isFinanced && paidAmount > 0 ? savedAt : null,
                 paymentMethod: paymentMethod as SalesOrder['paymentMethod'],
                 initialPaymentAmount: isFinanced ? initialPayment : 0,
+                initialPaymentAccountId,
+                initialPaymentAccountNameSnapshot,
                 linkedLoanId: editingOrder?.linkedLoanId || null,
                 isInstallmentBased,
                 installmentCount: isInstallmentBased ? Math.max(1, Math.trunc(Number(installmentCount) || 1)) : paymentMethod === 'loan' && firstDueDate ? 1 : 0,
@@ -1504,6 +1511,11 @@ export function SalesOrderFormPage({
                                                 setPaymentMethod(value)
                                                 if (value === 'loan' || value === 'installments') setIsPaid(false)
                                             }}
+                                            onLinkedPaymentAccountSelect={(account) => {
+                                                setInitialPaymentAccountId(account.id)
+                                                setInitialPaymentAccountNameSnapshot(account.name)
+                                            }}
+                                            workspaceId={workspaceId}
                                             methods={[
                                                 ...STANDARD_PAYMENT_METHODS,
                                                 ...(hasFeature('loans') ? [ORDER_FINANCING_PAYMENT_METHODS[0]] : []),
@@ -1524,6 +1536,17 @@ export function SalesOrderFormPage({
                                                 ? <Star className="ml-2 inline h-3 w-3 fill-yellow-400" />
                                                 : null}
                                         />
+                                        {(isPaid || (isFinanced && initialPayment > 0)) ? (
+                                            <PaymentAccountSelector
+                                                workspaceId={workspaceId}
+                                                value={initialPaymentAccountId}
+                                                onValueChange={(account) => {
+                                                    setInitialPaymentAccountId(account?.id ?? null)
+                                                    setInitialPaymentAccountNameSnapshot(account?.name ?? null)
+                                                }}
+                                                cashDrawerOnly={paymentMethod === 'cash'}
+                                            />
+                                        ) : null}
                                     </div>
                                     {!isFinanced ? <div className="flex items-center justify-between rounded-2xl border bg-muted/20 px-4 py-3" data-tour-id="tutorial-order-paid">
                                         <div>

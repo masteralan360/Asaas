@@ -84,7 +84,7 @@ import { useTheme } from '@/ui/components/theme-provider'
 import { getDateRangeBounds, isDateInDateRange } from '@/lib/dateRangeFilters'
 
 type LedgerDirection = 'incoming' | 'outgoing'
-type LedgerSourceModule = 'pos' | 'instant_pos' | 'orders' | 'expenses' | 'payroll' | 'loans' | 'real_estate' | 'activities' | 'clinical_appointments' | 'manual' | 'exchange' | 'post_service' | 'car_rental'
+type LedgerSourceModule = 'pos' | 'instant_pos' | 'orders' | 'expenses' | 'payroll' | 'loans' | 'real_estate' | 'activities' | 'clinical_appointments' | 'manual' | 'payment_accounts' | 'exchange' | 'post_service' | 'car_rental'
 type LedgerRelationRole = 'origin' | 'repayment' | 'settlement'
 type LedgerEntryType =
     | 'pos_sale'
@@ -108,6 +108,7 @@ type LedgerEntryType =
     | 'clinical_appointment_payment'
     | 'direct_inflow'
     | 'direct_outflow'
+    | 'payment_account_opening_balance'
     | 'exchange_profit'
     | 'delivery_courier_remittance'
     | 'delivery_merchant_payout'
@@ -128,6 +129,7 @@ interface LedgerEntry {
     partner: string | null
     businessPartnerId: string | null
     paymentMethod: string | null
+    paymentAccount?: string | null
     notes: string | null
     description: string | null
     routePath: string
@@ -308,6 +310,8 @@ function ledgerTypeLabel(type: LedgerEntryType, t: any) {
             return t('ledger.type.directInflow', { defaultValue: 'Direct Inflow' })
         case 'direct_outflow':
             return t('ledger.type.directOutflow', { defaultValue: 'Direct Outflow' })
+        case 'payment_account_opening_balance':
+            return t('paymentAccounts.openingBalance', { defaultValue: 'Opening Balance' })
         case 'exchange_profit':
             return t('ledger.type.exchangeProfit', { defaultValue: 'Exchange Profit' })
         case 'delivery_courier_remittance':
@@ -347,6 +351,8 @@ function sourceModuleLabel(module: LedgerSourceModule, t: any) {
             return t('ledger.sourceModule.clinicalAppointments', { defaultValue: 'Appointments' })
         case 'manual':
             return t('ledger.sourceModule.manual', { defaultValue: 'Manual' })
+        case 'payment_accounts':
+            return t('paymentAccounts.title', { defaultValue: 'Payment Accounts' })
         case 'exchange':
             return t('ledger.sourceModule.exchange', { defaultValue: 'Exchange' })
         case 'post_service':
@@ -522,6 +528,7 @@ function applyLedgerFilters(entries: LedgerEntry[], filters: LedgerFilterState) 
             entry.notes,
             entry.description,
             entry.paymentMethod,
+            entry.paymentAccount,
             ledgerTypeLabel(entry.type, (_key: string, opts: any) => opts?.defaultValue || _key),
             sourceModuleLabel(entry.sourceModule, (_key: string, opts: any) => opts?.defaultValue || _key)
         ].some((value) => value?.toLowerCase().includes(normalizedSearch))
@@ -813,6 +820,8 @@ function buildTransactionReference(transaction: PaymentTransaction) {
         case 'rental_deposit':
         case 'rental_deposit_refund':
             return buildReferenceId('RNT', transaction.sourceRecordId)
+        case 'payment_account_opening_balance':
+            return buildReferenceId('PA', transaction.sourceRecordId)
         default:
             return buildReferenceId('LOAN', transaction.sourceRecordId)
     }
@@ -1060,6 +1069,26 @@ function buildPaymentLedgerEntry(
             notes: transaction.note?.trim() || null,
             description: descriptionParts.length > 0 ? descriptionParts.join(' | ') : null,
             routePath: '/direct-transactions'
+        }
+    }
+
+    if (transaction.sourceType === 'payment_account_opening_balance') {
+        return {
+            id: `payment:${transaction.id}`,
+            transactionId: transaction.id,
+            date: transaction.paidAt,
+            type: 'payment_account_opening_balance',
+            direction: transaction.direction,
+            amount: transaction.amount,
+            currency: transaction.currency,
+            sourceModule: 'payment_accounts',
+            referenceId: buildTransactionReference(transaction),
+            partner: null,
+            businessPartnerId: null,
+            paymentMethod: transaction.paymentMethod,
+            notes: transaction.note?.trim() || null,
+            description: t('paymentAccounts.openingBalanceDescription', { defaultValue: 'Opening amount recorded when this payment account was created.' }),
+            routePath: '/payment-accounts'
         }
     }
 
@@ -1594,7 +1623,10 @@ export function Ledger() {
         const rows = [
             ...sales.map(s => buildSaleLedgerEntry(s, t)).filter((entry): entry is LedgerEntry => !!entry),
             ...activePaymentTransactions
-                .map((transaction) => buildPaymentLedgerEntry(transaction, context, t))
+                .map((transaction) => {
+                    const entry = buildPaymentLedgerEntry(transaction, context, t)
+                    return entry ? { ...entry, paymentAccount: transaction.accountNameSnapshot || null } : null
+                })
                 .filter((entry): entry is LedgerEntry => !!entry),
             ...(rawExchangeTransactions || [])
                 .map(tx => buildExchangeLedgerEntry(tx))
@@ -1668,6 +1700,7 @@ export function Ledger() {
             [t('common.currency') || 'Currency']: entry.currency?.toUpperCase() || '',
             [t('ledger.table.partner') || 'Partner']: entry.partner || '',
             [t('ledger.filters.paymentMethod') || 'Payment Method']: entry.paymentMethod || '',
+            [t('ledger.table.paymentAccount') || 'Payment Account']: entry.paymentAccount || '',
             [t('ledger.table.descriptionNotes') || 'Description / Notes']: [entry.notes, entry.description].filter(Boolean).join(' | '),
             [t('ledger.table.sourceModule') || 'Source Module']: sourceModuleLabel(entry.sourceModule, t),
             [t('ledger.table.transactionId') || 'Transaction ID']: entry.transactionId,
@@ -2082,7 +2115,7 @@ export function Ledger() {
         const compactColumns = options?.compactColumns ?? false
         const showDescriptionNotes = !options?.hideDescriptionNotes
         const showActions = !options?.hideActions
-        const columnCount = 8 + (showDescriptionNotes ? 1 : 0) + (showActions ? 1 : 0)
+        const columnCount = 9 + (showDescriptionNotes ? 1 : 0) + (showActions ? 1 : 0)
         const openEntry = (entry: LedgerEntry) => {
             if (shouldOpenSaleDetails(entry)) {
                 setPendingSaleDetailsId(entry.transactionId)
@@ -2107,6 +2140,7 @@ export function Ledger() {
                             <TableHead className={cn(compactColumns && 'w-[72px] px-2 py-3')}>{t('ledger.table.sourceModule', { defaultValue: 'Source Module' })}</TableHead>
                             <TableHead className={cn(compactColumns && 'w-[90px] px-2 py-3')}>{t('ledger.table.referenceId', { defaultValue: 'Reference ID' })}</TableHead>
                             <TableHead className={cn(compactColumns && 'w-[90px] px-2 py-3')}>{t('ledger.table.partner', { defaultValue: 'Partner' })}</TableHead>
+                            <TableHead className={cn(compactColumns && 'w-[100px] px-2 py-3')}>{t('ledger.table.paymentAccount', { defaultValue: 'Payment Account' })}</TableHead>
                             {showDescriptionNotes ? (
                                 <TableHead className={cn(compactColumns && 'min-w-[140px] px-2 py-3')}>{t('ledger.table.descriptionNotes', { defaultValue: 'Description / Notes' })}</TableHead>
                             ) : null}
@@ -2272,6 +2306,11 @@ export function Ledger() {
                                     <TableCell className={cn(compactColumns && 'align-top px-2 py-3')}>
                                         <span className="block truncate" title={entry.partner || undefined}>
                                             {entry.partner || '-'}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell className={cn(compactColumns && 'align-top px-2 py-3')}>
+                                        <span className="block truncate" title={entry.paymentAccount || undefined}>
+                                            {entry.paymentAccount || '-'}
                                         </span>
                                     </TableCell>
                                     {showDescriptionNotes ? (

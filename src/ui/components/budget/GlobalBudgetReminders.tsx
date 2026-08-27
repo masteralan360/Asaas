@@ -557,7 +557,13 @@ export function GlobalBudgetReminders() {
         }
     }
 
-    const handleReminderSettlement = async (input: { paymentMethod: WorkspacePaymentMethod; paidAt: string; note?: string }) => {
+    const handleReminderSettlement = async (input: {
+        paymentMethod: WorkspacePaymentMethod
+        paidAt: string
+        note?: string
+        accountId?: string | null
+        accountNameSnapshot?: string | null
+    }) => {
         if (!workspaceId || !settlementTarget) {
             return
         }
@@ -565,9 +571,7 @@ export function GlobalBudgetReminders() {
         setIsSubmittingSettlement(true)
         try {
             await recordObligationSettlement(workspaceId, settlementTarget, {
-                paymentMethod: input.paymentMethod,
-                paidAt: input.paidAt,
-                note: input.note,
+                ...input,
                 createdBy: user?.id || null
             })
 

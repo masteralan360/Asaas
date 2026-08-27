@@ -8,7 +8,7 @@ import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { convertCurrencyAmountWithLiveRates } from '@/lib/orderCurrency'
 import { getTravelPaymentMethodLabel, getTravelSaleNet, getTravelSaleRevenue, getTravelStatusLabel } from '@/lib/travelAgency'
 import { formatCurrency } from '@/lib/utils'
-import { setTravelAgencySalePaymentStatus, setTravelAgencySaleStatus, useTravelAgencySales, lockTravelSale } from '@/local-db'
+import { setTravelAgencySalePaymentStatus, setTravelAgencySaleStatus, useTravelAgencySales, lockTravelSale, type PaymentAccount } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import {
     Button,
@@ -25,11 +25,13 @@ import {
     TableRow,
     useToast,
     Dialog,
+    DialogBody,
     DialogContent,
     DialogHeader,
     DialogFooter,
     DialogTitle
 } from '@/ui/components'
+import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 
 export function TravelAgency() {
     const { user } = useAuth()
@@ -39,6 +41,7 @@ export function TravelAgency() {
     const sales = useTravelAgencySales(user?.workspaceId)
     const [query, setQuery] = useState('')
     const [updatingSaleId, setUpdatingSaleId] = useState<string | null>(null)
+    const [paymentTarget, setPaymentTarget] = useState<{ id: string; paymentMethod: string; account: PaymentAccount | null } | null>(null)
     const [lockConfirm, setLockConfirm] = useState<{ isOpen: boolean; saleId: string }>({
         isOpen: false,
         saleId: ''
@@ -123,6 +126,24 @@ export function TravelAgency() {
                 description: error?.message || 'Failed to update payment status',
                 variant: 'destructive'
             })
+        } finally {
+            setUpdatingSaleId(null)
+        }
+    }
+
+    async function confirmPayment() {
+        if (!paymentTarget) return
+        setUpdatingSaleId(paymentTarget.id)
+        try {
+            await setTravelAgencySalePaymentStatus(paymentTarget.id, {
+                isPaid: true,
+                accountId: paymentTarget.account?.id ?? null,
+                accountNameSnapshot: paymentTarget.account?.name ?? null,
+            })
+            toast({ title: 'Sale marked as paid' })
+            setPaymentTarget(null)
+        } catch (error: any) {
+            toast({ title: 'Error', description: error?.message || 'Failed to update payment status', variant: 'destructive' })
         } finally {
             setUpdatingSaleId(null)
         }
@@ -334,7 +355,9 @@ export function TravelAgency() {
                                                                 variant={sale.isPaid ? 'outline' : 'default'}
                                                                 size="sm"
                                                                 disabled={updatingSaleId === sale.id}
-                                                                onClick={() => togglePaymentStatus(sale.id, sale.isPaid)}
+                                                                onClick={() => sale.isPaid
+                                                                    ? togglePaymentStatus(sale.id, true)
+                                                                    : setPaymentTarget({ id: sale.id, paymentMethod: sale.paymentMethod, account: null })}
                                                             >
                                                                 {updatingSaleId === sale.id
                                                                     ? 'Saving...'
@@ -382,6 +405,27 @@ export function TravelAgency() {
                         >
                             Lock Now
                         </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!paymentTarget} onOpenChange={(open) => !open && setPaymentTarget(null)}>
+                <DialogContent layout="structured" className="sm:max-w-md">
+                    <DialogHeader layout="structured">
+                        <DialogTitle>Record payment</DialogTitle>
+                    </DialogHeader>
+                    <DialogBody>
+                        <PaymentAccountSelector
+                            workspaceId={user?.workspaceId}
+                            value={paymentTarget?.account?.id ?? null}
+                            onValueChange={(account) => setPaymentTarget((current) => current ? { ...current, account } : null)}
+                            disabled={updatingSaleId === paymentTarget?.id}
+                            cashDrawerOnly={paymentTarget?.paymentMethod === 'cash'}
+                        />
+                    </DialogBody>
+                    <DialogFooter layout="structured">
+                        <Button type="button" variant="outline" onClick={() => setPaymentTarget(null)} disabled={updatingSaleId === paymentTarget?.id}>Cancel</Button>
+                        <Button type="button" onClick={confirmPayment} disabled={updatingSaleId === paymentTarget?.id}>Record payment</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

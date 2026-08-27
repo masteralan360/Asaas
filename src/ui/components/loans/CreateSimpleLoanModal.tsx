@@ -4,7 +4,7 @@ import { ArrowDownLeft, ArrowUpRight, Users, X } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
-import { createManualLoan, type CurrencyCode, type LoanDirection } from '@/local-db'
+import { createManualLoan, type CurrencyCode, type LoanDirection, type PaymentAccount } from '@/local-db'
 import { buildOrderExchangeRatesSnapshot } from '@/lib/orderCurrency'
 import { getLoanCounterpartyNameLabel, getLoanDirectionLabel } from '@/lib/loanPresentation'
 import { getLoanLinkedPartyTypeLabel, type LoanPartySelection } from '@/lib/loanParties'
@@ -35,6 +35,7 @@ import { LoanPartyPickerDialog } from './LoanPartyPickerDialog'
 import { SaveBorrowerAsPartnerDialog, usePendingSavePartnerPrompt } from './SaveBorrowerAsPartnerDialog'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import type { BusinessPartner } from '@/local-db'
+import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 
 interface CreateSimpleLoanModalProps {
     isOpen: boolean
@@ -68,6 +69,7 @@ export function CreateSimpleLoanModal({
     const [createdAt, setCreatedAt] = useState('')
     const [dueDate, setDueDate] = useState<string | null>(null)
     const [notes, setNotes] = useState('')
+    const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
     const [savePartnerData, setSavePartnerData] = usePendingSavePartnerPrompt()
 
     useEffect(() => {
@@ -85,6 +87,7 @@ export function CreateSimpleLoanModal({
         setCreatedAt(formatLocalDateTimeValue(new Date()))
         setDueDate(null)
         setNotes('')
+        setPaymentAccount(null)
     }, [isOpen, settlementCurrency])
 
     useEffect(() => {
@@ -143,7 +146,9 @@ export function CreateSimpleLoanModal({
                 firstDueDate: dueDate,
                 createdAt: selectedCreatedAt.toISOString(),
                 notes: notes.trim() || undefined,
-                createdBy: user?.id
+                createdBy: user?.id,
+                accountId: paymentAccount?.id ?? null,
+                accountNameSnapshot: paymentAccount?.name ?? null
             })
 
             toast({
@@ -324,6 +329,12 @@ export function CreateSimpleLoanModal({
                                         />
                                     </div>
                                 </div>
+                                <PaymentAccountSelector
+                                    workspaceId={workspaceId}
+                                    value={paymentAccount?.id ?? null}
+                                    onValueChange={setPaymentAccount}
+                                    disabled={isSaving}
+                                />
                             </div>
 
                             <div className="grid gap-2">

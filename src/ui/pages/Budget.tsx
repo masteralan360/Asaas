@@ -49,7 +49,8 @@ import {
     toUISale,
     toUISaleFromTravelAgency,
     toUISaleFromExchangeTransaction,
-    toUISaleFromRealEstateCommissionTransaction
+    toUISaleFromRealEstateCommissionTransaction,
+    type PaymentAccount
 } from '@/local-db'
 import { db } from '@/local-db/database'
 import type { BudgetStatus, CurrencyCode, ExpenseItem, ExpenseRecurrence, ExpenseSeries, IQDDisplayPreference, PaymentObligation, WorkspacePaymentMethod } from '@/local-db/models'
@@ -106,6 +107,7 @@ import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import type { TemplatePreview } from '@/lib/pdfPreviewStore'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { suppressExpenseReminderForSession } from '@/lib/budgetReminderSession'
+import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 
 interface ExpenseRow {
     item: ExpenseItem
@@ -514,6 +516,7 @@ export function Budget() {
     const [expenseRecurrence, setExpenseRecurrence] = useState<ExpenseRecurrence>('monthly')
     const [expenseSubcategory, setExpenseSubcategory] = useState('')
     const [expenseAlreadyPaid, setExpenseAlreadyPaid] = useState(false)
+    const [expensePaymentAccount, setExpensePaymentAccount] = useState<PaymentAccount | null>(null)
 
     const [deleteTarget, setDeleteTarget] = useState<{
         type: 'series' | 'occurrence';
@@ -829,6 +832,7 @@ export function Budget() {
         setExpenseRecurrence('monthly')
         setExpenseSubcategory('')
         setExpenseAlreadyPaid(false)
+        setExpensePaymentAccount(null)
         setEditingSeries(null)
         setEditingItem(null)
     }
@@ -901,7 +905,9 @@ export function Budget() {
                         {
                             paymentMethod: 'cash',
                             paidAt: new Date().toISOString(),
-                            createdBy: user?.id || null
+                            createdBy: user?.id || null,
+                            accountId: expensePaymentAccount?.id ?? null,
+                            accountNameSnapshot: expensePaymentAccount?.name ?? null
                         }
                     )
                 }
@@ -922,7 +928,13 @@ export function Budget() {
         }
     }
 
-    const handleBudgetSettlement = async (input: { paymentMethod: WorkspacePaymentMethod; paidAt: string; note?: string }) => {
+    const handleBudgetSettlement = async (input: {
+        paymentMethod: WorkspacePaymentMethod
+        paidAt: string
+        note?: string
+        accountId?: string | null
+        accountNameSnapshot?: string | null
+    }) => {
         if (!workspaceId || !settlementTarget) {
             return
         }
@@ -930,9 +942,7 @@ export function Budget() {
         setIsSubmittingSettlement(true)
         try {
             await recordObligationSettlement(workspaceId, settlementTarget, {
-                paymentMethod: input.paymentMethod,
-                paidAt: input.paidAt,
-                note: input.note,
+                ...input,
                 createdBy: user?.id || null
             })
             toast({
@@ -1461,6 +1471,14 @@ export function Budget() {
                                         <Switch checked={expenseAlreadyPaid} onCheckedChange={setExpenseAlreadyPaid} />
                                     </div>
                                 )}
+                                {!editingSeries && expenseAlreadyPaid ? (
+                                    <PaymentAccountSelector
+                                        workspaceId={workspaceId}
+                                        value={expensePaymentAccount?.id ?? null}
+                                        onValueChange={setExpensePaymentAccount}
+                                        cashDrawerOnly
+                                    />
+                                ) : null}
                                 <div className="grid gap-2">
                                     <Label>{t('budget.form.subcategory') || 'Subcategory'}</Label>
                                     <Input value={expenseSubcategory} onChange={(e) => setExpenseSubcategory(e.target.value)} />

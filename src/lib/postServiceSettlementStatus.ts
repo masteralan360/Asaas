@@ -148,7 +148,7 @@ export function courierHandoverStatusByShipment(entries: DeliveryLedgerEntry[]) 
 export function merchantPayoutStatusByShipment(entries: DeliveryLedgerEntry[]) {
   return toStatuses(computeSettlementBreakdown(
     entries,
-    ["merchant_cod_payable", "merchant_fee"],
+    ["merchant_cod_payable", "merchant_fee", "merchant_recipient_payout"],
     ["merchant_payout", "adjustment"],
     (entry) => entry.merchantProfileId,
   ));
@@ -168,7 +168,7 @@ export function courierSettlementBreakdownByParty(entries: DeliveryLedgerEntry[]
 export function merchantSettlementBreakdownByParty(entries: DeliveryLedgerEntry[]) {
   return toBreakdown(computeSettlementBreakdown(
     entries,
-    ["merchant_cod_payable", "merchant_fee"],
+    ["merchant_cod_payable", "merchant_fee", "merchant_recipient_payout"],
     ["merchant_payout", "adjustment"],
     (entry) => entry.merchantProfileId,
   ));

@@ -957,7 +957,13 @@ async function getDeliveryOutstandingBalances(workspaceId: string, partner: Busi
     for (const currency of new Set<CurrencyCode>([...payable.keys(), ...receivable.keys()])) {
         const payableAmount = payable.get(currency) ?? 0
         const receivableAmount = receivable.get(currency) ?? 0
-        if (payableAmount < 0) payable.set(currency, 0)
+        // A negative merchant delivery payable is a real receivable: for
+        // example, an electronic prepaid delivery fee or money the courier
+        // paid to the recipient on the merchant's behalf.
+        if (payableAmount < 0) {
+            payable.set(currency, 0)
+            receivable.set(currency, receivableAmount + Math.abs(payableAmount))
+        }
         if (receivableAmount < 0) receivable.set(currency, 0)
     }
 

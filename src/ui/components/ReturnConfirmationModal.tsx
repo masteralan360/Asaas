@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isPositiveQuantity, roundQuantity } from '@/lib/quantity'
+import type { PaymentAccount } from '@/local-db'
+import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import {
     Dialog,
     DialogContent,
@@ -23,6 +25,11 @@ interface ReturnConfirmationModalProps {
     isItemReturn?: boolean
     maxQuantity?: number
     itemName?: string
+    workspaceId?: string
+    paymentAccount?: PaymentAccount | null
+    onPaymentAccountChange?: (account: PaymentAccount | null) => void
+    showPaymentAccount?: boolean
+    cashDrawerOnly?: boolean
 }
 
 export function ReturnConfirmationModal({
@@ -33,7 +40,12 @@ export function ReturnConfirmationModal({
     message,
     isItemReturn = false,
     maxQuantity = 1,
-    itemName = ''
+    itemName = '',
+    workspaceId,
+    paymentAccount = null,
+    onPaymentAccountChange,
+    showPaymentAccount = false,
+    cashDrawerOnly = false
 }: ReturnConfirmationModalProps) {
     const { t } = useTranslation()
     const [step, setStep] = useState<'confirmation' | 'quantity' | 'reason'>('confirmation')
@@ -263,6 +275,15 @@ export function ReturnConfirmationModal({
                                     />
                                 </div>
                             )}
+
+                            {showPaymentAccount && workspaceId && onPaymentAccountChange ? (
+                                <PaymentAccountSelector
+                                    workspaceId={workspaceId}
+                                    value={paymentAccount?.id ?? null}
+                                    onValueChange={onPaymentAccountChange}
+                                    cashDrawerOnly={cashDrawerOnly}
+                                />
+                            ) : null}
 
                             <DialogFooter className="flex flex-col sm:flex-row gap-3 pt-6">
                                 <Button

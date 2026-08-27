@@ -98,6 +98,8 @@ export interface RecordRentalContractPaymentInput {
   paymentMethod: WorkspacePaymentMethod;
   paidAt?: string;
   note?: string | null;
+  accountId?: string | null;
+  accountNameSnapshot?: string | null;
   createdBy?: string | null;
 }
 
@@ -645,6 +647,7 @@ export async function recordRentalContractPayment(workspaceId: string, input: Re
     direction: input.kind === "deposit_refund" ? "outgoing" : "incoming", amount, currency: contract.currency,
     paymentMethod: input.paymentMethod, paidAt: input.paidAt || new Date().toISOString(), counterpartyName: contract.customerName,
     referenceLabel: contract.contractNo, note: normalizeText(input.note), createdBy: input.createdBy || null,
+    accountId: input.accountId ?? null, accountNameSnapshot: input.accountNameSnapshot ?? null,
     metadata: {
       rentalContractId: contract.id,
       rentalContractNo: contract.contractNo,

@@ -389,6 +389,16 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     description: "Settle obligations and review transaction timelines.",
     badge: "Settlement",
   },
+  "/payment-accounts": {
+    section: "cash-and-control",
+    description: "Manage optional payment accounts, balances, and movement history.",
+    badge: "Accounts",
+  },
+  "/payment-accounts/cashier-shifts": {
+    section: "cash-and-control",
+    description: "Assign cash drawers to workspace members.",
+    badge: "Shifts",
+  },
   "/direct-transactions": {
     section: "cash-and-control",
     description:

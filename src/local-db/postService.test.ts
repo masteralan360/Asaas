@@ -225,6 +225,75 @@ describe("Post Service COD accounting", () => {
     expect(entries.some((entry) => entry.amount === 0)).toBe(false);
   });
 
+  it("records an electronic-prepaid delivery with a recipient payout as merchant debt", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const deliveryCourier = courier(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, {
+      businessPartnerId: merchant.id,
+      defaultFeeAmount: 3000,
+      defaultFeePayer: "merchant",
+    });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientPhone: "07500000000",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      // The recipient already paid electronically, so the courier must not
+      // receive any cash custody despite the merchant-side charges below.
+      customerPaymentStatus: "prepaid_electronically",
+      codAmount: 35000,
+      recipientPayoutAmount: 10000,
+    });
+    expect(shipment.codAmount).toBe(0);
+    await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
+    const assignedSnapshot = await db.delivery_shipments.get(shipment.id);
+    await updateDeliveryShipmentStatus(shipment.id, {
+      status: "delivered",
+      actorAgentId: deliveryCourier.id,
+      recipientPayoutPaymentMethod: "fib",
+    });
+    // The operation can be replayed by an offline client that still has the
+    // assigned record. The payment must use the same deterministic ID.
+    await db.delivery_shipments.put(assignedSnapshot!);
+    await updateDeliveryShipmentStatus(shipment.id, {
+      status: "delivered",
+      actorAgentId: deliveryCourier.id,
+      recipientPayoutPaymentMethod: "fib",
+    });
+
+    const entries = await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray();
+    expect(entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "merchant_fee", amount: -3000, shipmentId: shipment.id }),
+      expect.objectContaining({ kind: "merchant_recipient_payout", amount: -10000, shipmentId: shipment.id }),
+    ]));
+    expect(entries.some((entry) => entry.kind === "courier_collection" && entry.shipmentId === shipment.id)).toBe(false);
+    expect(entries.filter((entry) => entry.merchantProfileId === profile.id).reduce((sum, entry) => sum + entry.amount, 0)).toBe(-13000);
+    expect(await db.business_partners.get(merchant.id)).toMatchObject({
+      receivableBalance: 13000,
+      payableBalance: 0,
+    });
+
+    const payment = await db.payment_transactions
+      .where("workspaceId")
+      .equals(WORKSPACE_ID)
+      .and((item) => item.sourceRecordId === shipment.id && item.sourceType === "delivery_recipient_payout")
+      .first();
+    expect((await db.payment_transactions
+      .where("workspaceId")
+      .equals(WORKSPACE_ID)
+      .and((item) => item.sourceRecordId === shipment.id && item.sourceType === "delivery_recipient_payout")
+      .count())).toBe(1);
+    expect(payment).toMatchObject({
+      direction: "outgoing",
+      amount: 10000,
+      currency: "iqd",
+      paymentMethod: "fib",
+    });
+    expect((await db.delivery_shipments.get(shipment.id))?.recipientPayoutPaymentTransactionId).toBe(payment?.id);
+  });
+
   it("does not duplicate a delivered post's event or ledger obligations when a stale client replays it", async () => {
     const merchant = partner(crypto.randomUUID());
     const deliveryCourier = courier(crypto.randomUUID());

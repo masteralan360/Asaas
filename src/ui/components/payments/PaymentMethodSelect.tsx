@@ -1,6 +1,8 @@
-import type { PointerEvent, ReactNode } from 'react'
+import { useMemo, type PointerEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Banknote, CalendarClock, CircleHelp, CreditCard, HandCoins, Landmark, Send, SlidersHorizontal } from 'lucide-react'
+
+import { DIGITAL_WALLET_PAYMENT_METHODS, usePaymentAccounts, type PaymentAccount } from '@/local-db'
 
 import {
     STANDARD_PAYMENT_METHODS,
@@ -15,10 +17,10 @@ import {
     SelectTrigger,
     SelectValue
 } from '@/ui/components/select'
+import { PaymentAccountIcon } from './PaymentAccountIcon'
 
-interface PaymentMethodSelectProps {
+interface SharedPaymentMethodSelectProps {
     value: PaymentMethodOption
-    onValueChange: (value: PaymentMethodOption) => void
     methods?: readonly PaymentMethodOption[]
     id?: string
     disabled?: boolean
@@ -26,7 +28,27 @@ interface PaymentMethodSelectProps {
     triggerClassName?: string
     onOptionPointerDown?: (event: PointerEvent<HTMLDivElement>, method: PaymentMethodOption) => void
     renderOptionEnd?: (method: PaymentMethodOption) => ReactNode
+    /** Lets branded method rows show their linked Digital Wallet. */
+    workspaceId?: string
+    /** Called only for a branded method that has an active linked wallet. */
+    onLinkedPaymentAccountSelect?: (account: PaymentAccount) => void
 }
+
+interface StandardPaymentMethodSelectProps extends SharedPaymentMethodSelectProps {
+    value: PaymentMethodOption
+    onValueChange: (value: PaymentMethodOption) => void
+    allowNone?: false
+    noneLabel?: never
+}
+
+interface NullablePaymentMethodSelectProps extends Omit<SharedPaymentMethodSelectProps, 'value'> {
+    value: PaymentMethodOption | null
+    onValueChange: (value: PaymentMethodOption | null) => void
+    allowNone: true
+    noneLabel: string
+}
+
+type PaymentMethodSelectProps = StandardPaymentMethodSelectProps | NullablePaymentMethodSelectProps
 
 function PaymentMethodVisual({ method }: { method: PaymentMethodOption }) {
     const brandLogos: Partial<Record<PaymentMethodOption, string>> = {
@@ -77,33 +99,79 @@ export function PaymentMethodSelect({
     placeholder,
     triggerClassName,
     onOptionPointerDown,
-    renderOptionEnd
+    renderOptionEnd,
+    workspaceId,
+    onLinkedPaymentAccountSelect,
+    allowNone = false,
+    noneLabel,
 }: PaymentMethodSelectProps) {
     const { t } = useTranslation()
+    const accounts = usePaymentAccounts(workspaceId)
+    const linkedWalletByMethod = useMemo(
+        () => new Map(
+            accounts
+                .filter((account) => account.isActive && account.accountType === 'digital_wallet' && !!account.linkedPaymentMethod)
+                .map((account) => [account.linkedPaymentMethod!, account]),
+        ),
+        [accounts],
+    )
+
+    const handleValueChange = (nextValue: string) => {
+        if (allowNone && nextValue === '__none__') {
+            const onNullableValueChange = onValueChange as NullablePaymentMethodSelectProps['onValueChange']
+            onNullableValueChange(null)
+            return
+        }
+        const method = nextValue as PaymentMethodOption
+        const onMethodValueChange = onValueChange as StandardPaymentMethodSelectProps['onValueChange']
+        onMethodValueChange(method)
+
+        if (!DIGITAL_WALLET_PAYMENT_METHODS.includes(method as typeof DIGITAL_WALLET_PAYMENT_METHODS[number])) return
+        const linkedWallet = linkedWalletByMethod.get(method as typeof DIGITAL_WALLET_PAYMENT_METHODS[number])
+        if (linkedWallet) onLinkedPaymentAccountSelect?.(linkedWallet)
+    }
+
+    const linkedWalletForMethod = (method: PaymentMethodOption) => (
+        DIGITAL_WALLET_PAYMENT_METHODS.includes(method as typeof DIGITAL_WALLET_PAYMENT_METHODS[number])
+            ? linkedWalletByMethod.get(method as typeof DIGITAL_WALLET_PAYMENT_METHODS[number])
+            : null
+    )
 
     return (
         <Select
-            value={value}
-            onValueChange={(nextValue) => onValueChange(nextValue as PaymentMethodOption)}
+            value={value ?? '__none__'}
+            onValueChange={handleValueChange}
             disabled={disabled}
         >
             <SelectTrigger id={id} className={triggerClassName}>
                 <SelectValue placeholder={placeholder} />
             </SelectTrigger>
             <SelectContent>
-                {methods.map((method) => (
-                    <SelectItem
-                        key={method}
-                        value={method}
-                        onPointerDown={(event) => onOptionPointerDown?.(event, method)}
-                    >
-                        <span className="flex items-center gap-1.5">
-                            <PaymentMethodVisual method={method} />
-                            <span>{getPaymentMethodLabel(method, t)}</span>
-                            {renderOptionEnd?.(method)}
-                        </span>
-                    </SelectItem>
-                ))}
+                {allowNone ? <SelectItem value="__none__">{noneLabel}</SelectItem> : null}
+                {methods.map((method) => {
+                    const linkedWallet = linkedWalletForMethod(method)
+
+                    return (
+                        <SelectItem
+                            key={method}
+                            value={method}
+                            onPointerDown={(event) => onOptionPointerDown?.(event, method)}
+                        >
+                            <span className="flex min-w-0 items-center gap-1.5">
+                                <PaymentMethodVisual method={method} />
+                                <span>{getPaymentMethodLabel(method, t)}</span>
+                                {linkedWallet ? (
+                                    <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+                                        <span aria-hidden="true">—</span>
+                                        <PaymentAccountIcon iconKey={linkedWallet.iconKey} accountType={linkedWallet.accountType} className="h-3.5 w-3.5 shrink-0" />
+                                        <span className="truncate">{linkedWallet.name}</span>
+                                    </span>
+                                ) : null}
+                                {renderOptionEnd?.(method)}
+                            </span>
+                        </SelectItem>
+                    )
+                })}
             </SelectContent>
         </Select>
     )
