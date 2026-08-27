@@ -4570,6 +4570,7 @@
             "activityTransaction": "مامەڵەی چالاکی",
             "activityRefund": "گەڕاندنەوەی پارەی چالاکی",
             "deliveryCourierRemittance": "تەسلیمکردنی نەقدی مەندوب",
+            "deliveryCourierFeePayout": "پارەدانی کرێی مەندوب",
             "deliveryMerchantPayout": "پارەدانی بازرگان",
             "deliveryRecipientPayout": "پارەدانی وەرگر",
             "deliveryMerchantRepayment": "گەڕاندنەوەی پارەی بازرگان",
@@ -4723,6 +4724,7 @@
             "activityTransaction": "مامەڵەی چالاکی",
             "activityRefund": "گەڕاندنەوەی پارەی چالاکی",
             "deliveryCourierRemittance": "تەسلیمکردنی نەقدی مەندوب",
+            "deliveryCourierFeePayout": "پارەدانی کرێی مەندوب",
             "deliveryMerchantPayout": "پارەدانی بازرگان",
             "deliveryRecipientPayout": "پارەدانی وەرگر",
             "deliveryMerchantRepayment": "گەڕاندنەوەی پارەی بازرگان",
@@ -4744,10 +4746,12 @@
         },
         "description": {
             "deliveryCourierRemittance": "تەسلیمکردنی نەقدی لەلایەن مەندوبەوە",
+            "deliveryCourierFeePayout": "پارەدانی کرێی مەندوب",
             "deliveryMerchantPayout": "پارەدانی بازرگان",
             "deliveryRecipientPayout": "پارەدانی وەرگر",
             "deliveryMerchantRepayment": "گەڕاندنەوەی پارەی بازرگان وەرگیرا",
             "deliveryPostCourierRelation": "پۆستی {{tracking}} · تەسلیمی نەقدی مەندوب بۆ {{recipient}}.",
+            "deliveryPostCourierFeePayoutRelation": "پۆستی {{tracking}} · کرێی مەندوب بۆ {{recipient}} پارەدرا.",
             "deliveryPostMerchantRelation": "پۆستی {{tracking}} · پارەدانی بازرگان بۆ {{recipient}}.",
             "deliveryPostMerchantRepaymentRelation": "پۆستی {{tracking}} · پارە لە بازرگانەوە وەرگیرا بۆ {{recipient}}.",
             "deliveryPostRecipientPayoutRelation": "پۆستی {{tracking}} · پارەی پێدراو بۆ {{recipient}}.",
@@ -6381,6 +6385,7 @@
             "editCourier": "دەستکاریکردنی مەندوب",
             "addBusinessPartner": "زیادکردنی هاوبەشی بازرگانی",
             "addRecipientPayout": "زیادکردنی پارەدانی وەرگر",
+            "payCourierFee": "پارەدانی کرێی مەندوب",
             "payMerchant": "پارەدانی بازرگان",
             "receiveMerchantRepayment": "وەرگرتنی پارەی بازرگان",
             "editMerchant": "دەستکاریکردنی بازرگان",
@@ -6420,6 +6425,7 @@
             "deliveryMerchants": "بازرگانانی گەیاندن",
             "couriers": "مەندوبان",
             "courierHandovers": "تەسلیمکردنی نەقدی مەندوب",
+            "courierFeePayables": "پارەدانەوەی کرێی مەندوبان",
             "merchantPayouts": "پارەدانی بازرگانان",
             "settlementHistory": "مێژووی تەسویە"
         },
@@ -6453,6 +6459,7 @@
             "reason": "هۆکار",
             "amountReceivedPaid": "بڕی وەرگیراو / پارەدراو",
             "amountReceived": "بڕی وەرگیراو",
+            "amountPaid": "بڕی پارەدراو",
             "paymentMethod": "شێوازی پارەدان",
             "status": "دۆخ",
             "noteVariance": "تێبینی / ڕوونکردنەوەی جیاوازی"
@@ -6542,7 +6549,8 @@
             "contact": "پەیوەندی",
             "openPosts": "پۆستە کراوەکان",
             "deliveredPosts": "گەیشتوو",
-            "outstandingCash": "نەقدی ماوە"
+            "outstandingCash": "نەقدی ماوە",
+            "courierFeePayable": "کرێی مەندوبی پێویست بۆ پارەدان"
         },
         "empty": {
             "noPosts": "هیچ پۆستێک بەم پیشاندانە ناگونجێت.",
@@ -6552,6 +6560,7 @@
             "noMerchantSearchResults": "هیچ بازرگانێک نەدۆزرایەوە لەگەڵ گەڕانەکەدا.",
             "noCouriers": "هێشتا هیچ مەندوبێک تۆمار نەکراوە. لە بەشی مەندوبانەوە زیاد بکە.",
             "noCourierPosts": "هیچ تەسویەیەکی پۆست بۆ ئەم مەندوبە تۆمار نەکراوە.",
+            "noCourierFeePayables": "هیچ پارەدانێکی کرێی مەندوب پێویست نییە.",
             "noBalances": "هیچ باڵانسێکی کراوە نییە.",
             "noSettlements": "هێشتا هیچ تەسویەیەک تۆمار نەکراوە."
         },
@@ -6599,6 +6608,7 @@
         },
         "settlementType": {
             "courierRemittance": "تەسلیمکردنی مەندوب",
+            "courierFeePayout": "پارەدانی کرێی مەندوب",
             "merchantPayout": "پارەدانی بازرگان",
             "merchantRepayment": "گەڕاندنەوەی پارەی بازرگان"
         },
@@ -6646,6 +6656,10 @@
             },
             "courierSettlement": {
                 "title": "تۆمارکردنی تەسلیمکردنی مەندوب"
+            },
+            "courierFeePayout": {
+                "title": "پارەدانی کرێی مەندوب",
+                "outstanding": "{{name}} بڕی {{amount}}ی پێویستە بۆ کرێی ئەم گەیاندنە."
             },
             "merchantSettlement": {
                 "title": "پارەدانی بازرگان"
@@ -6702,6 +6716,7 @@
             "postMarked": "دۆخی پۆست کرا بە {{status}}",
             "updatePostFailed": "نوێکردنەوەی پۆست سەرکەوتوو نەبوو",
             "courierHandoverRecorded": "تەسلیمکردنی مەندوب تۆمار کرا",
+            "courierFeePayoutRecorded": "پارەدانی کرێی مەندوب تۆمار کرا",
             "merchantPayoutRecorded": "پارەدانی بازرگان تۆمار کرا",
             "merchantRepaymentRecorded": "پارەی بازرگان وەرگیرا",
             "settlementFailed": "تۆمارکردنی تەسویە سەرکەوتوو نەبوو",

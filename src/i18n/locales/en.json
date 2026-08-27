@@ -1886,6 +1886,7 @@
             "activityTransaction": "Activity Transaction",
             "activityRefund": "Activity Refund",
             "deliveryCourierRemittance": "Courier Remittance",
+            "deliveryCourierFeePayout": "Courier Fee Payment",
             "deliveryMerchantPayout": "Merchant Payout",
             "deliveryRecipientPayout": "Recipient Payout",
             "deliveryMerchantRepayment": "Merchant Repayment",
@@ -2047,6 +2048,7 @@
             "activityTransaction": "Activity Transaction",
             "activityRefund": "Activity Refund",
             "deliveryCourierRemittance": "Courier Remittance",
+            "deliveryCourierFeePayout": "Courier Fee Payment",
             "deliveryMerchantPayout": "Merchant Payout",
             "deliveryRecipientPayout": "Recipient Payout",
             "deliveryMerchantRepayment": "Merchant Repayment",
@@ -2068,10 +2070,12 @@
         },
         "description": {
             "deliveryCourierRemittance": "Courier cash handover",
+            "deliveryCourierFeePayout": "Courier fee payment",
             "deliveryMerchantPayout": "Merchant payout",
             "deliveryRecipientPayout": "Recipient payout",
             "deliveryMerchantRepayment": "Merchant repayment received",
             "deliveryPostCourierRelation": "Post {{tracking}} · courier cash handover for {{recipient}}.",
+            "deliveryPostCourierFeePayoutRelation": "Post {{tracking}} · courier fee paid to {{recipient}}.",
             "deliveryPostMerchantRelation": "Post {{tracking}} · merchant payout for {{recipient}}.",
             "deliveryPostMerchantRepaymentRelation": "Post {{tracking}} · payment received from the merchant for {{recipient}}.",
             "deliveryPostRecipientPayoutRelation": "Post {{tracking}} · payout made to {{recipient}}.",
@@ -6584,6 +6588,7 @@
             "editCourier": "Edit courier",
             "addBusinessPartner": "Add business partner",
             "addRecipientPayout": "Add recipient payout",
+            "payCourierFee": "Pay courier fee",
             "payMerchant": "Pay merchant",
             "receiveMerchantRepayment": "Receive merchant payment",
             "editMerchant": "Edit merchant",
@@ -6623,6 +6628,7 @@
             "deliveryMerchants": "Delivery merchants",
             "couriers": "Couriers",
             "courierHandovers": "Courier cash handovers",
+            "courierFeePayables": "Courier fee payables",
             "merchantPayouts": "Merchant payouts",
             "settlementHistory": "Settlement history"
         },
@@ -6656,6 +6662,7 @@
             "reason": "Reason",
             "amountReceivedPaid": "Amount received / paid",
             "amountReceived": "Amount received",
+            "amountPaid": "Amount paid",
             "paymentMethod": "Payment method",
             "status": "Status",
             "noteVariance": "Note / variance explanation"
@@ -6745,7 +6752,8 @@
             "contact": "Contact",
             "openPosts": "Open posts",
             "deliveredPosts": "Delivered",
-            "outstandingCash": "Outstanding cash"
+            "outstandingCash": "Outstanding cash",
+            "courierFeePayable": "Courier fee payable"
         },
         "empty": {
             "noPosts": "No posts match this view.",
@@ -6755,6 +6763,7 @@
             "noMerchantSearchResults": "No merchants match your search.",
             "noCouriers": "No couriers registered yet. Add one from the Agents directory.",
             "noCourierPosts": "No post settlements recorded for this courier.",
+            "noCourierFeePayables": "No courier fee payments are due.",
             "noBalances": "No open balances.",
             "noSettlements": "No settlements recorded yet."
         },
@@ -6802,6 +6811,7 @@
         },
         "settlementType": {
             "courierRemittance": "Courier handover",
+            "courierFeePayout": "Courier fee payment",
             "merchantPayout": "Merchant payout",
             "merchantRepayment": "Merchant repayment"
         },
@@ -6849,6 +6859,10 @@
             },
             "courierSettlement": {
                 "title": "Record courier handover"
+            },
+            "courierFeePayout": {
+                "title": "Pay courier fee",
+                "outstanding": "{{name}} is owed {{amount}} for this delivery fee."
             },
             "merchantSettlement": {
                 "title": "Pay merchant"
@@ -6905,6 +6919,7 @@
             "postMarked": "Post marked {{status}}",
             "updatePostFailed": "Could not update post",
             "courierHandoverRecorded": "Courier handover recorded",
+            "courierFeePayoutRecorded": "Courier fee payment recorded",
             "merchantPayoutRecorded": "Merchant payout recorded",
             "merchantRepaymentRecorded": "Merchant payment received",
             "settlementFailed": "Could not record settlement",

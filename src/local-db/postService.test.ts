@@ -16,6 +16,7 @@ let createDeliveryRun: typeof import("./postService").createDeliveryRun;
 let transferReturnedDeliveryShipment: typeof import("./postService").transferReturnedDeliveryShipment;
 let updateDeliveryShipmentStatus: typeof import("./postService").updateDeliveryShipmentStatus;
 let settleDeliveryCourier: typeof import("./postService").settleDeliveryCourier;
+let payDeliveryCourierFee: typeof import("./postService").payDeliveryCourierFee;
 let payDeliveryMerchant: typeof import("./postService").payDeliveryMerchant;
 let receiveDeliveryMerchantRepayment: typeof import("./postService").receiveDeliveryMerchantRepayment;
 let updateDeliveryMerchantProfile: typeof import("./postService").updateDeliveryMerchantProfile;
@@ -67,7 +68,7 @@ describe("Post Service COD accounting", () => {
   beforeAll(async () => {
     installBrowserEnvironment();
     const postService = await import("./postService");
-    ({ createDeliveryMerchantProfile, createDeliveryShipment, createDeliveryRun, transferReturnedDeliveryShipment, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryMerchant, receiveDeliveryMerchantRepayment, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment } = postService);
+    ({ createDeliveryMerchantProfile, createDeliveryShipment, createDeliveryRun, transferReturnedDeliveryShipment, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryCourierFee, payDeliveryMerchant, receiveDeliveryMerchantRepayment, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment } = postService);
   });
 
   beforeEach(async () => {
@@ -293,6 +294,79 @@ describe("Post Service COD accounting", () => {
       paymentMethod: "fib",
     });
     expect((await db.delivery_shipments.get(shipment.id))?.recipientPayoutPaymentTransactionId).toBe(payment?.id);
+  });
+
+  it("pays an uncovered courier delivery fee as an outgoing payment", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const deliveryCourier = { ...courier(crypto.randomUUID()), courierDeliveryFee: 2000 };
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, {
+      businessPartnerId: merchant.id,
+      defaultFeeAmount: 3000,
+      defaultFeePayer: "merchant",
+    });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientPhone: "07500000000",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      customerPaymentStatus: "prepaid_electronically",
+      codAmount: 0,
+      recipientPayoutAmount: 10000,
+      deliveryFee: 3000,
+      feePayer: "merchant",
+    });
+    await createDeliveryRun(WORKSPACE_ID, {
+      agentId: deliveryCourier.id,
+      shipmentIds: [shipment.id],
+      courierDeliveryFee: 2000,
+    });
+    await updateDeliveryShipmentStatus(shipment.id, {
+      status: "delivered",
+      actorAgentId: deliveryCourier.id,
+    });
+
+    const beforePayout = await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray();
+    expect(beforePayout).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "courier_delivery_fee", amount: -2000, shipmentId: shipment.id }),
+      expect.objectContaining({ kind: "merchant_fee", amount: -3000, shipmentId: shipment.id }),
+      expect.objectContaining({ kind: "merchant_recipient_payout", amount: -10000, shipmentId: shipment.id }),
+    ]));
+    expect(beforePayout.filter((entry) => entry.agentId === deliveryCourier.id).reduce((sum, entry) => sum + entry.amount, 0)).toBe(-2000);
+
+    const settlement = await payDeliveryCourierFee(WORKSPACE_ID, {
+      agentId: deliveryCourier.id,
+      shipmentId: shipment.id,
+      currency: "iqd",
+      actualAmount: 2000,
+      paymentMethod: "fib",
+    });
+    expect(settlement).toMatchObject({ type: "courier_fee_payout", expectedAmount: 2000, actualAmount: 2000 });
+
+    const entries = await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray();
+    expect(entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "courier_fee_payout", amount: 2000, shipmentId: shipment.id, settlementId: settlement.id }),
+    ]));
+    expect(entries.filter((entry) => entry.agentId === deliveryCourier.id).reduce((sum, entry) => sum + entry.amount, 0)).toBe(0);
+
+    const payment = await db.payment_transactions
+      .where("workspaceId")
+      .equals(WORKSPACE_ID)
+      .and((item) => item.sourceRecordId === settlement.id)
+      .first();
+    expect(payment).toMatchObject({
+      sourceType: "delivery_courier_fee_payout",
+      direction: "outgoing",
+      amount: 2000,
+      currency: "iqd",
+      paymentMethod: "fib",
+      metadata: expect.objectContaining({
+        deliverySettlementType: "courier_fee_payout",
+        deliveryShipmentId: shipment.id,
+        deliveryAgentId: deliveryCourier.id,
+      }),
+    });
   });
 
   it("records merchant repayment as an incoming payment and clears the post debt", async () => {

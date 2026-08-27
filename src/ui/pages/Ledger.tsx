@@ -111,6 +111,7 @@ type LedgerEntryType =
     | 'payment_account_opening_balance'
     | 'exchange_profit'
     | 'delivery_courier_remittance'
+    | 'delivery_courier_fee_payout'
     | 'delivery_merchant_payout'
     | 'delivery_recipient_payout'
     | 'delivery_merchant_repayment'
@@ -318,6 +319,8 @@ function ledgerTypeLabel(type: LedgerEntryType, t: any) {
             return t('ledger.type.exchangeProfit', { defaultValue: 'Exchange Profit' })
         case 'delivery_courier_remittance':
             return t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
+        case 'delivery_courier_fee_payout':
+            return t('ledger.type.deliveryCourierFeePayout', { defaultValue: 'Courier Fee Payment' })
         case 'delivery_merchant_payout':
             return t('ledger.type.deliveryMerchantPayout', { defaultValue: 'Merchant Payout' })
         case 'delivery_recipient_payout':
@@ -820,6 +823,8 @@ function buildTransactionReference(transaction: PaymentTransaction) {
             return buildReferenceId('APT', transaction.sourceRecordId)
         case 'delivery_courier_remittance':
             return buildReferenceId('CR', transaction.sourceRecordId)
+        case 'delivery_courier_fee_payout':
+            return buildReferenceId('CF', transaction.sourceRecordId)
         case 'delivery_merchant_payout':
             return buildReferenceId('MP', transaction.sourceRecordId)
         case 'delivery_recipient_payout':
@@ -1106,10 +1111,12 @@ function buildPaymentLedgerEntry(
 
     switch (transaction.sourceType) {
         case 'delivery_courier_remittance':
+        case 'delivery_courier_fee_payout':
         case 'delivery_merchant_payout':
         case 'delivery_recipient_payout':
         case 'delivery_merchant_repayment': {
             const isCourierRemittance = transaction.sourceType === 'delivery_courier_remittance'
+            const isCourierFeePayout = transaction.sourceType === 'delivery_courier_fee_payout'
             const isRecipientPayout = transaction.sourceType === 'delivery_recipient_payout'
             const isMerchantRepayment = transaction.sourceType === 'delivery_merchant_repayment'
             const settlement = context.deliverySettlementById.get(transaction.sourceRecordId)
@@ -1146,6 +1153,8 @@ function buildPaymentLedgerEntry(
                     relationRole: isCourierRemittance || isRecipientPayout ? 'origin' as const : 'settlement' as const,
                     relationTitle: isCourierRemittance
                         ? t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
+                        : isCourierFeePayout
+                            ? t('ledger.type.deliveryCourierFeePayout', { defaultValue: 'Courier Fee Payment' })
                         : isRecipientPayout
                             ? t('ledger.type.deliveryRecipientPayout', { defaultValue: 'Recipient Payout' })
                             : isMerchantRepayment
@@ -1157,6 +1166,12 @@ function buildPaymentLedgerEntry(
                             tracking: shipment?.trackingNumber || shipmentId,
                             recipient: shipment?.recipientPhone || t('common.unknown', { defaultValue: 'Unknown recipient' })
                         })
+                        : isCourierFeePayout
+                            ? t('ledger.description.deliveryPostCourierFeePayoutRelation', {
+                                defaultValue: 'Post {{tracking}} · courier fee paid to {{recipient}}.',
+                                tracking: shipment?.trackingNumber || shipmentId,
+                                recipient: shipment?.recipientPhone || t('common.unknown', { defaultValue: 'Unknown recipient' })
+                            })
                         : isRecipientPayout
                             ? t('ledger.description.deliveryPostRecipientPayoutRelation', {
                                 defaultValue: 'Post {{tracking}} · payout made to {{recipient}}.',
@@ -1182,6 +1197,8 @@ function buildPaymentLedgerEntry(
                     relationRole: 'settlement' as const,
                     relationTitle: isCourierRemittance
                         ? t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
+                        : isCourierFeePayout
+                            ? t('ledger.type.deliveryCourierFeePayout', { defaultValue: 'Courier Fee Payment' })
                         : isRecipientPayout
                             ? t('ledger.type.deliveryRecipientPayout', { defaultValue: 'Recipient Payout' })
                             : isMerchantRepayment
@@ -1207,6 +1224,8 @@ function buildPaymentLedgerEntry(
                 description: buildTransactionDescription(transaction, t)
                     || (isCourierRemittance
                         ? t('ledger.description.deliveryCourierRemittance', { defaultValue: 'Courier cash handover' })
+                        : isCourierFeePayout
+                            ? t('ledger.description.deliveryCourierFeePayout', { defaultValue: 'Courier fee payment' })
                         : isRecipientPayout
                             ? t('ledger.description.deliveryRecipientPayout', { defaultValue: 'Recipient payout' })
                             : isMerchantRepayment

@@ -531,7 +531,7 @@ export type DeliveryShipmentStatus =
   | "returned"
   | "cancelled";
 export type DeliveryRunStatus = "open" | "closed" | "cancelled";
-export type DeliverySettlementType = "courier_remittance" | "merchant_payout" | "merchant_repayment";
+export type DeliverySettlementType = "courier_remittance" | "courier_fee_payout" | "merchant_payout" | "merchant_repayment";
 
 export interface DeliveryShipment extends BaseEntity {
   trackingNumber: string;
@@ -635,6 +635,7 @@ export type DeliveryLedgerEntryKind =
   | "courier_collection"
   | "courier_delivery_fee"
   | "courier_remittance"
+  | "courier_fee_payout"
   | "merchant_cod_payable"
   | "merchant_fee"
   | "merchant_recipient_payout"
@@ -2030,6 +2031,7 @@ export type PaymentTransactionSourceType =
   | "payment_account_opening_balance"
   | "exchange_transaction"
   | "delivery_courier_remittance"
+  | "delivery_courier_fee_payout"
   | "delivery_merchant_payout"
   | "delivery_recipient_payout"
   | "delivery_merchant_repayment"

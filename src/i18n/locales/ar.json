@@ -4569,6 +4569,7 @@
             "activityTransaction": "معاملة نشاط",
             "activityRefund": "استرداد نشاط",
             "deliveryCourierRemittance": "تسليم نقدي للمندوب",
+            "deliveryCourierFeePayout": "دفع أجرة المندوب",
             "deliveryMerchantPayout": "دفعة للتاجر",
             "deliveryRecipientPayout": "دفعة للمستلم",
             "deliveryMerchantRepayment": "سداد التاجر",
@@ -4722,6 +4723,7 @@
             "activityTransaction": "معاملة نشاط",
             "activityRefund": "استرداد نشاط",
             "deliveryCourierRemittance": "تسليم نقدي للمندوب",
+            "deliveryCourierFeePayout": "دفع أجرة المندوب",
             "deliveryMerchantPayout": "دفعة للتاجر",
             "deliveryRecipientPayout": "دفعة للمستلم",
             "deliveryMerchantRepayment": "سداد التاجر",
@@ -4743,10 +4745,12 @@
         },
         "description": {
             "deliveryCourierRemittance": "تسليم نقدي من المندوب",
+            "deliveryCourierFeePayout": "دفع أجرة المندوب",
             "deliveryMerchantPayout": "دفعة للتاجر",
             "deliveryRecipientPayout": "دفعة للمستلم",
             "deliveryMerchantRepayment": "تم استلام سداد التاجر",
             "deliveryPostCourierRelation": "الشحنة {{tracking}} · تسليم نقد المندوب للمستلم {{recipient}}.",
+            "deliveryPostCourierFeePayoutRelation": "الشحنة {{tracking}} · تم دفع أجرة المندوب للمستلم {{recipient}}.",
             "deliveryPostMerchantRelation": "الشحنة {{tracking}} · دفعة التاجر الخاصة بالمستلم {{recipient}}.",
             "deliveryPostMerchantRepaymentRelation": "الشحنة {{tracking}} · تم استلام دفعة من التاجر تخص المستلم {{recipient}}.",
             "deliveryPostRecipientPayoutRelation": "الشحنة {{tracking}} · دفعة صُرفت للمستلم {{recipient}}.",
@@ -6330,6 +6334,7 @@
             "editCourier": "تعديل المندوب",
             "addBusinessPartner": "إضافة شريك أعمال",
             "addRecipientPayout": "إضافة دفعة للمستلم",
+            "payCourierFee": "دفع أجرة المندوب",
             "payMerchant": "دفع التاجر",
             "receiveMerchantRepayment": "استلام دفعة التاجر",
             "editMerchant": "تعديل التاجر",
@@ -6369,6 +6374,7 @@
             "deliveryMerchants": "تجار التوصيل",
             "couriers": "المندوبون",
             "courierHandovers": "تسليمات نقد المندوبين",
+            "courierFeePayables": "مستحقات أجور المندوبين",
             "merchantPayouts": "دفعات التجار",
             "settlementHistory": "سجل التسويات"
         },
@@ -6402,6 +6408,7 @@
             "reason": "السبب",
             "amountReceivedPaid": "المبلغ المستلم / المدفوع",
             "amountReceived": "المبلغ المستلم",
+            "amountPaid": "المبلغ المدفوع",
             "paymentMethod": "طريقة الدفع",
             "status": "الحالة",
             "noteVariance": "ملاحظة / توضيح الفرق"
@@ -6491,7 +6498,8 @@
             "contact": "جهة الاتصال",
             "openPosts": "شحنات مفتوحة",
             "deliveredPosts": "مُسلّمة",
-            "outstandingCash": "النقد المستحق"
+            "outstandingCash": "النقد المستحق",
+            "courierFeePayable": "أجرة المندوب المستحقة"
         },
         "empty": {
             "noPosts": "لا توجد شحنات مطابقة لهذا العرض.",
@@ -6501,6 +6509,7 @@
             "noMerchantSearchResults": "لا يوجد تجار يطابقون بحثك.",
             "noCouriers": "لا يوجد مندوبون مسجلون بعد. أضف واحداً من دليل المندوبين.",
             "noCourierPosts": "لا توجد تسويات شحنات مسجلة لهذا المندوب.",
+            "noCourierFeePayables": "لا توجد دفعات أجور مستحقة للمندوبين.",
             "noBalances": "لا توجد أرصدة مفتوحة.",
             "noSettlements": "لم يتم تسجيل تسويات بعد."
         },
@@ -6548,6 +6557,7 @@
         },
         "settlementType": {
             "courierRemittance": "تسليم المندوب",
+            "courierFeePayout": "دفع أجرة المندوب",
             "merchantPayout": "دفعة التاجر",
             "merchantRepayment": "سداد التاجر"
         },
@@ -6595,6 +6605,10 @@
             },
             "courierSettlement": {
                 "title": "تسجيل تسليم المندوب"
+            },
+            "courierFeePayout": {
+                "title": "دفع أجرة المندوب",
+                "outstanding": "يستحق {{name}} مبلغ {{amount}} مقابل أجرة هذا التوصيل."
             },
             "merchantSettlement": {
                 "title": "دفع التاجر"
@@ -6651,6 +6665,7 @@
             "postMarked": "تم تحديد حالة الشحنة: {{status}}",
             "updatePostFailed": "تعذر تحديث الشحنة",
             "courierHandoverRecorded": "تم تسجيل تسليم المندوب",
+            "courierFeePayoutRecorded": "تم تسجيل دفع أجرة المندوب",
             "merchantPayoutRecorded": "تم تسجيل دفعة التاجر",
             "merchantRepaymentRecorded": "تم استلام دفعة التاجر",
             "settlementFailed": "تعذر تسجيل التسوية",
