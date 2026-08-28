@@ -1820,7 +1820,8 @@
         "actions": {
             "settleBalance": "Settle Balance",
             "payPartner": "Pay Partner",
-            "collectFromPartner": "Collect from Partner"
+            "collectFromPartner": "Collect from Partner",
+            "reverse": "Reverse"
         },
         "collect": "Collect",
         "pay": "Pay",
@@ -1919,6 +1920,12 @@
             "postedOnly": "Posted movements only",
             "noManual": "No manual entries",
             "multiCurrency": "Multi-currency preserved"
+        },
+        "relationRole": {
+            "origin": "Origin",
+            "repayment": "Repayment",
+            "settlement": "Settlement",
+            "linked": "Linked"
         },
         "kpis": {
             "totalInflow": "Total Inflow",
@@ -3871,6 +3878,36 @@
     },
     "loans": {
         "title": "Installments",
+        "accountStatement": {
+            "title": "Loan Account Statement",
+            "printOption": "Loan Account Statement",
+            "printOptionDescription": "Summarize the linked partner account and show one loan repayment separately.",
+            "loanDetailsDescription": "Loan schedule and repayment activity.",
+            "selectRepaymentTitle": "Select Loan Repayment",
+            "selectRepaymentDescription": "Choose the repayment to show separately. Earlier partner activity is summarized without duplicating the selected repayment.",
+            "latest": "Latest",
+            "noRepayments": "No repayments have been recorded for this loan.",
+            "requiresLinkedPartner": "Link this loan to a business partner before printing its account statement.",
+            "previousActivity": "Previous activity before this repayment",
+            "previousActivityDescription": "All earlier partner account activity in this currency",
+            "repaymentReceived": "Loan Repayment Received",
+            "repaymentMade": "Loan Repayment Made",
+            "totalsThroughRepayment": "Totals through this repayment",
+            "partner": "Business Partner",
+            "loan": "Loan",
+            "repaymentDate": "Repayment Date",
+            "paymentMethod": "Payment Method",
+            "currency": "Currency",
+            "entriesSummarized": "Entries Summarized",
+            "printed": "Printed",
+            "debit": "Debit",
+            "credit": "Credit",
+            "balance": "Balance",
+            "dueFromPartner": "Due from partner",
+            "dueToPartner": "Due to partner",
+            "balanceNote": "Debit increases the amount due from the partner; credit decreases it. Each currency is kept on its own ledger.",
+            "notReady": "The account statement is not ready yet."
+        },
         "details": "Installment Loan Details",
         "simpleLoanDetails": "Simple Loan Details",
         "simpleLoanSummary": "Simple Loan Summary",

@@ -2770,6 +2770,36 @@
     },
     "loans": {
         "title": "الأقساط",
+        "accountStatement": {
+            "title": "كشف حساب القرض",
+            "printOption": "كشف حساب القرض",
+            "printOptionDescription": "يلخص حساب شريك الأعمال المرتبط ويعرض دفعة قرض واحدة بشكل منفصل.",
+            "loanDetailsDescription": "جدول القرض ونشاط السداد.",
+            "selectRepaymentTitle": "اختر دفعة القرض",
+            "selectRepaymentDescription": "اختر الدفعة التي ستظهر بشكل منفصل. يتم تلخيص نشاط حساب الشريك السابق من دون تكرار الدفعة المختارة.",
+            "latest": "الأحدث",
+            "noRepayments": "لا توجد دفعات مسجلة لهذا القرض.",
+            "requiresLinkedPartner": "اربط هذا القرض بشريك أعمال قبل طباعة كشف حسابه.",
+            "previousActivity": "النشاط السابق قبل هذه الدفعة",
+            "previousActivityDescription": "كل نشاط حساب الشريك السابق بهذه العملة",
+            "repaymentReceived": "تم استلام سداد القرض",
+            "repaymentMade": "تم سداد القرض",
+            "totalsThroughRepayment": "الإجماليات حتى هذه الدفعة",
+            "partner": "شريك الأعمال",
+            "loan": "القرض",
+            "repaymentDate": "تاريخ الدفعة",
+            "paymentMethod": "طريقة الدفع",
+            "currency": "العملة",
+            "entriesSummarized": "القيود المجمعة",
+            "printed": "طبع في",
+            "debit": "مدين",
+            "credit": "دائن",
+            "balance": "الرصيد",
+            "dueFromPartner": "مستحق من الشريك",
+            "dueToPartner": "مستحق للشريك",
+            "balanceNote": "المدين يزيد المبلغ المستحق من الشريك، والدائن يخفضه. تُحفظ كل عملة في كشف منفصل.",
+            "notReady": "كشف الحساب غير جاهز بعد."
+        },
         "details": "تفاصيل قرض التقسيط",
         "simpleLoanDetails": "تفاصيل القرض البسيط",
         "simpleLoanSummary": "ملخص القرض البسيط",
@@ -4503,7 +4533,8 @@
         "actions": {
             "settleBalance": "تسوية الرصيد",
             "payPartner": "الدفع للشريك",
-            "collectFromPartner": "التحصيل من الشريك"
+            "collectFromPartner": "التحصيل من الشريك",
+            "reverse": "ارجاع"
         },
         "collect": "تحصيل",
         "pay": "دفع",
@@ -4600,6 +4631,12 @@
             "postedOnly": "الحركات المنشورة فقط",
             "noManual": "بدون إدخالات يدوية",
             "multiCurrency": "العملات المتعددة محفوظة"
+        },
+        "relationRole": {
+            "origin": "المنشأ",
+            "repayment": "سداد القرض",
+            "settlement": "تسوية",
+            "linked": "مرتبط"
         },
         "kpis": {
             "totalInflow": "إجمالي الوارد",
@@ -7164,7 +7201,13 @@
         "scheduledEnd": "وقت الانتهاء المجدول",
         "noAssignedShifts": "لا توجد ورديات معيّنة في هذه الفترة.",
         "noAssignedShiftsDescription": "يمكن للمدير المخوّل إنشاء جدول وتعيينه لك.",
-        "shiftStatuses": { "upcoming": "قادمة", "available": "جاهزة للبدء", "active": "نشطة", "completed": "مكتملة", "unavailable": "غير متاحة" },
+        "shiftStatuses": {
+            "upcoming": "قادمة",
+            "available": "جاهزة للبدء",
+            "active": "نشطة",
+            "completed": "مكتملة",
+            "unavailable": "غير متاحة"
+        },
         "createShift": "إنشاء وردية",
         "createShiftDescription": "أنشئ جدول وردية قابل لإعادة الاستخدام لاختياره عند تعيين أمين الصندوق.",
         "shiftName": "اسم الوردية",
@@ -7199,7 +7242,15 @@
         "weekdayListPair": "{{first}} و{{last}}",
         "weekdayListContinue": "{{list}}، {{next}}",
         "weekdayListEnd": "{{list}}، و{{last}}",
-        "weekdays": { "0": "الأحد", "1": "الاثنين", "2": "الثلاثاء", "3": "الأربعاء", "4": "الخميس", "5": "الجمعة", "6": "السبت" },
+        "weekdays": {
+            "0": "الأحد",
+            "1": "الاثنين",
+            "2": "الثلاثاء",
+            "3": "الأربعاء",
+            "4": "الخميس",
+            "5": "الجمعة",
+            "6": "السبت"
+        },
         "you": "أنت",
         "startShift": "بدء الوردية",
         "startShiftConfirmationDescription": "راجع وقت الوردية المجدول الفعلي قبل بدئها.",
@@ -7265,9 +7316,19 @@
         "currencyAndAmountDescription": "استخدم نطاق التاريخ في الصفحة، ثم صَفِّ هذا الحساب حسب العملة والمبلغ.",
         "applyMovementFilters": "تطبيق الفلاتر ({{count}})",
         "unknownMovement": "حركة مُسجّلة",
-        "sourceModules": { "travelAgency": "وكالة السفر" },
-        "transactionTypes": { "travelSale": "بيع سفر", "orderReturn": "مرتجع طلب" },
-        "types": { "cash_drawer": "درج نقدي", "bank_account": "حساب بنكي", "digital_wallet": "محفظة رقمية", "other": "أخرى" },
+        "sourceModules": {
+            "travelAgency": "وكالة السفر"
+        },
+        "transactionTypes": {
+            "travelSale": "بيع سفر",
+            "orderReturn": "مرتجع طلب"
+        },
+        "types": {
+            "cash_drawer": "درج نقدي",
+            "bank_account": "حساب بنكي",
+            "digital_wallet": "محفظة رقمية",
+            "other": "أخرى"
+        },
         "accountIcon": "أيقونة الحساب",
         "chooseIcon": "اختر أيقونة الحساب",
         "accountIconDescription": "اختر علامة مرئية تظهر أينما تم اختيار هذا الحساب.",

@@ -55,6 +55,8 @@ import {
     PartnerAccountStatementPrintTemplate,
     type PartnerAccountStatementPrintData
 } from '@/ui/components/crm/PartnerAccountStatementPrintTemplate'
+import { LoanAccountStatementPrintTemplate } from '@/ui/components/loans/LoanAccountStatementPrintTemplate'
+import type { LoanAccountStatementPrintData } from '@/lib/loanAccountStatement'
 import {
     ORDER_DETAILS_MOVABLE_COMPONENT_KEYS,
     ORDER_PRINT_COMMON_FIELD_KEYS,
@@ -92,6 +94,7 @@ export const SALES_HISTORY_A4_TEMPLATE_KEYS = [
 export const PARTNER_DETAILS_TEMPLATE_KEY = 'businessPartners.Details'
 export const PARTNER_ORDER_ITEMS_TEMPLATE_KEY = 'businessPartners.OrderItems'
 export const PARTNER_ACCOUNT_STATEMENT_TEMPLATE_KEY = 'businessPartners.AccountStatement'
+export const LOAN_ACCOUNT_STATEMENT_TEMPLATE_KEY = 'loans.AccountStatement'
 export const ORDER_ATLAS_STANDARD_TEMPLATE_KEY = 'orders.AtlasStandard'
 export const ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY = 'orders.AtlasStandardReturn'
 export const ORDER_DETAILS_TEMPLATE_KEY = 'orders.Details'
@@ -115,7 +118,7 @@ export const PARTNER_ORDER_ITEMS_TEMPLATE_FIELD_KEYS = {
 
 export type CustomTemplateTarget = {
     moduleTypeKey: string
-    workspaceModuleKey: 'instant_pos' | 'real_estate' | 'sales_history' | 'crm'
+    workspaceModuleKey: 'instant_pos' | 'real_estate' | 'sales_history' | 'crm' | 'loans'
     moduleLabel: string
     typeLabel: string
     description: string
@@ -276,6 +279,17 @@ export const CUSTOM_TEMPLATE_TARGETS: CustomTemplateTarget[] = [
         typeLabel: 'Account Statement',
         description: 'Chronological debit, credit, and running-balance partner account statement.',
         nativeTemplateKey: PARTNER_ACCOUNT_STATEMENT_TEMPLATE_KEY,
+        nativeTemplateAvailable: true,
+        printFormat: 'a4',
+        page: { widthMm: 210, heightMm: 297 }
+    },
+    {
+        moduleTypeKey: LOAN_ACCOUNT_STATEMENT_TEMPLATE_KEY,
+        workspaceModuleKey: 'loans',
+        moduleLabel: 'Loans',
+        typeLabel: 'Loan Account Statement',
+        description: 'Partner account summary through one selected loan repayment.',
+        nativeTemplateKey: LOAN_ACCOUNT_STATEMENT_TEMPLATE_KEY,
         nativeTemplateAvailable: true,
         printFormat: 'a4',
         page: { widthMm: 210, heightMm: 297 }
@@ -547,6 +561,7 @@ export type CustomTemplatePreviewOptions = {
     partnerDetailsData?: PartnerDetailsPrintData
     partnerOrderItemsData?: PartnerOrderItemsPrintData
     partnerAccountStatementData?: PartnerAccountStatementPrintData
+    loanAccountStatementData?: LoanAccountStatementPrintData
     order?: SalesOrder | PurchaseOrder
     orderKind?: 'sales' | 'purchase'
     orderReturnPrintData?: SalesOrderReturnPrintData | null
@@ -1573,6 +1588,47 @@ function createPartnerAccountStatementPreview(options: CustomTemplatePreviewOpti
     }
 }
 
+function createLoanAccountStatementPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
+    const loanAccountStatementData = options.loanAccountStatementData || {
+        partner: { name: 'Sample Partner', contactName: '', phone: '', email: '', address: '' },
+        loan: { id: 'sample-loan', loanNo: 'LOAN-001', direction: 'lent' as const, settlementCurrency: 'iqd' as const },
+        selectedPayment: { id: 'sample-payment', amount: 200000, paymentMethod: 'cash' as const, paidAt: '2026-08-28T10:00:00.000Z', note: '' },
+        currency: 'iqd' as const,
+        previous: { debit: 1000000, credit: 300000, balance: 700000, entryCount: 5 },
+        repayment: { debit: 0, credit: 200000, balance: 500000, date: '2026-08-28T10:00:00.000Z', reference: 'LOAN-001' },
+        totals: { debit: 1000000, credit: 500000, balance: 500000 },
+        generatedAt: '2026-08-28T10:00:00.000Z'
+    } satisfies LoanAccountStatementPrintData
+    const configuredPrintLang = options.features?.print_lang
+    const printLang = options.printLang
+        || (configuredPrintLang && configuredPrintLang !== 'auto' ? configuredPrintLang : 'en')
+    const fixedPrintLang: TemplatePreview['fixedPrintLang'] = printLang.startsWith('ar')
+        ? 'ar'
+        : printLang.startsWith('ku')
+            ? 'ku'
+            : 'en'
+
+    return {
+        fields: [],
+        page: { widthMm: 210, heightMm: 297 },
+        fixedPrintLang,
+        createElement: (_data, _effectiveId, printLangOverride) => (
+            <LoanAccountStatementPrintTemplate
+                workspaceName={options.workspaceName}
+                printLang={printLangOverride || fixedPrintLang}
+                data={loanAccountStatementData}
+                iqdPreference={options.features?.iqd_display_preference}
+                logoUrl={options.features?.logo_url}
+            />
+        ),
+        buildPdf: (element, printLangOverride) => generateTemplatePdf({
+            element,
+            format: 'a4',
+            printLang: printLangOverride || fixedPrintLang
+        })
+    }
+}
+
 function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
     const order = options.order || SAMPLE_ORDER_DATA
     const kind = options.orderKind || 'sales'
@@ -1806,6 +1862,10 @@ export function createCustomTemplatePreview(
 
     if (target.moduleTypeKey === PARTNER_ACCOUNT_STATEMENT_TEMPLATE_KEY) {
         return createPartnerAccountStatementPreview(options)
+    }
+
+    if (target.moduleTypeKey === LOAN_ACCOUNT_STATEMENT_TEMPLATE_KEY) {
+        return createLoanAccountStatementPreview(options)
     }
 
     if (target.moduleTypeKey === ORDER_ATLAS_STANDARD_TEMPLATE_KEY) {

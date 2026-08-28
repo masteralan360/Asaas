@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useLocation } from 'wouter'
 import { useReactToPrint } from 'react-to-print'
 import { useTranslation } from 'react-i18next'
@@ -70,6 +70,7 @@ interface PrintPreviewModalProps {
     features?: WorkspaceFeatures
     workspaceName?: string | null
     module?: string
+    skipPrintSelection?: boolean
     printSelectionOptions?: PrintSelectionNativeOption[]
     printSelectionTemplates?: PrintSelectionTemplateOption[]
     onPrintSelection?: (format: PrintFormat, template?: StoredCustomTemplateRow, nativeTemplateKey?: string, printVersion?: OrderPrintVersion) => void
@@ -113,6 +114,7 @@ export function PrintPreviewModal({
     features,
     workspaceName,
     module,
+    skipPrintSelection = false,
     printSelectionOptions,
     printSelectionTemplates,
     onPrintSelection,
@@ -173,6 +175,11 @@ export function PrintPreviewModal({
     const defaultPrintFormat: PrintFormat = requestedPrintFormat === 'a4' && !hasCapability('a4PdfInvoices')
         ? 'receipt'
         : requestedPrintFormat
+    useLayoutEffect(() => {
+        if (isOpen && skipPrintSelection) {
+            setSelectedPrintFormat(defaultPrintFormat)
+        }
+    }, [defaultPrintFormat, isOpen, skipPrintSelection])
     const printFormat = selectedPrintFormat || defaultPrintFormat
     const resolvedPrintSelectionOptions = useMemo<PrintSelectionNativeOption[]>(
         () => printSelectionOptions || [{

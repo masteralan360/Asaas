@@ -14,6 +14,23 @@ export interface PaymentAccountSelectionState {
 }
 
 /**
+ * Keeps a resolved account selection stable if an owning form briefly clears
+ * its controlled value while it is recovering from a rejected submission or
+ * refreshing related form state. Only an explicit ledger-only choice may
+ * clear the selector's displayed and submitted account.
+ */
+export function resolvePaymentAccountEffectiveValue(
+  value: string | null | undefined,
+  retainedAccount: PaymentAccount | null,
+  explicitlyLedgerOnly: boolean,
+): string | null {
+  if (value) return value
+  if (explicitlyLedgerOnly) return null
+
+  return retainedAccount?.id ?? null
+}
+
+/**
  * Resolve a controlled payment-account selection without turning an existing
  * account choice into "No account" while the account list refreshes or a
  * contextual filter changes. Ledger-only remains an explicit user action.

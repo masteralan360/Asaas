@@ -43,6 +43,8 @@ import { useWorkspace } from '@/workspace'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { CreateSimpleLoanModal } from './CreateSimpleLoanModal'
 import { LoanDetailsPrintTemplate, LoanListPrintTemplate } from './LoanPrintTemplates'
+import { LoanAccountStatementPrintFlow } from './LoanAccountStatementPrintFlow'
+import { LOAN_ACCOUNT_STATEMENT_TEMPLATE_KEY } from '@/lib/customTemplates'
 import { LoanNoDisplay } from './LoanNoDisplay'
 import { LoanSourceBadge } from './LoanSourceBadge'
 import { LoanNoteActionButton } from './LoanNoteActionButton'
@@ -104,6 +106,7 @@ export function SimpleLoanListView({
     const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
     const [loanToPrint, setLoanToPrint] = useState<Loan | null>(null)
     const [showLoanPrintPreview, setShowLoanPrintPreview] = useState(false)
+    const [showLoanAccountStatementPaymentPicker, setShowLoanAccountStatementPaymentPicker] = useState(false)
     const [loanForNote, setLoanForNote] = useState<Loan | null>(null)
 
     const handleShareOnWhatsApp = (phone: string, dialogLanguage: string) => {
@@ -849,6 +852,43 @@ export function SimpleLoanListView({
                 pdfBuilder={buildLoanPrintPdf}
                 printTemplate={loanToPrint ? ({ effectiveId }) => renderLoanPrintTemplate(effectiveId) : undefined}
                 templatePreview={simpleLoanDetailsPreview}
+                printSelectionOptions={[
+                    {
+                        format: 'a4',
+                        label: getLoanDetailsTitle(loanToPrint || ({} as Loan), t),
+                        description: t('loans.accountStatement.loanDetailsDescription'),
+                        nativeTemplateKey: 'loans.Details'
+                    },
+                    {
+                        format: 'a4',
+                        label: t('loans.accountStatement.printOption'),
+                        description: t('loans.accountStatement.printOptionDescription'),
+                        nativeTemplateKey: LOAN_ACCOUNT_STATEMENT_TEMPLATE_KEY,
+                        disabled: loanToPrint?.linkedPartyType !== 'business_partner'
+                            || !loanToPrint?.linkedPartyId
+                            || !loanPrintPayments.some((payment) => !payment.isDeleted),
+                        warning: loanToPrint?.linkedPartyType !== 'business_partner' || !loanToPrint?.linkedPartyId
+                            ? t('loans.accountStatement.requiresLinkedPartner')
+                            : !loanPrintPayments.some((payment) => !payment.isDeleted)
+                                ? t('loans.accountStatement.noRepayments')
+                                : undefined
+                    }
+                ]}
+                onPrintSelection={(_format, _template, nativeTemplateKey) => {
+                    if (nativeTemplateKey !== LOAN_ACCOUNT_STATEMENT_TEMPLATE_KEY) return
+                    setShowLoanPrintPreview(false)
+                    setShowLoanAccountStatementPaymentPicker(true)
+                }}
+            />
+            <LoanAccountStatementPrintFlow
+                paymentPickerOpen={showLoanAccountStatementPaymentPicker}
+                onPaymentPickerOpenChange={setShowLoanAccountStatementPaymentPicker}
+                loan={loanToPrint}
+                payments={loanPrintPayments}
+                workspaceId={workspaceId}
+                workspaceName={workspaceName}
+                features={features}
+                createdByName={user?.name}
             />
             <WhatsAppNumberInputModal
                 isOpen={showWhatsAppModal}

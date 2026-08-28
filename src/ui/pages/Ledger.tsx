@@ -1624,7 +1624,15 @@ export function Ledger() {
     const realEstateTransactions = useRealEstateTransactions(workspaceId)
     const sales = useSales(workspaceId, dateBounds.startDate, dateBounds.endDate)
     const storages = useStorages(workspaceId)
-    const paymentTransactions = usePaymentTransactions(workspaceId, { includeReversals: true })
+    // Ledger already subscribes to every source table it needs below. Avoid the
+    // generic payment hook's full source-table hydration here: it fans out into
+    // many remote reads and Dexie writes during route entry, delaying the first
+    // Ledger paint without adding data this page has not requested itself.
+    const paymentTransactions = usePaymentTransactions(
+        workspaceId,
+        { includeReversals: true },
+        { hydrateSourceTables: false },
+    )
     const salesOrders = useSalesOrders(workspaceId, dateBounds.startDate, dateBounds.endDate)
     const purchaseOrders = usePurchaseOrders(workspaceId)
     const businessPartners = useBusinessPartners(workspaceId, { includeAgentRoles: true })

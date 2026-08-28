@@ -5,6 +5,7 @@ import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 
 import { useAuth } from '@/auth'
+import { useDateRange } from '@/context/DateRangeContext'
 import {
     getPaymentTransactionReversalAmounts,
     getPaymentSourceKey,
@@ -24,6 +25,7 @@ import {
     type PaymentTransactionDirection,
     type PartnerSettlementProgress
 } from '@/local-db'
+import { isDateInDateRange } from '@/lib/dateRangeFilters'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
     Button,
@@ -49,6 +51,7 @@ import {
     TabsTrigger,
     useToast
 } from '@/ui/components'
+import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { SettlementDialog } from '@/ui/components/payments/SettlementDialog'
 import { PartnerSettlementDialog } from '@/ui/components/payments/PartnerSettlementDialog'
 import { useWorkspace } from '@/workspace'
@@ -210,6 +213,7 @@ export function Payments() {
     const { toast } = useToast()
     const { features, hasFeature } = useWorkspace()
     const { hasPermission } = useWorkspacePermissions()
+    const { dateRange, customDates } = useDateRange()
     const [, setLocation] = useLocation()
     const workspaceId = user?.workspaceId
     const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr || features.real_estate || features.activities || features.clinical_appointments || features.car_rental || hasFeature('payment_accounts')
@@ -302,8 +306,11 @@ export function Payments() {
     }, [allTransactions])
 
     const visibleTransactions = useMemo(
-        () => collapseTransactionsBySource(transactions, latestUnreversedBySource),
-        [transactions, latestUnreversedBySource]
+        () => collapseTransactionsBySource(
+            transactions.filter((item) => isDateInDateRange(item.paidAt, dateRange, customDates)),
+            latestUnreversedBySource
+        ),
+        [customDates, dateRange, transactions, latestUnreversedBySource]
     )
 
     const kpis = useMemo(() => ({
@@ -497,53 +504,56 @@ export function Payments() {
 
             <Card>
                 <CardContent className="pt-6">
-                    <div className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_180px_180px_180px]">
-                        <div className="relative">
-                            <Search className="pointer-events-none absolute start-3 top-3.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                value={search}
-                                onChange={(event) => setSearch(event.target.value)}
-                                placeholder={t('payments.searchPlaceholder', { defaultValue: 'Search payments' })}
-                                className="ps-9"
-                            />
+                    <div className="space-y-3">
+                        <div className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_180px_180px_180px]">
+                            <div className="relative">
+                                <Search className="pointer-events-none absolute start-3 top-3.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    value={search}
+                                    onChange={(event) => setSearch(event.target.value)}
+                                    placeholder={t('payments.searchPlaceholder', { defaultValue: 'Search payments' })}
+                                    className="ps-9"
+                                />
+                            </div>
+                            <Select value={directionFilter} onValueChange={(value: DirectionFilter) => setDirectionFilter(value)}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder={t('payments.filters.allDirections', { defaultValue: 'All Directions' })} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">{t('payments.filters.allDirections', { defaultValue: 'All Directions' })}</SelectItem>
+                                    <SelectItem value="incoming">{t('payments.filters.incoming', { defaultValue: 'Incoming' })}</SelectItem>
+                                    <SelectItem value="outgoing">{t('payments.filters.outgoing', { defaultValue: 'Outgoing' })}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <Select value={sourceFilter} onValueChange={(value: SourceFilter) => setSourceFilter(value)}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder={t('payments.filters.allSources', { defaultValue: 'All Sources' })} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">{t('payments.filters.allSources', { defaultValue: 'All Sources' })}</SelectItem>
+                                    <SelectItem value="loans">{t('payments.filters.loans', { defaultValue: 'Loans' })}</SelectItem>
+                                    <SelectItem value="orders">{t('payments.filters.orders', { defaultValue: 'Orders' })}</SelectItem>
+                                    <SelectItem value="budget">{t('payments.filters.accountingHr', { defaultValue: 'Accounting / HR' })}</SelectItem>
+                                    <SelectItem value="real_estate">{t('payments.filters.realEstate', { defaultValue: 'Real Estate' })}</SelectItem>
+                                    <SelectItem value="activities">{t('payments.filters.activities', { defaultValue: 'Activities' })}</SelectItem>
+                                    <SelectItem value="clinical_appointments">{t('payments.filters.appointments', { defaultValue: 'Appointments' })}</SelectItem>
+                                    <SelectItem value="car_rental">{t('payments.filters.carRental')}</SelectItem>
+                                    <SelectItem value="payments">{t('payments.filters.directManual', { defaultValue: 'Direct / Manual' })}</SelectItem>
+                                    <SelectItem value="payment_accounts">{t('paymentAccounts.title')}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <Select value={statusFilter} onValueChange={(value: OpenStatusFilter) => setStatusFilter(value)}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder={t('payments.filters.allStatuses', { defaultValue: 'All Open Statuses' })} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">{t('payments.filters.allStatuses', { defaultValue: 'All Open Statuses' })}</SelectItem>
+                                    <SelectItem value="open">{t('payments.filters.open', { defaultValue: 'Open' })}</SelectItem>
+                                    <SelectItem value="overdue">{t('payments.filters.overdue', { defaultValue: 'Overdue' })}</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
-                        <Select value={directionFilter} onValueChange={(value: DirectionFilter) => setDirectionFilter(value)}>
-                            <SelectTrigger>
-                                <SelectValue placeholder={t('payments.filters.allDirections', { defaultValue: 'All Directions' })} />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">{t('payments.filters.allDirections', { defaultValue: 'All Directions' })}</SelectItem>
-                                <SelectItem value="incoming">{t('payments.filters.incoming', { defaultValue: 'Incoming' })}</SelectItem>
-                                <SelectItem value="outgoing">{t('payments.filters.outgoing', { defaultValue: 'Outgoing' })}</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <Select value={sourceFilter} onValueChange={(value: SourceFilter) => setSourceFilter(value)}>
-                            <SelectTrigger>
-                                <SelectValue placeholder={t('payments.filters.allSources', { defaultValue: 'All Sources' })} />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">{t('payments.filters.allSources', { defaultValue: 'All Sources' })}</SelectItem>
-                                <SelectItem value="loans">{t('payments.filters.loans', { defaultValue: 'Loans' })}</SelectItem>
-                                <SelectItem value="orders">{t('payments.filters.orders', { defaultValue: 'Orders' })}</SelectItem>
-                                <SelectItem value="budget">{t('payments.filters.accountingHr', { defaultValue: 'Accounting / HR' })}</SelectItem>
-                                <SelectItem value="real_estate">{t('payments.filters.realEstate', { defaultValue: 'Real Estate' })}</SelectItem>
-                                <SelectItem value="activities">{t('payments.filters.activities', { defaultValue: 'Activities' })}</SelectItem>
-                                <SelectItem value="clinical_appointments">{t('payments.filters.appointments', { defaultValue: 'Appointments' })}</SelectItem>
-                                <SelectItem value="car_rental">{t('payments.filters.carRental')}</SelectItem>
-                                <SelectItem value="payments">{t('payments.filters.directManual', { defaultValue: 'Direct / Manual' })}</SelectItem>
-                                <SelectItem value="payment_accounts">{t('paymentAccounts.title')}</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <Select value={statusFilter} onValueChange={(value: OpenStatusFilter) => setStatusFilter(value)}>
-                            <SelectTrigger>
-                                <SelectValue placeholder={t('payments.filters.allStatuses', { defaultValue: 'All Open Statuses' })} />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">{t('payments.filters.allStatuses', { defaultValue: 'All Open Statuses' })}</SelectItem>
-                                <SelectItem value="open">{t('payments.filters.open', { defaultValue: 'Open' })}</SelectItem>
-                                <SelectItem value="overdue">{t('payments.filters.overdue', { defaultValue: 'Overdue' })}</SelectItem>
-                            </SelectContent>
-                        </Select>
+                        {activeTab === 'transactions' ? <DateRangeFilters /> : null}
                     </div>
                 </CardContent>
             </Card>
@@ -767,7 +777,7 @@ export function Payments() {
                                                                 disabled={reversingTransactionId === item.id}
                                                             >
                                                                 <RotateCcw className="ms-1 h-3.5 w-3.5" />
-                                                                {t('common.reverse', { defaultValue: 'Reverse' })}
+                                                                {t('payments.actions.reverse')}
                                                             </Button>
                                                         ) : null}
                                                     </div>

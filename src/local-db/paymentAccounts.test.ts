@@ -15,6 +15,7 @@ let i18n: typeof import('@/i18n/config').default
 let createManualLoan: typeof import('./hooks').createManualLoan
 let recordLoanPayment: typeof import('./hooks').recordLoanPayment
 let savePaymentAccount: typeof import('./paymentAccounts').savePaymentAccount
+let recordPaymentAccountManualOperation: typeof import('./paymentAccounts').recordPaymentAccountManualOperation
 let assertPaymentAccountTransactionCanBeAppliedLocally: typeof import('./paymentAccounts').assertPaymentAccountTransactionCanBeAppliedLocally
 let mirrorPaymentAccountTransactionLocally: typeof import('./paymentAccounts').mirrorPaymentAccountTransactionLocally
 
@@ -81,6 +82,7 @@ describe('payment-account availability', () => {
     ;({ createManualLoan, recordLoanPayment } = await import('./hooks'))
     ;({
       savePaymentAccount,
+      recordPaymentAccountManualOperation,
       assertPaymentAccountTransactionCanBeAppliedLocally,
       mirrorPaymentAccountTransactionLocally,
     } = await import('./paymentAccounts'))
@@ -118,6 +120,28 @@ describe('payment-account availability', () => {
     await mirrorPaymentAccountTransactionLocally({ ...opening!, isDeleted: true, updatedAt: '2026-08-28T13:00:00.000Z' })
     const balance = await db.payment_account_balances.where('[accountId+currency]').equals([account.id, 'iqd']).first()
     expect(balance?.balanceAmount).toBe(0)
+  })
+
+  it('immediately mirrors a cloud-mode manual deposit into the local account cache', async () => {
+    const account = await createFundedAccount()
+    writeWorkspaceModeSnapshot({ workspaceId: WORKSPACE_ID, dataMode: 'cloud' })
+
+    await recordPaymentAccountManualOperation(WORKSPACE_ID, {
+      accountId: account.id,
+      kind: 'deposit',
+      currency: 'iqd',
+      amount: 25_000,
+      paymentMethod: 'cash',
+      reason: 'Cash added to drawer',
+      canPost: true,
+      isAdmin: true,
+    })
+
+    const balance = await db.payment_account_balances.where('[accountId+currency]').equals([account.id, 'iqd']).first()
+    const movements = await db.payment_account_movements.where('accountId').equals(account.id).toArray()
+
+    expect(balance?.balanceAmount).toBe(75_000)
+    expect(movements.some((movement) => movement.amount === 25_000 && movement.deltaAmount === 25_000)).toBe(true)
   })
 
   it('rejects removing an incoming movement after the account has already spent it', async () => {

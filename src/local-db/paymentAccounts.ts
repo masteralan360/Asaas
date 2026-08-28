@@ -817,10 +817,17 @@ export async function assertPaymentAccountTransactionCanBeAppliedLocally(transac
   await assertPaymentAccountTransactionsCanBeAppliedLocally([transaction])
 }
 
-/** Local-only mirrors use the same signed accounting rule as the cloud trigger. */
+/**
+ * Mirror the authoritative payment transaction into the responsive local cache.
+ * Cloud and hybrid workspaces still receive the server-triggered rows on sync;
+ * this optimistic mirror prevents account UI from remaining stale meanwhile.
+ */
 export async function mirrorPaymentAccountTransactionLocally(transaction: PaymentTransaction) {
-  if (!transaction.accountId || !isLocalWorkspaceMode(transaction.workspaceId)) return
+  if (!transaction.accountId) return
   const now = transaction.updatedAt || new Date().toISOString()
+  const projectionSyncMeta = transaction.syncStatus === 'synced'
+    ? { syncStatus: 'synced' as const, lastSyncedAt: transaction.lastSyncedAt ?? now }
+    : syncMeta(transaction.workspaceId, now)
   const delta = getPaymentAccountTransactionDelta(transaction)
   const previousMovement = await db.payment_account_movements.get(transaction.id)
   const previousDelta = Number(previousMovement?.deltaAmount || 0)
@@ -843,7 +850,7 @@ export async function mirrorPaymentAccountTransactionLocally(transaction: Paymen
     updatedAt: now,
     version: (previousMovement?.version ?? 0) + 1,
     isDeleted: transaction.isDeleted,
-    ...syncMeta(transaction.workspaceId, now),
+    ...projectionSyncMeta,
   }
   const balance: PaymentAccountBalance = {
     id: existingBalance?.id ?? generateId(),
@@ -855,7 +862,7 @@ export async function mirrorPaymentAccountTransactionLocally(transaction: Paymen
     updatedAt: now,
     version: (existingBalance?.version ?? 0) + 1,
     isDeleted: false,
-    ...syncMeta(transaction.workspaceId, now),
+    ...projectionSyncMeta,
   }
   await db.transaction('rw', db.payment_account_movements, db.payment_account_balances, async () => {
     await db.payment_account_movements.put(movement)

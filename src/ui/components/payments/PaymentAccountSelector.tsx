@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ShieldAlert } from 'lucide-react'
 
@@ -8,7 +8,7 @@ import { Label } from '@/ui/components/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/select'
 import { useWorkspace } from '@/workspace'
 import { PaymentAccountIcon } from './PaymentAccountIcon'
-import { resolvePaymentAccountSelection } from './paymentAccountSelection'
+import { resolvePaymentAccountEffectiveValue, resolvePaymentAccountSelection } from './paymentAccountSelection'
 
 interface PaymentAccountSelectorProps {
   workspaceId?: string
@@ -65,39 +65,66 @@ export function PaymentAccountSelector({
 
     return grouped
   }, [balances])
-  const defaultWasApplied = useRef(false)
-  const lastKnownSelectedAccount = useRef<PaymentAccount | null>(null)
-  const selection = resolvePaymentAccountSelection(
+  const [retainedSelectedAccount, setRetainedSelectedAccount] = useState<PaymentAccount | null>(null)
+  const [explicitlyLedgerOnly, setExplicitlyLedgerOnly] = useState(false)
+  const lastObservedValue = useRef<string | null | undefined>(undefined)
+  const scheduledDefaultAccountId = useRef<string | null>(null)
+  const effectiveValue = resolvePaymentAccountEffectiveValue(
     value,
+    retainedSelectedAccount,
+    explicitlyLedgerOnly,
+  )
+  const selection = resolvePaymentAccountSelection(
+    effectiveValue,
     accounts,
     options,
-    lastKnownSelectedAccount.current,
+    retainedSelectedAccount,
     allowNoAccount,
   )
 
   useEffect(() => {
-    if (!value) {
-      lastKnownSelectedAccount.current = null
-      return
+    if (value) {
+      const currentAccount = accounts.find((account) => account.id === value)
+      if (currentAccount) setRetainedSelectedAccount(currentAccount)
+      setExplicitlyLedgerOnly(false)
     }
-
-    const currentAccount = accounts.find((account) => account.id === value)
-    if (currentAccount) lastKnownSelectedAccount.current = currentAccount
   }, [accounts, value])
 
-  useLayoutEffect(() => {
-    // A workspace explicitly chooses this behavior in the account editor. The
-    // primary account is intentionally irrelevant here, and an explicit
-    // "No account" selection remains respected for this mounted form. A
-    // layout effect deliberately resolves the default before the selector can
-    // first paint as ledger-only.
-    if (!applyDefault || defaultWasApplied.current || value || !defaultAccount) return
-    defaultWasApplied.current = true
-    onValueChange(defaultAccount)
-  }, [applyDefault, defaultAccount, onValueChange, value])
+  useEffect(() => {
+    // Wait until the parent form has run its own opening-state reset before
+    // applying the workspace default. Without this boundary, a parent can
+    // reset its account state back to null after the selector paints a default;
+    // choosing ledger-only then becomes a no-op and appears delayed.
+    if (!areAccountsReady || !applyDefault || value || explicitlyLedgerOnly || retainedSelectedAccount || !defaultAccount) return
+    if (scheduledDefaultAccountId.current === defaultAccount.id) return
+
+    scheduledDefaultAccountId.current = defaultAccount.id
+    const timer = window.setTimeout(() => {
+      setRetainedSelectedAccount(defaultAccount)
+      onValueChange(defaultAccount)
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timer)
+      if (scheduledDefaultAccountId.current === defaultAccount.id) scheduledDefaultAccountId.current = null
+    }
+  }, [areAccountsReady, applyDefault, defaultAccount, explicitlyLedgerOnly, onValueChange, retainedSelectedAccount, value])
+
+  useEffect(() => {
+    const previousValue = lastObservedValue.current
+    lastObservedValue.current = value ?? null
+
+    // If a failed submission or transient parent refresh clears an account
+    // that was already resolved, restore it on the next task. An explicit
+    // ledger-only selection never enters this recovery path.
+    if (value || explicitlyLedgerOnly || !retainedSelectedAccount || !previousValue) return
+
+    const timer = window.setTimeout(() => onValueChange(retainedSelectedAccount), 0)
+    return () => window.clearTimeout(timer)
+  }, [explicitlyLedgerOnly, onValueChange, retainedSelectedAccount, value])
 
   const isSelectionReady = areAccountsReady
-    && (!applyDefault || defaultWasApplied.current || Boolean(value) || !defaultAccount)
+    && (!applyDefault || Boolean(effectiveValue) || !defaultAccount || explicitlyLedgerOnly)
   const selectedAccountBalances = selection.selectedAccount
     ? balancesByAccount.get(selection.selectedAccount.id) ?? []
     : []
@@ -105,7 +132,8 @@ export function PaymentAccountSelector({
   const handleValueChange = (next: string) => {
     if (next === '__none__') {
       if (!allowNoAccount) return
-      defaultWasApplied.current = true
+      setRetainedSelectedAccount(null)
+      setExplicitlyLedgerOnly(true)
       onValueChange(null)
       return
     }
@@ -115,7 +143,8 @@ export function PaymentAccountSelector({
     // payment. Only a deliberate choice of "No account" may emit null.
     if (!nextAccount) return
 
-    defaultWasApplied.current = true
+    setRetainedSelectedAccount(nextAccount)
+    setExplicitlyLedgerOnly(false)
     onValueChange(nextAccount)
   }
 

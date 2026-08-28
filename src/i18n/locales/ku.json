@@ -2766,6 +2766,36 @@
     },
     "loans": {
         "title": "قیستەکان",
+        "accountStatement": {
+            "title": "ڕاپۆرتی هەژماری قەرز",
+            "printOption": "ڕاپۆرتی هەژماری قەرز",
+            "printOptionDescription": "هەژماری هاوبەشی بازرگانیی پەیوەست پوخت دەکاتەوە و یەک پارەدانی قەرز بە جیا پیشان دەدات.",
+            "loanDetailsDescription": "خشتەی قەرز و چالاکیی پارەدان.",
+            "selectRepaymentTitle": "پارەدانی قەرز هەڵبژێرە",
+            "selectRepaymentDescription": "ئەو پارەدانە هەڵبژێرە کە دەبێت بە جیا پیشان بدرێت. چالاکیی پێشووی هەژماری هاوبەش پوخت دەکرێتەوە بەبێ دووبارەکردنەوەی پارەدانە هەڵبژێردراوەکە.",
+            "latest": "نوێترین",
+            "noRepayments": "هیچ پارەدانێک بۆ ئەم قەرزە تۆمار نەکراوە.",
+            "requiresLinkedPartner": "پێش چاپکردنی ڕاپۆرتی هەژمار، ئەم قەرزە بە هاوبەشێکی بازرگانی بەستەوە.",
+            "previousActivity": "چالاکیی پێشوو پێش ئەم پارەدانە",
+            "previousActivityDescription": "هەموو چالاکیی پێشووی هەژماری هاوبەش بەم دراوە",
+            "repaymentReceived": "پارەدانی قەرز وەرگیرا",
+            "repaymentMade": "پارەدانی قەرز کرا",
+            "totalsThroughRepayment": "کۆی گشتی تا ئەم پارەدانە",
+            "partner": "هاوبەشی بازرگانی",
+            "loan": "قەرز",
+            "repaymentDate": "بەرواری پارەدان",
+            "paymentMethod": "شێوازی پارەدان",
+            "currency": "دراو",
+            "entriesSummarized": "تۆمارە پوختکراوەکان",
+            "printed": "چاپکراو",
+            "debit": "دەبیت",
+            "credit": "کرێدیت",
+            "balance": "باڵانس",
+            "dueFromPartner": "لەسەر هاوبەشە",
+            "dueToPartner": "لەسەر ئێمەیە بۆ هاوبەش",
+            "balanceNote": "دەبیت بڕی لەسەر هاوبەش زیاد دەکات و کرێدیت کەمی دەکات. هەر دراوێک لە ڕاپۆرتێکی جیاوازدا دەپارێزرێت.",
+            "notReady": "ڕاپۆرتی هەژمار هێشتا ئامادە نییە."
+        },
         "details": "وردەکاریی قەرزی قیستی",
         "simpleLoanDetails": "وردەکاریی قەرزی ئاسان",
         "simpleLoanSummary": "پوختەی قەرزی ئاسان",
@@ -4504,7 +4534,8 @@
         "actions": {
             "settleBalance": "ڕێکخستنی باڵانس",
             "payPartner": "پارەدان بە هاوبەش",
-            "collectFromPartner": "پارە وەرگرتن لە هاوبەش"
+            "collectFromPartner": "پارە وەرگرتن لە هاوبەش",
+            "reverse": "هەڵوەشاندنەوە"
         },
         "collect": "پارە وەرگرتن",
         "pay": "پارەدان",
@@ -4601,6 +4632,12 @@
             "postedOnly": "تەنها جوڵە بڵاوکراوەکان",
             "noManual": "بێ تۆمارکردنی دەستی",
             "multiCurrency": "دراوە فرەکان پارێزراون"
+        },
+        "relationRole": {
+            "origin": "سەرچاوە",
+            "repayment": "گەڕاندنەوەی قەرز",
+            "settlement": "یەکلاکردنەوە",
+            "linked": "پەیوەست"
         },
         "kpis": {
             "totalInflow": "کۆی هاتوو",

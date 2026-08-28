@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
     Dialog,
@@ -53,6 +53,10 @@ export function CheckoutSuccessModal({
     const [note, setNote] = useState(saleData?.notes || '')
     const [noteSourceId, setNoteSourceId] = useState<string | null>(saleData?.id || null)
     const debouncedNote = useDebounce(note, 1000)
+    const receiptSaleData = useMemo(
+        () => saleData ? { ...saleData, notes: note } : saleData,
+        [note, saleData]
+    )
     const {
         buildReceiptPdf,
         isLoadingPrimaryReceiptTemplate,
@@ -61,7 +65,7 @@ export function CheckoutSuccessModal({
         resolvedWorkspaceName,
         workspaceId,
     } = usePosReceiptPrinter({
-        saleData,
+        saleData: receiptSaleData,
         features,
         enabled: isOpen,
         receiptPdfBuilder,
@@ -97,42 +101,34 @@ export function CheckoutSuccessModal({
         }
     }, [isOpen, saleData?.id, saleData?.notes])
 
-    // Auto-save note
-    useEffect(() => {
-        const saveNote = async () => {
-            if (!saleData?.id || noteSourceId !== saleData.id || debouncedNote === (saleData.notes || '')) return
+    const persistNote = useCallback(async (noteToSave: string) => {
+        if (!saleData?.id || noteSourceId !== saleData.id || noteToSave === (saleData.notes || '')) return
 
-            try {
-                if (onSaveNote) {
-                    await onSaveNote(debouncedNote)
-                    return
-                }
-
-                // Update Local DB
-                await db.sales.update(saleData.id, { notes: debouncedNote })
-
-                if (isLocalMode) {
-                    return
-                }
-
-                // Update Supabase
-                const { error } = await runSupabaseAction('checkoutSuccess.saveNote', () =>
-                    supabase
-                        .from('sales')
-                        .update({ notes: debouncedNote })
-                        .eq('id', saleData.id)
-                )
-
-                if (error) throw normalizeSupabaseActionError(error)
-
-                console.log('[CheckoutSuccessModal] Note auto-saved:', debouncedNote)
-            } catch (err) {
-                console.error('[CheckoutSuccessModal] Failed to auto-save note:', err)
-            }
+        if (onSaveNote) {
+            await onSaveNote(noteToSave)
+            return
         }
 
-        saveNote()
-    }, [debouncedNote, isLocalMode, noteSourceId, onSaveNote, saleData?.id, saleData?.notes])
+        await db.sales.update(saleData.id, { notes: noteToSave })
+
+        if (isLocalMode) return
+
+        const { error } = await runSupabaseAction('checkoutSuccess.saveNote', () =>
+            supabase
+                .from('sales')
+                .update({ notes: noteToSave })
+                .eq('id', saleData.id)
+        )
+
+        if (error) throw normalizeSupabaseActionError(error)
+    }, [isLocalMode, noteSourceId, onSaveNote, saleData])
+
+    // Auto-save the note while the modal stays open. Printing also flushes the latest value.
+    useEffect(() => {
+        void persistNote(debouncedNote).catch((error) => {
+            console.error('[CheckoutSuccessModal] Failed to auto-save note:', error)
+        })
+    }, [debouncedNote, persistNote])
 
     const handlePrintAndUpload = async () => {
         if (isProcessing || !saleData) {
@@ -148,6 +144,10 @@ export function CheckoutSuccessModal({
                 return
             }
 
+            void persistNote(note).catch((error) => {
+                console.error('[CheckoutSuccessModal] Failed to save note before printing:', error)
+            })
+
             let receiptPdfPromise: Promise<Blob> | null = null
             const getReceiptPdf = () => {
                 receiptPdfPromise ||= buildReceiptPdf()
@@ -156,7 +156,7 @@ export function CheckoutSuccessModal({
 
             // 1. Trigger background sync with the same receipt PDF used for printing.
             triggerInvoiceSync({
-                saleData,
+                saleData: receiptSaleData,
                 features: printFeatures,
                 workspaceName: resolvedWorkspaceName,
                 workspaceId,
@@ -171,7 +171,7 @@ export function CheckoutSuccessModal({
             // 2. Print with the same thermal-printer-first fallback used by cart pre-prints.
             await printReceipt({
                 pdfBuilder: getReceiptPdf,
-                title: `Receipt_${saleData?.invoiceid || saleData?.id || 'Sale'}`
+                title: `Receipt_${receiptSaleData?.invoiceid || receiptSaleData?.id || 'Sale'}`
             })
 
             // Keep the success modal open; the timer or manual New Sale action closes it.

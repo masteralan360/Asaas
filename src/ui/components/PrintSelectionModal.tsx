@@ -24,6 +24,8 @@ export type PrintSelectionNativeOption = {
     returned?: boolean
     /** Marks a normal order print whose rows include return adjustments. */
     returnsReflected?: boolean
+    disabled?: boolean
+    warning?: string
 }
 
 export type PrintSelectionTemplateOption = {
@@ -183,28 +185,35 @@ export function PrintSelectionModal({
                             })}
                         </div>
                     ) : null}
-                    {visibleNativeOptions.map((option) => (
+                    {visibleNativeOptions.map(({ format, label, description, nativeTemplateKey, returned, returnsReflected, disabled, warning }) => (
                         <Button
-                            key={`native-${option.format}-${option.label}`}
+                            key={`native-${format}-${label}`}
                             variant="outline"
-                            className={`relative flex min-h-32 min-w-0 flex-col gap-2 whitespace-normal px-3 py-3 text-center transition-all hover:border-primary hover:bg-primary/5 ${
+                            className={`relative flex min-h-32 min-w-0 flex-col gap-2 whitespace-normal px-3 py-3 text-center transition-all hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-70 ${
                                 visibleOptionCount === 1 ? 'sm:col-span-2' : ''
                             }`}
-                            onClick={() => onSelect(option.format, undefined, option.nativeTemplateKey, printVersion)}
+                            onClick={() => onSelect(format, undefined, nativeTemplateKey, printVersion)}
+                            disabled={disabled}
                         >
                             <PrintOptionBadges
-                                returned={option.returned}
-                                returnsReflected={printVersion === 'adjusted' && option.returnsReflected}
+                                returned={returned}
+                                returnsReflected={printVersion === 'adjusted' && returnsReflected}
                                 original={printVersion === 'original'}
                             />
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
-                                <PrintOptionIcon format={option.format} />
+                                <PrintOptionIcon format={format} />
                             </div>
                             <div className="w-full min-w-0 space-y-1">
-                                <div className="font-bold">{option.label}</div>
+                                <div className="font-bold">{label}</div>
                                 <div className="line-clamp-2 break-words text-center text-xs leading-4 text-muted-foreground">
-                                    {option.description}
+                                    {description}
                                 </div>
+                                {warning ? (
+                                    <div className="mt-1 flex items-start justify-center gap-1 rounded-md border border-amber-300/70 bg-amber-500/10 px-2 py-1 text-[10px] leading-3 text-amber-800 dark:text-amber-300">
+                                        <AlertTriangle className="h-3 w-3 shrink-0" />
+                                        <span className="line-clamp-3">{warning}</span>
+                                    </div>
+                                ) : null}
                             </div>
                         </Button>
                     ))}

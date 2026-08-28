@@ -76,6 +76,8 @@ import {
 import { Search, Plus, ArrowLeft, Printer, Trash2, List, LayoutGrid, MessageCircle, Receipt, CircleX, Undo2 } from 'lucide-react'
 import { CreateManualLoanModal } from '@/ui/components/loans/CreateManualLoanModal'
 import { LoanDetailsPrintTemplate, LoanListPrintTemplate } from '@/ui/components/loans/LoanPrintTemplates'
+import { LoanAccountStatementPrintFlow } from '@/ui/components/loans/LoanAccountStatementPrintFlow'
+import { LOAN_ACCOUNT_STATEMENT_TEMPLATE_KEY } from '@/lib/customTemplates'
 import { LoanNoDisplay } from '@/ui/components/loans/LoanNoDisplay'
 import { useLoanPaymentModal } from '@/ui/components/loans/LoanPaymentModalProvider'
 import { SimpleLoanListView } from '@/ui/components/loans/SimpleLoanListView'
@@ -1000,6 +1002,7 @@ function LoanDetailsView({
     const [deleteOpen, setDeleteOpen] = useState(false)
     const [isDeletingLoan, setIsDeletingLoan] = useState(false)
     const [showPrintPreview, setShowPrintPreview] = useState(false)
+    const [showLoanAccountStatementPaymentPicker, setShowLoanAccountStatementPaymentPicker] = useState(false)
     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
     const buildQrValue = useCallback((effectiveId: string) => {
         if (!features.print_qr || !workspaceId || isLocalWorkspaceMode(workspaceId)) return undefined
@@ -1697,6 +1700,43 @@ function LoanDetailsView({
                 pdfBuilder={buildLoanDetailsPdf}
                 printTemplate={loan ? ({ effectiveId }) => renderLoanDetailsTemplate(effectiveId) : undefined}
                 templatePreview={loanDetailsViewPreview}
+                printSelectionOptions={[
+                    {
+                        format: 'a4',
+                        label: loanDetailsTitle,
+                        description: t('loans.accountStatement.loanDetailsDescription'),
+                        nativeTemplateKey: 'loans.Details'
+                    },
+                    {
+                        format: 'a4',
+                        label: t('loans.accountStatement.printOption'),
+                        description: t('loans.accountStatement.printOptionDescription'),
+                        nativeTemplateKey: LOAN_ACCOUNT_STATEMENT_TEMPLATE_KEY,
+                        disabled: loan?.linkedPartyType !== 'business_partner'
+                            || !loan?.linkedPartyId
+                            || !payments.some((payment) => !payment.isDeleted),
+                        warning: loan?.linkedPartyType !== 'business_partner' || !loan?.linkedPartyId
+                            ? t('loans.accountStatement.requiresLinkedPartner')
+                            : !payments.some((payment) => !payment.isDeleted)
+                                ? t('loans.accountStatement.noRepayments')
+                                : undefined
+                    }
+                ]}
+                onPrintSelection={(_format, _template, nativeTemplateKey) => {
+                    if (nativeTemplateKey !== LOAN_ACCOUNT_STATEMENT_TEMPLATE_KEY) return
+                    setShowPrintPreview(false)
+                    setShowLoanAccountStatementPaymentPicker(true)
+                }}
+            />
+            <LoanAccountStatementPrintFlow
+                paymentPickerOpen={showLoanAccountStatementPaymentPicker}
+                onPaymentPickerOpenChange={setShowLoanAccountStatementPaymentPicker}
+                loan={loan}
+                payments={payments}
+                workspaceId={workspaceId}
+                workspaceName={workspaceName}
+                features={features}
+                createdByName={user?.name}
             />
 
             <WhatsAppNumberInputModal

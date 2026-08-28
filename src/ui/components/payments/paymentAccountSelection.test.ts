@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { PaymentAccount } from '@/local-db'
 
-import { resolvePaymentAccountSelection } from './paymentAccountSelection'
+import { resolvePaymentAccountEffectiveValue, resolvePaymentAccountSelection } from './paymentAccountSelection'
 
 const account = {
   id: 'account-1',
@@ -51,5 +51,15 @@ describe('resolvePaymentAccountSelection', () => {
     expect(result.selectedValue).toBe('__none__')
     expect(result.selectedAccount).toBeNull()
     expect(result.selectionUnavailable).toBe(false)
+  })
+})
+
+describe('resolvePaymentAccountEffectiveValue', () => {
+  it('retains a resolved selection while a parent form temporarily clears its controlled value', () => {
+    expect(resolvePaymentAccountEffectiveValue(null, account, false)).toBe(account.id)
+  })
+
+  it('honors the explicit ledger-only choice even when an account was previously retained', () => {
+    expect(resolvePaymentAccountEffectiveValue(null, account, true)).toBeNull()
   })
 })
