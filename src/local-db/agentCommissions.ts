@@ -1204,11 +1204,12 @@ async function appendEntry(
   workspaceId: string,
   input: Omit<AgentCommissionEntry, keyof ReturnType<typeof getSyncMetadata>
     | "id" | "workspaceId" | "createdAt" | "updatedAt" | "version" | "isDeleted">,
+  id = generateId(),
 ) {
   const now = new Date().toISOString();
   const entry: AgentCommissionEntry = {
     ...input,
-    id: generateId(),
+    id,
     workspaceId,
     createdAt: now,
     updatedAt: now,
@@ -1929,7 +1930,7 @@ async function resolveAgentCounterpartyName(agentId: string) {
  */
 async function ensureCommissionPayoutTransaction(
   workspaceId: string,
-  entry: AgentCommissionEntry,
+  entry: Pick<AgentCommissionEntry, "id" | "agentId" | "amount" | "currency" | "occurredAt" | "payoutReference">,
   options: {
     counterpartyName: string | null;
     paymentMethod: WorkspacePaymentMethod;
@@ -2021,7 +2022,8 @@ export async function recordCommissionPayout(
     assignmentId,
   });
 
-  const entry = await appendEntry(workspaceId, {
+  const payoutEntryId = generateId();
+  const payoutEntryInput = {
     orderId: order.id,
     assignmentId,
     agentId: input.agentId,
@@ -2046,17 +2048,36 @@ export async function recordCommissionPayout(
     payoutReference: order.orderNumber,
     notes: normalizeText(input.notes),
     createdBy: input.createdBy ?? null,
-  });
+  } satisfies Omit<AgentCommissionEntry, keyof ReturnType<typeof getSyncMetadata>
+    | "id" | "workspaceId" | "createdAt" | "updatedAt" | "version" | "isDeleted">;
 
-  await ensureCommissionPayoutTransaction(workspaceId, entry, {
-    counterpartyName: await resolveAgentCounterpartyName(entry.agentId),
+  const payment = await ensureCommissionPayoutTransaction(workspaceId, {
+    id: payoutEntryId,
+    agentId: input.agentId,
+    amount: -amount,
+    currency: input.currency,
+    occurredAt: payoutEntryInput.occurredAt,
+    payoutReference: payoutEntryInput.payoutReference,
+  }, {
+    counterpartyName: await resolveAgentCounterpartyName(input.agentId),
     paymentMethod,
     notes,
     createdBy,
     accountId: input.accountId ?? null,
     accountNameSnapshot: input.accountNameSnapshot ?? null,
   });
-  return entry;
+
+  try {
+    return await appendEntry(workspaceId, payoutEntryInput, payoutEntryId);
+  } catch (error) {
+    try {
+      const { softDeletePaymentTransaction } = await import("./payments");
+      await softDeletePaymentTransaction(payment);
+    } catch (cleanupError) {
+      console.error("[Sales Agent Commissions] Failed to roll back the payout payment after entry creation failed:", cleanupError);
+    }
+    throw error;
+  }
 }
 
 export async function recordCommissionAdjustment(

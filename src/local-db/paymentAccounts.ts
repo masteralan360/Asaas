@@ -2,7 +2,8 @@ import { useEffect, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
-import { generateId, toSnakeCase } from '@/lib/utils'
+import i18n from '@/i18n/config'
+import { formatCurrency, generateId, toSnakeCase } from '@/lib/utils'
 import { getSupabaseClientForTable, getSupabaseRemoteTableName } from '@/lib/supabaseSchema'
 import { isOnline } from '@/lib/network'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
@@ -42,6 +43,28 @@ const PAYMENT_ACCOUNT_TABLES = [
 ] as const
 
 type PaymentAccountTable = (typeof PAYMENT_ACCOUNT_TABLES)[number]
+
+/** Keep floating-point input noise from creating an unusable negative balance. */
+const PAYMENT_ACCOUNT_BALANCE_EPSILON = 0.000001
+
+function getLocalizedInsufficientFundsMessage(
+  balance: number,
+  currency: CurrencyCode,
+  accountName?: string | null,
+  operation: 'transaction' | 'withdrawal' = 'transaction',
+) {
+  const formattedBalance = formatCurrency(balance, currency, 'د.ع')
+  return operation === 'withdrawal'
+    ? i18n.t('paymentAccounts.errors.insufficientFundsWithdrawal', {
+      balance: formattedBalance,
+      defaultValue: 'You do not have enough balance in this payment account to make this withdrawal. Current balance: {{balance}}.',
+    })
+    : i18n.t('paymentAccounts.errors.insufficientFunds', {
+      account: accountName || i18n.t('paymentAccounts.account', { defaultValue: 'this payment account' }),
+      balance: formattedBalance,
+      defaultValue: 'You do not have enough balance in {{account}} to proceed with this transaction. Current balance: {{balance}}.',
+    })
+}
 
 function syncMeta(workspaceId: string, now: string) {
   return isLocalWorkspaceMode(workspaceId)
@@ -87,7 +110,7 @@ async function persist<T extends { id: string; workspaceId: string }>(
   }
 }
 
-function usePaymentAccountTable<T extends { id: string; workspaceId: string }>(
+function usePaymentAccountTableState<T extends { id: string; workspaceId: string }>(
   tableName: PaymentAccountTable,
   workspaceId?: string,
 ) {
@@ -95,7 +118,6 @@ function usePaymentAccountTable<T extends { id: string; workspaceId: string }>(
   const rows = useLiveQuery(
     () => workspaceId ? db.table(tableName).where('workspaceId').equals(workspaceId).toArray() as Promise<T[]> : Promise.resolve([] as T[]),
     [tableName, workspaceId],
-    [],
   )
 
   useEffect(() => {
@@ -103,31 +125,55 @@ function usePaymentAccountTable<T extends { id: string; workspaceId: string }>(
     void fetchTableFromSupabase(tableName, db.table(tableName), workspaceId)
   }, [online, tableName, workspaceId])
 
-  return rows ?? []
+  return {
+    rows: rows ?? [],
+    // An undefined result means Dexie's first local read has not completed.
+    // Do not confuse that with a real, empty account list in payment forms.
+    isReady: !workspaceId || rows !== undefined,
+  }
+}
+
+function usePaymentAccountTable<T extends { id: string; workspaceId: string }>(
+  tableName: PaymentAccountTable,
+  workspaceId?: string,
+) {
+  return usePaymentAccountTableState<T>(tableName, workspaceId).rows
+}
+
+function normalizePaymentAccounts(rows: PaymentAccount[]) {
+  const accounts = rows.filter((row) => !row.isDeleted)
+  const activeAccounts = accounts
+    .filter((row) => row.isActive)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name))
+  const needsLegacyPrimary = activeAccounts.length > 0 && !activeAccounts.some((row) => row.isPrimary)
+  const derivedPrimaryId = needsLegacyPrimary ? activeAccounts[0].id : null
+
+  return accounts
+    .map((account) => account.id === derivedPrimaryId ? { ...account, isPrimary: true } : account)
+    .sort((a, b) => Number(!!b.isPrimary) - Number(!!a.isPrimary) || a.name.localeCompare(b.name))
+}
+
+/** Payment forms use this to wait for the local account configuration to resolve. */
+export function usePaymentAccountsState(workspaceId?: string) {
+  const { rows, isReady } = usePaymentAccountTableState<PaymentAccount>('payment_accounts', workspaceId)
+  const accounts = useMemo(() => normalizePaymentAccounts(rows), [rows])
+
+  return { accounts, isReady }
 }
 
 export function usePaymentAccounts(workspaceId?: string) {
-  const rows = usePaymentAccountTable<PaymentAccount>('payment_accounts', workspaceId)
-  return useMemo(
-    () => {
-      const accounts = rows.filter((row) => !row.isDeleted)
-      const activeAccounts = accounts
-        .filter((row) => row.isActive)
-        .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name))
-      const needsLegacyPrimary = activeAccounts.length > 0 && !activeAccounts.some((row) => row.isPrimary)
-      const derivedPrimaryId = needsLegacyPrimary ? activeAccounts[0].id : null
+  return usePaymentAccountsState(workspaceId).accounts
+}
 
-      return accounts
-        .map((account) => account.id === derivedPrimaryId ? { ...account, isPrimary: true } : account)
-        .sort((a, b) => Number(!!b.isPrimary) - Number(!!a.isPrimary) || a.name.localeCompare(b.name))
-    },
-    [rows],
-  )
+export function usePaymentAccountBalancesState(workspaceId?: string) {
+  const { rows, isReady } = usePaymentAccountTableState<PaymentAccountBalance>('payment_account_balances', workspaceId)
+  const balances = useMemo(() => rows.filter((row) => !row.isDeleted), [rows])
+
+  return { balances, isReady }
 }
 
 export function usePaymentAccountBalances(workspaceId?: string) {
-  const rows = usePaymentAccountTable<PaymentAccountBalance>('payment_account_balances', workspaceId)
-  return useMemo(() => rows.filter((row) => !row.isDeleted), [rows])
+  return usePaymentAccountBalancesState(workspaceId).balances
 }
 
 export function usePaymentAccountMovements(workspaceId?: string) {
@@ -438,8 +484,8 @@ export async function recordPaymentAccountManualOperation(
     }
   }
 
-  if (input.kind === 'withdrawal' && account.accountType !== 'bank_account' && currentBalance - amount < -0.000001) {
-    throw new Error('This withdrawal would make the account balance negative.')
+  if (input.kind === 'withdrawal' && currentBalance - amount < -PAYMENT_ACCOUNT_BALANCE_EPSILON) {
+    throw new Error(getLocalizedInsufficientFundsMessage(currentBalance, input.currency, null, 'withdrawal'))
   }
 
   const operationId = generateId()
@@ -714,11 +760,70 @@ export async function startCashierShiftOccurrence(workspaceId: string, input: St
   return persist('cashier_shift_occurrences', occurrence)
 }
 
+/** The signed effect of a payment transaction on its selected payment account. */
+export function getPaymentAccountTransactionDelta(transaction: Pick<PaymentTransaction, 'amount' | 'direction' | 'isDeleted'>) {
+  if (transaction.isDeleted) return 0
+  const amount = Number(transaction.amount)
+  return transaction.direction === 'incoming' ? amount : -amount
+}
+
+/**
+ * Local mode and queued cloud writes need the same availability decision as the
+ * database trigger. Deriving it from payment transactions (rather than the
+ * cached balance row) also includes pending work and handles replacements.
+ */
+export async function assertPaymentAccountTransactionsCanBeAppliedLocally(candidates: PaymentTransaction[]) {
+  const accountCandidates = candidates.filter((transaction) => !!transaction.accountId)
+  if (!accountCandidates.length) return
+
+  const rowsByWorkspace = new Map<string, PaymentTransaction[]>()
+  for (const workspaceId of new Set(accountCandidates.map((transaction) => transaction.workspaceId))) {
+    rowsByWorkspace.set(
+      workspaceId,
+      await db.payment_transactions.where('workspaceId').equals(workspaceId).toArray(),
+    )
+  }
+
+  const groupedCandidates = new Map<string, PaymentTransaction[]>()
+  for (const transaction of accountCandidates) {
+    const key = JSON.stringify([transaction.workspaceId, transaction.accountId, transaction.currency])
+    groupedCandidates.set(key, [...(groupedCandidates.get(key) ?? []), transaction])
+  }
+
+  for (const group of groupedCandidates.values()) {
+    const [transaction] = group
+    const account = await db.payment_accounts.get(transaction.accountId!)
+    if (!account || account.workspaceId !== transaction.workspaceId || account.isDeleted || !account.isActive) {
+      throw new Error('The selected payment account is unavailable.')
+    }
+
+    const candidateIds = new Set(group.map((item) => item.id))
+    const accountTransactions = (rowsByWorkspace.get(transaction.workspaceId) ?? [])
+      .filter((item) => item.accountId === transaction.accountId && item.currency === transaction.currency)
+    const currentBalance = accountTransactions
+      .reduce((total, item) => total + getPaymentAccountTransactionDelta(item), 0)
+    const projectedBalance = accountTransactions
+      .filter((item) => !candidateIds.has(item.id))
+      .reduce((total, item) => total + getPaymentAccountTransactionDelta(item), 0)
+      + group.reduce((total, item) => total + getPaymentAccountTransactionDelta(item), 0)
+
+    if (projectedBalance < -PAYMENT_ACCOUNT_BALANCE_EPSILON) {
+      throw new Error(getLocalizedInsufficientFundsMessage(currentBalance, transaction.currency, account.name))
+    }
+  }
+}
+
+export async function assertPaymentAccountTransactionCanBeAppliedLocally(transaction: PaymentTransaction) {
+  await assertPaymentAccountTransactionsCanBeAppliedLocally([transaction])
+}
+
 /** Local-only mirrors use the same signed accounting rule as the cloud trigger. */
 export async function mirrorPaymentAccountTransactionLocally(transaction: PaymentTransaction) {
   if (!transaction.accountId || !isLocalWorkspaceMode(transaction.workspaceId)) return
   const now = transaction.updatedAt || new Date().toISOString()
-  const delta = transaction.isDeleted ? 0 : transaction.direction === 'incoming' ? transaction.amount : -transaction.amount
+  const delta = getPaymentAccountTransactionDelta(transaction)
+  const previousMovement = await db.payment_account_movements.get(transaction.id)
+  const previousDelta = Number(previousMovement?.deltaAmount || 0)
   const existingBalance = await db.payment_account_balances
     .where('[accountId+currency]')
     .equals([transaction.accountId, transaction.currency])
@@ -734,9 +839,9 @@ export async function mirrorPaymentAccountTransactionLocally(transaction: Paymen
     deltaAmount: delta,
     currency: transaction.currency,
     occurredAt: transaction.paidAt,
-    createdAt: transaction.createdAt,
+    createdAt: previousMovement?.createdAt ?? transaction.createdAt,
     updatedAt: now,
-    version: 1,
+    version: (previousMovement?.version ?? 0) + 1,
     isDeleted: transaction.isDeleted,
     ...syncMeta(transaction.workspaceId, now),
   }
@@ -745,7 +850,7 @@ export async function mirrorPaymentAccountTransactionLocally(transaction: Paymen
     workspaceId: transaction.workspaceId,
     accountId: transaction.accountId,
     currency: transaction.currency,
-    balanceAmount: Number(existingBalance?.balanceAmount || 0) + delta,
+    balanceAmount: Number(existingBalance?.balanceAmount || 0) - previousDelta + delta,
     createdAt: existingBalance?.createdAt ?? now,
     updatedAt: now,
     version: (existingBalance?.version ?? 0) + 1,

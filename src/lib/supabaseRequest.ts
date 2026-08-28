@@ -1,5 +1,6 @@
 import { isWeb } from '@/lib/platform'
 import { connectionManager } from '@/lib/connectionManager'
+import i18n from '@/i18n/config'
 
 export const WEB_REQUEST_TIMEOUT_MS = 12000
 
@@ -49,6 +50,28 @@ function getErrorStatus(error: unknown): number | undefined {
     return typeof status === 'number' ? status : undefined
 }
 
+function localizePaymentAccountInsufficientFundsError(error: unknown): Error | null {
+    const message = getErrorMessage(error)
+    const transactionMatch = message.match(/^You do not have enough balance in (.+) to proceed with this transaction\. Current balance: (.+)\.$/)
+    if (transactionMatch) {
+        return new Error(i18n.t('paymentAccounts.errors.insufficientFunds', {
+            account: transactionMatch[1],
+            balance: transactionMatch[2],
+            defaultValue: 'You do not have enough balance in {{account}} to proceed with this transaction. Current balance: {{balance}}.'
+        }))
+    }
+
+    const withdrawalMatch = message.match(/^You do not have enough balance in this payment account to make this withdrawal\. Current balance: (.+)\.$/)
+    if (withdrawalMatch) {
+        return new Error(i18n.t('paymentAccounts.errors.insufficientFundsWithdrawal', {
+            balance: withdrawalMatch[1],
+            defaultValue: 'You do not have enough balance in this payment account to make this withdrawal. Current balance: {{balance}}.'
+        }))
+    }
+
+    return null
+}
+
 function isNetworkLikeError(error: unknown): boolean {
     const message = getErrorMessage(error).toLowerCase()
     const status = getErrorStatus(error)
@@ -71,6 +94,11 @@ export function normalizeSupabaseActionError(error: unknown): Error {
 
     if (isNetworkLikeError(error)) {
         return new SupabaseNetworkError(RETRY_ERROR_MESSAGE, getErrorStatus(error))
+    }
+
+    const localizedPaymentAccountError = localizePaymentAccountInsufficientFundsError(error)
+    if (localizedPaymentAccountError) {
+        return localizedPaymentAccountError
     }
 
     if (error instanceof Error) {

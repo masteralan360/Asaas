@@ -2182,18 +2182,23 @@ export function PdfPreviewPage() {
                                     ) : null}
                                 </div>
                             ) : null}
-                            {templatePreview.fields.map(f => (
+                            {templatePreview.fields.map(f => {
+                                const fieldLabel = f.label
+                                    ? t(f.label, { defaultValue: f.label })
+                                    : ''
+
+                                return (
                                 <div key={f.key} className="space-y-1">
                                     {f.type === 'boolean' ? (
                                         <div className="flex items-center justify-between gap-3">
                                             <span className="text-[11px] font-medium text-muted-foreground">
-                                                {f.label}
+                                                {fieldLabel}
                                             </span>
                                             <button
                                                 type="button"
                                                 role="switch"
                                                 aria-checked={fieldValues[f.key] !== 'false'}
-                                                aria-label={f.label}
+                                                aria-label={fieldLabel}
                                                 onClick={() => handleFieldChange(
                                                     f.key,
                                                     fieldValues[f.key] === 'false' ? 'true' : 'false'
@@ -2218,7 +2223,7 @@ export function PdfPreviewPage() {
                                         <div className="space-y-2">
                                             <div className="flex items-center justify-between gap-3">
                                                 <label className="text-[11px] font-medium text-muted-foreground" htmlFor={`template-field-${f.key}`}>
-                                                    {f.label}
+                                                    {fieldLabel}
                                                 </label>
                                                 <output className="text-xs tabular-nums text-muted-foreground">
                                                     {fieldValues[f.key] ?? f.value}{f.unit || ''}
@@ -2237,7 +2242,7 @@ export function PdfPreviewPage() {
                                         </div>
                                     ) : (
                                         <>
-                                            <label className="text-[11px] font-medium text-muted-foreground">{f.label}</label>
+                                            <label className="text-[11px] font-medium text-muted-foreground">{fieldLabel}</label>
                                             <EditableField
                                                 value={fieldValues[f.key] ?? ''}
                                                 onChange={(v) => handleFieldChange(f.key, v)}
@@ -2249,7 +2254,8 @@ export function PdfPreviewPage() {
                                         </>
                                     )}
                                 </div>
-                            ))}
+                                )
+                            })}
                         </div>
                     )}
                 </div>

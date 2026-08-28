@@ -1073,11 +1073,30 @@ const SALES_HISTORY_RECEIPT_FIELDS = [
         label: 'Labels opacity',
         value: '100',
         type: 'number' as const
+    },
+    {
+        key: SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showNotes,
+        label: 'customTemplates.fields.showNotes',
+        value: 'false',
+        type: 'boolean' as const
+    },
+    {
+        key: SALE_RECEIPT_TEMPLATE_FIELD_KEYS.notesFontSize,
+        label: 'customTemplates.fields.notesFontSize',
+        value: '12',
+        type: 'range' as const,
+        min: 8,
+        max: 24,
+        step: 1,
+        unit: ' px'
     }
 ]
 
 const INSTANT_HISTORY_RECEIPT_FIELDS = [
-    ...SALES_HISTORY_RECEIPT_FIELDS,
+    ...SALES_HISTORY_RECEIPT_FIELDS.filter((field) => (
+        field.key !== SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showNotes
+        && field.key !== SALE_RECEIPT_TEMPLATE_FIELD_KEYS.notesFontSize
+    )),
     {
         key: SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showTableNumber,
         label: 'Show table number',
@@ -1086,7 +1105,7 @@ const INSTANT_HISTORY_RECEIPT_FIELDS = [
     },
     {
         key: SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showNotes,
-        label: 'Show notes',
+        label: 'customTemplates.fields.showNotes',
         value: 'true',
         type: 'boolean' as const
     }
@@ -1390,7 +1409,7 @@ function createSalesHistoryReceiptPreview(options: CustomTemplatePreviewOptions,
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.exchangeRateSnapshots, label: 'Exchange Rate Snapshots' },
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.itemsTable, label: 'Items Table' },
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.total, label: 'Total' },
-            ...(includeTableNumber ? [{ key: RECEIPT_MOVABLE_COMPONENT_KEYS.notes, label: 'Notes' }] : []),
+            { key: RECEIPT_MOVABLE_COMPONENT_KEYS.notes, label: 'Notes' },
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.thankYou, label: 'Thank You' },
             { key: RECEIPT_MOVABLE_COMPONENT_KEYS.keepRecord, label: 'Keep Record' },
         ],
@@ -1403,6 +1422,7 @@ function createSalesHistoryReceiptPreview(options: CustomTemplatePreviewOptions,
                     workspaceName={options.workspaceName || 'Atlas'}
                     workspaceId={options.workspaceId}
                     templateFields={data}
+                    defaultShowNotes={includeTableNumber}
                     editableFields={renderOptions?.editableFields}
                     onTemplateFieldChange={renderOptions?.onFieldChange}
                     componentPositions={renderOptions?.componentPositions}

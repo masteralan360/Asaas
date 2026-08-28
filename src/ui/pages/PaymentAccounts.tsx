@@ -436,16 +436,15 @@ export function PaymentAccounts() {
     ? Math.abs(accountAdjustmentDelta)
     : parsedAccountOperationAmount
   const withdrawalExceedsPostedBalance = accountOperationKind === 'withdrawal'
-    && selectedAccount?.accountType !== 'bank_account'
     && accountOperationPostingAmount > accountOperationBalance
   const accountOperationAmountIsValid = isBalanceAdjustment
     ? accountOperationCountedBalance.trim() !== ''
-      && Number.isFinite(parsedAccountOperationCountedBalance)
-      && parsedAccountOperationCountedBalance >= 0
-      && accountOperationPostingAmount > 0
+    && Number.isFinite(parsedAccountOperationCountedBalance)
+    && parsedAccountOperationCountedBalance >= 0
+    && accountOperationPostingAmount > 0
     : accountOperationAmount.trim() !== ''
-      && Number.isFinite(parsedAccountOperationAmount)
-      && parsedAccountOperationAmount > 0
+    && Number.isFinite(parsedAccountOperationAmount)
+    && parsedAccountOperationAmount > 0
   const canSubmitAccountOperation = !!selectedAccount
     && !!accountOperationKind
     && canPostAccountOperations
@@ -1248,7 +1247,7 @@ export function PaymentAccounts() {
                     <Input id="payment-account-operation-reason" value={accountOperationReason} disabled={postingAccountOperation} onChange={(event) => setAccountOperationReason(event.target.value)} />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="payment-account-operation-notes">{t('common.notes')}</Label>
+                    <Label htmlFor="payment-account-operation-notes">{t('common.note')}</Label>
                     <Textarea id="payment-account-operation-notes" value={accountOperationNotes} disabled={postingAccountOperation} onChange={(event) => setAccountOperationNotes(event.target.value)} />
                   </div>
                 </>
@@ -1444,7 +1443,7 @@ export function PaymentAccounts() {
               </div>
 
               <div className="grid gap-2">
-                <Label>{t('common.notes', { defaultValue: 'Notes' })}</Label>
+                <Label>{t('common.note', { defaultValue: 'Notes' })}</Label>
                 <Textarea value={accountNotes} disabled={saving} onChange={(event) => setAccountNotes(event.target.value)} />
               </div>
             </div>

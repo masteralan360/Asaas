@@ -77,10 +77,12 @@ Before finishing a modal, compare it with `src/ui/components/crm/BusinessPartner
 Use the `src/ui/components/ui/small-dialog.tsx` component for dialogs that are normally used for showing information, such as the selected items details or list of items.
 
 ## Localization (required)
-Use the `react-i18next` library for all text content that appears in the UI. Do not hardcode strings in components or application logic. The expected flow is:
+Use the `react-i18next` library for all text content that appears in the UI . Do not hardcode strings in components or application logic. The expected flow is:
 
 1. Define text in the relevant language JSON file at `src/i18n/locales/`
 2. Refer to text via keys in JSX, for example: `<p>{t('welcomeMessage')}</p>`
+
+Message toasts must also be localized and shown a User-Friendly message and not technical.
 
 ## Printing
 If said new print template is required to have tables, then it must use the in-app A4 pagination for tables similar to 

@@ -11,7 +11,10 @@ import { getInventoryQuantityForProductStorage, putInventoryQuantity, syncProduc
 import { addToOfflineMutations, fetchTableFromSupabase, syncSalesFromSupabase } from './hooks'
 import { refreshStockBatchesFromSupabase, getStockBatchSalePlan, splitStockBatchAllocationsForReturn } from './stockBatches'
 import { resolveReturnStorageId } from './storageUtils'
-import { mirrorPaymentAccountTransactionLocally } from './paymentAccounts'
+import {
+    assertPaymentAccountTransactionCanBeAppliedLocally,
+    mirrorPaymentAccountTransactionLocally,
+} from './paymentAccounts'
 import type {
     Loan,
     LoanInstallment,
@@ -473,6 +476,7 @@ async function applyLocalSaleProductExchange(input: ProcessSaleProductExchangeIn
                 reversalOfTransactionId: null, createdAt: timestamp, updatedAt: timestamp,
                 version: 1, isDeleted: false, ...sync,
             }
+            await assertPaymentAccountTransactionCanBeAppliedLocally(transaction)
             await db.payment_transactions.put(transaction)
             await mirrorPaymentAccountTransactionLocally(transaction)
         }

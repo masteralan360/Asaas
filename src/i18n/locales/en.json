@@ -2901,6 +2901,10 @@
         "deleteErrorTitle": "Could not delete template",
         "supabaseRequired": "Supabase must be configured before custom templates can be saved.",
         "unknownTarget": "Custom print layout",
+        "fields": {
+            "showNotes": "Show notes",
+            "notesFontSize": "Notes size"
+        },
         "table": {
             "template": "Template",
             "key": "Module/Type Key",
@@ -7368,7 +7372,11 @@
         "title": "Payment Accounts",
         "subtitle": "Optional payment destinations. Payments without an account remain normal ledger transactions.",
         "selectorLabel": "Payment Account (optional)",
+        "selectorLoading": "Loading payment account selection",
+        "balancesLoading": "Loading posted balances",
         "noAccount": "No account — ledger only",
+        "selectedAccountUnavailable": "Selected payment account unavailable",
+        "selectedAccountNeedsReview": "Review selection",
         "newAccount": "New Payment Account",
         "editAccount": "Edit Payment Account",
         "saved": "Payment account saved",
@@ -7563,6 +7571,10 @@
         "recordedAt": "Date and time",
         "selectRecordedAt": "Select date and time",
         "withdrawalExceedsBalance": "This withdrawal would make this account balance negative.",
+        "errors": {
+            "insufficientFunds": "You do not have enough balance in {{account}} to proceed with this transaction. Current balance: {{balance}}.",
+            "insufficientFundsWithdrawal": "You do not have enough balance in this payment account to make this withdrawal. Current balance: {{balance}}."
+        },
         "noAdjustmentRequired": "The counted balance matches the posted balance. No adjustment is required.",
         "adjustmentWarningTitle": "This posts a permanent balance correction",
         "adjustmentWarningDescription": "It creates a separate audited movement and ledger entry. It does not change previous payments.",

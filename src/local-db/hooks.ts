@@ -4840,7 +4840,12 @@ async function resolveLoanExchangeRateSnapshot(input: Pick<LoanCreateInput, 'sal
     return getEffectiveExchangeRatesSnapshot(null)
 }
 
-async function appendLoanOriginationTransactionBestEffort(
+/**
+ * A manual loan is funded immediately, so its origination payment is part of
+ * creating the loan rather than a background repair. In particular, an
+ * account-linked loan must fail as a whole when the account cannot fund it.
+ */
+async function appendManualLoanOriginationTransaction(
     workspaceId: string,
     loan: Loan,
     selection: { accountId?: string | null; accountNameSnapshot?: string | null } = {}
@@ -4849,12 +4854,8 @@ async function appendLoanOriginationTransactionBestEffort(
         return
     }
 
-    try {
-        const { appendLoanOriginationTransactionForLoan } = await import('./payments')
-        await appendLoanOriginationTransactionForLoan(workspaceId, loan, selection)
-    } catch (error) {
-        console.error('[Loans] Failed to append origination transaction:', error)
-    }
+    const { appendLoanOriginationTransactionForLoan } = await import('./payments')
+    return appendLoanOriginationTransactionForLoan(workspaceId, loan, selection)
 }
 
 async function createLoanAggregate(workspaceId: string, input: LoanCreateInput): Promise<{ loan: Loan; installments: LoanInstallment[] }> {
@@ -4978,16 +4979,36 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
         isDeleted: false
     }
 
-    await db.transaction('rw', [db.loans, db.loan_installments], async () => {
-        await db.loans.put(loan)
-        for (const installment of installments) {
-            await db.loan_installments.put(installment)
+    let originationTransaction: PaymentTransaction | null = null
+    try {
+        // Post first: payment_transactions is the financial source of truth and
+        // performs the local/cloud no-negative availability check. It has no
+        // foreign key to the source record, so this is safe and avoids creating
+        // an unfunded loan when the account rejects the outgoing payment.
+        if (loan.source === 'manual') {
+            originationTransaction = (await appendManualLoanOriginationTransaction(workspaceId, loan, input)) ?? null
         }
-    })
+
+        await db.transaction('rw', [db.loans, db.loan_installments], async () => {
+            await db.loans.put(loan)
+            for (const installment of installments) {
+                await db.loan_installments.put(installment)
+            }
+        })
+    } catch (error) {
+        if (originationTransaction) {
+            try {
+                const { softDeletePaymentTransaction } = await import('./payments')
+                await softDeletePaymentTransaction(originationTransaction)
+            } catch (cleanupError) {
+                console.error('[Loans] Failed to roll back the origination payment after loan creation failed:', cleanupError)
+            }
+        }
+        throw error
+    }
 
     if (!isOnline()) {
         await enqueueLoanCreateMutations(workspaceId, loan, installments)
-        await appendLoanOriginationTransactionBestEffort(workspaceId, loan, input)
         await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, loan.linkedPartyType, loan.linkedPartyId)
         return { loan, installments }
     }
@@ -5014,7 +5035,6 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
             }
         })
 
-        await appendLoanOriginationTransactionBestEffort(workspaceId, { ...loan, syncStatus: 'synced', lastSyncedAt: syncedAt }, input)
         await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, loan.linkedPartyType, loan.linkedPartyId)
 
         return {
@@ -5025,7 +5045,6 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
         if (shouldUseOfflineMutationFallback(error)) {
             console.error('[Loans] Online create failed, queued offline mutation:', error)
             await enqueueLoanCreateMutations(workspaceId, loan, installments)
-            await appendLoanOriginationTransactionBestEffort(workspaceId, loan, input)
             await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, loan.linkedPartyType, loan.linkedPartyId)
             return { loan, installments }
         }
@@ -5036,6 +5055,15 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
                 await db.loan_installments.delete(installment.id)
             }
         })
+
+        if (originationTransaction) {
+            try {
+                const { softDeletePaymentTransaction } = await import('./payments')
+                await softDeletePaymentTransaction(originationTransaction)
+            } catch (cleanupError) {
+                console.error('[Loans] Failed to roll back the origination payment after cloud loan creation failed:', cleanupError)
+            }
+        }
 
         await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, loan.linkedPartyType, loan.linkedPartyId)
 
@@ -6116,32 +6144,9 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
         isDeleted: false
     }
 
-    await db.transaction('rw', [db.loans, db.loan_installments, db.loan_payments], async () => {
-        await db.loans.put(updatedLoan)
-        for (const installment of updatedInstallments) {
-            await db.loan_installments.put(installment)
-        }
-        await db.loan_payments.put(payment)
-    })
-    await mirrorLoanToLinkedOrder(updatedLoan)
-
-    const enqueueMutations = async () => {
-        await addToOfflineMutations('loans', updatedLoan.id, 'update', updatedLoan as unknown as Record<string, unknown>, workspaceId)
-        await Promise.all(updatedInstallments.map(installment =>
-            addToOfflineMutations(
-                'loan_installments',
-                installment.id,
-                'update',
-                installment as unknown as Record<string, unknown>,
-                workspaceId
-            )
-        ))
-        await addToOfflineMutations('loan_payments', payment.id, 'create', payment as unknown as Record<string, unknown>, workspaceId)
-    }
-
     const appendLedger = async () => {
         const { appendPaymentTransaction } = await import('./payments')
-        await appendPaymentTransaction(workspaceId, {
+        return appendPaymentTransaction(workspaceId, {
             sourceModule: 'loans',
             sourceType: (loan.loanCategory || 'standard') === 'simple'
                 ? 'simple_loan'
@@ -6173,9 +6178,48 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
         })
     }
 
+    let paymentTransaction: PaymentTransaction | null = null
+    try {
+        // For an account-linked repayment, verify and post the authoritative
+        // payment before changing the loan balance. A rejected outgoing payment
+        // must not make a borrowed loan appear paid.
+        paymentTransaction = await appendLedger()
+        await db.transaction('rw', [db.loans, db.loan_installments, db.loan_payments], async () => {
+            await db.loans.put(updatedLoan)
+            for (const installment of updatedInstallments) {
+                await db.loan_installments.put(installment)
+            }
+            await db.loan_payments.put(payment)
+        })
+    } catch (error) {
+        if (paymentTransaction) {
+            try {
+                const { softDeletePaymentTransaction } = await import('./payments')
+                await softDeletePaymentTransaction(paymentTransaction)
+            } catch (cleanupError) {
+                console.error('[Loans] Failed to roll back the payment after loan payment creation failed:', cleanupError)
+            }
+        }
+        throw error
+    }
+    await mirrorLoanToLinkedOrder(updatedLoan)
+
+    const enqueueMutations = async () => {
+        await addToOfflineMutations('loans', updatedLoan.id, 'update', updatedLoan as unknown as Record<string, unknown>, workspaceId)
+        await Promise.all(updatedInstallments.map(installment =>
+            addToOfflineMutations(
+                'loan_installments',
+                installment.id,
+                'update',
+                installment as unknown as Record<string, unknown>,
+                workspaceId
+            )
+        ))
+        await addToOfflineMutations('loan_payments', payment.id, 'create', payment as unknown as Record<string, unknown>, workspaceId)
+    }
+
     if (!isOnline()) {
         await enqueueMutations()
-        await appendLedger()
         await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, updatedLoan.linkedPartyType, updatedLoan.linkedPartyId)
         return { loan: updatedLoan, payment, installments: updatedInstallments }
     }
@@ -6226,7 +6270,6 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
             await db.loan_payments.update(payment.id, { syncStatus: 'synced', lastSyncedAt: syncedAt })
         })
 
-        await appendLedger()
         await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, updatedLoan.linkedPartyType, updatedLoan.linkedPartyId)
 
         return {
@@ -6238,7 +6281,6 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
         if (shouldUseOfflineMutationFallback(error)) {
             console.error('[Loans] Payment sync failed, queued offline mutation:', error)
             await enqueueMutations()
-            await appendLedger()
             await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, updatedLoan.linkedPartyType, updatedLoan.linkedPartyId)
             return { loan: updatedLoan, payment, installments: updatedInstallments }
         }
@@ -6250,6 +6292,15 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
             }
             await db.loan_payments.delete(payment.id)
         })
+
+        if (paymentTransaction) {
+            try {
+                const { softDeletePaymentTransaction } = await import('./payments')
+                await softDeletePaymentTransaction(paymentTransaction)
+            } catch (cleanupError) {
+                console.error('[Loans] Failed to roll back the payment after cloud loan payment creation failed:', cleanupError)
+            }
+        }
 
         await mirrorLoanToLinkedOrder(loan)
 

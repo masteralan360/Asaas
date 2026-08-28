@@ -4832,6 +4832,10 @@
         "deleteErrorTitle": "تعذر حذف القالب",
         "supabaseRequired": "يجب تكوين Supabase قبل حفظ القوالب المخصصة.",
         "unknownTarget": "تخطيط طباعة مخصص",
+        "fields": {
+            "showNotes": "إظهار الملاحظات",
+            "notesFontSize": "حجم الملاحظات"
+        },
         "table": {
             "template": "القالب",
             "key": "مفتاح الوحدة/النوع",
@@ -7114,7 +7118,11 @@
         "title": "حسابات الدفع",
         "subtitle": "وجهات دفع اختيارية. تبقى المدفوعات بلا حساب قيود دفتر أستاذ عادية.",
         "selectorLabel": "حساب الدفع (اختياري)",
+        "selectorLoading": "جارٍ تحميل اختيار حساب الدفع",
+        "balancesLoading": "جارٍ تحميل الأرصدة المُرحّلة",
         "noAccount": "بدون حساب — دفتر الأستاذ فقط",
+        "selectedAccountUnavailable": "حساب الدفع المحدد غير متاح",
+        "selectedAccountNeedsReview": "راجع الاختيار",
         "newAccount": "حساب دفع جديد",
         "editAccount": "تعديل حساب الدفع",
         "saved": "تم حفظ حساب الدفع",
@@ -7309,6 +7317,10 @@
         "recordedAt": "التاريخ والوقت",
         "selectRecordedAt": "اختر التاريخ والوقت",
         "withdrawalExceedsBalance": "سيجعل هذا السحب رصيد الحساب سالباً.",
+        "errors": {
+            "insufficientFunds": "لا يوجد رصيد كافٍ في {{account}} لإتمام هذه المعاملة. الرصيد الحالي: {{balance}}.",
+            "insufficientFundsWithdrawal": "لا يوجد رصيد كافٍ في حساب الدفع هذا لإجراء هذا السحب. الرصيد الحالي: {{balance}}."
+        },
         "noAdjustmentRequired": "الرصيد المعدود يطابق الرصيد المُرحّل. لا يلزم أي تعديل.",
         "adjustmentWarningTitle": "سيُرحّل هذا تصحيحاً دائماً للرصيد",
         "adjustmentWarningDescription": "ينشئ حركة مستقلة مُدققة وقيداً في دفتر الأستاذ. لا يغيّر المدفوعات السابقة.",

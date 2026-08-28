@@ -1763,15 +1763,6 @@ async function createSettlement(
     createdBy: options.createdBy ?? null,
   });
 
-  await db.transaction("rw", [db.delivery_settlements, db.delivery_ledger_entries], async () => {
-    await db.delivery_settlements.put(settlement);
-    await db.delivery_ledger_entries.put(ledgerEntry);
-  });
-  await syncEntitiesInDependencyOrder(workspaceId, [
-    [SETTLEMENT_TABLE, [settlement]],
-    [LEDGER_TABLE, [ledgerEntry]],
-  ]);
-
   const linkedBusinessPartnerId = isCourierSettlement
     ? (options.agentId ? (await db.agents.get(options.agentId))?.businessPartnerId ?? null : null)
     : options.businessPartnerId ?? (options.merchantProfileId
@@ -1781,6 +1772,9 @@ async function createSettlement(
     ? await db.business_partners.get(linkedBusinessPartnerId)
     : null;
 
+  // A payout must be funded before its settlement can be recorded. The
+  // payment table has no foreign key to the settlement, so this makes the
+  // availability check atomic from the user's point of view.
   const payment = await appendPaymentTransaction(workspaceId, {
     sourceModule: "post_service",
     sourceType: isCourierRemittance
@@ -1815,6 +1809,27 @@ async function createSettlement(
       varianceAmount: actual - expected,
     },
   });
+
+  try {
+    await db.transaction("rw", [db.delivery_settlements, db.delivery_ledger_entries], async () => {
+      await db.delivery_settlements.put(settlement);
+      await db.delivery_ledger_entries.put(ledgerEntry);
+    });
+  } catch (error) {
+    try {
+      const { softDeletePaymentTransaction } = await import("./payments");
+      await softDeletePaymentTransaction(payment);
+    } catch (cleanupError) {
+      console.error("[Post Service] Failed to roll back the settlement payment after settlement creation failed:", cleanupError);
+    }
+    throw error;
+  }
+
+  await syncEntitiesInDependencyOrder(workspaceId, [
+    [SETTLEMENT_TABLE, [settlement]],
+    [LEDGER_TABLE, [ledgerEntry]],
+  ]);
+
   const settlementWithPayment: DeliverySettlement = {
     ...settlement,
     paymentTransactionId: payment.id,

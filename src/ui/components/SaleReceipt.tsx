@@ -17,6 +17,7 @@ export const SALE_RECEIPT_TEMPLATE_FIELD_KEYS = {
     showOriginalCurrencyPrice: 'receipt.showOriginalCurrencyPrice',
     showTableNumber: 'receipt.showTableNumber',
     showNotes: 'receipt.showNotes',
+    notesFontSize: 'receipt.notesFontSize',
     thankYou: 'receipt.thankYou',
     keepRecord: 'receipt.keepRecord',
     labelOpacity: 'receipt.labelOpacity',
@@ -48,6 +49,8 @@ interface SaleReceiptBaseProps extends SaleReceiptProps {
     workspaceName?: string | null
     workspaceId?: string
     templateFields?: Record<string, string>
+    /** Used by template targets so newly added optional blocks keep their intended defaults. */
+    defaultShowNotes?: boolean
     editableFields?: boolean
     onTemplateFieldChange?: (key: string, value: string) => void
     componentPositions?: Record<string, CustomTemplateComponentPosition>
@@ -62,6 +65,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
         workspaceName,
         workspaceId: propWorkspaceId,
         templateFields,
+        defaultShowNotes,
         editableFields = false,
         onTemplateFieldChange,
         componentPositions,
@@ -78,10 +82,15 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
         const showExchangeRateSnapshots = isFieldEnabled(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showExchangeRateSnapshots)
         const showOriginalCurrencyPrice = isFieldEnabled(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showOriginalCurrencyPrice)
         const showTableNumber = isFieldEnabled(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showTableNumber)
-        const showNotes = data.origin === 'instant_pos'
-            && isFieldEnabled(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showNotes)
+        const configuredShowNotes = fieldValue(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showNotes)
+        const showNotes = configuredShowNotes === undefined
+            ? (defaultShowNotes ?? data.origin === 'instant_pos')
+            : isFieldEnabled(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showNotes)
         const tableNumber = typeof data.table_number === 'string' ? data.table_number.trim() : ''
         const noteValue = data.notes?.trim()
+        const notesFontSize = Math.min(24, Math.max(8,
+            Number.parseFloat(fieldValue(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.notesFontSize) || '12') || 12
+        ))
         const thankYouText = fieldValue(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.thankYou)?.trim()
             || t('sales.receipt.thankYou')
         const keepRecordText = fieldValue(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord)?.trim()
@@ -326,7 +335,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
 
                 {showNotes && noteValue ? mp(RECEIPT_MOVABLE_COMPONENT_KEYS.notes, 'Notes',
                     <div className="mb-5 border-t border-gray-200 pt-3 text-xs">
-                        <p className="whitespace-pre-wrap break-words">{noteValue}</p>
+                        <p className="whitespace-pre-wrap break-words" style={{ fontSize: `${notesFontSize}px` }}>{noteValue}</p>
                     </div>,
                     undefined, 'right', 0, true
                 ) : null}

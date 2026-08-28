@@ -1198,7 +1198,15 @@ async function repairStaleFullOrderPaymentAttempts(
         ...getSyncMetadata(workspaceId, now)
     }))
 
+    const {
+        assertPaymentAccountTransactionsCanBeAppliedLocally,
+        mirrorPaymentAccountTransactionLocally,
+    } = await import('./paymentAccounts')
+    await assertPaymentAccountTransactionsCanBeAppliedLocally(repairedPayments)
     await db.payment_transactions.bulkPut(repairedPayments)
+    for (const payment of repairedPayments) {
+        await mirrorPaymentAccountTransactionLocally(payment)
+    }
     await syncUpsertEntities(
         'payment_transactions',
         repairedPayments as unknown as Array<Record<string, unknown> & { id: string; version: number }>,
@@ -2075,6 +2083,11 @@ export async function createSalesOrder(
         await assertSalesStockAvailable(order)
     }
 
+    // Initial purchase/sale payments are posted first so an insufficient
+    // selected account cannot create an order that claims to be paid.
+    if (!isOrderApprovalRequested(order)) {
+        await appendInitialOrderPaymentTransaction('sales', order)
+    }
     await db.sales_orders.put(order)
 
     if (status === 'completed') {
@@ -2481,6 +2494,7 @@ export async function approveSalesOrderRequest(id: string, reviewedBy?: string |
         ...buildApprovalReviewPatch(existing, reviewedBy)
     }
 
+    await appendInitialOrderPaymentTransaction('sales', updated)
     await db.sales_orders.put(updated)
     await syncUpsertEntities('sales_orders', [updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
     await appendInitialOrderPaymentTransaction('sales', updated)
@@ -3549,6 +3563,11 @@ export async function createPurchaseOrder(
         throw new Error('non_financed_order_must_be_paid')
     }
 
+    // Payment is the source of truth for a paid purchase order. Validate the
+    // account before receiving inventory or persisting the paid order.
+    if (!isOrderApprovalRequested(order)) {
+        await appendInitialOrderPaymentTransaction('purchase', order)
+    }
     let receiptResult: PurchaseReceiptResult | null = null
     if (status === 'received' || status === 'completed') {
         await preparePurchaseOrderReceipt(order)
@@ -3775,6 +3794,7 @@ export async function approvePurchaseOrderRequest(id: string, reviewedBy?: strin
         ...buildApprovalReviewPatch(existing, reviewedBy)
     }
 
+    await appendInitialOrderPaymentTransaction('purchase', updated)
     await db.purchase_orders.put(updated)
     await syncUpsertEntities('purchase_orders', [updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
     await appendInitialOrderPaymentTransaction('purchase', updated)

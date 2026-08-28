@@ -18,6 +18,7 @@ vi.mock('@/ui/components/SaleReceipt', () => ({
         showOriginalCurrencyPrice: 'showOriginalCurrencyPrice',
         showTableNumber: 'showTableNumber',
         showNotes: 'showNotes',
+        notesFontSize: 'notesFontSize',
         thankYou: 'thankYou',
         keepRecord: 'keepRecord',
         labelOpacity: 'labelOpacity'
@@ -193,8 +194,8 @@ describe('Sales History custom A4 templates', () => {
     })
 })
 
-describe('Instant History receipt custom print template', () => {
-    it('registers a separate Instant History target with Sales History receipt editing and a table field', () => {
+describe('Sales and Instant History receipt custom print templates', () => {
+    it('keeps Instant History notes on by default and makes Sales History notes optional with a size control', () => {
         const salesTarget = customTemplates.getCustomTemplateTarget(customTemplates.SALES_HISTORY_RECEIPT_TEMPLATE_KEY)
         const instantTarget = customTemplates.getCustomTemplateTarget(customTemplates.INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY)
 
@@ -214,20 +215,33 @@ describe('Instant History receipt custom print template', () => {
         const salesPreview = customTemplates.createCustomTemplatePreview(salesTarget!, { printLang: 'en' })
         const instantPreview = customTemplates.createCustomTemplatePreview(instantTarget!, { printLang: 'en' })
 
-        expect(instantPreview.fields).toEqual([
-            ...salesPreview.fields,
+        expect(salesPreview.fields).toEqual(expect.arrayContaining([
+            expect.objectContaining({ key: 'showNotes', value: 'false', type: 'boolean' }),
+            expect.objectContaining({
+                key: 'notesFontSize',
+                value: '12',
+                type: 'range',
+                min: 8,
+                max: 24,
+                step: 1,
+                unit: ' px'
+            })
+        ]))
+        expect(instantPreview.fields).toEqual(expect.arrayContaining([
             expect.objectContaining({ key: 'showTableNumber', value: 'true', type: 'boolean' }),
             expect.objectContaining({ key: 'showNotes', value: 'true', type: 'boolean' })
-        ])
+        ]))
+        expect(instantPreview.fields.some((field) => field.key === 'notesFontSize')).toBe(false)
         expect(instantPreview.movableComponents).toEqual([
             ...salesPreview.movableComponents!.slice(0, 5),
             expect.objectContaining({ key: 'receiptTableNumber', label: 'Table Number' }),
-            ...salesPreview.movableComponents!.slice(5, 10),
-            expect.objectContaining({ key: 'receiptNotes', label: 'Notes' }),
-            ...salesPreview.movableComponents!.slice(10)
+            ...salesPreview.movableComponents!.slice(5)
         ])
+        const salesPreviewElement = salesPreview.createElement({}, 'sales-receipt-preview') as any
         const previewElement = instantPreview.createElement({}, 'instant-receipt-preview') as any
+        expect(salesPreviewElement.props.children.props.defaultShowNotes).toBe(false)
         expect(previewElement.props.children.props.data.table_number).toBe('12')
+        expect(previewElement.props.children.props.defaultShowNotes).toBe(true)
         expect(instantPreview.page).toEqual(salesPreview.page)
     })
 })

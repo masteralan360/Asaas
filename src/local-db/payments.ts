@@ -20,7 +20,10 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { db } from './database'
 import { addToOfflineMutations, fetchTableFromSupabase } from './hooks'
 import { getOrderBalanceAmount } from './orderInstallments'
-import { mirrorPaymentAccountTransactionLocally } from './paymentAccounts'
+import {
+    assertPaymentAccountTransactionCanBeAppliedLocally,
+    mirrorPaymentAccountTransactionLocally,
+} from './paymentAccounts'
 import type {
     CurrencyCode,
     ClinicalAppointment,
@@ -1327,12 +1330,14 @@ export async function appendPaymentTransaction(
     }
 
     if (!shouldUseCloudBusinessData(workspaceId)) {
+        await assertPaymentAccountTransactionCanBeAppliedLocally(transaction)
         await db.payment_transactions.put(transaction)
         await mirrorPaymentAccountTransactionLocally(transaction)
         return transaction
     }
 
     if (!isOnline()) {
+        await assertPaymentAccountTransactionCanBeAppliedLocally(transaction)
         await db.payment_transactions.put(transaction)
         await mirrorPaymentAccountTransactionLocally(transaction)
         await addToOfflineMutations(
@@ -1370,6 +1375,7 @@ export async function appendPaymentTransaction(
     } catch (error) {
         if (shouldUseOfflineMutationFallback(error)) {
             console.error('[Payments] Payment transaction sync failed, queued offline mutation:', error)
+            await assertPaymentAccountTransactionCanBeAppliedLocally(transaction)
             await db.payment_transactions.put(transaction)
             await mirrorPaymentAccountTransactionLocally(transaction)
             await addToOfflineMutations(
@@ -1608,7 +1614,12 @@ export async function hideLoanTransactionsForDeletedLoan(workspaceId: string, lo
     }
 }
 
-async function softDeletePaymentTransaction(transaction: PaymentTransaction) {
+/**
+ * Internal compensation for a source record that could not be created after
+ * its payment was posted. This preserves the payment audit trail as a soft
+ * delete and lets the account-movement trigger restore the balance.
+ */
+export async function softDeletePaymentTransaction(transaction: PaymentTransaction) {
     if (transaction.isDeleted) {
         return
     }
@@ -1623,12 +1634,16 @@ async function softDeletePaymentTransaction(transaction: PaymentTransaction) {
     }
 
     if (!shouldUseCloudBusinessData(transaction.workspaceId)) {
+        await assertPaymentAccountTransactionCanBeAppliedLocally(deletedTransaction)
         await db.payment_transactions.put(deletedTransaction)
+        await mirrorPaymentAccountTransactionLocally(deletedTransaction)
         return
     }
 
     if (!isOnline()) {
+        await assertPaymentAccountTransactionCanBeAppliedLocally(deletedTransaction)
         await db.payment_transactions.put(deletedTransaction)
+        await mirrorPaymentAccountTransactionLocally(deletedTransaction)
         await addToOfflineMutations(
             'payment_transactions',
             transaction.id,
@@ -1660,7 +1675,9 @@ async function softDeletePaymentTransaction(transaction: PaymentTransaction) {
     } catch (error) {
         if (shouldUseOfflineMutationFallback(error)) {
             console.error('[Payments] Payment transaction delete failed, queued offline mutation:', error)
+            await assertPaymentAccountTransactionCanBeAppliedLocally(deletedTransaction)
             await db.payment_transactions.put(deletedTransaction)
+            await mirrorPaymentAccountTransactionLocally(deletedTransaction)
             await addToOfflineMutations(
                 'payment_transactions',
                 transaction.id,
@@ -1675,19 +1692,19 @@ async function softDeletePaymentTransaction(transaction: PaymentTransaction) {
     }
 }
 
-export async function replacePaymentTransactionForSource(
+export async function retireReplacedPaymentTransactions(
     workspaceId: string,
     locator: SourceLocator,
-    input: AppendPaymentTransactionInput
+    keepTransactionId: string,
+    metadata: Record<string, unknown> | null = null
 ) {
-    const next = await appendPaymentTransaction(workspaceId, input)
     const relatedTransactions = await listPaymentTransactionsForSource(workspaceId, {
         ...locator,
-        metadata: locator.metadata ?? input.metadata ?? null
+        metadata: locator.metadata ?? metadata
     })
 
     for (const item of relatedTransactions) {
-        if (item.isDeleted || item.id === next.id) {
+        if (item.isDeleted || item.id === keepTransactionId) {
             continue
         }
 
@@ -1697,6 +1714,15 @@ export async function replacePaymentTransactionForSource(
             console.error('[Payments] Failed to hide replaced transaction row:', error)
         }
     }
+}
+
+export async function replacePaymentTransactionForSource(
+    workspaceId: string,
+    locator: SourceLocator,
+    input: AppendPaymentTransactionInput
+) {
+    const next = await appendPaymentTransaction(workspaceId, input)
+    await retireReplacedPaymentTransactions(workspaceId, locator, next.id, input.metadata ?? null)
 
     return next
 }
@@ -2138,20 +2164,6 @@ export async function findLatestUnreversedPaymentTransaction(
         .sort((left, right) => right.paidAt.localeCompare(left.paidAt) || right.createdAt.localeCompare(left.createdAt))[0]
 }
 
-async function resolvePayrollSourceRecordId(employeeId: string, month: string) {
-    const status = await db.payroll_statuses
-        .where('[employeeId+month]')
-        .equals([employeeId, month])
-        .and((item) => !item.isDeleted)
-        .first()
-
-    if (!status) {
-        throw new Error('Payroll status not found after settlement')
-    }
-
-    return status.id
-}
-
 export async function recordObligationSettlement(
     workspaceId: string,
     obligation: PaymentObligation,
@@ -2314,18 +2326,12 @@ export async function recordObligationSettlement(
 
             const series = item.seriesId ? await db.expense_series.get(item.seriesId) : undefined
             const { updateExpenseItem } = await import('./hooks')
-            await updateExpenseItem(item.id, {
-                status: 'paid',
-                paidAt,
-                snoozedUntil: null,
-                snoozedIndefinite: false
-            })
-
-            await replacePaymentTransactionForSource(workspaceId, {
+            const locator: SourceLocator = {
                 sourceType: 'expense_item',
                 sourceRecordId: item.id,
                 sourceSubrecordId: item.seriesId
-            }, {
+            }
+            const paymentInput: AppendPaymentTransactionInput = {
                 sourceModule: 'budget',
                 sourceType: 'expense_item',
                 sourceRecordId: item.id,
@@ -2347,7 +2353,25 @@ export async function recordObligationSettlement(
                     category: series?.category || null,
                     subcategory: series?.subcategory || null
                 }
-            })
+            }
+
+            // Post the actual outgoing payment first. A selected account may
+            // reject it for insufficient funds; in that case the expense must
+            // remain unpaid rather than presenting a paid status without money
+            // leaving the account.
+            const paymentTransaction = await appendPaymentTransaction(workspaceId, paymentInput)
+            try {
+                await updateExpenseItem(item.id, {
+                    status: 'paid',
+                    paidAt,
+                    snoozedUntil: null,
+                    snoozedIndefinite: false
+                })
+            } catch (error) {
+                await softDeletePaymentTransaction(paymentTransaction)
+                throw error
+            }
+            await retireReplacedPaymentTransactions(workspaceId, locator, paymentTransaction.id, paymentInput.metadata ?? null)
             return
         }
 
@@ -2364,16 +2388,17 @@ export async function recordObligationSettlement(
                 throw new Error('Employee not found')
             }
 
-            const { upsertPayrollStatus } = await import('./hooks')
-            await upsertPayrollStatus(workspaceId, employeeId, month, {
-                status: 'paid',
-                paidAt,
-                snoozedUntil: null,
-                snoozedIndefinite: false
-            })
-
-            const sourceRecordId = await resolvePayrollSourceRecordId(employeeId, month)
-            await replacePaymentTransactionForSource(workspaceId, {
+            const existingStatus = await db.payroll_statuses
+                .where('[employeeId+month]')
+                .equals([employeeId, month])
+                .and((item) => !item.isDeleted)
+                .first()
+            // A new status does not have to be committed as paid just to obtain
+            // an identifier for its payment transaction. There is no foreign
+            // key between these records, so a generated ID can safely be used
+            // and the status is only persisted after the payment is funded.
+            const sourceRecordId = existingStatus?.id ?? generateId()
+            const locator: SourceLocator = {
                 sourceType: 'payroll_status',
                 sourceRecordId,
                 sourceSubrecordId: employee.id,
@@ -2381,7 +2406,8 @@ export async function recordObligationSettlement(
                     employeeId: employee.id,
                     month
                 }
-            }, {
+            }
+            const paymentInput: AppendPaymentTransactionInput = {
                 sourceModule: 'budget',
                 sourceType: 'payroll_status',
                 sourceRecordId,
@@ -2401,7 +2427,23 @@ export async function recordObligationSettlement(
                     employeeId: employee.id,
                     month
                 }
-            })
+            }
+
+            const paymentTransaction = await appendPaymentTransaction(workspaceId, paymentInput)
+            try {
+                const { upsertPayrollStatus } = await import('./hooks')
+                await upsertPayrollStatus(workspaceId, employeeId, month, {
+                    id: sourceRecordId,
+                    status: 'paid',
+                    paidAt,
+                    snoozedUntil: null,
+                    snoozedIndefinite: false
+                })
+            } catch (error) {
+                await softDeletePaymentTransaction(paymentTransaction)
+                throw error
+            }
+            await retireReplacedPaymentTransactions(workspaceId, locator, paymentTransaction.id, paymentInput.metadata ?? null)
             return
         }
 
@@ -2601,12 +2643,10 @@ export async function reversePaymentTransaction(
         case 'direct_transaction':
             break
     }
-    const reversal = await replacePaymentTransactionForSource(workspaceId, {
-        sourceType: transaction.sourceType,
-        sourceRecordId: transaction.sourceRecordId,
-        sourceSubrecordId: transaction.sourceSubrecordId ?? null,
-        metadata: transaction.metadata
-    }, {
+    // A reversal is an additional immutable payment transaction. Keeping the
+    // original posted row is essential for both the audit trail and the
+    // payment-account balance (the two signed deltas net to zero).
+    const reversal = await appendPaymentTransaction(workspaceId, {
         sourceModule: transaction.sourceModule,
         sourceType: transaction.sourceType,
         sourceRecordId: transaction.sourceRecordId,

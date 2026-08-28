@@ -16,6 +16,7 @@ import type {
     ActivityTransactionLine,
     ActivityTransactionStatus,
     CurrencyCode,
+    PaymentTransaction,
     WorkspacePaymentMethod
 } from './models'
 
@@ -546,14 +547,11 @@ export async function reverseActivityTransaction(
         ...getSyncMetadata(workspaceId, now)
     }
 
-    await db.transaction('rw', [db.activity_transactions, db.activity_catalog], async () => {
-        await db.activity_transactions.put(updated)
-        await adjustLocalAvailability(lines, 'restore')
-    })
-
-    await syncUpserts(TRANSACTIONS_TABLE, [updated as unknown as ActivitiesEntity], workspaceId)
+    let refundPayment: PaymentTransaction | null = null
     if (originalPayment) {
-        await appendPaymentTransaction(workspaceId, {
+        // A refund takes money out of the selected account. Post and validate it
+        // before restoring inventory or changing the activity's final status.
+        refundPayment = await appendPaymentTransaction(workspaceId, {
             sourceModule: 'activities',
             sourceType: 'activity_refund',
             sourceRecordId: transaction.id,
@@ -575,6 +573,25 @@ export async function reverseActivityTransaction(
             metadata: { activityTransactionId: transaction.id, action: status }
         })
     }
+
+    try {
+        await db.transaction('rw', [db.activity_transactions, db.activity_catalog], async () => {
+            await db.activity_transactions.put(updated)
+            await adjustLocalAvailability(lines, 'restore')
+        })
+    } catch (error) {
+        if (refundPayment) {
+            try {
+                const { softDeletePaymentTransaction } = await import('./payments')
+                await softDeletePaymentTransaction(refundPayment)
+            } catch (cleanupError) {
+                console.error('[Activities] Failed to roll back the refund payment after activity reversal failed:', cleanupError)
+            }
+        }
+        throw error
+    }
+
+    await syncUpserts(TRANSACTIONS_TABLE, [updated as unknown as ActivitiesEntity], workspaceId)
     return updated
 }
 
@@ -585,6 +602,10 @@ export async function hardDeleteActivityTransaction(workspaceId: string, transac
     const lines = await db.activity_transaction_lines.where('transactionId').equals(transactionId).toArray()
     const payments = (await db.payment_transactions.where('workspaceId').equals(workspaceId).toArray())
         .filter((payment) => payment.sourceModule === 'activities' && payment.sourceRecordId === transactionId)
+
+    if (payments.some((payment) => payment.accountId)) {
+        throw new Error('An activity with a posted payment account movement cannot be permanently deleted. Reverse or refund the payment instead.')
+    }
 
     await db.transaction('rw', [db.activity_transactions, db.activity_transaction_lines, db.activity_catalog, db.payment_transactions], async () => {
         if (transaction.status === 'completed') await adjustLocalAvailability(lines, 'restore')

@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ShieldAlert } from 'lucide-react'
 
-import { usePaymentAccounts, type PaymentAccount } from '@/local-db'
+import { usePaymentAccountBalancesState, usePaymentAccountsState, type PaymentAccount } from '@/local-db'
+import { formatCurrency } from '@/lib/utils'
 import { Label } from '@/ui/components/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/select'
+import { useWorkspace } from '@/workspace'
 import { PaymentAccountIcon } from './PaymentAccountIcon'
+import { resolvePaymentAccountSelection } from './paymentAccountSelection'
 
 interface PaymentAccountSelectorProps {
   workspaceId?: string
@@ -33,7 +37,11 @@ export function PaymentAccountSelector({
   placeholder,
 }: PaymentAccountSelectorProps) {
   const { t } = useTranslation()
-  const accounts = usePaymentAccounts(workspaceId)
+  const { features } = useWorkspace()
+  const { accounts, isReady: areAccountsReady } = usePaymentAccountsState(workspaceId)
+  // Balance data is deliberately non-blocking. The account/preselection state
+  // determines when the selector is ready; balances enrich it afterward.
+  const { balances, isReady: areBalancesReady } = usePaymentAccountBalancesState(workspaceId)
   const options = useMemo(
     () => accounts.filter((account) => account.isActive && (!cashDrawerOnly || account.accountType === 'cash_drawer')),
     [accounts, cashDrawerOnly],
@@ -42,47 +50,145 @@ export function PaymentAccountSelector({
     () => options.find((account) => account.isDefaultForPaymentSelector) ?? null,
     [options],
   )
+  const balancesByAccount = useMemo(() => {
+    const grouped = new Map<string, typeof balances>()
+
+    balances.forEach((balance) => {
+      const current = grouped.get(balance.accountId) ?? []
+      current.push(balance)
+      grouped.set(balance.accountId, current)
+    })
+
+    grouped.forEach((accountBalances) => {
+      accountBalances.sort((left, right) => left.currency.localeCompare(right.currency))
+    })
+
+    return grouped
+  }, [balances])
   const defaultWasApplied = useRef(false)
-  const selectedValue = value && options.some((account) => account.id === value)
-    ? value
-    : allowNoAccount ? '__none__' : undefined
+  const lastKnownSelectedAccount = useRef<PaymentAccount | null>(null)
+  const selection = resolvePaymentAccountSelection(
+    value,
+    accounts,
+    options,
+    lastKnownSelectedAccount.current,
+    allowNoAccount,
+  )
 
   useEffect(() => {
+    if (!value) {
+      lastKnownSelectedAccount.current = null
+      return
+    }
+
+    const currentAccount = accounts.find((account) => account.id === value)
+    if (currentAccount) lastKnownSelectedAccount.current = currentAccount
+  }, [accounts, value])
+
+  useLayoutEffect(() => {
     // A workspace explicitly chooses this behavior in the account editor. The
     // primary account is intentionally irrelevant here, and an explicit
-    // "No account" selection remains respected for this mounted form.
+    // "No account" selection remains respected for this mounted form. A
+    // layout effect deliberately resolves the default before the selector can
+    // first paint as ledger-only.
     if (!applyDefault || defaultWasApplied.current || value || !defaultAccount) return
     defaultWasApplied.current = true
     onValueChange(defaultAccount)
   }, [applyDefault, defaultAccount, onValueChange, value])
 
+  const isSelectionReady = areAccountsReady
+    && (!applyDefault || defaultWasApplied.current || Boolean(value) || !defaultAccount)
+  const selectedAccountBalances = selection.selectedAccount
+    ? balancesByAccount.get(selection.selectedAccount.id) ?? []
+    : []
+
   const handleValueChange = (next: string) => {
+    if (next === '__none__') {
+      if (!allowNoAccount) return
+      defaultWasApplied.current = true
+      onValueChange(null)
+      return
+    }
+
+    const nextAccount = options.find((account) => account.id === next)
+    // Never turn an unresolved or retained selection into a ledger-only
+    // payment. Only a deliberate choice of "No account" may emit null.
+    if (!nextAccount) return
+
     defaultWasApplied.current = true
-    onValueChange(next === '__none__' ? null : options.find((account) => account.id === next) ?? null)
+    onValueChange(nextAccount)
   }
+
+  const balanceLoadingIndicator = <span aria-label={t('paymentAccounts.balancesLoading', { defaultValue: 'Loading posted balances' })} className="inline-flex shrink-0 items-center gap-1.5"><span className="h-3 w-14 animate-pulse rounded bg-muted" /><span className="h-3 w-9 animate-pulse rounded bg-muted" /></span>
 
   return (
     <div className="grid gap-2">
-      <Label>{label ?? t('paymentAccounts.selectorLabel', { defaultValue: 'Payment Account (optional)' })}</Label>
+      <Label className="flex items-center gap-1.5">
+        <ShieldAlert aria-hidden="true" className="h-4 w-4 shrink-0 text-amber-500" />
+        {label ?? t('paymentAccounts.selectorLabel', { defaultValue: 'Payment Account (optional)' })}
+      </Label>
+      {!isSelectionReady ? (
+        <div
+          aria-busy="true"
+          aria-label={t('paymentAccounts.selectorLoading', { defaultValue: 'Loading payment account selection' })}
+          className="h-10 w-full animate-pulse rounded-xl border border-amber-400/70 bg-amber-500/5"
+        />
+      ) : (
       <Select
-        value={selectedValue}
+        value={selection.selectedValue}
         onValueChange={handleValueChange}
         disabled={disabled}
       >
-        <SelectTrigger>
-          <SelectValue placeholder={placeholder ?? t('paymentAccounts.noAccount', { defaultValue: 'No account — ledger only' })} />
+        <SelectTrigger className="border-amber-400/70 hover:border-amber-500 focus:border-amber-500 focus:ring-amber-500/20">
+          {selection.selectedAccount ? (
+            <div className="flex w-full min-w-0 items-center gap-2">
+              <span className="flex min-w-0 items-center gap-2">
+                <PaymentAccountIcon iconKey={selection.selectedAccount.iconKey} accountType={selection.selectedAccount.accountType} className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="truncate">{selection.selectedAccount.name}</span>
+              </span>
+              {!areBalancesReady ? balanceLoadingIndicator : selectedAccountBalances.length ? (
+                <span className="ml-auto flex shrink-0 items-center text-xs font-semibold tabular-nums text-foreground">
+                  {selectedAccountBalances.slice(0, 2).map((balance, index) => (
+                    <span key={balance.id} className={index > 0 ? "ml-1.5 border-s border-amber-400/50 ps-1.5" : undefined}>
+                      {formatCurrency(balance.balanceAmount, balance.currency, features.iqd_display_preference)}
+                    </span>
+                  ))}
+                  {selectedAccountBalances.length > 2 ? <span className="ml-1.5 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">+{selectedAccountBalances.length - 2}</span> : null}
+                </span>
+              ) : <span className="ms-auto shrink-0 text-xs text-muted-foreground">{t('paymentAccounts.noBalance', { defaultValue: 'No posted balance' })}</span>}
+            </div>
+          ) : selection.selectionUnavailable ? (
+            <span className="truncate text-amber-600 dark:text-amber-400">{t('paymentAccounts.selectedAccountUnavailable', { defaultValue: 'Selected payment account unavailable' })}</span>
+          ) : (
+            <SelectValue placeholder={placeholder ?? t('paymentAccounts.noAccount', { defaultValue: 'No account — ledger only' })} />
+          )}
         </SelectTrigger>
         <SelectContent>
           {allowNoAccount ? <SelectItem value="__none__">{t('paymentAccounts.noAccount', { defaultValue: 'No account — ledger only' })}</SelectItem> : null}
-          {options.map((account) => {
+          {selection.displayOptions.map((account) => {
+            const requiresReview = selection.selectionNeedsReview && account.id === selection.selectedAccount?.id
+            const accountBalances = balancesByAccount.get(account.id) ?? []
             return (
-              <SelectItem key={account.id} value={account.id}>
-                <span className="flex items-center gap-2"><PaymentAccountIcon iconKey={account.iconKey} accountType={account.accountType} className="h-4 w-4 text-muted-foreground" />{account.name}</span>
+              <SelectItem key={account.id} value={account.id} disabled={requiresReview}>
+                <span className="flex w-full min-w-0 items-center gap-3">
+                  <span className="flex min-w-0 items-center gap-2"><PaymentAccountIcon iconKey={account.iconKey} accountType={account.accountType} className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="truncate">{account.name}</span>{requiresReview ? <span className="text-xs text-amber-600 dark:text-amber-400">{t('paymentAccounts.selectedAccountNeedsReview', { defaultValue: 'Review selection' })}</span> : null}</span>
+                  {!areBalancesReady ? balanceLoadingIndicator : accountBalances.length ? (
+                    <span className="ms-auto flex shrink-0 items-center text-xs font-semibold tabular-nums text-muted-foreground">
+                      {accountBalances.map((balance, index) => (
+                        <span key={balance.id} className={index > 0 ? "ms-1.5 border-s border-border ps-1.5" : undefined}>
+                          {formatCurrency(balance.balanceAmount, balance.currency, features.iqd_display_preference)}
+                        </span>
+                      ))}
+                    </span>
+                  ) : <span className="ms-auto shrink-0 text-xs text-muted-foreground">{t('paymentAccounts.noBalance', { defaultValue: 'No posted balance' })}</span>}
+                </span>
               </SelectItem>
             )
           })}
+          {selection.selectionUnavailable && selection.selectedValue ? <SelectItem value={selection.selectedValue} disabled>{t('paymentAccounts.selectedAccountUnavailable', { defaultValue: 'Selected payment account unavailable' })}</SelectItem> : null}
         </SelectContent>
       </Select>
+      )}
     </div>
   )
 }
