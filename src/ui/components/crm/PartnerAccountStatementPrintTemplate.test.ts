@@ -127,6 +127,197 @@ function statementData(): PartnerOrderItemsPrintData & PartnerAccountStatementDa
 }
 
 describe('buildPartnerAccountStatementLedger', () => {
+    it('labels pre-completion sales payments as advances and financed upfront amounts as order-loan down payments', () => {
+        const data = statementData()
+        data.statementOrders = [{
+            id: 'sales-with-advance',
+            orderNumber: 'SO-ADVANCE',
+            customerId: 'partner-1',
+            total: 100,
+            currency: 'usd',
+            status: 'completed',
+            actualDeliveryDate: '2026-01-04T12:00:00.000Z',
+            createdAt: '2026-01-04T08:00:00.000Z',
+            isDeleted: false,
+            linkedLoanId: null
+        }, {
+            id: 'sales-with-loan',
+            orderNumber: 'SO-LOAN-ADVANCE',
+            customerId: 'partner-1',
+            total: 200,
+            currency: 'usd',
+            status: 'completed',
+            actualDeliveryDate: '2026-01-05T12:00:00.000Z',
+            createdAt: '2026-01-05T08:00:00.000Z',
+            isDeleted: false,
+            linkedLoanId: null
+        }] as any
+        data.settlementTransactions = [{
+            id: 'cash-advance',
+            sourceType: 'sales_order',
+            sourceRecordId: 'sales-with-advance',
+            direction: 'incoming',
+            amount: 20,
+            currency: 'usd',
+            paidAt: '2026-01-04T09:00:00.000Z',
+            createdAt: '2026-01-04T09:00:00.000Z',
+            isDeleted: false
+        }, {
+            id: 'loan-down-payment',
+            sourceType: 'sales_order',
+            sourceRecordId: 'sales-with-loan',
+            direction: 'incoming',
+            amount: 40,
+            currency: 'usd',
+            paidAt: '2026-01-05T09:00:00.000Z',
+            createdAt: '2026-01-05T09:00:00.000Z',
+            isDeleted: false,
+            metadata: { isDownPayment: true, isFinancingInitialPayment: true }
+        }, {
+            id: 'post-completion-payment',
+            sourceType: 'sales_order',
+            sourceRecordId: 'sales-with-advance',
+            direction: 'incoming',
+            amount: 80,
+            currency: 'usd',
+            paidAt: '2026-01-04T13:00:00.000Z',
+            createdAt: '2026-01-04T13:00:00.000Z',
+            isDeleted: false
+        }] as any
+
+        const entries = buildPartnerAccountStatementLedger(data).flatMap((ledger) => ledger.entries)
+        expect(entries.find((entry) => entry.id === 'payment:cash-advance')?.descriptionKey).toBe('advancePaymentReceived')
+        expect(entries.find((entry) => entry.id === 'payment:loan-down-payment')?.descriptionKey).toBe('orderLoanDownPaymentReceived')
+        expect(entries.find((entry) => entry.id === 'payment:post-completion-payment')?.descriptionKey).toBe('paymentReceived')
+    })
+
+    it('lists agent-account sales and returns by product line with their document references', () => {
+        const data = statementData()
+        data.itemizeSalesOrders = true
+        data.statementOrders = [{
+            id: 'agent-sale',
+            orderNumber: 'SO-AGENT-1',
+            customerId: 'agent-partner',
+            total: 80,
+            originalTotalAmount: 100,
+            returnedAmount: 20,
+            currency: 'usd',
+            status: 'completed',
+            createdAt: '2026-01-04T10:00:00.000Z',
+            isDeleted: false,
+            linkedLoanId: null,
+            items: [
+                { id: 'line-a', productName: 'Coffee', quantity: 2, unit: 'pcs', lineTotal: 60 },
+                { id: 'line-b', productName: 'Tea', quantity: 1, unit: 'pcs', lineTotal: 40 }
+            ]
+        }] as any
+        data.settlementTransactions = []
+        data.salesOrderReturns = [{
+            id: 'return-1',
+            orderId: 'agent-sale',
+            reason: 'customer_returned',
+            status: 'posted',
+            refundAmount: 20,
+            returnedAt: '2026-01-05T10:00:00.000Z',
+            createdAt: '2026-01-05T10:00:00.000Z',
+            isDeleted: false
+        }] as any
+        data.salesOrderReturnItems = [{
+            id: 'return-line-a',
+            returnId: 'return-1',
+            orderId: 'agent-sale',
+            orderItemId: 'line-a',
+            quantity: 1,
+            refundAmount: 20,
+            isDeleted: false
+        }] as any
+
+        const entries = buildPartnerAccountStatementLedger(data).flatMap((ledger) => ledger.entries)
+        expect(entries.map((entry) => [entry.reference, entry.itemName, entry.quantity, entry.delta])).toEqual([
+            ['SO-AGENT-1', 'Coffee', 2, 60],
+            ['SO-AGENT-1', 'Tea', 1, 40],
+            ['SO-AGENT-1 · return-1', 'Coffee', -1, -20]
+        ])
+    })
+
+    it('keeps normal partner sales and returns as one row per document by default', () => {
+        const data = statementData()
+        data.statementOrders = [{
+            id: 'partner-sale',
+            orderNumber: 'SO-PARTNER-1',
+            customerId: 'partner-1',
+            total: 80,
+            originalTotalAmount: 100,
+            returnedAmount: 20,
+            currency: 'usd',
+            status: 'completed',
+            createdAt: '2026-01-04T10:00:00.000Z',
+            isDeleted: false,
+            linkedLoanId: null,
+            items: [
+                { id: 'line-a', productName: 'Coffee', quantity: 2, unit: 'pcs', lineTotal: 60 },
+                { id: 'line-b', productName: 'Tea', quantity: 1, unit: 'pcs', lineTotal: 40 }
+            ]
+        }] as any
+        data.settlementTransactions = []
+        data.salesOrderReturns = [{
+            id: 'return-1',
+            orderId: 'partner-sale',
+            reason: 'customer_returned',
+            status: 'posted',
+            refundAmount: 20,
+            returnedAt: '2026-01-05T10:00:00.000Z',
+            createdAt: '2026-01-05T10:00:00.000Z',
+            isDeleted: false
+        }] as any
+        data.salesOrderReturnItems = [{
+            id: 'return-line-a',
+            returnId: 'return-1',
+            orderId: 'partner-sale',
+            orderItemId: 'line-a',
+            quantity: 1,
+            refundAmount: 20,
+            isDeleted: false
+        }] as any
+
+        const entries = buildPartnerAccountStatementLedger(data).flatMap((ledger) => ledger.entries)
+        expect(entries.map((entry) => [entry.reference, entry.itemName, entry.quantity, entry.delta])).toEqual([
+            ['SO-PARTNER-1', undefined, undefined, 80]
+        ])
+    })
+
+    it('only prints item and quantity columns when itemized sales are enabled', () => {
+        const data = statementData()
+        data.statementOrders = [{
+            id: 'partner-sale',
+            orderNumber: 'SO-PARTNER-1',
+            customerId: 'partner-1',
+            total: 100,
+            currency: 'usd',
+            status: 'completed',
+            createdAt: '2026-01-04T10:00:00.000Z',
+            isDeleted: false,
+            linkedLoanId: null,
+            items: [{ id: 'line-a', productName: 'Coffee', quantity: 2, unit: 'pcs', lineTotal: 100 }]
+        }] as any
+        data.settlementTransactions = []
+
+        const compactHtml = renderToStaticMarkup(createElement(PartnerAccountStatementPrintTemplate, {
+            printLang: 'en',
+            data: data as any
+        }))
+        data.itemizeSalesOrders = true
+        const itemizedHtml = renderToStaticMarkup(createElement(PartnerAccountStatementPrintTemplate, {
+            printLang: 'en',
+            data: data as any
+        }))
+
+        expect(compactHtml).not.toContain('>Item</th>')
+        expect(compactHtml).not.toContain('>Quantity</th>')
+        expect(itemizedHtml).toContain('>Item</th>')
+        expect(itemizedHtml).toContain('>Quantity</th>')
+    })
+
     it('keeps a single-currency running balance from opening activity through payments and reversals', () => {
         const [ledger] = buildPartnerAccountStatementLedger(statementData())
 

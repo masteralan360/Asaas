@@ -778,6 +778,9 @@ function normalizeAgentFacetInput(input: Partial<AgentFacetInput> | undefined, e
     const linkedUserId = String(
         input?.linkedUserId === undefined ? existing?.linkedUserId ?? '' : input.linkedUserId ?? ''
     ).trim() || null
+    const salesAccountEnabled = input?.salesAccountEnabled === undefined
+        ? existing?.salesAccountEnabled ?? false
+        : Boolean(input.salesAccountEnabled)
     const courierDeliveryFee = Number(
         input?.courierDeliveryFee === undefined
             ? existing?.courierDeliveryFee ?? 0
@@ -806,6 +809,7 @@ function normalizeAgentFacetInput(input: Partial<AgentFacetInput> | undefined, e
         carModel: agentType === 'driver' ? carModel : null,
         plateNumber: agentType === 'driver' ? plateNumber : null,
         linkedUserId,
+        salesAccountEnabled,
         status,
         // Keep non-courier agent records compatible with the database rule
         // and avoid retaining an old fee after the role changes.

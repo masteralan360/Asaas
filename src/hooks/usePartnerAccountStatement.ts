@@ -11,6 +11,8 @@ import {
     useLoans,
     usePaymentTransactions,
     usePurchaseOrders,
+    useSalesOrderReturnItemsForWorkspace,
+    useSalesOrderReturnsForWorkspace,
     useSalesOrders
 } from '@/local-db'
 import { isDirectTransactionPartnerAccountEffect } from '@/local-db/payments'
@@ -30,6 +32,8 @@ export function usePartnerAccountStatement(
 ) {
     const rawPartner = useBusinessPartner(partnerId || undefined)
     const salesOrders = useSalesOrders(workspaceId)
+    const salesOrderReturns = useSalesOrderReturnsForWorkspace(workspaceId)
+    const salesOrderReturnItems = useSalesOrderReturnItemsForWorkspace(workspaceId)
     const purchaseOrders = usePurchaseOrders(workspaceId)
     const loans = useLoans(workspaceId)
     const paymentTransactions = usePaymentTransactions(workspaceId)
@@ -53,6 +57,14 @@ export function usePartnerAccountStatement(
             : [],
         [partnerId, purchaseOrders]
     )
+    const partnerSalesOrderReturns = useMemo(() => {
+        const orderIds = new Set(partnerSalesOrders.map((order) => order.id))
+        return salesOrderReturns.filter((orderReturn) => orderIds.has(orderReturn.orderId))
+    }, [partnerSalesOrders, salesOrderReturns])
+    const partnerSalesOrderReturnItems = useMemo(() => {
+        const returnIds = new Set(partnerSalesOrderReturns.map((orderReturn) => orderReturn.id))
+        return salesOrderReturnItems.filter((item) => returnIds.has(item.returnId))
+    }, [partnerSalesOrderReturns, salesOrderReturnItems])
     const partnerLoans = useMemo(
         () => partnerId
             ? loans.filter((loan) => loan.linkedPartyType === 'business_partner' && loan.linkedPartyId === partnerId)
@@ -140,6 +152,8 @@ export function usePartnerAccountStatement(
         return {
             period,
             salesOrders: partnerSalesOrders,
+            salesOrderReturns: partnerSalesOrderReturns,
+            salesOrderReturnItems: partnerSalesOrderReturnItems,
             purchaseOrders: partnerPurchaseOrders,
             statementOrders: allOrders,
             loans: partnerLoans,
@@ -154,7 +168,7 @@ export function usePartnerAccountStatement(
             deliveryShipmentReferences,
             deliverySettlementReferences
         }
-    }, [deliverySettlementReferences, deliveryShipmentReferences, loanPayments, merchantDeliveryEntries, partner, partnerLoans, partnerPurchaseOrders, partnerSalesOrders, period, settlementTransactions])
+    }, [deliverySettlementReferences, deliveryShipmentReferences, loanPayments, merchantDeliveryEntries, partner, partnerLoans, partnerPurchaseOrders, partnerSalesOrderReturnItems, partnerSalesOrderReturns, partnerSalesOrders, period, settlementTransactions])
 
     return {
         partner,

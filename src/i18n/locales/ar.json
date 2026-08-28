@@ -4095,6 +4095,13 @@
             "debit": "مدين",
             "credit": "دائن",
             "balance": "الرصيد",
+            "salesOrderReturn": "مرتجع أمر بيع",
+            "item": "الصنف",
+            "quantity": "الكمية",
+            "settingsTitle": "إعدادات كشف الحساب",
+            "showOrderItems": "إظهار أصناف الطلبات والكميات",
+            "showOrderItemsDescription": "وسّع أوامر البيع والمرتجعات إلى صفوف على مستوى الصنف في كشف الحساب وطباعته.",
+            "agentOrderItemsRequired": "تعرض حسابات مبيعات الوكلاء المبيعات والمرتجعات مفصلة حسب الصنف دائماً.",
             "sourceViewUnavailable": "لا تتوفر صفحة عرض للمصدر",
             "continued": "(يتبع)",
             "openingBalance": "الرصيد الافتتاحي",
@@ -4108,8 +4115,11 @@
             "balanceNote": "يزيد المدين المبلغ المستحق لنا من الشريك، ويخفضه الدائن. تُحتفظ كل عملة بدفتر مستقل.",
             "descriptions": {
                 "salesOrder": "طلب بيع",
+                "salesOrderReturn": "مرتجع أمر بيع",
                 "purchaseOrder": "طلب شراء",
                 "paymentReceived": "دفعة مستلمة",
+                "advancePaymentReceived": "دفعة مقدمة مستلمة",
+                "orderLoanDownPaymentReceived": "دفعة أولى مستلمة لقرض الطلب",
                 "paymentMade": "دفعة مدفوعة",
                 "directReceipt": "استلام مباشر",
                 "directPayment": "دفع مباشر",
@@ -4252,6 +4262,8 @@
             "plateNumber": "رقم اللوحة",
             "courierDeliveryFee": "أجرة توصيل المندوب",
             "courierDeliveryFeeHint": "يحتفظ المندوب بهذا المبلغ عن كل شحنة مُسلّمة، ويُخصم من تسليم النقد المتوقع.",
+            "salesAccount": "حساب مبيعات الوكيل",
+            "salesAccountHint": "السماح للموظفين بإنشاء مبيعات باسم هذا الوكيل دون ربطه بحساب مستخدم في مساحة العمل.",
             "linkedUser": "المستخدم المرتبط",
             "noLinkedUser": "غير مرتبط",
             "alreadyLinked": "مرتبط بالفعل",
@@ -6950,6 +6962,15 @@
             "saveFailed": "تعذر حفظ سجل التأجير.",
             "vehicleYearCorrected": "تم تصحيح سنة السيارة"
         }
+    },
+    "agentSalesAccounts": {
+        "salesAccount": "حساب المبيعات",
+        "workspaceAccount": "حساب مساحة العمل",
+        "sellingAgent": "البيع باسم الوكيل",
+        "salesAccountOrderHint": "اختر وكيلاً مفعلاً لتسجيل هذا الطلب ضمن حسابه. لا يحتاج الوكيل إلى مستخدم مرتبط أو عميل إضافي.",
+        "salesAccountPosHint": "اختر وكيلاً مفعلاً لإنشاء هذا الطلب السريع ضمن حسابه.",
+        "notEnabled": "حسابات مبيعات الوكلاء غير مفعلة لمساحة العمل هذه.",
+        "unavailable": "الوكيل المحدد ليس لديه حساب مبيعات نشط."
     },
     "salesAgentCommissions": {
         "title": "عمولات مندوبي المبيعات",

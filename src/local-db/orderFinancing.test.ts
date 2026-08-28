@@ -50,6 +50,7 @@ let recordLoanPayment: typeof import('./hooks').recordLoanPayment
 let buildPaymentObligations: typeof import('./payments').buildPaymentObligations
 let getRemainingPaymentTransactions: typeof import('./payments').getRemainingPaymentTransactions
 let reversePaymentTransaction: typeof import('./payments').reversePaymentTransaction
+let synchronizeOrderPaymentReferences: typeof import('./payments').synchronizeOrderPaymentReferences
 
 function installBrowserStorage() {
     const rows = new Map<string, string>()
@@ -371,6 +372,7 @@ describe('order-linked financing', () => {
         buildPaymentObligations = payments.buildPaymentObligations
         getRemainingPaymentTransactions = payments.getRemainingPaymentTransactions
         reversePaymentTransaction = payments.reversePaymentTransaction
+        synchronizeOrderPaymentReferences = payments.synchronizeOrderPaymentReferences
     })
 
     beforeEach(async () => {
@@ -438,6 +440,105 @@ describe('order-linked financing', () => {
                 amount: 100
             })
         ])
+    })
+
+    it('replaces a provisional quick-order payment reference with the final sales-order number', async () => {
+        const orderId = crypto.randomUUID()
+        await db.payment_transactions.put({
+            id: crypto.randomUUID(),
+            workspaceId: WORKSPACE_ID,
+            sourceModule: 'orders',
+            sourceType: 'sales_order',
+            sourceRecordId: orderId,
+            sourceSubrecordId: null,
+            direction: 'incoming',
+            amount: 100,
+            currency: 'iqd',
+            paymentMethod: 'cash',
+            paidAt: '2026-08-29T10:00:00.000Z',
+            counterpartyName: 'Quick-order customer',
+            referenceLabel: 'SO-PENDING-CAADDE41-8CB5-44AF-AC40-7F5A0B7E8670',
+            note: null,
+            createdBy: null,
+            reversalOfTransactionId: null,
+            metadata: { orderType: 'sales' },
+            createdAt: '2026-08-29T10:00:00.000Z',
+            updatedAt: '2026-08-29T10:00:00.000Z',
+            syncStatus: 'synced',
+            lastSyncedAt: '2026-08-29T10:00:00.000Z',
+            version: 1,
+            isDeleted: false
+        })
+
+        await synchronizeOrderPaymentReferences(WORKSPACE_ID, 'sales', orderId, 'SO-2026-00100')
+
+        const [payment] = await db.payment_transactions.where('sourceRecordId').equals(orderId).toArray()
+        expect(payment).toMatchObject({
+            referenceLabel: 'SO-2026-00100',
+            version: 2
+        })
+    })
+
+    it('rewrites a queued quick-order payment payload before offline sync can replay it', async () => {
+        writeWorkspaceModeSnapshot({ workspaceId: WORKSPACE_ID, dataMode: 'hybrid' })
+        const orderId = crypto.randomUUID()
+        const paymentId = crypto.randomUUID()
+        const provisionalReference = 'SO-PENDING-CAADDE41-8CB5-44AF-AC40-7F5A0B7E8670'
+        await db.payment_transactions.put({
+            id: paymentId,
+            workspaceId: WORKSPACE_ID,
+            sourceModule: 'orders',
+            sourceType: 'sales_order',
+            sourceRecordId: orderId,
+            sourceSubrecordId: null,
+            direction: 'incoming',
+            amount: 100,
+            currency: 'iqd',
+            paymentMethod: 'cash',
+            paidAt: '2026-08-29T10:00:00.000Z',
+            counterpartyName: 'Quick-order customer',
+            referenceLabel: provisionalReference,
+            note: null,
+            createdBy: null,
+            reversalOfTransactionId: null,
+            metadata: { orderType: 'sales' },
+            createdAt: '2026-08-29T10:00:00.000Z',
+            updatedAt: '2026-08-29T10:00:00.000Z',
+            syncStatus: 'pending',
+            lastSyncedAt: null,
+            version: 1,
+            isDeleted: false
+        })
+        await db.offline_mutations.add({
+            id: crypto.randomUUID(),
+            workspaceId: WORKSPACE_ID,
+            entityType: 'payment_transactions',
+            entityId: paymentId,
+            operation: 'create',
+            payload: {
+                id: paymentId,
+                sourceRecordId: orderId,
+                sourceType: 'sales_order',
+                referenceLabel: provisionalReference,
+                version: 1
+            },
+            createdAt: '2026-08-29T10:00:00.000Z',
+            status: 'pending'
+        })
+
+        await synchronizeOrderPaymentReferences(
+            WORKSPACE_ID,
+            'sales',
+            orderId,
+            'SO-2026-00101',
+            { deferRemoteSync: true }
+        )
+
+        const [mutation] = await db.offline_mutations.where('entityId').equals(paymentId).toArray()
+        expect(mutation?.payload).toMatchObject({
+            referenceLabel: 'SO-2026-00101',
+            version: 2
+        })
     })
 
     it('completes quick-order style financed sales without falsely settling them', async () => {

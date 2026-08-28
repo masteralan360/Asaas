@@ -2,6 +2,8 @@ import type {
     DeliveryLedgerEntry,
     Loan,
     LoanPayment,
+    OrderReturn,
+    OrderReturnItem,
     PaymentTransaction,
     PurchaseOrder,
     SalesOrder
@@ -22,7 +24,15 @@ export type PartnerAccountStatementPeriod = {
  */
 export type PartnerAccountStatementData = {
     period: PartnerAccountStatementPeriod
+    /**
+     * Expands sales orders and their returns into product-level rows. This is
+     * required for agent sales accounts, while ordinary partner statements
+     * keep the historical one-row-per-document presentation by default.
+     */
+    itemizeSalesOrders?: boolean
     salesOrders: SalesOrder[]
+    salesOrderReturns?: OrderReturn[]
+    salesOrderReturnItems?: OrderReturnItem[]
     purchaseOrders: PurchaseOrder[]
     statementOrders?: StatementOrder[]
     loans?: Loan[]
@@ -37,6 +47,7 @@ export type PartnerAccountStatementData = {
 
 export type PartnerAccountStatementEntryKind =
     | 'sales_order'
+    | 'sales_order_return'
     | 'purchase_order'
     | 'incoming_payment'
     | 'outgoing_payment'
@@ -47,8 +58,11 @@ export type PartnerAccountStatementEntryKind =
 
 export type PartnerAccountStatementEntryDescriptionKey =
     | 'salesOrder'
+    | 'salesOrderReturn'
     | 'purchaseOrder'
     | 'paymentReceived'
+    | 'advancePaymentReceived'
+    | 'orderLoanDownPaymentReceived'
     | 'paymentMade'
     | 'directReceipt'
     | 'directPayment'
@@ -87,6 +101,10 @@ export type PartnerAccountStatementEntry = {
     note?: string | null
     /** A persisted return-reason code or custom return reason, localized only when displayed. */
     returnReason?: string | null
+    /** Product line information for sales and return activity. */
+    itemName?: string | null
+    quantity?: number | null
+    unit?: string | null
     currency: string
     /** Positive movements increase the amount due from the partner. */
     delta: number
@@ -188,7 +206,27 @@ function isGeneratedReversalNote(note: string | null | undefined) {
     return /^Reversal of\s+.+$/i.test(note?.trim() || '')
 }
 
-function paymentStatementPresentation(transaction: PaymentTransaction): {
+function isOrderLoanDownPayment(transaction: PaymentTransaction) {
+    return transaction.sourceType === 'sales_order'
+        && transaction.direction === 'incoming'
+        && (metadataFlag(transaction.metadata, 'isDownPayment') || metadataFlag(transaction.metadata, 'isFinancingInitialPayment'))
+}
+
+function isSalesOrderAdvancePayment(transaction: PaymentTransaction, salesOrder?: SalesOrder) {
+    if (transaction.sourceType !== 'sales_order' || transaction.direction !== 'incoming' || !salesOrder) {
+        return false
+    }
+
+    // A payment against an uncompleted order is a customer advance even when
+    // the eventual completion timestamp has not been written yet.
+    if (salesOrder.status !== 'completed') return true
+
+    const paidAt = eventDate(transaction.paidAt || transaction.createdAt)
+    const completedAt = eventDate(salesOrder.actualDeliveryDate)
+    return Boolean(paidAt && completedAt && paidAt.getTime() < completedAt.getTime())
+}
+
+function paymentStatementPresentation(transaction: PaymentTransaction, salesOrder?: SalesOrder): {
     description: string
     descriptionKey: PartnerAccountStatementEntryDescriptionKey
     note: string | null
@@ -214,6 +252,22 @@ function paymentStatementPresentation(transaction: PaymentTransaction): {
             description: 'Payment reversal',
             descriptionKey: 'paymentReversal',
             note: isGeneratedReversalNote(note) ? null : note,
+            returnReason: null
+        }
+    }
+    if (isOrderLoanDownPayment(transaction)) {
+        return {
+            description: 'Order loan down payment received',
+            descriptionKey: 'orderLoanDownPaymentReceived',
+            note,
+            returnReason: null
+        }
+    }
+    if (isSalesOrderAdvancePayment(transaction, salesOrder)) {
+        return {
+            description: 'Advance payment received',
+            descriptionKey: 'advancePaymentReceived',
+            note,
             returnReason: null
         }
     }
@@ -243,9 +297,33 @@ function loanPaymentStatementPresentation(
     }
 }
 
+function roundStatementAmount(amount: number) {
+    return Math.round((amount + Number.EPSILON) * 1_000_000) / 1_000_000
+}
+
+function originalSalesOrderAmount(order: SalesOrder) {
+    const storedOriginal = Math.abs(Number(order.originalTotalAmount || 0))
+    if (storedOriginal > 0) return storedOriginal
+    return Math.abs(Number(order.total || 0)) + Math.abs(Number(order.returnedAmount || 0))
+}
+
 function createOrderEntries(data: PartnerAccountStatementData): PartnerAccountStatementEntry[] {
     const sourceOrders = data.statementOrders || [...data.salesOrders, ...data.purchaseOrders]
     const loanIds = new Set((data.loans || []).map((loan) => loan.id))
+    const returnsByOrderId = new Map<string, OrderReturn[]>()
+    const returnItemsByReturnId = new Map<string, OrderReturnItem[]>()
+    for (const orderReturn of data.salesOrderReturns || []) {
+        if (orderReturn.isDeleted || orderReturn.status !== 'posted') continue
+        const rows = returnsByOrderId.get(orderReturn.orderId) || []
+        rows.push(orderReturn)
+        returnsByOrderId.set(orderReturn.orderId, rows)
+    }
+    for (const returnItem of data.salesOrderReturnItems || []) {
+        if (returnItem.isDeleted) continue
+        const rows = returnItemsByReturnId.get(returnItem.returnId) || []
+        rows.push(returnItem)
+        returnItemsByReturnId.set(returnItem.returnId, rows)
+    }
     const entries: PartnerAccountStatementEntry[] = []
 
     for (const order of sourceOrders) {
@@ -254,30 +332,138 @@ function createOrderEntries(data: PartnerAccountStatementData): PartnerAccountSt
         // truth. Do not post both rows into the partner account.
         if (order.linkedLoanId && loanIds.has(order.linkedLoanId)) continue
         const sales = isSalesOrder(order)
-        entries.push({
-            id: `${sales ? 'sales' : 'purchase'}-order:${order.id}`,
-            date: order.createdAt,
-            reference: order.orderNumber,
-            kind: sales ? 'sales_order' : 'purchase_order',
-            description: sales ? 'Sales order' : 'Purchase order',
-            descriptionKey: sales ? 'salesOrder' : 'purchaseOrder',
-            note: order.notes,
-            currency: order.currency,
-            delta: sales ? Math.abs(Number(order.total || 0)) : -Math.abs(Number(order.total || 0)),
-            source: { recordType: 'order', recordId: order.id }
-        })
+        if (!sales) {
+            entries.push({
+                id: `purchase-order:${order.id}`,
+                date: order.createdAt,
+                reference: order.orderNumber,
+                kind: 'purchase_order',
+                description: 'Purchase order',
+                descriptionKey: 'purchaseOrder',
+                note: order.notes,
+                currency: order.currency,
+                delta: -Math.abs(Number(order.total || 0)),
+                source: { recordType: 'order', recordId: order.id }
+            })
+            continue
+        }
+
+        // Agent sales accounts must show each sold/returned product. Ordinary
+        // business-partner statements retain their original document-level
+        // presentation unless the user explicitly enables item detail.
+        const salesOrder = order as SalesOrder
+        const saleItems = (salesOrder.items || []).filter((item) => Number(item.quantity || 0) > 0)
+        const shouldItemizeSalesOrders = data.itemizeSalesOrders === true
+
+        if (shouldItemizeSalesOrders && saleItems.length > 0) {
+            const saleTotal = originalSalesOrderAmount(salesOrder)
+            const totalLineValue = saleItems.reduce((sum, item) => sum + Math.max(0, Number(item.lineTotal || 0)), 0)
+            let remainingSaleValue = saleTotal
+            saleItems.forEach((item, index) => {
+                const isLastItem = index === saleItems.length - 1
+                const weightedAmount = totalLineValue > 0
+                    ? saleTotal * Math.max(0, Number(item.lineTotal || 0)) / totalLineValue
+                    : saleTotal / saleItems.length
+                const lineAmount = isLastItem ? remainingSaleValue : roundStatementAmount(weightedAmount)
+                remainingSaleValue = roundStatementAmount(remainingSaleValue - lineAmount)
+                entries.push({
+                    id: `sales-order:${salesOrder.id}:item:${item.id}`,
+                    date: salesOrder.createdAt,
+                    reference: salesOrder.orderNumber,
+                    kind: 'sales_order',
+                    description: 'Sales order',
+                    descriptionKey: 'salesOrder',
+                    itemName: item.productName,
+                    quantity: Number(item.quantity || 0),
+                    unit: item.unit || null,
+                    note: item.note || salesOrder.notes,
+                    currency: salesOrder.currency,
+                    delta: Math.abs(lineAmount),
+                    source: { recordType: 'order', recordId: salesOrder.id }
+                })
+            })
+        } else {
+            entries.push({
+                id: `sales-order:${salesOrder.id}`,
+                date: salesOrder.createdAt,
+                reference: salesOrder.orderNumber,
+                kind: 'sales_order',
+                description: 'Sales order',
+                descriptionKey: 'salesOrder',
+                note: salesOrder.notes,
+                currency: salesOrder.currency,
+                delta: shouldItemizeSalesOrders
+                    ? originalSalesOrderAmount(salesOrder)
+                    : Math.abs(Number(salesOrder.total || 0)),
+                source: { recordType: 'order', recordId: salesOrder.id }
+            })
+        }
+
+        // The normal account statement predates itemized agent sales accounts.
+        // Keep it byte-for-byte equivalent in accounting terms: one sales
+        // order row at the current order total, without standalone returns.
+        if (!shouldItemizeSalesOrders) continue
+
+        const itemsByOrderItemId = new Map((salesOrder.items || []).map((item) => [item.id, item]))
+        for (const orderReturn of returnsByOrderId.get(salesOrder.id) || []) {
+            const returnItems = returnItemsByReturnId.get(orderReturn.id) || []
+            if (returnItems.length === 0) {
+                entries.push({
+                    id: `sales-order-return:${orderReturn.id}`,
+                    date: orderReturn.returnedAt || orderReturn.createdAt,
+                    reference: `${salesOrder.orderNumber} · ${orderReturn.id}`,
+                    kind: 'sales_order_return',
+                    description: 'Sales order return',
+                    descriptionKey: 'salesOrderReturn',
+                    returnReason: orderReturn.reason,
+                    currency: salesOrder.currency,
+                    delta: -Math.abs(Number(orderReturn.refundAmount || 0)),
+                    source: { recordType: 'order', recordId: salesOrder.id }
+                })
+                continue
+            }
+
+            for (const returnItem of returnItems) {
+                const sourceItem = itemsByOrderItemId.get(returnItem.orderItemId)
+                entries.push({
+                    id: `sales-order-return:${orderReturn.id}:item:${returnItem.id}`,
+                    date: orderReturn.returnedAt || orderReturn.createdAt,
+                    reference: `${salesOrder.orderNumber} · ${orderReturn.id}`,
+                    kind: 'sales_order_return',
+                    description: 'Sales order return',
+                    descriptionKey: 'salesOrderReturn',
+                    itemName: sourceItem?.productName || null,
+                    quantity: -Math.abs(Number(returnItem.quantity || 0)),
+                    unit: sourceItem?.unit || null,
+                    returnReason: orderReturn.reason,
+                    currency: salesOrder.currency,
+                    delta: -Math.abs(Number(returnItem.refundAmount || 0)),
+                    source: { recordType: 'order', recordId: salesOrder.id }
+                })
+            }
+        }
     }
 
     return entries
 }
 
-function createPaymentEntries(transactions: PaymentTransaction[] = []): PartnerAccountStatementEntry[] {
-    return transactions
+function createPaymentEntries(data: PartnerAccountStatementData): PartnerAccountStatementEntry[] {
+    const sourceOrders = data.statementOrders || data.salesOrders
+    const salesOrdersById = new Map(sourceOrders
+        .filter(isSalesOrder)
+        .map((order) => [order.id, order]))
+
+    return (data.settlementTransactions || [])
         .filter((transaction) => !transaction.isDeleted)
         .map((transaction) => {
             const rawAmount = Number(transaction.amount || 0)
             const multiplier = transaction.direction === 'incoming' ? -1 : 1
-            const presentation = paymentStatementPresentation(transaction)
+            const presentation = paymentStatementPresentation(
+                transaction,
+                transaction.sourceType === 'sales_order'
+                    ? salesOrdersById.get(transaction.sourceRecordId)
+                    : undefined
+            )
             return {
                 id: `payment:${transaction.id}`,
                 date: transaction.paidAt || transaction.createdAt,
@@ -405,7 +591,7 @@ function createDeliveryEntries(data: PartnerAccountStatementData): PartnerAccoun
 export function buildPartnerAccountStatementLedger(data: PartnerAccountStatementData): PartnerAccountStatementCurrencyLedger[] {
     const entries = [
         ...createOrderEntries(data),
-        ...createPaymentEntries(data.settlementTransactions),
+        ...createPaymentEntries(data),
         ...createLoanEntries(data),
         ...createDeliveryEntries(data)
     ].filter((entry) => Math.abs(entry.delta) > 0.000001)

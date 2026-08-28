@@ -34,6 +34,7 @@ import type {
     LoanInstallment,
     LoanPaymentMethod,
     OrderInstallment,
+    OrderType,
     PaymentObligation,
     PaymentTransaction,
     PaymentTransactionDirection,
@@ -535,6 +536,7 @@ async function hydratePaymentSourceTables(workspaceId: string) {
         fetchTableFromSupabase('employees', db.employees, workspaceId, { includeDeleted: true })
     ])
 
+    await repairPendingOrderPaymentReferences(workspaceId)
     await ensureManualLoanOriginationTransactions(workspaceId)
 }
 
@@ -1390,6 +1392,133 @@ export async function appendPaymentTransaction(
 
         throw normalizeSupabaseActionError(error)
     }
+}
+
+function isProvisionalOrderReference(referenceLabel: string) {
+    return /^(?:SO|PO)-PENDING-/i.test(referenceLabel)
+}
+
+/**
+ * Replaces a temporary cloud order number on every payment belonging to that
+ * order. Payment timestamps and accounting amounts are deliberately left
+ * untouched; this only repairs the human-facing document reference.
+ */
+export async function synchronizeOrderPaymentReferences(
+    workspaceId: string,
+    orderType: Extract<OrderType, 'sales' | 'purchase'>,
+    orderId: string,
+    orderNumber: string | null | undefined,
+    options?: { deferRemoteSync?: boolean }
+) {
+    const referenceLabel = orderNumber?.trim()
+    if (!referenceLabel || isProvisionalOrderReference(referenceLabel)) return []
+
+    const sourceType: PaymentTransaction['sourceType'] = orderType === 'sales'
+        ? 'sales_order'
+        : 'purchase_order'
+    const currentRows = await db.payment_transactions
+        .where('[workspaceId+sourceType+sourceRecordId]')
+        .equals([workspaceId, sourceType, orderId])
+        .toArray()
+    const rowsToUpdate = currentRows.filter((row) => !row.isDeleted && row.referenceLabel !== referenceLabel)
+    if (rowsToUpdate.length === 0) return []
+
+    const now = new Date().toISOString()
+    const updatedRows = rowsToUpdate.map((row) => ({
+        ...row,
+        referenceLabel,
+        updatedAt: now,
+        version: row.version + 1,
+        ...getSyncMetadata(workspaceId, now)
+    }))
+
+    const updatedRowsById = new Map(updatedRows.map((row) => [row.id, row]))
+    const pendingPaymentMutations = await db.offline_mutations
+        .where('workspaceId')
+        .equals(workspaceId)
+        .filter((mutation) => (
+            mutation.entityType === 'payment_transactions'
+            && mutation.status !== 'synced'
+            && updatedRowsById.has(mutation.entityId)
+        ))
+        .toArray()
+
+    await db.transaction('rw', [db.payment_transactions, db.offline_mutations], async () => {
+        await db.payment_transactions.bulkPut(updatedRows)
+        await Promise.all(pendingPaymentMutations.map((mutation) => {
+            const transaction = updatedRowsById.get(mutation.entityId)
+            if (!transaction) return Promise.resolve()
+
+            return db.offline_mutations.update(mutation.id, {
+                payload: {
+                    ...mutation.payload,
+                    referenceLabel,
+                    updatedAt: transaction.updatedAt,
+                    version: transaction.version,
+                    syncStatus: transaction.syncStatus,
+                    lastSyncedAt: transaction.lastSyncedAt
+                }
+            })
+        }))
+    })
+
+    if (!shouldUseCloudBusinessData(workspaceId)) return updatedRows
+    if (options?.deferRemoteSync && pendingPaymentMutations.length > 0) return updatedRows
+
+    const queueUpdates = async () => {
+        await Promise.all(updatedRows.map((row) => addToOfflineMutations(
+            'payment_transactions',
+            row.id,
+            'update',
+            row as unknown as Record<string, unknown>,
+            workspaceId
+        )))
+    }
+
+    if (!isOnline()) {
+        await queueUpdates()
+        return
+    }
+
+    try {
+        const client = getSupabaseClientForTable('payment_transactions')
+        const payload = updatedRows.map((row) => sanitizeSyncPayload(row as unknown as Record<string, unknown>))
+        const { error } = await runMutation('payment_transactions.sync_order_reference', () =>
+            client.from('payment_transactions').upsert(payload, { onConflict: 'id' })
+        )
+        if (error) throw error
+
+        const syncedAt = new Date().toISOString()
+        await db.payment_transactions.bulkPut(updatedRows.map((row) => ({
+            ...row,
+            syncStatus: 'synced' as const,
+            lastSyncedAt: syncedAt
+        })))
+    } catch (error) {
+        // A document-label correction must never undo a successfully posted
+        // payment or order. Keep it queued until a later sync can repair it.
+        console.error('[Payments] Failed to synchronize order payment references:', error)
+        await queueUpdates()
+    }
+
+    return updatedRows
+}
+
+/** Repairs older payments that were saved before the server issued an order number. */
+export async function repairPendingOrderPaymentReferences(workspaceId: string) {
+    const [salesOrders, purchaseOrders] = await Promise.all([
+        db.sales_orders.where('workspaceId').equals(workspaceId).toArray(),
+        db.purchase_orders.where('workspaceId').equals(workspaceId).toArray()
+    ])
+
+    await Promise.all([
+        ...salesOrders
+            .filter((order) => !order.isDeleted && !isProvisionalOrderReference(order.orderNumber || ''))
+            .map((order) => synchronizeOrderPaymentReferences(workspaceId, 'sales', order.id, order.orderNumber)),
+        ...purchaseOrders
+            .filter((order) => !order.isDeleted && !isProvisionalOrderReference(order.orderNumber || ''))
+            .map((order) => synchronizeOrderPaymentReferences(workspaceId, 'purchase', order.id, order.orderNumber))
+    ])
 }
 
 function getBeauty2PaymentDate(issueDate?: string | null) {

@@ -29,6 +29,7 @@ import {
     findPartnerProductPriceBookItem,
     getPrimaryStorageFromList,
     updateSalesOrder,
+    useAgents,
     useBusinessPartners,
     useInventory,
     useDiscountPriceResolver,
@@ -223,8 +224,11 @@ export function SalesOrderFormPage({
     const storages = useStorages(workspaceId)
     const { isDynamicUnit, options: unitOptions } = useUnitRegistry(workspaceId)
     const customerPartners = useBusinessPartners(workspaceId, { roles: ['customer'] })
+    const agentPartners = useBusinessPartners(workspaceId, { roles: ['agent'], includeAgentRoles: true })
+    const agents = useAgents(workspaceId)
     const editingOrder = useSalesOrder(editingOrderId)
     const salesAgentCommissionsEnabled = hasFeature('sales_agent_commissions')
+    const agentSalesAccountsEnabled = hasFeature('agent_sales_accounts')
     const canAssignSalesAgents = salesAgentCommissionsEnabled
         && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.assignOrders')
     const defaultStorageId = getPrimaryStorageFromList(storages)?.id || ''
@@ -268,6 +272,7 @@ export function SalesOrderFormPage({
     const [productsViewItemIndex, setProductsViewItemIndex] = useState<number | null>(null)
     const [customerId, setCustomerId] = useState(editingOrder?.businessPartnerId || editingOrder?.customerId || '')
     const [customerSearch, setCustomerSearch] = useState(editingOrder?.customerName || '')
+    const [salesAccountAgentId, setSalesAccountAgentId] = useState(editingOrder?.salesAccountAgentId || '')
     const [isCustomerPickerOpen, setIsCustomerPickerOpen] = useState(false)
     const [sourceStorageId, setSourceStorageId] = useState(editingOrder?.sourceStorageId || defaultStorageId)
     const [currency, setCurrency] = useState<CurrencyCode>(editingOrder?.currency || features.default_currency)
@@ -354,6 +359,7 @@ export function SalesOrderFormPage({
         if (!editingOrder) return
         setCustomerId(editingOrder.businessPartnerId || editingOrder.customerId)
         setCustomerSearch(editingOrder.customerName)
+        setSalesAccountAgentId(editingOrder.salesAccountAgentId || '')
         setSourceStorageId(editingOrder.sourceStorageId || defaultStorageId)
         setCurrency(editingOrder.currency)
         setOrderAdjustments(normalizeOrderAdjustments(editingOrder.orderAdjustments, editingOrder.currency))
@@ -424,7 +430,19 @@ export function SalesOrderFormPage({
         return rows
     }, [inventory])
 
-    const selectedCustomer = customerPartners.find((entry) => entry.id === customerId)
+    const selectedCustomerFromPicker = customerPartners.find((entry) => entry.id === customerId)
+    const selectedSalesAccount = useMemo(() => {
+        const agent = agents.find((candidate) => (
+            candidate.id === salesAccountAgentId
+            && !candidate.isDeleted
+            && candidate.status === 'active'
+            && candidate.salesAccountEnabled
+        ))
+        if (!agent) return null
+        const partner = agentPartners.find((candidate) => candidate.id === agent.businessPartnerId)
+        return partner ? { agent, partner } : null
+    }, [agentPartners, agents, salesAccountAgentId])
+    const selectedCustomer = selectedSalesAccount?.partner ?? selectedCustomerFromPicker
     const isCustomerSelectionRequired = !editingOrderId && !selectedCustomer
     const inventoryByStorageProduct = useMemo(() => new Map(
         inventory.map((row) => [`${row.storageId}:${row.productId}`, row.quantity])
@@ -593,6 +611,7 @@ export function SalesOrderFormPage({
     }, [getItemCostDetails])
 
     const selectCustomerPartner = useCallback((partner: Pick<BusinessPartner, 'id' | 'name' | 'defaultCurrency' | 'priceBookId'>) => {
+        setSalesAccountAgentId('')
         const nextCurrency = partner.defaultCurrency || currency
         setCustomerSearch(partner.name)
         setCustomerId(partner.id)
@@ -602,6 +621,33 @@ export function SalesOrderFormPage({
             : item
         ))
     }, [changeOrderCurrency, currency, resolveItemPricing])
+
+    const selectSalesAccountAgent = useCallback((agentId: string) => {
+        if (!agentId) {
+            setSalesAccountAgentId('')
+            setCustomerId('')
+            setCustomerSearch('')
+            return
+        }
+        const agent = agents.find((candidate) => (
+            candidate.id === agentId
+            && !candidate.isDeleted
+            && candidate.status === 'active'
+            && candidate.salesAccountEnabled
+        ))
+        const partner = agent && agentPartners.find((candidate) => candidate.id === agent.businessPartnerId)
+        if (!agent || !partner) return
+
+        setSalesAccountAgentId(agent.id)
+        const nextCurrency = partner.defaultCurrency || currency
+        setCustomerSearch(partner.name)
+        setCustomerId(partner.id)
+        changeOrderCurrency(nextCurrency)
+        setItems((current) => current.map((item) => item.productId
+            ? { ...item, ...resolveItemPricing(item.productId, item.batchId, nextCurrency, partner) }
+            : item
+        ))
+    }, [agentPartners, agents, changeOrderCurrency, currency, resolveItemPricing])
 
     const handleStorageMissing = useCallback((index: number) => {
         setHighlightedStorageIndex(index)
@@ -736,7 +782,7 @@ export function SalesOrderFormPage({
         if (priceBooksEnabled && !isPriceBookCatalogReady) return
         if (!user?.workspaceId || isSaving) return
 
-        const customer = customerPartners.find((entry) => entry.id === customerId)
+        const customer = selectedCustomer
         if (!customer) {
             toast({ title: t('common.error') || 'Error', description: t('orders.noCustomers') || 'Add customers before creating orders.', variant: 'destructive' })
             return
@@ -886,6 +932,9 @@ export function SalesOrderFormPage({
                 businessPartnerId: customer.id,
                 customerId: customer.id,
                 customerName: customer.name,
+                ...(agentSalesAccountsEnabled
+                    ? { salesAccountAgentId: selectedSalesAccount?.agent.id ?? null }
+                    : {}),
                 sourceStorageId: commonStorageId === SERVICES_VIRTUAL_STORAGE_ID ? null : commonStorageId,
                 items: orderItems,
                 subtotal,
@@ -962,9 +1011,14 @@ export function SalesOrderFormPage({
             }
             onCreated?.(savedOrder.id)
         } catch (error: any) {
+            const message = error?.message === 'agent_sales_accounts_not_enabled'
+                ? t('agentSalesAccounts.notEnabled')
+                : error?.message === 'agent_sales_account_unavailable'
+                    ? t('agentSalesAccounts.unavailable')
+                    : error?.message || t('orders.form.errors.saveSalesFailed', { defaultValue: 'Failed to save sales order.' })
             toast({
                 title: t('common.error') || 'Error',
-                description: error?.message || t('orders.form.errors.saveSalesFailed', { defaultValue: 'Failed to save sales order.' }),
+                description: message,
                 variant: 'destructive'
             })
         } finally {
@@ -1018,38 +1072,83 @@ export function SalesOrderFormPage({
                             </CardHeader>
                             <CardContent>
                                 <div className="grid gap-4">
-                                    <div className="grid gap-2">
-                                        <Label>{t('orders.form.customer', { defaultValue: 'Customer' })} <span className="text-destructive">*</span></Label>
-                                        <div className="flex flex-col gap-2 md:flex-row md:items-center" data-tour-id="tutorial-order-partner-picker">
-                                            <PartnerAutocompleteInput
-                                                value={customerSearch}
-                                                onChange={(value) => {
-                                                    setCustomerSearch(value)
-                                                    setCustomerId('')
-                                                }}
-                                                onSelectPartner={(partner: BusinessPartner) => {
-                                                    selectCustomerPartner(partner)
-                                                }}
-                                                workspaceId={workspaceId}
-                                                roles={['customer']}
-                                                placeholder={t('orders.form.selectCustomer', { defaultValue: 'Select Customer' })}
-                                            />
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                className="w-full shrink-0 gap-2 md:w-auto"
-                                                onClick={() => setIsCustomerPickerOpen(true)}
+                                    {agentSalesAccountsEnabled ? (
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="sales-order-sales-account" className="flex items-center gap-2">
+                                                <Users className="h-4 w-4 text-muted-foreground" />
+                                                {t('agentSalesAccounts.salesAccount')}
+                                            </Label>
+                                            <Select
+                                                value={salesAccountAgentId || 'workspace'}
+                                                onValueChange={(value) => selectSalesAccountAgent(value === 'workspace' ? '' : value)}
+                                                disabled={isSaving}
                                             >
-                                                <Users className="h-4 w-4" />
-                                                {t('loans.selectParty', { defaultValue: 'Business Partner' })}
-                                            </Button>
+                                                <SelectTrigger id="sales-order-sales-account">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="workspace">
+                                                        {t('agentSalesAccounts.workspaceAccount')}
+                                                    </SelectItem>
+                                                    {agents
+                                                        .filter((agent) => !agent.isDeleted && agent.status === 'active' && agent.salesAccountEnabled)
+                                                        .map((agent) => {
+                                                            const partner = agentPartners.find((candidate) => candidate.id === agent.businessPartnerId)
+                                                            if (!partner) return null
+                                                            return (
+                                                                <SelectItem key={agent.id} value={agent.id}>
+                                                                    {partner.name}
+                                                                </SelectItem>
+                                                            )
+                                                        })}
+                                                </SelectContent>
+                                            </Select>
+                                            <p className="text-xs leading-5 text-muted-foreground">
+                                                {t('agentSalesAccounts.salesAccountOrderHint')}
+                                            </p>
                                         </div>
+                                    ) : null}
+                                    <div className="grid gap-2">
+                                        <Label>
+                                            {selectedSalesAccount
+                                                ? t('agentSalesAccounts.sellingAgent')
+                                                : t('orders.form.customer', { defaultValue: 'Customer' })}{' '}
+                                            <span className="text-destructive">*</span>
+                                        </Label>
+                                        {!selectedSalesAccount ? (
+                                            <div className="flex flex-col gap-2 md:flex-row md:items-center" data-tour-id="tutorial-order-partner-picker">
+                                                <PartnerAutocompleteInput
+                                                    value={customerSearch}
+                                                    onChange={(value) => {
+                                                        setCustomerSearch(value)
+                                                        setCustomerId('')
+                                                    }}
+                                                    onSelectPartner={(partner: BusinessPartner) => {
+                                                        selectCustomerPartner(partner)
+                                                    }}
+                                                    workspaceId={workspaceId}
+                                                    roles={['customer']}
+                                                    placeholder={t('orders.form.selectCustomer', { defaultValue: 'Select Customer' })}
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    className="w-full shrink-0 gap-2 md:w-auto"
+                                                    onClick={() => setIsCustomerPickerOpen(true)}
+                                                >
+                                                    <Users className="h-4 w-4" />
+                                                    {t('loans.selectParty', { defaultValue: 'Business Partner' })}
+                                                </Button>
+                                            </div>
+                                        ) : null}
                                         {customerId && selectedCustomer ? (
                                             <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
                                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                                     <div className="min-w-0">
                                                         <div className="text-[11px] font-bold uppercase tracking-wide text-primary">
-                                                            {t('customers.title', { defaultValue: 'Customer' })}
+                                                            {selectedSalesAccount
+                                                                ? t('agentSalesAccounts.sellingAgent')
+                                                                : t('customers.title', { defaultValue: 'Customer' })}
                                                         </div>
                                                         <div className="flex flex-wrap items-center gap-2">
                                                             <div className="text-sm font-semibold">{selectedCustomer.name}</div>
@@ -1060,19 +1159,21 @@ export function SalesOrderFormPage({
                                                             />
                                                         </div>
                                                     </div>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-8 shrink-0 px-2 text-muted-foreground"
-                                                        onClick={() => {
-                                                            setCustomerId('')
-                                                            setCustomerSearch('')
-                                                        }}
-                                                    >
-                                                        <X className="h-4 w-4" />
-                                                        {t('loans.clearParty', { defaultValue: 'Clear Link' })}
-                                                    </Button>
+                                                    {!selectedSalesAccount ? (
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-8 shrink-0 px-2 text-muted-foreground"
+                                                            onClick={() => {
+                                                                setCustomerId('')
+                                                                setCustomerSearch('')
+                                                            }}
+                                                        >
+                                                            <X className="h-4 w-4" />
+                                                            {t('loans.clearParty', { defaultValue: 'Clear Link' })}
+                                                        </Button>
+                                                    ) : null}
                                                 </div>
                                             </div>
                                         ) : null}

@@ -80,7 +80,7 @@ import type {
     Supplier,
     TravelAgencySale
 } from './models'
-import { appendPaymentTransaction } from './payments'
+import { appendPaymentTransaction, synchronizeOrderPaymentReferences } from './payments'
 
 export function isOrderFinancingMethod(method?: OrderPaymentMethod | null): method is 'loan' | 'installments' {
     return method === 'loan' || method === 'installments'
@@ -286,11 +286,22 @@ async function syncUpsertEntities(
         const table = (db as unknown as Record<OrderTableName, {
             update: (id: string, changes: Record<string, unknown>) => Promise<number>
         }>)[tableName as OrderTableName]
-        await Promise.all(entities.map((entity) => table.update(entity.id, {
-            ...(orderNumbers.has(entity.id) ? { orderNumber: orderNumbers.get(entity.id) } : {}),
-            syncStatus: 'synced',
-            lastSyncedAt: syncedAt
-        })))
+        await Promise.all(entities.map(async (entity) => {
+            const orderNumber = orderNumbers.get(entity.id)
+            await table.update(entity.id, {
+                ...(orderNumber ? { orderNumber } : {}),
+                syncStatus: 'synced',
+                lastSyncedAt: syncedAt
+            })
+            if (orderNumber) {
+                await synchronizeOrderPaymentReferences(
+                    workspaceId,
+                    tableName === 'sales_orders' ? 'sales' : 'purchase',
+                    entity.id,
+                    orderNumber
+                )
+            }
+        }))
     } catch (error) {
         console.error(`[Orders] Failed to sync ${tableName}:`, error)
 
@@ -1548,6 +1559,42 @@ function hasCachedSalesAgentCommissionFeature(workspaceId: string | undefined) {
     }>(workspaceId)?.features.sales_agent_commissions)
 }
 
+function hasCachedAgentSalesAccountsFeature(workspaceId: string | undefined) {
+    return Boolean(workspaceId && readWorkspaceCache<{
+        agent_sales_accounts?: boolean
+    }>(workspaceId)?.features.agent_sales_accounts)
+}
+
+async function resolveSalesAccountAgentCounterparty(
+    workspaceId: string,
+    agentId: string | null | undefined
+) {
+    const normalizedAgentId = typeof agentId === 'string' ? agentId.trim() : ''
+    if (!normalizedAgentId) return null
+
+    if (!hasCachedAgentSalesAccountsFeature(workspaceId)) {
+        throw new Error('agent_sales_accounts_not_enabled')
+    }
+
+    const agent = await db.agents.get(normalizedAgentId)
+    if (
+        !agent
+        || agent.workspaceId !== workspaceId
+        || agent.isDeleted
+        || agent.status !== 'active'
+        || !agent.salesAccountEnabled
+    ) {
+        throw new Error('agent_sales_account_unavailable')
+    }
+
+    const partner = await getBusinessPartnerByAnyId(agent.businessPartnerId)
+    if (!partner || partner.isDeleted || partner.mergedIntoBusinessPartnerId) {
+        throw new Error('agent_sales_account_unavailable')
+    }
+
+    return { agent, partner }
+}
+
 export function useSalesOrders(workspaceId: string | undefined, startDate?: string, endDate?: string) {
     const online = useNetworkStatus()
     const viewOwnScope = useViewOwnRecordScope('orders.view_own')
@@ -1660,6 +1707,30 @@ export function useSalesOrderReturns(orderId: string | undefined, workspaceId?: 
                 .then((rows) => rows.sort((left, right) => right.returnedAt.localeCompare(left.returnedAt)))
             : Promise.resolve([] as OrderReturn[]),
         [orderId]
+    )
+
+    useEffect(() => {
+        if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+            void fetchTableFromSupabase('order_returns', db.order_returns, workspaceId, { includeDeleted: true })
+            void fetchTableFromSupabase('order_return_items', db.order_return_items, workspaceId, { includeDeleted: true })
+        }
+    }, [online, workspaceId])
+
+    return returns ?? []
+}
+
+/** Loads posted returns across a workspace for derived account statements. */
+export function useSalesOrderReturnsForWorkspace(workspaceId: string | undefined) {
+    const online = useNetworkStatus()
+    const returns = useLiveQuery<OrderReturn[]>(
+        () => workspaceId
+            ? db.order_returns
+                .where('workspaceId')
+                .equals(workspaceId)
+                .and((item) => !item.isDeleted && item.status === 'posted')
+                .toArray()
+            : Promise.resolve([] as OrderReturn[]),
+        [workspaceId]
     )
 
     useEffect(() => {
@@ -2054,10 +2125,18 @@ export async function createSalesOrder(
     const now = new Date().toISOString()
     const orderNumber = await getInitialOrderNumber('sales_orders', workspaceId)
     const status = data.status || 'draft'
-    const counterparty = await normalizeSalesOrderCounterparty(data)
+    const salesAccount = await resolveSalesAccountAgentCounterparty(workspaceId, data.salesAccountAgentId)
+    const counterparty = salesAccount
+        ? await normalizeSalesOrderCounterparty({
+            businessPartnerId: salesAccount.partner.id,
+            customerId: salesAccount.partner.id,
+            customerName: salesAccount.partner.name
+        })
+        : await normalizeSalesOrderCounterparty(data)
     const paymentState = normalizeOrderPaymentState(data, now)
     const order = buildBaseEntity(workspaceId, {
         ...data,
+        salesAccountAgentId: salesAccount?.agent.id ?? null,
         ...paymentState,
         ...counterparty,
         orderNumber,
@@ -2167,11 +2246,25 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
         activePayments.reduce((sum, payment) => sum + payment.amount, 0),
         data.currency || existing.currency
     )
-    const counterparty = await normalizeSalesOrderCounterparty({
-        businessPartnerId: data.businessPartnerId ?? existing.businessPartnerId ?? null,
-        customerId: data.customerId ?? existing.businessPartnerId ?? existing.customerId,
-        customerName: data.customerName ?? existing.customerName
-    })
+    const salesAccountAgentIdWasProvided = Object.prototype.hasOwnProperty.call(data, 'salesAccountAgentId')
+    const salesAccountAgentId = salesAccountAgentIdWasProvided
+        ? data.salesAccountAgentId ?? null
+        : existing.salesAccountAgentId ?? null
+    const counterpartyWasChanged = data.businessPartnerId !== undefined || data.customerId !== undefined
+    const salesAccount = salesAccountAgentId && (salesAccountAgentIdWasProvided || counterpartyWasChanged)
+        ? await resolveSalesAccountAgentCounterparty(existing.workspaceId, salesAccountAgentId)
+        : null
+    const counterparty = salesAccount
+        ? await normalizeSalesOrderCounterparty({
+            businessPartnerId: salesAccount.partner.id,
+            customerId: salesAccount.partner.id,
+            customerName: salesAccount.partner.name
+        })
+        : await normalizeSalesOrderCounterparty({
+            businessPartnerId: data.businessPartnerId ?? existing.businessPartnerId ?? null,
+            customerId: data.customerId ?? existing.businessPartnerId ?? existing.customerId,
+            customerName: data.customerName ?? existing.customerName
+        })
     const paymentState = normalizeOrderPaymentState({
         total: data.total ?? existing.total,
         currency: data.currency ?? existing.currency,
@@ -2195,6 +2288,7 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
     const updated: SalesOrder = {
         ...existing,
         ...data,
+        salesAccountAgentId,
         ...(confirmedAdjustments.length > 0 ? { orderAdjustments: confirmedAdjustments } : {}),
         ...paymentState,
         ...counterparty,

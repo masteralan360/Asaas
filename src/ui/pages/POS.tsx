@@ -3253,6 +3253,7 @@ export function POS() {
                 businessPartnerId: checkout.customer.id,
                 customerId: checkout.customer.id,
                 customerName: checkout.customer.name,
+                salesAccountAgentId: checkout.salesAccountAgentId ?? null,
                 sourceStorageId: sourceStorageIds.length === 1 ? sourceStorageIds[0] : null,
                 items: orderItems,
                 subtotal,
@@ -4743,6 +4744,7 @@ export function POS() {
                 iqdPreference={features.iqd_display_preference}
                 loansEnabled={hasFeature('loans')}
                 installmentsEnabled={hasFeature('installments')}
+                agentSalesAccountsEnabled={hasFeature('agent_sales_accounts')}
                 isSubmitting={isLoading}
                 progressStage={quickOrderProgressStage}
                 onSubmit={handleQuickOrderSubmit}

@@ -1222,6 +1222,35 @@ export async function processMutationQueue(
               syncStatus: "synced",
               lastSyncedAt: syncedAt,
             });
+            const { synchronizeOrderPaymentReferences } = await import("@/local-db/payments");
+            const updatedPayments = await synchronizeOrderPaymentReferences(
+              workspaceId,
+              entityType === "sales_orders" ? "sales" : "purchase",
+              entityId,
+              orderNumber,
+              { deferRemoteSync: true },
+            );
+            const updatedPaymentsById = new Map(
+              (updatedPayments ?? []).map((payment) => [payment.id, payment]),
+            );
+            for (const queuedMutation of orderedMutations) {
+              if (
+                queuedMutation.entityType !== "payment_transactions"
+                || queuedMutation.workspaceId !== workspaceId
+              ) {
+                continue;
+              }
+              const payment = updatedPaymentsById.get(queuedMutation.entityId);
+              if (!payment) continue;
+              queuedMutation.payload = {
+                ...queuedMutation.payload,
+                referenceLabel: payment.referenceLabel,
+                updatedAt: payment.updatedAt,
+                version: payment.version,
+                syncStatus: payment.syncStatus,
+                lastSyncedAt: payment.lastSyncedAt,
+              };
+            }
             entityHandledInline = true;
           }
         } else if (entityType === "delivery_shipments") {

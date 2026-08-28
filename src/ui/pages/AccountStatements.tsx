@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, FileText, Printer, TrendingDown, TrendingUp } from 'lucide-react'
+import { ArrowLeft, FileText, Printer, Settings, TrendingDown, TrendingUp } from 'lucide-react'
 import { Link, useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import type { i18n as I18n } from 'i18next'
@@ -34,10 +34,16 @@ import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import type { CustomTemplateLayout } from '@/lib/pdfPreviewStore'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import { usePartnerAccountStatement } from '@/hooks/usePartnerAccountStatement'
-import { useWorkspaceContacts } from '@/local-db'
+import { isAgentBusinessPartnerRole, useWorkspaceContacts } from '@/local-db'
 import type { DateRangeType } from '@/context/DateRangeContext'
 import type { PrintFormat } from '@/services/pdfGenerator'
 import {
+    AppDialog,
+    AppDialogBody,
+    AppDialogContent,
+    AppDialogFooter,
+    AppDialogHeader,
+    AppDialogTitle,
     Button,
     Card,
     CardContent,
@@ -54,7 +60,8 @@ import {
     TableCell,
     TableHead,
     TableHeader,
-    TableRow
+    TableRow,
+    Switch
 } from '@/ui/components'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import type { PartnerAccountStatementPrintData } from '@/ui/components/crm/PartnerAccountStatementPrintTemplate'
@@ -76,6 +83,7 @@ function entryLabel(
 ) {
     const labels: Record<PartnerAccountStatementEntryKind, string> = {
         sales_order: t('orders.tabs.sales', { defaultValue: 'Sales Order' }),
+        sales_order_return: t('businessPartners.accountStatement.salesOrderReturn', { defaultValue: 'Sales order return' }),
         purchase_order: t('orders.tabs.purchase', { defaultValue: 'Purchase Order' }),
         incoming_payment: t('businessPartners.accountStatement.paymentReceived', { defaultValue: 'Payment received' }),
         outgoing_payment: t('businessPartners.accountStatement.paymentMade', { defaultValue: 'Payment made' }),
@@ -99,6 +107,12 @@ function balanceClass(balance: number) {
     return ''
 }
 
+function formatStatementQuantity(quantity: number | null | undefined, unit: string | null | undefined, language: string) {
+    if (quantity === null || quantity === undefined) return '—'
+    const value = new Intl.NumberFormat(language, { maximumFractionDigits: 6 }).format(quantity)
+    return unit ? `${value} ${unit}` : value
+}
+
 function entrySourcePath(entry: PartnerAccountStatementEntry) {
     if (entry.source?.recordType === 'order') {
         return `/orders/${entry.source.recordId}`
@@ -118,6 +132,7 @@ function LedgerCard({
     t,
     i18n,
     language,
+    showItemColumns,
     onNavigate
 }: {
     ledger: PartnerAccountStatementCurrencyLedger
@@ -125,6 +140,7 @@ function LedgerCard({
     t: (key: string, options?: Record<string, unknown>) => string
     i18n: I18n
     language: string
+    showItemColumns: boolean
     onNavigate: (path: string) => void
 }) {
     const display = (amount: number) => formatCurrency(Math.abs(amount), ledger.currency, iqdPreference)
@@ -172,6 +188,12 @@ function LedgerCard({
                                 <TableHead>{t('common.reference', { defaultValue: 'Reference' })}</TableHead>
                                 <TableHead>{t('common.type', { defaultValue: 'Type' })}</TableHead>
                                 <TableHead>{t('common.description', { defaultValue: 'Description' })}</TableHead>
+                                {showItemColumns ? (
+                                    <>
+                                        <TableHead>{t('businessPartners.accountStatement.item', { defaultValue: 'Item' })}</TableHead>
+                                        <TableHead className="text-right">{t('businessPartners.accountStatement.quantity', { defaultValue: 'Quantity' })}</TableHead>
+                                    </>
+                                ) : null}
                                 <TableHead className="text-right">{t('businessPartners.accountStatement.debit', { defaultValue: 'Debit' })}</TableHead>
                                 <TableHead className="text-right">{t('businessPartners.accountStatement.credit', { defaultValue: 'Credit' })}</TableHead>
                                 <TableHead className="text-right">{t('businessPartners.accountStatement.balance', { defaultValue: 'Balance' })}</TableHead>
@@ -180,7 +202,7 @@ function LedgerCard({
                         <TableBody>
                             {Math.abs(ledger.openingBalance) > 0.000001 ? (
                                 <TableRow className="bg-muted/20 font-medium">
-                                    <TableCell colSpan={4}>{t('businessPartners.accountStatement.openingBalance', { defaultValue: 'Opening balance' })}</TableCell>
+                                    <TableCell colSpan={showItemColumns ? 6 : 4}>{t('businessPartners.accountStatement.openingBalance', { defaultValue: 'Opening balance' })}</TableCell>
                                     <TableCell className="text-right tabular-nums">{ledger.openingBalance > 0 ? display(ledger.openingBalance) : '—'}</TableCell>
                                     <TableCell className="text-right tabular-nums">{ledger.openingBalance < 0 ? display(ledger.openingBalance) : '—'}</TableCell>
                                     <TableCell className={cn('text-right font-bold tabular-nums', balanceClass(ledger.openingBalance))}>
@@ -201,6 +223,14 @@ function LedgerCard({
                                             <div>{description}</div>
                                             {detail ? <div className="mt-0.5 text-xs text-muted-foreground">{detail}</div> : null}
                                         </TableCell>
+                                        {showItemColumns ? (
+                                            <>
+                                                <TableCell className="min-w-40 whitespace-pre-wrap">{entry.itemName || '—'}</TableCell>
+                                                <TableCell className="text-right tabular-nums whitespace-nowrap">
+                                                    {formatStatementQuantity(entry.quantity, entry.unit, language)}
+                                                </TableCell>
+                                            </>
+                                        ) : null}
                                         <TableCell className="text-right font-medium tabular-nums">{entry.delta > 0 ? display(entry.delta) : '—'}</TableCell>
                                         <TableCell className="text-right font-medium tabular-nums">{entry.delta < 0 ? display(entry.delta) : '—'}</TableCell>
                                         <TableCell className={cn('text-right font-bold tabular-nums', balanceClass(entry.runningBalance))}>
@@ -230,7 +260,7 @@ function LedgerCard({
                                 )
                             })}
                             <TableRow className="bg-muted/30 font-bold hover:bg-muted/30">
-                                <TableCell colSpan={4} className="text-right">{t('common.total', { defaultValue: 'Total' })}</TableCell>
+                                <TableCell colSpan={showItemColumns ? 6 : 4} className="text-right">{t('common.total', { defaultValue: 'Total' })}</TableCell>
                                 <TableCell className="text-right tabular-nums">{display(ledger.debitTotal)}</TableCell>
                                 <TableCell className="text-right tabular-nums">{display(ledger.creditTotal)}</TableCell>
                                 <TableCell className={cn('text-right tabular-nums', balanceClass(ledger.closingBalance))}>
@@ -248,7 +278,7 @@ function LedgerCard({
 export function AccountStatements() {
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
-    const { features, workspaceName, isLocalMode } = useWorkspace()
+    const { features, hasFeature, workspaceName, isLocalMode } = useWorkspace()
     const workspaceId = user?.workspaceId
     const [location, navigate] = useLocation()
     const urlPartnerSelection = useMemo(() => readPartnerSelection(location), [location])
@@ -259,6 +289,8 @@ export function AccountStatements() {
     const [customTemplates, setCustomTemplates] = useState<StoredCustomTemplateRow[]>([])
     const [selectedPrintTemplate, setSelectedPrintTemplate] = useState<StoredCustomTemplateRow | null>(null)
     const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false)
+    const [isStatementSettingsOpen, setIsStatementSettingsOpen] = useState(false)
+    const [showOrderItems, setShowOrderItems] = useState(false)
     const workspaceContacts = useWorkspaceContacts(workspaceId)
 
     useEffect(() => {
@@ -293,9 +325,15 @@ export function AccountStatements() {
         }
     }, [customDates, dateRange])
     const { partner, statementData } = usePartnerAccountStatement(workspaceId, selectedPartnerId, statementPeriod)
+    const isAgentStatement = isAgentBusinessPartnerRole(partner?.role)
+    const itemizeSalesOrders = isAgentStatement || showOrderItems
+    const statementDataForDisplay = useMemo(
+        () => statementData ? { ...statementData, itemizeSalesOrders } : null,
+        [itemizeSalesOrders, statementData]
+    )
     const ledgers = useMemo(
-        () => statementData ? buildPartnerAccountStatementLedger(statementData) : [],
-        [statementData]
+        () => statementDataForDisplay ? buildPartnerAccountStatementLedger(statementDataForDisplay) : [],
+        [statementDataForDisplay]
     )
     const printLang = features.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
     const currentTemplatePrintLanguage = resolveCustomTemplatePrintLanguage(printLang)
@@ -334,9 +372,9 @@ export function AccountStatements() {
         }
     }, [workspaceContacts])
     const printData = useMemo<PartnerAccountStatementPrintData | null>(() => {
-        if (!partner || !statementData) return null
+        if (!partner || !statementDataForDisplay) return null
         return {
-            ...statementData,
+            ...statementDataForDisplay,
             workspace: workspacePrintContacts,
             partner: {
                 name: partner.name,
@@ -349,7 +387,7 @@ export function AccountStatements() {
             },
             generatedAt: new Date().toISOString()
         }
-    }, [partner, statementData, workspacePrintContacts])
+    }, [partner, statementDataForDisplay, workspacePrintContacts])
     const printTarget = useMemo(
         () => getCustomTemplateTarget(PARTNER_ACCOUNT_STATEMENT_TEMPLATE_KEY),
         []
@@ -496,18 +534,28 @@ export function AccountStatements() {
                         {t('businessPartners.accountStatement.title', { defaultValue: 'Account Statement' })}
                     </span>
                 </div>
-                <Button
-                    variant="outline"
-                    className="h-10 gap-2 rounded-xl px-4"
-                    disabled={!printPreview || !activePrintLayout}
-                    onClick={() => {
-                        setSelectedPrintTemplate(null)
-                        setIsPrintPreviewOpen(true)
-                    }}
-                >
-                    <Printer className="h-4 w-4" />
-                    {t('common.print', { defaultValue: 'Print' })}
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        className="h-10 gap-2 rounded-xl px-4"
+                        onClick={() => setIsStatementSettingsOpen(true)}
+                    >
+                        <Settings className="h-4 w-4" />
+                        {t('common.settings')}
+                    </Button>
+                    <Button
+                        variant="outline"
+                        className="h-10 gap-2 rounded-xl px-4"
+                        disabled={!printPreview || !activePrintLayout}
+                        onClick={() => {
+                            setSelectedPrintTemplate(null)
+                            setIsPrintPreviewOpen(true)
+                        }}
+                    >
+                        <Printer className="h-4 w-4" />
+                        {t('common.print', { defaultValue: 'Print' })}
+                    </Button>
+                </div>
             </div>
 
             <Card>
@@ -521,6 +569,7 @@ export function AccountStatements() {
                             onChange={changePartnerQuery}
                             onSelectPartner={selectPartner}
                             workspaceId={workspaceId}
+                            includeAgentRoles={hasFeature('agent_sales_accounts')}
                             placeholder={t('businessPartners.accountStatement.searchPartner', { defaultValue: 'Search for a business partner' })}
                         />
                     </div>
@@ -593,12 +642,48 @@ export function AccountStatements() {
                                 t={t}
                                 i18n={i18n}
                                 language={i18n.language}
+                                showItemColumns={itemizeSalesOrders}
                                 onNavigate={navigate}
                             />
                         ))}
                     </div>
                 </>
             )}
+
+            <AppDialog open={isStatementSettingsOpen} onOpenChange={setIsStatementSettingsOpen}>
+                <AppDialogContent className="max-w-xl">
+                    <AppDialogHeader>
+                        <AppDialogTitle>{t('businessPartners.accountStatement.settingsTitle')}</AppDialogTitle>
+                    </AppDialogHeader>
+                    <AppDialogBody className="space-y-4">
+                        <div className="rounded-xl border bg-muted/20 p-4">
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="space-y-1">
+                                    <label htmlFor="partner-statement-order-item-detail" className="text-sm font-semibold">
+                                        {t('businessPartners.accountStatement.showOrderItems')}
+                                    </label>
+                                    <p className="text-sm text-muted-foreground">
+                                        {isAgentStatement
+                                            ? t('businessPartners.accountStatement.agentOrderItemsRequired')
+                                            : t('businessPartners.accountStatement.showOrderItemsDescription')}
+                                    </p>
+                                </div>
+                                <Switch
+                                    id="partner-statement-order-item-detail"
+                                    checked={itemizeSalesOrders}
+                                    disabled={isAgentStatement}
+                                    onCheckedChange={setShowOrderItems}
+                                />
+                            </div>
+                        </div>
+                    </AppDialogBody>
+                    <AppDialogFooter>
+                        <Button type="button" onClick={() => setIsStatementSettingsOpen(false)}>
+                            {t('common.close')}
+                        </Button>
+                    </AppDialogFooter>
+                </AppDialogContent>
+            </AppDialog>
 
             {printPreview && printTarget && activePrintLayout && partner && printData ? (
                 <PrintPreviewModal

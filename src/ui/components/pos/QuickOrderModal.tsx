@@ -3,7 +3,14 @@ import { useTranslation } from 'react-i18next'
 import { Link2, Loader2, ShoppingCart, UserRound } from 'lucide-react'
 
 import type { CartItem } from '@/types'
-import type { BusinessPartner, CurrencyCode, InstallmentFrequency, PaymentAccount } from '@/local-db'
+import {
+    useAgents,
+    useBusinessPartners,
+    type BusinessPartner,
+    type CurrencyCode,
+    type InstallmentFrequency,
+    type PaymentAccount
+} from '@/local-db'
 import { formatCurrency } from '@/lib/utils'
 import {
     ORDER_FINANCING_PAYMENT_METHODS,
@@ -20,7 +27,12 @@ import {
     DialogTitle,
     Input,
     Label,
-    Progress
+    Progress,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue
 } from '@/ui/components'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
@@ -28,6 +40,7 @@ import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountS
 
 export type QuickOrderCheckoutData = {
     customer: BusinessPartner
+    salesAccountAgentId?: string | null
     paymentMethod: PaymentMethodOption
     installmentCount: number
     installmentFrequency: InstallmentFrequency
@@ -48,6 +61,7 @@ interface QuickOrderModalProps {
     iqdPreference: 'IQD' | '\u062f.\u0639'
     loansEnabled: boolean
     installmentsEnabled: boolean
+    agentSalesAccountsEnabled: boolean
     isSubmitting: boolean
     progressStage: QuickOrderProgressStage
     onSubmit: (data: QuickOrderCheckoutData) => Promise<void>
@@ -63,6 +77,7 @@ export function QuickOrderModal({
     iqdPreference,
     loansEnabled,
     installmentsEnabled,
+    agentSalesAccountsEnabled,
     isSubmitting,
     progressStage,
     onSubmit
@@ -70,10 +85,27 @@ export function QuickOrderModal({
     const { t } = useTranslation()
     const [customerSearch, setCustomerSearch] = useState('')
     const [customer, setCustomer] = useState<BusinessPartner | null>(null)
+    const [salesAccountAgentId, setSalesAccountAgentId] = useState('')
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethodOption>('cash')
     const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
     const [firstDueDate, setFirstDueDate] = useState('')
     const [submitError, setSubmitError] = useState<string | null>(null)
+    const agentPartners = useBusinessPartners(
+        agentSalesAccountsEnabled ? workspaceId : undefined,
+        { roles: ['agent'], includeAgentRoles: true }
+    )
+    const agents = useAgents(agentSalesAccountsEnabled ? workspaceId : undefined)
+    const selectedSalesAccount = useMemo(() => {
+        const agent = agents.find((candidate) => (
+            candidate.id === salesAccountAgentId
+            && !candidate.isDeleted
+            && candidate.status === 'active'
+            && candidate.salesAccountEnabled
+        ))
+        if (!agent) return null
+        const partner = agentPartners.find((candidate) => candidate.id === agent.businessPartnerId)
+        return partner ? { agent, partner } : null
+    }, [agentPartners, agents, salesAccountAgentId])
 
     const paymentMethods = useMemo<PaymentMethodOption[]>(() => [
         ...STANDARD_PAYMENT_METHODS,
@@ -95,6 +127,7 @@ export function QuickOrderModal({
         if (!isOpen) return
         setCustomerSearch('')
         setCustomer(null)
+        setSalesAccountAgentId('')
         setPaymentMethod('cash')
         setPaymentAccount(null)
         setFirstDueDate('')
@@ -102,7 +135,8 @@ export function QuickOrderModal({
     }, [isOpen])
 
     const handleSubmit = async () => {
-        if (!customer) {
+        const orderCounterparty = selectedSalesAccount?.partner ?? customer
+        if (!orderCounterparty) {
             setSubmitError(t('orders.form.selectCustomer', { defaultValue: 'Select a customer before saving this order.' }))
             return
         }
@@ -118,7 +152,8 @@ export function QuickOrderModal({
         setSubmitError(null)
         try {
             await onSubmit({
-                customer,
+                customer: orderCounterparty,
+                salesAccountAgentId: selectedSalesAccount?.agent.id ?? null,
                 paymentMethod,
                 installmentCount: 3,
                 installmentFrequency: 'monthly',
@@ -127,9 +162,12 @@ export function QuickOrderModal({
                 paymentAccountNameSnapshot: paymentAccount?.name ?? null,
             })
         } catch (error) {
-            setSubmitError(error instanceof Error
-                ? error.message
-                : t('orders.form.errors.saveSalesFailed', { defaultValue: 'Failed to save sales order.' }))
+            const message = error instanceof Error ? error.message : ''
+            setSubmitError(message === 'agent_sales_accounts_not_enabled'
+                ? t('agentSalesAccounts.notEnabled')
+                : message === 'agent_sales_account_unavailable'
+                    ? t('agentSalesAccounts.unavailable')
+                    : message || t('orders.form.errors.saveSalesFailed', { defaultValue: 'Failed to save sales order.' }))
         }
     }
 
@@ -157,49 +195,89 @@ export function QuickOrderModal({
                         </div>
                     ) : null}
 
+                    {agentSalesAccountsEnabled ? (
+                        <div className="grid gap-2">
+                            <Label htmlFor="quick-order-sales-account" className="flex items-center gap-2">
+                                <UserRound className="h-4 w-4 text-muted-foreground" />
+                                {t('agentSalesAccounts.salesAccount')}
+                            </Label>
+                            <Select
+                                value={salesAccountAgentId || 'workspace'}
+                                onValueChange={(value) => {
+                                    setSalesAccountAgentId(value === 'workspace' ? '' : value)
+                                    setCustomer(null)
+                                    setCustomerSearch('')
+                                }}
+                                disabled={isSubmitting}
+                            >
+                                <SelectTrigger id="quick-order-sales-account">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="workspace">{t('agentSalesAccounts.workspaceAccount')}</SelectItem>
+                                    {agents
+                                        .filter((agent) => !agent.isDeleted && agent.status === 'active' && agent.salesAccountEnabled)
+                                        .map((agent) => {
+                                            const partner = agentPartners.find((candidate) => candidate.id === agent.businessPartnerId)
+                                            return partner ? <SelectItem key={agent.id} value={agent.id}>{partner.name}</SelectItem> : null
+                                        })}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs leading-5 text-muted-foreground">
+                                {t('agentSalesAccounts.salesAccountPosHint')}
+                            </p>
+                        </div>
+                    ) : null}
+
                     <div className="grid gap-2">
                         <Label className="flex items-center gap-2">
                             <UserRound className="h-4 w-4 text-muted-foreground" />
-                            {t('orders.form.customer', { defaultValue: 'Customer' })}
+                            {selectedSalesAccount
+                                ? t('agentSalesAccounts.sellingAgent')
+                                : t('orders.form.customer', { defaultValue: 'Customer' })}
                             <span className="text-destructive">*</span>
                         </Label>
-                        <PartnerAutocompleteInput
-                            workspaceId={workspaceId}
-                            roles={['customer']}
-                            value={customerSearch}
-                            onChange={(value) => {
-                                setCustomerSearch(value)
-                                setCustomer(null)
-                            }}
-                            onSelectPartner={(partner) => {
-                                setCustomer(partner)
-                                setCustomerSearch(partner.name)
-                            }}
-                            disabled={isSubmitting}
-                            placeholder={t('orders.form.selectCustomer', { defaultValue: 'Select Customer' })}
-                        />
-                        {customer ? (
+                        {!selectedSalesAccount ? (
+                            <PartnerAutocompleteInput
+                                workspaceId={workspaceId}
+                                roles={['customer']}
+                                value={customerSearch}
+                                onChange={(value) => {
+                                    setCustomerSearch(value)
+                                    setCustomer(null)
+                                }}
+                                onSelectPartner={(partner) => {
+                                    setCustomer(partner)
+                                    setCustomerSearch(partner.name)
+                                }}
+                                disabled={isSubmitting}
+                                placeholder={t('orders.form.selectCustomer', { defaultValue: 'Select Customer' })}
+                            />
+                        ) : null}
+                        {(selectedSalesAccount?.partner ?? customer) ? (
                             <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
                                 <Link2 className="h-4 w-4 shrink-0 text-primary" />
                                 <div className="min-w-0">
                                     <div className="text-[11px] font-bold uppercase tracking-wide text-primary">
                                         {t('businessPartners.linked', { defaultValue: 'Linked' })} {t('businessPartners.title', { defaultValue: 'Business Partner' })}
                                     </div>
-                                    <div className="truncate text-sm font-semibold">{customer.name}</div>
+                                    <div className="truncate text-sm font-semibold">{(selectedSalesAccount?.partner ?? customer)?.name}</div>
                                 </div>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="ml-auto h-8 shrink-0 px-2 text-muted-foreground"
-                                    onClick={() => {
-                                        setCustomer(null)
-                                        setCustomerSearch('')
-                                    }}
-                                    disabled={isSubmitting}
-                                >
-                                    {t('common.remove', { defaultValue: 'Remove' })}
-                                </Button>
+                                {!selectedSalesAccount ? (
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="ml-auto h-8 shrink-0 px-2 text-muted-foreground"
+                                        onClick={() => {
+                                            setCustomer(null)
+                                            setCustomerSearch('')
+                                        }}
+                                        disabled={isSubmitting}
+                                    >
+                                        {t('common.remove', { defaultValue: 'Remove' })}
+                                    </Button>
+                                ) : null}
                             </div>
                         ) : null}
                     </div>
@@ -282,7 +360,7 @@ export function QuickOrderModal({
                     <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
                         {t('common.cancel', { defaultValue: 'Cancel' })}
                     </Button>
-                    <Button type="button" onClick={handleSubmit} disabled={isSubmitting || !customer || (isInstallmentBased && !firstDueDate)}>
+                    <Button type="button" onClick={handleSubmit} disabled={isSubmitting || !(selectedSalesAccount?.partner ?? customer) || (isInstallmentBased && !firstDueDate)}>
                         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                         {t('pos.quickOrder.save', { defaultValue: 'Save Order' })}
                     </Button>

@@ -78,6 +78,7 @@ function resolvePeriodLabel(
 function entryLabel(kind: PartnerAccountStatementEntryKind, t: (key: string, options?: Record<string, unknown>) => string) {
     const labels: Record<PartnerAccountStatementEntryKind, string> = {
         sales_order: t('orders.tabs.sales', { defaultValue: 'Sales Order' }),
+        sales_order_return: t('businessPartners.accountStatement.salesOrderReturn', { defaultValue: 'Sales order return' }),
         purchase_order: t('orders.tabs.purchase', { defaultValue: 'Purchase Order' }),
         incoming_payment: t('businessPartners.accountStatement.paymentReceived', { defaultValue: 'Payment received' }),
         outgoing_payment: t('businessPartners.accountStatement.paymentMade', { defaultValue: 'Payment made' }),
@@ -99,6 +100,12 @@ function balanceClass(balance: number) {
     if (balance > 0.000001) return 'text-emerald-600'
     if (balance < -0.000001) return 'text-yellow-500'
     return ''
+}
+
+function formatStatementQuantity(quantity: number | null | undefined, unit: string | null | undefined, language: string) {
+    if (quantity === null || quantity === undefined) return '—'
+    const value = new Intl.NumberFormat(language, { maximumFractionDigits: 6 }).format(quantity)
+    return unit ? `${value} ${unit}` : value
 }
 
 // Keep the same fixed-table pagination model as Atlas Standard: the first
@@ -134,6 +141,7 @@ function LedgerTableChunk({
     t,
     i18n,
     language,
+    showItemColumns,
     iqdPreference
 }: {
     ledger: PartnerAccountStatementCurrencyLedger
@@ -145,6 +153,7 @@ function LedgerTableChunk({
     t: (key: string, options?: Record<string, unknown>) => string
     i18n: I18n
     language: string
+    showItemColumns: boolean
     iqdPreference: IQDDisplayPreference
 }) {
     const displayAmount = (amount: number) => formatCurrency(Math.abs(amount), ledger.currency, iqdPreference)
@@ -158,25 +167,31 @@ function LedgerTableChunk({
             <thead>
                 {showTableHeading ? (
                     <tr className="bg-slate-50">
-                        <th className="border border-slate-400 px-1.5 py-1 text-start text-[10px] font-bold" colSpan={7}>
+                        <th className="border border-slate-400 px-1.5 py-1 text-start text-[10px] font-bold" colSpan={showItemColumns ? 9 : 7}>
                             {t('businessPartners.accountStatement.accountActivity', { defaultValue: 'Account Activity' })} · {ledger.currency.toUpperCase()} {!isFirst ? t('businessPartners.accountStatement.continued', { defaultValue: '(continued)' }) : null}
                         </th>
                     </tr>
                 ) : null}
                 <tr className="bg-slate-200 font-bold uppercase">
-                    <th className="w-[11%] border border-slate-400 px-1.5 py-1 text-start">{t('common.date', { defaultValue: 'Date' })}</th>
-                    <th className="w-[13%] border border-slate-400 px-1.5 py-1 text-start">{t('common.reference', { defaultValue: 'Reference' })}</th>
-                    <th className="w-[16%] border border-slate-400 px-1.5 py-1 text-start">{t('common.type', { defaultValue: 'Type' })}</th>
-                    <th className="w-[29%] border border-slate-400 px-1.5 py-1 text-start">{t('common.description', { defaultValue: 'Description' })}</th>
-                    <th className="w-[10%] border border-slate-400 px-1.5 py-1 text-end">{t('businessPartners.accountStatement.debit', { defaultValue: 'Debit' })}</th>
-                    <th className="w-[10%] border border-slate-400 px-1.5 py-1 text-end">{t('businessPartners.accountStatement.credit', { defaultValue: 'Credit' })}</th>
-                    <th className="w-[11%] border border-slate-400 px-1.5 py-1 text-end">{t('businessPartners.accountStatement.balance', { defaultValue: 'Balance' })}</th>
+                    <th className={`${showItemColumns ? 'w-[9%]' : 'w-[11%]'} border border-slate-400 px-1.5 py-1 text-start`}>{t('common.date', { defaultValue: 'Date' })}</th>
+                    <th className={`${showItemColumns ? 'w-[13%]' : 'w-[17%]'} border border-slate-400 px-1.5 py-1 text-start`}>{t('common.reference', { defaultValue: 'Reference' })}</th>
+                    <th className={`${showItemColumns ? 'w-[11%]' : 'w-[13%]'} border border-slate-400 px-1.5 py-1 text-start`}>{t('common.type', { defaultValue: 'Type' })}</th>
+                    <th className={`${showItemColumns ? 'w-[15%]' : 'w-[23%]'} border border-slate-400 px-1.5 py-1 text-start`}>{t('common.description', { defaultValue: 'Description' })}</th>
+                    {showItemColumns ? (
+                        <>
+                            <th className="w-[15%] border border-slate-400 px-1.5 py-1 text-start">{t('businessPartners.accountStatement.item', { defaultValue: 'Item' })}</th>
+                            <th className="w-[7%] border border-slate-400 px-1.5 py-1 text-end">{t('businessPartners.accountStatement.quantity', { defaultValue: 'Quantity' })}</th>
+                        </>
+                    ) : null}
+                    <th className={`${showItemColumns ? 'w-[10%]' : 'w-[12%]'} border border-slate-400 px-1.5 py-1 text-end`}>{t('businessPartners.accountStatement.debit', { defaultValue: 'Debit' })}</th>
+                    <th className={`${showItemColumns ? 'w-[10%]' : 'w-[12%]'} border border-slate-400 px-1.5 py-1 text-end`}>{t('businessPartners.accountStatement.credit', { defaultValue: 'Credit' })}</th>
+                    <th className={`${showItemColumns ? 'w-[10%]' : 'w-[12%]'} border border-slate-400 px-1.5 py-1 text-end`}>{t('businessPartners.accountStatement.balance', { defaultValue: 'Balance' })}</th>
                 </tr>
             </thead>
             <tbody>
                 {isFirst && Math.abs(ledger.openingBalance) > 0.000001 ? (
                     <tr className="bg-slate-50 font-semibold" data-pdf-keep-together style={{ height: `${PARTNER_STATEMENT_TABLE_ROW_HEIGHT_MM}mm` }}>
-                        <td className="border border-slate-300 px-1.5 py-1" colSpan={4}>{t('businessPartners.accountStatement.openingBalance', { defaultValue: 'Opening balance' })}</td>
+                        <td className="border border-slate-300 px-1.5 py-1" colSpan={showItemColumns ? 6 : 4}>{t('businessPartners.accountStatement.openingBalance', { defaultValue: 'Opening balance' })}</td>
                         <td className="border border-slate-300 px-1.5 py-1 text-end">{ledger.openingBalance > 0 ? displayAmount(ledger.openingBalance) : '—'}</td>
                         <td className="border border-slate-300 px-1.5 py-1 text-end">{ledger.openingBalance < 0 ? displayAmount(ledger.openingBalance) : '—'}</td>
                         <td className={cn('border border-slate-300 px-1.5 py-1 text-end', balanceClass(ledger.openingBalance))}>
@@ -186,7 +201,7 @@ function LedgerTableChunk({
                 ) : null}
                 {entries.length === 0 ? (
                     <tr style={{ height: `${PARTNER_STATEMENT_TABLE_ROW_HEIGHT_MM}mm` }}>
-                        <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={7}>
+                        <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={showItemColumns ? 9 : 7}>
                             {t('businessPartners.noActivity', { defaultValue: 'No related activity yet.' })}
                         </td>
                     </tr>
@@ -202,6 +217,12 @@ function LedgerTableChunk({
                                 <div>{description}</div>
                                 {detail ? <div className="mt-0.5 text-[8px] text-slate-600">{detail}</div> : null}
                             </td>
+                            {showItemColumns ? (
+                                <>
+                                    <td className="border border-slate-300 px-1.5 py-1 align-top whitespace-pre-wrap">{entry.itemName || '—'}</td>
+                                    <td className="border border-slate-300 px-1.5 py-1 text-end align-top whitespace-nowrap">{formatStatementQuantity(entry.quantity, entry.unit, language)}</td>
+                                </>
+                            ) : null}
                             <td className="border border-slate-300 px-1.5 py-1 text-end align-top font-semibold whitespace-nowrap">{entry.delta > 0 ? displayAmount(entry.delta) : '—'}</td>
                             <td className="border border-slate-300 px-1.5 py-1 text-end align-top font-semibold whitespace-nowrap">{entry.delta < 0 ? displayAmount(entry.delta) : '—'}</td>
                             <td className={cn('border border-slate-300 px-1.5 py-1 text-end align-top font-bold whitespace-nowrap', balanceClass(entry.runningBalance))}>
@@ -214,7 +235,7 @@ function LedgerTableChunk({
             {isLast ? (
                 <tfoot>
                     <tr className="bg-slate-100 font-bold" style={{ height: `${PARTNER_STATEMENT_TABLE_ROW_HEIGHT_MM}mm` }}>
-                        <td className="border border-slate-400 px-1.5 py-1.5 text-end" colSpan={4}>{t('common.total', { defaultValue: 'Total' })}</td>
+                        <td className="border border-slate-400 px-1.5 py-1.5 text-end" colSpan={showItemColumns ? 6 : 4}>{t('common.total', { defaultValue: 'Total' })}</td>
                         <td className="border border-slate-400 px-1.5 py-1.5 text-end whitespace-nowrap">{displayAmount(ledger.debitTotal)}</td>
                         <td className="border border-slate-400 px-1.5 py-1.5 text-end whitespace-nowrap">{displayAmount(ledger.creditTotal)}</td>
                         <td className={cn('border border-slate-400 px-1.5 py-1.5 text-end whitespace-nowrap', balanceClass(ledger.closingBalance))}>
@@ -233,6 +254,7 @@ function LedgerTable({
     t,
     i18n,
     language,
+    showItemColumns,
     iqdPreference
 }: {
     ledger: PartnerAccountStatementCurrencyLedger
@@ -240,6 +262,7 @@ function LedgerTable({
     t: (key: string, options?: Record<string, unknown>) => string
     i18n: I18n
     language: string
+    showItemColumns: boolean
     iqdPreference: IQDDisplayPreference
 }) {
     const displayAmount = (amount: number) => formatCurrency(Math.abs(amount), ledger.currency, iqdPreference)
@@ -269,6 +292,7 @@ function LedgerTable({
                     t={t}
                     i18n={i18n}
                     language={language}
+                    showItemColumns={showItemColumns}
                     iqdPreference={iqdPreference}
                 />
             ))}
@@ -291,6 +315,7 @@ export function PartnerAccountStatementPrintTemplate({
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
     const isRtl = isRTL(printLang)
+    const showItemColumns = data.itemizeSalesOrders === true
     const logoSrc = resolveLogoSrc(logoUrl)
     const ledgers = buildPartnerAccountStatementLedger(data)
     const partnerAddress = [data.partner.address, data.partner.city, data.partner.country].filter(Boolean).join(', ')
@@ -362,6 +387,7 @@ export function PartnerAccountStatementPrintTemplate({
                         t={t}
                         i18n={i18n}
                         language={printLang}
+                        showItemColumns={showItemColumns}
                         iqdPreference={iqdPreference}
                     />
                 ))}

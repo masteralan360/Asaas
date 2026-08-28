@@ -431,6 +431,8 @@ export interface Agent extends BaseEntity {
   carModel?: string | null;
   plateNumber?: string | null;
   linkedUserId?: string | null;
+  /** Enables this agent to become the financial counterparty for sales made under its account. */
+  salesAccountEnabled?: boolean;
   status: AgentStatus;
 }
 
@@ -447,6 +449,7 @@ export interface AgentFacetInput {
   carModel?: string | null;
   plateNumber?: string | null;
   linkedUserId?: string | null;
+  salesAccountEnabled?: boolean;
   status: AgentStatus;
 }
 
@@ -1046,6 +1049,8 @@ export interface SalesOrder extends BaseEntity {
   businessPartnerId?: string | null;
   customerId: string;
   customerName: string;
+  /** Agent whose enabled sales account is the financial counterparty for this order. */
+  salesAccountAgentId?: string | null;
   sourceStorageId?: string | null;
   items: SalesOrderItem[];
   subtotal: number;

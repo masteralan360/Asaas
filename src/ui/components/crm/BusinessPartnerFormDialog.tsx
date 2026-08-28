@@ -39,6 +39,7 @@ import {
     SelectItem,
     SelectTrigger,
     SelectValue,
+    Switch,
     Textarea,
     useToast
 } from '@/ui/components'
@@ -67,6 +68,7 @@ type BusinessPartnerFormState = {
     agentPlateNumber: string
     agentCourierDeliveryFee: string
     agentLinkedUserId: string
+    agentSalesAccountEnabled: boolean
     agentStatus: AgentStatus
 }
 
@@ -95,6 +97,7 @@ function createEmptyState(defaultCurrency: CurrencyCode, role: BusinessPartnerRo
         agentPlateNumber: '',
         agentCourierDeliveryFee: '',
         agentLinkedUserId: '',
+        agentSalesAccountEnabled: false,
         agentStatus: 'active'
     }
 }
@@ -126,6 +129,7 @@ function mapPartnerToState(partner: BusinessPartner, agent?: Agent): BusinessPar
         agentPlateNumber: agent?.plateNumber || '',
         agentCourierDeliveryFee: agent?.courierDeliveryFee === undefined ? '' : String(agent.courierDeliveryFee),
         agentLinkedUserId: agent?.linkedUserId || '',
+        agentSalesAccountEnabled: agent?.salesAccountEnabled ?? false,
         agentStatus: agent?.status || 'active'
     }
 }
@@ -187,7 +191,7 @@ export function BusinessPartnerFormDialog({
 }: BusinessPartnerFormDialogProps) {
     const { t } = useTranslation()
     const { user } = useAuth()
-    const { features, hasCapability } = useWorkspace()
+    const { features, hasCapability, hasFeature } = useWorkspace()
     const priceBooksEnabled = hasCapability('priceBooks')
     const effectiveWorkspaceId = workspaceId || user?.workspaceId
     const priceBooks = usePriceBooks(effectiveWorkspaceId, { enabled: priceBooksEnabled && isOpen })
@@ -325,6 +329,9 @@ export function BusinessPartnerFormDialog({
                     ? Number(formState.agentCourierDeliveryFee || 0)
                     : 0,
                 linkedUserId: formState.agentLinkedUserId || null,
+                ...(hasFeature('agent_sales_accounts')
+                    ? { salesAccountEnabled: formState.agentSalesAccountEnabled }
+                    : {}),
                 status: formState.agentStatus
             } : undefined
         })
@@ -578,6 +585,28 @@ export function BusinessPartnerFormDialog({
                                             </SelectContent>
                                         </Select>
                                     </div>
+                                    {hasFeature('agent_sales_accounts') ? (
+                                        <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 md:col-span-2">
+                                            <div className="flex items-start justify-between gap-4">
+                                                <div className="space-y-1">
+                                                    <Label htmlFor="business-partner-agent-sales-account" className="cursor-pointer">
+                                                        {t('businessPartners.agent.salesAccount')}
+                                                    </Label>
+                                                    <p className="text-xs leading-5 text-muted-foreground">
+                                                        {t('businessPartners.agent.salesAccountHint')}
+                                                    </p>
+                                                </div>
+                                                <Switch
+                                                    id="business-partner-agent-sales-account"
+                                                    checked={formState.agentSalesAccountEnabled}
+                                                    onCheckedChange={(checked) => setFormState((current) => ({
+                                                        ...current,
+                                                        agentSalesAccountEnabled: checked
+                                                    }))}
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : null}
                                     <div className="space-y-2">
                                         <Label>{t('businessPartners.agent.status')}</Label>
                                         <Select value={formState.agentStatus} onValueChange={(value) => setFormState((current) => ({ ...current, agentStatus: value as AgentStatus }))}>

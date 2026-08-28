@@ -3366,6 +3366,13 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, assignmentId, cashierUserId, scheduledStartAt, status, updatedAt, isDeleted, syncStatus, [workspaceId+cashierUserId], [workspaceId+scheduledStartAt], [cashierUserId+scheduledStartAt], [assignmentId+scheduledStartAt]",
     });
 
+    this.version(103).stores({
+      agents:
+        "id, workspaceId, businessPartnerId, agentType, status, linkedUserId, salesAccountEnabled, updatedAt, isDeleted, syncStatus, [workspaceId+status], [workspaceId+agentType], [workspaceId+salesAccountEnabled]",
+      sales_orders:
+        "id, orderNumber, businessPartnerId, customerId, linkedLoanId, salesAccountAgentId, workspaceId, status, paymentStatus, paymentMethod, currency, nextDueDate, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+salesAccountAgentId]",
+    });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }

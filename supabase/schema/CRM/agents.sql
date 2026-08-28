@@ -7,6 +7,7 @@ CREATE TABLE crm.agents (
   car_model text NULL,
   plate_number text NULL,
   linked_user_id uuid NULL,
+  sales_account_enabled boolean NOT NULL DEFAULT false,
   status text NOT NULL DEFAULT 'active'::text,
   created_at timestamp with time zone NULL DEFAULT now(),
   updated_at timestamp with time zone NULL DEFAULT now(),

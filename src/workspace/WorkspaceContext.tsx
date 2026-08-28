@@ -67,6 +67,7 @@ export interface WorkspaceFeatures {
     orders: boolean
     agents: boolean
     sales_agent_commissions: boolean
+    agent_sales_accounts: boolean
     post_service: boolean
     car_rental: boolean
     ecommerce: boolean
@@ -171,6 +172,7 @@ const PLAN_DERIVED_FEATURE_KEYS: ModuleFeatureKey[] = [
     'orders',
     'agents',
     'sales_agent_commissions',
+    'agent_sales_accounts',
     'post_service',
     'car_rental',
     'ecommerce',

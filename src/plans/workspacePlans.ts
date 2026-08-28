@@ -23,6 +23,7 @@ export type PlanModuleKey =
     | 'business_partners'
     | 'agents'
     | 'sales_agent_commissions'
+    | 'agent_sales_accounts'
     | 'post_service'
     | 'car_rental'
     | 'customers'
@@ -56,6 +57,7 @@ export type WorkspaceFeatureKey =
     | 'orders'
     | 'agents'
     | 'sales_agent_commissions'
+    | 'agent_sales_accounts'
     | 'post_service'
     | 'car_rental'
     | 'ecommerce'
@@ -247,6 +249,7 @@ export const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModul
     crm: 'customers',
     agents: 'agents',
     sales_agent_commissions: 'sales_agent_commissions',
+    agent_sales_accounts: 'agent_sales_accounts',
     post_service: 'post_service',
     car_rental: 'car_rental',
     ecommerce: 'ecommerce',
@@ -411,14 +414,13 @@ export function applyWorkspaceOverrides(
         }
     }
 
-    // Sales Agent Commissions is an add-on workflow over the existing Agents
-    // and Orders modules. An orphaned or legacy override must never make the
-    // add-on appear available when either base module is unavailable.
-    if (
-        modules.includes('sales_agent_commissions')
-        && (!modules.includes('agents') || !modules.includes('orders'))
-    ) {
-        modules = modules.filter(module => module !== 'sales_agent_commissions')
+    // Agent add-ons are never independently available. An orphaned or legacy
+    // override must not expose a financial or commission workflow without the
+    // base Agents and Orders modules.
+    for (const agentAddOn of ['sales_agent_commissions', 'agent_sales_accounts'] as const) {
+        if (modules.includes(agentAddOn) && (!modules.includes('agents') || !modules.includes('orders'))) {
+            modules = modules.filter(module => module !== agentAddOn)
+        }
     }
 
     return {

@@ -1375,6 +1375,13 @@
             "debit": "Debit",
             "credit": "Credit",
             "balance": "Balance",
+            "salesOrderReturn": "Sales order return",
+            "item": "Item",
+            "quantity": "Quantity",
+            "settingsTitle": "Statement settings",
+            "showOrderItems": "Show order items and quantities",
+            "showOrderItemsDescription": "Expand sales orders and returns into product-level rows in this statement and its printout.",
+            "agentOrderItemsRequired": "Agent sales accounts always show itemized sales and returns.",
             "sourceViewUnavailable": "No source view is available",
             "continued": "(continued)",
             "openingBalance": "Opening balance",
@@ -1388,8 +1395,11 @@
             "balanceNote": "Debit increases the amount due from the partner; credit decreases it. Each currency is kept in its own ledger.",
             "descriptions": {
                 "salesOrder": "Sales order",
+                "salesOrderReturn": "Sales order return",
                 "purchaseOrder": "Purchase order",
                 "paymentReceived": "Payment received",
+                "advancePaymentReceived": "Advance payment received",
+                "orderLoanDownPaymentReceived": "Order loan down payment received",
                 "paymentMade": "Payment made",
                 "directReceipt": "Direct receipt",
                 "directPayment": "Direct payment",
@@ -1536,6 +1546,8 @@
             "plateNumber": "Plate Number",
             "courierDeliveryFee": "Courier delivery fee",
             "courierDeliveryFeeHint": "The courier keeps this amount per delivered post. It is deducted from the expected cash handover.",
+            "salesAccount": "Agent sales account",
+            "salesAccountHint": "Allow staff to create sales under this agent without linking the agent to a workspace user account.",
             "linkedUser": "Linked User",
             "noLinkedUser": "Not linked",
             "alreadyLinked": "Already linked",
@@ -7204,6 +7216,15 @@
             "saveFailed": "Could not save the rental record.",
             "vehicleYearCorrected": "Vehicle year corrected"
         }
+    },
+    "agentSalesAccounts": {
+        "salesAccount": "Sales account",
+        "workspaceAccount": "Workspace account",
+        "sellingAgent": "Selling as agent",
+        "salesAccountOrderHint": "Choose an enabled agent to record this order under that agent's account. The agent does not need a linked user or an extra customer.",
+        "salesAccountPosHint": "Choose an enabled agent to create this quick order under that agent's account.",
+        "notEnabled": "Agent Sales Accounts is not enabled for this workspace.",
+        "unavailable": "The selected agent does not have an active sales account."
     },
     "salesAgentCommissions": {
         "title": "Sales Agent Commissions",

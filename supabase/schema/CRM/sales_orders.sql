@@ -5,6 +5,7 @@ CREATE TABLE crm.sales_orders (
   business_partner_id uuid NULL,
   customer_id uuid NOT NULL,
   customer_name text NULL,
+  sales_account_agent_id uuid NULL REFERENCES crm.agents(id) ON DELETE RESTRICT,
   subtotal numeric NULL DEFAULT 0,
   discount numeric NULL DEFAULT 0,
   tax numeric NULL DEFAULT 0,
@@ -86,6 +87,10 @@ CREATE INDEX IF NOT EXISTS idx_crm_sales_orders_customer
 
 CREATE INDEX IF NOT EXISTS idx_crm_sales_orders_business_partner
   ON crm.sales_orders (business_partner_id);
+
+CREATE INDEX IF NOT EXISTS idx_crm_sales_orders_sales_account_agent
+  ON crm.sales_orders (workspace_id, sales_account_agent_id)
+  WHERE sales_account_agent_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_crm_sales_orders_source_channel
   ON crm.sales_orders (workspace_id, source_channel, updated_at DESC);

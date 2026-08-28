@@ -186,12 +186,17 @@ vi.mock('@/local-db/productBarcodes', () => ({
     syncProductBarcodeCachesForWorkspace: vi.fn(async () => undefined)
 }))
 
+vi.mock('@/local-db/payments', () => ({
+    synchronizeOrderPaymentReferences: vi.fn(async () => [])
+}))
+
 vi.mock('@/lib/supabaseRequest', () => ({
     runSupabaseAction: vi.fn((_label: string, action: () => PromiseLike<unknown>) => action())
 }))
 
 vi.mock('@/lib/supabaseSchema', () => ({
-    getSupabaseClientForTable: vi.fn(() => supabaseMock.client)
+    getSupabaseClientForTable: vi.fn(() => supabaseMock.client),
+    getSupabaseRemoteTableName: vi.fn((tableName: string) => tableName)
 }))
 
 vi.mock('@/workspace/workspaceMode', () => ({

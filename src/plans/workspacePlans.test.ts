@@ -114,6 +114,42 @@ describe('Post Service workspace module access', () => {
     })
 })
 
+describe('Agent Sales Accounts workspace module access', () => {
+    it('is not included in any workspace subscription plan', () => {
+        for (const plan of WORKSPACE_PLANS) {
+            expect(planHasModule(plan, 'agent_sales_accounts')).toBe(false)
+            expect(planHasWorkspaceFeature(plan, 'agent_sales_accounts')).toBe(false)
+        }
+    })
+
+    it('is effective only with an explicit grant and both Agents and Orders', () => {
+        const agentSalesAccountGrant = {
+            id: 'override-agent-sales-accounts',
+            workspace_id: 'workspace-1',
+            type: 'module' as const,
+            key: 'agent_sales_accounts',
+            value: 'grant',
+            created_by: null,
+            created_at: new Date(0).toISOString()
+        }
+
+        expect(
+            applyWorkspaceOverrides(getPlanCapabilities('enterprise'), [agentSalesAccountGrant]).modules
+        ).not.toContain('agent_sales_accounts')
+
+        expect(
+            applyWorkspaceOverrides(getPlanCapabilities('enterprise'), [
+                {
+                    ...agentSalesAccountGrant,
+                    id: 'override-agents',
+                    key: 'agents'
+                },
+                agentSalesAccountGrant
+            ]).modules
+        ).toContain('agent_sales_accounts')
+    })
+})
+
 describe('Car Rental Service workspace module access', () => {
     it('is not included in any workspace subscription plan', () => {
         for (const plan of WORKSPACE_PLANS) {
