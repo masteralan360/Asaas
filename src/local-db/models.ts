@@ -526,7 +526,6 @@ export type DeliveryRecipientPayoutFunding = "courier_advance" | "workspace_paym
 export type DeliveryPayoutSchedule = "daily" | "weekly" | "on_request";
 export type DeliveryShipmentStatus =
   | "received"
-  | "ready_for_dispatch"
   | "assigned"
   | "delivered"
   | "postponed"
@@ -2012,7 +2011,8 @@ export type PaymentTransactionSourceModule =
   | "post_service"
   | "car_rental"
   | "travel_agency"
-  | "payments";
+  | "payments"
+  | "payment_accounts";
 export type PaymentTransactionSourceType =
   | "sale_exchange"
   | "pos_sale"
@@ -2035,6 +2035,9 @@ export type PaymentTransactionSourceType =
   | "payroll_status"
   | "direct_transaction"
   | "payment_account_opening_balance"
+  | "payment_account_deposit"
+  | "payment_account_withdrawal"
+  | "payment_account_adjustment"
   | "exchange_transaction"
   | "delivery_courier_remittance"
   | "delivery_courier_fee_payout"
@@ -2069,6 +2072,21 @@ export interface PaymentTransaction extends BaseEntity {
 }
 
 export type PaymentAccountType = 'cash_drawer' | 'bank_account' | 'digital_wallet' | 'other';
+
+/** Immutable, audited manual movements recorded against a payment account. */
+export const PAYMENT_ACCOUNT_MANUAL_OPERATION_KINDS = ['deposit', 'withdrawal', 'adjustment'] as const;
+export type PaymentAccountManualOperationKind = (typeof PAYMENT_ACCOUNT_MANUAL_OPERATION_KINDS)[number];
+
+/** Why a counted balance did not match the posted balance. */
+export const PAYMENT_ACCOUNT_ADJUSTMENT_REASONS = [
+  'cash_shortage',
+  'cash_overage',
+  'count_correction',
+  'opening_balance_correction',
+  'bank_statement_correction',
+  'other',
+] as const;
+export type PaymentAccountAdjustmentReason = (typeof PAYMENT_ACCOUNT_ADJUSTMENT_REASONS)[number];
 
 /** Digital payment methods that may resolve to one linked Digital Wallet account. */
 export const DIGITAL_WALLET_PAYMENT_METHODS = ['fib', 'qicard', 'zaincash', 'fastpay'] as const;

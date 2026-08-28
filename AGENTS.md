@@ -69,6 +69,8 @@ Any field or cntrol that allows users to select a payment method MUST use the ap
 
 While the modal is proceeding/processing it must NOT allow the user to close the modal by the overlay or X button. This is to prevent the user from closing the modal while the data is being saved and thus potentially corrupting the data.
 
+When a workflow explicitly uses `MultipleModalLayout`, only its last active panel may own the primary confirmation/submit action. Earlier panels may collect and validate data, but must not offer a competing confirmation action; closing a linked panel must return to the preceding step without losing its input.
+
 Before finishing a modal, compare it with `src/ui/components/crm/BusinessPartnerFormDialog.tsx` and verify it at a narrow mobile width as well as desktop.
 
 ## Small Dialogs

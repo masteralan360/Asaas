@@ -12,6 +12,7 @@ import type { Agent, BusinessPartner } from "./models";
 const WORKSPACE_ID = "00000000-0000-4000-8000-000000000909";
 let createDeliveryMerchantProfile: typeof import("./postService").createDeliveryMerchantProfile;
 let createDeliveryShipment: typeof import("./postService").createDeliveryShipment;
+let createAndDispatchDeliveryShipment: typeof import("./postService").createAndDispatchDeliveryShipment;
 let createDeliveryRun: typeof import("./postService").createDeliveryRun;
 let transferReturnedDeliveryShipment: typeof import("./postService").transferReturnedDeliveryShipment;
 let updateDeliveryShipmentStatus: typeof import("./postService").updateDeliveryShipmentStatus;
@@ -69,7 +70,7 @@ describe("Post Service COD accounting", () => {
   beforeAll(async () => {
     installBrowserEnvironment();
     const postService = await import("./postService");
-    ({ createDeliveryMerchantProfile, createDeliveryShipment, createDeliveryRun, transferReturnedDeliveryShipment, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryCourierFee, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment } = postService);
+    ({ createDeliveryMerchantProfile, createDeliveryShipment, createAndDispatchDeliveryShipment, createDeliveryRun, transferReturnedDeliveryShipment, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryCourierFee, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment } = postService);
   });
 
   beforeEach(async () => {
@@ -129,6 +130,49 @@ describe("Post Service COD accounting", () => {
       expect.objectContaining({ sourceType: "delivery_courier_remittance", direction: "incoming", amount: 100 }),
       expect.objectContaining({ sourceType: "delivery_merchant_payout", direction: "outgoing", amount: 90 }),
     ]));
+  });
+
+  it("retries quick dispatch without creating a duplicate post or manifest", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const deliveryCourier = { ...courier(crypto.randomUUID()), courierDeliveryFee: 15 };
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, {
+      businessPartnerId: merchant.id,
+      defaultFeeAmount: 10,
+      defaultFeePayer: "merchant",
+    });
+    const input = {
+      operationId: crypto.randomUUID(),
+      shipment: {
+        merchantProfileId: profile.id,
+        recipientPhone: "07500000000",
+        recipientAddress: "Baghdad",
+        currency: "iqd" as const,
+        codAmount: 100,
+      },
+      agentId: deliveryCourier.id,
+      courierDeliveryFee: 12,
+      notes: "Same-day route",
+    };
+
+    const first = await createAndDispatchDeliveryShipment(WORKSPACE_ID, input);
+    const retry = await createAndDispatchDeliveryShipment(WORKSPACE_ID, input);
+
+    expect(retry.shipment.id).toBe(first.shipment.id);
+    expect(retry.run.id).toBe(first.run.id);
+    expect((await db.delivery_shipments.where("workspaceId").equals(WORKSPACE_ID).toArray())
+      .filter((shipment) => !shipment.isDeleted)).toHaveLength(1);
+    expect((await db.delivery_runs.where("workspaceId").equals(WORKSPACE_ID).toArray())
+      .filter((run) => !run.isDeleted)).toHaveLength(1);
+
+    const assignedShipment = await db.delivery_shipments.get(first.shipment.id);
+    expect(assignedShipment).toEqual(expect.objectContaining({
+      status: "assigned",
+      assignedAgentId: deliveryCourier.id,
+      assignedRunId: first.run.id,
+      courierDeliveryFee: 12,
+    }));
   });
 
   it("snapshots the manifest courier fee and deducts it from the courier handover", async () => {
@@ -201,7 +245,7 @@ describe("Post Service COD accounting", () => {
     expect(finalBalance).toBe(0);
   });
 
-  it("does not write zero-amount ledger entries when a COD-0 post is delivered", async () => {
+  it("does not write zero-amount ledger entries when a prepaid post with a recipient-paid fee is delivered", async () => {
     const merchant = partner(crypto.randomUUID());
     const deliveryCourier = courier(crypto.randomUUID());
     await db.business_partners.put(merchant);
@@ -213,7 +257,7 @@ describe("Post Service COD accounting", () => {
     });
     const shipment = await createDeliveryShipment(WORKSPACE_ID, {
       merchantProfileId: profile.id, recipientPhone: "07500000000",
-      recipientAddress: "Baghdad", currency: "iqd", codAmount: 0,
+      recipientAddress: "Baghdad", currency: "iqd", customerPaymentStatus: "prepaid_electronically", codAmount: 0,
       deliveryFee: 5000,
     });
     await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
@@ -226,6 +270,20 @@ describe("Post Service COD accounting", () => {
       amount: 5000,
     })]);
     expect(entries.some((entry) => entry.amount === 0)).toBe(false);
+  });
+
+  it("requires a positive COD amount for cash-on-delivery posts", async () => {
+    const merchant = partner(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id });
+
+    await expect(createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientPhone: "07500000000",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      codAmount: 0,
+    })).rejects.toThrow("COD amount must be greater than zero");
   });
 
   it("records an electronic-prepaid delivery with a recipient payout as merchant debt", async () => {

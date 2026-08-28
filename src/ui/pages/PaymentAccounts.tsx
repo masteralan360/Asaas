@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowDownLeft, ArrowUpRight, LockKeyhole, Plus, RotateCcw, Search, SlidersHorizontal, Trash2, WalletCards, X } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, BarChart3, DollarSign, Landmark, LockKeyhole, Package, Plus, RotateCcw, Search, ShieldAlert, SlidersHorizontal, TrendingDown, TrendingUp, Trash2, Wallet, WalletCards, X } from 'lucide-react'
+import { Area, AreaChart, ResponsiveContainer } from 'recharts'
 
 import { useAuth } from '@/auth'
 import { useDateRange } from '@/context/DateRangeContext'
+import { useExchangeRate } from '@/context/ExchangeRateContext'
+import { buildConversionRates } from '@/lib/budget'
+import { convertToStoreBase } from '@/lib/currency'
 import {
   deletePaymentAccount,
   getPaymentAccountBalanceSummary,
+  recordPaymentAccountManualOperation,
   savePaymentAccount,
   usePaymentAccountBalances,
   usePaymentAccountMovements,
@@ -18,11 +23,15 @@ import {
   type PaymentAccountMovement,
   type PaymentAccountIconKey,
   type PaymentAccountType,
+  type PaymentAccountAdjustmentReason,
+  type PaymentAccountManualOperationKind,
   type PaymentTransaction,
+  type PaymentTransactionDirection,
+  type WorkspacePaymentMethod,
   usePaymentTransactions,
 } from '@/local-db'
 import { cn, formatCurrency, formatDateTime, formatNumericInput, parseFormattedNumber, sanitizeNumericInput } from '@/lib/utils'
-import { isDateInDateRange } from '@/lib/dateRangeFilters'
+import { getDateRangeBounds, isDateInDateRange } from '@/lib/dateRangeFilters'
 import {
   AppDialog,
   AppDialogBody,
@@ -36,6 +45,7 @@ import {
   CardHeader,
   CardTitle,
   DateRangeFilters,
+  DateTimePicker,
   Checkbox,
   Input,
   Label,
@@ -51,12 +61,17 @@ import {
   TableHeader,
   TableRow,
   Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   useToast,
   PaymentMethodSelector,
 } from '@/ui/components'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
 import { CurrencySelector } from '@/ui/components/CurrencySelector'
 import { defaultPaymentAccountIcon, PAYMENT_ACCOUNT_ICON_OPTIONS, PaymentAccountIcon } from '@/ui/components/payments/PaymentAccountIcon'
+import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
 import { useWorkspace } from '@/workspace'
 
 const ACCOUNT_TYPES: PaymentAccountType[] = ['cash_drawer', 'bank_account', 'digital_wallet', 'other']
@@ -67,6 +82,15 @@ interface OpeningBalanceRow {
   currency: CurrencyCode
   amount: string
 }
+
+const PAYMENT_ACCOUNT_ADJUSTMENT_REASON_KEYS: PaymentAccountAdjustmentReason[] = [
+  'cash_shortage',
+  'cash_overage',
+  'count_correction',
+  'opening_balance_correction',
+  'bank_statement_correction',
+  'other',
+]
 
 function accountTypeLabel(type: PaymentAccountType, t: ReturnType<typeof useTranslation>['t']) {
   return t(`paymentAccounts.types.${type}`, { defaultValue: type.replace(/_/g, ' ') })
@@ -90,6 +114,13 @@ interface AccountMovementEntry {
   transaction: PaymentTransaction | null
   relationKey: string | null
   relationRole: AccountMovementRelationRole | null
+}
+
+interface AccountMovementTrendPoint {
+  dateKey: string
+  inflow: number
+  outflow: number
+  net: number
 }
 
 const DEFAULT_MOVEMENT_FILTERS: AccountMovementFilters = {
@@ -119,6 +150,7 @@ function sourceModuleLabel(transaction: PaymentTransaction | null, t: ReturnType
     case 'post_service': return t('ledger.sourceModule.postService', { defaultValue: 'Post Service' })
     case 'car_rental': return t('ledger.sourceModule.carRental', { defaultValue: 'Car Rental' })
     case 'travel_agency': return t('paymentAccounts.sourceModules.travelAgency', { defaultValue: 'Travel Agency' })
+    case 'payment_accounts': return t('paymentAccounts.title', { defaultValue: 'Payment Accounts' })
     case 'payments': return transaction?.sourceType === 'payment_account_opening_balance'
       ? t('paymentAccounts.title', { defaultValue: 'Payment Accounts' })
       : t('ledger.sourceModule.manual', { defaultValue: 'Manual' })
@@ -158,6 +190,9 @@ function movementTypeLabel(transaction: PaymentTransaction | null, t: ReturnType
       ? t('ledger.type.directInflow', { defaultValue: 'Direct Inflow' })
       : t('ledger.type.directOutflow', { defaultValue: 'Direct Outflow' })
     case 'payment_account_opening_balance': return t('paymentAccounts.openingBalance', { defaultValue: 'Opening Balance' })
+    case 'payment_account_deposit': return t('paymentAccounts.deposit', { defaultValue: 'Deposit' })
+    case 'payment_account_withdrawal': return t('paymentAccounts.withdraw', { defaultValue: 'Withdrawal' })
+    case 'payment_account_adjustment': return t('paymentAccounts.adjustBalance', { defaultValue: 'Balance Adjustment' })
     case 'delivery_courier_remittance': return t('ledger.type.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
     case 'delivery_courier_fee_payout': return t('ledger.type.deliveryCourierFeePayout', { defaultValue: 'Courier Fee Payment' })
     case 'delivery_courier_reimbursement': return t('ledger.type.deliveryCourierReimbursement', { defaultValue: 'Courier Reimbursement' })
@@ -211,7 +246,7 @@ function countActiveMovementFilters(filters: AccountMovementFilters) {
   ].filter(Boolean).length
 }
 
-function formatMovementTotals(
+function formatMovementTotalValues(
   movements: PaymentAccountMovement[],
   iqdDisplayPreference: 'IQD' | 'د.ع',
   amountFor: (movement: PaymentAccountMovement) => number,
@@ -221,12 +256,52 @@ function formatMovementTotals(
     totals.set(movement.currency, (totals.get(movement.currency) || 0) + amountFor(movement))
   })
 
-  if (totals.size === 0) return '—'
+  if (totals.size === 0) return ['—']
 
   return Array.from(totals.entries())
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([currency, amount]) => `${amount < 0 ? '−' : ''}${formatCurrency(Math.abs(amount), currency, iqdDisplayPreference)}`)
-    .join(' · ')
+}
+
+function toMovementDateKey(date: string) {
+  if (/^\d{4}-\d{2}-\d{2}/.test(date)) return date.slice(0, 10)
+  return new Date(date).toISOString().slice(0, 10)
+}
+
+function PaymentAccountSparkline({
+  data,
+  dataKey,
+  color,
+  gradientId,
+}: {
+  data: AccountMovementTrendPoint[]
+  dataKey: 'inflow' | 'outflow' | 'net'
+  color: string
+  gradientId: string
+}) {
+  return (
+    <div className="mt-4 h-12 w-full -mx-2">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data}>
+          <defs>
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+              <stop offset="95%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <Area
+            type="monotone"
+            dataKey={dataKey}
+            stroke={color}
+            strokeWidth={2}
+            fillOpacity={1}
+            fill={`url(#${gradientId})`}
+            isAnimationActive
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  )
 }
 
 function buildRelationMaps(entries: AccountMovementEntry[]) {
@@ -281,7 +356,9 @@ export function PaymentAccounts() {
   const { user } = useAuth()
   const { features } = useWorkspace()
   const { dateRange, customDates } = useDateRange()
+  const { exchangeData, eurRates, tryRates } = useExchangeRate()
   const workspaceId = user?.workspaceId
+  const baseCurrency = features.default_currency
   const accounts = usePaymentAccounts(workspaceId)
   const balances = usePaymentAccountBalances(workspaceId)
   const movements = usePaymentAccountMovements(workspaceId)
@@ -305,6 +382,16 @@ export function PaymentAccounts() {
   const [movementFilters, setMovementFilters] = useState<AccountMovementFilters>(DEFAULT_MOVEMENT_FILTERS)
   const [draftMovementFilters, setDraftMovementFilters] = useState<AccountMovementFilters>(DEFAULT_MOVEMENT_FILTERS)
   const [movementFilterDialogOpen, setMovementFilterDialogOpen] = useState(false)
+  const [accountOperationKind, setAccountOperationKind] = useState<PaymentAccountManualOperationKind | null>(null)
+  const [accountOperationCurrency, setAccountOperationCurrency] = useState<CurrencyCode>('iqd')
+  const [accountOperationAmount, setAccountOperationAmount] = useState('')
+  const [accountOperationCountedBalance, setAccountOperationCountedBalance] = useState('')
+  const [accountOperationPaymentMethod, setAccountOperationPaymentMethod] = useState<WorkspacePaymentMethod>('cash')
+  const [accountOperationReason, setAccountOperationReason] = useState('')
+  const [accountOperationAdjustmentReason, setAccountOperationAdjustmentReason] = useState<PaymentAccountAdjustmentReason>('count_correction')
+  const [accountOperationNotes, setAccountOperationNotes] = useState('')
+  const [accountOperationDate, setAccountOperationDate] = useState<Date | undefined>(new Date())
+  const [postingAccountOperation, setPostingAccountOperation] = useState(false)
 
   const selectedAccount = useMemo(
     () => accounts.find((account) => account.id === selectedAccountId) ?? null,
@@ -326,6 +413,48 @@ export function PaymentAccounts() {
     () => selectedAccount ? getPaymentAccountBalanceSummary(balances, selectedAccount.id) : [],
     [balances, selectedAccount],
   )
+  const isAdmin = user?.role === 'admin'
+  const canPostAccountOperations = isAdmin || user?.role === 'staff'
+  const accountOperationBalance = useMemo(
+    () => selectedAccountBalances.find((balance) => balance.currency === accountOperationCurrency)?.balanceAmount ?? 0,
+    [accountOperationCurrency, selectedAccountBalances],
+  )
+  const parsedAccountOperationAmount = parseFormattedNumber(accountOperationAmount)
+  const parsedAccountOperationCountedBalance = parseFormattedNumber(accountOperationCountedBalance)
+  const isBalanceAdjustment = accountOperationKind === 'adjustment'
+  const accountAdjustmentDelta = isBalanceAdjustment && accountOperationCountedBalance.trim()
+    ? parsedAccountOperationCountedBalance - accountOperationBalance
+    : 0
+  const accountOperationDirection: PaymentTransactionDirection | null = !accountOperationKind
+    ? null
+    : accountOperationKind === 'deposit'
+      ? 'incoming'
+      : accountOperationKind === 'withdrawal'
+        ? 'outgoing'
+        : accountAdjustmentDelta >= 0 ? 'incoming' : 'outgoing'
+  const accountOperationPostingAmount = isBalanceAdjustment
+    ? Math.abs(accountAdjustmentDelta)
+    : parsedAccountOperationAmount
+  const withdrawalExceedsPostedBalance = accountOperationKind === 'withdrawal'
+    && selectedAccount?.accountType !== 'bank_account'
+    && accountOperationPostingAmount > accountOperationBalance
+  const accountOperationAmountIsValid = isBalanceAdjustment
+    ? accountOperationCountedBalance.trim() !== ''
+      && Number.isFinite(parsedAccountOperationCountedBalance)
+      && parsedAccountOperationCountedBalance >= 0
+      && accountOperationPostingAmount > 0
+    : accountOperationAmount.trim() !== ''
+      && Number.isFinite(parsedAccountOperationAmount)
+      && parsedAccountOperationAmount > 0
+  const canSubmitAccountOperation = !!selectedAccount
+    && !!accountOperationKind
+    && canPostAccountOperations
+    && (!isBalanceAdjustment || isAdmin)
+    && openingBalanceCurrencies.includes(accountOperationCurrency)
+    && accountOperationAmountIsValid
+    && !withdrawalExceedsPostedBalance
+    && !!accountOperationReason.trim()
+    && !!accountOperationDate
   const transactionById = useMemo(
     () => new Map(paymentTransactions.map((transaction) => [transaction.id, transaction])),
     [paymentTransactions],
@@ -334,12 +463,8 @@ export function PaymentAccounts() {
     () => selectedAccountId ? movements.filter((movement) => movement.accountId === selectedAccountId) : [],
     [movements, selectedAccountId],
   )
-  const dateScopedMovements = useMemo(
-    () => selectedAccountMovements.filter((movement) => isDateInDateRange(movement.occurredAt, dateRange, customDates)),
-    [customDates, dateRange, selectedAccountMovements],
-  )
-  const movementEntries = useMemo<AccountMovementEntry[]>(
-    () => dateScopedMovements.map((movement) => {
+  const allMovementEntries = useMemo<AccountMovementEntry[]>(
+    () => selectedAccountMovements.map((movement) => {
       const transaction = transactionById.get(movement.paymentTransactionId) ?? null
       const relationKey = paymentAccountMovementRelationKey(transaction)
       const relationRole: AccountMovementRelationRole | null = transaction
@@ -352,11 +477,19 @@ export function PaymentAccounts() {
 
       return { id: movement.id, movement, transaction, relationKey, relationRole }
     }),
-    [dateScopedMovements, transactionById],
+    [selectedAccountMovements, transactionById],
+  )
+  const movementEntries = useMemo(
+    () => allMovementEntries.filter(({ movement }) => isDateInDateRange(movement.occurredAt, dateRange, customDates)),
+    [allMovementEntries, customDates, dateRange],
   )
   const filteredMovementEntries = useMemo(
     () => applyMovementFilters(movementEntries, movementFilters),
     [movementEntries, movementFilters],
+  )
+  const matchingAccountMovementEntries = useMemo(
+    () => applyMovementFilters(allMovementEntries, movementFilters),
+    [allMovementEntries, movementFilters],
   )
   const draftPreviewMovementEntries = useMemo(
     () => applyMovementFilters(movementEntries, draftMovementFilters),
@@ -378,12 +511,159 @@ export function PaymentAccounts() {
     () => filteredMovementEntries.filter(({ movement }) => movement.direction === 'outgoing').map(({ movement }) => movement),
     [filteredMovementEntries],
   )
-  const postedBalance = useMemo(
+  const rates = useMemo(
+    () => buildConversionRates(exchangeData, eurRates, tryRates),
+    [eurRates, exchangeData, tryRates],
+  )
+  const inflowValues = useMemo(
+    () => formatMovementTotalValues(movementInflows, features.iqd_display_preference, (movement) => movement.amount),
+    [features.iqd_display_preference, movementInflows],
+  )
+  const outflowValues = useMemo(
+    () => formatMovementTotalValues(movementOutflows, features.iqd_display_preference, (movement) => movement.amount),
+    [features.iqd_display_preference, movementOutflows],
+  )
+  const netFlowValues = useMemo(
+    () => formatMovementTotalValues(filteredMovementEntries.map((entry) => entry.movement), features.iqd_display_preference, (movement) => movement.deltaAmount),
+    [features.iqd_display_preference, filteredMovementEntries],
+  )
+  const inflowInBaseCurrency = useMemo(
+    () => movementInflows.reduce((total, movement) => total + convertToStoreBase(movement.amount, movement.currency, baseCurrency, rates), 0),
+    [baseCurrency, movementInflows, rates],
+  )
+  const outflowInBaseCurrency = useMemo(
+    () => movementOutflows.reduce((total, movement) => total + convertToStoreBase(movement.amount, movement.currency, baseCurrency, rates), 0),
+    [baseCurrency, movementOutflows, rates],
+  )
+  const netFlowInBaseCurrency = useMemo(
+    () => filteredMovementEntries.reduce((total, { movement }) => total + convertToStoreBase(movement.deltaAmount, movement.currency, baseCurrency, rates), 0),
+    [baseCurrency, filteredMovementEntries, rates],
+  )
+  const postedBalanceValues = useMemo(
     () => selectedAccountBalances.length
-      ? selectedAccountBalances.map((balance) => formatCurrency(balance.balanceAmount, balance.currency, features.iqd_display_preference)).join(' · ')
-      : '—',
+      ? selectedAccountBalances.map((balance) => formatCurrency(balance.balanceAmount, balance.currency, features.iqd_display_preference))
+      : ['—'],
     [features.iqd_display_preference, selectedAccountBalances],
   )
+  const postedBalanceInBaseCurrency = useMemo(
+    () => selectedAccountBalances.reduce((total, balance) => total + convertToStoreBase(balance.balanceAmount, balance.currency, baseCurrency, rates), 0),
+    [baseCurrency, rates, selectedAccountBalances],
+  )
+  const hasMultipleInflowCurrencies = new Set(movementInflows.map((movement) => movement.currency)).size > 1
+  const hasMultipleOutflowCurrencies = new Set(movementOutflows.map((movement) => movement.currency)).size > 1
+  const hasMultipleNetFlowCurrencies = new Set(filteredMovementEntries.map(({ movement }) => movement.currency)).size > 1
+  const hasMultipleBalanceCurrencies = selectedAccountBalances.length > 1
+  const movementComparisonWindow = useMemo(() => {
+    const bounds = getDateRangeBounds(dateRange, customDates)
+    const currentDates = filteredMovementEntries.map(({ movement }) => new Date(movement.occurredAt).getTime()).filter(Number.isFinite)
+    const fallbackEnd = new Date()
+    const fallbackStart = currentDates.length > 0
+      ? new Date(Math.min(...currentDates))
+      : new Date(fallbackEnd.getTime() - 24 * 60 * 60 * 1000)
+    const currentStart = bounds.start ?? fallbackStart
+    const intendedEnd = bounds.end ?? fallbackEnd
+    const currentEnd = intendedEnd > currentStart
+      ? intendedEnd
+      : new Date(currentStart.getTime() + 24 * 60 * 60 * 1000)
+    const duration = Math.max(currentEnd.getTime() - currentStart.getTime(), 24 * 60 * 60 * 1000)
+
+    return {
+      currentStart,
+      currentEnd,
+      previousStart: new Date(currentStart.getTime() - duration),
+    }
+  }, [customDates, dateRange, filteredMovementEntries])
+  const movementTrendStats = useMemo(() => {
+    let currentInflow = 0
+    let currentOutflow = 0
+    let previousInflow = 0
+    let previousOutflow = 0
+
+    matchingAccountMovementEntries.forEach(({ movement }) => {
+      const occurredAt = new Date(movement.occurredAt)
+      if (Number.isNaN(occurredAt.getTime())) return
+      const amount = Math.abs(convertToStoreBase(movement.amount, movement.currency, baseCurrency, rates))
+      const isCurrent = occurredAt >= movementComparisonWindow.currentStart && occurredAt < movementComparisonWindow.currentEnd
+      const isPrevious = occurredAt >= movementComparisonWindow.previousStart && occurredAt < movementComparisonWindow.currentStart
+      if (!isCurrent && !isPrevious) return
+
+      if (isCurrent) {
+        if (movement.direction === 'incoming') currentInflow += amount
+        else currentOutflow += amount
+      } else if (movement.direction === 'incoming') {
+        previousInflow += amount
+      } else {
+        previousOutflow += amount
+      }
+    })
+
+    const percentageChange = (current: number, previous: number) => {
+      if (previous === 0) return current > 0 ? 100 : 0
+      return ((current - previous) / previous) * 100
+    }
+    const currentNetFlow = currentInflow - currentOutflow
+    const previousNetFlow = previousInflow - previousOutflow
+
+    return {
+      inflowOffset: percentageChange(currentInflow, previousInflow),
+      outflowOffset: percentageChange(currentOutflow, previousOutflow),
+      netFlow: currentNetFlow,
+      netFlowOffset: percentageChange(currentNetFlow, previousNetFlow),
+    }
+  }, [baseCurrency, matchingAccountMovementEntries, movementComparisonWindow, rates])
+  const movementTrendUsesBaseEquivalent = new Set(filteredMovementEntries.map(({ movement }) => movement.currency)).size > 1
+  const movementTrendData = useMemo(() => {
+    const points = new Map<string, AccountMovementTrendPoint>()
+
+    filteredMovementEntries.forEach(({ movement }) => {
+      const dateKey = toMovementDateKey(movement.occurredAt)
+      const point = points.get(dateKey) ?? { dateKey, inflow: 0, outflow: 0, net: 0 }
+      const amount = movementTrendUsesBaseEquivalent
+        ? convertToStoreBase(movement.amount, movement.currency, baseCurrency, rates)
+        : movement.amount
+
+      if (movement.direction === 'incoming') {
+        point.inflow += amount
+        point.net += amount
+      } else {
+        point.outflow += amount
+        point.net -= amount
+      }
+      points.set(dateKey, point)
+    })
+
+    return Array.from(points.values()).sort((left, right) => left.dateKey.localeCompare(right.dateKey))
+  }, [baseCurrency, filteredMovementEntries, movementTrendUsesBaseEquivalent, rates])
+  const netFlowIsNegative = movementTrendStats.netFlow < 0
+
+  const renderCurrencySummary = (
+    values: string[],
+    convertedTotal: number,
+    hasMultipleCurrencies: boolean,
+    valueClassName: string,
+  ) => {
+    const summary = (
+      <div className={cn('space-y-1', hasMultipleCurrencies && 'cursor-help')}>
+        {values.map((value, index) => <div key={`${value}-${index}`} className={valueClassName}>{value}</div>)}
+      </div>
+    )
+
+    if (!hasMultipleCurrencies) return summary
+
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{summary}</TooltipTrigger>
+        <TooltipContent side="bottom" align="start" className="space-y-1 p-3">
+          <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            {t('paymentAccounts.equivalentTotal', { currency: baseCurrency.toUpperCase() })}
+          </div>
+          <div className="text-base font-black tabular-nums">
+            {formatCurrency(convertedTotal, baseCurrency, features.iqd_display_preference)}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    )
+  }
 
   useEffect(() => {
     if (selectedAccountId && !accounts.some((account) => account.id === selectedAccountId)) {
@@ -434,6 +714,64 @@ export function PaymentAccounts() {
       const nextCurrency = openingBalanceCurrencies.find((currency) => !selectedCurrencies.has(currency))
       return nextCurrency ? [...current, { currency: nextCurrency, amount: '' }] : current
     })
+  }
+
+  const openAccountOperation = (kind: PaymentAccountManualOperationKind) => {
+    if (!selectedAccount) return
+    const preferredCurrency = selectedAccountBalances[0]?.currency
+      ?? openingBalanceCurrencies[0]
+      ?? 'iqd'
+    const currentBalance = selectedAccountBalances.find((balance) => balance.currency === preferredCurrency)?.balanceAmount ?? 0
+    setAccountOperationKind(kind)
+    setAccountOperationCurrency(preferredCurrency)
+    setAccountOperationAmount('')
+    setAccountOperationCountedBalance(kind === 'adjustment' ? String(currentBalance) : '')
+    setAccountOperationPaymentMethod('cash')
+    setAccountOperationReason('')
+    setAccountOperationAdjustmentReason('count_correction')
+    setAccountOperationNotes('')
+    setAccountOperationDate(new Date())
+  }
+
+  const closeAccountOperation = () => {
+    if (postingAccountOperation) return
+    setAccountOperationKind(null)
+  }
+
+  const postAccountOperation = async () => {
+    if (!workspaceId || !selectedAccount || !accountOperationKind || !accountOperationDirection || !canSubmitAccountOperation) return
+    setPostingAccountOperation(true)
+    try {
+      await recordPaymentAccountManualOperation(workspaceId, {
+        accountId: selectedAccount.id,
+        kind: accountOperationKind,
+        currency: accountOperationCurrency,
+        amount: accountOperationPostingAmount,
+        direction: accountOperationDirection,
+        paymentMethod: accountOperationPaymentMethod,
+        occurredAt: accountOperationDate?.toISOString(),
+        reason: accountOperationReason,
+        notes: accountOperationNotes,
+        createdBy: user?.id ?? null,
+        canPost: canPostAccountOperations,
+        isAdmin,
+        adjustmentReason: isBalanceAdjustment ? accountOperationAdjustmentReason : undefined,
+        previousBalance: accountOperationBalance,
+        countedBalance: isBalanceAdjustment ? parsedAccountOperationCountedBalance : undefined,
+      })
+      toast({
+        title: accountOperationKind === 'deposit'
+          ? t('paymentAccounts.depositRecorded')
+          : accountOperationKind === 'withdrawal'
+            ? t('paymentAccounts.withdrawalRecorded')
+            : t('paymentAccounts.adjustmentRecorded'),
+      })
+      setAccountOperationKind(null)
+    } catch (error: any) {
+      toast({ title: t('common.error'), description: error?.message, variant: 'destructive' })
+    } finally {
+      setPostingAccountOperation(false)
+    }
   }
 
   const saveAccount = async () => {
@@ -579,13 +917,107 @@ export function PaymentAccounts() {
               <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">{t('paymentAccounts.selectedAccount', { defaultValue: 'Selected account' })}</span>
               {selectedAccount.isPrimary ? <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">{t('paymentAccounts.primaryAccount', { defaultValue: 'Primary account' })}</span> : null}
               {selectedAccount.isDefaultForPaymentSelector ? <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-3 py-1 text-xs font-semibold text-sky-700">{t('paymentAccounts.preselectedForPayments', { defaultValue: 'Preselected in payment forms' })}</span> : null}
+              {selectedAccount.isActive && canPostAccountOperations ? (
+                <div className="ms-auto flex flex-wrap items-center gap-2">
+                  <Button type="button" size="sm" onClick={() => openAccountOperation('deposit')}>
+                    <ArrowDownLeft className="mr-2 h-4 w-4" />
+                    {t('paymentAccounts.deposit')}
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => openAccountOperation('withdrawal')}>
+                    <ArrowUpRight className="mr-2 h-4 w-4" />
+                    {t('paymentAccounts.withdraw')}
+                  </Button>
+                  {isAdmin ? (
+                    <Button type="button" size="sm" variant="outline" className="border-amber-500/30 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300" onClick={() => openAccountOperation('adjustment')}>
+                      <ShieldAlert className="mr-2 h-4 w-4" />
+                      {t('paymentAccounts.adjustBalance')}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <Card><CardContent className="min-h-36 p-6"><p className="text-xs font-bold uppercase tracking-wide text-emerald-700">{t('ledger.kpis.totalInflow', { defaultValue: 'Total Inflow' })}</p><p className="mt-4 break-words text-2xl font-black text-emerald-700">{formatMovementTotals(movementInflows, features.iqd_display_preference, (movement) => movement.amount)}</p><p className="mt-2 text-xs text-muted-foreground">{t('paymentAccounts.currentPageRange', { defaultValue: 'Current selected range' })}</p></CardContent></Card>
-              <Card><CardContent className="min-h-36 p-6"><p className="text-xs font-bold uppercase tracking-wide text-amber-700">{t('ledger.kpis.totalOutflow', { defaultValue: 'Total Outflow' })}</p><p className="mt-4 break-words text-2xl font-black text-amber-700">{formatMovementTotals(movementOutflows, features.iqd_display_preference, (movement) => movement.amount)}</p><p className="mt-2 text-xs text-muted-foreground">{t('paymentAccounts.currentPageRange', { defaultValue: 'Current selected range' })}</p></CardContent></Card>
-              <Card><CardContent className="min-h-36 p-6"><p className="text-xs font-bold uppercase tracking-wide text-primary">{t('ledger.kpis.netFlow', { defaultValue: 'Net Flow' })}</p><p className="mt-4 break-words text-2xl font-black text-primary">{formatMovementTotals(filteredMovementEntries.map((entry) => entry.movement), features.iqd_display_preference, (movement) => movement.deltaAmount)}</p><p className="mt-2 text-xs text-muted-foreground">{t('paymentAccounts.currentPageRange', { defaultValue: 'Current selected range' })}</p></CardContent></Card>
-              <Card><CardContent className="min-h-36 p-6"><p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('paymentAccounts.postedBalance', { defaultValue: 'Posted Balance' })}</p><p className="mt-4 break-words text-2xl font-black">{postedBalance}</p><p className="mt-2 text-xs text-muted-foreground">{t('paymentAccounts.movementCount', { count: filteredMovementEntries.length, defaultValue: '{{count}} matching movements' })}</p></CardContent></Card>
-            </div>
+            <TooltipProvider delayDuration={300}>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <Card className="group relative overflow-hidden rounded-3xl border border-border/50 bg-card/60 dark:bg-zinc-950">
+                  <div className="pointer-events-none absolute end-0 top-0 p-4 opacity-5 transition-transform duration-500 group-hover:scale-110"><ArrowDownLeft className="h-24 w-24 text-emerald-500" /></div>
+                  <CardHeader className="relative z-10 flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-[13px] font-semibold uppercase tracking-tight text-emerald-600">{t('ledger.kpis.totalInflow', { defaultValue: 'Total Inflow' })}</CardTitle>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10"><DollarSign className="h-4 w-4 text-emerald-600" /></div>
+                  </CardHeader>
+                  <CardContent className="relative z-10 space-y-4">
+                    <div className="space-y-1">
+                      {renderCurrencySummary(inflowValues, inflowInBaseCurrency, hasMultipleInflowCurrencies, 'text-2xl font-black tabular-nums tracking-tighter leading-none text-emerald-600')}
+                      <div className="flex items-center gap-2">
+                        <span className={cn('flex items-center rounded-full border px-1.5 py-0.5 text-[11px] font-bold', movementTrendStats.inflowOffset > 0 ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600' : movementTrendStats.inflowOffset < 0 ? 'border-rose-500/20 bg-rose-500/10 text-rose-600' : 'border-border bg-secondary/50 text-muted-foreground')}>
+                          {movementTrendStats.inflowOffset > 0 ? <TrendingUp className="me-1 h-3 w-3" /> : movementTrendStats.inflowOffset < 0 ? <TrendingDown className="me-1 h-3 w-3" /> : null}
+                          {movementTrendStats.inflowOffset > 0 ? '+' : ''}{movementTrendStats.inflowOffset.toFixed(1)}%
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t('ledger.kpis.vsPriorPeriod', { defaultValue: 'vs prior period' })}</span>
+                      </div>
+                    </div>
+                    <PaymentAccountSparkline data={movementTrendData} dataKey="inflow" color="#10b981" gradientId="payment-account-inflow" />
+                  </CardContent>
+                </Card>
+
+                <Card className="group relative overflow-hidden rounded-3xl border border-border/50 bg-card/60 dark:bg-zinc-950">
+                  <div className="pointer-events-none absolute end-0 top-0 p-4 opacity-5 transition-transform duration-500 group-hover:scale-110"><ArrowUpRight className="h-24 w-24 text-amber-500" /></div>
+                  <CardHeader className="relative z-10 flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-[13px] font-semibold uppercase tracking-tight text-amber-600">{t('ledger.kpis.totalOutflow', { defaultValue: 'Total Outflow' })}</CardTitle>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full border border-amber-500/20 bg-amber-500/10"><Package className="h-4 w-4 text-amber-600" /></div>
+                  </CardHeader>
+                  <CardContent className="relative z-10 space-y-4">
+                    <div className="space-y-1">
+                      {renderCurrencySummary(outflowValues, outflowInBaseCurrency, hasMultipleOutflowCurrencies, 'text-2xl font-black tabular-nums tracking-tighter leading-none text-amber-600')}
+                      <div className="flex items-center gap-2">
+                        <span className={cn('flex items-center rounded-full border px-1.5 py-0.5 text-[11px] font-bold', movementTrendStats.outflowOffset > 0 ? 'border-rose-500/20 bg-rose-500/10 text-rose-600' : movementTrendStats.outflowOffset < 0 ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600' : 'border-border bg-secondary/50 text-muted-foreground')}>
+                          {movementTrendStats.outflowOffset > 0 ? <TrendingUp className="me-1 h-3 w-3" /> : movementTrendStats.outflowOffset < 0 ? <TrendingDown className="me-1 h-3 w-3" /> : null}
+                          {movementTrendStats.outflowOffset > 0 ? '+' : ''}{movementTrendStats.outflowOffset.toFixed(1)}%
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t('ledger.kpis.vsPriorPeriod', { defaultValue: 'vs prior period' })}</span>
+                      </div>
+                    </div>
+                    <PaymentAccountSparkline data={movementTrendData} dataKey="outflow" color="#f59e0b" gradientId="payment-account-outflow" />
+                  </CardContent>
+                </Card>
+
+                <Card className="group relative overflow-hidden rounded-3xl border border-border/50 bg-card/60 dark:bg-zinc-950">
+                  <div className="pointer-events-none absolute end-0 top-0 p-4 opacity-5 transition-transform duration-500 group-hover:scale-110"><Wallet className={cn('h-24 w-24', netFlowIsNegative ? 'text-rose-500' : 'text-sky-500')} /></div>
+                  <CardHeader className="relative z-10 flex flex-row items-center justify-between pb-2">
+                    <CardTitle className={cn('text-[13px] font-semibold uppercase tracking-tight', netFlowIsNegative ? 'text-rose-600' : 'text-sky-600')}>{t('ledger.kpis.netFlow', { defaultValue: 'Net Flow' })}</CardTitle>
+                    <div className={cn('flex h-8 w-8 items-center justify-center rounded-full border', netFlowIsNegative ? 'border-rose-500/20 bg-rose-500/10' : 'border-sky-500/20 bg-sky-500/10')}><BarChart3 className={cn('h-4 w-4', netFlowIsNegative ? 'text-rose-600' : 'text-sky-600')} /></div>
+                  </CardHeader>
+                  <CardContent className="relative z-10 space-y-4">
+                    <div className="space-y-1">
+                      {renderCurrencySummary(netFlowValues, netFlowInBaseCurrency, hasMultipleNetFlowCurrencies, cn('text-2xl font-black tabular-nums tracking-tighter leading-none', netFlowIsNegative ? 'text-rose-600' : 'text-sky-600'))}
+                      <div className="flex items-center gap-2">
+                        <span className={cn('flex items-center rounded-full border px-1.5 py-0.5 text-[11px] font-bold', movementTrendStats.netFlowOffset > 0 ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600' : movementTrendStats.netFlowOffset < 0 ? 'border-rose-500/20 bg-rose-500/10 text-rose-600' : 'border-border bg-secondary/50 text-muted-foreground')}>
+                          {movementTrendStats.netFlowOffset > 0 ? <TrendingUp className="me-1 h-3 w-3" /> : movementTrendStats.netFlowOffset < 0 ? <TrendingDown className="me-1 h-3 w-3" /> : null}
+                          {movementTrendStats.netFlowOffset > 0 ? '+' : ''}{movementTrendStats.netFlowOffset.toFixed(1)}%
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t('ledger.kpis.vsPriorPeriod', { defaultValue: 'vs prior period' })}</span>
+                      </div>
+                    </div>
+                    <PaymentAccountSparkline data={movementTrendData} dataKey="net" color={netFlowIsNegative ? '#ef4444' : '#0ea5e9'} gradientId="payment-account-net" />
+                  </CardContent>
+                </Card>
+
+                <Card className="group relative overflow-hidden rounded-3xl border border-violet-500/20 bg-gradient-to-br from-violet-500/[0.12] via-card/80 to-card/60 dark:from-violet-500/10 dark:via-zinc-950 dark:to-zinc-950">
+                  <div className="pointer-events-none absolute end-0 top-0 p-4 opacity-[0.07] transition-transform duration-500 group-hover:scale-110"><Landmark className="h-24 w-24 text-violet-500" /></div>
+                  <CardHeader className="relative z-10 flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-[13px] font-semibold uppercase tracking-tight text-violet-600">{t('paymentAccounts.postedBalance', { defaultValue: 'Posted Balance' })}</CardTitle>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full border border-violet-500/20 bg-violet-500/10"><Landmark className="h-4 w-4 text-violet-600" /></div>
+                  </CardHeader>
+                  <CardContent className="relative z-10 space-y-4">
+                    {renderCurrencySummary(postedBalanceValues, postedBalanceInBaseCurrency, hasMultipleBalanceCurrencies, 'text-2xl font-black tabular-nums tracking-tighter leading-none text-violet-600')}
+                    <div className="rounded-2xl border border-violet-500/15 bg-background/60 px-3 py-2.5 backdrop-blur-sm">
+                      <div className="flex items-center justify-between gap-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground"><span>{t('paymentAccounts.postedMovements')}</span><span className="tabular-nums text-violet-600">{filteredMovementEntries.length}</span></div>
+                      <p className="mt-1 text-xs text-muted-foreground">{t('paymentAccounts.postedBalanceDescription')}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TooltipProvider>
+            {movementTrendUsesBaseEquivalent ? <p className="text-xs text-muted-foreground">{t('ledger.charts.sparklineNote', { currency: baseCurrency.toUpperCase(), defaultValue: `Sparkline charts use ${baseCurrency.toUpperCase()} equivalent when multiple currencies are included.` })}</p> : null}
           </section>
 
           <Card>
@@ -702,6 +1134,161 @@ export function PaymentAccounts() {
             </div>
           </AppDialogBody>
           <AppDialogFooter><Button type="button" variant="ghost" onClick={() => setDraftMovementFilters(DEFAULT_MOVEMENT_FILTERS)}><RotateCcw className="mr-2 h-4 w-4" />{t('ledger.filters.resetDraft', { defaultValue: 'Reset Draft' })}</Button><div className="flex gap-2"><Button type="button" variant="outline" onClick={() => setMovementFilterDialogOpen(false)}>{t('common.cancel', { defaultValue: 'Cancel' })}</Button><Button type="button" onClick={() => { setMovementFilters(draftMovementFilters); setMovementFilterDialogOpen(false) }}>{t('paymentAccounts.applyMovementFilters', { count: draftPreviewMovementEntries.length, defaultValue: 'Apply Filters ({{count}})' })}</Button></div></AppDialogFooter>
+        </AppDialogContent>
+      </AppDialog>
+
+      <AppDialog open={!!accountOperationKind} onOpenChange={(next) => { if (!next) closeAccountOperation() }}>
+        <AppDialogContent className="max-w-2xl" showCloseButton={!postingAccountOperation} onPointerDownOutside={(event) => postingAccountOperation && event.preventDefault()} onEscapeKeyDown={(event) => postingAccountOperation && event.preventDefault()}>
+          <AppDialogHeader>
+            <AppDialogTitle className="flex items-center gap-3">
+              <span className={cn('rounded-xl p-2', isBalanceAdjustment ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300' : accountOperationKind === 'withdrawal' ? 'bg-orange-500/10 text-orange-700 dark:text-orange-300' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300')}>
+                {isBalanceAdjustment ? <ShieldAlert className="h-5 w-5" /> : accountOperationKind === 'withdrawal' ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownLeft className="h-5 w-5" />}
+              </span>
+              {accountOperationKind === 'deposit'
+                ? t('paymentAccounts.depositToAccount', { account: selectedAccount?.name })
+                : accountOperationKind === 'withdrawal'
+                  ? t('paymentAccounts.withdrawFromAccount', { account: selectedAccount?.name })
+                  : t('paymentAccounts.adjustAccountBalance', { account: selectedAccount?.name })}
+            </AppDialogTitle>
+            <p className="text-sm text-muted-foreground">
+              {isBalanceAdjustment
+                ? t('paymentAccounts.adjustmentDescription')
+                : accountOperationKind === 'withdrawal'
+                  ? t('paymentAccounts.withdrawDescription')
+                  : t('paymentAccounts.depositDescription')}
+            </p>
+          </AppDialogHeader>
+          <AppDialogBody>
+            <div className="grid gap-5">
+              <div className="flex items-center gap-3 rounded-2xl border border-border/60 bg-secondary/20 p-4">
+                <span className="rounded-xl bg-primary/10 p-2 text-primary"><PaymentAccountIcon iconKey={selectedAccount?.iconKey} accountType={selectedAccount?.accountType} className="h-5 w-5" /></span>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('paymentAccounts.accountActionAccount')}</p>
+                  <p className="truncate font-semibold">{selectedAccount?.name}</p>
+                </div>
+              </div>
+
+              {isBalanceAdjustment ? (
+                <div className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.07] p-4 text-sm">
+                  <div className="flex gap-3"><ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300" /><div><p className="font-bold text-amber-800 dark:text-amber-200">{t('paymentAccounts.adjustmentWarningTitle')}</p><p className="mt-1 text-muted-foreground">{t('paymentAccounts.adjustmentWarningDescription')}</p></div></div>
+                </div>
+              ) : null}
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <CurrencySelector
+                  value={accountOperationCurrency}
+                  onChange={(currency) => {
+                    setAccountOperationCurrency(currency)
+                    if (isBalanceAdjustment) {
+                      const nextBalance = selectedAccountBalances.find((balance) => balance.currency === currency)?.balanceAmount ?? 0
+                      setAccountOperationCountedBalance(String(nextBalance))
+                    }
+                  }}
+                  label={t('common.currency')}
+                  iqdDisplayPreference={features.iqd_display_preference}
+                  allowedCurrencies={openingBalanceCurrencies}
+                  disabled={postingAccountOperation}
+                />
+                <div className="grid gap-2">
+                  <Label htmlFor="payment-account-operation-amount">{isBalanceAdjustment ? t('paymentAccounts.countedBalance') : t('paymentAccounts.amount')} *</Label>
+                  <Input
+                    id="payment-account-operation-amount"
+                    inputMode="decimal"
+                    placeholder="0"
+                    disabled={postingAccountOperation}
+                    value={formatNumericInput(isBalanceAdjustment ? accountOperationCountedBalance : accountOperationAmount)}
+                    onChange={(event) => {
+                      const value = sanitizeNumericInput(event.target.value, { allowDecimal: true })
+                      if (isBalanceAdjustment) setAccountOperationCountedBalance(value)
+                      else setAccountOperationAmount(value)
+                    }}
+                  />
+                </div>
+              </div>
+
+              {isBalanceAdjustment ? (
+                <div className="grid gap-3 rounded-2xl border border-border/60 bg-secondary/10 p-4 sm:grid-cols-3">
+                  <div><p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('paymentAccounts.currentPostedBalance')}</p><p className="mt-1 font-bold tabular-nums">{formatCurrency(accountOperationBalance, accountOperationCurrency, features.iqd_display_preference)}</p></div>
+                  <div><p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('paymentAccounts.adjustmentImpact')}</p><p className={cn('mt-1 font-bold tabular-nums', accountAdjustmentDelta >= 0 ? 'text-emerald-600' : 'text-orange-600')}>{accountAdjustmentDelta >= 0 ? '+' : '−'}{formatCurrency(Math.abs(accountAdjustmentDelta), accountOperationCurrency, features.iqd_display_preference)}</p></div>
+                  <div><p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('paymentAccounts.newPostedBalance')}</p><p className="mt-1 font-bold tabular-nums">{formatCurrency(parsedAccountOperationCountedBalance || 0, accountOperationCurrency, features.iqd_display_preference)}</p></div>
+                </div>
+              ) : null}
+
+              {accountOperationKind !== 'adjustment' ? (
+                <div className="grid gap-2">
+                  <Label>{t('paymentAccounts.paymentMethod')}</Label>
+                  <PaymentMethodSelector
+                    value={accountOperationPaymentMethod}
+                    onValueChange={(method) => setAccountOperationPaymentMethod(method as WorkspacePaymentMethod)}
+                    workspaceId={workspaceId}
+                    disabled={postingAccountOperation}
+                  />
+                </div>
+              ) : null}
+
+              {isBalanceAdjustment ? (
+                <div className="grid gap-4 rounded-2xl border border-border/60 p-4">
+                  <div className="grid gap-2">
+                    <Label>{t('paymentAccounts.adjustmentReason')} *</Label>
+                    <Select value={accountOperationAdjustmentReason} onValueChange={(value) => setAccountOperationAdjustmentReason(value as PaymentAccountAdjustmentReason)} disabled={postingAccountOperation}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{PAYMENT_ACCOUNT_ADJUSTMENT_REASON_KEYS.map((reason) => <SelectItem key={reason} value={reason}>{t(`paymentAccounts.adjustmentReasons.${reason}`)}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="payment-account-adjustment-explanation">{t('paymentAccounts.explanation')} *</Label>
+                    <Textarea id="payment-account-adjustment-explanation" value={accountOperationReason} disabled={postingAccountOperation} onChange={(event) => setAccountOperationReason(event.target.value)} />
+                    <p className="text-xs text-muted-foreground">{t('paymentAccounts.explanationRequired')}</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="grid gap-2">
+                    <Label htmlFor="payment-account-operation-reason">{t('paymentAccounts.reasonOrSource')} *</Label>
+                    <Input id="payment-account-operation-reason" value={accountOperationReason} disabled={postingAccountOperation} onChange={(event) => setAccountOperationReason(event.target.value)} />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="payment-account-operation-notes">{t('common.notes')}</Label>
+                    <Textarea id="payment-account-operation-notes" value={accountOperationNotes} disabled={postingAccountOperation} onChange={(event) => setAccountOperationNotes(event.target.value)} />
+                  </div>
+                </>
+              )}
+
+              <div className="grid gap-2">
+                <Label>{t('paymentAccounts.recordedAt')} *</Label>
+                <DateTimePicker
+                  date={accountOperationDate}
+                  setDate={setAccountOperationDate}
+                  mode="date-time"
+                  placeholder={t('paymentAccounts.selectRecordedAt')}
+                  disabled={postingAccountOperation}
+                />
+              </div>
+
+              {withdrawalExceedsPostedBalance ? <p className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm font-medium text-destructive">{t('paymentAccounts.withdrawalExceedsBalance')}</p> : null}
+              {isBalanceAdjustment && accountOperationCountedBalance.trim() && accountOperationPostingAmount === 0 ? <p className="rounded-xl border border-border/60 bg-secondary/20 px-3 py-2 text-sm text-muted-foreground">{t('paymentAccounts.noAdjustmentRequired')}</p> : null}
+            </div>
+          </AppDialogBody>
+          <AppDialogFooter>
+            <Button type="button" variant="outline" onClick={closeAccountOperation} disabled={postingAccountOperation}>{t('common.cancel')}</Button>
+            {isBalanceAdjustment ? (
+              <PressAndHoldButton
+                onComplete={postAccountOperation}
+                idleLabel={t('paymentAccounts.holdToPostAdjustment')}
+                holdingLabel={t('paymentAccounts.keepHoldingToPostAdjustment')}
+                loadingLabel={t('paymentAccounts.postingAdjustment')}
+                icon={<ShieldAlert className="h-4 w-4" />}
+                isLoading={postingAccountOperation}
+                disabled={!canSubmitAccountOperation}
+                className="min-w-[190px] bg-amber-600 text-white hover:bg-amber-700"
+              />
+            ) : (
+              <Button type="button" onClick={postAccountOperation} disabled={!canSubmitAccountOperation || postingAccountOperation}>
+                {accountOperationKind === 'withdrawal' ? <ArrowUpRight className="mr-2 h-4 w-4" /> : <ArrowDownLeft className="mr-2 h-4 w-4" />}
+                {accountOperationKind === 'withdrawal' ? t('paymentAccounts.recordWithdrawal') : t('paymentAccounts.recordDeposit')}
+              </Button>
+            )}
+          </AppDialogFooter>
         </AppDialogContent>
       </AppDialog>
 

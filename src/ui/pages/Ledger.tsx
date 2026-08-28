@@ -109,6 +109,9 @@ type LedgerEntryType =
     | 'direct_inflow'
     | 'direct_outflow'
     | 'payment_account_opening_balance'
+    | 'payment_account_deposit'
+    | 'payment_account_withdrawal'
+    | 'payment_account_adjustment'
     | 'exchange_profit'
     | 'delivery_courier_remittance'
     | 'delivery_courier_fee_payout'
@@ -316,6 +319,12 @@ function ledgerTypeLabel(type: LedgerEntryType, t: any) {
             return t('ledger.type.directOutflow', { defaultValue: 'Direct Outflow' })
         case 'payment_account_opening_balance':
             return t('paymentAccounts.openingBalance', { defaultValue: 'Opening Balance' })
+        case 'payment_account_deposit':
+            return t('paymentAccounts.deposit', { defaultValue: 'Deposit' })
+        case 'payment_account_withdrawal':
+            return t('paymentAccounts.withdraw', { defaultValue: 'Withdrawal' })
+        case 'payment_account_adjustment':
+            return t('paymentAccounts.adjustBalance', { defaultValue: 'Balance Adjustment' })
         case 'exchange_profit':
             return t('ledger.type.exchangeProfit', { defaultValue: 'Exchange Profit' })
         case 'delivery_courier_remittance':
@@ -842,6 +851,12 @@ function buildTransactionReference(transaction: PaymentTransaction) {
             return buildReferenceId('RNT', transaction.sourceRecordId)
         case 'payment_account_opening_balance':
             return buildReferenceId('PA', transaction.sourceRecordId)
+        case 'payment_account_deposit':
+            return buildReferenceId('PAD', transaction.sourceRecordId)
+        case 'payment_account_withdrawal':
+            return buildReferenceId('PAW', transaction.sourceRecordId)
+        case 'payment_account_adjustment':
+            return buildReferenceId('PAA', transaction.sourceRecordId)
         default:
             return buildReferenceId('LOAN', transaction.sourceRecordId)
     }
@@ -1109,6 +1124,33 @@ function buildPaymentLedgerEntry(
             notes: transaction.note?.trim() || null,
             description: t('paymentAccounts.openingBalanceDescription', { defaultValue: 'Opening amount recorded when this payment account was created.' }),
             routePath: '/payment-accounts'
+        }
+    }
+
+    if (
+        transaction.sourceType === 'payment_account_deposit'
+        || transaction.sourceType === 'payment_account_withdrawal'
+        || transaction.sourceType === 'payment_account_adjustment'
+    ) {
+        return {
+            id: `payment:${transaction.id}`,
+            transactionId: transaction.id,
+            date: transaction.paidAt,
+            type: transaction.sourceType,
+            direction: transaction.direction,
+            amount: transaction.amount,
+            currency: transaction.currency,
+            sourceModule: 'payment_accounts',
+            referenceId: buildTransactionReference(transaction),
+            partner: null,
+            businessPartnerId: null,
+            paymentMethod: transaction.paymentMethod,
+            paymentAccount: transaction.accountNameSnapshot || null,
+            notes: transaction.note?.trim() || null,
+            description: transaction.sourceType === 'payment_account_adjustment'
+                ? t('paymentAccounts.adjustmentLedgerDescription', { defaultValue: 'Audited balance adjustment.' })
+                : t('paymentAccounts.manualOperationLedgerDescription', { defaultValue: 'Manual payment-account movement.' }),
+            routePath: '/payment-accounts',
         }
     }
 

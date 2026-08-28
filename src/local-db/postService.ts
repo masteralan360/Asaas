@@ -118,6 +118,18 @@ export interface CreateDeliveryRunInput {
   allowReturnedShipment?: boolean;
 }
 
+/** Creates one post and its first courier manifest under a stable retry key. */
+export interface CreateAndDispatchDeliveryShipmentInput {
+  operationId: string;
+  shipment: CreateDeliveryShipmentInput;
+  agentId: string;
+  courierDeliveryFee?: number;
+  vehicleId?: string | null;
+  dispatchedAt?: string;
+  notes?: string | null;
+  createdBy?: string | null;
+}
+
 export interface TransferReturnedDeliveryShipmentInput {
   agentId: string;
   shipmentId: string;
@@ -131,7 +143,7 @@ export interface TransferReturnedDeliveryShipmentInput {
 export interface UpdateDeliveryShipmentStatusInput {
   status: Extract<
     DeliveryShipmentStatus,
-    "ready_for_dispatch" | "delivered" | "postponed" | "returned" | "cancelled"
+    "delivered" | "postponed" | "returned" | "cancelled"
   >;
   note?: string | null;
   voiceReasonPath?: string | null;
@@ -1103,6 +1115,14 @@ export async function createDeliveryShipment(
   workspaceId: string,
   input: CreateDeliveryShipmentInput,
 ) {
+  return createDeliveryShipmentWithId(workspaceId, input);
+}
+
+async function createDeliveryShipmentWithId(
+  workspaceId: string,
+  input: CreateDeliveryShipmentInput,
+  shipmentId?: string,
+) {
   const profile = await db.delivery_merchant_profiles.get(input.merchantProfileId);
   if (!profile || profile.isDeleted || !profile.isActive || profile.workspaceId !== workspaceId) {
     throw new Error("Select an active delivery merchant");
@@ -1113,7 +1133,8 @@ export async function createDeliveryShipment(
   const customerPaymentStatus = input.customerPaymentStatus ?? "cash_on_delivery";
   const now = new Date().toISOString();
   const trackingNumber = await getInitialShipmentTrackingNumber(workspaceId);
-  const shipment = makeBase(workspaceId, {
+  const shipment = {
+    ...makeBase(workspaceId, {
     trackingNumber,
     merchantProfileId: profile.id,
     merchantBusinessPartnerId: profile.businessPartnerId,
@@ -1125,7 +1146,7 @@ export async function createDeliveryShipment(
     currency: input.currency,
     // A prepaid post cannot accidentally create courier custody. It may still
     // carry a merchant-funded delivery fee or recipient payout.
-    codAmount: customerPaymentStatus === "prepaid_electronically" ? 0 : positiveMoney(input.codAmount, "COD amount"),
+    codAmount: customerPaymentStatus === "prepaid_electronically" ? 0 : positiveMoney(input.codAmount, "COD amount", false),
     customerPaymentStatus,
     recipientPayoutAmount: positiveMoney(input.recipientPayoutAmount ?? 0, "Recipient payout amount"),
     // New posts are normally handed to the courier, who advances any recipient
@@ -1144,7 +1165,9 @@ export async function createDeliveryShipment(
     statusNote: null,
     sourceSalesOrderId: input.sourceSalesOrderId ?? null,
     createdBy: input.createdBy ?? null,
-  }) as DeliveryShipment;
+    }),
+    ...(shipmentId ? { id: shipmentId } : {}),
+  } as DeliveryShipment;
   const event = makeBase(workspaceId, {
     shipmentId: shipment.id,
     previousStatus: null,
@@ -1168,6 +1191,14 @@ export async function createDeliveryShipment(
 }
 
 export async function createDeliveryRun(workspaceId: string, input: CreateDeliveryRunInput) {
+  return createDeliveryRunWithId(workspaceId, input);
+}
+
+async function createDeliveryRunWithId(
+  workspaceId: string,
+  input: CreateDeliveryRunInput,
+  runId?: string,
+) {
   const agent = await db.agents.get(input.agentId);
   if (!agent || agent.isDeleted || agent.workspaceId !== workspaceId || agent.status !== "active" || agent.agentType !== "courier") {
     throw new Error("Select an active courier");
@@ -1180,10 +1211,10 @@ export async function createDeliveryRun(workspaceId: string, input: CreateDelive
   if (shipmentIds.length === 0) throw new Error("Select at least one shipment");
   const shipments = await db.delivery_shipments.bulkGet(shipmentIds);
   const dispatchableStatuses = input.allowReturnedShipment
-    ? ["received", "ready_for_dispatch", "postponed", "returned"]
-    : ["received", "ready_for_dispatch", "postponed"];
+    ? ["received", "postponed", "returned"]
+    : ["received", "postponed"];
   if (shipments.some((shipment) => !shipment || shipment.isDeleted || shipment.workspaceId !== workspaceId || !dispatchableStatuses.includes(shipment.status))) {
-    throw new Error("Only unassigned, ready, or postponed shipments can be dispatched");
+    throw new Error("Only unassigned, received, or postponed shipments can be dispatched");
   }
 
   const postponedVoiceReasonsByShipment = new Map<string, { eventIds: string[]; paths: string[] }>();
@@ -1227,7 +1258,8 @@ export async function createDeliveryRun(workspaceId: string, input: CreateDelive
         ...getSyncMetadata(workspaceId, now),
       } as DeliveryRunItem;
     }))).filter((item): item is DeliveryRunItem => item !== null);
-  const run = makeBase(workspaceId, {
+  const run = {
+    ...makeBase(workspaceId, {
     runNumber: makeReference("RUN", new Date(now)),
     agentId: agent.id,
     courierDeliveryFee,
@@ -1237,7 +1269,9 @@ export async function createDeliveryRun(workspaceId: string, input: CreateDelive
     closedAt: null,
     notes: normalizeText(input.notes),
     createdBy: input.createdBy ?? null,
-  }) as DeliveryRun;
+    }),
+    ...(runId ? { id: runId } : {}),
+  } as DeliveryRun;
   const updates: DeliveryShipment[] = [];
   const items: DeliveryRunItem[] = [];
   const events: DeliveryShipmentEvent[] = [];
@@ -1298,6 +1332,63 @@ export async function createDeliveryRun(workspaceId: string, input: CreateDelive
     }
   }
   return run;
+}
+
+/**
+ * Creates and assigns a post as one recoverable client operation. The stable
+ * entity IDs mean a retry resumes a post that was already persisted locally,
+ * instead of creating a duplicate after a manifest error or interrupted sync.
+ */
+export async function createAndDispatchDeliveryShipment(
+  workspaceId: string,
+  input: CreateAndDispatchDeliveryShipmentInput,
+) {
+  const operationId = input.operationId.trim();
+  if (!operationId) throw new Error("A delivery operation ID is required");
+
+  const shipmentId = await deliveryOperationId(`quick-dispatch:${operationId}:shipment`);
+  const runId = await deliveryOperationId(`quick-dispatch:${operationId}:run`);
+  let shipment = await db.delivery_shipments.get(shipmentId);
+  if (shipment && (shipment.workspaceId !== workspaceId || shipment.isDeleted)) {
+    throw new Error("This quick dispatch operation cannot be resumed");
+  }
+  if (!shipment) {
+    shipment = await createDeliveryShipmentWithId(workspaceId, input.shipment, shipmentId);
+  }
+
+  const existingRun = await db.delivery_runs.get(runId);
+  if (existingRun) {
+    if (existingRun.workspaceId !== workspaceId || existingRun.isDeleted) {
+      throw new Error("This quick dispatch operation cannot be resumed");
+    }
+    return { shipment, run: existingRun };
+  }
+
+  if (shipment.assignedRunId) {
+    const assignedRun = await db.delivery_runs.get(shipment.assignedRunId);
+    if (assignedRun && !assignedRun.isDeleted && assignedRun.workspaceId === workspaceId) {
+      return { shipment, run: assignedRun };
+    }
+  }
+  if (shipment.status !== "received") {
+    throw new Error("This post is no longer available for quick dispatch");
+  }
+
+  try {
+    const run = await createDeliveryRunWithId(workspaceId, {
+      agentId: input.agentId,
+      shipmentIds: [shipment.id],
+      courierDeliveryFee: input.courierDeliveryFee,
+      vehicleId: input.vehicleId,
+      dispatchedAt: input.dispatchedAt,
+      notes: input.notes,
+      createdBy: input.createdBy,
+    }, runId);
+    const assignedShipment = await db.delivery_shipments.get(shipment.id) ?? shipment;
+    return { shipment: assignedShipment, run };
+  } catch {
+    throw new Error("Post created but assignment could not be completed. Retry to finish assigning the same post.");
+  }
 }
 
 export async function transferReturnedDeliveryShipment(workspaceId: string, input: TransferReturnedDeliveryShipmentInput) {

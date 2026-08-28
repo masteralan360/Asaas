@@ -23,7 +23,11 @@ import type {
   PaymentAccountBalance,
   PaymentAccountMovement,
   PaymentAccountType,
+  PaymentAccountAdjustmentReason,
+  PaymentAccountManualOperationKind,
   PaymentTransaction,
+  PaymentTransactionDirection,
+  WorkspacePaymentMethod,
 } from './models'
 
 const PAYMENT_ACCOUNT_TABLES = [
@@ -349,6 +353,123 @@ export function getPaymentAccountBalanceSummary(
   return balances
     .filter((balance) => balance.accountId === accountId && !balance.isDeleted)
     .sort((a, b) => a.currency.localeCompare(b.currency))
+}
+
+export interface RecordPaymentAccountManualOperationInput {
+  accountId: string
+  kind: PaymentAccountManualOperationKind
+  currency: CurrencyCode
+  amount: number
+  /** Adjustments choose the direction from the counted-versus-posted difference. */
+  direction?: PaymentTransactionDirection
+  paymentMethod?: WorkspacePaymentMethod
+  occurredAt?: string
+  reason: string
+  notes?: string | null
+  createdBy?: string | null
+  /** Deposit and withdrawal need an authorized payment-account operator. */
+  canPost: boolean
+  /** A balance adjustment is intentionally restricted to administrators. */
+  isAdmin: boolean
+  adjustmentReason?: PaymentAccountAdjustmentReason
+  previousBalance?: number
+  countedBalance?: number
+}
+
+/**
+ * Record a real deposit, withdrawal, or audited reconciliation adjustment.
+ *
+ * This deliberately only appends an authoritative payment transaction. The
+ * payment-account movement and balance are then derived by the normal local
+ * mirror or the cloud database trigger; callers must never write either table
+ * directly.
+ */
+export async function recordPaymentAccountManualOperation(
+  workspaceId: string,
+  input: RecordPaymentAccountManualOperationInput,
+) {
+  if (!input.canPost) throw new Error('You are not allowed to post payment-account movements.')
+  if (input.kind === 'adjustment' && !input.isAdmin) {
+    throw new Error('Only administrators can post a payment-account balance adjustment.')
+  }
+
+  const account = await db.payment_accounts.get(input.accountId)
+  if (!account || account.workspaceId !== workspaceId || account.isDeleted || !account.isActive) {
+    throw new Error('The selected payment account is unavailable.')
+  }
+
+  const amount = Number(input.amount)
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error('Enter a positive amount.')
+  }
+  const reason = input.reason.trim()
+  if (!reason) throw new Error('Enter a reason for this account movement.')
+
+  const existingBalance = await db.payment_account_balances
+    .where('[accountId+currency]')
+    .equals([account.id, input.currency])
+    .first()
+  const currentBalance = Number(existingBalance?.balanceAmount || 0)
+
+  let direction: PaymentTransactionDirection
+  if (input.kind === 'deposit') {
+    direction = 'incoming'
+  } else if (input.kind === 'withdrawal') {
+    direction = 'outgoing'
+  } else {
+    if (input.direction !== 'incoming' && input.direction !== 'outgoing') {
+      throw new Error('A balance adjustment must specify its direction.')
+    }
+    direction = input.direction
+    const countedBalance = Number(input.countedBalance)
+    const previousBalance = Number(input.previousBalance)
+    if (!Number.isFinite(countedBalance) || countedBalance < 0 || !Number.isFinite(previousBalance)) {
+      throw new Error('Enter a valid counted balance for the adjustment.')
+    }
+    if (Math.abs(previousBalance - currentBalance) > 0.000001) {
+      throw new Error('This account changed while you were preparing the adjustment. Review the current posted balance and try again.')
+    }
+    const expectedDelta = countedBalance - currentBalance
+    if (Math.abs(expectedDelta) <= 0.000001 || Math.abs(Math.abs(expectedDelta) - amount) > 0.000001) {
+      throw new Error('The adjustment amount must exactly match the difference between the counted and posted balances.')
+    }
+    if ((expectedDelta > 0 && direction !== 'incoming') || (expectedDelta < 0 && direction !== 'outgoing')) {
+      throw new Error('The adjustment direction does not match the counted balance.')
+    }
+  }
+
+  if (input.kind === 'withdrawal' && account.accountType !== 'bank_account' && currentBalance - amount < -0.000001) {
+    throw new Error('This withdrawal would make the account balance negative.')
+  }
+
+  const operationId = generateId()
+  const { appendPaymentTransaction } = await import('./payments')
+  return appendPaymentTransaction(workspaceId, {
+    id: operationId,
+    idempotent: true,
+    sourceModule: 'payment_accounts',
+    sourceType: `payment_account_${input.kind}` as PaymentTransaction['sourceType'],
+    sourceRecordId: operationId,
+    direction,
+    amount,
+    currency: input.currency,
+    paymentMethod: input.kind === 'adjustment' ? 'unknown' : input.paymentMethod ?? 'cash',
+    paidAt: input.occurredAt ?? new Date().toISOString(),
+    referenceLabel: reason,
+    note: input.notes?.trim() || null,
+    createdBy: input.createdBy ?? null,
+    accountId: account.id,
+    accountNameSnapshot: account.name,
+    metadata: {
+      paymentAccountOperation: input.kind,
+      ...(input.kind === 'adjustment' ? {
+        adjustmentReason: input.adjustmentReason ?? 'other',
+        previousBalance: currentBalance,
+        countedBalance: Number(input.countedBalance),
+        adjustmentAmount: direction === 'incoming' ? amount : -amount,
+      } : {}),
+    },
+  })
 }
 
 export interface CreateCashierShiftInput {

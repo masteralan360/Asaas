@@ -56,7 +56,7 @@ import { useWorkspacePermissions } from '@/permissions'
 
 type PaymentsTab = 'open-items' | 'payable' | 'collectable' | 'transactions'
 type DirectionFilter = 'all' | 'incoming' | 'outgoing'
-type SourceFilter = 'all' | 'loans' | 'orders' | 'budget' | 'real_estate' | 'activities' | 'clinical_appointments' | 'car_rental' | 'payments'
+type SourceFilter = 'all' | 'loans' | 'orders' | 'budget' | 'real_estate' | 'activities' | 'clinical_appointments' | 'car_rental' | 'payments' | 'payment_accounts'
 type OpenStatusFilter = 'all' | 'open' | 'overdue'
 
 function sourceTypeLabel(
@@ -100,6 +100,12 @@ function sourceTypeLabel(
             return t('payments.sourceType.directTransaction', { defaultValue: 'Direct Transaction' })
         case 'payment_account_opening_balance':
             return t('paymentAccounts.openingBalance', { defaultValue: 'Opening Balance' })
+        case 'payment_account_deposit':
+            return t('paymentAccounts.deposit')
+        case 'payment_account_withdrawal':
+            return t('paymentAccounts.withdraw')
+        case 'payment_account_adjustment':
+            return t('paymentAccounts.adjustBalance')
         case 'delivery_courier_remittance':
             return t('payments.sourceType.deliveryCourierRemittance', { defaultValue: 'Courier Remittance' })
         case 'delivery_courier_fee_payout':
@@ -202,11 +208,11 @@ export function Payments() {
     const { t } = useTranslation()
     const { user } = useAuth()
     const { toast } = useToast()
-    const { features } = useWorkspace()
+    const { features, hasFeature } = useWorkspace()
     const { hasPermission } = useWorkspacePermissions()
     const [, setLocation] = useLocation()
     const workspaceId = user?.workspaceId
-    const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr || features.real_estate || features.activities || features.clinical_appointments || features.car_rental
+    const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr || features.real_estate || features.activities || features.clinical_appointments || features.car_rental || hasFeature('payment_accounts')
 
     const [activeTab, setActiveTab] = useState<PaymentsTab>('open-items')
     const [search, setSearch] = useState('')
@@ -525,6 +531,7 @@ export function Payments() {
                                 <SelectItem value="clinical_appointments">{t('payments.filters.appointments', { defaultValue: 'Appointments' })}</SelectItem>
                                 <SelectItem value="car_rental">{t('payments.filters.carRental')}</SelectItem>
                                 <SelectItem value="payments">{t('payments.filters.directManual', { defaultValue: 'Direct / Manual' })}</SelectItem>
+                                <SelectItem value="payment_accounts">{t('paymentAccounts.title')}</SelectItem>
                             </SelectContent>
                         </Select>
                         <Select value={statusFilter} onValueChange={(value: OpenStatusFilter) => setStatusFilter(value)}>

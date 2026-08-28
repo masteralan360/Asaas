@@ -311,6 +311,10 @@ function getTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceMo
         return transaction.sourceType === 'direct_transaction' ? '/direct-transactions' : '/payments'
     }
 
+    if (transaction.sourceModule === 'payment_accounts') {
+        return '/payment-accounts'
+    }
+
     if (transaction.sourceModule === 'real_estate') {
         return `/real-estate/${transaction.sourceRecordId}`
     }
