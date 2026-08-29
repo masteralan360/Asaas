@@ -17,6 +17,7 @@ import {
     SalesAgentAssignmentFields,
     type SalesAgentAssignmentFieldValue
 } from './SalesAgentAssignmentFields'
+import { formatCommissionPlanTerms } from './agentCommissionPresentation'
 import { useCommissionAgentDirectory } from './useCommissionAgentDirectory'
 
 export interface SalesOrderCommissionAssignmentHandle {
@@ -30,6 +31,7 @@ export interface SalesOrderCommissionAssignmentHandle {
 interface SalesOrderCommissionAssignmentSectionProps {
     workspaceId: string
     editingOrderId?: string
+    salesAccountAgentId?: string | null
     customerCity?: string
     assignedBy?: string | null
     orderCurrency: CurrencyCode
@@ -37,18 +39,31 @@ interface SalesOrderCommissionAssignmentSectionProps {
     exchangeRates: ExchangeRateSnapshot[]
     availableCurrencies: CurrencyCode[]
     iqdDisplayPreference?: 'IQD' | 'د.ع'
+    /** Locks this guided flow to the selected customer or sales-account agent. */
+    fixedRecipientAgentId?: string | null
+    fixedRecipientAssignmentSource?: AssignmentDraft['assignmentSource']
+    showOperationalFields?: boolean
+    requireManualCommissionWhenNoPlan?: boolean
+    compact?: boolean
     disabled?: boolean
 }
 
 type AssignmentDraft = SalesAgentAssignmentFieldValue & {
     key: string
     assignmentId?: string
+    assignmentSource: 'manual' | 'sales_account'
 }
 
-function createDraft(orderCurrency: CurrencyCode, assignment?: SalesOrderAgentAssignment, customerCity = ''): AssignmentDraft {
+function createDraft(
+    orderCurrency: CurrencyCode,
+    assignment?: SalesOrderAgentAssignment,
+    customerCity = '',
+    assignmentSource: AssignmentDraft['assignmentSource'] = assignment?.assignmentSource ?? 'manual'
+): AssignmentDraft {
     return {
         key: assignment?.id || crypto.randomUUID(),
         assignmentId: assignment?.id,
+        assignmentSource,
         agentId: assignment?.agentId || '',
         customerCity: assignment?.customerCitySnapshot || customerCity,
         deliveryChargeAmount: assignment?.deliveryChargeAmount ? String(assignment.deliveryChargeAmount) : '',
@@ -66,6 +81,7 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
 >(function SalesOrderCommissionAssignmentSection({
     workspaceId,
     editingOrderId,
+    salesAccountAgentId = null,
     customerCity = '',
     assignedBy,
     orderCurrency,
@@ -73,6 +89,11 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
     exchangeRates,
     availableCurrencies,
     iqdDisplayPreference,
+    fixedRecipientAgentId,
+    fixedRecipientAssignmentSource = 'manual',
+    showOperationalFields = true,
+    requireManualCommissionWhenNoPlan = false,
+    compact = false,
     disabled = false
 }, ref) {
     const { t } = useTranslation()
@@ -82,7 +103,18 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
         () => editingOrderId ? getActiveSalesOrderAgentAssignments(assignments, editingOrderId) : [],
         [assignments, editingOrderId]
     )
-    const [drafts, setDrafts] = useState<AssignmentDraft[]>(() => [createDraft(orderCurrency, undefined, customerCity)])
+    const [drafts, setDrafts] = useState<AssignmentDraft[]>(() => {
+        if (fixedRecipientAgentId) {
+            const assignmentSource = salesAccountAgentId === fixedRecipientAgentId
+                ? 'sales_account'
+                : fixedRecipientAssignmentSource
+            return [{
+                ...createDraft(orderCurrency, undefined, customerCity, assignmentSource),
+                agentId: fixedRecipientAgentId
+            }]
+        }
+        return [createDraft(orderCurrency, undefined, customerCity)]
+    })
 
     useEffect(() => {
         if (!editingOrderId) return
@@ -90,6 +122,51 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
             ? activeAssignments.map((assignment) => createDraft(orderCurrency, assignment, customerCity))
             : [createDraft(orderCurrency, undefined, customerCity)])
     }, [activeAssignments, customerCity, editingOrderId, orderCurrency])
+
+    useEffect(() => {
+        if (fixedRecipientAgentId !== undefined) return
+        setDrafts((current) => {
+            const manualDrafts = current.filter((draft) => draft.assignmentSource !== 'sales_account')
+            const currentSalesAccountDraft = current.find((draft) => draft.assignmentSource === 'sales_account')
+            if (!salesAccountAgentId) {
+                return currentSalesAccountDraft ? manualDrafts : current
+            }
+            // An existing manual assignment for the same person is already a
+            // beneficiary. Do not create a duplicate draft just because that
+            // person was also selected as the order's sales account.
+            if (manualDrafts.some((draft) => draft.agentId === salesAccountAgentId)) {
+                return currentSalesAccountDraft ? manualDrafts : current
+            }
+            if (currentSalesAccountDraft?.agentId === salesAccountAgentId) return current
+            return [
+                {
+                    ...createDraft(orderCurrency, undefined, customerCity, 'sales_account'),
+                    agentId: salesAccountAgentId
+                },
+                ...manualDrafts
+            ]
+        })
+    }, [customerCity, fixedRecipientAgentId, orderCurrency, salesAccountAgentId])
+
+    useEffect(() => {
+        if (fixedRecipientAgentId === undefined) return
+        setDrafts((current) => {
+            if (!fixedRecipientAgentId) return [createDraft(orderCurrency, undefined, customerCity)]
+            const assignmentSource = salesAccountAgentId === fixedRecipientAgentId
+                ? 'sales_account'
+                : fixedRecipientAssignmentSource
+            const currentDraft = current[0]
+            if (
+                current.length === 1
+                && currentDraft?.agentId === fixedRecipientAgentId
+                && currentDraft.assignmentSource === assignmentSource
+            ) return current
+            return [{
+                ...createDraft(orderCurrency, undefined, customerCity, assignmentSource),
+                agentId: fixedRecipientAgentId
+            }]
+        })
+    }, [customerCity, fixedRecipientAgentId, fixedRecipientAssignmentSource, orderCurrency, salesAccountAgentId])
 
     useEffect(() => {
         if (editingOrderId || !customerCity) return
@@ -172,12 +249,20 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
                 throw new Error(t('salesAgentCommissions.errors.duplicateSalesAgent'))
             }
             seenAgentIds.add(draft.agentId)
+            const selectedAgent = resolveSelectedAgent(draft)
+            if (
+                requireManualCommissionWhenNoPlan
+                && selectedAgent
+                && !selectedAgent.plan
+                && !draft.manualCommissionAmount.trim()
+            ) {
+                throw new Error(t('salesAgentCommissions.errors.manualCommissionPositive'))
+            }
             const manual = getManualCommissionInput(draft, {
                 currency: orderCurrency,
                 total: orderTotal,
                 exchangeRates
             })
-            const selectedAgent = resolveSelectedAgent(draft)
             const fixedPlanCurrency = selectedAgent?.plan?.commissionType === 'fixed_amount'
                 ? selectedAgent.plan.fixedCurrency
                 : null
@@ -196,7 +281,7 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
             hasCommissionPlanCurrencyConversion ||= requiresPlanConversion
         }
         return { hasManualCommissionCurrencyConversion, hasCommissionPlanCurrencyConversion }
-    }, [drafts, exchangeRates, getManualCommissionInput, orderCurrency, orderTotal, resolveSelectedAgent, t])
+    }, [drafts, exchangeRates, getManualCommissionInput, orderCurrency, orderTotal, requireManualCommissionWhenNoPlan, resolveSelectedAgent, t])
 
     const save = useCallback(async (order: Pick<SalesOrder, 'id' | 'currency' | 'total' | 'exchangeRates'>) => {
         validate()
@@ -206,6 +291,7 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
             assignedBy: assignedBy || undefined,
             assignments: selectedDrafts.map((draft) => ({
                 agentId: draft.agentId,
+                assignmentSource: draft.assignmentSource,
                 reason: draft.reassignmentReason.trim() || undefined,
                 customerCitySnapshot: draft.customerCity.trim() || undefined,
                 deliveryChargeAmount: Math.max(0, Number(draft.deliveryChargeAmount) || 0),
@@ -218,61 +304,94 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
     useImperativeHandle(ref, () => ({ validate, save }), [save, validate])
 
     return (
-        <Card className="border-violet-500/20 bg-violet-500/[0.02]">
-            <CardHeader className="space-y-1">
-                <CardTitle className="flex items-center gap-2">
-                    <UsersRound className="h-5 w-5 text-violet-600" />
-                    {t('salesAgentCommissions.salesAgentBeneficiaries')}
-                </CardTitle>
-                <p className="text-sm text-muted-foreground">
-                    {t('salesAgentCommissions.salesAgentBeneficiariesDescription')}
-                </p>
-            </CardHeader>
-            <CardContent className="space-y-4">
+        <Card className={compact ? 'border-0 bg-transparent shadow-none' : 'border-violet-500/20 bg-violet-500/[0.02]'}>
+            {!compact ? (
+                <CardHeader className="space-y-1">
+                    <CardTitle className="flex items-center gap-2">
+                        <UsersRound className="h-5 w-5 text-violet-600" />
+                        {t('salesAgentCommissions.salesAgentBeneficiaries')}
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                        {t('salesAgentCommissions.salesAgentBeneficiariesDescription')}
+                    </p>
+                </CardHeader>
+            ) : null}
+            <CardContent className={compact ? 'space-y-0 p-0' : 'space-y-4'}>
                 {drafts.map((draft, index) => {
                     const currentAgent = resolveSelectedAgent(draft)
+                    const isSalesAccountBeneficiary = draft.assignmentSource === 'sales_account'
+                    const manualAgentNumber = drafts
+                        .slice(0, index + 1)
+                        .filter((entry) => entry.assignmentSource !== 'sales_account')
+                        .length
                     const availableAgents = directory.eligibleAgents.filter((entry) => (
-                        entry.agent.id === draft.agentId || !selectedAgentIds.has(entry.agent.id)
+                        fixedRecipientAgentId !== undefined
+                            ? entry.agent.id === fixedRecipientAgentId
+                            : entry.agent.id === draft.agentId || !selectedAgentIds.has(entry.agent.id)
                     ))
                     return (
-                        <div key={draft.key} className="space-y-4 rounded-2xl border bg-background/70 p-4 sm:p-5">
-                            <div className="flex items-center justify-between gap-3">
-                                <div className="text-sm font-semibold">
-                                    {t('salesAgentCommissions.salesAgent')} {index + 1}
+                        <div key={draft.key} className={compact ? 'space-y-0' : 'space-y-4 rounded-2xl border bg-background/70 p-4 sm:p-5'}>
+                            {!compact ? (
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2 text-sm font-semibold">
+                                        {isSalesAccountBeneficiary
+                                            ? t('salesAgentCommissions.salesAccountBeneficiary')
+                                            : `${t('salesAgentCommissions.salesAgent')} ${manualAgentNumber}`}
+                                        {isSalesAccountBeneficiary ? (
+                                            <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300">
+                                                {t('agentSalesAccounts.salesAccount')}
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                    {!isSalesAccountBeneficiary && fixedRecipientAgentId === undefined ? (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            className="gap-1.5 text-muted-foreground hover:text-destructive"
+                                            onClick={() => removeDraft(draft.key)}
+                                            disabled={disabled}
+                                        >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                            {t('salesAgentCommissions.removeSalesAgent')}
+                                        </Button>
+                                    ) : null}
                                 </div>
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="ghost"
-                                    className="gap-1.5 text-muted-foreground hover:text-destructive"
-                                    onClick={() => removeDraft(draft.key)}
+                            ) : null}
+                            {compact && currentAgent?.plan ? (
+                                <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.05] p-4">
+                                    <p className="text-xs font-medium text-muted-foreground">{t('salesAgentCommissions.commissionPlan')}</p>
+                                    <p className="mt-1 font-semibold">{formatCommissionPlanTerms(currentAgent.plan, iqdDisplayPreference || 'IQD')}</p>
+                                </div>
+                            ) : (
+                                <SalesAgentAssignmentFields
+                                    idPrefix={`sales-order-agent-${draft.key}`}
+                                    value={draft}
+                                    onChange={(value) => updateDraft(draft.key, value)}
+                                    agents={availableAgents}
+                                    currentAgent={currentAgent}
+                                    orderCurrency={orderCurrency}
+                                    orderTotal={orderTotal}
+                                    exchangeRates={exchangeRates}
+                                    availableCurrencies={availableCurrencies}
+                                    iqdDisplayPreference={iqdDisplayPreference}
+                                    showAgentSelection={!compact}
+                                    showAgentSummary={!compact}
+                                    showReason={Boolean(draft.assignmentId)}
+                                    showOperationalFields={showOperationalFields}
+                                    lockAgentSelection={isSalesAccountBeneficiary || fixedRecipientAgentId !== undefined}
                                     disabled={disabled}
-                                >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                    {t('salesAgentCommissions.removeSalesAgent')}
-                                </Button>
-                            </div>
-                            <SalesAgentAssignmentFields
-                                idPrefix={`sales-order-agent-${draft.key}`}
-                                value={draft}
-                                onChange={(value) => updateDraft(draft.key, value)}
-                                agents={availableAgents}
-                                currentAgent={currentAgent}
-                                orderCurrency={orderCurrency}
-                                orderTotal={orderTotal}
-                                exchangeRates={exchangeRates}
-                                availableCurrencies={availableCurrencies}
-                                iqdDisplayPreference={iqdDisplayPreference}
-                                showReason={Boolean(draft.assignmentId)}
-                                disabled={disabled}
-                            />
+                                />
+                            )}
                         </div>
                     )
                 })}
-                <Button type="button" variant="outline" className="w-full gap-2" onClick={addDraft} disabled={disabled}>
-                    <Plus className="h-4 w-4" />
-                    {t('salesAgentCommissions.addSalesAgent')}
-                </Button>
+                {!compact && fixedRecipientAgentId === undefined ? (
+                    <Button type="button" variant="outline" className="w-full gap-2" onClick={addDraft} disabled={disabled}>
+                        <Plus className="h-4 w-4" />
+                        {t('salesAgentCommissions.addSalesAgent')}
+                    </Button>
+                ) : null}
             </CardContent>
         </Card>
     )

@@ -23,6 +23,7 @@ CREATE TABLE crm.agent_commission_entries (
   amount numeric NOT NULL,
   occurred_at timestamptz NOT NULL DEFAULT now(),
   payout_reference text NULL,
+  settlement_source text NOT NULL DEFAULT 'manual' CHECK (settlement_source IN ('manual', 'automatic')),
   notes text NULL,
   created_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),

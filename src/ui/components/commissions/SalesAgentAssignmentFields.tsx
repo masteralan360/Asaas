@@ -43,7 +43,11 @@ interface SalesAgentAssignmentFieldsProps {
     exchangeRates: ExchangeRateSnapshot[]
     availableCurrencies: CurrencyCode[]
     iqdDisplayPreference?: Parameters<typeof CurrencySelector>[0]['iqdDisplayPreference']
+    showAgentSelection?: boolean
+    showAgentSummary?: boolean
     showReason?: boolean
+    showOperationalFields?: boolean
+    lockAgentSelection?: boolean
     disabled?: boolean
 }
 
@@ -58,7 +62,11 @@ export function SalesAgentAssignmentFields({
     exchangeRates,
     availableCurrencies,
     iqdDisplayPreference,
+    showAgentSelection = true,
+    showAgentSummary = true,
     showReason = false,
+    showOperationalFields = true,
+    lockAgentSelection = false,
     disabled = false
 }: SalesAgentAssignmentFieldsProps) {
     const { t } = useTranslation()
@@ -96,12 +104,13 @@ export function SalesAgentAssignmentFields({
 
     return (
         <div className="space-y-4">
-            <div className="space-y-2">
+            {showAgentSelection ? (
+                <div className="space-y-2">
                 <Label htmlFor={fieldId('agent')}>{t('salesAgentCommissions.assignedSalesAgent')}</Label>
                 <Select
                     value={value.agentId || UNASSIGNED_VALUE}
                     onValueChange={selectAgent}
-                    disabled={disabled}
+                    disabled={disabled || lockAgentSelection}
                 >
                     <SelectTrigger id={fieldId('agent')} className="min-h-11">
                         <SelectValue placeholder={t('salesAgentCommissions.noSalesAgentAssigned')} />
@@ -122,9 +131,10 @@ export function SalesAgentAssignmentFields({
                 <p className="text-xs text-muted-foreground">
                     {t('salesAgentCommissions.assignmentHelp')}
                 </p>
-            </div>
+                </div>
+            ) : null}
 
-            {selectedAgent ? (
+            {showAgentSummary && selectedAgent ? (
                 <div className="flex flex-wrap gap-2">
                     <Badge variant="outline" className="gap-1.5">
                         <UserRound className="h-3.5 w-3.5" />
@@ -239,7 +249,8 @@ export function SalesAgentAssignmentFields({
                 </div>
             ) : null}
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            {showOperationalFields ? (
+                <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2 sm:col-span-2">
                     <Label htmlFor={fieldId('customer-city')} className="flex items-center gap-2">
                         <MapPin className="h-4 w-4 text-muted-foreground" />
@@ -284,7 +295,8 @@ export function SalesAgentAssignmentFields({
                         placeholder="0"
                     />
                 </div>
-            </div>
+                </div>
+            ) : null}
 
             {showReason ? (
                 <div className="space-y-2">

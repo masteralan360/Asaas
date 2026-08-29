@@ -778,7 +778,7 @@ function normalizeAgentFacetInput(input: Partial<AgentFacetInput> | undefined, e
     const linkedUserId = String(
         input?.linkedUserId === undefined ? existing?.linkedUserId ?? '' : input.linkedUserId ?? ''
     ).trim() || null
-    const salesAccountEnabled = input?.salesAccountEnabled === undefined
+    const salesAccountRequested = input?.salesAccountEnabled === undefined
         ? existing?.salesAccountEnabled ?? false
         : Boolean(input.salesAccountEnabled)
     const courierDeliveryFee = Number(
@@ -790,6 +790,10 @@ function normalizeAgentFacetInput(input: Partial<AgentFacetInput> | undefined, e
     if (agentType !== 'driver' && agentType !== 'field_agent' && agentType !== 'courier') {
         throw new Error('Agent type is required')
     }
+    // Sales accounts automatically credit the agent's commission. Commission
+    // plans and Supabase integrity rules apply to field agents, so changing an
+    // agent to another operational type turns the optional account off.
+    const salesAccountEnabled = agentType === 'field_agent' && salesAccountRequested
     if (!zone) {
         throw new Error('Agent operational territory is required')
     }

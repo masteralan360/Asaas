@@ -1198,6 +1198,7 @@ export function SalesOrderFormPage({
                                 ref={commissionAssignmentRef}
                                 workspaceId={workspaceId}
                                 editingOrderId={editingOrderId}
+                                salesAccountAgentId={selectedSalesAccount?.agent.id ?? null}
                                 customerCity={selectedCustomer?.city || ''}
                                 assignedBy={user?.id}
                                 orderCurrency={currency}

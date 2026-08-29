@@ -1,4 +1,5 @@
 import type {
+    AgentCommissionEntry,
     DeliveryLedgerEntry,
     Loan,
     LoanPayment,
@@ -39,6 +40,8 @@ export type PartnerAccountStatementData = {
     loanPayments?: LoanPayment[]
     linkedOrderCodes?: Record<string, string>
     settlementTransactions?: PaymentTransaction[]
+    /** Commission activity is included only for a sales-account agent's own statement. */
+    agentCommissionEntries?: AgentCommissionEntry[]
     /** Merchant-facing Post Service subledger entries. */
     deliveryLedgerEntries?: DeliveryLedgerEntry[]
     deliveryShipmentReferences?: Record<string, string>
@@ -54,6 +57,7 @@ export type PartnerAccountStatementEntryKind =
     | 'direct_transaction'
     | 'loan_disbursal'
     | 'loan_repayment'
+    | 'agent_commission'
     | 'delivery_post'
 
 export type PartnerAccountStatementEntryDescriptionKey =
@@ -64,6 +68,10 @@ export type PartnerAccountStatementEntryDescriptionKey =
     | 'advancePaymentReceived'
     | 'orderLoanDownPaymentReceived'
     | 'paymentMade'
+    | 'commissionPaid'
+    | 'commissionEarned'
+    | 'commissionReversed'
+    | 'commissionAdjustment'
     | 'directReceipt'
     | 'directPayment'
     | 'orderLoanProvided'
@@ -234,6 +242,10 @@ function paymentStatementPresentation(transaction: PaymentTransaction, salesOrde
 } {
     const note = transaction.note?.trim() || null
     const returnReason = metadataText(transaction.metadata, 'returnReason') || getLegacyReturnReason(note)
+
+    if (transaction.sourceType === 'agent_commission_payout') {
+        return { description: 'Commission paid', descriptionKey: 'commissionPaid', note, returnReason: null }
+    }
 
     if (metadataFlag(transaction.metadata, 'loanRepaymentRefund')) {
         return { description: 'Loan repayment refund', descriptionKey: 'loanRepaymentRefund', note: null, returnReason }
@@ -467,7 +479,11 @@ function createPaymentEntries(data: PartnerAccountStatementData): PartnerAccount
             return {
                 id: `payment:${transaction.id}`,
                 date: transaction.paidAt || transaction.createdAt,
-                reference: transaction.referenceLabel || transaction.sourceRecordId,
+                reference: transaction.sourceType === 'agent_commission_payout'
+                    ? data.linkedOrderCodes?.[metadataText(transaction.metadata, 'orderId') || '']
+                        || transaction.referenceLabel
+                        || transaction.sourceRecordId
+                    : transaction.referenceLabel || transaction.sourceRecordId,
                 kind: paymentKind(transaction),
                 ...presentation,
                 currency: transaction.currency,
@@ -477,6 +493,54 @@ function createPaymentEntries(data: PartnerAccountStatementData): PartnerAccount
                     ? { recordType: 'order', recordId: transaction.sourceRecordId }
                     : { recordType: 'payment_transaction', recordId: transaction.id }
             }
+        })
+}
+
+function commissionEntryPresentation(entry: AgentCommissionEntry): {
+    description: string
+    descriptionKey: PartnerAccountStatementEntryDescriptionKey
+} | null {
+    switch (entry.kind) {
+        case 'accrual':
+            return { description: 'Commission earned', descriptionKey: 'commissionEarned' }
+        case 'reversal':
+            return { description: 'Commission reversed', descriptionKey: 'commissionReversed' }
+        case 'adjustment':
+            return { description: 'Commission adjustment', descriptionKey: 'commissionAdjustment' }
+        default:
+            return null
+    }
+}
+
+/**
+ * A sales-account agent is a business partner as well as a commission
+ * recipient. The earned/reversed/adjusted ledger entries establish what the
+ * workspace owes the agent. The separately recorded payout payment then
+ * settles that liability, so a paid commission nets to zero in the statement.
+ */
+function createAgentCommissionEntries(data: PartnerAccountStatementData): PartnerAccountStatementEntry[] {
+    return (data.agentCommissionEntries || [])
+        .filter((entry) => !entry.isDeleted)
+        .flatMap((entry) => {
+            const presentation = commissionEntryPresentation(entry)
+            if (!presentation) return []
+
+            const reference = (entry.orderId ? data.linkedOrderCodes?.[entry.orderId] : null)
+                || entry.payoutReference
+                || entry.orderId
+                || entry.id
+            return [{
+                id: `agent-commission:${entry.id}`,
+                date: entry.occurredAt || entry.createdAt,
+                reference,
+                kind: 'agent_commission' as const,
+                ...presentation,
+                note: entry.notes?.trim() || null,
+                currency: entry.currency,
+                // Commission entries are amounts owed to the sales-account
+                // agent, while a positive statement delta is owed by them.
+                delta: -Number(entry.amount || 0)
+            }]
         })
 }
 
@@ -592,6 +656,7 @@ export function buildPartnerAccountStatementLedger(data: PartnerAccountStatement
     const entries = [
         ...createOrderEntries(data),
         ...createPaymentEntries(data),
+        ...createAgentCommissionEntries(data),
         ...createLoanEntries(data),
         ...createDeliveryEntries(data)
     ].filter((entry) => Math.abs(entry.delta) > 0.000001)

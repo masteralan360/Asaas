@@ -860,6 +860,7 @@ export type CommissionEntryStatus =
   | "approved"
   | "paid"
   | "reversed";
+export type SalesOrderAgentAssignmentSource = 'manual' | 'sales_account';
 
 /** Effective-dated commission terms. No commission fields are added to Agent. */
 export interface AgentCommissionPlan extends BaseEntity {
@@ -898,6 +899,8 @@ export interface AgentCommissionMembership extends BaseEntity {
 export interface SalesOrderAgentAssignment extends BaseEntity {
   orderId: string;
   agentId: string;
+  /** Whether a user selected this beneficiary or it follows the sales account. */
+  assignmentSource?: SalesOrderAgentAssignmentSource;
   assignedAt: string;
   unassignedAt?: string | null;
   assignedBy?: string | null;
@@ -1029,6 +1032,8 @@ export interface AgentCommissionEntry extends BaseEntity {
   amount: number;
   occurredAt: string;
   payoutReference?: string | null;
+  /** Payouts are either historical/manual records or generated once an order is fully paid. */
+  settlementSource?: "manual" | "automatic";
   notes?: string | null;
   createdBy?: string | null;
 }

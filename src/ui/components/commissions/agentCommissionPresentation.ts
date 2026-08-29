@@ -134,6 +134,20 @@ export function summarizeCommissionEntries(entries: AgentCommissionEntry[]): Com
     return summary
 }
 
+/**
+ * Commission entries store an order UUID for the relationship, not its human-facing
+ * sales-order reference.  The order can arrive in the local read model a moment
+ * after its commission entry (notably for POS quick orders), so never expose that
+ * UUID as a temporary order label.
+ */
+export function commissionEntryOrderReference(
+    entry: Pick<AgentCommissionEntry, 'orderId' | 'payoutReference'>,
+    orderNumberById: ReadonlyMap<string, string>
+) {
+    if (entry.orderId) return orderNumberById.get(entry.orderId) || '—'
+    return entry.payoutReference || '—'
+}
+
 export function commissionStatusLabel(status: CommissionEntryStatus, translate?: (key: string) => string) {
     switch (status) {
         case 'estimated': return translate?.('salesAgentCommissions.estimated') || 'Estimated'

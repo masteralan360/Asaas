@@ -1559,6 +1559,20 @@ function hasCachedSalesAgentCommissionFeature(workspaceId: string | undefined) {
     }>(workspaceId)?.features.sales_agent_commissions)
 }
 
+async function synchronizeSalesAccountCommissionBeneficiaryBestEffort(
+    workspaceId: string,
+    orderId: string,
+    createdBy?: string | null
+) {
+    if (!hasCachedSalesAgentCommissionFeature(workspaceId)) return
+    try {
+        const { synchronizeSalesAccountAgentCommissionAssignment } = await import('./agentCommissions')
+        await synchronizeSalesAccountAgentCommissionAssignment(workspaceId, orderId, createdBy)
+    } catch (error) {
+        console.error('[Orders] Failed to synchronize the sales-account commission beneficiary:', error)
+    }
+}
+
 function hasCachedAgentSalesAccountsFeature(workspaceId: string | undefined) {
     return Boolean(workspaceId && readWorkspaceCache<{
         agent_sales_accounts?: boolean
@@ -2185,6 +2199,7 @@ export async function createSalesOrder(
     }
 
     await syncUpsertEntities('sales_orders', [order as unknown as Record<string, unknown> & { id: string; version: number }], workspaceId)
+    await synchronizeSalesAccountCommissionBeneficiaryBestEffort(workspaceId, order.id, createdBy)
     await recalculateCustomerAndPartnerSummaries(workspaceId, order.customerId, order.businessPartnerId)
     const createdOrder = (await db.sales_orders.get(order.id)) as SalesOrder
 
@@ -2306,6 +2321,7 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
         ? { ...updated, orderAdjustments: null }
         : updated
     await syncUpsertEntities('sales_orders', [orderForSync as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
+    await synchronizeSalesAccountCommissionBeneficiaryBestEffort(existing.workspaceId, updated.id, updated.createdBy)
 
     await Promise.all(
         Array.from(new Set([

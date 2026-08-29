@@ -5,6 +5,7 @@ import {
   clearWorkspaceModeSnapshot,
   writeWorkspaceModeSnapshot,
 } from "@/workspace/workspaceMode";
+import { clearWorkspaceCache, writeWorkspaceCache } from "@/workspace/workspaceCache";
 
 import { db } from "./database";
 import type { Agent, OrderReturn, SalesOrder } from "./models";
@@ -140,9 +141,20 @@ describe("sales agent commission lifecycle", () => {
     await db.delete();
     await db.open();
     writeWorkspaceModeSnapshot({ workspaceId: WORKSPACE_ID, dataMode: "local" });
+    writeWorkspaceCache({
+      workspaceId: WORKSPACE_ID,
+      workspaceName: null,
+      features: {
+        sales_agent_commissions: true,
+        agent_sales_accounts: true,
+      },
+    });
   });
 
-  afterEach(() => clearWorkspaceModeSnapshot(WORKSPACE_ID));
+  afterEach(() => {
+    clearWorkspaceModeSnapshot(WORKSPACE_ID);
+    clearWorkspaceCache(WORKSPACE_ID);
+  });
   afterAll(async () => { await db.delete(); });
 
   it("calculates return-aware profit commission from frozen delivery snapshots", () => {
@@ -165,6 +177,112 @@ describe("sales agent commission lifecycle", () => {
       costAmount: 370,
       basisAmount: 280,
       commissionAmount: 28,
+    });
+  });
+
+  it("keeps the sales-account commission beneficiary separate from manual assignments", async () => {
+    const agent = { ...fieldAgent(crypto.randomUUID()), salesAccountEnabled: true };
+    const order = { ...completedOrder(crypto.randomUUID()), salesAccountAgentId: agent.id };
+    await db.agents.put(agent);
+    await db.sales_orders.put(order);
+
+    const assignment = await commissions.synchronizeSalesAccountAgentCommissionAssignment(
+      WORKSPACE_ID,
+      order.id,
+      order.createdBy,
+    );
+
+    expect(assignment).toMatchObject({
+      agentId: agent.id,
+      assignmentSource: "sales_account",
+      unassignedAt: null,
+    });
+
+    await db.sales_orders.put({
+      ...order,
+      salesAccountAgentId: null,
+      updatedAt: new Date().toISOString(),
+      version: order.version + 1,
+    });
+    await commissions.synchronizeSalesAccountAgentCommissionAssignment(WORKSPACE_ID, order.id, order.createdBy);
+
+    const assignments = await db.sales_order_agent_assignments
+      .where("[workspaceId+orderId]")
+      .equals([WORKSPACE_ID, order.id])
+      .toArray();
+    expect(assignments).toHaveLength(1);
+    expect(assignments[0]).toMatchObject({ assignmentSource: "sales_account" });
+    expect(assignments[0].unassignedAt).toBeTruthy();
+  });
+
+  it("does not restore a stale sales-account beneficiary after the order account changes", async () => {
+    const firstAgent = { ...fieldAgent(crypto.randomUUID()), salesAccountEnabled: true };
+    const secondAgent = { ...fieldAgent(crypto.randomUUID()), salesAccountEnabled: true };
+    const order = { ...completedOrder(crypto.randomUUID()), salesAccountAgentId: firstAgent.id };
+    await db.agents.bulkPut([firstAgent, secondAgent]);
+    await db.sales_orders.put(order);
+
+    await commissions.synchronizeSalesAccountAgentCommissionAssignment(WORKSPACE_ID, order.id, order.createdBy);
+    await db.sales_orders.put({
+      ...order,
+      salesAccountAgentId: secondAgent.id,
+      updatedAt: new Date().toISOString(),
+      version: order.version + 1,
+    });
+    await commissions.synchronizeSalesAccountAgentCommissionAssignment(WORKSPACE_ID, order.id, order.createdBy);
+
+    // This mirrors a form that was submitted just after the order account was
+    // changed but before its local commission draft had re-rendered.
+    await commissions.replaceSalesOrderAgentAssignments(WORKSPACE_ID, {
+      orderId: order.id,
+      assignedBy: order.createdBy,
+      assignments: [{ agentId: firstAgent.id, assignmentSource: "sales_account" }],
+    });
+
+    const activeAssignments = commissions.getActiveSalesOrderAgentAssignments(
+      await db.sales_order_agent_assignments
+        .where("[workspaceId+orderId]")
+        .equals([WORKSPACE_ID, order.id])
+        .toArray(),
+      order.id,
+    );
+    expect(activeAssignments).toHaveLength(1);
+    expect(activeAssignments[0]).toMatchObject({
+      agentId: secondAgent.id,
+      assignmentSource: "sales_account",
+    });
+  });
+
+  it("serializes concurrent sales-account beneficiary synchronization", async () => {
+    const agent = { ...fieldAgent(crypto.randomUUID()), salesAccountEnabled: true };
+    const order = { ...completedOrder(crypto.randomUUID()), salesAccountAgentId: agent.id };
+    await db.agents.put(agent);
+    await db.sales_orders.put(order);
+
+    await Promise.all([
+      commissions.synchronizeSalesAccountAgentCommissionAssignment(
+        WORKSPACE_ID,
+        order.id,
+        order.createdBy,
+      ),
+      commissions.synchronizeSalesAccountAgentCommissionAssignment(
+        WORKSPACE_ID,
+        order.id,
+        order.createdBy,
+      ),
+    ]);
+
+    const activeAssignments = commissions.getActiveSalesOrderAgentAssignments(
+      await db.sales_order_agent_assignments
+        .where("[workspaceId+orderId]")
+        .equals([WORKSPACE_ID, order.id])
+        .toArray(),
+      order.id,
+    );
+    expect(activeAssignments).toHaveLength(1);
+    expect(activeAssignments[0]).toMatchObject({
+      agentId: agent.id,
+      assignmentSource: "sales_account",
     });
   });
 
@@ -418,7 +536,7 @@ describe("sales agent commission lifecycle", () => {
     })).toMatchObject({ revenueAmount: 1010, commissionAmount: 101 });
   });
 
-  it("accrues, reverses a partial return, and stores payouts as negative ledger events", async () => {
+  it("automatically settles earned commission once the completed order is paid", async () => {
     const agent = fieldAgent(crypto.randomUUID());
     const order = completedOrder(crypto.randomUUID());
     await db.agents.put(agent);
@@ -442,9 +560,16 @@ describe("sales agent commission lifecycle", () => {
     expect(assignment).not.toBeNull();
 
     const initialEntries = await db.agent_commission_entries.where("orderId").equals(order.id).toArray();
-    expect(initialEntries).toEqual([
+    expect(initialEntries).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "accrual", status: "earned", amount: 40 }),
-    ]);
+      expect.objectContaining({
+        kind: "payout",
+        status: "paid",
+        amount: -40,
+        payoutReference: order.orderNumber,
+        settlementSource: "automatic",
+      }),
+    ]));
 
     const returnedAt = new Date().toISOString();
     const updatedOrder: SalesOrder = {
@@ -483,89 +608,101 @@ describe("sales agent commission lifecycle", () => {
       expect.objectContaining({ kind: "reversal", status: "reversed", amount: -20 }),
     ]);
 
-    const payout = await commissions.recordCommissionPayout(WORKSPACE_ID, {
-      agentId: agent.id,
-      orderId: order.id,
-      amount: 10,
-      currency: "usd",
-      paymentMethod: "cash",
-    });
-    expect(payout.amount).toBe(-10);
-    expect(payout).toMatchObject({ orderId: order.id, payoutReference: order.orderNumber });
-    const finalPayout = await commissions.recordCommissionPayout(WORKSPACE_ID, {
-      agentId: agent.id,
-      orderId: order.id,
-      amount: 10,
-      currency: "usd",
-      paymentMethod: "cash",
-    });
-    expect(finalPayout.id).not.toBe(payout.id);
-    await expect(commissions.recordCommissionPayout(WORKSPACE_ID, {
-      agentId: agent.id,
-      orderId: order.id,
-      amount: 1,
-      currency: "usd",
-      paymentMethod: "cash",
-    })).rejects.toThrow("selected order's outstanding commission");
-
     const allEntries = await db.agent_commission_entries.where("agentId").equals(agent.id).toArray();
-    expect(allEntries.filter((entry) => entry.kind === "payout")).toHaveLength(2);
+    expect(allEntries.filter((entry) => entry.kind === "payout")).toHaveLength(1);
     const outstanding = allEntries
       .filter((entry) => entry.kind !== "approval" && entry.kind !== "estimate")
       .reduce((sum, entry) => sum + entry.amount, 0);
-    expect(outstanding).toBe(0);
+    expect(outstanding).toBe(-20);
 
     const payoutTransactions = await db.payment_transactions
       .where("[workspaceId+sourceType+sourceRecordId]")
       .equals([WORKSPACE_ID, "agent_commission_payout", agent.id])
       .toArray();
-    expect(payoutTransactions).toEqual(expect.arrayContaining([
+    expect(payoutTransactions).toEqual([
       expect.objectContaining({
         sourceModule: "orders",
         sourceType: "agent_commission_payout",
         sourceRecordId: agent.id,
-        sourceSubrecordId: payout.id,
         direction: "outgoing",
-        amount: 10,
+        amount: 40,
         currency: "usd",
-        paymentMethod: "cash",
-        metadata: expect.objectContaining({ agentCommissionEntryId: payout.id }),
+        paymentMethod: "unknown",
+        metadata: expect.objectContaining({ automaticSettlement: true }),
       }),
-      expect.objectContaining({
-        sourceSubrecordId: finalPayout.id,
-        metadata: expect.objectContaining({ agentCommissionEntryId: finalPayout.id }),
-      }),
-    ]));
+    ]);
   });
 
-  it("rejects commission payouts that cannot be paid through a real payment method", async () => {
+  it("funds automatic commission payouts from the order payment account", async () => {
     const agent = fieldAgent(crypto.randomUUID());
+    const order = completedOrder(crypto.randomUUID());
+    const { savePaymentAccount } = await import("./paymentAccounts");
+    const { appendPaymentTransaction } = await import("./payments");
+    const account = await savePaymentAccount(WORKSPACE_ID, {
+      name: "Main cash drawer",
+      accountType: "cash_drawer",
+      createdBy: order.createdBy,
+    });
+
     await db.agents.put(agent);
+    await db.sales_orders.put(order);
+    await appendPaymentTransaction(WORKSPACE_ID, {
+      sourceModule: "orders",
+      sourceType: "sales_order",
+      sourceRecordId: order.id,
+      direction: "incoming",
+      amount: order.total,
+      currency: order.currency,
+      paymentMethod: "cash",
+      paidAt: order.paidAt!,
+      counterpartyName: order.customerName,
+      referenceLabel: order.orderNumber,
+      createdBy: order.createdBy,
+      accountId: account.id,
+      accountNameSnapshot: account.name,
+    });
+
     const plan = await commissions.createAgentCommissionPlan(WORKSPACE_ID, {
-      name: "Level 1",
-      level: "level_1",
+      name: "Account-funded level",
+      level: "account-funded-level",
       ratePercent: 10,
+      calculationBasis: "net_profit",
     });
     await commissions.setAgentCommissionMembership(WORKSPACE_ID, {
       agentId: agent.id,
       planId: plan.id,
     });
-    const order = completedOrder(crypto.randomUUID());
-    await db.sales_orders.put(order);
     await commissions.assignSalesOrderAgent(WORKSPACE_ID, {
       orderId: order.id,
       agentId: agent.id,
+      customerCitySnapshot: "Baghdad",
     });
-    await commissions.accrueSalesOrderCommission(WORKSPACE_ID, order.id);
 
-    await expect(commissions.recordCommissionPayout(WORKSPACE_ID, {
-      agentId: agent.id,
-      orderId: order.id,
-      amount: 1,
+    const payout = await db.payment_transactions
+      .where("[workspaceId+sourceType+sourceRecordId]")
+      .equals([WORKSPACE_ID, "agent_commission_payout", agent.id])
+      .first();
+    expect(payout).toMatchObject({
+      direction: "outgoing",
+      amount: 40,
       currency: "usd",
-      paymentMethod: "credit",
-    })).rejects.toThrow("valid commission payout payment method");
-    expect(await db.payment_transactions.count()).toBe(0);
+      paymentMethod: "cash",
+      accountId: account.id,
+      accountNameSnapshot: account.name,
+    });
+
+    const movement = await db.payment_account_movements.get(payout!.id);
+    expect(movement).toMatchObject({
+      accountId: account.id,
+      direction: "outgoing",
+      deltaAmount: -40,
+      currency: "usd",
+    });
+    const balance = await db.payment_account_balances
+      .where("[accountId+currency]")
+      .equals([account.id, "usd"])
+      .first();
+    expect(balance?.balanceAmount).toBe(960);
   });
 
   it("reuses only field agents and preserves membership history before replacement", async () => {
@@ -810,8 +947,8 @@ describe("sales agent commission lifecycle", () => {
       }, new Map<string, number>());
 
     expect(remainingAssignments.map((assignment) => assignment.agentId)).toEqual([firstAgent.id]);
-    expect(recognizedByAgent.get(firstAgent.id)).toBe(40);
-    expect(recognizedByAgent.get(secondAgent.id)).toBe(0);
+    expect(recognizedByAgent.get(firstAgent.id)).toBe(0);
+    expect(recognizedByAgent.get(secondAgent.id)).toBe(-40);
   });
 
   it("records same-agent snapshot edits as assignment history", async () => {

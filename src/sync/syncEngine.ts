@@ -202,6 +202,10 @@ export function isExistingCommissionEntryRetry(
   return error?.code === "23505" && existingId === requestedId;
 }
 
+function isAutomaticSalesAccountAssignment(payload: Record<string, unknown>) {
+  return (payload.assignmentSource ?? payload.assignment_source) === "sales_account";
+}
+
 interface MutationSyncOrderItem {
   id: string;
   workspaceId: string;
@@ -1279,6 +1283,49 @@ export async function processMutationQueue(
               lastSyncedAt: syncedAt,
             });
             entityHandledInline = true;
+          }
+        } else if (entityType === "sales_order_agent_assignments") {
+          const { error } = await client.from(remoteTableName).upsert(dbPayload);
+          if (!error) {
+            // Normal assignment insert/update completed.
+          } else if (
+            (error as { code?: unknown }).code === "23505"
+            && isAutomaticSalesAccountAssignment(dbPayload)
+          ) {
+            const orderId = dbPayload.order_id;
+            const agentId = dbPayload.agent_id;
+            if (typeof orderId !== "string" || typeof agentId !== "string") {
+              throw error;
+            }
+
+            // A previous build could enqueue the same derived beneficiary
+            // twice. An existing active row for that order and agent means the
+            // desired server state already exists, so retain the authoritative
+            // row and remove only the duplicate local record.
+            const { data: existingAssignment, error: lookupError } = await client
+              .from(remoteTableName)
+              .select("*")
+              .eq("workspace_id", workspaceId)
+              .eq("order_id", orderId)
+              .eq("agent_id", agentId)
+              .eq("is_deleted", false)
+              .is("unassigned_at", null)
+              .maybeSingle();
+            if (lookupError || !existingAssignment) throw error;
+
+            const syncedAt = new Date().toISOString();
+            const localAssignment = toCamelCase(
+              existingAssignment as Record<string, unknown>,
+            );
+            await db.sales_order_agent_assignments.delete(entityId);
+            await db.sales_order_agent_assignments.put({
+              ...localAssignment,
+              syncStatus: "synced",
+              lastSyncedAt: syncedAt,
+            } as never);
+            entityHandledInline = true;
+          } else {
+            throw error;
           }
         } else {
           const { error } = await client.from(remoteTableName).upsert(dbPayload);

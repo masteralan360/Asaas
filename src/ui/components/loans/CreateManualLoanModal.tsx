@@ -1,9 +1,9 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Users, X } from 'lucide-react'
+import { ArrowLeftRight, Users, X } from 'lucide-react'
 import { useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
-import { createManualLoan, type CurrencyCode, type InstallmentFrequency, type PaymentAccount } from '@/local-db'
+import { createManualLoan, type CurrencyCode, type InstallmentFrequency, type LoanDirection, type PaymentAccount } from '@/local-db'
 import { buildOrderExchangeRatesSnapshot } from '@/lib/orderCurrency'
 import { getLoanLinkedPartyTypeLabel, type LoanPartySelection } from '@/lib/loanParties'
 import { formatCurrency, formatLocalDateValue, formatNumericInput, parseFormattedNumber, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
@@ -40,6 +40,9 @@ interface CreateManualLoanModalProps {
     workspaceId: string
     settlementCurrency: CurrencyCode
     onCreated?: (loanId: string) => void
+    initialParty?: LoanPartySelection | null
+    lockParty?: boolean
+    initialDirection?: LoanDirection
 }
 
 export function CreateManualLoanModal({
@@ -47,7 +50,10 @@ export function CreateManualLoanModal({
     onOpenChange,
     workspaceId,
     settlementCurrency,
-    onCreated
+    onCreated,
+    initialParty = null,
+    lockParty = false,
+    initialDirection = 'lent'
 }: CreateManualLoanModalProps) {
     const { t } = useTranslation()
     const { toast } = useToast()
@@ -67,16 +73,17 @@ export function CreateManualLoanModal({
     const [firstDueDate, setFirstDueDate] = useState<string | null>(null)
     const [notes, setNotes] = useState('')
     const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
+    const [direction, setDirection] = useState<LoanDirection>(initialDirection)
     const [savePartnerData, setSavePartnerData] = usePendingSavePartnerPrompt()
 
     useEffect(() => {
         if (!isOpen) return
         setIsSaving(false)
-        setSelectedCurrency(settlementCurrency)
-        setBorrowerName('')
-        setBorrowerPhone('')
-        setBorrowerAddress('')
-        setSelectedParty(null)
+        setSelectedCurrency(initialParty?.defaultCurrency ?? settlementCurrency)
+        setBorrowerName(initialParty?.borrowerName ?? '')
+        setBorrowerPhone(initialParty?.borrowerPhone ?? '')
+        setBorrowerAddress(initialParty?.borrowerAddress ?? '')
+        setSelectedParty(initialParty)
         setIsPartyPickerOpen(false)
         setPrincipalAmount('')
         setInstallmentCount(1)
@@ -84,7 +91,8 @@ export function CreateManualLoanModal({
         setFirstDueDate(null)
         setNotes('')
         setPaymentAccount(null)
-    }, [isOpen, settlementCurrency])
+        setDirection(initialDirection)
+    }, [initialDirection, initialParty, isOpen, settlementCurrency])
 
     useEffect(() => {
         setPrincipalAmount((current) => sanitizeNumericInput(current, {
@@ -120,6 +128,7 @@ export function CreateManualLoanModal({
         try {
             const result = await createManualLoan(workspaceId, {
                 saleId: null,
+                direction,
                 linkedPartyType: selectedParty?.linkedPartyType || null,
                 linkedPartyId: selectedParty?.linkedPartyId || null,
                 linkedPartyName: selectedParty?.linkedPartyName || null,
@@ -204,11 +213,14 @@ export function CreateManualLoanModal({
                                             setBorrowerAddress([partner.address, partner.city, partner.country].filter(Boolean).join(', '))
                                         }}
                                         workspaceId={workspaceId}
+                                        disabled={lockParty}
                                     />
-                                    <Button type="button" variant="outline" className="w-full shrink-0 gap-2 md:w-auto" onClick={() => setIsPartyPickerOpen(true)}>
-                                        <Users className="h-4 w-4" />
-                                        {t('loans.selectParty', { defaultValue: 'Business Partner' })}
-                                    </Button>
+                                    {!lockParty ? (
+                                        <Button type="button" variant="outline" className="w-full shrink-0 gap-2 md:w-auto" onClick={() => setIsPartyPickerOpen(true)}>
+                                            <Users className="h-4 w-4" />
+                                            {t('loans.selectParty', { defaultValue: 'Business Partner' })}
+                                        </Button>
+                                    ) : null}
                                 </div>
                                 {selectedParty ? (
                                     <div className="flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 sm:flex-row sm:items-start sm:justify-between">
@@ -220,16 +232,18 @@ export function CreateManualLoanModal({
                                                 {getLoanLinkedPartyTypeLabel(selectedParty.linkedPartyType, t)} - {selectedParty.linkedPartyName}
                                             </div>
                                         </div>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-8 shrink-0 px-2 text-muted-foreground"
-                                            onClick={() => setSelectedParty(null)}
-                                        >
-                                            <X className="h-4 w-4" />
-                                            {t('loans.clearParty', { defaultValue: 'Clear Link' })}
-                                        </Button>
+                                        {!lockParty ? (
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-8 shrink-0 px-2 text-muted-foreground"
+                                                onClick={() => setSelectedParty(null)}
+                                            >
+                                                <X className="h-4 w-4" />
+                                                {t('loans.clearParty', { defaultValue: 'Clear Link' })}
+                                            </Button>
+                                        ) : null}
                                     </div>
                                 ) : null}
                             </div>
@@ -246,6 +260,16 @@ export function CreateManualLoanModal({
                             </div>
 
                             <div className="grid gap-4 rounded-2xl border border-border/60 bg-muted/20 p-4">
+                                <div className="grid gap-2">
+                                    <Label className="flex items-center gap-2"><ArrowLeftRight className="h-4 w-4" />{t('loans.direction')}</Label>
+                                    <Select value={direction} onValueChange={(value) => setDirection(value as LoanDirection)} disabled={isSaving}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="lent">{t('loans.directions.lent')}</SelectItem>
+                                            <SelectItem value="borrowed">{t('loans.directions.borrowed')}</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                     <div className="grid gap-2">
                                         <Label>{t('loans.principal') || 'Principal'} <span className="text-destructive">*</span></Label>

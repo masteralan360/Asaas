@@ -1,19 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BadgeCheck, Banknote, SlidersHorizontal } from 'lucide-react'
+import { BadgeCheck, SlidersHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { formatCurrency, formatDateTime, formatNumericInput, sanitizeNumericInput } from '@/lib/utils'
 import {
     recordCommissionAdjustment,
     recordCommissionApproval,
-    recordCommissionPayout,
     useSalesOrderAgentAssignments,
     useSalesOrders,
     type AgentCommissionEntry,
     type CurrencyCode,
     type IQDDisplayPreference,
-    type PaymentAccount,
-    type WorkspacePaymentMethod,
 } from '@/local-db'
 import {
     AppDialog,
@@ -39,16 +36,25 @@ import {
     Textarea,
     useToast
 } from '@/ui/components'
-import { PaymentMethodSelector } from '@/ui/components/PaymentMethodSelector'
-import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import { CommissionCurrencyTotalsView } from './CommissionCurrencyTotals'
-import { summarizeCommissionEntries } from './agentCommissionPresentation'
+import { commissionEntryOrderReference, summarizeCommissionEntries } from './agentCommissionPresentation'
 
-type SettlementTab = 'approve' | 'payout' | 'adjustment'
+type SettlementTab = 'approve' | 'adjustment'
 
-function payoutAmountInputValue(amount?: number) {
-    if (!Number.isFinite(amount) || !amount || amount <= 0) return ''
-    return String(Math.round((amount + Number.EPSILON) * 1_000_000) / 1_000_000)
+function sanitizeSignedNumericInput(value: string) {
+    const normalized = value.trim()
+    const isNegative = normalized.startsWith('-')
+    const magnitude = sanitizeNumericInput(normalized.replace(/-/g, ''), {
+        allowDecimal: true,
+        maxFractionDigits: 6,
+    })
+    return magnitude ? `${isNegative ? '-' : ''}${magnitude}` : ''
+}
+
+function formatSignedNumericInput(value: string) {
+    return value.startsWith('-')
+        ? `-${formatNumericInput(value.slice(1))}`
+        : formatNumericInput(value)
 }
 
 export function AgentCommissionSettlementDialog({
@@ -80,9 +86,6 @@ export function AgentCommissionSettlementDialog({
     const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(() => new Set())
     const [currency, setCurrency] = useState<CurrencyCode>(defaultCurrency)
     const [amount, setAmount] = useState('')
-    const [payoutOrderId, setPayoutOrderId] = useState('')
-    const [paymentMethod, setPaymentMethod] = useState('cash')
-    const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
     const [notes, setNotes] = useState('')
     const [adjustmentOrderId, setAdjustmentOrderId] = useState('')
     const [isSaving, setIsSaving] = useState(false)
@@ -107,42 +110,15 @@ export function AgentCommissionSettlementDialog({
         () => salesOrders.filter((order) => assignedOrderIds.has(order.id)),
         [assignedOrderIds, salesOrders]
     )
-    const payoutOrders = useMemo(() => {
-        const dueByOrderId = new Map<string, { currency: CurrencyCode, due: number }>()
-        for (const entry of entries) {
-            if (!entry.orderId || entry.kind === 'estimate' || entry.kind === 'approval') continue
-            const current = dueByOrderId.get(entry.orderId) || { currency: entry.currency as CurrencyCode, due: 0 }
-            if (current.currency !== entry.currency) continue
-            current.due += entry.amount
-            dueByOrderId.set(entry.orderId, current)
-        }
-
-        return Array.from(dueByOrderId, ([orderId, value]) => {
-            const order = salesOrders.find((candidate) => candidate.id === orderId)
-            return order && !order.isDeleted && value.due > 0.000001
-                ? { orderId, orderNumber: order.orderNumber, customerName: order.customerName, ...value }
-                : null
-        })
-            .filter((order): order is { orderId: string, orderNumber: string, customerName: string, currency: CurrencyCode, due: number } => Boolean(order))
-            .sort((left, right) => left.orderNumber.localeCompare(right.orderNumber))
-    }, [entries, salesOrders])
-    const selectedPayoutOrder = useMemo(
-        () => payoutOrders.find((order) => order.orderId === payoutOrderId) || null,
-        [payoutOrderId, payoutOrders]
-    )
-
     useEffect(() => {
         if (!open) return
-        setTab(approvalCandidates.length > 0 ? 'approve' : 'payout')
+        setTab(approvalCandidates.length > 0 ? 'approve' : 'adjustment')
         setSelectedEntryIds(new Set())
-        setPayoutOrderId(payoutOrders[0]?.orderId || '')
-        setCurrency(payoutOrders[0]?.currency || defaultCurrency)
-        setAmount(payoutAmountInputValue(payoutOrders[0]?.due))
-        setPaymentMethod('cash')
-        setPaymentAccount(null)
+        setCurrency(defaultCurrency)
+        setAmount('')
         setNotes('')
         setAdjustmentOrderId('')
-    }, [approvalCandidates.length, defaultCurrency, open, payoutOrders])
+    }, [approvalCandidates.length, defaultCurrency, open])
 
     function toggleApproval(entryId: string, checked: boolean) {
         setSelectedEntryIds((current) => {
@@ -164,25 +140,6 @@ export function AgentCommissionSettlementDialog({
                     notes: notes.trim() || null
                 })))
                 toast({ title: t('salesAgentCommissions.entriesApproved', { count: selectedEntryIds.size }) })
-            } else if (tab === 'payout') {
-                const payoutAmount = Number(amount)
-                if (!(payoutAmount > 0)) throw new Error(t('salesAgentCommissions.errors.positivePayout'))
-                if (!selectedPayoutOrder) throw new Error(t('salesAgentCommissions.errors.selectPayableOrder'))
-                if (payoutAmount - selectedPayoutOrder.due > 0.000001) {
-                    throw new Error(t('salesAgentCommissions.errors.payoutExceedsDue'))
-                }
-                await recordCommissionPayout(workspaceId, {
-                    agentId,
-                    orderId: selectedPayoutOrder.orderId,
-                    amount: payoutAmount,
-                    currency: selectedPayoutOrder.currency,
-                    paymentMethod: paymentMethod as WorkspacePaymentMethod,
-                    notes: notes.trim() || null,
-                    createdBy: userId || null,
-                    accountId: paymentAccount?.id ?? null,
-                    accountNameSnapshot: paymentAccount?.name ?? null,
-                })
-                toast({ title: t('salesAgentCommissions.payoutRecorded') })
             } else {
                 const adjustmentAmount = Number(amount)
                 if (!Number.isFinite(adjustmentAmount) || adjustmentAmount === 0) throw new Error(t('salesAgentCommissions.errors.nonZeroAdjustment'))
@@ -211,9 +168,7 @@ export function AgentCommissionSettlementDialog({
 
     const actionLabel = tab === 'approve'
         ? t('salesAgentCommissions.approveCount', { count: selectedEntryIds.size })
-        : tab === 'payout'
-            ? t('salesAgentCommissions.recordPayout')
-            : t('salesAgentCommissions.recordAdjustment')
+        : t('salesAgentCommissions.recordAdjustment')
 
     return (
         <AppDialog open={open} onOpenChange={(nextOpen) => {
@@ -235,9 +190,8 @@ export function AgentCommissionSettlementDialog({
                     </div>
 
                     <Tabs value={tab} onValueChange={(value) => setTab(value as SettlementTab)}>
-                        <TabsList className="grid h-auto w-full grid-cols-3">
+                        <TabsList className="grid h-auto w-full grid-cols-2">
                             <TabsTrigger value="approve" className="gap-1.5"><BadgeCheck className="h-4 w-4" /> {t('salesAgentCommissions.approve')}</TabsTrigger>
-                            <TabsTrigger value="payout" className="gap-1.5"><Banknote className="h-4 w-4" /> {t('salesAgentCommissions.payout')}</TabsTrigger>
                             <TabsTrigger value="adjustment" className="gap-1.5"><SlidersHorizontal className="h-4 w-4" /> {t('salesAgentCommissions.adjustment')}</TabsTrigger>
                         </TabsList>
 
@@ -257,7 +211,7 @@ export function AgentCommissionSettlementDialog({
                                             />
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                                    <span className="font-semibold">{entry.orderId ? orderNumberById.get(entry.orderId) || entry.orderId.slice(0, 8).toUpperCase() : t('salesAgentCommissions.manualAdjustment')}</span>
+                                                    <span className="font-semibold">{entry.orderId ? commissionEntryOrderReference(entry, orderNumberById) : t('salesAgentCommissions.manualAdjustment')}</span>
                                                     <span className="font-black">{formatCurrency(entry.amount, entry.currency as CurrencyCode, iqdPreference)}</span>
                                                 </div>
                                                 <div className="mt-1 text-xs text-muted-foreground">
@@ -271,75 +225,6 @@ export function AgentCommissionSettlementDialog({
                             <div className="space-y-2">
                                 <Label htmlFor="commission-approval-notes">{t('salesAgentCommissions.approvalNote')}</Label>
                                 <Textarea id="commission-approval-notes" value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} disabled={isSaving} />
-                            </div>
-                        </TabsContent>
-
-                        <TabsContent value="payout" className="mt-4 space-y-4">
-                            <div className="grid gap-4 sm:grid-cols-2">
-                                <div className="space-y-2">
-                                    <Label htmlFor="commission-payout-order">{t('salesAgentCommissions.salesOrder')}</Label>
-                                    <Select
-                                        value={payoutOrderId || '__none__'}
-                                        onValueChange={(value) => {
-                                            const orderId = value === '__none__' ? '' : value
-                                            const order = payoutOrders.find((candidate) => candidate.orderId === orderId)
-                                            setPayoutOrderId(orderId)
-                                            setCurrency(order?.currency || defaultCurrency)
-                                            setAmount(payoutAmountInputValue(order?.due))
-                                        }}
-                                        disabled={isSaving || payoutOrders.length === 0}
-                                    >
-                                        <SelectTrigger id="commission-payout-order"><SelectValue placeholder={t('salesAgentCommissions.selectPayableOrder')} /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="__none__" disabled>{t('salesAgentCommissions.selectPayableOrder')}</SelectItem>
-                                            {payoutOrders.map((order) => (
-                                                <SelectItem key={order.orderId} value={order.orderId}>
-                                                    {t('salesAgentCommissions.payableOrderOption', { order: order.orderNumber, customer: order.customerName, due: formatCurrency(order.due, order.currency, iqdPreference) })}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    {selectedPayoutOrder ? (
-                                        <p className="text-xs text-muted-foreground">
-                                            {t('salesAgentCommissions.payoutReferenceHint', { reference: selectedPayoutOrder.orderNumber })}
-                                        </p>
-                                    ) : <p className="text-xs text-muted-foreground">{t('salesAgentCommissions.noOrderDue')}</p>}
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="commission-payout-amount">{t('salesAgentCommissions.payoutAmount')}</Label>
-                                    <Input
-                                        id="commission-payout-amount"
-                                        type="text"
-                                        inputMode="decimal"
-                                        value={formatNumericInput(amount)}
-                                        onChange={(event) => setAmount(sanitizeNumericInput(event.target.value, {
-                                            allowDecimal: true,
-                                            maxFractionDigits: 6
-                                        }))}
-                                        placeholder="0"
-                                        disabled={isSaving || !selectedPayoutOrder}
-                                    />
-                                    {selectedPayoutOrder ? <p className="text-xs text-muted-foreground">{t('salesAgentCommissions.dueAmount', { amount: formatCurrency(selectedPayoutOrder.due, selectedPayoutOrder.currency, iqdPreference) })}</p> : null}
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>{t('salesAgentCommissions.paymentMethod')}</Label>
-                                <PaymentMethodSelector
-                                    value={paymentMethod as WorkspacePaymentMethod}
-                                    onValueChange={(value) => setPaymentMethod(value)}
-                                    onLinkedPaymentAccountSelect={setPaymentAccount}
-                                    workspaceId={workspaceId}
-                                />
-                            </div>
-                            <PaymentAccountSelector
-                                workspaceId={workspaceId}
-                                value={paymentAccount?.id}
-                                onValueChange={setPaymentAccount}
-                                disabled={isSaving}
-                            />
-                            <div className="space-y-2">
-                                <Label htmlFor="commission-payout-notes">{t('salesAgentCommissions.notes')}</Label>
-                                <Textarea id="commission-payout-notes" value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} disabled={isSaving} />
                             </div>
                         </TabsContent>
 
@@ -361,7 +246,15 @@ export function AgentCommissionSettlementDialog({
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="commission-adjustment-amount">{t('salesAgentCommissions.signedAmount')}</Label>
-                                    <Input id="commission-adjustment-amount" type="number" step="any" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={t('salesAgentCommissions.signedAmountPlaceholder')} disabled={isSaving} />
+                                    <Input
+                                        id="commission-adjustment-amount"
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={formatSignedNumericInput(amount)}
+                                        onChange={(event) => setAmount(sanitizeSignedNumericInput(event.target.value))}
+                                        placeholder={t('salesAgentCommissions.signedAmountPlaceholder')}
+                                        disabled={isSaving}
+                                    />
                                 </div>
                             </div>
                             <div className="space-y-2">
@@ -383,7 +276,7 @@ export function AgentCommissionSettlementDialog({
                 </AppDialogBody>
                 <AppDialogFooter>
                     <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>{t('salesAgentCommissions.cancel')}</Button>
-                    <Button type="button" onClick={() => void handleSubmit()} disabled={isSaving || (tab === 'approve' && approvalCandidates.length === 0) || (tab === 'payout' && !selectedPayoutOrder)}>
+                    <Button type="button" onClick={() => void handleSubmit()} disabled={isSaving || (tab === 'approve' && approvalCandidates.length === 0)}>
                         {isSaving ? t('salesAgentCommissions.saving') : actionLabel}
                     </Button>
                 </AppDialogFooter>

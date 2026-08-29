@@ -28,6 +28,7 @@ import {
 } from '@/ui/components'
 import { CommissionCurrencyTotalsView } from './CommissionCurrencyTotals'
 import {
+    commissionEntryOrderReference,
     commissionStatusClass,
     commissionStatusLabel,
     formatCommissionPlanTerms,
@@ -53,6 +54,10 @@ export function AgentCommissionPerformanceCard({
     const allEntries = useAgentCommissionEntries(workspaceId)
     const assignments = useSalesOrderAgentAssignments(workspaceId)
     const salesOrders = useSalesOrders(workspaceId)
+    const orderNumberById = useMemo(
+        () => new Map(salesOrders.map((order) => [order.id, order.orderNumber])),
+        [salesOrders]
+    )
     const agent = directory.agentById.get(agentId)
     const entries = useMemo(() => allEntries
         .filter((entry) => {
@@ -275,7 +280,7 @@ export function AgentCommissionPerformanceCard({
                                 {entries.slice(0, 8).map((entry) => (
                                     <TableRow key={entry.id}>
                                         <TableCell>{formatDateTime(entry.occurredAt)}</TableCell>
-                                        <TableCell className="font-medium">{entry.orderId ? entry.orderId.slice(0, 8).toUpperCase() : entry.payoutReference || '—'}</TableCell>
+                                        <TableCell className="font-medium">{commissionEntryOrderReference(entry, orderNumberById)}</TableCell>
                                         <TableCell>
                                             <Badge variant="outline" className={commissionStatusClass(entry.status)}>
                                                 {commissionStatusLabel(entry.status, t)}

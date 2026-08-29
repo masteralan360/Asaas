@@ -29,6 +29,7 @@ import type {
   ManualSalesAgentCommissionType,
   SalesOrder,
   SalesOrderAgentAssignment,
+  SalesOrderAgentAssignmentSource,
   WorkspacePaymentMethod,
 } from "./models";
 import { addToOfflineMutations } from "./offlineMutations";
@@ -38,6 +39,43 @@ const MEMBERSHIP_TABLE = "agent_commission_memberships";
 const ASSIGNMENT_TABLE = "sales_order_agent_assignments";
 const ENTRY_TABLE = "agent_commission_entries";
 const RECONCILIATION_ENTITY = "sales_agent_commission_reconciliation";
+
+// Sales-account beneficiaries are derived from an order and can be requested
+// by its save lifecycle, form assignment lifecycle, and agent-details
+// backfill at nearly the same time. Serialize each order's derived work so
+// two callers cannot both conclude that the beneficiary is missing.
+const salesOrderAssignmentLocks = new Map<string, Promise<void>>();
+
+async function withSalesOrderAssignmentLock<T>(
+  workspaceId: string,
+  orderId: string,
+  operation: () => Promise<T>,
+) {
+  const key = `${workspaceId}:${orderId}`;
+  const previous = salesOrderAssignmentLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const completed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queued = previous.then(() => completed);
+  salesOrderAssignmentLocks.set(key, queued);
+
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (salesOrderAssignmentLocks.get(key) === queued) {
+      salesOrderAssignmentLocks.delete(key);
+    }
+  }
+}
+
+function hasCachedAgentSalesAccountsFeature(workspaceId: string) {
+  return Boolean(readWorkspaceCache<{
+    agent_sales_accounts?: boolean;
+  }>(workspaceId)?.features.agent_sales_accounts);
+}
 
 type CommissionTableName =
   | typeof PLAN_TABLE
@@ -104,6 +142,7 @@ export interface SetAgentCommissionMembershipInput {
 export interface AssignSalesOrderAgentInput {
   orderId: string;
   agentId: string | null;
+  assignmentSource?: SalesOrderAgentAssignmentSource;
   assignedAt?: string;
   assignedBy?: string | null;
   reason?: string | null;
@@ -137,19 +176,6 @@ export interface RecordCommissionApprovalInput {
   approvedBy?: string | null;
   occurredAt?: string;
   notes?: string | null;
-}
-
-export interface RecordCommissionPayoutInput {
-  agentId: string;
-  orderId: string;
-  amount: number;
-  currency: CurrencyCode;
-  paymentMethod?: WorkspacePaymentMethod;
-  occurredAt?: string;
-  notes?: string | null;
-  createdBy?: string | null;
-  accountId?: string | null;
-  accountNameSnapshot?: string | null;
 }
 
 export interface RecordCommissionAdjustmentInput {
@@ -1249,7 +1275,13 @@ export async function accrueSalesOrderCommission(
     throw new Error("Sales order not found");
   }
   if (shouldUseCloudData(workspaceId)) {
-    await requestServerCommissionReconciliation(workspaceId, orderId);
+    const reconciled = await requestServerCommissionReconciliation(workspaceId, orderId);
+    if (reconciled) {
+      await Promise.all([
+        hydrateTable(ENTRY_TABLE, workspaceId),
+        fetchTableFromSupabase('payment_transactions', db.payment_transactions, workspaceId, { includeDeleted: true }),
+      ]);
+    }
     return null;
   }
   if (order.status !== "completed" || (!order.isPaid && order.paymentStatus !== "paid")) return null;
@@ -1265,6 +1297,7 @@ export async function accrueSalesOrderCommission(
     const entry = await accrueSalesOrderAssignmentCommission(order, assignment, createdBy);
     if (entry) entries.push(entry);
   }
+  await settlePaidSalesOrderCommissionsLocally(order, activeAssignments, createdBy);
   return entries[0] ?? null;
 }
 
@@ -1386,7 +1419,13 @@ export async function reconcileSalesOrderCommission(
     throw new Error("Sales order not found");
   }
   if (shouldUseCloudData(workspaceId)) {
-    await requestServerCommissionReconciliation(workspaceId, orderId);
+    const reconciled = await requestServerCommissionReconciliation(workspaceId, orderId);
+    if (reconciled) {
+      await Promise.all([
+        hydrateTable(ENTRY_TABLE, workspaceId),
+        fetchTableFromSupabase('payment_transactions', db.payment_transactions, workspaceId, { includeDeleted: true }),
+      ]);
+    }
     return null;
   }
   const assignments = await db.sales_order_agent_assignments
@@ -1399,6 +1438,11 @@ export async function reconcileSalesOrderCommission(
     const entry = await reconcileSalesOrderAssignmentCommission(order, assignment, createdBy);
     if (entry) entries.push(entry);
   }
+  await settlePaidSalesOrderCommissionsLocally(
+    order,
+    getActiveSalesOrderAgentAssignments(assignments, orderId),
+    createdBy,
+  );
   return entries[0] ?? null;
 }
 
@@ -1624,7 +1668,13 @@ export async function assignSalesOrderAgent(
     throw new Error("Cancelled sales orders cannot be assigned");
   }
   const agent = await db.agents.get(input.agentId);
-  if (!agent || agent.isDeleted || agent.workspaceId !== workspaceId || agent.agentType !== "field_agent") {
+  const assignmentSource = input.assignmentSource ?? "manual";
+  if (
+    !agent
+    || agent.isDeleted
+    || agent.workspaceId !== workspaceId
+    || agent.agentType !== "field_agent"
+  ) {
     throw new Error("Select a field agent from this workspace");
   }
 
@@ -1665,6 +1715,7 @@ export async function assignSalesOrderAgent(
     }
   }
   const keepsCurrentSnapshots = current
+    && (current.assignmentSource ?? "manual") === assignmentSource
     && current.customerCitySnapshot === citySnapshot
     && current.deliveryChargeAmount === deliveryChargeAmount
     && current.internalDeliveryCostAmount === internalDeliveryCostAmount
@@ -1687,6 +1738,7 @@ export async function assignSalesOrderAgent(
     workspaceId,
     orderId: input.orderId,
     agentId: input.agentId,
+    assignmentSource,
     assignedAt,
     unassignedAt: null,
     assignedBy: input.assignedBy ?? null,
@@ -1742,6 +1794,17 @@ export async function replaceSalesOrderAgentAssignments(
   workspaceId: string,
   input: ReplaceSalesOrderAgentAssignmentsInput,
 ) {
+  return withSalesOrderAssignmentLock(
+    workspaceId,
+    input.orderId,
+    () => replaceSalesOrderAgentAssignmentsInternal(workspaceId, input),
+  );
+}
+
+async function replaceSalesOrderAgentAssignmentsInternal(
+  workspaceId: string,
+  input: ReplaceSalesOrderAgentAssignmentsInput,
+) {
   const requestedAgentIds = new Set<string>();
   for (const assignment of input.assignments) {
     if (requestedAgentIds.has(assignment.agentId)) {
@@ -1750,7 +1813,13 @@ export async function replaceSalesOrderAgentAssignments(
     requestedAgentIds.add(assignment.agentId);
   }
 
-  const activeAssignments = getActiveSalesOrderAgentAssignments(
+  const manualAssignments = input.assignments
+    .filter((assignment) => (assignment.assignmentSource ?? "manual") !== "sales_account");
+  const salesAccountAssignments = input.assignments
+    .filter((assignment) => assignment.assignmentSource === "sales_account");
+  const requestedManualAgentIds = new Set(manualAssignments.map((assignment) => assignment.agentId));
+
+  const allActiveAssignments = getActiveSalesOrderAgentAssignments(
     await db.sales_order_agent_assignments
       .where("[workspaceId+orderId]")
       .equals([workspaceId, input.orderId])
@@ -1758,8 +1827,10 @@ export async function replaceSalesOrderAgentAssignments(
       .toArray(),
     input.orderId,
   );
-  for (const assignment of activeAssignments) {
-    if (requestedAgentIds.has(assignment.agentId)) continue;
+  const activeManualAssignments = allActiveAssignments
+    .filter((assignment) => assignment.assignmentSource !== "sales_account");
+  for (const assignment of activeManualAssignments) {
+    if (requestedManualAgentIds.has(assignment.agentId)) continue;
     await unassignSalesOrderAgent(workspaceId, {
       orderId: input.orderId,
       agentId: assignment.agentId,
@@ -1767,7 +1838,7 @@ export async function replaceSalesOrderAgentAssignments(
       reason: input.reason,
     });
   }
-  for (const assignment of input.assignments) {
+  for (const assignment of manualAssignments) {
     await assignSalesOrderAgent(workspaceId, {
       ...assignment,
       orderId: input.orderId,
@@ -1775,6 +1846,32 @@ export async function replaceSalesOrderAgentAssignments(
       reason: assignment.reason ?? input.reason,
     });
   }
+
+  // The lifecycle owns the identity of a sales-account beneficiary. The form
+  // may update its manual per-order commission, but a stale form submission
+  // must never recreate a beneficiary for an account that was just changed.
+  for (const assignment of salesAccountAssignments) {
+    const currentAutomatic = allActiveAssignments.find((current) => (
+      current.assignmentSource === "sales_account"
+      && current.agentId === assignment.agentId
+    ));
+    if (!currentAutomatic) continue;
+    await assignSalesOrderAgent(workspaceId, {
+      ...assignment,
+      orderId: input.orderId,
+      assignedBy: input.assignedBy,
+      reason: assignment.reason ?? input.reason,
+    });
+  }
+
+  // Manual assignment edits can remove the only beneficiary for the selected
+  // sales account. Recreate the automatic beneficiary only after those edits
+  // have settled, keeping the two assignment sources independent.
+  await synchronizeSalesAccountAgentCommissionAssignmentInternal(
+    workspaceId,
+    input.orderId,
+    input.assignedBy,
+  );
 
   return getActiveSalesOrderAgentAssignments(
     await db.sales_order_agent_assignments
@@ -1784,6 +1881,100 @@ export async function replaceSalesOrderAgentAssignments(
       .toArray(),
     input.orderId,
   );
+}
+
+/**
+ * Keeps the commission beneficiary derived from an order's selected sales
+ * account in sync. It is intentionally distinct from manual beneficiaries so
+ * removing a sales account never removes an agent the user assigned manually.
+ */
+export async function synchronizeSalesAccountAgentCommissionAssignment(
+  workspaceId: string,
+  orderId: string,
+  createdBy?: string | null,
+) {
+  return withSalesOrderAssignmentLock(
+    workspaceId,
+    orderId,
+    () => synchronizeSalesAccountAgentCommissionAssignmentInternal(workspaceId, orderId, createdBy),
+  );
+}
+
+async function synchronizeSalesAccountAgentCommissionAssignmentInternal(
+  workspaceId: string,
+  orderId: string,
+  createdBy?: string | null,
+) {
+  if (!hasCachedAgentSalesAccountsFeature(workspaceId)) return null;
+  const order = await db.sales_orders.get(orderId);
+  if (!order || order.isDeleted || order.workspaceId !== workspaceId) return null;
+
+  const activeAssignments = getActiveSalesOrderAgentAssignments(
+    await db.sales_order_agent_assignments
+      .where("[workspaceId+orderId]")
+      .equals([workspaceId, orderId])
+      .and((row) => !row.isDeleted)
+      .toArray(),
+    orderId,
+  );
+  const salesAccountAssignments = activeAssignments
+    .filter((assignment) => assignment.assignmentSource === "sales_account");
+  const salesAccountAgentId = order.salesAccountAgentId ?? null;
+
+  for (const assignment of salesAccountAssignments) {
+    if (assignment.agentId === salesAccountAgentId) continue;
+    await unassignSalesOrderAgent(workspaceId, {
+      orderId,
+      agentId: assignment.agentId,
+      unassignedBy: createdBy ?? null,
+      reason: "Sales account changed on the order",
+    });
+  }
+
+  if (!salesAccountAgentId) return null;
+  const salesAccountAgent = await db.agents.get(salesAccountAgentId);
+  if (
+    !salesAccountAgent
+    || salesAccountAgent.isDeleted
+    || salesAccountAgent.workspaceId !== workspaceId
+    || salesAccountAgent.agentType !== "field_agent"
+    || !salesAccountAgent.salesAccountEnabled
+  ) {
+    return null;
+  }
+  if (activeAssignments.some((assignment) => assignment.agentId === salesAccountAgentId)) {
+    return activeAssignments.find((assignment) => assignment.agentId === salesAccountAgentId) ?? null;
+  }
+
+  return assignSalesOrderAgent(workspaceId, {
+    orderId,
+    agentId: salesAccountAgentId,
+    assignmentSource: "sales_account",
+    assignedBy: createdBy ?? null,
+    reason: "Automatically assigned from the order sales account",
+  });
+}
+
+/** Backfills missing automatic beneficiaries for sales-account orders. */
+export async function synchronizeWorkspaceSalesAccountCommissionAssignments(
+  workspaceId: string,
+  createdBy?: string | null,
+) {
+  const orders = await db.sales_orders
+    .where("workspaceId")
+    .equals(workspaceId)
+    .and((order) => !order.isDeleted && Boolean(order.salesAccountAgentId))
+    .toArray();
+  const assignments: SalesOrderAgentAssignment[] = [];
+  for (const order of orders) {
+    const assignment = await synchronizeSalesAccountAgentCommissionAssignment(
+      workspaceId,
+      order.id,
+      createdBy,
+    );
+    if (assignment?.assignmentSource === "sales_account") assignments.push(assignment);
+  }
+  return assignments;
 }
 
 export async function reverseCommissionForOrderReturn(
@@ -1909,12 +2100,6 @@ export async function recordCommissionApproval(
 
 const COMMISSION_PAYOUT_SOURCE_TYPE = "agent_commission_payout";
 
-function assertCommissionPayoutPaymentMethod(paymentMethod: WorkspacePaymentMethod) {
-  if (paymentMethod === "credit" || paymentMethod === "loan" || paymentMethod === "loan_adjustment" || paymentMethod === "unknown") {
-    throw new Error("Select a valid commission payout payment method");
-  }
-}
-
 async function resolveAgentCounterpartyName(agentId: string) {
   const agent = await db.agents.get(agentId);
   if (!agent) return null;
@@ -1930,7 +2115,7 @@ async function resolveAgentCounterpartyName(agentId: string) {
  */
 async function ensureCommissionPayoutTransaction(
   workspaceId: string,
-  entry: Pick<AgentCommissionEntry, "id" | "agentId" | "amount" | "currency" | "occurredAt" | "payoutReference">,
+  entry: Pick<AgentCommissionEntry, "id" | "agentId" | "amount" | "currency" | "occurredAt" | "payoutReference" | "settlementSource">,
   options: {
     counterpartyName: string | null;
     paymentMethod: WorkspacePaymentMethod;
@@ -1971,113 +2156,178 @@ async function ensureCommissionPayoutTransaction(
       agentCommissionEntryId: entry.id,
       agentId: entry.agentId,
       payoutReference: entry.payoutReference ?? null,
+      automaticSettlement: entry.settlementSource === 'automatic',
     },
   });
 }
 
-export async function recordCommissionPayout(
-  workspaceId: string,
-  input: RecordCommissionPayoutInput,
-) {
-  const amount = assertMoney(input.amount, "Payout amount");
-  if (amount <= 0) throw new Error("Payout amount must be greater than zero");
-  const orderId = normalizeText(input.orderId);
-  if (!orderId) throw new Error("Select the sales order whose commission is being paid");
-  const paymentMethod = input.paymentMethod ?? "cash";
-  assertCommissionPayoutPaymentMethod(paymentMethod);
-  const notes = normalizeText(input.notes);
-  const createdBy = input.createdBy ?? null;
-  const agent = await db.agents.get(input.agentId);
-  if (!agent || agent.isDeleted || agent.workspaceId !== workspaceId || agent.agentType !== "field_agent") {
-    throw new Error("Field agent not found");
-  }
-  const order = await db.sales_orders.get(orderId);
-  if (!order || order.isDeleted || order.workspaceId !== workspaceId) {
-    throw new Error("Sales order not found");
-  }
-  if (order.currency.toLowerCase() !== input.currency.toLowerCase()) {
-    throw new Error("Commission payouts must use the sales order currency");
-  }
-  const entries = await db.agent_commission_entries
-    .where("[workspaceId+agentId]")
-    .equals([workspaceId, input.agentId])
-    .and((entry) => !entry.isDeleted && entry.currency === input.currency)
+type CommissionPayoutFunding = {
+  accountId: string | null;
+  accountNameSnapshot: string | null;
+  paymentMethod: WorkspacePaymentMethod;
+};
+
+/**
+ * Find the account that actually received the order's money. We deliberately
+ * read payment transactions instead of the order's initial-account snapshot:
+ * progressive and loan payments may be collected later, through a different
+ * account, and a selected account on an unpaid loan must never be debited.
+ */
+async function resolveSalesOrderCommissionPayoutFunding(
+  order: SalesOrder,
+): Promise<CommissionPayoutFunding> {
+  const payments = await db.payment_transactions
+    .where("[workspaceId+sourceType+sourceRecordId]")
+    .equals([order.workspaceId, "sales_order", order.id])
     .toArray();
-  const orderEntries = entries.filter((entry) => entry.orderId === order.id);
-  const assignmentId = orderEntries.find((entry) => entry.assignmentId)?.assignmentId;
-  if (!assignmentId) {
-    throw new Error("The selected sales order has no commission for this agent");
-  }
-  const outstanding = roundCommissionAmount(orderEntries
-    .filter((entry) => entry.kind !== "estimate" && entry.kind !== "approval")
-    .reduce((sum, entry) => sum + entry.amount, 0));
-  if (amount - outstanding > 0.000001) {
-    throw new Error("Payout amount exceeds the selected order's outstanding commission");
+
+  const reversedAmounts = new Map<string, number>();
+  for (const payment of payments) {
+    if (payment.isDeleted || !payment.reversalOfTransactionId) continue;
+    reversedAmounts.set(
+      payment.reversalOfTransactionId,
+      (reversedAmounts.get(payment.reversalOfTransactionId) ?? 0) + Math.abs(payment.amount),
+    );
   }
 
-  // Keep the server-derived accrual current before the live ledger insert.
-  // When offline this queues the same idempotent reconciliation ahead of the
-  // payout; the sync engine also enforces that ordering before it uploads.
-  await requestServerCommissionReconciliation(workspaceId, order.id, {
-    assignmentId,
-  });
+  const fundingPayment = payments
+    .filter((payment) => (
+      !payment.isDeleted
+      && payment.direction === "incoming"
+      && !payment.reversalOfTransactionId
+      && Boolean(payment.accountId)
+      && payment.amount - (reversedAmounts.get(payment.id) ?? 0) > 0.000001
+    ))
+    .sort((left, right) => (
+      left.paidAt.localeCompare(right.paidAt)
+      || left.createdAt.localeCompare(right.createdAt)
+      || left.id.localeCompare(right.id)
+    ))
+    .at(-1);
 
-  const payoutEntryId = generateId();
-  const payoutEntryInput = {
-    orderId: order.id,
-    assignmentId,
-    agentId: input.agentId,
-    membershipId: null,
-    planId: null,
-    orderReturnId: null,
-    relatedEntryId: null,
-    kind: "payout",
-    status: "paid",
-    currency: input.currency,
-    calculationBasis: "net_profit",
-    includeTax: false,
-    includeDeliveryCharge: false,
-    basisAmount: 0,
-    revenueAmount: 0,
-    costAmount: 0,
-    taxAmount: 0,
-    deliveryChargeAmount: 0,
-    ratePercent: 0,
-    amount: -amount,
-    occurredAt: normalizeTimestamp(input.occurredAt),
-    payoutReference: order.orderNumber,
-    notes: normalizeText(input.notes),
-    createdBy: input.createdBy ?? null,
-  } satisfies Omit<AgentCommissionEntry, keyof ReturnType<typeof getSyncMetadata>
-    | "id" | "workspaceId" | "createdAt" | "updatedAt" | "version" | "isDeleted">;
+  if (!fundingPayment?.accountId) {
+    return { accountId: null, accountNameSnapshot: null, paymentMethod: "unknown" };
+  }
 
-  const payment = await ensureCommissionPayoutTransaction(workspaceId, {
-    id: payoutEntryId,
-    agentId: input.agentId,
-    amount: -amount,
-    currency: input.currency,
-    occurredAt: payoutEntryInput.occurredAt,
-    payoutReference: payoutEntryInput.payoutReference,
-  }, {
-    counterpartyName: await resolveAgentCounterpartyName(input.agentId),
-    paymentMethod,
-    notes,
-    createdBy,
-    accountId: input.accountId ?? null,
-    accountNameSnapshot: input.accountNameSnapshot ?? null,
-  });
+  const account = await db.payment_accounts.get(fundingPayment.accountId);
+  if (!account
+    || account.workspaceId !== order.workspaceId
+    || account.isDeleted
+    || !account.isActive) {
+    return { accountId: null, accountNameSnapshot: null, paymentMethod: "unknown" };
+  }
 
-  try {
-    return await appendEntry(workspaceId, payoutEntryInput, payoutEntryId);
-  } catch (error) {
+  return {
+    accountId: account.id,
+    accountNameSnapshot: fundingPayment.accountNameSnapshot || account.name,
+    paymentMethod: fundingPayment.paymentMethod,
+  };
+}
+
+/**
+ * Local workspaces have no server trigger, so mirror the cloud settlement
+ * behavior here. A commission is paid only once its order is fully paid. When
+ * the order has an active account-backed payment, its payout uses that same
+ * account; otherwise the legacy ledger-only behavior is retained.
+ */
+async function settlePaidSalesOrderCommissionsLocally(
+  order: SalesOrder,
+  assignments: SalesOrderAgentAssignment[],
+  createdBy?: string | null,
+) {
+  if (shouldUseCloudData(order.workspaceId)
+    || order.status !== 'completed'
+    || (!order.isPaid && order.paymentStatus !== 'paid')) {
+    return [] as AgentCommissionEntry[];
+  }
+
+  const funding = await resolveSalesOrderCommissionPayoutFunding(order);
+  const payouts: AgentCommissionEntry[] = [];
+  for (const assignment of assignments) {
+    if (assignment.isDeleted || assignment.unassignedAt) continue;
+    const entries = await db.agent_commission_entries
+      .where('assignmentId')
+      .equals(assignment.id)
+      .and((entry) => !entry.isDeleted)
+      .toArray();
+    const source = entries.find((entry) => entry.kind === 'accrual');
+    if (!source) continue;
+    const assignmentDue = roundCommissionAmount(entries
+      .filter((entry) => entry.currency === source.currency
+        && entry.kind !== 'estimate'
+        && entry.kind !== 'approval')
+      .reduce((sum, entry) => sum + entry.amount, 0));
+    const agentEntries = await db.agent_commission_entries
+      .where('[workspaceId+agentId]')
+      .equals([order.workspaceId, assignment.agentId])
+      .and((entry) => !entry.isDeleted && entry.currency === source.currency)
+      .toArray();
+    const agentDue = roundCommissionAmount(agentEntries
+      .filter((entry) => entry.kind !== 'estimate' && entry.kind !== 'approval')
+      .reduce((sum, entry) => sum + entry.amount, 0));
+    const due = Math.min(assignmentDue, agentDue);
+    if (due <= 0.000001) continue;
+
+    const payoutId = generateId();
+    const payoutInput = {
+      orderId: order.id,
+      assignmentId: assignment.id,
+      agentId: assignment.agentId,
+      membershipId: null,
+      planId: null,
+      orderReturnId: null,
+      relatedEntryId: null,
+      kind: 'payout',
+      status: 'paid',
+      currency: source.currency,
+      calculationBasis: source.calculationBasis,
+      includeTax: false,
+      includeDeliveryCharge: false,
+      basisAmount: 0,
+      revenueAmount: 0,
+      costAmount: 0,
+      taxAmount: 0,
+      deliveryChargeAmount: 0,
+      ratePercent: 0,
+      amount: -due,
+      occurredAt: order.paidAt ?? order.updatedAt,
+      payoutReference: order.orderNumber,
+      settlementSource: 'automatic' as const,
+      notes: 'Automatically settled after the sales order was paid in full.',
+      createdBy: createdBy ?? null,
+    } satisfies Omit<AgentCommissionEntry, keyof ReturnType<typeof getSyncMetadata>
+      | 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'version' | 'isDeleted'>;
+
+    const payment = await ensureCommissionPayoutTransaction(order.workspaceId, {
+      id: payoutId,
+      agentId: assignment.agentId,
+      amount: -due,
+      currency: source.currency,
+      occurredAt: payoutInput.occurredAt,
+      payoutReference: order.orderNumber,
+      settlementSource: payoutInput.settlementSource,
+    }, {
+      counterpartyName: await resolveAgentCounterpartyName(assignment.agentId),
+      paymentMethod: funding.paymentMethod,
+      notes: payoutInput.notes,
+      createdBy: createdBy ?? null,
+      accountId: funding.accountId,
+      accountNameSnapshot: funding.accountNameSnapshot,
+    });
+
     try {
-      const { softDeletePaymentTransaction } = await import("./payments");
-      await softDeletePaymentTransaction(payment);
-    } catch (cleanupError) {
-      console.error("[Sales Agent Commissions] Failed to roll back the payout payment after entry creation failed:", cleanupError);
+      payouts.push(await appendEntry(order.workspaceId, payoutInput, payoutId));
+    } catch (error) {
+      try {
+        const { softDeletePaymentTransaction } = await import('./payments');
+        await softDeletePaymentTransaction(payment);
+      } catch (cleanupError) {
+        console.error('[Sales Agent Commissions] Failed to roll back automatic settlement payment:', cleanupError);
+      }
+      throw error;
     }
-    throw error;
   }
+  return payouts;
 }
 
 export async function recordCommissionAdjustment(

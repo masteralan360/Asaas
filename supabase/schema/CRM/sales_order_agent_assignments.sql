@@ -3,6 +3,7 @@ CREATE TABLE crm.sales_order_agent_assignments (
   workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
   order_id uuid NOT NULL REFERENCES crm.sales_orders(id) ON DELETE RESTRICT,
   agent_id uuid NOT NULL REFERENCES crm.agents(id) ON DELETE RESTRICT,
+  assignment_source text NOT NULL DEFAULT 'manual' CHECK (assignment_source IN ('manual', 'sales_account')),
   assigned_at timestamptz NOT NULL DEFAULT now(),
   unassigned_at timestamptz NULL CHECK (unassigned_at IS NULL OR unassigned_at >= assigned_at),
   assigned_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,

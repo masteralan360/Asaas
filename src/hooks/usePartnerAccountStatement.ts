@@ -3,6 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 
 import {
     db,
+    useAgent,
+    useAgentCommissionEntries,
     useBusinessPartner,
     useDeliveryLedgerEntries,
     useDeliveryMerchantProfiles,
@@ -31,6 +33,8 @@ export function usePartnerAccountStatement(
     period: PartnerAccountStatementData['period']
 ) {
     const rawPartner = useBusinessPartner(partnerId || undefined)
+    const agent = useAgent(rawPartner?.agentFacetId)
+    const commissionEntries = useAgentCommissionEntries(workspaceId)
     const salesOrders = useSalesOrders(workspaceId)
     const salesOrderReturns = useSalesOrderReturnsForWorkspace(workspaceId)
     const salesOrderReturnItems = useSalesOrderReturnItemsForWorkspace(workspaceId)
@@ -44,6 +48,11 @@ export function usePartnerAccountStatement(
 
     const partner = rawPartner && rawPartner.workspaceId === workspaceId && !rawPartner.isDeleted
         ? rawPartner
+        : undefined
+    const salesAccountAgent = agent
+        && agent.workspaceId === workspaceId
+        && agent.salesAccountEnabled
+        ? agent
         : undefined
     const partnerSalesOrders = useMemo(
         () => partnerId
@@ -87,6 +96,12 @@ export function usePartnerAccountStatement(
         () => queriedLoanPayments ?? EMPTY_LOAN_PAYMENTS,
         [queriedLoanPayments]
     )
+    const salesAccountCommissionEntries = useMemo(
+        () => salesAccountAgent
+            ? commissionEntries.filter((entry) => entry.agentId === salesAccountAgent.id)
+            : [],
+        [commissionEntries, salesAccountAgent]
+    )
 
     const settlementTransactions = useMemo(() => {
         const salesOrderIds = new Set(partnerSalesOrders
@@ -100,11 +115,14 @@ export function usePartnerAccountStatement(
             if (transaction.isDeleted) return false
             if (transaction.sourceType === 'sales_order') return salesOrderIds.has(transaction.sourceRecordId)
             if (transaction.sourceType === 'purchase_order') return purchaseOrderIds.has(transaction.sourceRecordId)
+            if (transaction.sourceType === 'agent_commission_payout') {
+                return transaction.sourceRecordId === salesAccountAgent?.id
+            }
             return transaction.sourceType === 'direct_transaction'
                 && transaction.metadata?.businessPartnerId === partnerId
                 && isDirectTransactionPartnerAccountEffect(transaction.metadata?.partnerAccountEffect)
         })
-    }, [partnerId, partnerPurchaseOrders, partnerSalesOrders, paymentTransactions])
+    }, [partnerId, partnerPurchaseOrders, partnerSalesOrders, paymentTransactions, salesAccountAgent?.id])
 
     const merchantDeliveryEntries = useMemo(() => {
         if (!partnerId) return []
@@ -164,11 +182,12 @@ export function usePartnerAccountStatement(
                     .map((order) => [order.id, order.orderNumber])
             ),
             settlementTransactions,
+            agentCommissionEntries: salesAccountCommissionEntries,
             deliveryLedgerEntries: merchantDeliveryEntries,
             deliveryShipmentReferences,
             deliverySettlementReferences
         }
-    }, [deliverySettlementReferences, deliveryShipmentReferences, loanPayments, merchantDeliveryEntries, partner, partnerLoans, partnerPurchaseOrders, partnerSalesOrderReturnItems, partnerSalesOrderReturns, partnerSalesOrders, period, settlementTransactions])
+    }, [deliverySettlementReferences, deliveryShipmentReferences, loanPayments, merchantDeliveryEntries, partner, partnerLoans, partnerPurchaseOrders, partnerSalesOrderReturnItems, partnerSalesOrderReturns, partnerSalesOrders, period, salesAccountCommissionEntries, settlementTransactions])
 
     return {
         partner,

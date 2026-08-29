@@ -494,7 +494,13 @@ export function BusinessPartnerFormDialog({
                                     </div>
                                     <div className="space-y-2">
                                         <Label>{t('businessPartners.agent.type')}</Label>
-                                        <Select value={formState.agentType} onValueChange={(value) => setFormState((current) => ({ ...current, agentType: value as AgentType }))}>
+                                        <Select value={formState.agentType} onValueChange={(value) => setFormState((current) => ({
+                                            ...current,
+                                            agentType: value as AgentType,
+                                            agentSalesAccountEnabled: value === 'field_agent'
+                                                ? current.agentSalesAccountEnabled
+                                                : false
+                                        }))}>
                                             <SelectTrigger>
                                                 <SelectValue />
                                             </SelectTrigger>
@@ -601,7 +607,8 @@ export function BusinessPartnerFormDialog({
                                                     checked={formState.agentSalesAccountEnabled}
                                                     onCheckedChange={(checked) => setFormState((current) => ({
                                                         ...current,
-                                                        agentSalesAccountEnabled: checked
+                                                        agentSalesAccountEnabled: checked,
+                                                        agentType: checked ? 'field_agent' : current.agentType
                                                     }))}
                                                 />
                                             </div>

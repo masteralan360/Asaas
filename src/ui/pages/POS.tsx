@@ -70,6 +70,7 @@ import {
 } from '@/lib/barcodeScanner'
 import { ExchangeRateResult } from '@/lib/exchangeRate'
 import { buildCheckoutRatesSnapshot, getPrimaryCheckoutRate } from '@/lib/currencyRates'
+import { buildOrderExchangeRatesSnapshot } from '@/lib/orderCurrency'
 import { exchangeSnapshotsToPayloads } from '@/lib/salesExchange'
 import { verifySale, createVerificationSale } from '@/lib/saleVerification'
 import type { ResolvedActiveDiscount } from '@/lib/discounts'
@@ -145,12 +146,14 @@ import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountS
 import { generateTemplatePdf } from '@/services/pdfGenerator'
 import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
 import { useUnitRegistry, getDynamicUnitAdjustmentLabel, type UnitRegistry } from '@/ui/components/unitRegistry'
+import { hasEffectiveSalesAgentCommissionPermission } from '@/permissions/salesAgentCommissionPermissions'
 import { getOrderLineFreeBonusQuantity } from '@/lib/orderLineItems'
 import { FreeBonusUnitSelect } from '@/ui/components/orders/FreeBonusUnitSelect'
 import {
     QuickOrderModal,
     type QuickOrderCheckoutData,
-    type QuickOrderProgressStage
+    type QuickOrderProgressStage,
+    type QuickOrderSubmissionOptions
 } from '@/ui/components/pos/QuickOrderModal'
 import {
     QuickOrderSuccessModal,
@@ -436,6 +439,8 @@ export function POS() {
     // A Quick Order is still a Sales Order, so it requires the existing Orders
     // module in addition to the opt-in Quick Order capability.
     const quickOrderEnabled = hasCapability('quickOrder') && hasFeature('orders')
+    const canAssignQuickOrderCommissions = hasFeature('sales_agent_commissions')
+        && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.assignOrders')
     const priceBookCatalog = usePriceBookCatalogState(user?.workspaceId, {
         enabled: priceBooksEnabled && !!selectedStorageId && !isActivitiesStorage && !isServicesStorage && !isLocalMode
     })
@@ -1218,6 +1223,11 @@ export function POS() {
         usd_try: globalTryRates.usd_try, // Fallback to live or null for irrelevant pairs
         try_iqd: { rate: restoredSale.rates.try_iqd * 100, source: restoredSale.rates.sources.try_iqd, timestamp: restoredSale.timestamp, isFallback: false }
     } : globalTryRates
+
+    const quickOrderCommissionExchangeRates = useMemo(
+        () => buildOrderExchangeRatesSnapshot({ exchangeData, eurRates, tryRates }),
+        [eurRates, exchangeData, tryRates]
+    )
 
     const currencyConversionEnabled = features.pos_convert_to_workspace_currency
     const cartCurrencies = useMemo(() => Array.from(new Set(
@@ -3160,7 +3170,10 @@ export function POS() {
         }
     }
 
-    const handleQuickOrderSubmit = async (checkout: QuickOrderCheckoutData) => {
+    const handleQuickOrderSubmit = async (
+        checkout: QuickOrderCheckoutData,
+        options?: QuickOrderSubmissionOptions
+    ) => {
         if (cart.length === 0 || !user) {
             throw new Error(t('pos.emptyCart', { defaultValue: 'Your cart is empty.' }))
         }
@@ -3190,9 +3203,11 @@ export function POS() {
                 usdEur: eurRates.usd_eur ? { rate: eurRates.usd_eur.rate, source: eurRates.usd_eur.source, timestamp: eurRates.usd_eur.timestamp } : null,
                 usdTry: tryRates.usd_try ? { rate: tryRates.usd_try.rate, source: tryRates.usd_try.source, timestamp: tryRates.usd_try.timestamp } : null,
             }
-            const exchangeRates = currencyConversionEnabled
-                ? buildCheckoutRatesSnapshot(usedCurrencies, settlementCurrency, knownRates)
-                : []
+            const exchangeRates = options?.onOrderCreated
+                ? quickOrderCommissionExchangeRates
+                : currencyConversionEnabled
+                    ? buildCheckoutRatesSnapshot(usedCurrencies, settlementCurrency, knownRates)
+                    : []
             const primaryRate = currencyConversionEnabled
                 ? getPrimaryCheckoutRate(usedCurrencies, settlementCurrency, knownRates)
                 : null
@@ -3292,6 +3307,13 @@ export function POS() {
                 onProgress: (stage) => setQuickOrderProgressStage(stage)
             })
 
+            let commissionAssignmentError: unknown = null
+            try {
+                await options?.onOrderCreated?.(completedOrder)
+            } catch (error) {
+                commissionAssignmentError = error
+            }
+
             orderCompleted = true
             setCart([])
             setDiscountValue('')
@@ -3308,6 +3330,15 @@ export function POS() {
             hapticTrigger('success')
             playCheckoutSound()
             refreshExchangeRate()
+            if (commissionAssignmentError) {
+                toast({
+                    title: t('salesAgentCommissions.assignmentNeedsAttention'),
+                    description: commissionAssignmentError instanceof Error
+                        ? commissionAssignmentError.message
+                        : t('salesAgentCommissions.assignmentNeedsAttentionDescription'),
+                    variant: 'destructive'
+                })
+            }
         } finally {
             setIsLoading(false)
             if (!orderCompleted) {
@@ -4745,6 +4776,10 @@ export function POS() {
                 loansEnabled={hasFeature('loans')}
                 installmentsEnabled={hasFeature('installments')}
                 agentSalesAccountsEnabled={hasFeature('agent_sales_accounts')}
+                commissionAssignmentsEnabled={canAssignQuickOrderCommissions}
+                commissionExchangeRates={quickOrderCommissionExchangeRates}
+                commissionCurrencies={Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]}
+                commissionAssignedBy={user?.id}
                 isSubmitting={isLoading}
                 progressStage={quickOrderProgressStage}
                 onSubmit={handleQuickOrderSubmit}

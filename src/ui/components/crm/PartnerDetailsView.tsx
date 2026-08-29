@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowLeft, ArrowLeftRight, CalendarDays, Car, CreditCard, Eye, Mail, MapPin, Package, Phone, Printer, Receipt, ShoppingCart, Truck, UserRound, UsersRound, TrendingUp, TrendingDown, Activity } from 'lucide-react'
+import { Activity, ArrowLeft, ArrowLeftRight, Building2, CalendarDays, Car, CreditCard, Eye, HandCoins, Mail, MapPin, Package, Phone, Printer, Receipt, ShoppingCart, Truck, UserRound, UsersRound, TrendingUp, TrendingDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'wouter'
 
@@ -36,7 +36,6 @@ import {
     useAgent,
     getActiveSalesOrderAgentAssignments,
     useBusinessPartner,
-    useBusinessPartners,
     useClinicalAppointments,
     useCustomerSalesOrders,
     useDeliveryLedgerEntries,
@@ -86,6 +85,7 @@ import type { PrintFormat } from '@/services/pdfGenerator'
 import { platformService } from '@/services/platformService'
 import { AgentCommissionPerformanceCard } from '@/ui/components/commissions/AgentCommissionPerformanceCard'
 import { useOptionalCommissionFeatureData } from '@/ui/components/commissions/useCommissionAgentDirectory'
+import { CreateManualLoanModal } from '@/ui/components/loans/CreateManualLoanModal'
 
 type PartnerKind = 'customer' | 'supplier' | 'agent' | 'business_partner'
 type PartnerPrintTemplateKey = typeof PARTNER_DETAILS_TEMPLATE_KEY
@@ -94,7 +94,7 @@ type RelatedProductOrder = SalesOrder | PurchaseOrder
 type ActivitySource = RelatedTransaction['source'] | 'pos_sale'
 type AgentSoldRow = {
     id: string
-    source: 'sales_order' | 'pos_sale' | 'delivery_shipment'
+    source: 'sales_order' | 'pos_sale'
     reference: string
     displayDate: string
     sortDate: string
@@ -103,16 +103,23 @@ type AgentSoldRow = {
     total: number
     paidAmount: number
     remainingAmount: number
-    totalInDefaultCurrency: number
-    paidInDefaultCurrency: number
-    remainingInDefaultCurrency: number
     currency: SalesOrder['currency']
     units: number
     status: string
     statusLabel: string
     viewHref: string
 }
-type AgentTopProduct = { id: string; name: string; quantity: number; amount: number }
+type AgentTopProduct = {
+    id: string
+    name: string
+    quantity: number
+    currencyTotals: CurrencyAmountItem[]
+}
+type AgentCurrencyPerformance = CurrencyAmountItem & {
+    paidAmount: number
+    outstandingAmount: number
+    documentCount: number
+}
 type RelatedTransaction = {
     id: string
     source: 'sales_order' | 'purchase_order' | 'travel_sale' | 'loan' | 'simple_loan' | 'direct_transaction' | 'clinical_appointment' | 'delivery_shipment' | 'delivery_settlement' | 'delivery_recipient_payout'
@@ -142,6 +149,27 @@ type RelatedTransaction = {
 }
 type TranslationFn = (key: string, options?: Record<string, unknown>) => string
 const LOAN_REPAYMENT_SOURCE_TYPES = new Set(['loan_payment', 'simple_loan', 'loan_installment'])
+
+function isSalesPerformanceOrder(order: SalesOrder) {
+    return !order.isDeleted && (order.status === 'pending' || order.status === 'completed')
+}
+
+function getNetSalesOrderItemQuantity(item: SalesOrder['items'][number]) {
+    return Math.max(0, getOrderLineInventoryQuantity(item) - Math.max(0, Number(item.returnedQuantity || 0)))
+}
+
+function currencyAmountItems(amounts: Map<string, number>) {
+    return Array.from(amounts.entries())
+        .filter(([, amount]) => Math.abs(amount) > 0.000001)
+        .map(([currency, amount]) => ({ currency, amount }))
+        .sort((left, right) => left.currency.localeCompare(right.currency))
+}
+
+function addCurrencyAmount(amounts: Map<string, number>, currency: string, amount: number) {
+    if (!Number.isFinite(amount) || Math.abs(amount) <= 0.000001) return
+    const normalizedCurrency = currency.toUpperCase()
+    amounts.set(normalizedCurrency, (amounts.get(normalizedCurrency) || 0) + amount)
+}
 
 function roleIncludesCustomer(role: BusinessPartnerRole) {
     return role === 'customer' || role === 'both' || role === 'online_customer'
@@ -611,12 +639,12 @@ export function PartnerDetailsView({
     const deliveryShipments = useDeliveryShipments(workspaceId)
     const deliveryLedgerEntries = useDeliveryLedgerEntries(workspaceId)
     const deliveryMerchantProfiles = useDeliveryMerchantProfiles(workspaceId)
-    const businessPartners = useBusinessPartners(workspaceId)
     const { dateRange, customDates } = useDateRange()
     const [customPrintTemplates, setCustomPrintTemplates] = useState<StoredCustomTemplateRow[]>([])
     const [selectedPrintTemplate, setSelectedPrintTemplate] = useState<StoredCustomTemplateRow | null>(null)
     const [selectedPartnerPrintTemplateKey, setSelectedPartnerPrintTemplateKey] = useState<PartnerPrintTemplateKey>(PARTNER_DETAILS_TEMPLATE_KEY)
     const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false)
+    const [isAgentLoanModalOpen, setIsAgentLoanModalOpen] = useState(false)
 
     useEffect(() => {
         if (!workspaceId || (!isLocalMode && !isSupabaseConfigured)) {
@@ -681,6 +709,20 @@ export function PartnerDetailsView({
         [filterByDate, supplierTravelSales]
     )
     const dateFilteredLoans = useMemo(() => filterByDate(partnerLoans), [filterByDate, partnerLoans])
+    const agentLoanBalances = useMemo(() => {
+        const receivable = new Map<string, number>()
+        const payable = new Map<string, number>()
+        for (const loan of partnerLoans) {
+            if (loan.status === 'completed' || loan.status === 'cancelled' || loan.balanceAmount <= 0) continue
+            const target = loan.direction === 'borrowed' ? payable : receivable
+            const currency = (loan.settlementCurrency || features.default_currency).toUpperCase()
+            target.set(currency, (target.get(currency) || 0) + loan.balanceAmount)
+        }
+        return {
+            receivable: currencyAmountItems(receivable),
+            payable: currencyAmountItems(payable),
+        }
+    }, [features.default_currency, partnerLoans])
     const standaloneDateFilteredLoans = useMemo(
         () => dateFilteredLoans.filter((loan) => loan.source !== 'order'),
         [dateFilteredLoans]
@@ -728,12 +770,6 @@ export function PartnerDetailsView({
             .filter((profile) => profile.businessPartnerId === partnerId)
             .map((profile) => profile.id)),
         [deliveryMerchantProfiles, partnerId]
-    )
-    const merchantNameById = useMemo(
-        () => new Map(businessPartners
-            .filter((bp) => !bp.isDeleted)
-            .map((bp) => [bp.id, bp.name])),
-        [businessPartners]
     )
     const partnerLoanIds = useMemo(() => partnerLoans.map(l => l.id), [partnerLoans])
     const linkedSaleReferenceById = useMemo(
@@ -826,10 +862,22 @@ export function PartnerDetailsView({
         : undefined
     const isAgentProfile = partner?.role === 'agent'
     const agentLinkedUserId = agent?.linkedUserId || null
+    const isSalesAccountProfile = Boolean(
+        isAgentProfile
+        && features.agent_sales_accounts
+        && agent?.salesAccountEnabled
+    )
+    const commissionAgent = agent ? commissionFeatureData?.agentById.get(agent.id) : undefined
     const canViewAgentCommission = salesAgentCommissionsEnabled
         && (hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.viewAll')
             || (hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.viewOwn')
                 && agentLinkedUserId === user?.id))
+    const canManageAgentLoans = Boolean(
+        isAgentProfile
+        && features.loans
+        && salesAgentCommissionsEnabled
+        && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.pay')
+    )
     const emptyRelatedLabel = t('businessPartners.noActivity', { defaultValue: 'No related activity yet.' })
     const completedLabel = t('businessPartners.completedItems', { defaultValue: 'Completed Items' })
     const paidLabel = t('businessPartners.settledItems', { defaultValue: 'Settled Items' })
@@ -851,62 +899,67 @@ export function PartnerDetailsView({
         () => [...dateFilteredCustomerOrders, ...dateFilteredSupplierOrders],
         [dateFilteredCustomerOrders, dateFilteredSupplierOrders]
     )
-    const agentSalesOrders = useMemo(
-        () => salesAgentCommissionsEnabled
-            ? agent
-                ? allSalesOrders.filter((order) =>
-                    !order.isDeleted
-                    && getActiveSalesOrderAgentAssignments(salesOrderAgentAssignments, order.id)
-                        .some((assignment) => assignment.agentId === agent.id)
-                )
-                : []
-            : agentLinkedUserId
-                ? allSalesOrders.filter((order) => !order.isDeleted && order.createdBy === agentLinkedUserId)
-                : [],
-        [agent, agentLinkedUserId, allSalesOrders, salesAgentCommissionsEnabled, salesOrderAgentAssignments]
-    )
+    const agentSalesOrders = useMemo(() => {
+        if (!agent) return []
+        if (isSalesAccountProfile) {
+            return allSalesOrders.filter((order) => !order.isDeleted && order.salesAccountAgentId === agent.id)
+        }
+        if (salesAgentCommissionsEnabled) {
+            return allSalesOrders.filter((order) => (
+                !order.isDeleted
+                && getActiveSalesOrderAgentAssignments(salesOrderAgentAssignments, order.id)
+                    .some((assignment) => assignment.agentId === agent.id)
+            ))
+        }
+        return agentLinkedUserId
+            ? allSalesOrders.filter((order) => !order.isDeleted && order.createdBy === agentLinkedUserId)
+            : []
+    }, [agent, agentLinkedUserId, allSalesOrders, isSalesAccountProfile, salesAgentCommissionsEnabled, salesOrderAgentAssignments])
     const agentPosSales = useMemo(
-        () => agentLinkedUserId
+        () => !isSalesAccountProfile && agentLinkedUserId
             ? sales.filter((sale) => !sale.isDeleted && sale.cashierId === agentLinkedUserId)
             : [],
-        [agentLinkedUserId, sales]
+        [agentLinkedUserId, isSalesAccountProfile, sales]
     )
     const dateFilteredAgentSalesOrders = useMemo(
-        () => filterByDate(agentSalesOrders),
+        () => filterByDate(agentSalesOrders, (order) => order.createdAt),
         [agentSalesOrders, filterByDate]
     )
     const dateFilteredAgentPosSales = useMemo(
-        () => filterByDate(agentPosSales),
+        () => filterByDate(agentPosSales, (sale) => sale.createdAt),
         [agentPosSales, filterByDate]
     )
+    const performanceSalesOrders = useMemo(
+        () => dateFilteredAgentSalesOrders.filter(isSalesPerformanceOrder),
+        [dateFilteredAgentSalesOrders]
+    )
     const agentSoldRows = useMemo<AgentSoldRow[]>(() => {
-        const orderRows = dateFilteredAgentSalesOrders.map((order) => {
+        const orderRows = performanceSalesOrders.map((order) => {
             const transaction = normalizeSalesOrder(order, defaultCurrency, t, linkedLoanByOrderId.get(order.id))
-            const paidInDefaultCurrency = convertCurrencyAmountWithSnapshot(transaction.paidAmount, order.currency, defaultCurrency, order.exchangeRates)
-            const remainingInDefaultCurrency = convertCurrencyAmountWithSnapshot(transaction.remainingAmount, order.currency, defaultCurrency, order.exchangeRates)
             return {
                 id: order.id,
                 source: 'sales_order' as const,
                 reference: transaction.reference,
                 displayDate: transaction.displayDate,
                 sortDate: transaction.sortDate,
-                customerName: order.customerName || t('customers.title', { defaultValue: 'Customer' }),
+                customerName: isSalesAccountProfile
+                    ? t('agentSalesAccounts.noCustomer')
+                    : order.customerName || t('customers.title'),
                 summary: transaction.summary || t('orders.tabs.sales', { defaultValue: 'Sales Order' }),
                 total: transaction.originalAmount,
                 paidAmount: transaction.paidAmount,
                 remainingAmount: transaction.remainingAmount,
-                totalInDefaultCurrency: transaction.totalInPartnerCurrency,
-                paidInDefaultCurrency,
-                remainingInDefaultCurrency,
                 currency: order.currency,
-                units: transaction.units,
+                units: order.items.reduce((sum, item) => sum + getNetSalesOrderItemQuantity(item), 0),
                 status: transaction.status,
                 statusLabel: transaction.statusLabel,
                 viewHref: transaction.viewHref
             }
         })
 
-        const saleRows = dateFilteredAgentPosSales.map((sale) => {
+        const saleRows = dateFilteredAgentPosSales
+            .filter((sale) => sale.returnStatus !== 'full')
+            .map((sale) => {
             const saleItems = getEnrichedSaleItems(sale)
             const units = saleItems.reduce((sum, item) => {
                 const quantity = readRecordNumber(item, 'quantity')
@@ -921,7 +974,6 @@ export function PartnerDetailsView({
                 ? `${productNames.join(', ')}${saleItems.length > 2 ? ` +${saleItems.length - 2}` : ''}`
                 : t('sales.posSale', { defaultValue: 'POS Sale' })
             const netTotal = Math.max(0, Number(sale.totalAmount || 0) - Number(sale.returnedAmount || 0))
-            const totalInDefaultCurrency = convertToStoreBase(netTotal, sale.settlementCurrency, defaultCurrency, conversionRates)
             const status = sale.returnStatus === 'full' ? 'cancelled' : 'completed'
             const statusLabel = sale.returnStatus === 'full'
                 ? t('sales.returnStatus.full', { defaultValue: 'Returned' })
@@ -940,9 +992,6 @@ export function PartnerDetailsView({
                 total: netTotal,
                 paidAmount: netTotal,
                 remainingAmount: 0,
-                totalInDefaultCurrency,
-                paidInDefaultCurrency: totalInDefaultCurrency,
-                remainingInDefaultCurrency: 0,
                 currency: sale.settlementCurrency,
                 units,
                 status,
@@ -952,44 +1001,8 @@ export function PartnerDetailsView({
         })
 
         return [...orderRows, ...saleRows].sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
-    }, [conversionRates, dateFilteredAgentPosSales, dateFilteredAgentSalesOrders, defaultCurrency, linkedLoanByOrderId, t])
-    const agentDeliveryRows = useMemo<AgentSoldRow[]>(() => {
-        if (!isAgentProfile || !agent) return []
-
-        return dateFilteredDeliveryShipments
-            .filter((shipment) => shipment.assignedAgentId === agent.id)
-            .map((shipment) => {
-                const post = courierSettlementBreakdown.get(`${agent.id}:${shipment.currency}`)?.find((row) => row.shipmentId === shipment.id)
-                const total = shipment.codAmount + (shipment.feePayer === 'recipient' ? shipment.deliveryFee : 0)
-                const paid = post?.paid ?? 0
-                const outstanding = post?.outstanding ?? Math.max(0, total - paid)
-                const transaction = normalizeDeliveryShipment(shipment, defaultCurrency, t, 'courier', paid, outstanding)
-                return {
-                    id: shipment.id,
-                    source: 'delivery_shipment' as const,
-                    reference: transaction.reference,
-                    displayDate: transaction.displayDate,
-                    sortDate: transaction.sortDate,
-                    customerName: shipment.recipientPhone,
-                    summary: merchantNameById.get(shipment.merchantBusinessPartnerId) ?? shipment.recipientAddress,
-                    total: transaction.originalAmount,
-                    paidAmount: transaction.paidAmount,
-                    remainingAmount: transaction.remainingAmount,
-                    totalInDefaultCurrency: transaction.totalInPartnerCurrency,
-                    paidInDefaultCurrency: convertCurrencyAmountWithSnapshot(paid, shipment.currency, defaultCurrency, undefined),
-                    remainingInDefaultCurrency: convertCurrencyAmountWithSnapshot(outstanding, shipment.currency, defaultCurrency, undefined),
-                    currency: shipment.currency,
-                    units: 1,
-                    status: transaction.status,
-                    statusLabel: transaction.statusLabel,
-                    viewHref: transaction.viewHref
-                }
-            })
-    }, [agent, courierSettlementBreakdown, dateFilteredDeliveryShipments, defaultCurrency, isAgentProfile, merchantNameById, t])
-    const agentRecentRows = useMemo(
-        () => [...agentSoldRows, ...agentDeliveryRows].sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime()),
-        [agentDeliveryRows, agentSoldRows]
-    )
+    }, [dateFilteredAgentPosSales, defaultCurrency, isSalesAccountProfile, linkedLoanByOrderId, performanceSalesOrders, t])
+    const agentRecentRows = agentSoldRows
     const merchantShipments = useMemo<RelatedTransaction[]>(() => {
         if (merchantProfileIds.size === 0) return []
 
@@ -1004,21 +1017,33 @@ export function PartnerDetailsView({
             })
     }, [dateFilteredDeliveryShipments, defaultCurrency, merchantProfileIds, merchantSettlementBreakdown, t])
     const agentTopProducts = useMemo<AgentTopProduct[]>(() => {
-        const rows = new Map<string, AgentTopProduct>()
-        for (const order of dateFilteredAgentSalesOrders.filter((row) => row.status !== 'cancelled')) {
+        const rows = new Map<string, {
+            id: string
+            name: string
+            quantity: number
+            amounts: Map<string, number>
+        }>()
+        for (const order of performanceSalesOrders) {
             for (const item of order.items) {
+                const originalQuantity = getOrderLineInventoryQuantity(item)
+                const quantity = getNetSalesOrderItemQuantity(item)
+                if (quantity <= 0 || originalQuantity <= 0) continue
                 const current = rows.get(item.productId) ?? {
                     id: item.productId,
                     name: item.productName,
                     quantity: 0,
-                    amount: 0
+                    amounts: new Map<string, number>()
                 }
-                current.quantity += getOrderLineInventoryQuantity(item)
-                current.amount += convertCurrencyAmountWithSnapshot(item.lineTotal, order.currency, defaultCurrency, order.exchangeRates)
+                current.quantity += quantity
+                addCurrencyAmount(
+                    current.amounts,
+                    order.currency,
+                    Number(item.lineTotal || 0) * (quantity / originalQuantity)
+                )
                 rows.set(item.productId, current)
             }
         }
-        for (const sale of dateFilteredAgentPosSales) {
+        for (const sale of dateFilteredAgentPosSales.filter((row) => row.returnStatus !== 'full')) {
             for (const item of getEnrichedSaleItems(sale)) {
                 const productId = readRecordString(item, 'product_id') || readRecordString(item, 'id')
                 const productName = readRecordString(item, 'product_name') || t('products.unknownProduct', { defaultValue: 'Unknown Product' })
@@ -1026,50 +1051,96 @@ export function PartnerDetailsView({
                 if (quantity <= 0) continue
                 const unitPrice = readRecordNumber(item, 'converted_unit_price') || readRecordNumber(item, 'unit_price')
                 const currency = readRecordString(item, 'settlement_currency') || sale.settlementCurrency
-                const amount = convertToStoreBase(unitPrice * quantity, currency, defaultCurrency, conversionRates)
-                const current = rows.get(productId) ?? {
+                const rowId = productId || `${sale.id}-${productName}`
+                const current = rows.get(rowId) ?? {
                     id: productId || `${sale.id}-${productName}`,
                     name: productName,
                     quantity: 0,
-                    amount: 0
+                    amounts: new Map<string, number>()
                 }
                 current.quantity += quantity
-                current.amount += amount
-                rows.set(current.id, current)
+                addCurrencyAmount(current.amounts, currency, unitPrice * quantity)
+                rows.set(rowId, current)
             }
         }
 
-        return Array.from(rows.values()).sort((a, b) => {
-            if (b.amount !== a.amount) return b.amount - a.amount
-            return b.quantity - a.quantity
-        }).slice(0, 5)
-    }, [conversionRates, dateFilteredAgentPosSales, dateFilteredAgentSalesOrders, defaultCurrency, t])
+        return Array.from(rows.values())
+            .map(({ id, name, quantity, amounts }) => ({
+                id,
+                name,
+                quantity,
+                currencyTotals: currencyAmountItems(amounts)
+            }))
+            .sort((left, right) => right.quantity - left.quantity || left.name.localeCompare(right.name))
+            .slice(0, 5)
+    }, [dateFilteredAgentPosSales, performanceSalesOrders, t])
+    const agentCurrencyPerformance = useMemo<AgentCurrencyPerformance[]>(() => {
+        const totals = new Map<string, AgentCurrencyPerformance>()
+        for (const row of agentSoldRows) {
+            const currency = row.currency.toUpperCase()
+            const current = totals.get(currency) ?? {
+                currency,
+                amount: 0,
+                paidAmount: 0,
+                outstandingAmount: 0,
+                documentCount: 0
+            }
+            current.amount += row.total
+            current.paidAmount += row.paidAmount
+            current.outstandingAmount += row.remainingAmount
+            current.documentCount += 1
+            totals.set(currency, current)
+        }
+        return Array.from(totals.values()).sort((left, right) => left.currency.localeCompare(right.currency))
+    }, [agentSoldRows])
     const agentTotalSold = useMemo(
-        () => agentSoldRows.reduce((sum, row) => sum + row.totalInDefaultCurrency, 0),
-        [agentSoldRows]
+        () => agentCurrencyPerformance.map(({ currency, amount }) => ({ currency, amount })),
+        [agentCurrencyPerformance]
     )
     const agentTotalCollected = useMemo(
-        () => agentSoldRows.reduce((sum, row) => sum + row.paidInDefaultCurrency, 0),
-        [agentSoldRows]
+        () => agentCurrencyPerformance.map(({ currency, paidAmount }) => ({ currency, amount: paidAmount })),
+        [agentCurrencyPerformance]
     )
     const agentOutstandingValue = useMemo(
-        () => agentSoldRows.reduce((sum, row) => sum + row.remainingInDefaultCurrency, 0),
-        [agentSoldRows]
+        () => agentCurrencyPerformance.map(({ currency, outstandingAmount }) => ({ currency, amount: outstandingAmount })),
+        [agentCurrencyPerformance]
     )
     const agentUnitsSold = useMemo(
         () => agentSoldRows.reduce((sum, row) => sum + row.units, 0),
         [agentSoldRows]
     )
-    const agentAverageSale = agentSoldRows.length > 0 ? agentTotalSold / agentSoldRows.length : 0
-    const agentOpenOrderCount = dateFilteredAgentSalesOrders.filter((order) => !['completed', 'cancelled'].includes(order.status)).length
-    const agentCollectedPercent = agentTotalSold > 0 ? Math.min(100, (agentTotalCollected / agentTotalSold) * 100) : 0
-    const agentSalesOrderValue = dateFilteredAgentSalesOrders.reduce(
-        (sum, order) => sum + convertCurrencyAmountWithSnapshot(order.total, order.currency, defaultCurrency, order.exchangeRates),
-        0
+    const agentAverageSale = useMemo(
+        () => agentCurrencyPerformance.map(({ currency, amount, documentCount }) => ({
+            currency,
+            amount: documentCount > 0 ? amount / documentCount : 0
+        })),
+        [agentCurrencyPerformance]
     )
-    const agentPosSalesValue = dateFilteredAgentPosSales.reduce(
-        (sum, sale) => sum + convertToStoreBase(Math.max(0, Number(sale.totalAmount || 0) - Number(sale.returnedAmount || 0)), sale.settlementCurrency, defaultCurrency, conversionRates),
-        0
+    const agentOpenOrderCount = performanceSalesOrders.filter((order) => order.status === 'pending').length
+    const agentCollectionRates = useMemo(
+        () => agentCurrencyPerformance.map((row) => ({
+            currency: row.currency,
+            rate: row.amount > 0 ? Math.min(100, (row.paidAmount / row.amount) * 100) : 0
+        })),
+        [agentCurrencyPerformance]
+    )
+    const agentSalesOrderValue = useMemo(
+        () => agentSoldRows
+            .filter((row) => row.source === 'sales_order')
+            .reduce((totals, row) => {
+                addCurrencyAmount(totals, row.currency, row.total)
+                return totals
+            }, new Map<string, number>()),
+        [agentSoldRows]
+    )
+    const agentPosSalesValue = useMemo(
+        () => agentSoldRows
+            .filter((row) => row.source === 'pos_sale')
+            .reduce((totals, row) => {
+                addCurrencyAmount(totals, row.currency, row.total)
+                return totals
+            }, new Map<string, number>()),
+        [agentSoldRows]
     )
 
     const relatedTransactions = useMemo(
@@ -2144,6 +2215,61 @@ export function PartnerDetailsView({
                 <div className="space-y-4 lg:col-span-2">
                     {isAgentProfile ? (
                         <>
+                            {isSalesAccountProfile ? (
+                                <Card className="overflow-hidden border-sky-500/25 bg-sky-500/[0.035]">
+                                    <CardHeader className="border-b border-sky-500/15 bg-sky-500/[0.04]">
+                                        <CardTitle className="flex flex-wrap items-center gap-2">
+                                            <Building2 className="h-5 w-5 text-sky-600" />
+                                            {t('agentSalesAccounts.salesAccount')}
+                                        </CardTitle>
+                                        <p className="text-sm text-muted-foreground">{t('agentSalesAccounts.agentAccountCardHint')}</p>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4 pt-5">
+                                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                            <div className="rounded-2xl border bg-background/75 p-4">
+                                                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                                                    <Receipt className="h-4 w-4" />
+                                                    {t('agentSalesAccounts.directOrders')}
+                                                </div>
+                                                <div className="mt-2 text-2xl font-black">{performanceSalesOrders.length}</div>
+                                            </div>
+                                            <div className="rounded-2xl border bg-background/75 p-4">
+                                                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                                                    <ShoppingCart className="h-4 w-4" />
+                                                    {t('agentSalesAccounts.openOrders')}
+                                                </div>
+                                                <div className="mt-2 text-2xl font-black">{agentOpenOrderCount}</div>
+                                            </div>
+                                            <div className="rounded-2xl border bg-background/75 p-4">
+                                                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                                                    <CreditCard className="h-4 w-4" />
+                                                    {t('agentSalesAccounts.accountBalance')}
+                                                </div>
+                                                <div className="mt-2 text-2xl font-black text-sky-700 dark:text-sky-300">
+                                                    <MultiCurrencyDisplay
+                                                        totals={receivableCurrencyTotals}
+                                                        fallbackAmount={partner?.receivableBalance || 0}
+                                                        fallbackCurrency={defaultCurrency}
+                                                        iqdPreference={iqdPreference}
+                                                        className="text-2xl font-black"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="rounded-2xl border bg-background/75 p-4">
+                                                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                                                    <TrendingUp className="h-4 w-4" />
+                                                    {t('salesAgentCommissions.commissionPlan')}
+                                                </div>
+                                                <div className="mt-2 text-sm font-bold">
+                                                    {canViewAgentCommission
+                                                        ? commissionAgent?.plan?.name || t('salesAgentCommissions.optionalNone')
+                                                        : t('salesAgentCommissions.restricted')}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ) : null}
                             {canViewAgentCommission && agent ? (
                                 <AgentCommissionPerformanceCard
                                     workspaceId={workspaceId}
@@ -2153,14 +2279,57 @@ export function PartnerDetailsView({
                                     endDate={dateBounds.endDate}
                                 />
                             ) : null}
+                            {canManageAgentLoans && agent ? (
+                                <Card className="overflow-hidden border-violet-500/25 bg-violet-500/[0.035]">
+                                    <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 border-b border-violet-500/15 bg-violet-500/[0.04]">
+                                        <div>
+                                            <CardTitle className="flex items-center gap-2">
+                                                <HandCoins className="h-5 w-5 text-violet-600" />
+                                                {t('salesAgentCommissions.agentLoans')}
+                                            </CardTitle>
+                                            <p className="mt-1 text-sm text-muted-foreground">{t('salesAgentCommissions.agentLoansDescription')}</p>
+                                        </div>
+                                        <Button type="button" className="gap-2" onClick={() => setIsAgentLoanModalOpen(true)}>
+                                            <HandCoins className="h-4 w-4" />
+                                            {t('salesAgentCommissions.recordAgentLoan')}
+                                        </Button>
+                                    </CardHeader>
+                                    <CardContent className="grid gap-3 pt-5 sm:grid-cols-2">
+                                        <div className="rounded-2xl border border-emerald-200/50 bg-emerald-500/[0.05] p-4">
+                                            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-700 dark:text-emerald-300">
+                                                {t('salesAgentCommissions.agentOwesWorkspace')}
+                                            </div>
+                                            <MultiCurrencyDisplay
+                                                totals={agentLoanBalances.receivable}
+                                                fallbackAmount={0}
+                                                fallbackCurrency={defaultCurrency}
+                                                iqdPreference={iqdPreference}
+                                                className="mt-2 text-xl font-black text-emerald-700 dark:text-emerald-300"
+                                            />
+                                        </div>
+                                        <div className="rounded-2xl border border-amber-200/50 bg-amber-500/[0.05] p-4">
+                                            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-amber-700 dark:text-amber-300">
+                                                {t('salesAgentCommissions.workspaceOwesAgent')}
+                                            </div>
+                                            <MultiCurrencyDisplay
+                                                totals={agentLoanBalances.payable}
+                                                fallbackAmount={0}
+                                                fallbackCurrency={defaultCurrency}
+                                                iqdPreference={iqdPreference}
+                                                className="mt-2 text-xl font-black text-amber-700 dark:text-amber-300"
+                                            />
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ) : null}
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>{t('agents.salesPerformance', { defaultValue: 'Sales Performance' })}</CardTitle>
+                                    <CardTitle>{t('agents.salesPerformance')}</CardTitle>
                                 </CardHeader>
                                 <CardContent>
-                                    {!salesAgentCommissionsEnabled && !agentLinkedUserId ? (
+                                    {!isSalesAccountProfile && !salesAgentCommissionsEnabled && !agentLinkedUserId ? (
                                         <div className="mb-5 rounded-2xl border border-amber-200/60 bg-amber-500/[0.06] p-4 text-sm font-medium text-amber-800 dark:text-amber-300">
-                                            {t('agents.noLinkedSalesUser', { defaultValue: 'No workspace user is linked to this agent, so sales attribution is unavailable.' })}
+                                            {t('agents.noLinkedSalesUser')}
                                         </div>
                                     ) : null}
 
@@ -2168,33 +2337,45 @@ export function PartnerDetailsView({
                                         <div className="rounded-2xl border border-emerald-200/50 bg-emerald-500/[0.05] p-5">
                                             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
                                                 <TrendingUp className="h-4 w-4" />
-                                                {t('agents.totalSold', { defaultValue: 'Total Sold' })}
+                                                {t('agents.totalSold')}
                                             </div>
                                             <div className="mt-3 text-3xl font-black tracking-tight text-emerald-700 dark:text-emerald-300">
-                                                {formatCurrency(agentTotalSold, defaultCurrency, iqdPreference)}
+                                                <MultiCurrencyDisplay
+                                                    totals={agentTotalSold}
+                                                    fallbackAmount={0}
+                                                    fallbackCurrency={defaultCurrency}
+                                                    iqdPreference={iqdPreference}
+                                                    className="text-3xl font-black"
+                                                />
                                             </div>
                                         </div>
                                         <div className="rounded-2xl border bg-background/70 p-5">
                                             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
                                                 <Receipt className="h-4 w-4" />
-                                                {t('agents.salesCount', { defaultValue: 'Sales Count' })}
+                                                {t('agents.salesCount')}
                                             </div>
                                             <div className="mt-3 text-3xl font-black tracking-tight">{agentSoldRows.length}</div>
                                         </div>
                                         <div className="rounded-2xl border bg-background/70 p-5">
                                             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
                                                 <Package className="h-4 w-4" />
-                                                {t('agents.unitsSold', { defaultValue: 'Units Sold' })}
+                                                {t('agents.unitsSold')}
                                             </div>
                                             <div className="mt-3 text-3xl font-black tracking-tight">{agentUnitsSold}</div>
                                         </div>
                                         <div className="rounded-2xl border bg-background/70 p-5">
                                             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
                                                 <ShoppingCart className="h-4 w-4" />
-                                                {t('businessPartners.averageDocument', { defaultValue: 'Average Document' })}
+                                                {t('agents.averageSale')}
                                             </div>
                                             <div className="mt-3 text-3xl font-black tracking-tight">
-                                                {formatCurrency(agentAverageSale, defaultCurrency, iqdPreference)}
+                                                <MultiCurrencyDisplay
+                                                    totals={agentAverageSale}
+                                                    fallbackAmount={0}
+                                                    fallbackCurrency={defaultCurrency}
+                                                    iqdPreference={iqdPreference}
+                                                    className="text-3xl font-black"
+                                                />
                                             </div>
                                         </div>
                                     </div>
@@ -2202,35 +2383,54 @@ export function PartnerDetailsView({
                                     <div className="mt-6 grid gap-4 lg:grid-cols-2">
                                         <div className="rounded-2xl border bg-muted/20 p-5">
                                             <h3 className="mb-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                                                {t('agents.salesChannels', { defaultValue: 'Sales Channels' })}
+                                                {t('agents.salesChannels')}
                                             </h3>
                                             <div className="space-y-3">
                                                 <div className="flex items-center justify-between gap-3 rounded-xl border bg-background/70 p-3">
                                                     <div>
                                                         <div className="text-sm font-semibold">{t('orders.tabs.sales', { defaultValue: 'Sales Order' })}</div>
-                                                        <div className="text-xs text-muted-foreground">{dateFilteredAgentSalesOrders.length} {t('businessPartners.count', { defaultValue: 'Count' }).toLowerCase()}</div>
+                                                        <div className="text-xs text-muted-foreground">{agentSoldRows.filter((row) => row.source === 'sales_order').length} {t('businessPartners.count', { defaultValue: 'Count' }).toLowerCase()}</div>
                                                     </div>
-                                                    <div className="text-right font-black">{formatCurrency(agentSalesOrderValue, defaultCurrency, iqdPreference)}</div>
+                                                    <MultiCurrencyDisplay
+                                                        totals={currencyAmountItems(agentSalesOrderValue)}
+                                                        fallbackAmount={0}
+                                                        fallbackCurrency={defaultCurrency}
+                                                        iqdPreference={iqdPreference}
+                                                        className="text-right font-black"
+                                                    />
                                                 </div>
                                                 <div className="flex items-center justify-between gap-3 rounded-xl border bg-background/70 p-3">
                                                     <div>
                                                         <div className="text-sm font-semibold">{t('sales.posSale', { defaultValue: 'POS Sale' })}</div>
-                                                        <div className="text-xs text-muted-foreground">{dateFilteredAgentPosSales.length} {t('businessPartners.count', { defaultValue: 'Count' }).toLowerCase()}</div>
+                                                        <div className="text-xs text-muted-foreground">{agentSoldRows.filter((row) => row.source === 'pos_sale').length} {t('businessPartners.count', { defaultValue: 'Count' }).toLowerCase()}</div>
                                                     </div>
-                                                    <div className="text-right font-black">{formatCurrency(agentPosSalesValue, defaultCurrency, iqdPreference)}</div>
-                                                </div>
-                                            </div>
-                                            <div className="mt-5 space-y-1.5">
-                                                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                                                    <span>{t('businessPartners.settlementProgress', { defaultValue: 'Settlement Progress' })}</span>
-                                                    <span>{Math.round(agentCollectedPercent)}%</span>
-                                                </div>
-                                                <div className="h-1.5 overflow-hidden rounded-full bg-background/80">
-                                                    <div
-                                                        className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)] transition-all duration-500"
-                                                        style={{ width: `${agentCollectedPercent}%` }}
+                                                    <MultiCurrencyDisplay
+                                                        totals={currencyAmountItems(agentPosSalesValue)}
+                                                        fallbackAmount={0}
+                                                        fallbackCurrency={defaultCurrency}
+                                                        iqdPreference={iqdPreference}
+                                                        className="text-right font-black"
                                                     />
                                                 </div>
+                                            </div>
+                                            <div className="mt-5 space-y-2">
+                                                <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                                    {t('agents.collectionRate')}
+                                                </div>
+                                                {agentCollectionRates.length > 0 ? agentCollectionRates.map((row) => (
+                                                    <div key={row.currency} className="space-y-1.5">
+                                                        <div className="flex items-center justify-between text-xs font-semibold">
+                                                            <span>{row.currency}</span>
+                                                            <span>{Math.round(row.rate)}%</span>
+                                                        </div>
+                                                        <div className="h-1.5 overflow-hidden rounded-full bg-background/80">
+                                                            <div
+                                                                className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)] transition-all duration-500"
+                                                                style={{ width: `${row.rate}%` }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )) : <div className="text-sm text-muted-foreground">—</div>}
                                             </div>
                                             <div className="mt-4 grid gap-3 sm:grid-cols-2">
                                                 <div className="rounded-xl border bg-background/70 p-3">
@@ -2238,7 +2438,12 @@ export function PartnerDetailsView({
                                                         {t('common.paid', { defaultValue: 'Paid' })}
                                                     </div>
                                                     <div className="mt-1 text-lg font-black text-emerald-600 dark:text-emerald-400">
-                                                        {formatCurrency(agentTotalCollected, defaultCurrency, iqdPreference)}
+                                                        <MultiCurrencyDisplay
+                                                            totals={agentTotalCollected}
+                                                            fallbackAmount={0}
+                                                            fallbackCurrency={defaultCurrency}
+                                                            iqdPreference={iqdPreference}
+                                                        />
                                                     </div>
                                                 </div>
                                                 <div className="rounded-xl border bg-background/70 p-3">
@@ -2246,13 +2451,18 @@ export function PartnerDetailsView({
                                                         {t('orders.details.outstanding', { defaultValue: 'Outstanding' })}
                                                     </div>
                                                     <div className="mt-1 text-lg font-black text-amber-600 dark:text-amber-400">
-                                                        {formatCurrency(agentOutstandingValue, defaultCurrency, iqdPreference)}
+                                                        <MultiCurrencyDisplay
+                                                            totals={agentOutstandingValue}
+                                                            fallbackAmount={0}
+                                                            fallbackCurrency={defaultCurrency}
+                                                            iqdPreference={iqdPreference}
+                                                        />
                                                     </div>
                                                 </div>
                                             </div>
                                             <div className="mt-4 rounded-xl border bg-background/70 p-3">
                                                 <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                                    {t('agents.openSalesOrders', { defaultValue: 'Open Sales Orders' })}
+                                                    {t('agents.openSalesOrders')}
                                                 </div>
                                                 <div className="mt-1 text-lg font-black">{agentOpenOrderCount}</div>
                                             </div>
@@ -2283,7 +2493,12 @@ export function PartnerDetailsView({
                                                                 </div>
                                                             </div>
                                                             <div className="text-right text-sm font-black">
-                                                                {formatCurrency(product.amount, defaultCurrency, iqdPreference)}
+                                                                <MultiCurrencyDisplay
+                                                                    totals={product.currencyTotals}
+                                                                    fallbackAmount={0}
+                                                                    fallbackCurrency={defaultCurrency}
+                                                                    iqdPreference={iqdPreference}
+                                                                />
                                                             </div>
                                                         </div>
                                                     ))}
@@ -2296,7 +2511,7 @@ export function PartnerDetailsView({
 
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>{t('agents.recentSales', { defaultValue: 'Recent Sales' })}</CardTitle>
+                                    <CardTitle>{t('agents.recentSales')}</CardTitle>
                                 </CardHeader>
                                 <CardContent>
                                     {agentRecentRows.length === 0 ? (
@@ -2855,6 +3070,24 @@ export function PartnerDetailsView({
                     printSelectionOptions={partnerPrintSelectionOptions}
                     printSelectionTemplates={partnerCustomPrintOptions}
                     onPrintSelection={handlePrintSelection}
+                />
+            ) : null}
+            {isAgentProfile && agent && canManageAgentLoans ? (
+                <CreateManualLoanModal
+                    isOpen={isAgentLoanModalOpen}
+                    onOpenChange={setIsAgentLoanModalOpen}
+                    workspaceId={workspaceId}
+                    settlementCurrency={defaultCurrency}
+                    initialParty={{
+                        linkedPartyType: 'business_partner',
+                        linkedPartyId: partner.id,
+                        linkedPartyName: partner.name,
+                        borrowerName: partner.contactName?.trim() || partner.name,
+                        borrowerPhone: partner.phone?.trim() || '',
+                        borrowerAddress: [partner.address, partner.city, partner.country].filter(Boolean).join(', '),
+                        defaultCurrency: partner.defaultCurrency,
+                    }}
+                    lockParty
                 />
             ) : null}
         </div>

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { AgentCommissionEntry, AgentCommissionMembership, AgentCommissionPlan } from '@/local-db'
 import {
+    commissionEntryOrderReference,
     getActiveAgentCommissionMembership,
     getCurrentCommissionPlanRevision,
     summarizeCommissionEntries
@@ -77,6 +78,15 @@ function plan(overrides: Partial<AgentCommissionPlan>): AgentCommissionPlan {
 }
 
 describe('agent commission presentation helpers', () => {
+    it('does not expose an order UUID while its order number is still loading', () => {
+        const pendingEntry = entry({ orderId: 'd372545f-8d6f-4925-bef2-7b02431ab1af' })
+
+        expect(commissionEntryOrderReference(pendingEntry, new Map())).toBe('—')
+        expect(commissionEntryOrderReference(pendingEntry, new Map([
+            [pendingEntry.orderId as string, 'SO-2026-00102']
+        ]))).toBe('SO-2026-00102')
+    })
+
     it('selects the latest effective, unended membership', () => {
         const result = getActiveAgentCommissionMembership([
             membership({ id: 'old', planId: 'level-1', effectiveTo: '2026-02-01T00:00:00.000Z' }),

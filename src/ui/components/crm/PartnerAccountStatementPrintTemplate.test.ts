@@ -240,6 +240,68 @@ describe('buildPartnerAccountStatementLedger', () => {
         ])
     })
 
+    it('includes a sales-account agent commission lifecycle without double-counting its payout entry', () => {
+        const data = statementData()
+        data.statementOrders = []
+        data.settlementTransactions = [{
+            id: 'commission-payment',
+            sourceType: 'agent_commission_payout',
+            sourceRecordId: 'agent-1',
+            direction: 'outgoing',
+            amount: 40,
+            currency: 'usd',
+            paidAt: '2026-01-06T10:00:00.000Z',
+            createdAt: '2026-01-06T10:00:00.000Z',
+            isDeleted: false,
+            referenceLabel: 'Agent commission payout SO-AGENT-1',
+            metadata: { orderId: 'agent-sale' }
+        }] as any
+        data.linkedOrderCodes = { 'agent-sale': 'SO-AGENT-1' }
+        data.agentCommissionEntries = [
+            {
+                id: 'commission-accrual',
+                orderId: 'agent-sale',
+                agentId: 'agent-1',
+                kind: 'accrual',
+                amount: 50,
+                currency: 'usd',
+                occurredAt: '2026-01-04T10:00:00.000Z',
+                createdAt: '2026-01-04T10:00:00.000Z',
+                isDeleted: false
+            },
+            {
+                id: 'commission-reversal',
+                orderId: 'agent-sale',
+                agentId: 'agent-1',
+                kind: 'reversal',
+                amount: -10,
+                currency: 'usd',
+                occurredAt: '2026-01-05T10:00:00.000Z',
+                createdAt: '2026-01-05T10:00:00.000Z',
+                isDeleted: false
+            },
+            {
+                id: 'commission-payout-entry',
+                orderId: 'agent-sale',
+                agentId: 'agent-1',
+                kind: 'payout',
+                amount: -40,
+                currency: 'usd',
+                occurredAt: '2026-01-06T10:00:00.000Z',
+                createdAt: '2026-01-06T10:00:00.000Z',
+                isDeleted: false
+            }
+        ] as any
+
+        const ledger = buildPartnerAccountStatementLedger(data)[0]
+        expect(ledger.entries.map((entry) => [entry.id, entry.reference, entry.descriptionKey, entry.delta])).toEqual([
+            ['agent-commission:commission-accrual', 'SO-AGENT-1', 'commissionEarned', -50],
+            ['agent-commission:commission-reversal', 'SO-AGENT-1', 'commissionReversed', 10],
+            ['payment:commission-payment', 'SO-AGENT-1', 'commissionPaid', 40]
+        ])
+        expect(ledger.closingBalance).toBe(0)
+    })
+
     it('keeps normal partner sales and returns as one row per document by default', () => {
         const data = statementData()
         data.statementOrders = [{
