@@ -6481,7 +6481,12 @@
             "creatingAndAssigning": "دروستکردن و دیاریکردن بەردەوامە…",
             "confirmStatus": "پشتڕاستکردنەوەی {{status}}",
             "confirmSettlement": "پشتڕاستکردنەوەی تەسویه",
-            "playback": "لێدانی دەنگ"
+            "playback": "لێدانی دەنگ",
+            "requestChange": "داوای گۆڕان",
+            "reviewChange": "پێداچوونەوەی گۆڕان",
+            "sendChangeRequest": "ناردنی داوا",
+            "approveChange": "پەسەندکردنی گۆڕان",
+            "rejectChange": "ڕەتکردنەوەی گۆڕان"
         },
         "metrics": {
             "readyToDispatch": "ئامادەی دابەشکردن",
@@ -6517,6 +6522,7 @@
             "merchantsOweUs": "بازرگانان قەرزدارن بە ئێمە",
             "couriersOweUs": "مەندوبان قەرزدارن بە ئێمە",
             "weOweCouriers": "ئێمە قەرزدارین بە مەندوبان",
+            "codChangeRequests": "داواکارییەکانی گۆڕینی پارە لە کاتی وەرگرتن",
             "merchantPayouts": "پارەدانی بازرگانان",
             "settlementHistory": "مێژووی تەسویە"
         },
@@ -6559,7 +6565,13 @@
             "amountPaid": "بڕی پارەدراو",
             "paymentMethod": "شێوازی پارەدان",
             "status": "دۆخ",
-            "noteVariance": "تێبینی / ڕوونکردنەوەی جیاوازی"
+            "noteVariance": "تێبینی / ڕوونکردنەوەی جیاوازی",
+            "requestedCodAmount": "بڕی داواکراوی پارە لە کاتی وەرگرتن",
+            "approvedCodAmount": "بڕی پەسەندکراوی پارە لە کاتی وەرگرتن",
+            "reviewNote": "تێبینیی پێداچوونەوە",
+            "reviewNoteOptional": "تێبینیی پێداچوونەوە (ئارەزوومەندانە)",
+            "reasonOptional": "هۆکار (ئارەزوومەندانە)",
+            "reasonNotProvided": "هیچ هۆکارێک نەدراوە"
         },
         "placeholders": {
             "selectCourier": "مەندوب هەڵبژێرە",
@@ -6570,6 +6582,8 @@
             "postponedReason": "کڕیار داوای سبەی کرد یان وەڵامی نەدایەوە…",
             "returnedReason": "ناونیشان هەڵەیە یان کڕیار ڕەتی کردەوە…",
             "deliveryNote": "بەڵگە یان تێبینی گەیاندن",
+            "codChangeReason": "هۆکاری گۆڕینی بڕی پارە لە کاتی وەرگرتن ڕوون بکەرەوە",
+            "codChangeReviewNote": "ڕوونکردنەوەی ئارەزوومەندانە بۆ ئەم پێداچوونەوەیە",
             "varianceNote": "کاتێک کەمتر لە باڵانسی قەرزار پارەدەدرێت پێویستە",
             "repaymentVarianceNote": "کاتێک کەمتر لە باڵانسی قەرزار وەردەگیرێت پێویستە",
             "searchPosts": "بە ژمارەی شوێنکەوتن، وەرگر، بازرگان یان پەیامبەر بگەڕێ...",
@@ -6673,7 +6687,8 @@
             "delivered": "گەیشتوو",
             "postponed": "دواخراو",
             "returned": "گەڕاوەتەوە",
-            "cancelled": "هەڵوەشاوە"
+            "cancelled": "هەڵوەشاوە",
+            "requestChange": "داوای گۆڕان"
         },
         "settlementStatus": {
             "handedOver": "تەسلیم کراوە",
@@ -6756,6 +6771,15 @@
             },
             "status": {
                 "title": "دۆخی پۆست بکە بە {{status}}"
+            },
+            "codChangeRequest": {
+                "title": "داوای گۆڕینی پارە لە کاتی وەرگرتن",
+                "currentCod": "پارەی ئێستای لە کاتی وەرگرتن"
+            },
+            "codChangeReview": {
+                "title": "پێداچوونەوەی گۆڕینی پارە لە کاتی وەرگرتن",
+                "currentCod": "بڕی ئێستا",
+                "requestedCod": "بڕی داواکراو"
             },
             "recipientPayout": {
                 "title": "پارەدانی وەرگر",
@@ -6844,7 +6868,12 @@
             "courierUpdated": "مەندوب نوێکرایەوە",
             "courierSaveFailed": "پاشەکەوتکردنی مەندوب سەرکەوتوو نەبوو",
             "businessPartnerCreated": "هاوبەشی بازرگانی دروستکرا",
-            "businessPartnerSaveFailed": "دروستکردنی هاوبەشی بازرگانی سەرکەوتوو نەبوو"
+            "businessPartnerSaveFailed": "دروستکردنی هاوبەشی بازرگانی سەرکەوتوو نەبوو",
+            "codChangeRequested": "داوای گۆڕینی پارە لە کاتی وەرگرتن نێردرا",
+            "codChangeRequestFailed": "نەتوانرا داوای گۆڕینی پارە لە کاتی وەرگرتن بنێردرێت",
+            "codChangeApproved": "گۆڕینی پارە لە کاتی وەرگرتن پەسەندکرا",
+            "codChangeRejected": "گۆڕینی پارە لە کاتی وەرگرتن ڕەتکرایەوە",
+            "codChangeReviewFailed": "پێداچوونەوەی گۆڕینی پارە لە کاتی وەرگرتن سەرکەوتوو نەبوو"
         },
         "errors": {
             "generic": "تکایە دووبارە هەوڵ بدە.",
@@ -6862,6 +6891,16 @@
             "reasonRequired": "هۆکار بۆ ئەم دۆخە پێویستە.",
             "assignCourierFirst": "سەرەتا پۆستەکە بۆ مەندوب دیاری بکە.",
             "courierAssignmentOnly": "مەندوب تەنها دەتوانێت پۆستە دیاریکراوەکان بۆ خۆی نوێ بکاتەوە.",
+            "codChangeCashOnly": "تەنها بۆ پۆستە نەقدییەکانی لە کاتی گەیاندن دەتوانرێت داوای گۆڕینی بڕ بکرێت.",
+            "codChangeStatusOnly": "تەنها بۆ پۆستە دیاریکراوەکان یان دواخراوەکان دەتوانرێت داوای گۆڕینی بڕ بکرێت.",
+            "codChangeCourierOnly": "تەنها بۆ پۆستە دیاریکراوەکان بۆ مەندوبەکەت دەتوانیت داوای گۆڕینی بڕ بکەیت.",
+            "codChangeMustDiffer": "بڕێک بنووسە کە لە بڕی ئێستای پارە لە کاتی وەرگرتن جیاواز بێت.",
+            "codChangeAlreadyPending": "بۆ ئەم پۆستە پێشتر داوای گۆڕینی پارە لە کاتی وەرگرتن چاوەڕێیە.",
+            "codChangePendingDeliveryBlocked": "پێش نیشاندانی ئەم پۆستە وەک گەیشتوو، داوای گۆڕینی پارە لە کاتی وەرگرتن پێداچوونەوە بکە.",
+            "codChangeRequestNotFound": "داوای گۆڕینی پارە لە کاتی وەرگرتن نەدۆزرایەوە.",
+            "codChangeAlreadyReviewed": "پێشتر پێداچوونەوە بە داوای گۆڕینی پارە لە کاتی وەرگرتن کراوە.",
+            "codChangeReviewAdminOnly": "تەنها بەڕێوەبەر دەتوانێت پێداچوونەوە بە داوای گۆڕینی پارە لە کاتی وەرگرتن بکات.",
+            "codChangeNoLongerReviewable": "ئەم داوای گۆڕینی پارە لە کاتی وەرگرتن چیتر ناتوانرێت پەسەند بکرێت.",
             "amountExceedsBalance": "بڕی تەسویە نابێت لە باڵانسی قەرزار زیاتر بێت.",
             "partialExplanationRequired": "پێش پشتڕاستکردنەوەی تەسویەی بەشەکی، ڕوونکردنەوەی بدە.",
             "courierNotFound": "مەندوب نەدۆزرایەوە.",

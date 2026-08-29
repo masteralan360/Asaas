@@ -1,14 +1,14 @@
 import { type FormEvent, Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { Banknote, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, Clock, HandCoins, History, Inbox, LayoutGrid, List, ListFilter, PackageCheck, Pencil, Play, Plus, Route, Search, Send, Store, Trash2, Truck, Undo2, Users, WalletCards, X, XCircle, type LucideIcon } from "lucide-react";
+import { Banknote, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, Clock, FilePenLine, HandCoins, History, Inbox, LayoutGrid, List, ListFilter, PackageCheck, Pencil, Play, Plus, Route, Search, Send, Store, Trash2, Truck, Undo2, Users, WalletCards, X, XCircle, type LucideIcon } from "lucide-react";
 
 import { useAuth } from "@/auth";
 import {
   closeDeliveryRun, createAndDispatchDeliveryShipment, createBusinessPartner, createDeliveryMerchantProfile, createDeliveryRun, createDeliveryShipment, hardDeleteDeliveryMerchantProfile, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment,
-  refreshPostServiceTab, settleDeliveryCourier, summarizeDeliveryBalanceMetrics, updateBusinessPartner, updateDeliveryMerchantProfile, updateDeliveryShipmentStatus, useAgents, useBusinessPartners, useCourierDeliveryAccountBalances, useCourierDeliveryBalances,
-  useDeliveryMerchantProfiles, useDeliveryRuns, useDeliverySettlements, useDeliveryShipmentEvents, useDeliveryShipments, useFleetVehicles,
-  transferReturnedDeliveryShipment, useMerchantDeliveryAccountBalances, useMerchantDeliveryBalances, useDeliveryLedgerEntries, type Agent, type BusinessPartner, type CreateDeliveryShipmentInput, type CurrencyCode, type DeliveryCustomerPaymentStatus, type DeliveryMerchantProfile, type DeliveryRecipientPayoutFunding, type DeliveryShipment, type DeliveryShipmentEvent, type DeliveryShipmentStatus, type PaymentAccount, type PostServiceTab, type WorkspacePaymentMethod,
+  refreshPostServiceTab, requestDeliveryShipmentCodAdjustment, reviewDeliveryShipmentCodAdjustment, settleDeliveryCourier, summarizeDeliveryBalanceMetrics, updateBusinessPartner, updateDeliveryMerchantProfile, updateDeliveryShipmentStatus, useAgents, useBusinessPartners, useCourierDeliveryAccountBalances, useCourierDeliveryBalances,
+  useDeliveryMerchantProfiles, useDeliveryRuns, useDeliverySettlements, useDeliveryShipmentCodAdjustmentRequests, useDeliveryShipmentEvents, useDeliveryShipments, useFleetVehicles,
+  transferReturnedDeliveryShipment, useMerchantDeliveryAccountBalances, useMerchantDeliveryBalances, useDeliveryLedgerEntries, type Agent, type BusinessPartner, type CreateDeliveryShipmentInput, type CurrencyCode, type DeliveryCustomerPaymentStatus, type DeliveryMerchantProfile, type DeliveryRecipientPayoutFunding, type DeliveryShipment, type DeliveryShipmentCodAdjustmentRequest, type DeliveryShipmentEvent, type DeliveryShipmentStatus, type PaymentAccount, type PostServiceTab, type WorkspacePaymentMethod,
 } from "@/local-db";
 import { cn, formatCurrency, formatDateTime, formatNumericInput, generateId, parseFormattedNumber, sanitizeNumericInput } from "@/lib/utils";
 import { STANDARD_PAYMENT_METHODS } from "@/lib/paymentMethods";
@@ -187,6 +187,16 @@ function localizedError(t: TFunction, error: unknown) {
     "A reason is required for this status": "reasonRequired",
     "Assign the shipment to a courier first": "assignCourierFirst",
     "A courier can only update shipments assigned to them": "courierAssignmentOnly",
+    "Only cash-on-delivery posts can have a COD change requested": "codChangeCashOnly",
+    "COD changes can only be requested for an assigned or postponed post": "codChangeStatusOnly",
+    "A courier can only request a COD change for posts assigned to them": "codChangeCourierOnly",
+    "Requested COD amount must differ from the current COD amount": "codChangeMustDiffer",
+    "This post already has a pending COD change request": "codChangeAlreadyPending",
+    "Review the pending COD change before marking the post delivered": "codChangePendingDeliveryBlocked",
+    "COD change request not found": "codChangeRequestNotFound",
+    "This COD change request has already been reviewed": "codChangeAlreadyReviewed",
+    "Only an administrator can review a COD change request": "codChangeReviewAdminOnly",
+    "This COD change request can no longer be approved": "codChangeNoLongerReviewable",
     "Settlement amount cannot exceed the outstanding balance": "amountExceedsBalance",
     "Explain a partial settlement before confirming it": "partialExplanationRequired",
     "Courier not found": "courierNotFound",
@@ -219,6 +229,7 @@ export function PostService() {
   const vehicles = useFleetVehicles(workspaceId);
   const merchantProfiles = useDeliveryMerchantProfiles(workspaceId);
   const shipments = useDeliveryShipments(workspaceId);
+  const codAdjustmentRequests = useDeliveryShipmentCodAdjustmentRequests(workspaceId);
   const shipmentEvents = useDeliveryShipmentEvents(workspaceId);
   const runs = useDeliveryRuns(workspaceId);
   const settlements = useDeliverySettlements(workspaceId);
@@ -231,7 +242,7 @@ export function PostService() {
   const merchantPayoutStatuses = useMemo(() => merchantPayoutStatusByShipment(ledgerEntries), [ledgerEntries]);
   const [activeTab, setActiveTab] = useState<PostServiceTab>("posts");
   const postsPanelRef = useRef<HTMLDivElement>(null);
-  const [pendingPostsStatusShortcut, setPendingPostsStatusShortcut] = useState<DeliveryShipmentStatus | null>(null);
+  const [pendingPostsStatusShortcut, setPendingPostsStatusShortcut] = useState(false);
   useEffect(() => {
     if (!isAdmin && activeTab !== "posts") {
       setActiveTab("posts");
@@ -239,13 +250,21 @@ export function PostService() {
   }, [activeTab, isAdmin]);
   const [postsViewMode, setPostsViewMode] = useState<PostsViewMode>("details");
   const [statusFilter, setStatusFilter] = useState<PostStatusFilter>("all");
+  const [pendingCodChangeFilter, setPendingCodChangeFilter] = useState(false);
   const [handoverFilter, setHandoverFilter] = useState<PostSettlementFilter>("all");
   const [payoutFilter, setPayoutFilter] = useState<PostSettlementFilter>("all");
   const [showCompleted, setShowCompleted] = useState(false);
   // A post is "completed" once it is delivered, its collected cash has been
   // fully handed over by the courier, and the merchant has been paid out.
   const isCompletedShipment = useCallback((shipment: DeliveryShipment) => shipment.status === "delivered" && courierHandoverStatuses.get(shipment.id) === "settled" && merchantPayoutStatuses.get(shipment.id) === "settled", [courierHandoverStatuses, merchantPayoutStatuses]);
-  const visibleShipments = useMemo(() => shipments.filter((shipment) => isDateInDateRange(shipment.createdAt, dateRange, customDates) && (showCompleted || !isCompletedShipment(shipment)) && (statusFilter === "all" || shipment.status === statusFilter) && (handoverFilter === "all" || (courierHandoverStatuses.get(shipment.id) ?? null) === handoverFilter) && (payoutFilter === "all" || (merchantPayoutStatuses.get(shipment.id) ?? null) === payoutFilter)), [shipments, statusFilter, handoverFilter, payoutFilter, showCompleted, isCompletedShipment, dateRange, customDates, courierHandoverStatuses, merchantPayoutStatuses]);
+  const pendingCodAdjustmentByShipment = useMemo(() => {
+    const result = new Map<string, DeliveryShipmentCodAdjustmentRequest>();
+    for (const request of codAdjustmentRequests) {
+      if (request.status === "pending" && !result.has(request.shipmentId)) result.set(request.shipmentId, request);
+    }
+    return result;
+  }, [codAdjustmentRequests]);
+  const visibleShipments = useMemo(() => shipments.filter((shipment) => isDateInDateRange(shipment.createdAt, dateRange, customDates) && (showCompleted || !isCompletedShipment(shipment)) && (statusFilter === "all" || shipment.status === statusFilter) && (!pendingCodChangeFilter || pendingCodAdjustmentByShipment.has(shipment.id)) && (handoverFilter === "all" || (courierHandoverStatuses.get(shipment.id) ?? null) === handoverFilter) && (payoutFilter === "all" || (merchantPayoutStatuses.get(shipment.id) ?? null) === payoutFilter)), [shipments, statusFilter, pendingCodChangeFilter, pendingCodAdjustmentByShipment, handoverFilter, payoutFilter, showCompleted, isCompletedShipment, dateRange, customDates, courierHandoverStatuses, merchantPayoutStatuses]);
   const [shipmentDialogOpen, setShipmentDialogOpen] = useState(false);
   const [shipmentForm, setShipmentForm] = useState<ShipmentForm>(() => initialShipmentForm(features.default_currency));
   const [showRecipientPayout, setShowRecipientPayout] = useState(false);
@@ -285,6 +304,14 @@ export function PostService() {
   const [statusNote, setStatusNote] = useState("");
   const [recipientPayoutMethod, setRecipientPayoutMethod] = useState<StandardPaymentMethod>("cash");
   const [recipientPayoutAccount, setRecipientPayoutAccount] = useState<PaymentAccount | null>(null);
+  const [codAdjustmentRequestTarget, setCodAdjustmentRequestTarget] = useState<DeliveryShipment | null>(null);
+  const [requestedCodAmount, setRequestedCodAmount] = useState("");
+  const [codAdjustmentReason, setCodAdjustmentReason] = useState("");
+  const [isRequestingCodAdjustment, setIsRequestingCodAdjustment] = useState(false);
+  const [codAdjustmentReviewTarget, setCodAdjustmentReviewTarget] = useState<DeliveryShipmentCodAdjustmentRequest | null>(null);
+  const [approvedCodAmount, setApprovedCodAmount] = useState("");
+  const [codAdjustmentReviewNote, setCodAdjustmentReviewNote] = useState("");
+  const [isReviewingCodAdjustment, setIsReviewingCodAdjustment] = useState(false);
   const [voicePlaybackEvent, setVoicePlaybackEvent] = useState<DeliveryShipmentEvent | null>(null);
   const [settlementTarget, setSettlementTarget] = useState<SettlementTarget | null>(null);
   const [settlementAmount, setSettlementAmount] = useState("");
@@ -519,6 +546,10 @@ export function PostService() {
     const statuses = isAdmin ? ADMIN_STATUS_CARD_STATUSES : STAFF_STATUS_CARD_STATUSES;
     return statuses.map((status) => ({ status, value: counts.get(status) ?? 0 }));
   }, [isAdmin, shipments]);
+  const pendingCodAdjustmentCount = useMemo(
+    () => codAdjustmentRequests.filter((request) => request.status === "pending").length,
+    [codAdjustmentRequests],
+  );
   const deliveryBalanceMetrics = useMemo(() => {
     const totals = summarizeDeliveryBalanceMetrics(merchantAccountBalances, courierAccountBalances);
     const formatTotal = (amounts: Array<{ currency: CurrencyCode; amount: number }>) => (
@@ -572,6 +603,17 @@ export function PostService() {
   const postSettlementNetAmount = postSettlementNet
     ? postSettlementNet.courierHandover - postSettlementNet.merchantPayout - postSettlementWorkspaceRecipientPayout
     : 0;
+  const isCodAdjustmentRequestValid = Boolean(
+    codAdjustmentRequestTarget
+    && numericValue(requestedCodAmount) > 0
+    && Math.abs(numericValue(requestedCodAmount) - codAdjustmentRequestTarget.codAmount) > 0.000001,
+  );
+  const approvedCodAmountValue = numericValue(approvedCodAmount);
+  const isCodAdjustmentApprovalValid = Boolean(
+    codAdjustmentReviewTarget
+    && approvedCodAmountValue > 0
+  );
+  const isCodAdjustmentRejectionValid = Boolean(codAdjustmentReviewTarget);
 
   const handleTabChange = useCallback((value: string) => {
     const tab = isAdmin ? value as PostServiceTab : "posts";
@@ -584,9 +626,17 @@ export function PostService() {
   }, [isAdmin, workspaceId]);
 
   const handlePostStatusMetricClick = useCallback((status: DeliveryShipmentStatus) => {
+    setPendingCodChangeFilter(false);
     setStatusFilter((current) => current === status ? "all" : status);
     handleTabChange("posts");
-    setPendingPostsStatusShortcut(status);
+    setPendingPostsStatusShortcut(true);
+  }, [handleTabChange]);
+
+  const handlePendingCodChangeMetricClick = useCallback(() => {
+    setPendingCodChangeFilter((current) => !current);
+    setStatusFilter("all");
+    handleTabChange("posts");
+    setPendingPostsStatusShortcut(true);
   }, [handleTabChange]);
 
   useEffect(() => {
@@ -595,7 +645,7 @@ export function PostService() {
       const postsPanel = postsPanelRef.current;
       postsPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
       postsPanel?.focus({ preventScroll: true });
-      setPendingPostsStatusShortcut(null);
+      setPendingPostsStatusShortcut(false);
     });
     return () => cancelAnimationFrame(frame);
   }, [activeTab, pendingPostsStatusShortcut]);
@@ -666,6 +716,28 @@ export function PostService() {
     setStatusNote("");
     setRecipientPayoutMethod("cash");
     setRecipientPayoutAccount(null);
+  }
+  function openCodAdjustmentRequest(shipment: DeliveryShipment) {
+    setCodAdjustmentRequestTarget(shipment);
+    setRequestedCodAmount(String(shipment.codAmount));
+    setCodAdjustmentReason("");
+  }
+  function closeCodAdjustmentRequest() {
+    if (isRequestingCodAdjustment) return;
+    setCodAdjustmentRequestTarget(null);
+    setRequestedCodAmount("");
+    setCodAdjustmentReason("");
+  }
+  function openCodAdjustmentReview(request: DeliveryShipmentCodAdjustmentRequest) {
+    setCodAdjustmentReviewTarget(request);
+    setApprovedCodAmount(String(request.requestedCodAmount));
+    setCodAdjustmentReviewNote("");
+  }
+  function closeCodAdjustmentReview() {
+    if (isReviewingCodAdjustment) return;
+    setCodAdjustmentReviewTarget(null);
+    setApprovedCodAmount("");
+    setCodAdjustmentReviewNote("");
   }
   function openSettlement(target: SettlementTarget) {
     setSettlementTarget(target); setSettlementAmount(String(target.amount)); setSettlementMethod("cash"); setSettlementAccount(null); setSettlementNote("");
@@ -941,6 +1013,48 @@ export function PostService() {
       toast({ title: t("postService.messages.postMarked", { status: shipmentStatusLabel(t, nextStatus) }) }); setStatusTarget(null);
     } catch (error) { toast({ title: t("postService.messages.updatePostFailed"), description: localizedError(t, error), variant: "destructive" }); } finally { setIsSubmitting(false); }
   }
+  async function handleCodAdjustmentRequest(event: FormEvent) {
+    event.preventDefault();
+    if (!workspaceId || !codAdjustmentRequestTarget || !linkedCourier || !user?.id) return;
+    setIsRequestingCodAdjustment(true);
+    try {
+      await requestDeliveryShipmentCodAdjustment(workspaceId, {
+        shipmentId: codAdjustmentRequestTarget.id,
+        requesterUserId: user.id,
+        requesterAgentId: linkedCourier.id,
+        requestedCodAmount: numericValue(requestedCodAmount),
+        reason: codAdjustmentReason,
+      });
+      toast({ title: t("postService.messages.codChangeRequested") });
+      setCodAdjustmentRequestTarget(null);
+      setRequestedCodAmount("");
+      setCodAdjustmentReason("");
+    } catch (error) {
+      toast({ title: t("postService.messages.codChangeRequestFailed"), description: localizedError(t, error), variant: "destructive" });
+    } finally {
+      setIsRequestingCodAdjustment(false);
+    }
+  }
+  async function handleCodAdjustmentReview(decision: "approved" | "rejected") {
+    if (!codAdjustmentReviewTarget || !user?.id || !isAdmin) return;
+    setIsReviewingCodAdjustment(true);
+    try {
+      await reviewDeliveryShipmentCodAdjustment(codAdjustmentReviewTarget.id, {
+        reviewerUserId: user.id,
+        decision,
+        approvedCodAmount: decision === "approved" ? numericValue(approvedCodAmount) : null,
+        reviewNote: codAdjustmentReviewNote,
+      });
+      toast({ title: t(decision === "approved" ? "postService.messages.codChangeApproved" : "postService.messages.codChangeRejected") });
+      setCodAdjustmentReviewTarget(null);
+      setApprovedCodAmount("");
+      setCodAdjustmentReviewNote("");
+    } catch (error) {
+      toast({ title: t("postService.messages.codChangeReviewFailed"), description: localizedError(t, error), variant: "destructive" });
+    } finally {
+      setIsReviewingCodAdjustment(false);
+    }
+  }
   async function handleSettlement(event: FormEvent) {
     event.preventDefault(); if (!workspaceId || !settlementTarget) return; setIsSubmitting(true);
     try {
@@ -1003,8 +1117,8 @@ export function PostService() {
   return <div className="w-full min-w-0 space-y-6 overflow-x-hidden">
     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><h1 className="flex items-center gap-2 text-2xl font-bold"><PackageCheck className="h-6 w-6 text-primary" />{t("postService.title")}</h1><p className="text-muted-foreground">{t("postService.subtitle")} <ModulePageFreshness className="ms-2" /></p></div>{isAdmin && <div className="flex flex-wrap gap-2"><Button variant="outline" className="gap-2" onClick={() => setMerchantDialogOpen(true)}><Store className="h-4 w-4" />{t("postService.actions.enableMerchant")}</Button><Button className="gap-2" onClick={() => setShipmentDialogOpen(true)}><Plus className="h-4 w-4" />{t("postService.actions.newPost")}</Button></div>}</div>
     <div className="space-y-3">
-      <div className={cn("grid sm:grid-cols-2", isAdmin ? "gap-3 lg:grid-cols-6" : "gap-4 xl:grid-cols-5")}>{postStatusMetrics.map(({ status, value }) => <StatusMetric key={status} compact={isAdmin} icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={statusFilter === status} onClick={() => handlePostStatusMetricClick(status)} />)}</div>
-      {isAdmin ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">{deliveryBalanceMetrics.map((metric) => <DeliveryBalanceMetric key={metric.id} {...metric} />)}</div> : null}
+      <div className={cn("grid sm:grid-cols-2", isAdmin ? "gap-3 lg:grid-cols-7" : "gap-4 xl:grid-cols-5")}>{postStatusMetrics.map(({ status, value }) => <StatusMetric key={status} compact={isAdmin} icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={!pendingCodChangeFilter && statusFilter === status} onClick={() => handlePostStatusMetricClick(status)} />)}{isAdmin ? <StatusMetric compact icon={FilePenLine} title={t("postService.status.requestChange")} value={pendingCodAdjustmentCount} active={pendingCodChangeFilter} onClick={handlePendingCodChangeMetricClick} /> : null}</div>
+      {isAdmin ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-7">{deliveryBalanceMetrics.map((metric) => <DeliveryBalanceMetric key={metric.id} {...metric} />)}</div> : null}
     </div>
     <Tabs value={activeTab} onValueChange={handleTabChange} className="min-w-0"><TabsList className="h-auto w-full max-w-full flex-wrap justify-start gap-1 sm:w-auto"><TabsTrigger value="posts"><ClipboardList className="me-2 h-4 w-4" />{t("postService.tabs.posts")}</TabsTrigger>{isAdmin && <><TabsTrigger value="dispatch"><Send className="me-2 h-4 w-4" />{t("postService.tabs.dispatch")}</TabsTrigger><TabsTrigger value="my-deliveries"><Route className="me-2 h-4 w-4" />{t("postService.tabs.myDeliveries")}</TabsTrigger><TabsTrigger value="merchants"><Store className="me-2 h-4 w-4" />{t("postService.tabs.merchants")}</TabsTrigger><TabsTrigger value="courier"><Truck className="me-2 h-4 w-4" />{t("postService.tabs.courier")}</TabsTrigger><TabsTrigger value="settlements"><Banknote className="me-2 h-4 w-4" />{t("postService.tabs.settlements")}</TabsTrigger></>}</TabsList>
       <TabsContent ref={postsPanelRef} value="posts" tabIndex={-1} className="mt-4 min-w-0 scroll-mt-24 outline-none">
@@ -1020,7 +1134,7 @@ export function PostService() {
             <div className="flex flex-col gap-2 sm:items-end">
               <span className="text-sm text-muted-foreground">{t("postService.selectedForDispatch", { count: selectedCount })}</span>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                <FilterDropdown dir={pageDirection} value={statusFilter} icon={statusFilterIcons[statusFilter]} label={t("common.status")} options={statusFilterOptions(t)} onChange={(value) => setStatusFilter(value as PostStatusFilter)} />
+                <FilterDropdown dir={pageDirection} value={statusFilter} icon={statusFilterIcons[statusFilter]} label={t("common.status")} options={statusFilterOptions(t)} onChange={(value) => { setPendingCodChangeFilter(false); setStatusFilter(value as PostStatusFilter); }} />
                 <FilterDropdown dir={pageDirection} value={handoverFilter} icon={settlementFilterIcons[handoverFilter]} label={t("postService.table.cashHandover")} options={settlementFilterOptions(t, t("postService.settlementStatus.handedOver"))} onChange={(value) => setHandoverFilter(value as PostSettlementFilter)} />
                 <FilterDropdown dir={pageDirection} value={payoutFilter} icon={settlementFilterIcons[payoutFilter]} label={t("postService.table.merchantPayout")} options={settlementFilterOptions(t, t("postService.settlementStatus.paid"))} onChange={(value) => setPayoutFilter(value as PostSettlementFilter)} />
                 <label className="flex cursor-pointer select-none items-center gap-2 text-sm font-medium">
@@ -1036,15 +1150,15 @@ export function PostService() {
               <Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="ps-9" placeholder={t("postService.placeholders.searchPosts")} />
             </div>
             <div className={cn("grid grid-cols-1 gap-4", postsViewMode === "grid" ? "md:grid-cols-2 2xl:grid-cols-3" : "md:hidden")}>
-              <ShipmentGrid t={t} shipments={searchedShipments} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} />
+              <ShipmentGrid t={t} shipments={searchedShipments} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier?.id ?? null} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} />
             </div>
-            {postsViewMode === "details" && <div className="hidden overflow-x-auto md:block"><ShipmentTable t={t} shipments={searchedShipments} footer={postsTotalsFooter} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} /></div>}
+            {postsViewMode === "details" && <div className="hidden overflow-x-auto md:block"><ShipmentTable t={t} shipments={searchedShipments} footer={postsTotalsFooter} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier?.id ?? null} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} /></div>}
           </CardContent>
         </Card>
       </TabsContent>
       {isAdmin && <>
       <TabsContent value="dispatch" className="mt-4 space-y-4"><Card><CardHeader><CardTitle>{t("postService.cards.createManifest")}</CardTitle></CardHeader><CardContent>{canDispatch ? <form className="grid gap-4 md:grid-cols-2" onSubmit={handleDispatch}><Field label={t("postService.form.postsSelected")}><div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">{t("postService.selectedAndAvailable", { selected: selectedCount, available: assignableShipments.length })}</div></Field><Field label={t("postService.form.courier")}><Select value={dispatchAgentId} onValueChange={handleDispatchCourierChange}><SelectTrigger><SelectValue placeholder={t("postService.placeholders.selectCourier")} /></SelectTrigger><SelectContent>{agents.filter((agent) => agent.status === "active" && agent.agentType === "courier").map((agent) => <SelectItem key={agent.id} value={agent.id}>{agentNameById.get(agent.id)} · {agent.zone}</SelectItem>)}</SelectContent></Select></Field><Field label={t("postService.form.courierDeliveryFee")}><div className="grid gap-1"><div className="relative"><Input className="pe-12" value={formatNumericInput(dispatchCourierDeliveryFee)} onChange={(event) => setDispatchCourierDeliveryFee(sanitizeNumericInput(event.target.value, { allowDecimal: true }))} inputMode="decimal" placeholder="0" disabled={!dispatchAgentId} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(features.default_currency, features.iqd_display_preference)}</span></div><p className="text-xs text-muted-foreground">{t("postService.form.courierDeliveryFeeHint")}</p></div></Field><Field label={t("postService.form.vehicleOptional")}><Select value={dispatchVehicleId} onValueChange={setDispatchVehicleId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">{t("postService.options.noVehicle")}</SelectItem>{vehicles.filter((vehicle) => vehicle.status === "active").map((vehicle) => <SelectItem key={vehicle.id} value={vehicle.id}>{vehicle.plateNumber} · {vehicle.model}</SelectItem>)}</SelectContent></Select></Field><Field label={t("postService.form.manifestNote")}><Input value={dispatchNotes} onChange={(event) => setDispatchNotes(event.target.value)} placeholder={t("postService.placeholders.manifestNote")} /></Field><div className="md:col-span-2"><Button disabled={isSubmitting || !dispatchAgentId || selectedCount === 0} type="submit"><Send className="me-2 h-4 w-4" />{t("postService.actions.assignSelected")}</Button></div></form> : <p className="text-sm text-muted-foreground">{t("postService.permissionRequired.dispatch")}</p>}</CardContent></Card><Card><CardHeader><CardTitle>{t("postService.cards.recentRuns")}</CardTitle></CardHeader><CardContent className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>{t("postService.table.run")}</TableHead><TableHead>{t("postService.table.courier")}</TableHead><TableHead>{t("postService.table.courierDeliveryFee")}</TableHead><TableHead>{t("postService.table.dispatched")}</TableHead><TableHead>{t("postService.table.status")}</TableHead><TableHead /></TableRow></TableHeader><TableBody>{runs.length === 0 ? <EmptyRow columns={6} label={t("postService.empty.noRuns")} /> : runs.map((run) => <TableRow key={run.id}><TableCell className="font-medium">{run.runNumber}</TableCell><TableCell>{agentNameById.get(run.agentId)}</TableCell><TableCell>{formatCurrency(run.courierDeliveryFee ?? 0, features.default_currency, features.iqd_display_preference)}</TableCell><TableCell>{formatDateTime(run.dispatchedAt)}</TableCell><TableCell><Badge variant="outline">{t(`postService.runStatus.${run.status}`)}</Badge></TableCell><TableCell className="text-end">{canDispatch && run.status === "open" && <Button size="sm" variant="outline" onClick={() => void handleCloseRun(run.id)}>{t("postService.actions.closeRun")}</Button>}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card></TabsContent>
-      <TabsContent value="my-deliveries" className="mt-4"><Card><CardHeader><CardTitle>{t("postService.cards.myAssignedPosts")}</CardTitle></CardHeader><CardContent className="overflow-x-auto">{linkedCourier ? <ShipmentTable t={t} shipments={shipments.filter((shipment) => shipment.assignedAgentId === linkedCourier.id)} selectedIds={new Set()} onToggle={() => undefined} canSelect={false} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} /> : <div className="py-10 text-center text-sm text-muted-foreground">{t("postService.empty.noLinkedCourier")}</div>}</CardContent></Card></TabsContent>
+      <TabsContent value="my-deliveries" className="mt-4"><Card><CardHeader><CardTitle>{t("postService.cards.myAssignedPosts")}</CardTitle></CardHeader><CardContent className="overflow-x-auto">{linkedCourier ? <ShipmentTable t={t} shipments={shipments.filter((shipment) => shipment.assignedAgentId === linkedCourier.id)} selectedIds={new Set()} onToggle={() => undefined} canSelect={false} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier.id} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} /> : <div className="py-10 text-center text-sm text-muted-foreground">{t("postService.empty.noLinkedCourier")}</div>}</CardContent></Card></TabsContent>
       <TabsContent value="merchants" className="mt-4">
         <Card>
           <CardHeader className="flex-row items-center justify-between"><CardTitle>{t("postService.cards.deliveryMerchants")}</CardTitle>{isAdmin && <Button size="sm" onClick={() => setMerchantDialogOpen(true)}><Plus className="me-2 h-4 w-4" />{t("postService.actions.enableMerchant")}</Button>}</CardHeader>
@@ -1350,6 +1464,70 @@ export function PostService() {
         </AppDialogFooter>
       </AppDialogContent>
     </AppDialog>
+    <AppDialog open={!!codAdjustmentRequestTarget} onOpenChange={(open) => { if (!open) closeCodAdjustmentRequest(); }}>
+      <AppDialogContent
+        className="sm:max-w-lg"
+        showCloseButton={!isRequestingCodAdjustment}
+        onPointerDownOutside={(event) => { if (isRequestingCodAdjustment) event.preventDefault(); }}
+        onEscapeKeyDown={(event) => { if (isRequestingCodAdjustment) event.preventDefault(); }}
+      >
+        <form onSubmit={handleCodAdjustmentRequest} className="flex min-h-0 flex-1 flex-col">
+          <AppDialogHeader>
+            <AppDialogTitle>{t("postService.dialogs.codChangeRequest.title")}</AppDialogTitle>
+            <AppDialogDescription>{codAdjustmentRequestTarget?.trackingNumber} · {codAdjustmentRequestTarget?.recipientPhone}</AppDialogDescription>
+          </AppDialogHeader>
+          <AppDialogBody className="space-y-4">
+            <div className="rounded-xl border bg-muted/30 px-3 py-2.5 text-sm">
+              <span className="text-muted-foreground">{t("postService.dialogs.codChangeRequest.currentCod")}: </span>
+              <span className="font-semibold tabular-nums">{codAdjustmentRequestTarget ? formatCurrency(codAdjustmentRequestTarget.codAmount, codAdjustmentRequestTarget.currency, features.iqd_display_preference) : "—"}</span>
+            </div>
+            <Field label={t("postService.form.requestedCodAmount")}>
+              <CurrencyAmountInput value={requestedCodAmount} onChange={setRequestedCodAmount} currency={codAdjustmentRequestTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} disabled={isRequestingCodAdjustment} />
+            </Field>
+            <Field label={t("postService.form.reasonOptional")}>
+              <Textarea value={codAdjustmentReason} onChange={(event) => setCodAdjustmentReason(event.target.value)} placeholder={t("postService.placeholders.codChangeReason")} disabled={isRequestingCodAdjustment} />
+            </Field>
+          </AppDialogBody>
+          <AppDialogFooter>
+            <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={isRequestingCodAdjustment} onClick={closeCodAdjustmentRequest}>{t("postService.actions.cancel")}</Button>
+            <Button type="submit" className="w-full gap-2 sm:w-auto" disabled={isRequestingCodAdjustment || !isCodAdjustmentRequestValid}><FilePenLine className="h-4 w-4" />{t("postService.actions.sendChangeRequest")}</Button>
+          </AppDialogFooter>
+        </form>
+      </AppDialogContent>
+    </AppDialog>
+    <AppDialog open={!!codAdjustmentReviewTarget} onOpenChange={(open) => { if (!open) closeCodAdjustmentReview(); }}>
+      <AppDialogContent
+        className="sm:max-w-lg"
+        showCloseButton={!isReviewingCodAdjustment}
+        onPointerDownOutside={(event) => { if (isReviewingCodAdjustment) event.preventDefault(); }}
+        onEscapeKeyDown={(event) => { if (isReviewingCodAdjustment) event.preventDefault(); }}
+      >
+        <AppDialogHeader>
+          <AppDialogTitle>{t("postService.dialogs.codChangeReview.title")}</AppDialogTitle>
+          <AppDialogDescription>{codAdjustmentReviewTarget && shipmentLabelById.get(codAdjustmentReviewTarget.shipmentId)}</AppDialogDescription>
+        </AppDialogHeader>
+        <AppDialogBody className="space-y-4">
+          <div className="grid gap-3 rounded-xl border bg-muted/30 p-3 sm:grid-cols-2">
+            <div><p className="text-xs font-medium text-muted-foreground">{t("postService.dialogs.codChangeReview.currentCod")}</p><p className="mt-1 font-semibold tabular-nums">{codAdjustmentReviewTarget && formatCurrency(codAdjustmentReviewTarget.originalCodAmount, codAdjustmentReviewTarget.currency, features.iqd_display_preference)}</p></div>
+            <div><p className="text-xs font-medium text-muted-foreground">{t("postService.dialogs.codChangeReview.requestedCod")}</p><p className="mt-1 font-semibold tabular-nums">{codAdjustmentReviewTarget && formatCurrency(codAdjustmentReviewTarget.requestedCodAmount, codAdjustmentReviewTarget.currency, features.iqd_display_preference)}</p></div>
+            <div className="sm:col-span-2"><p className="text-xs font-medium text-muted-foreground">{t("postService.form.reasonOptional")}</p><p className="mt-1 whitespace-pre-wrap text-sm">{codAdjustmentReviewTarget?.reason || t("postService.form.reasonNotProvided")}</p></div>
+          </div>
+          <Field label={t("postService.form.approvedCodAmount")}>
+            <CurrencyAmountInput value={approvedCodAmount} onChange={setApprovedCodAmount} currency={codAdjustmentReviewTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} disabled={isReviewingCodAdjustment} />
+          </Field>
+          <Field label={t("postService.form.reviewNoteOptional")}>
+            <Textarea value={codAdjustmentReviewNote} onChange={(event) => setCodAdjustmentReviewNote(event.target.value)} placeholder={t("postService.placeholders.codChangeReviewNote")} disabled={isReviewingCodAdjustment} />
+          </Field>
+        </AppDialogBody>
+        <AppDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+          <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={isReviewingCodAdjustment} onClick={closeCodAdjustmentReview}>{t("postService.actions.cancel")}</Button>
+          <div className="flex w-full gap-2 sm:w-auto">
+            <Button type="button" variant="destructive" className="flex-1 sm:flex-none" disabled={isReviewingCodAdjustment || !isCodAdjustmentRejectionValid} onClick={() => void handleCodAdjustmentReview("rejected")}>{t("postService.actions.rejectChange")}</Button>
+            <Button type="button" className="flex-1 gap-2 sm:flex-none" disabled={isReviewingCodAdjustment || !isCodAdjustmentApprovalValid} onClick={() => void handleCodAdjustmentReview("approved")}><CheckCircle2 className="h-4 w-4" />{t("postService.actions.approveChange")}</Button>
+          </div>
+        </AppDialogFooter>
+      </AppDialogContent>
+    </AppDialog>
     <Dialog open={!!postSettlementTarget} onOpenChange={(open) => !open && setPostSettlementTarget(null)}>
       <DialogContent layout="structured" className="sm:max-w-xl">
         <DialogHeader layout="structured">
@@ -1471,8 +1649,8 @@ export function PostService() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="grid gap-2"><Label>{label}</Label>{children}</div>;
 }
-function CurrencyAmountInput({ value, onChange, currency, iqdPreference }: { value: string; onChange: (value: string) => void; currency: CurrencyCode; iqdPreference: "IQD" | "د.ع" }) {
-  return <div className="relative"><Input className="pe-12 tabular-nums" value={formatNumericInput(value)} onChange={(event) => onChange(sanitizeNumericInput(event.target.value, { allowDecimal: currency !== "iqd" }))} inputMode={currency === "iqd" ? "numeric" : "decimal"} placeholder="0" required /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(currency, iqdPreference)}</span></div>;
+function CurrencyAmountInput({ value, onChange, currency, iqdPreference, disabled = false }: { value: string; onChange: (value: string) => void; currency: CurrencyCode; iqdPreference: "IQD" | "د.ع"; disabled?: boolean }) {
+  return <div className="relative"><Input className="pe-12 tabular-nums" value={formatNumericInput(value)} onChange={(event) => onChange(sanitizeNumericInput(event.target.value, { allowDecimal: currency !== "iqd" }))} inputMode={currency === "iqd" ? "numeric" : "decimal"} placeholder="0" required disabled={disabled} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(currency, iqdPreference)}</span></div>;
 }
 function SettlementPaymentMethodSelect({ t, value, onChange }: { t: TFunction; value: WorkspacePaymentMethod; onChange: (value: WorkspacePaymentMethod) => void }) {
   return <Select value={value} onValueChange={onChange}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash">{t("postService.paymentMethods.cash")}</SelectItem><SelectItem value="bank_transfer">{t("postService.paymentMethods.bank_transfer")}</SelectItem><SelectItem value="fib">{t("postService.paymentMethods.fib")}</SelectItem><SelectItem value="qicard">{t("postService.paymentMethods.qicard")}</SelectItem><SelectItem value="zaincash">{t("postService.paymentMethods.zaincash")}</SelectItem><SelectItem value="fastpay">{t("postService.paymentMethods.fastpay")}</SelectItem></SelectContent></Select>;
@@ -1543,7 +1721,7 @@ function PostsViewModeToggle({ t, value, onChange }: { t: TFunction; value: Post
     <Button type="button" size="sm" variant={value === "grid" ? "secondary" : "ghost"} className="gap-1.5" aria-pressed={value === "grid"} onClick={() => onChange("grid")}><LayoutGrid className="h-4 w-4" />{t("postService.view.grid")}</Button>
   </div>;
 }
-function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onOpenSettlementNet, onOpenPostSettlements, onReceiveMerchantRepayment, merchantRepaymentAmountByShipment, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, settlementNetByShipment, footer }: {
+function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onRequestCodChange, onReviewCodChange, pendingCodAdjustmentByShipment, canRequestCodChange, requesterCourierId, canReviewCodChange, onOpenSettlementNet, onOpenPostSettlements, onReceiveMerchantRepayment, merchantRepaymentAmountByShipment, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, settlementNetByShipment, footer }: {
   t: TFunction;
   shipments: DeliveryShipment[];
   selectedIds: Set<string>;
@@ -1553,6 +1731,12 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
   agentNameById: Map<string, string>;
   onStatus: (shipment: DeliveryShipment, status: "delivered" | "postponed" | "returned") => void;
   onTransfer: (shipment: DeliveryShipment) => void;
+  onRequestCodChange: (shipment: DeliveryShipment) => void;
+  onReviewCodChange: (request: DeliveryShipmentCodAdjustmentRequest) => void;
+  pendingCodAdjustmentByShipment: ReadonlyMap<string, DeliveryShipmentCodAdjustmentRequest>;
+  canRequestCodChange: boolean;
+  requesterCourierId: string | null;
+  canReviewCodChange: boolean;
   onOpenSettlementNet: (shipment: DeliveryShipment) => void;
   onOpenPostSettlements: (shipment: DeliveryShipment) => void;
   onReceiveMerchantRepayment: (shipment: DeliveryShipment, amount: number) => void;
@@ -1577,6 +1761,7 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
     <TableBody>{shipments.length === 0 ? <EmptyRow columns={canSelect ? 12 : 11} label={t("postService.empty.noPosts")} /> : shipments.map((shipment) => {
       const voiceReasonEvent = voiceReasonEventByShipment.get(shipment.id);
       const merchantRepaymentAmount = merchantRepaymentAmountByShipment.get(shipment.id) ?? 0;
+      const pendingCodAdjustment = pendingCodAdjustmentByShipment.get(shipment.id);
       return <TableRow key={shipment.id}>
         {canSelect && <TableCell><Checkbox className="h-5 w-5 rounded-[6px]" checked={selectedIds.has(shipment.id)} disabled={!['received', 'postponed'].includes(shipment.status)} onCheckedChange={(checked) => onToggle(shipment.id, checked === true)} /></TableCell>}
         <TableCell><div className="font-medium">{shipment.trackingNumber}</div><div className="max-w-48 truncate text-xs text-muted-foreground">{shipment.recipientAddress}</div></TableCell>
@@ -1586,12 +1771,14 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
         <TableCell>{shipment.recipientPayoutAmount > 0.000001 ? <span className="font-medium tabular-nums text-rose-700 dark:text-rose-300">{formatCurrency(shipment.recipientPayoutAmount, shipment.currency, iqdPreference)}</span> : "—"}</TableCell>
         <TableCell><SettlementNetButton t={t} shipment={shipment} settlementNet={settlementNetByShipment.get(shipment.id)} iqdPreference={iqdPreference} onClick={() => onOpenSettlementNet(shipment)} /></TableCell>
         <TableCell>{shipment.assignedAgentId ? agentNameById.get(shipment.assignedAgentId) : "—"}</TableCell>
-        <TableCell><Badge variant="outline" className={shipmentStatusClass(shipment.status)}>{shipmentStatusLabel(t, shipment.status)}</Badge></TableCell>
+        <TableCell><div className="flex flex-wrap items-center gap-1.5"><Badge variant="outline" className={shipmentStatusClass(shipment.status)}>{shipmentStatusLabel(t, shipment.status)}</Badge>{pendingCodAdjustment ? <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">{t("postService.status.requestChange")}</Badge> : null}</div></TableCell>
         <TableCell><SettlementStatusBadge t={t} kind="handover" status={handoverStatusByShipment.get(shipment.id) ?? "none"} /></TableCell>
         <TableCell><SettlementStatusBadge t={t} kind="payout" status={payoutStatusByShipment.get(shipment.id) ?? "none"} /></TableCell>
         <TableCell className="text-end"><div className="flex justify-end gap-1">
           {canPlayVoiceReason && voiceReasonEvent && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onPlayVoiceReason(voiceReasonEvent)}><Play className="h-4 w-4" />{t("postService.actions.playback")}</Button>}
-          {canUpdate && shipment.status === "assigned" && <><Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "delivered")} title={t("postService.actions.markDelivered")}><CheckCircle2 className="h-4 w-4 text-emerald-600" /></Button><Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "postponed")} title={t("postService.actions.postpone")}><History className="h-4 w-4 text-amber-600" /></Button><Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "returned")} title={t("postService.actions.return")}><Undo2 className="h-4 w-4 text-rose-600" /></Button></>}
+          {canUpdate && shipment.status === "assigned" && <>{!pendingCodAdjustment && <Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "delivered")} title={t("postService.actions.markDelivered")}><CheckCircle2 className="h-4 w-4 text-emerald-600" /></Button>}<Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "postponed")} title={t("postService.actions.postpone")}><History className="h-4 w-4 text-amber-600" /></Button><Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "returned")} title={t("postService.actions.return")}><Undo2 className="h-4 w-4 text-rose-600" /></Button></>}
+          {canRequestCodChange && !pendingCodAdjustment && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onRequestCodChange(shipment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.requestChange")}</Button>}
+          {canReviewCodChange && pendingCodAdjustment && <Button size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onReviewCodChange(pendingCodAdjustment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.reviewChange")}</Button>}
           {canTransfer && shipment.status === "returned" && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onTransfer(shipment)}><Send className="h-4 w-4" />{t("postService.actions.transferPost")}</Button>}
           {canSettle && shipment.status === "delivered" && <Button size="sm" variant="outline" onClick={() => onOpenPostSettlements(shipment)}><Banknote className="me-1.5 h-4 w-4" />{t("postService.actions.settlements")}</Button>}
           {canSettle && shipment.status === "delivered" && merchantRepaymentAmount > 0.000001 && <Button size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => onReceiveMerchantRepayment(shipment, merchantRepaymentAmount)}><HandCoins className="h-4 w-4" />{t("postService.actions.receiveMerchantRepayment")}</Button>}
@@ -1601,7 +1788,7 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
     {footer ? <TableFooter><TableRow className="hover:bg-transparent"><TableCell colSpan={canSelect ? 12 : 11} className="bg-muted/40 py-3">{footer}</TableCell></TableRow></TableFooter> : null}
   </Table>;
 }
-function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onOpenSettlementNet, onOpenPostSettlements, onReceiveMerchantRepayment, merchantRepaymentAmountByShipment, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, settlementNetByShipment }: {
+function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onRequestCodChange, onReviewCodChange, pendingCodAdjustmentByShipment, canRequestCodChange, requesterCourierId, canReviewCodChange, onOpenSettlementNet, onOpenPostSettlements, onReceiveMerchantRepayment, merchantRepaymentAmountByShipment, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, settlementNetByShipment }: {
   t: TFunction;
   shipments: DeliveryShipment[];
   selectedIds: Set<string>;
@@ -1611,6 +1798,12 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
   agentNameById: Map<string, string>;
   onStatus: (shipment: DeliveryShipment, status: "delivered" | "postponed" | "returned") => void;
   onTransfer: (shipment: DeliveryShipment) => void;
+  onRequestCodChange: (shipment: DeliveryShipment) => void;
+  onReviewCodChange: (request: DeliveryShipmentCodAdjustmentRequest) => void;
+  pendingCodAdjustmentByShipment: ReadonlyMap<string, DeliveryShipmentCodAdjustmentRequest>;
+  canRequestCodChange: boolean;
+  requesterCourierId: string | null;
+  canReviewCodChange: boolean;
   onOpenSettlementNet: (shipment: DeliveryShipment) => void;
   onOpenPostSettlements: (shipment: DeliveryShipment) => void;
   onReceiveMerchantRepayment: (shipment: DeliveryShipment, amount: number) => void;
@@ -1635,6 +1828,7 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
       const courierName = shipment.assignedAgentId ? agentNameById.get(shipment.assignedAgentId) ?? t("postService.unknownCourier") : "—";
       const voiceReasonEvent = voiceReasonEventByShipment.get(shipment.id);
       const merchantRepaymentAmount = merchantRepaymentAmountByShipment.get(shipment.id) ?? 0;
+      const pendingCodAdjustment = pendingCodAdjustmentByShipment.get(shipment.id);
 
       return <article key={shipment.id} className="group rounded-2xl border bg-card p-4 shadow-sm transition-shadow hover:shadow-md">
         <div className="flex items-start justify-between gap-3">
@@ -1645,7 +1839,7 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
               <p className="mt-1 text-xs text-muted-foreground"><span className="tabular-nums">{formatDateTime(shipment.createdAt)}</span></p>
             </div>
           </div>
-          <Badge variant="outline" className={cn("shrink-0", shipmentStatusClass(shipment.status))}>{shipmentStatusLabel(t, shipment.status)}</Badge>
+          <div className="flex shrink-0 flex-col items-end gap-1"><Badge variant="outline" className={shipmentStatusClass(shipment.status)}>{shipmentStatusLabel(t, shipment.status)}</Badge>{pendingCodAdjustment ? <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">{t("postService.status.requestChange")}</Badge> : null}</div>
         </div>
 
         <div className="mt-4 grid gap-3 rounded-xl border bg-muted/25 p-3 sm:grid-cols-2">
@@ -1686,13 +1880,15 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
           <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg border px-2.5 py-2"><span className="text-xs text-muted-foreground">{t("postService.table.merchantPayout")}</span><SettlementStatusBadge t={t} kind="payout" status={payoutStatusByShipment.get(shipment.id) ?? "none"} /></div>
         </div>
 
-        {(canPlayVoiceReason && voiceReasonEvent || canUpdate && shipment.status === "assigned" || canTransfer && shipment.status === "returned" || canSettle && shipment.status === "delivered") && <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
+        {(canPlayVoiceReason && voiceReasonEvent || canUpdate && shipment.status === "assigned" || canRequestCodChange && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) || canReviewCodChange && pendingCodAdjustment || canTransfer && shipment.status === "returned" || canSettle && shipment.status === "delivered") && <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
           {canPlayVoiceReason && voiceReasonEvent && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onPlayVoiceReason(voiceReasonEvent)}><Play className="h-4 w-4" />{t("postService.actions.playback")}</Button>}
           {canUpdate && shipment.status === "assigned" && <>
-            <Button type="button" size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => onStatus(shipment, "delivered")}><CheckCircle2 className="h-4 w-4" />{t("postService.actions.markDelivered")}</Button>
+            {!pendingCodAdjustment && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => onStatus(shipment, "delivered")}><CheckCircle2 className="h-4 w-4" />{t("postService.actions.markDelivered")}</Button>}
             <Button type="button" size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onStatus(shipment, "postponed")}><History className="h-4 w-4" />{t("postService.actions.postpone")}</Button>
             <Button type="button" size="sm" variant="outline" className="gap-1.5 border-rose-500/30 text-rose-700 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-300" onClick={() => onStatus(shipment, "returned")}><Undo2 className="h-4 w-4" />{t("postService.actions.return")}</Button>
           </>}
+          {canRequestCodChange && !pendingCodAdjustment && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onRequestCodChange(shipment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.requestChange")}</Button>}
+          {canReviewCodChange && pendingCodAdjustment && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onReviewCodChange(pendingCodAdjustment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.reviewChange")}</Button>}
           {canTransfer && shipment.status === "returned" && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onTransfer(shipment)}><Send className="h-4 w-4" />{t("postService.actions.transferPost")}</Button>}
           {canSettle && shipment.status === "delivered" && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onOpenPostSettlements(shipment)}><Banknote className="h-4 w-4" />{t("postService.actions.settlements")}</Button>}
           {canSettle && shipment.status === "delivered" && merchantRepaymentAmount > 0.000001 && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => onReceiveMerchantRepayment(shipment, merchantRepaymentAmount)}><HandCoins className="h-4 w-4" />{t("postService.actions.receiveMerchantRepayment")}</Button>}

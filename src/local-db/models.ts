@@ -534,6 +534,7 @@ export type DeliveryShipmentStatus =
   | "postponed"
   | "returned"
   | "cancelled";
+export type DeliveryShipmentCodAdjustmentRequestStatus = "pending" | "approved" | "rejected";
 export type DeliveryRunStatus = "open" | "closed" | "cancelled";
 export type DeliverySettlementType = "courier_remittance" | "courier_fee_payout" | "courier_reimbursement" | "merchant_payout" | "merchant_repayment";
 
@@ -2158,6 +2159,26 @@ export interface PaymentAccountMovement extends BaseEntity {
   occurredAt: string;
 }
 
+/**
+ * A courier's auditable request to change the cash-on-delivery amount before
+ * the post is completed. The post itself remains unchanged until an admin
+ * reviews and approves the request.
+ */
+export interface DeliveryShipmentCodAdjustmentRequest extends BaseEntity {
+  shipmentId: string;
+  requesterUserId: string;
+  requesterAgentId: string;
+  currency: CurrencyCode;
+  originalCodAmount: number;
+  requestedCodAmount: number;
+  reason: string | null;
+  status: DeliveryShipmentCodAdjustmentRequestStatus;
+  reviewedCodAmount?: number | null;
+  reviewNote?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+}
+
 export type CashierShiftStatus = 'open' | 'closed';
 
 export type CashierShiftOccurrenceStatus = 'active' | 'completed';
@@ -2304,6 +2325,7 @@ export interface SyncQueueItem {
     | "delivery_merchant_profiles"
     | "delivery_shipments"
     | "delivery_shipment_events"
+    | "delivery_shipment_cod_adjustment_requests"
     | "delivery_runs"
     | "delivery_run_items"
     | "delivery_settlements"
@@ -2471,6 +2493,7 @@ export interface OfflineMutation {
     | "delivery_merchant_profiles"
     | "delivery_shipments"
     | "delivery_shipment_events"
+    | "delivery_shipment_cod_adjustment_requests"
     | "delivery_runs"
     | "delivery_run_items"
     | "delivery_settlements"

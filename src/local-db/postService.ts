@@ -30,6 +30,8 @@ import type {
   DeliverySettlement,
   DeliverySettlementType,
   DeliveryShipment,
+  DeliveryShipmentCodAdjustmentRequest,
+  DeliveryShipmentCodAdjustmentRequestStatus,
   DeliveryShipmentEvent,
   DeliveryShipmentStatus,
   WorkspacePaymentMethod,
@@ -38,6 +40,7 @@ import type {
 const PROFILE_TABLE = "delivery_merchant_profiles";
 const SHIPMENT_TABLE = "delivery_shipments";
 const EVENT_TABLE = "delivery_shipment_events";
+const COD_ADJUSTMENT_REQUEST_TABLE = "delivery_shipment_cod_adjustment_requests";
 const RUN_TABLE = "delivery_runs";
 const RUN_ITEM_TABLE = "delivery_run_items";
 const SETTLEMENT_TABLE = "delivery_settlements";
@@ -47,6 +50,7 @@ type DeliveryTableName =
   | typeof PROFILE_TABLE
   | typeof SHIPMENT_TABLE
   | typeof EVENT_TABLE
+  | typeof COD_ADJUSTMENT_REQUEST_TABLE
   | typeof RUN_TABLE
   | typeof RUN_ITEM_TABLE
   | typeof SETTLEMENT_TABLE
@@ -55,6 +59,7 @@ type DeliveryEntity =
   | DeliveryMerchantProfile
   | DeliveryShipment
   | DeliveryShipmentEvent
+  | DeliveryShipmentCodAdjustmentRequest
   | DeliveryRun
   | DeliveryRunItem
   | DeliverySettlement
@@ -64,7 +69,7 @@ export type PostServiceTab = "posts" | "dispatch" | "my-deliveries" | "merchants
 type PostServiceRefreshTableName = DeliveryTableName | "business_partners" | "agents" | "fleet_vehicles";
 
 const POST_SERVICE_TAB_REFRESH_TABLES: Record<PostServiceTab, readonly PostServiceRefreshTableName[]> = {
-  posts: ["business_partners", PROFILE_TABLE, SHIPMENT_TABLE, EVENT_TABLE, LEDGER_TABLE],
+  posts: ["business_partners", PROFILE_TABLE, SHIPMENT_TABLE, EVENT_TABLE, COD_ADJUSTMENT_REQUEST_TABLE, LEDGER_TABLE],
   dispatch: ["business_partners", "agents", "fleet_vehicles", SHIPMENT_TABLE, RUN_TABLE],
   "my-deliveries": ["business_partners", "agents", SHIPMENT_TABLE, LEDGER_TABLE],
   merchants: ["business_partners", PROFILE_TABLE, LEDGER_TABLE],
@@ -183,6 +188,23 @@ export interface PayDeliveryMerchantInput {
   createdBy?: string | null;
   accountId?: string | null;
   accountNameSnapshot?: string | null;
+}
+
+export interface RequestDeliveryShipmentCodAdjustmentInput {
+  shipmentId: string;
+  requesterUserId: string;
+  requesterAgentId: string;
+  requestedCodAmount: number;
+  reason: string;
+}
+
+export interface ReviewDeliveryShipmentCodAdjustmentInput {
+  reviewerUserId: string;
+  decision: Extract<DeliveryShipmentCodAdjustmentRequestStatus, "approved" | "rejected">;
+  /** Required for an approval; may differ from the courier's requested amount. */
+  approvedCodAmount?: number | null;
+  /** Optional audit context for the review decision. */
+  reviewNote?: string | null;
 }
 
 /** Records an outgoing payment when the courier's earned fee exceeds cash held. */
@@ -452,6 +474,8 @@ function getTable(tableName: DeliveryTableName) {
       return db.delivery_shipments;
     case EVENT_TABLE:
       return db.delivery_shipment_events;
+    case COD_ADJUSTMENT_REQUEST_TABLE:
+      return db.delivery_shipment_cod_adjustment_requests;
     case RUN_TABLE:
       return db.delivery_runs;
     case RUN_ITEM_TABLE:
@@ -919,6 +943,39 @@ export function useDeliveryShipmentEvents(workspaceId?: string) {
   }, [online, viewOwnScope.isRestricted, viewOwnScope.userId, workspaceId]);
 
   return rows.sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
+}
+
+/** COD change requests are a separate review trail, not a shipment status. */
+export function useDeliveryShipmentCodAdjustmentRequests(workspaceId?: string) {
+  const online = useNetworkStatus();
+  const viewOwnScope = useViewOwnRecordScope("postService.view_own");
+  const rows = useLiveQuery(
+    async () => {
+      if (!workspaceId) return [];
+      const requests = await db.delivery_shipment_cod_adjustment_requests
+        .where("workspaceId")
+        .equals(workspaceId)
+        .and((request) => !request.isDeleted)
+        .toArray();
+      if (!viewOwnScope.isRestricted) return requests;
+      const visibleShipmentIds = await getVisibleDeliveryShipmentIds(workspaceId, viewOwnScope);
+      return requests.filter((request) => (
+        request.requesterUserId === viewOwnScope.userId
+        || visibleShipmentIds.has(request.shipmentId)
+      ));
+    },
+    [workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId],
+  ) ?? [];
+
+  useEffect(() => {
+    if (workspaceId && online) {
+      void hydrateTable(COD_ADJUSTMENT_REQUEST_TABLE, workspaceId).catch((error) =>
+        console.error("[Post Service] Failed to hydrate COD adjustment requests:", error),
+      );
+    }
+  }, [online, viewOwnScope.isRestricted, viewOwnScope.userId, workspaceId]);
+
+  return rows.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
 export function useDeliveryRuns(workspaceId?: string) {
@@ -1480,6 +1537,16 @@ export async function updateDeliveryShipmentStatus(
   if (input.actorAgentId && original.assignedAgentId && input.actorAgentId !== original.assignedAgentId) {
     throw new Error("A courier can only update shipments assigned to them");
   }
+  if (input.status === "delivered") {
+    const pendingCodAdjustment = await db.delivery_shipment_cod_adjustment_requests
+      .where("[workspaceId+shipmentId+status]")
+      .equals([original.workspaceId, original.id, "pending"])
+      .and((request) => !request.isDeleted)
+      .first();
+    if (pendingCodAdjustment) {
+      throw new Error("Review the pending COD change before marking the post delivered");
+    }
+  }
 
   const operationKey = `${original.id}:${original.version}:${input.status}`;
   const now = new Date().toISOString();
@@ -1669,6 +1736,144 @@ export async function updateDeliveryShipmentStatus(
     ]);
   }
   return updated;
+}
+
+/**
+ * Creates a reviewable COD correction request without changing the shipment.
+ * This is deliberately limited to the courier currently assigned to an
+ * in-progress cash-on-delivery post.
+ */
+export async function requestDeliveryShipmentCodAdjustment(
+  workspaceId: string,
+  input: RequestDeliveryShipmentCodAdjustmentInput,
+) {
+  const shipment = await db.delivery_shipments.get(input.shipmentId);
+  if (!shipment || shipment.isDeleted || shipment.workspaceId !== workspaceId) {
+    throw new Error("Shipment not found");
+  }
+  if (shipment.customerPaymentStatus !== "cash_on_delivery") {
+    throw new Error("Only cash-on-delivery posts can have a COD change requested");
+  }
+  if (!(["assigned", "postponed"] as DeliveryShipmentStatus[]).includes(shipment.status)) {
+    throw new Error("COD changes can only be requested for an assigned or postponed post");
+  }
+  if (shipment.assignedAgentId !== input.requesterAgentId) {
+    throw new Error("A courier can only request a COD change for posts assigned to them");
+  }
+
+  const requester = await db.agents.get(input.requesterAgentId);
+  if (!requester
+    || requester.isDeleted
+    || requester.workspaceId !== workspaceId
+    || requester.agentType !== "courier"
+    || requester.linkedUserId !== input.requesterUserId) {
+    throw new Error("A courier can only request a COD change for posts assigned to them");
+  }
+
+  const requestedCodAmount = positiveMoney(input.requestedCodAmount, "Requested COD amount", false);
+  if (Math.abs(requestedCodAmount - shipment.codAmount) <= 0.000001) {
+    throw new Error("Requested COD amount must differ from the current COD amount");
+  }
+  const reason = normalizeText(input.reason);
+
+  const existing = await db.delivery_shipment_cod_adjustment_requests
+    .where("[workspaceId+shipmentId+status]")
+    .equals([workspaceId, shipment.id, "pending"])
+    .and((request) => !request.isDeleted)
+    .first();
+  if (existing) throw new Error("This post already has a pending COD change request");
+
+  const request = makeBase(workspaceId, {
+    shipmentId: shipment.id,
+    requesterUserId: input.requesterUserId,
+    requesterAgentId: input.requesterAgentId,
+    currency: shipment.currency,
+    originalCodAmount: shipment.codAmount,
+    requestedCodAmount,
+    reason,
+    status: "pending" as const,
+    reviewedCodAmount: null,
+    reviewNote: null,
+    reviewedBy: null,
+    reviewedAt: null,
+  }) as DeliveryShipmentCodAdjustmentRequest;
+
+  await db.delivery_shipment_cod_adjustment_requests.put(request);
+  await syncEntitiesInDependencyOrder(workspaceId, [
+    [COD_ADJUSTMENT_REQUEST_TABLE, [request]],
+  ]);
+  return request;
+}
+
+/**
+ * An administrator approves the final COD amount or rejects the request. No
+ * payment or ledger row is created here because delivery has not completed;
+ * the normal delivered flow will calculate its obligations from the approved
+ * shipment amount exactly once.
+ */
+export async function reviewDeliveryShipmentCodAdjustment(
+  requestId: string,
+  input: ReviewDeliveryShipmentCodAdjustmentInput,
+) {
+  const originalRequest = await db.delivery_shipment_cod_adjustment_requests.get(requestId);
+  if (!originalRequest || originalRequest.isDeleted) throw new Error("COD change request not found");
+  if (originalRequest.status !== "pending") throw new Error("This COD change request has already been reviewed");
+  if (!input.reviewerUserId) throw new Error("Only an administrator can review a COD change request");
+
+  const shipment = await db.delivery_shipments.get(originalRequest.shipmentId);
+  if (!shipment || shipment.isDeleted || shipment.workspaceId !== originalRequest.workspaceId) {
+    throw new Error("Shipment not found");
+  }
+  if (input.decision === "approved" && (
+    shipment.customerPaymentStatus !== "cash_on_delivery"
+    || !(["assigned", "postponed"] as DeliveryShipmentStatus[]).includes(shipment.status)
+    || Math.abs(shipment.codAmount - originalRequest.originalCodAmount) > 0.000001
+  )) {
+    throw new Error("This COD change request can no longer be approved");
+  }
+
+  const reviewNote = normalizeText(input.reviewNote);
+  const now = new Date().toISOString();
+
+  const approvedCodAmount = input.decision === "approved"
+    ? positiveMoney(input.approvedCodAmount ?? NaN, "Approved COD amount", false)
+    : null;
+
+  const reviewedRequest: DeliveryShipmentCodAdjustmentRequest = {
+    ...originalRequest,
+    status: input.decision,
+    reviewedCodAmount: approvedCodAmount,
+    reviewNote,
+    reviewedBy: input.reviewerUserId,
+    reviewedAt: now,
+    updatedAt: now,
+    version: originalRequest.version + 1,
+    ...getSyncMetadata(originalRequest.workspaceId, now),
+  };
+  const adjustedShipment: DeliveryShipment | null = input.decision === "approved"
+    ? {
+      ...shipment,
+      codAmount: approvedCodAmount!,
+      updatedAt: now,
+      version: shipment.version + 1,
+      ...getSyncMetadata(shipment.workspaceId, now),
+    }
+    : null;
+
+  await db.transaction(
+    "rw",
+    [db.delivery_shipment_cod_adjustment_requests, db.delivery_shipments],
+    async () => {
+      await db.delivery_shipment_cod_adjustment_requests.put(reviewedRequest);
+      if (adjustedShipment) await db.delivery_shipments.put(adjustedShipment);
+    },
+  );
+  const syncOperations: Array<readonly [DeliveryTableName, DeliveryEntity[]]> = [
+    [COD_ADJUSTMENT_REQUEST_TABLE, [reviewedRequest]],
+  ];
+  if (adjustedShipment) syncOperations.push([SHIPMENT_TABLE, [adjustedShipment]]);
+  await syncEntitiesInDependencyOrder(originalRequest.workspaceId, syncOperations);
+  return { request: reviewedRequest, shipment: adjustedShipment };
 }
 
 async function createSettlement(

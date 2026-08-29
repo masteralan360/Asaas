@@ -6684,7 +6684,12 @@
             "creatingAndAssigning": "Creating & assigning…",
             "confirmStatus": "Confirm {{status}}",
             "confirmSettlement": "Confirm settlement",
-            "playback": "Playback"
+            "playback": "Playback",
+            "requestChange": "Request Change",
+            "reviewChange": "Review Change",
+            "sendChangeRequest": "Send request",
+            "approveChange": "Approve change",
+            "rejectChange": "Reject change"
         },
         "metrics": {
             "readyToDispatch": "Ready to dispatch",
@@ -6720,6 +6725,7 @@
             "merchantsOweUs": "Merchants owe us",
             "couriersOweUs": "Couriers owe us",
             "weOweCouriers": "We owe couriers",
+            "codChangeRequests": "COD change requests",
             "merchantPayouts": "Merchant payouts",
             "settlementHistory": "Settlement history"
         },
@@ -6745,6 +6751,12 @@
             "cityZone": "City / zone",
             "description": "Description",
             "codAmount": "COD amount",
+            "requestedCodAmount": "Requested COD amount",
+            "approvedCodAmount": "Approved COD amount",
+            "reviewNote": "Review note",
+            "reviewNoteOptional": "Review note (optional)",
+            "reasonOptional": "Reason (optional)",
+            "reasonNotProvided": "No reason provided",
             "customerPaymentStatus": "Customer payment",
             "recipientPayoutAmount": "Recipient payout",
             "recipientPayoutAmountHint": "Money the courier must give the recipient. It is deducted from the merchant's account when delivered.",
@@ -6773,6 +6785,8 @@
             "postponedReason": "Customer asked for tomorrow, did not answer…",
             "returnedReason": "Address incorrect, customer refused…",
             "deliveryNote": "Proof or delivery note",
+            "codChangeReason": "Explain why the COD amount should change",
+            "codChangeReviewNote": "Optional context for this review",
             "varianceNote": "Required when paying less than the outstanding balance",
             "repaymentVarianceNote": "Required when receiving less than the outstanding balance",
             "searchPosts": "Search tracking number, recipient, merchant, or courier...",
@@ -6876,7 +6890,8 @@
             "delivered": "Delivered",
             "postponed": "Postponed",
             "returned": "Returned",
-            "cancelled": "Cancelled"
+            "cancelled": "Cancelled",
+            "requestChange": "Request change"
         },
         "settlementStatus": {
             "handedOver": "Handed over",
@@ -6959,6 +6974,15 @@
             },
             "status": {
                 "title": "Mark post {{status}}"
+            },
+            "codChangeRequest": {
+                "title": "Request COD change",
+                "currentCod": "Current COD"
+            },
+            "codChangeReview": {
+                "title": "Review COD change",
+                "currentCod": "Current COD",
+                "requestedCod": "Requested COD"
             },
             "recipientPayout": {
                 "title": "Recipient payout",
@@ -7047,7 +7071,12 @@
             "courierUpdated": "Courier updated",
             "courierSaveFailed": "Could not save courier",
             "businessPartnerCreated": "Business partner created",
-            "businessPartnerSaveFailed": "Could not create business partner"
+            "businessPartnerSaveFailed": "Could not create business partner",
+            "codChangeRequested": "COD change requested",
+            "codChangeRequestFailed": "Could not request COD change",
+            "codChangeApproved": "COD change approved",
+            "codChangeRejected": "COD change rejected",
+            "codChangeReviewFailed": "Could not review COD change"
         },
         "errors": {
             "generic": "Please try again.",
@@ -7065,6 +7094,16 @@
             "reasonRequired": "A reason is required for this status.",
             "assignCourierFirst": "Assign the shipment to a courier first.",
             "courierAssignmentOnly": "A courier can only update shipments assigned to them.",
+            "codChangeCashOnly": "Only cash-on-delivery posts can have a COD change request.",
+            "codChangeStatusOnly": "COD changes can only be requested for assigned or postponed posts.",
+            "codChangeCourierOnly": "You can only request a COD change for posts assigned to your courier.",
+            "codChangeMustDiffer": "Enter a COD amount different from the current amount.",
+            "codChangeAlreadyPending": "This post already has a pending COD change request.",
+            "codChangePendingDeliveryBlocked": "Review the pending COD change before marking this post delivered.",
+            "codChangeRequestNotFound": "The COD change request could not be found.",
+            "codChangeAlreadyReviewed": "This COD change request has already been reviewed.",
+            "codChangeReviewAdminOnly": "Only an administrator can review a COD change request.",
+            "codChangeNoLongerReviewable": "This COD change request can no longer be approved.",
             "amountExceedsBalance": "Settlement amount cannot exceed the outstanding balance.",
             "partialExplanationRequired": "Explain a partial settlement before confirming it.",
             "courierNotFound": "Courier not found.",

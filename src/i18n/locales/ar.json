@@ -6430,7 +6430,12 @@
             "creatingAndAssigning": "جارٍ الإنشاء والتعيين…",
             "confirmStatus": "تأكيد {{status}}",
             "confirmSettlement": "تأكيد التسوية",
-            "playback": "تشغيل التسجيل"
+            "playback": "تشغيل التسجيل",
+            "requestChange": "طلب تغيير",
+            "reviewChange": "مراجعة التغيير",
+            "sendChangeRequest": "إرسال الطلب",
+            "approveChange": "اعتماد التغيير",
+            "rejectChange": "رفض التغيير"
         },
         "metrics": {
             "readyToDispatch": "جاهز للتوزيع",
@@ -6466,6 +6471,7 @@
             "merchantsOweUs": "التجار مدينون لنا",
             "couriersOweUs": "المندوبون مدينون لنا",
             "weOweCouriers": "علينا للمندوبين",
+            "codChangeRequests": "طلبات تغيير مبلغ الدفع عند الاستلام",
             "merchantPayouts": "دفعات التجار",
             "settlementHistory": "سجل التسويات"
         },
@@ -6508,7 +6514,13 @@
             "amountPaid": "المبلغ المدفوع",
             "paymentMethod": "طريقة الدفع",
             "status": "الحالة",
-            "noteVariance": "ملاحظة / توضيح الفرق"
+            "noteVariance": "ملاحظة / توضيح الفرق",
+            "requestedCodAmount": "مبلغ الدفع عند الاستلام المطلوب",
+            "approvedCodAmount": "مبلغ الدفع عند الاستلام المعتمد",
+            "reviewNote": "ملاحظة المراجعة",
+            "reviewNoteOptional": "ملاحظة المراجعة (اختياري)",
+            "reasonOptional": "السبب (اختياري)",
+            "reasonNotProvided": "لم يتم تقديم سبب"
         },
         "placeholders": {
             "selectCourier": "اختر المندوب",
@@ -6519,6 +6531,8 @@
             "postponedReason": "طلب العميل الغد أو لم يجب…",
             "returnedReason": "العنوان غير صحيح أو رفض العميل…",
             "deliveryNote": "إثبات أو ملاحظة التوصيل",
+            "codChangeReason": "اشرح سبب تغيير مبلغ الدفع عند الاستلام",
+            "codChangeReviewNote": "سياق اختياري لهذه المراجعة",
             "varianceNote": "مطلوب عند دفع مبلغ أقل من الرصيد المستحق",
             "repaymentVarianceNote": "مطلوب عند استلام مبلغ أقل من الرصيد المستحق",
             "searchPosts": "ابحث برقم التتبع أو المستلم أو التاجر أو المندوب...",
@@ -6622,7 +6636,8 @@
             "delivered": "تم التسليم",
             "postponed": "مؤجل",
             "returned": "مرتجع",
-            "cancelled": "ملغى"
+            "cancelled": "ملغى",
+            "requestChange": "طلب تغيير"
         },
         "settlementStatus": {
             "handedOver": "تم التسليم",
@@ -6705,6 +6720,15 @@
             },
             "status": {
                 "title": "تحديد حالة الشحنة: {{status}}"
+            },
+            "codChangeRequest": {
+                "title": "طلب تغيير مبلغ الدفع عند الاستلام",
+                "currentCod": "مبلغ الدفع عند الاستلام الحالي"
+            },
+            "codChangeReview": {
+                "title": "مراجعة تغيير مبلغ الدفع عند الاستلام",
+                "currentCod": "المبلغ الحالي",
+                "requestedCod": "المبلغ المطلوب"
             },
             "recipientPayout": {
                 "title": "دفعة للمستلم",
@@ -6793,7 +6817,12 @@
             "courierUpdated": "تم تحديث المندوب",
             "courierSaveFailed": "تعذر حفظ المندوب",
             "businessPartnerCreated": "تم إنشاء شريك الأعمال",
-            "businessPartnerSaveFailed": "تعذر إنشاء شريك الأعمال"
+            "businessPartnerSaveFailed": "تعذر إنشاء شريك الأعمال",
+            "codChangeRequested": "تم إرسال طلب تغيير مبلغ الدفع عند الاستلام",
+            "codChangeRequestFailed": "تعذر إرسال طلب تغيير مبلغ الدفع عند الاستلام",
+            "codChangeApproved": "تم اعتماد تغيير مبلغ الدفع عند الاستلام",
+            "codChangeRejected": "تم رفض تغيير مبلغ الدفع عند الاستلام",
+            "codChangeReviewFailed": "تعذرت مراجعة تغيير مبلغ الدفع عند الاستلام"
         },
         "errors": {
             "generic": "يرجى المحاولة مرة أخرى.",
@@ -6811,6 +6840,16 @@
             "reasonRequired": "السبب مطلوب لهذه الحالة.",
             "assignCourierFirst": "عيّن الشحنة إلى مندوب أولاً.",
             "courierAssignmentOnly": "لا يمكن للمندوب تحديث إلا الشحنات المعينة له.",
+            "codChangeCashOnly": "يمكن طلب تغيير مبلغ الدفع عند الاستلام للشحنات النقدية عند التسليم فقط.",
+            "codChangeStatusOnly": "يمكن طلب تغيير مبلغ الدفع عند الاستلام للشحنات المعينة أو المؤجلة فقط.",
+            "codChangeCourierOnly": "يمكنك طلب تغيير مبلغ الدفع عند الاستلام للشحنات المعينة لمندوبك فقط.",
+            "codChangeMustDiffer": "أدخل مبلغاً مختلفاً عن مبلغ الدفع عند الاستلام الحالي.",
+            "codChangeAlreadyPending": "توجد بالفعل طلب تغيير مبلغ دفع عند الاستلام قيد المراجعة لهذه الشحنة.",
+            "codChangePendingDeliveryBlocked": "راجع طلب تغيير مبلغ الدفع عند الاستلام المعلق قبل تحديد الشحنة كمُسلَّمة.",
+            "codChangeRequestNotFound": "تعذر العثور على طلب تغيير مبلغ الدفع عند الاستلام.",
+            "codChangeAlreadyReviewed": "تمت مراجعة طلب تغيير مبلغ الدفع عند الاستلام بالفعل.",
+            "codChangeReviewAdminOnly": "يمكن للمسؤول فقط مراجعة طلب تغيير مبلغ الدفع عند الاستلام.",
+            "codChangeNoLongerReviewable": "لم يعد بالإمكان اعتماد طلب تغيير مبلغ الدفع عند الاستلام.",
             "amountExceedsBalance": "لا يمكن أن يتجاوز مبلغ التسوية الرصيد المستحق.",
             "partialExplanationRequired": "اشرح التسوية الجزئية قبل تأكيدها.",
             "courierNotFound": "لم يتم العثور على المندوب.",

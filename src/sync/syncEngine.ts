@@ -71,6 +71,7 @@ const SYNC_PULL_TABLES = [
   "delivery_merchant_profiles",
   "delivery_shipments",
   "delivery_shipment_events",
+  "delivery_shipment_cod_adjustment_requests",
   "delivery_runs",
   "delivery_run_items",
   "delivery_settlements",
@@ -290,6 +291,10 @@ function getMutationParentKeys(mutation: MutationSyncOrderItem) {
     case "delivery_shipment_events":
       addParent("delivery_shipments", "shipmentId", "shipment_id");
       addParent("agents", "actorAgentId", "actor_agent_id");
+      break;
+    case "delivery_shipment_cod_adjustment_requests":
+      addParent("delivery_shipments", "shipmentId", "shipment_id");
+      addParent("agents", "requesterAgentId", "requester_agent_id");
       break;
     case "delivery_runs":
       addParent("agents", "agentId", "agent_id");

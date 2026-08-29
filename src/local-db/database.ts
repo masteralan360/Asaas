@@ -50,6 +50,7 @@ import type {
   DeliveryMerchantProfile,
   DeliveryShipment,
   DeliveryShipmentEvent,
+  DeliveryShipmentCodAdjustmentRequest,
   DeliveryRun,
   DeliveryRunItem,
   DeliverySettlement,
@@ -479,6 +480,7 @@ export class AtlasDatabase extends Dexie {
   delivery_merchant_profiles!: EntityTable<DeliveryMerchantProfile, "id">;
   delivery_shipments!: EntityTable<DeliveryShipment, "id">;
   delivery_shipment_events!: EntityTable<DeliveryShipmentEvent, "id">;
+  delivery_shipment_cod_adjustment_requests!: EntityTable<DeliveryShipmentCodAdjustmentRequest, "id">;
   delivery_runs!: EntityTable<DeliveryRun, "id">;
   delivery_run_items!: EntityTable<DeliveryRunItem, "id">;
   delivery_settlements!: EntityTable<DeliverySettlement, "id">;
@@ -3373,6 +3375,11 @@ export class AtlasDatabase extends Dexie {
         "id, orderNumber, businessPartnerId, customerId, linkedLoanId, salesAccountAgentId, workspaceId, status, paymentStatus, paymentMethod, currency, nextDueDate, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+salesAccountAgentId]",
     });
 
+    this.version(104).stores({
+      delivery_shipment_cod_adjustment_requests:
+        "id, workspaceId, shipmentId, requesterUserId, requesterAgentId, status, updatedAt, isDeleted, syncStatus, [workspaceId+shipmentId], [workspaceId+shipmentId+status], [workspaceId+requesterUserId], [workspaceId+status]",
+    });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }
@@ -3534,6 +3541,7 @@ export class AtlasDatabase extends Dexie {
       "delivery_merchant_profiles",
       "delivery_shipments",
       "delivery_shipment_events",
+      "delivery_shipment_cod_adjustment_requests",
       "delivery_runs",
       "delivery_run_items",
       "delivery_settlements",
@@ -3754,6 +3762,7 @@ export async function clearDatabase(): Promise<void> {
       db.delivery_merchant_profiles,
       db.delivery_shipments,
       db.delivery_shipment_events,
+      db.delivery_shipment_cod_adjustment_requests,
       db.delivery_runs,
       db.delivery_run_items,
       db.delivery_settlements,
@@ -3819,6 +3828,7 @@ export async function clearDatabase(): Promise<void> {
       await db.delivery_merchant_profiles.clear();
       await db.delivery_shipments.clear();
       await db.delivery_shipment_events.clear();
+      await db.delivery_shipment_cod_adjustment_requests.clear();
       await db.delivery_runs.clear();
       await db.delivery_run_items.clear();
       await db.delivery_settlements.clear();

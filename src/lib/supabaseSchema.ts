@@ -91,6 +91,7 @@ const deliveryTables = new Set([
     'delivery_merchant_profiles',
     'delivery_shipments',
     'delivery_shipment_events',
+    'delivery_shipment_cod_adjustment_requests',
     'delivery_runs',
     'delivery_run_items',
     'delivery_settlements',

@@ -24,6 +24,8 @@ let receiveDeliveryMerchantRepayment: typeof import("./postService").receiveDeli
 let updateDeliveryMerchantProfile: typeof import("./postService").updateDeliveryMerchantProfile;
 let hardDeleteDeliveryMerchantProfile: typeof import("./postService").hardDeleteDeliveryMerchantProfile;
 let toUISaleFromDeliveryShipment: typeof import("./postService").toUISaleFromDeliveryShipment;
+let requestDeliveryShipmentCodAdjustment: typeof import("./postService").requestDeliveryShipmentCodAdjustment;
+let reviewDeliveryShipmentCodAdjustment: typeof import("./postService").reviewDeliveryShipmentCodAdjustment;
 
 function installBrowserEnvironment() {
   const rows = new Map<string, string>();
@@ -70,7 +72,7 @@ describe("Post Service COD accounting", () => {
   beforeAll(async () => {
     installBrowserEnvironment();
     const postService = await import("./postService");
-    ({ createDeliveryMerchantProfile, createDeliveryShipment, createAndDispatchDeliveryShipment, createDeliveryRun, transferReturnedDeliveryShipment, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryCourierFee, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment } = postService);
+    ({ createDeliveryMerchantProfile, createDeliveryShipment, createAndDispatchDeliveryShipment, createDeliveryRun, transferReturnedDeliveryShipment, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryCourierFee, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment, requestDeliveryShipmentCodAdjustment, reviewDeliveryShipmentCodAdjustment } = postService);
   });
 
   beforeEach(async () => {
@@ -789,6 +791,138 @@ describe("Post Service COD accounting", () => {
     expect(second.trackingNumber).toBe(
       first.trackingNumber.replace(/00001$/, "00002"),
     );
+  });
+
+  it("holds an assigned courier COD request for review and uses only the approved amount at delivery", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const requesterUserId = crypto.randomUUID();
+    const deliveryCourier = { ...courier(crypto.randomUUID()), linkedUserId: requesterUserId };
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, {
+      businessPartnerId: merchant.id,
+      defaultFeeAmount: 10,
+      defaultFeePayer: "merchant",
+    });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientPhone: "07500000000",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      codAmount: 100,
+    });
+    await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
+
+    const request = await requestDeliveryShipmentCodAdjustment(WORKSPACE_ID, {
+      shipmentId: shipment.id,
+      requesterUserId,
+      requesterAgentId: deliveryCourier.id,
+      requestedCodAmount: 70,
+      reason: "Partial parcel return",
+    });
+
+    expect(request).toMatchObject({
+      shipmentId: shipment.id,
+      originalCodAmount: 100,
+      requestedCodAmount: 70,
+      status: "pending",
+    });
+    expect((await db.delivery_shipments.get(shipment.id))?.codAmount).toBe(100);
+    expect(await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).count()).toBe(0);
+    await expect(updateDeliveryShipmentStatus(shipment.id, {
+      status: "delivered",
+      actorAgentId: deliveryCourier.id,
+    })).rejects.toThrow("pending COD change");
+
+    const reviewed = await reviewDeliveryShipmentCodAdjustment(request.id, {
+      reviewerUserId: crypto.randomUUID(),
+      decision: "approved",
+      approvedCodAmount: 65,
+      reviewNote: "",
+    });
+
+    expect(reviewed.request).toMatchObject({
+      status: "approved",
+      reviewedCodAmount: 65,
+      reviewNote: null,
+    });
+    expect(reviewed.shipment?.codAmount).toBe(65);
+    expect(await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).count()).toBe(0);
+
+    await updateDeliveryShipmentStatus(shipment.id, { status: "delivered", actorAgentId: deliveryCourier.id });
+    const entries = await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray();
+    expect(entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "courier_collection", shipmentId: shipment.id, amount: 65 }),
+      expect.objectContaining({ kind: "merchant_cod_payable", shipmentId: shipment.id, amount: 65 }),
+    ]));
+  });
+
+  it("allows a courier to submit a COD change request without a written reason", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const requesterUserId = crypto.randomUUID();
+    const deliveryCourier = { ...courier(crypto.randomUUID()), linkedUserId: requesterUserId };
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientPhone: "07500000000",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      codAmount: 100,
+    });
+    await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
+
+    const request = await requestDeliveryShipmentCodAdjustment(WORKSPACE_ID, {
+      shipmentId: shipment.id,
+      requesterUserId,
+      requesterAgentId: deliveryCourier.id,
+      requestedCodAmount: 70,
+      reason: "",
+    });
+
+    expect(request).toMatchObject({ status: "pending", reason: null });
+  });
+
+  it("allows an admin to reject a COD request without a review note", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const requesterUserId = crypto.randomUUID();
+    const deliveryCourier = { ...courier(crypto.randomUUID()), linkedUserId: requesterUserId };
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientPhone: "07500000000",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      codAmount: 100,
+    });
+    await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
+
+    await expect(requestDeliveryShipmentCodAdjustment(WORKSPACE_ID, {
+      shipmentId: shipment.id,
+      requesterUserId,
+      requesterAgentId: deliveryCourier.id,
+      requestedCodAmount: 100,
+      reason: "No actual correction",
+    })).rejects.toThrow("must differ");
+
+    const request = await requestDeliveryShipmentCodAdjustment(WORKSPACE_ID, {
+      shipmentId: shipment.id,
+      requesterUserId,
+      requesterAgentId: deliveryCourier.id,
+      requestedCodAmount: 70,
+      reason: "Partial parcel return",
+    });
+    const reviewed = await reviewDeliveryShipmentCodAdjustment(request.id, {
+      reviewerUserId: crypto.randomUUID(),
+      decision: "rejected",
+      reviewNote: "",
+    });
+    expect(reviewed.request).toMatchObject({ status: "rejected", reviewNote: null });
+    expect(reviewed.shipment).toBeNull();
+    expect((await db.delivery_shipments.get(shipment.id))?.codAmount).toBe(100);
   });
 
   it("projects only the delivery fee, never the merchant COD, into sales reporting", async () => {
