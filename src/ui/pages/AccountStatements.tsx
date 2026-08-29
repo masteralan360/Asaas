@@ -69,6 +69,10 @@ import { useWorkspace } from '@/workspace'
 
 const ACCOUNT_STATEMENT_PATH = '/business-partners/account-statement'
 
+function orderItemDisplayPreferenceKey(workspaceId: string, partnerId: string) {
+    return `atlas:partner-account-statement:show-order-items:${workspaceId}:${partnerId}`
+}
+
 function readPartnerSelection(location: string) {
     const searchParams = new URLSearchParams(location.split('?')[1] || '')
     return {
@@ -520,6 +524,37 @@ export function AccountStatements() {
         if (partner && selectedPartnerId === partner.id) setPartnerQuery(partner.name)
     }, [partner, selectedPartnerId])
 
+    // Ordinary partners can choose the old document-level view or the new
+    // itemized view. Keep that choice per partner; sales-account agents remain
+    // itemized because their statement is their sales activity record.
+    useEffect(() => {
+        if (!workspaceId || !selectedPartnerId) {
+            setShowOrderItems(false)
+            return
+        }
+        try {
+            setShowOrderItems(window.localStorage.getItem(
+                orderItemDisplayPreferenceKey(workspaceId, selectedPartnerId)
+            ) === 'true')
+        } catch {
+            setShowOrderItems(false)
+        }
+    }, [selectedPartnerId, workspaceId])
+
+    const setOrderItemDisplayPreference = useCallback((enabled: boolean) => {
+        setShowOrderItems(enabled)
+        if (!workspaceId || !selectedPartnerId) return
+        try {
+            window.localStorage.setItem(
+                orderItemDisplayPreferenceKey(workspaceId, selectedPartnerId),
+                String(enabled)
+            )
+        } catch {
+            // The preference is optional. Rendering the current selection is
+            // still correct when browser storage is unavailable.
+        }
+    }, [selectedPartnerId, workspaceId])
+
     if (!workspaceId) return null
 
     return (
@@ -673,7 +708,7 @@ export function AccountStatements() {
                                     id="partner-statement-order-item-detail"
                                     checked={itemizeSalesOrders}
                                     disabled={isAgentStatement}
-                                    onCheckedChange={setShowOrderItems}
+                                    onCheckedChange={setOrderItemDisplayPreference}
                                 />
                             </div>
                         </div>

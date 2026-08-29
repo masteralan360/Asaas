@@ -24,6 +24,12 @@ Every UI flow that records a real incoming or outgoing payment, rather than mere
 The selector remains optional: with no selection, record the payment transaction and ledger entry normally; when selected, pass the account ID and name snapshot to the payment transaction so its account movement is created.
 Do not create a module-specific account selector or update a payment-account balance directly; account movements must be derived from the payment transaction.
 
+## Testing calculations and transactions
+
+Any new or changed calculation logic MUST include Vitest coverage for expected results, rounding, and relevant boundary cases.
+Any new or changed transaction flow MUST include Vitest coverage that verifies the resulting records, balances, and ledger effects.
+Tests must cover both the successful path and important validation or failure paths.
+
 # Atlas UI conventions
 
 ## Dialogs (required)

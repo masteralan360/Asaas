@@ -186,6 +186,7 @@
         "modernBusiness": "Modern Business",
         "all": "All",
         "print": "Print",
+        "settings": "Settings",
         "snoozedItems": "Snoozed Items",
         "snoozedItemsDesc": "Items that have been snoozed",
         "unsnooze": "Un-snooze",
@@ -1402,6 +1403,7 @@
                 "orderLoanDownPaymentReceived": "Order loan down payment received",
                 "paymentMade": "Payment made",
                 "commissionPaid": "Commission paid",
+                "commissionSettledAutomatically": "Commission settled automatically",
                 "commissionEarned": "Commission earned",
                 "commissionReversed": "Commission reversed",
                 "commissionAdjustment": "Commission adjustment",
@@ -2283,6 +2285,7 @@
             "destinationStorageHint": "Stock will be added to this storage when the order is completed.",
             "status": "Status",
             "date": "Date",
+            "firstInstallmentDueDate": "First installment due date",
             "expectedDelivery": "Expected Delivery",
             "orderCreation": "Order Creation",
             "currency": "Currency",
@@ -2343,7 +2346,8 @@
                 "invalidFreeBonus": "Enter a valid free bonus for {{productName}}.",
                 "batchNotAvailable": "The selected batch for {{productName}} is no longer available.",
                 "batchQuantityExceeded": "The selected source does not have enough stock for {{productName}}.",
-                "non_financed_order_must_be_paid": "This order must be paid in full before it can be reserved. To reserve it with an outstanding balance, select Loans or Installments as the payment method."
+                "non_financed_order_must_be_paid": "This order must be paid in full before it can be reserved. To reserve it with an outstanding balance, select Loans or Installments as the payment method.",
+                "firstInstallmentDueDateRequired": "Select the first installment due date."
             }
         },
         "adjustments": {
@@ -3595,6 +3599,8 @@
         "checkoutLoading": "Closing...",
         "checkout": "Checkout",
         "closeTicket": "Close Ticket",
+        "cookOrderTicket": "Cook Order Ticket",
+        "cookOrderTicketFailed": "Could not print the cook order ticket.",
         "ticketNotes": "Ticket Notes",
         "addTicketNote": "Add Note",
         "ticketNotePlaceholder": "Add a note for this ticket...",
@@ -6710,6 +6716,10 @@
             "courierHandovers": "Courier cash handovers",
             "courierFeePayables": "Courier fee payables",
             "courierPayables": "Courier payables",
+            "weOweMerchants": "We owe merchants",
+            "merchantsOweUs": "Merchants owe us",
+            "couriersOweUs": "Couriers owe us",
+            "weOweCouriers": "We owe couriers",
             "merchantPayouts": "Merchant payouts",
             "settlementHistory": "Settlement history"
         },
@@ -7614,6 +7624,13 @@
         "unknownMovement": "Recorded movement",
         "sourceModules": { "travelAgency": "Travel Agency" },
         "transactionTypes": { "travelSale": "Travel Sale", "orderReturn": "Order Return" },
+        "movementStatusLabel": "Status",
+        "movementStatus": {
+            "posted": "Posted",
+            "partiallyReversed": "Partially reversed",
+            "reversed": "Reversed",
+            "reversedAmount": "{{amount}} reversed"
+        },
         "types": { "cash_drawer": "Cash drawer", "bank_account": "Bank account", "digital_wallet": "Digital wallet", "other": "Other" },
         "accountIcon": "Account icon",
         "chooseIcon": "Choose account icon",

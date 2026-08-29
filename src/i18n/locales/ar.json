@@ -182,6 +182,7 @@
         "view": "عرض",
         "all": "الكل",
         "print": "طباعة",
+        "settings": "الإعدادات",
         "yes": "نعم",
         "no": "لا",
         "name": "الاسم",
@@ -1426,6 +1427,7 @@
             "destinationStorageHint": "ستتم إضافة المخزون إلى هذا المخزن عند إكمال الطلب.",
             "status": "الحالة",
             "date": "التاريخ",
+            "firstInstallmentDueDate": "تاريخ استحقاق القسط الأول",
             "expectedDelivery": "موعد التسليم المتوقع",
             "currency": "العملة",
             "addProducts": "إضافة منتجات",
@@ -1485,7 +1487,8 @@
                 "invalidFreeBonus": "أدخل بونصاً مجانياً صالحاً لـ {{productName}}.",
                 "batchNotAvailable": "الدفعة المحددة للمنتج {{productName}} لم تعد متاحة.",
                 "batchQuantityExceeded": "المصدر المحدد لا يحتوي على مخزون كافٍ للمنتج {{productName}}.",
-                "non_financed_order_must_be_paid": "يجب دفع هذا الطلب بالكامل قبل حجزه. لحجزه مع وجود رصيد مستحق، اختر القروض أو الأقساط كطريقة دفع."
+                "non_financed_order_must_be_paid": "يجب دفع هذا الطلب بالكامل قبل حجزه. لحجزه مع وجود رصيد مستحق، اختر القروض أو الأقساط كطريقة دفع.",
+                "firstInstallmentDueDateRequired": "اختر تاريخ استحقاق القسط الأول."
             }
         },
         "adjustments": {
@@ -2463,6 +2466,8 @@
         "checkoutLoading": "جاري الإغلاق...",
         "checkout": "الدفع",
         "closeTicket": "إغلاق التذكرة",
+        "cookOrderTicket": "تذكرة طلب المطبخ",
+        "cookOrderTicketFailed": "تعذرت طباعة تذكرة طلب المطبخ.",
         "ticketNotes": "ملاحظات التذكرة",
         "addTicketNote": "إضافة ملاحظة",
         "ticketNotePlaceholder": "أضف ملاحظة لهذه التذكرة...",
@@ -4127,6 +4132,7 @@
                 "orderLoanDownPaymentReceived": "دفعة أولى مستلمة لقرض الطلب",
                 "paymentMade": "دفعة مدفوعة",
                 "commissionPaid": "عمولة مدفوعة",
+                "commissionSettledAutomatically": "تمت تسوية العمولة تلقائياً",
                 "commissionEarned": "عمولة مستحقة",
                 "commissionReversed": "عكس العمولة",
                 "commissionAdjustment": "تعديل العمولة",
@@ -6456,6 +6462,10 @@
             "courierHandovers": "تسليمات نقد المندوبين",
             "courierFeePayables": "مستحقات أجور المندوبين",
             "courierPayables": "مستحقات المندوبين",
+            "weOweMerchants": "علينا للتجار",
+            "merchantsOweUs": "التجار مدينون لنا",
+            "couriersOweUs": "المندوبون مدينون لنا",
+            "weOweCouriers": "علينا للمندوبين",
             "merchantPayouts": "دفعات التجار",
             "settlementHistory": "سجل التسويات"
         },
@@ -7378,6 +7388,13 @@
         "transactionTypes": {
             "travelSale": "بيع سفر",
             "orderReturn": "مرتجع طلب"
+        },
+        "movementStatusLabel": "الحالة",
+        "movementStatus": {
+            "posted": "مُرحّل",
+            "partiallyReversed": "معكوسة جزئياً",
+            "reversed": "معكوسة",
+            "reversedAmount": "تم عكس {{amount}}"
         },
         "types": {
             "cash_drawer": "درج نقدي",

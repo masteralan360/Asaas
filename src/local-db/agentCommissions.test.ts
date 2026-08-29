@@ -215,6 +215,26 @@ describe("sales agent commission lifecycle", () => {
     expect(assignments[0].unassignedAt).toBeTruthy();
   });
 
+  it("does not create a sales-account commission assignment when commission credit was not selected", async () => {
+    const agent = { ...fieldAgent(crypto.randomUUID()), salesAccountEnabled: true };
+    const order = {
+      ...completedOrder(crypto.randomUUID()),
+      salesAccountAgentId: agent.id,
+      commissionEnabled: false,
+    };
+    await db.agents.put(agent);
+    await db.sales_orders.put(order);
+
+    const assignment = await commissions.synchronizeSalesAccountAgentCommissionAssignment(
+      WORKSPACE_ID,
+      order.id,
+      order.createdBy,
+    );
+
+    expect(assignment).toBeNull();
+    expect(await db.sales_order_agent_assignments.where("orderId").equals(order.id).count()).toBe(0);
+  });
+
   it("does not restore a stale sales-account beneficiary after the order account changes", async () => {
     const firstAgent = { ...fieldAgent(crypto.randomUUID()), salesAccountEnabled: true };
     const secondAgent = { ...fieldAgent(crypto.randomUUID()), salesAccountEnabled: true };
@@ -703,6 +723,122 @@ describe("sales agent commission lifecycle", () => {
       .equals([account.id, "usd"])
       .first();
     expect(balance?.balanceAmount).toBe(960);
+  });
+
+  it("splits automatic commission settlement across the accounts that received the order payment", async () => {
+    const agent = fieldAgent(crypto.randomUUID());
+    const order = completedOrder(crypto.randomUUID());
+    const { savePaymentAccount } = await import("./paymentAccounts");
+    const { appendPaymentTransaction } = await import("./payments");
+    const firstAccount = await savePaymentAccount(WORKSPACE_ID, {
+      name: "First collection account",
+      accountType: "cash_drawer",
+      createdBy: order.createdBy,
+    });
+    const secondAccount = await savePaymentAccount(WORKSPACE_ID, {
+      name: "Second collection account",
+      accountType: "cash_drawer",
+      createdBy: order.createdBy,
+    });
+
+    await db.agents.put(agent);
+    await db.sales_orders.put(order);
+    await Promise.all([firstAccount, secondAccount].map((account) => appendPaymentTransaction(WORKSPACE_ID, {
+      sourceModule: "orders",
+      sourceType: "sales_order",
+      sourceRecordId: order.id,
+      direction: "incoming",
+      amount: 20,
+      currency: order.currency,
+      paymentMethod: "cash",
+      paidAt: order.paidAt!,
+      counterpartyName: order.customerName,
+      referenceLabel: order.orderNumber,
+      createdBy: order.createdBy,
+      accountId: account.id,
+      accountNameSnapshot: account.name,
+    })));
+
+    const plan = await commissions.createAgentCommissionPlan(WORKSPACE_ID, {
+      name: "Split-funded level",
+      level: "split-funded-level",
+      ratePercent: 10,
+      calculationBasis: "net_profit",
+    });
+    await commissions.setAgentCommissionMembership(WORKSPACE_ID, { agentId: agent.id, planId: plan.id });
+    await commissions.assignSalesOrderAgent(WORKSPACE_ID, { orderId: order.id, agentId: agent.id });
+
+    const payouts = await db.payment_transactions
+      .where("[workspaceId+sourceType+sourceRecordId]")
+      .equals([WORKSPACE_ID, "agent_commission_payout", agent.id])
+      .toArray();
+    expect(payouts).toHaveLength(2);
+    expect(payouts.map((payment) => [payment.accountId, payment.amount]).sort()).toEqual([
+      [firstAccount.id, 20],
+      [secondAccount.id, 20],
+    ].sort());
+  });
+
+  it("leaves commission outstanding when the order payment account no longer has funds", async () => {
+    const agent = fieldAgent(crypto.randomUUID());
+    const order = completedOrder(crypto.randomUUID());
+    const { savePaymentAccount } = await import("./paymentAccounts");
+    const { appendPaymentTransaction } = await import("./payments");
+    const account = await savePaymentAccount(WORKSPACE_ID, {
+      name: "Collected then spent",
+      accountType: "cash_drawer",
+      createdBy: order.createdBy,
+    });
+
+    await db.agents.put(agent);
+    await db.sales_orders.put(order);
+    await appendPaymentTransaction(WORKSPACE_ID, {
+      sourceModule: "orders",
+      sourceType: "sales_order",
+      sourceRecordId: order.id,
+      direction: "incoming",
+      amount: order.total,
+      currency: order.currency,
+      paymentMethod: "cash",
+      paidAt: order.paidAt!,
+      counterpartyName: order.customerName,
+      referenceLabel: order.orderNumber,
+      createdBy: order.createdBy,
+      accountId: account.id,
+      accountNameSnapshot: account.name,
+    });
+    await appendPaymentTransaction(WORKSPACE_ID, {
+      sourceModule: "payments",
+      sourceType: "direct_transaction",
+      sourceRecordId: crypto.randomUUID(),
+      direction: "outgoing",
+      amount: order.total,
+      currency: order.currency,
+      paymentMethod: "cash",
+      paidAt: order.paidAt!,
+      counterpartyName: null,
+      referenceLabel: "Operating expense",
+      createdBy: order.createdBy,
+      accountId: account.id,
+      accountNameSnapshot: account.name,
+    });
+
+    const plan = await commissions.createAgentCommissionPlan(WORKSPACE_ID, {
+      name: "Balance-capped level",
+      level: "balance-capped-level",
+      ratePercent: 10,
+      calculationBasis: "net_profit",
+    });
+    await commissions.setAgentCommissionMembership(WORKSPACE_ID, { agentId: agent.id, planId: plan.id });
+    await commissions.assignSalesOrderAgent(WORKSPACE_ID, { orderId: order.id, agentId: agent.id });
+
+    const payouts = await db.payment_transactions
+      .where("[workspaceId+sourceType+sourceRecordId]")
+      .equals([WORKSPACE_ID, "agent_commission_payout", agent.id])
+      .toArray();
+    const entries = await db.agent_commission_entries.where("agentId").equals(agent.id).toArray();
+    expect(payouts).toHaveLength(0);
+    expect(entries.filter((entry) => entry.kind === "accrual").map((entry) => entry.amount)).toEqual([40]);
   });
 
   it("reuses only field agents and preserves membership history before replacement", async () => {

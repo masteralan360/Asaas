@@ -26,7 +26,7 @@ import {
     AppDialogHeader,
     AppDialogTitle,
     Button,
-    Input,
+    DateTimePicker,
     Label,
     MultipleModalLayout,
     Progress,
@@ -47,6 +47,7 @@ import {
 export type QuickOrderCheckoutData = {
     customer: BusinessPartner
     salesAccountAgentId?: string | null
+    commissionEnabled: boolean
     paymentMethod: PaymentMethodOption
     installmentCount: number
     installmentFrequency: InstallmentFrequency
@@ -216,6 +217,7 @@ export function QuickOrderModal({
             await onSubmit({
                 customer: orderCounterparty!,
                 salesAccountAgentId: selectedSalesAccount?.agent.id ?? null,
+                commissionEnabled: includeCommission,
                 paymentMethod,
                 installmentCount: 3,
                 installmentFrequency: 'monthly',
@@ -387,15 +389,16 @@ export function QuickOrderModal({
                         <Label htmlFor="quick-order-first-due-date">
                             {t('orders.form.firstInstallmentDueDate')} <span className="text-destructive">*</span>
                         </Label>
-                        <Input
+                        <DateTimePicker
                             id="quick-order-first-due-date"
-                            type="date"
-                            value={firstDueDate}
-                            onChange={(event) => {
-                                setFirstDueDate(event.target.value)
+                            mode="date"
+                            date={firstDueDate ? new Date(`${firstDueDate}T00:00:00`) : undefined}
+                            setDate={(date) => {
+                                setFirstDueDate(date ? date.toISOString().slice(0, 10) : '')
                                 setIsCommissionPanelOpen(false)
                             }}
                             disabled={isSubmitting || isCommissionPanelOpen}
+                            placeholder={t('orders.form.firstInstallmentDueDate')}
                         />
                         <p className="text-xs text-muted-foreground">{t('pos.quickOrder.installmentHint')}</p>
                     </div>

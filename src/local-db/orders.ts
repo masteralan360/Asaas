@@ -2151,6 +2151,7 @@ export async function createSalesOrder(
     const order = buildBaseEntity(workspaceId, {
         ...data,
         salesAccountAgentId: salesAccount?.agent.id ?? null,
+        commissionEnabled: data.commissionEnabled ?? true,
         ...paymentState,
         ...counterparty,
         orderNumber,
@@ -2304,6 +2305,7 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
         ...existing,
         ...data,
         salesAccountAgentId,
+        commissionEnabled: data.commissionEnabled ?? existing.commissionEnabled ?? true,
         ...(confirmedAdjustments.length > 0 ? { orderAdjustments: confirmedAdjustments } : {}),
         ...paymentState,
         ...counterparty,

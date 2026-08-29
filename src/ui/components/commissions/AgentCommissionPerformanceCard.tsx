@@ -5,7 +5,6 @@ import { Link } from 'wouter'
 
 import { formatCurrency, formatDateTime } from '@/lib/utils'
 import {
-    calculateSalesOrderCommission,
     useAgentCommissionEntries,
     useSalesOrders,
     useSalesOrderAgentAssignments,
@@ -87,8 +86,15 @@ export function AgentCommissionPerformanceCard({
                 .some((entry) => entry.assignmentId === assignment.id)
             if (!isRecognizedHistory) continue
             const current = selected.get(assignment.orderId)
+            const hasAccrual = (entriesByOrderId.get(assignment.orderId) || [])
+                .some((entry) => entry.assignmentId === assignment.id && entry.kind === 'accrual')
+            const currentHasAccrual = current
+                ? (entriesByOrderId.get(current.orderId) || [])
+                    .some((entry) => entry.assignmentId === current.id && entry.kind === 'accrual')
+                : false
             if (
                 !current
+                || (hasAccrual && !currentHasAccrual)
                 || (!assignment.unassignedAt && Boolean(current.unassignedAt))
                 || (Boolean(assignment.unassignedAt) === Boolean(current.unassignedAt)
                     && assignment.assignedAt > current.assignedAt)
@@ -113,19 +119,10 @@ export function AgentCommissionPerformanceCard({
             entry.kind === 'accrual' && entry.assignmentId === assignment?.id
         ))
         if (!assignment || !sourceEntry) return totals
-
-        const isEligible = !assignment.unassignedAt
-            && order.status === 'completed'
-            && (order.isPaid || order.paymentStatus === 'paid')
-        const basisAmount = isEligible
-            ? calculateSalesOrderCommission(order, {
-                ratePercent: sourceEntry.ratePercent,
-                calculationBasis: sourceEntry.calculationBasis,
-                includeTax: sourceEntry.includeTax,
-                includeDeliveryCharge: sourceEntry.includeDeliveryCharge
-            }, assignment).basisAmount
-            : 0
-        totals[sourceEntry.currency] = (totals[sourceEntry.currency] || 0) + basisAmount
+        // A commission entry is an immutable event snapshot. Recalculating
+        // from today's order costs, delivery figures, or plan revision made
+        // historical performance drift after an order was edited or returned.
+        totals[sourceEntry.currency] = (totals[sourceEntry.currency] || 0) + sourceEntry.basisAmount
         return totals
     }, {}), [assignmentByOrderId, assignedOrders, entriesByOrderId])
     const completedOrderCount = assignedOrders.filter((order) => order.status === 'completed').length
@@ -211,23 +208,14 @@ export function AgentCommissionPerformanceCard({
                                 <TableBody>
                                     {assignedOrders.slice(0, 10).map((order) => {
                                         const assignment = assignmentByOrderId.get(order.id)
-                                        const orderEntries = entriesByOrderId.get(order.id) || []
+                                        const orderEntries = (entriesByOrderId.get(order.id) || [])
+                                            .filter((entry) => entry.assignmentId === assignment?.id)
                                         const recognizedEntries = orderEntries.filter((entry) => ['accrual', 'reversal', 'adjustment'].includes(entry.kind))
                                         const commissionAmount = recognizedEntries.reduce((total, entry) => total + entry.amount, 0)
                                         const sourceEntry = recognizedEntries.find((entry) => (
                                             entry.kind === 'accrual' && entry.assignmentId === assignment?.id
                                         ))
-                                        const isEligible = !assignment?.unassignedAt
-                                            && order.status === 'completed'
-                                            && (order.isPaid || order.paymentStatus === 'paid')
-                                        const currentBasisAmount = sourceEntry && assignment && isEligible
-                                            ? calculateSalesOrderCommission(order, {
-                                                ratePercent: sourceEntry.ratePercent,
-                                                calculationBasis: sourceEntry.calculationBasis,
-                                                includeTax: sourceEntry.includeTax,
-                                                includeDeliveryCharge: sourceEntry.includeDeliveryCharge
-                                            }, assignment).basisAmount
-                                            : null
+                                        const historicalBasisAmount = sourceEntry?.basisAmount ?? null
                                         return (
                                             <TableRow key={order.id}>
                                                 <TableCell className="font-semibold">{order.orderNumber}</TableCell>
@@ -245,8 +233,8 @@ export function AgentCommissionPerformanceCard({
                                                 </TableCell>
                                                 <TableCell className="text-end">{formatCurrency(assignment?.deliveryChargeAmount || 0, order.currency, iqdPreference)}</TableCell>
                                                 <TableCell className="text-end font-semibold">{formatCurrency(order.total, order.currency, iqdPreference)}</TableCell>
-                                                <TableCell className="text-end">{currentBasisAmount !== null && sourceEntry ? formatCurrency(currentBasisAmount, sourceEntry.currency as CurrencyCode, iqdPreference) : '—'}</TableCell>
-                                                <TableCell className="text-end font-black">{orderEntries.length > 0 ? formatCurrency(commissionAmount, order.currency, iqdPreference) : '—'}</TableCell>
+                                                <TableCell className="text-end">{historicalBasisAmount !== null && sourceEntry ? formatCurrency(historicalBasisAmount, sourceEntry.currency as CurrencyCode, iqdPreference) : '—'}</TableCell>
+                                                <TableCell className="text-end font-black">{orderEntries.length > 0 && sourceEntry ? formatCurrency(commissionAmount, sourceEntry.currency as CurrencyCode, iqdPreference) : '—'}</TableCell>
                                                 <TableCell className="text-end">
                                                     <Button asChild variant="ghost" size="sm">
                                                         <Link href={`/orders/${order.id}`}>

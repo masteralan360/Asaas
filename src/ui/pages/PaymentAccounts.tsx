@@ -9,6 +9,12 @@ import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { buildConversionRates } from '@/lib/budget'
 import { convertToStoreBase } from '@/lib/currency'
 import {
+  PAYMENT_ACCOUNT_REVERSAL_EPSILON,
+  getPaymentAccountMovementPresentation,
+  type PaymentAccountMovementPresentation,
+} from '@/lib/paymentAccountMovementPresentation'
+import { paymentAccountMovementRelationKey } from '@/lib/paymentAccountRelations'
+import {
   deletePaymentAccount,
   getPaymentAccountBalanceSummary,
   recordPaymentAccountManualOperation,
@@ -28,6 +34,7 @@ import {
   type PaymentTransaction,
   type PaymentTransactionDirection,
   type WorkspacePaymentMethod,
+  getPaymentTransactionReversalAmounts,
   usePaymentTransactions,
 } from '@/local-db'
 import { cn, formatCurrency, formatDateTime, formatNumericInput, parseFormattedNumber, sanitizeNumericInput } from '@/lib/utils'
@@ -112,6 +119,7 @@ interface AccountMovementEntry {
   id: string
   movement: PaymentAccountMovement
   transaction: PaymentTransaction | null
+  presentation: PaymentAccountMovementPresentation
   relationKey: string | null
   relationRole: AccountMovementRelationRole | null
 }
@@ -221,20 +229,6 @@ function movementSortLabel(sort: AccountMovementSort, t: ReturnType<typeof useTr
   }
 }
 
-function paymentAccountMovementRelationKey(transaction: PaymentTransaction | null) {
-  if (!transaction) return null
-
-  switch (transaction.sourceType) {
-    case 'loan_origination':
-    case 'loan_payment':
-    case 'simple_loan':
-    case 'loan_installment':
-      return `loan:${transaction.sourceRecordId}`
-    default:
-      return `${transaction.sourceType}:${transaction.sourceRecordId}`
-  }
-}
-
 function countActiveMovementFilters(filters: AccountMovementFilters) {
   return [
     !!filters.search.trim(),
@@ -247,13 +241,13 @@ function countActiveMovementFilters(filters: AccountMovementFilters) {
 }
 
 function formatMovementTotalValues(
-  movements: PaymentAccountMovement[],
+  entries: AccountMovementEntry[],
   iqdDisplayPreference: 'IQD' | 'د.ع',
-  amountFor: (movement: PaymentAccountMovement) => number,
+  amountFor: (entry: AccountMovementEntry) => number,
 ) {
   const totals = new Map<CurrencyCode, number>()
-  movements.forEach((movement) => {
-    totals.set(movement.currency, (totals.get(movement.currency) || 0) + amountFor(movement))
+  entries.forEach((entry) => {
+    totals.set(entry.movement.currency, (totals.get(entry.movement.currency) || 0) + amountFor(entry))
   })
 
   if (totals.size === 0) return ['—']
@@ -324,11 +318,16 @@ function applyMovementFilters(entries: AccountMovementEntry[], filters: AccountM
   const minimum = filters.minAmount ? parseFormattedNumber(filters.minAmount) : null
   const maximum = filters.maxAmount ? parseFormattedNumber(filters.maxAmount) : null
   const matching = entries.filter((entry) => {
-    const { movement, transaction } = entry
-    if (filters.direction !== 'all' && movement.direction !== filters.direction) return false
+    const { movement, presentation, transaction } = entry
+    const effectiveDirection = presentation.deltaAmount > PAYMENT_ACCOUNT_REVERSAL_EPSILON
+      ? 'incoming'
+      : presentation.deltaAmount < -PAYMENT_ACCOUNT_REVERSAL_EPSILON
+        ? 'outgoing'
+        : null
+    if (filters.direction !== 'all' && effectiveDirection !== filters.direction) return false
     if (filters.currency !== 'all' && movement.currency !== filters.currency) return false
-    if (minimum !== null && Number.isFinite(minimum) && Math.abs(movement.amount) < minimum) return false
-    if (maximum !== null && Number.isFinite(maximum) && Math.abs(movement.amount) > maximum) return false
+    if (minimum !== null && Number.isFinite(minimum) && Math.abs(presentation.amount) < minimum) return false
+    if (maximum !== null && Number.isFinite(maximum) && Math.abs(presentation.amount) > maximum) return false
     if (!normalizedSearch) return true
 
     return [
@@ -344,8 +343,8 @@ function applyMovementFilters(entries: AccountMovementEntry[], filters: AccountM
 
   return matching.sort((left, right) => {
     if (filters.sort === 'date_asc') return left.movement.occurredAt.localeCompare(right.movement.occurredAt)
-    if (filters.sort === 'amount_desc') return Math.abs(right.movement.amount) - Math.abs(left.movement.amount)
-    if (filters.sort === 'amount_asc') return Math.abs(left.movement.amount) - Math.abs(right.movement.amount)
+    if (filters.sort === 'amount_desc') return Math.abs(right.presentation.amount) - Math.abs(left.presentation.amount)
+    if (filters.sort === 'amount_asc') return Math.abs(left.presentation.amount) - Math.abs(right.presentation.amount)
     return right.movement.occurredAt.localeCompare(left.movement.occurredAt)
   })
 }
@@ -458,13 +457,22 @@ export function PaymentAccounts() {
     () => new Map(paymentTransactions.map((transaction) => [transaction.id, transaction])),
     [paymentTransactions],
   )
+  const transactionReversalAmounts = useMemo(
+    () => getPaymentTransactionReversalAmounts(paymentTransactions),
+    [paymentTransactions],
+  )
   const selectedAccountMovements = useMemo(
     () => selectedAccountId ? movements.filter((movement) => movement.accountId === selectedAccountId) : [],
     [movements, selectedAccountId],
   )
   const allMovementEntries = useMemo<AccountMovementEntry[]>(
-    () => selectedAccountMovements.map((movement) => {
+    () => selectedAccountMovements.flatMap((movement) => {
       const transaction = transactionById.get(movement.paymentTransactionId) ?? null
+      // Ledger projects an original payment to its remaining amount and omits
+      // the signed reversal row. Keep that same financial view here, while the
+      // original account movement remains as a clearly marked audit row.
+      if (transaction?.reversalOfTransactionId) return []
+      const presentation = getPaymentAccountMovementPresentation(movement, transaction, transactionReversalAmounts)
       const relationKey = paymentAccountMovementRelationKey(transaction)
       const relationRole: AccountMovementRelationRole | null = transaction
         ? transaction.sourceType === 'loan_origination'
@@ -474,9 +482,9 @@ export function PaymentAccounts() {
             : 'settlement'
         : null
 
-      return { id: movement.id, movement, transaction, relationKey, relationRole }
+      return [{ id: movement.id, movement, transaction, presentation, relationKey, relationRole }]
     }),
-    [selectedAccountMovements, transactionById],
+    [selectedAccountMovements, transactionById, transactionReversalAmounts],
   )
   const movementEntries = useMemo(
     () => allMovementEntries.filter(({ movement }) => isDateInDateRange(movement.occurredAt, dateRange, customDates)),
@@ -503,11 +511,11 @@ export function PaymentAccounts() {
     [movementFilters],
   )
   const movementInflows = useMemo(
-    () => filteredMovementEntries.filter(({ movement }) => movement.direction === 'incoming').map(({ movement }) => movement),
+    () => filteredMovementEntries.filter(({ presentation }) => presentation.deltaAmount > PAYMENT_ACCOUNT_REVERSAL_EPSILON),
     [filteredMovementEntries],
   )
   const movementOutflows = useMemo(
-    () => filteredMovementEntries.filter(({ movement }) => movement.direction === 'outgoing').map(({ movement }) => movement),
+    () => filteredMovementEntries.filter(({ presentation }) => presentation.deltaAmount < -PAYMENT_ACCOUNT_REVERSAL_EPSILON),
     [filteredMovementEntries],
   )
   const rates = useMemo(
@@ -515,27 +523,27 @@ export function PaymentAccounts() {
     [eurRates, exchangeData, tryRates],
   )
   const inflowValues = useMemo(
-    () => formatMovementTotalValues(movementInflows, features.iqd_display_preference, (movement) => movement.amount),
+    () => formatMovementTotalValues(movementInflows, features.iqd_display_preference, (entry) => Math.abs(entry.presentation.deltaAmount)),
     [features.iqd_display_preference, movementInflows],
   )
   const outflowValues = useMemo(
-    () => formatMovementTotalValues(movementOutflows, features.iqd_display_preference, (movement) => movement.amount),
+    () => formatMovementTotalValues(movementOutflows, features.iqd_display_preference, (entry) => Math.abs(entry.presentation.deltaAmount)),
     [features.iqd_display_preference, movementOutflows],
   )
   const netFlowValues = useMemo(
-    () => formatMovementTotalValues(filteredMovementEntries.map((entry) => entry.movement), features.iqd_display_preference, (movement) => movement.deltaAmount),
+    () => formatMovementTotalValues(filteredMovementEntries, features.iqd_display_preference, (entry) => entry.presentation.deltaAmount),
     [features.iqd_display_preference, filteredMovementEntries],
   )
   const inflowInBaseCurrency = useMemo(
-    () => movementInflows.reduce((total, movement) => total + convertToStoreBase(movement.amount, movement.currency, baseCurrency, rates), 0),
+    () => movementInflows.reduce((total, entry) => total + convertToStoreBase(Math.abs(entry.presentation.deltaAmount), entry.movement.currency, baseCurrency, rates), 0),
     [baseCurrency, movementInflows, rates],
   )
   const outflowInBaseCurrency = useMemo(
-    () => movementOutflows.reduce((total, movement) => total + convertToStoreBase(movement.amount, movement.currency, baseCurrency, rates), 0),
+    () => movementOutflows.reduce((total, entry) => total + convertToStoreBase(Math.abs(entry.presentation.deltaAmount), entry.movement.currency, baseCurrency, rates), 0),
     [baseCurrency, movementOutflows, rates],
   )
   const netFlowInBaseCurrency = useMemo(
-    () => filteredMovementEntries.reduce((total, { movement }) => total + convertToStoreBase(movement.deltaAmount, movement.currency, baseCurrency, rates), 0),
+    () => filteredMovementEntries.reduce((total, entry) => total + convertToStoreBase(entry.presentation.deltaAmount, entry.movement.currency, baseCurrency, rates), 0),
     [baseCurrency, filteredMovementEntries, rates],
   )
   const postedBalanceValues = useMemo(
@@ -548,8 +556,8 @@ export function PaymentAccounts() {
     () => selectedAccountBalances.reduce((total, balance) => total + convertToStoreBase(balance.balanceAmount, balance.currency, baseCurrency, rates), 0),
     [baseCurrency, rates, selectedAccountBalances],
   )
-  const hasMultipleInflowCurrencies = new Set(movementInflows.map((movement) => movement.currency)).size > 1
-  const hasMultipleOutflowCurrencies = new Set(movementOutflows.map((movement) => movement.currency)).size > 1
+  const hasMultipleInflowCurrencies = new Set(movementInflows.map((entry) => entry.movement.currency)).size > 1
+  const hasMultipleOutflowCurrencies = new Set(movementOutflows.map((entry) => entry.movement.currency)).size > 1
   const hasMultipleNetFlowCurrencies = new Set(filteredMovementEntries.map(({ movement }) => movement.currency)).size > 1
   const hasMultipleBalanceCurrencies = selectedAccountBalances.length > 1
   const movementComparisonWindow = useMemo(() => {
@@ -578,18 +586,19 @@ export function PaymentAccounts() {
     let previousInflow = 0
     let previousOutflow = 0
 
-    matchingAccountMovementEntries.forEach(({ movement }) => {
+    matchingAccountMovementEntries.forEach(({ movement, presentation }) => {
       const occurredAt = new Date(movement.occurredAt)
       if (Number.isNaN(occurredAt.getTime())) return
-      const amount = Math.abs(convertToStoreBase(movement.amount, movement.currency, baseCurrency, rates))
+      if (Math.abs(presentation.deltaAmount) <= PAYMENT_ACCOUNT_REVERSAL_EPSILON) return
+      const amount = Math.abs(convertToStoreBase(presentation.deltaAmount, movement.currency, baseCurrency, rates))
       const isCurrent = occurredAt >= movementComparisonWindow.currentStart && occurredAt < movementComparisonWindow.currentEnd
       const isPrevious = occurredAt >= movementComparisonWindow.previousStart && occurredAt < movementComparisonWindow.currentStart
       if (!isCurrent && !isPrevious) return
 
       if (isCurrent) {
-        if (movement.direction === 'incoming') currentInflow += amount
+        if (presentation.deltaAmount > 0) currentInflow += amount
         else currentOutflow += amount
-      } else if (movement.direction === 'incoming') {
+      } else if (presentation.deltaAmount > 0) {
         previousInflow += amount
       } else {
         previousOutflow += amount
@@ -614,14 +623,15 @@ export function PaymentAccounts() {
   const movementTrendData = useMemo(() => {
     const points = new Map<string, AccountMovementTrendPoint>()
 
-    filteredMovementEntries.forEach(({ movement }) => {
+    filteredMovementEntries.forEach(({ movement, presentation }) => {
+      if (Math.abs(presentation.deltaAmount) <= PAYMENT_ACCOUNT_REVERSAL_EPSILON) return
       const dateKey = toMovementDateKey(movement.occurredAt)
       const point = points.get(dateKey) ?? { dateKey, inflow: 0, outflow: 0, net: 0 }
       const amount = movementTrendUsesBaseEquivalent
-        ? convertToStoreBase(movement.amount, movement.currency, baseCurrency, rates)
-        : movement.amount
+        ? Math.abs(convertToStoreBase(presentation.deltaAmount, movement.currency, baseCurrency, rates))
+        : Math.abs(presentation.deltaAmount)
 
-      if (movement.direction === 'incoming') {
+      if (presentation.deltaAmount > 0) {
         point.inflow += amount
         point.net += amount
       } else {
@@ -1053,11 +1063,12 @@ export function PaymentAccounts() {
               <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">{filteredMovementEntries.length}</span>
             </CardHeader>
             <CardContent className="overflow-x-auto">
-              <Table className="ms-6 w-[calc(100%-1.5rem)] min-w-[1120px]">
+              <Table className="ms-6 w-[calc(100%-1.5rem)] min-w-[1220px]">
                 <TableHeader><TableRow>
                   <TableHead>{t('ledger.table.transactionId', { defaultValue: 'Transaction ID' })}</TableHead>
                   <TableHead>{t('ledger.table.date', { defaultValue: 'Date' })}</TableHead>
                   <TableHead>{t('ledger.table.type', { defaultValue: 'Type' })}</TableHead>
+                  <TableHead>{t('paymentAccounts.movementStatusLabel', { defaultValue: 'Status' })}</TableHead>
                   <TableHead>{t('ledger.table.direction', { defaultValue: 'Direction' })}</TableHead>
                   <TableHead>{t('ledger.table.amount', { defaultValue: 'Amount' })}</TableHead>
                   <TableHead>{t('ledger.table.sourceModule', { defaultValue: 'Source Module' })}</TableHead>
@@ -1066,7 +1077,7 @@ export function PaymentAccounts() {
                   <TableHead>{t('ledger.filters.paymentMethod', { defaultValue: 'Payment Method' })}</TableHead>
                 </TableRow></TableHeader>
                 <TableBody>
-                  {filteredMovementEntries.length === 0 ? <TableRow><TableCell colSpan={9} className="py-12 text-center text-muted-foreground">{t('paymentAccounts.noFilteredMovements', { defaultValue: 'No account movements match the current filters.' })}</TableCell></TableRow> : filteredMovementEntries.map((entry, rowIndex) => {
+                  {filteredMovementEntries.length === 0 ? <TableRow><TableCell colSpan={10} className="py-12 text-center text-muted-foreground">{t('paymentAccounts.noFilteredMovements', { defaultValue: 'No account movements match the current filters.' })}</TableCell></TableRow> : filteredMovementEntries.map((entry, rowIndex) => {
                     const relatedCount = entry.relationKey ? movementRelationMaps.counts.get(entry.relationKey) || 0 : 0
                     const relationRange = hoveredRelationKey ? movementRelationMaps.ranges.get(hoveredRelationKey) ?? null : null
                     const isRelationHovered = !!hoveredRelationKey && entry.relationKey === hoveredRelationKey
@@ -1081,6 +1092,18 @@ export function PaymentAccounts() {
                         ? t('ledger.relationRole.repayment', { defaultValue: 'Repayment' })
                         : t('ledger.relationRole.settlement', { defaultValue: 'Settlement' })
                     const transactionId = entry.transaction?.id || entry.movement.paymentTransactionId
+                    const isNetIncoming = entry.presentation.deltaAmount > PAYMENT_ACCOUNT_REVERSAL_EPSILON
+                    const isNetOutgoing = entry.presentation.deltaAmount < -PAYMENT_ACCOUNT_REVERSAL_EPSILON
+                    const statusLabel = entry.presentation.reversalStatus === 'reversed'
+                      ? t('paymentAccounts.movementStatus.reversed', { defaultValue: 'Reversed' })
+                      : entry.presentation.reversalStatus === 'partially_reversed'
+                        ? t('paymentAccounts.movementStatus.partiallyReversed', { defaultValue: 'Partially reversed' })
+                        : t('paymentAccounts.movementStatus.posted', { defaultValue: 'Posted' })
+                    const statusClass = entry.presentation.reversalStatus === 'reversed'
+                      ? 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300'
+                      : entry.presentation.reversalStatus === 'partially_reversed'
+                        ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300'
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
                     return <TableRow
                       key={entry.id}
                       className={cn(isRelationHovered && relationClass, entry.relationKey && 'transition-colors duration-150')}
@@ -1093,8 +1116,9 @@ export function PaymentAccounts() {
                       </TableCell>
                       <TableCell>{formatDateTime(entry.movement.occurredAt)}</TableCell>
                       <TableCell className="font-medium"><div className="inline-flex max-w-[220px] items-center gap-2"><span className="truncate">{movementTypeLabel(entry.transaction, t)}</span>{entry.relationRole ? <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', entry.relationRole === 'origin' ? 'border-sky-200 bg-sky-50 text-sky-700' : entry.relationRole === 'repayment' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-primary/20 bg-primary/10 text-primary')}>{roleLabel}</span> : null}</div></TableCell>
-                      <TableCell><span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', entry.movement.direction === 'incoming' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700')}>{entry.movement.direction === 'incoming' ? <ArrowDownLeft className="h-3 w-3" /> : <ArrowUpRight className="h-3 w-3" />}{entry.movement.direction === 'incoming' ? t('ledger.direction.in', { defaultValue: 'IN' }) : t('ledger.direction.out', { defaultValue: 'OUT' })}</span></TableCell>
-                      <TableCell className="font-semibold">{formatCurrency(Math.abs(entry.movement.amount), entry.movement.currency, features.iqd_display_preference)}</TableCell>
+                      <TableCell><span className={cn('inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', statusClass)}>{statusLabel}</span>{entry.presentation.reversalStatus === 'partially_reversed' ? <p className="mt-1 text-xs text-muted-foreground">{t('paymentAccounts.movementStatus.reversedAmount', { amount: formatCurrency(entry.presentation.reversedAmount, entry.movement.currency, features.iqd_display_preference), defaultValue: '{{amount}} reversed' })}</p> : null}</TableCell>
+                      <TableCell>{isNetIncoming || isNetOutgoing ? <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', isNetIncoming ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700')}>{isNetIncoming ? <ArrowDownLeft className="h-3 w-3" /> : <ArrowUpRight className="h-3 w-3" />}{isNetIncoming ? t('ledger.direction.in', { defaultValue: 'IN' }) : t('ledger.direction.out', { defaultValue: 'OUT' })}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+                      <TableCell className="font-semibold">{formatCurrency(Math.abs(entry.presentation.amount), entry.movement.currency, features.iqd_display_preference)}</TableCell>
                       <TableCell>{sourceModuleLabel(entry.transaction, t)}</TableCell>
                       <TableCell className="max-w-[160px] font-medium"><span className="block truncate" title={entry.transaction?.referenceLabel || undefined}>{entry.transaction?.referenceLabel || '—'}</span></TableCell>
                       <TableCell className="max-w-[160px]"><span className="block truncate" title={entry.transaction?.counterpartyName || undefined}>{entry.transaction?.counterpartyName || '—'}</span></TableCell>

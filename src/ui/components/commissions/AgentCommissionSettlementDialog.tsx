@@ -90,6 +90,15 @@ export function AgentCommissionSettlementDialog({
     const [adjustmentOrderId, setAdjustmentOrderId] = useState('')
     const [isSaving, setIsSaving] = useState(false)
     const summary = useMemo(() => summarizeCommissionEntries(entries), [entries])
+    const outstandingByAssignmentCurrency = useMemo(() => {
+        const totals = new Map<string, number>()
+        for (const entry of entries) {
+            if (entry.isDeleted || entry.kind === 'estimate' || entry.kind === 'approval') continue
+            const key = `${entry.assignmentId || 'unassigned'}:${entry.currency}`
+            totals.set(key, (totals.get(key) || 0) + Number(entry.amount || 0))
+        }
+        return totals
+    }, [entries])
     const approvedRelatedEntryIds = useMemo(() => new Set(entries
         .filter((entry) => entry.kind === 'approval' && entry.relatedEntryId)
         .map((entry) => entry.relatedEntryId as string)), [entries])
@@ -98,10 +107,11 @@ export function AgentCommissionSettlementDialog({
             (entry.kind === 'accrual' || entry.kind === 'adjustment')
             && entry.status === 'earned'
             && entry.amount !== 0
+            && (outstandingByAssignmentCurrency.get(`${entry.assignmentId || 'unassigned'}:${entry.currency}`) || 0) > 0.000001
             && !approvedRelatedEntryIds.has(entry.id)
         )
         .sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime()),
-    [approvedRelatedEntryIds, entries])
+    [approvedRelatedEntryIds, entries, outstandingByAssignmentCurrency])
     const orderNumberById = useMemo(() => new Map(salesOrders.map((order) => [order.id, order.orderNumber])), [salesOrders])
     const assignedOrderIds = useMemo(() => new Set(assignments
         .filter((assignment) => !assignment.isDeleted && assignment.agentId === agentId)

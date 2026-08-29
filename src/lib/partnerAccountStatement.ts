@@ -69,6 +69,7 @@ export type PartnerAccountStatementEntryDescriptionKey =
     | 'orderLoanDownPaymentReceived'
     | 'paymentMade'
     | 'commissionPaid'
+    | 'commissionSettledAutomatically'
     | 'commissionEarned'
     | 'commissionReversed'
     | 'commissionAdjustment'
@@ -459,14 +460,61 @@ function createOrderEntries(data: PartnerAccountStatementData): PartnerAccountSt
     return entries
 }
 
+type AutomaticCommissionSettlement = {
+    payoutEntryId: string
+    recognizedEntryId: string
+    payment: PaymentTransaction
+    payout: AgentCommissionEntry
+}
+
+/**
+ * A generated payout and its matching accrual are one financial event from a
+ * partner's perspective. Present a single zero-net audit row when the whole
+ * accrual was settled automatically, while retaining both immutable source
+ * rows in storage and in the Payments module.
+ */
+function getAutomaticCommissionSettlements(data: PartnerAccountStatementData): AutomaticCommissionSettlement[] {
+    const entries = (data.agentCommissionEntries || []).filter((entry) => !entry.isDeleted)
+    const payoutsById = new Map(entries
+        .filter((entry) => entry.kind === 'payout' && entry.settlementSource === 'automatic')
+        .map((entry) => [entry.id, entry]))
+
+    return (data.settlementTransactions || [])
+        .filter((payment) => (
+            !payment.isDeleted
+            && payment.sourceType === 'agent_commission_payout'
+            && payment.metadata?.automaticSettlement === true
+            && Boolean(payment.sourceSubrecordId)
+        ))
+        .flatMap((payment) => {
+            const payout = payoutsById.get(payment.sourceSubrecordId || '')
+            if (!payout?.assignmentId || !payout.orderId) return []
+            const recognized = entries.filter((entry) => (
+                entry.assignmentId === payout.assignmentId
+                && entry.orderId === payout.orderId
+                && entry.currency === payout.currency
+                && ['accrual', 'reversal', 'adjustment'].includes(entry.kind)
+            ))
+            // Collapse only an unambiguous full accrual. Partial payouts and
+            // return/reversal histories remain expanded so their balance is
+            // still transparent.
+            if (recognized.length !== 1 || Math.abs(Number(recognized[0].amount || 0) + Number(payout.amount || 0)) > 0.000001) {
+                return []
+            }
+            return [{ payoutEntryId: payout.id, recognizedEntryId: recognized[0].id, payment, payout }]
+        })
+}
+
 function createPaymentEntries(data: PartnerAccountStatementData): PartnerAccountStatementEntry[] {
     const sourceOrders = data.statementOrders || data.salesOrders
     const salesOrdersById = new Map(sourceOrders
         .filter(isSalesOrder)
         .map((order) => [order.id, order]))
 
+    const collapsedPayoutIds = new Set(getAutomaticCommissionSettlements(data).map((settlement) => settlement.payoutEntryId))
     return (data.settlementTransactions || [])
         .filter((transaction) => !transaction.isDeleted)
+        .filter((transaction) => !collapsedPayoutIds.has(transaction.sourceSubrecordId || ''))
         .map((transaction) => {
             const rawAmount = Number(transaction.amount || 0)
             const multiplier = transaction.direction === 'incoming' ? -1 : 1
@@ -519,8 +567,11 @@ function commissionEntryPresentation(entry: AgentCommissionEntry): {
  * settles that liability, so a paid commission nets to zero in the statement.
  */
 function createAgentCommissionEntries(data: PartnerAccountStatementData): PartnerAccountStatementEntry[] {
-    return (data.agentCommissionEntries || [])
+    const settlements = getAutomaticCommissionSettlements(data)
+    const collapsedRecognizedEntryIds = new Set(settlements.map((settlement) => settlement.recognizedEntryId))
+    const commissionEntries = (data.agentCommissionEntries || [])
         .filter((entry) => !entry.isDeleted)
+        .filter((entry) => !collapsedRecognizedEntryIds.has(entry.id))
         .flatMap((entry) => {
             const presentation = commissionEntryPresentation(entry)
             if (!presentation) return []
@@ -542,6 +593,24 @@ function createAgentCommissionEntries(data: PartnerAccountStatementData): Partne
                 delta: -Number(entry.amount || 0)
             }]
         })
+
+    const settlementEntries: PartnerAccountStatementEntry[] = settlements.map(({ payment, payout }) => ({
+        id: `agent-commission-settlement:${payout.id}`,
+        date: payment.paidAt || payment.createdAt,
+        reference: (payout.orderId ? data.linkedOrderCodes?.[payout.orderId] : null)
+            || payout.payoutReference
+            || payout.orderId
+            || payout.id,
+        kind: 'agent_commission',
+        description: 'Commission settled automatically',
+        descriptionKey: 'commissionSettledAutomatically',
+        note: payment.note?.trim() || payout.notes?.trim() || null,
+        currency: payout.currency,
+        delta: 0,
+        source: { recordType: 'payment_transaction', recordId: payment.id }
+    }))
+
+    return [...commissionEntries, ...settlementEntries]
 }
 
 function createLoanEntries(data: PartnerAccountStatementData): PartnerAccountStatementEntry[] {
@@ -659,7 +728,10 @@ export function buildPartnerAccountStatementLedger(data: PartnerAccountStatement
         ...createAgentCommissionEntries(data),
         ...createLoanEntries(data),
         ...createDeliveryEntries(data)
-    ].filter((entry) => Math.abs(entry.delta) > 0.000001)
+    ].filter((entry) => (
+        Math.abs(entry.delta) > 0.000001
+        || entry.descriptionKey === 'commissionSettledAutomatically'
+    ))
 
     const entriesByCurrency = new Map<string, PartnerAccountStatementEntry[]>()
     for (const entry of entries) {

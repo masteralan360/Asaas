@@ -1056,6 +1056,12 @@ export interface SalesOrder extends BaseEntity {
   customerName: string;
   /** Agent whose enabled sales account is the financial counterparty for this order. */
   salesAccountAgentId?: string | null;
+  /**
+   * Whether this order should create commission attribution. Sales-account
+   * orders can still be recorded without crediting a commission beneficiary.
+   * Older orders intentionally behave as enabled.
+   */
+  commissionEnabled?: boolean;
   sourceStorageId?: string | null;
   items: SalesOrderItem[];
   subtotal: number;

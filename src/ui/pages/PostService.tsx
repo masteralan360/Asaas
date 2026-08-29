@@ -6,7 +6,7 @@ import { Banknote, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, C
 import { useAuth } from "@/auth";
 import {
   closeDeliveryRun, createAndDispatchDeliveryShipment, createBusinessPartner, createDeliveryMerchantProfile, createDeliveryRun, createDeliveryShipment, hardDeleteDeliveryMerchantProfile, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment,
-  refreshPostServiceTab, settleDeliveryCourier, updateBusinessPartner, updateDeliveryMerchantProfile, updateDeliveryShipmentStatus, useAgents, useBusinessPartners, useCourierDeliveryBalances,
+  refreshPostServiceTab, settleDeliveryCourier, summarizeDeliveryBalanceMetrics, updateBusinessPartner, updateDeliveryMerchantProfile, updateDeliveryShipmentStatus, useAgents, useBusinessPartners, useCourierDeliveryAccountBalances, useCourierDeliveryBalances,
   useDeliveryMerchantProfiles, useDeliveryRuns, useDeliverySettlements, useDeliveryShipmentEvents, useDeliveryShipments, useFleetVehicles,
   transferReturnedDeliveryShipment, useMerchantDeliveryAccountBalances, useMerchantDeliveryBalances, useDeliveryLedgerEntries, type Agent, type BusinessPartner, type CreateDeliveryShipmentInput, type CurrencyCode, type DeliveryCustomerPaymentStatus, type DeliveryMerchantProfile, type DeliveryRecipientPayoutFunding, type DeliveryShipment, type DeliveryShipmentEvent, type DeliveryShipmentStatus, type PaymentAccount, type PostServiceTab, type WorkspacePaymentMethod,
 } from "@/local-db";
@@ -223,6 +223,7 @@ export function PostService() {
   const runs = useDeliveryRuns(workspaceId);
   const settlements = useDeliverySettlements(workspaceId);
   const courierBalances = useCourierDeliveryBalances(workspaceId);
+  const courierAccountBalances = useCourierDeliveryAccountBalances(workspaceId);
   const merchantBalances = useMerchantDeliveryBalances(workspaceId);
   const merchantAccountBalances = useMerchantDeliveryAccountBalances(workspaceId);
   const ledgerEntries = useDeliveryLedgerEntries(workspaceId);
@@ -518,6 +519,20 @@ export function PostService() {
     const statuses = isAdmin ? ADMIN_STATUS_CARD_STATUSES : STAFF_STATUS_CARD_STATUSES;
     return statuses.map((status) => ({ status, value: counts.get(status) ?? 0 }));
   }, [isAdmin, shipments]);
+  const deliveryBalanceMetrics = useMemo(() => {
+    const totals = summarizeDeliveryBalanceMetrics(merchantAccountBalances, courierAccountBalances);
+    const formatTotal = (amounts: Array<{ currency: CurrencyCode; amount: number }>) => (
+      amounts.length > 0
+        ? amounts.map(({ currency, amount }) => formatCurrency(amount, currency, features.iqd_display_preference)).join(" + ")
+        : formatCurrency(0, features.default_currency, features.iqd_display_preference)
+    );
+    return [
+      { id: "we-owe-merchants", title: t("postService.cards.weOweMerchants"), value: formatTotal(totals.weOweMerchants), icon: Store, tone: "amber" as const },
+      { id: "merchants-owe-us", title: t("postService.cards.merchantsOweUs"), value: formatTotal(totals.merchantsOweUs), icon: HandCoins, tone: "emerald" as const },
+      { id: "couriers-owe-us", title: t("postService.cards.couriersOweUs"), value: formatTotal(totals.couriersOweUs), icon: WalletCards, tone: "sky" as const },
+      { id: "we-owe-couriers", title: t("postService.cards.weOweCouriers"), value: formatTotal(totals.weOweCouriers), icon: CircleDollarSign, tone: "rose" as const },
+    ];
+  }, [courierAccountBalances, features.default_currency, features.iqd_display_preference, merchantAccountBalances, t]);
   const selectedCount = selectedShipmentIds.size;
   const enabledMerchantPartnerIds = useMemo(() => merchantProfiles.map((profile) => profile.businessPartnerId), [merchantProfiles]);
   const settlementNetSummary = settlementNetTarget ? perShipmentSettlementNet.get(settlementNetTarget.id) : undefined;
@@ -987,7 +1002,10 @@ export function PostService() {
   if (!workspaceId) return null;
   return <div className="w-full min-w-0 space-y-6 overflow-x-hidden">
     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><h1 className="flex items-center gap-2 text-2xl font-bold"><PackageCheck className="h-6 w-6 text-primary" />{t("postService.title")}</h1><p className="text-muted-foreground">{t("postService.subtitle")} <ModulePageFreshness className="ms-2" /></p></div>{isAdmin && <div className="flex flex-wrap gap-2"><Button variant="outline" className="gap-2" onClick={() => setMerchantDialogOpen(true)}><Store className="h-4 w-4" />{t("postService.actions.enableMerchant")}</Button><Button className="gap-2" onClick={() => setShipmentDialogOpen(true)}><Plus className="h-4 w-4" />{t("postService.actions.newPost")}</Button></div>}</div>
-    <div className={cn("grid sm:grid-cols-2", isAdmin ? "gap-3 lg:grid-cols-6" : "gap-4 xl:grid-cols-5")}>{postStatusMetrics.map(({ status, value }) => <StatusMetric key={status} compact={isAdmin} icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={statusFilter === status} onClick={() => handlePostStatusMetricClick(status)} />)}</div>
+    <div className="space-y-3">
+      <div className={cn("grid sm:grid-cols-2", isAdmin ? "gap-3 lg:grid-cols-6" : "gap-4 xl:grid-cols-5")}>{postStatusMetrics.map(({ status, value }) => <StatusMetric key={status} compact={isAdmin} icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={statusFilter === status} onClick={() => handlePostStatusMetricClick(status)} />)}</div>
+      {isAdmin ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">{deliveryBalanceMetrics.map((metric) => <DeliveryBalanceMetric key={metric.id} {...metric} />)}</div> : null}
+    </div>
     <Tabs value={activeTab} onValueChange={handleTabChange} className="min-w-0"><TabsList className="h-auto w-full max-w-full flex-wrap justify-start gap-1 sm:w-auto"><TabsTrigger value="posts"><ClipboardList className="me-2 h-4 w-4" />{t("postService.tabs.posts")}</TabsTrigger>{isAdmin && <><TabsTrigger value="dispatch"><Send className="me-2 h-4 w-4" />{t("postService.tabs.dispatch")}</TabsTrigger><TabsTrigger value="my-deliveries"><Route className="me-2 h-4 w-4" />{t("postService.tabs.myDeliveries")}</TabsTrigger><TabsTrigger value="merchants"><Store className="me-2 h-4 w-4" />{t("postService.tabs.merchants")}</TabsTrigger><TabsTrigger value="courier"><Truck className="me-2 h-4 w-4" />{t("postService.tabs.courier")}</TabsTrigger><TabsTrigger value="settlements"><Banknote className="me-2 h-4 w-4" />{t("postService.tabs.settlements")}</TabsTrigger></>}</TabsList>
       <TabsContent ref={postsPanelRef} value="posts" tabIndex={-1} className="mt-4 min-w-0 scroll-mt-24 outline-none">
         <div className="mb-4 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:overflow-visible">
@@ -1472,6 +1490,15 @@ function StatusMetric({ icon: Icon, title, value, active, compact = false, onCli
       </CardContent>
     </Card>
   </button>;
+}
+function DeliveryBalanceMetric({ icon: Icon, title, value, tone }: { icon: LucideIcon; title: string; value: string; tone: "amber" | "emerald" | "sky" | "rose" }) {
+  const toneClasses = {
+    amber: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    emerald: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    sky: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
+    rose: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
+  }[tone];
+  return <Card className="h-full overflow-hidden"><CardContent className="flex items-center gap-2.5 p-3"><div className={cn("rounded-xl p-1.5", toneClasses)}><Icon className="h-4 w-4" /></div><div className="min-w-0"><div className="truncate font-bold tabular-nums text-xl" title={value}>{value}</div><div className="truncate text-xs text-muted-foreground">{title}</div></div></CardContent></Card>;
 }
 function EmptyRow({ columns, label }: { columns: number; label: string }) {
   return <TableRow><TableCell colSpan={columns} className="py-10 text-center text-muted-foreground">{label}</TableCell></TableRow>;

@@ -1922,16 +1922,18 @@ async function synchronizeSalesAccountAgentCommissionAssignmentInternal(
   const salesAccountAgentId = order.salesAccountAgentId ?? null;
 
   for (const assignment of salesAccountAssignments) {
-    if (assignment.agentId === salesAccountAgentId) continue;
+    if (order.commissionEnabled !== false && assignment.agentId === salesAccountAgentId) continue;
     await unassignSalesOrderAgent(workspaceId, {
       orderId,
       agentId: assignment.agentId,
       unassignedBy: createdBy ?? null,
-      reason: "Sales account changed on the order",
+      reason: order.commissionEnabled === false
+        ? "Commission attribution was disabled for the order"
+        : "Sales account changed on the order",
     });
   }
 
-  if (!salesAccountAgentId) return null;
+  if (!salesAccountAgentId || order.commissionEnabled === false) return null;
   const salesAccountAgent = await db.agents.get(salesAccountAgentId);
   if (
     !salesAccountAgent
@@ -2115,7 +2117,7 @@ async function resolveAgentCounterpartyName(agentId: string) {
  */
 async function ensureCommissionPayoutTransaction(
   workspaceId: string,
-  entry: Pick<AgentCommissionEntry, "id" | "agentId" | "amount" | "currency" | "occurredAt" | "payoutReference" | "settlementSource">,
+  entry: Pick<AgentCommissionEntry, "id" | "orderId" | "agentId" | "amount" | "currency" | "occurredAt" | "payoutReference" | "settlementSource">,
   options: {
     counterpartyName: string | null;
     paymentMethod: WorkspacePaymentMethod;
@@ -2147,7 +2149,9 @@ async function ensureCommissionPayoutTransaction(
     paymentMethod: options.paymentMethod,
     paidAt: entry.occurredAt,
     counterpartyName: options.counterpartyName,
-    referenceLabel: `Agent commission payout ${entry.payoutReference ?? ""}`.trim(),
+    // The order number is the payout reference. Prefixing it with a generated
+    // label made Quick Order payments harder to correlate in the ledger.
+    referenceLabel: entry.payoutReference?.trim() || null,
     note: options.notes,
     createdBy: options.createdBy,
     accountId: options.accountId,
@@ -2155,6 +2159,7 @@ async function ensureCommissionPayoutTransaction(
     metadata: {
       agentCommissionEntryId: entry.id,
       agentId: entry.agentId,
+      orderId: entry.orderId ?? null,
       payoutReference: entry.payoutReference ?? null,
       automaticSettlement: entry.settlementSource === 'automatic',
     },
@@ -2165,17 +2170,20 @@ type CommissionPayoutFunding = {
   accountId: string | null;
   accountNameSnapshot: string | null;
   paymentMethod: WorkspacePaymentMethod;
+  /** Amount still eligible to settle from this order's receipt/account. */
+  availableAmount: number;
 };
 
 /**
- * Find the account that actually received the order's money. We deliberately
- * read payment transactions instead of the order's initial-account snapshot:
- * progressive and loan payments may be collected later, through a different
- * account, and a selected account on an unpaid loan must never be debited.
+ * Resolve every account that actually received money for this order. We never
+ * guess from the order's initial-account snapshot: progressive and loan
+ * payments may be collected later through different accounts. Each source is
+ * capped by both the net order receipt and the account's current available
+ * balance, so a commission cannot spend an already-used receipt.
  */
 async function resolveSalesOrderCommissionPayoutFunding(
   order: SalesOrder,
-): Promise<CommissionPayoutFunding> {
+): Promise<CommissionPayoutFunding[]> {
   const payments = await db.payment_transactions
     .where("[workspaceId+sourceType+sourceRecordId]")
     .equals([order.workspaceId, "sales_order", order.id])
@@ -2190,38 +2198,100 @@ async function resolveSalesOrderCommissionPayoutFunding(
     );
   }
 
-  const fundingPayment = payments
+  const fundingPayments = payments
     .filter((payment) => (
       !payment.isDeleted
       && payment.direction === "incoming"
       && !payment.reversalOfTransactionId
       && Boolean(payment.accountId)
       && payment.amount - (reversedAmounts.get(payment.id) ?? 0) > 0.000001
-    ))
-    .sort((left, right) => (
-      left.paidAt.localeCompare(right.paidAt)
-      || left.createdAt.localeCompare(right.createdAt)
-      || left.id.localeCompare(right.id)
-    ))
-    .at(-1);
+    ));
 
-  if (!fundingPayment?.accountId) {
-    return { accountId: null, accountNameSnapshot: null, paymentMethod: "unknown" };
+  // Preserve the established ledger-only behavior only when the order really
+  // has no account-backed receipt. A selected but empty/spent account must not
+  // silently turn into an unaccounted cash payout.
+  if (!fundingPayments.length) {
+    return [{
+      accountId: null,
+      accountNameSnapshot: null,
+      paymentMethod: "unknown",
+      availableAmount: Number.POSITIVE_INFINITY,
+    }];
   }
 
-  const account = await db.payment_accounts.get(fundingPayment.accountId);
-  if (!account
-    || account.workspaceId !== order.workspaceId
-    || account.isDeleted
-    || !account.isActive) {
-    return { accountId: null, accountNameSnapshot: null, paymentMethod: "unknown" };
+  const allWorkspacePayments = await db.payment_transactions
+    .where("workspaceId")
+    .equals(order.workspaceId)
+    .toArray();
+  const payoutEntries = await db.agent_commission_entries
+    .where("workspaceId")
+    .equals(order.workspaceId)
+    .and((entry) => !entry.isDeleted && entry.kind === "payout")
+    .toArray();
+  const payoutOrderIdByEntryId = new Map(payoutEntries.map((entry) => [entry.id, entry.orderId ?? null]));
+  const fundingByAccountId = new Map<string, {
+    amount: number;
+    latest: typeof fundingPayments[number];
+  }>();
+
+  for (const payment of fundingPayments) {
+    const netAmount = roundCommissionAmount(payment.amount - (reversedAmounts.get(payment.id) ?? 0));
+    if (netAmount <= 0.000001 || !payment.accountId) continue;
+    const current = fundingByAccountId.get(payment.accountId);
+    if (!current) {
+      fundingByAccountId.set(payment.accountId, { amount: netAmount, latest: payment });
+      continue;
+    }
+    current.amount = roundCommissionAmount(current.amount + netAmount);
+    if (
+      payment.paidAt > current.latest.paidAt
+      || (payment.paidAt === current.latest.paidAt && payment.createdAt > current.latest.createdAt)
+    ) {
+      current.latest = payment;
+    }
   }
 
-  return {
-    accountId: account.id,
-    accountNameSnapshot: fundingPayment.accountNameSnapshot || account.name,
-    paymentMethod: fundingPayment.paymentMethod,
-  };
+  const fundings: CommissionPayoutFunding[] = [];
+  for (const [accountId, receipt] of fundingByAccountId) {
+    const account = await db.payment_accounts.get(accountId);
+    if (!account
+      || account.workspaceId !== order.workspaceId
+      || account.isDeleted
+      || !account.isActive) {
+      continue;
+    }
+
+    const accountBalance = allWorkspacePayments
+      .filter((payment) => !payment.isDeleted && payment.accountId === accountId && payment.currency === order.currency)
+      .reduce((total, payment) => total + (payment.direction === "incoming" ? payment.amount : -payment.amount), 0);
+    const alreadyAllocated = allWorkspacePayments
+      .filter((payment) => (
+        !payment.isDeleted
+        && payment.sourceType === COMMISSION_PAYOUT_SOURCE_TYPE
+        && payment.accountId === accountId
+        && payment.currency === order.currency
+        && (
+          payment.metadata?.orderId === order.id
+          || payoutOrderIdByEntryId.get(payment.sourceSubrecordId ?? "") === order.id
+        )
+      ))
+      .reduce((total, payment) => total + Math.abs(payment.amount), 0);
+    const availableAmount = roundCommissionAmount(Math.max(
+      0,
+      Math.min(receipt.amount - alreadyAllocated, accountBalance),
+    ));
+    if (availableAmount <= 0.000001) continue;
+    fundings.push({
+      accountId,
+      accountNameSnapshot: receipt.latest.accountNameSnapshot || account.name,
+      paymentMethod: receipt.latest.paymentMethod,
+      availableAmount,
+    });
+  }
+
+  // A stable order prevents concurrent local settlement retries from choosing
+  // account rows in a different sequence.
+  return fundings.sort((left, right) => (left.accountId ?? "").localeCompare(right.accountId ?? ""));
 }
 
 /**
@@ -2241,7 +2311,7 @@ async function settlePaidSalesOrderCommissionsLocally(
     return [] as AgentCommissionEntry[];
   }
 
-  const funding = await resolveSalesOrderCommissionPayoutFunding(order);
+  const fundings = await resolveSalesOrderCommissionPayoutFunding(order);
   const payouts: AgentCommissionEntry[] = [];
   for (const assignment of assignments) {
     if (assignment.isDeleted || assignment.unassignedAt) continue;
@@ -2268,63 +2338,71 @@ async function settlePaidSalesOrderCommissionsLocally(
     const due = Math.min(assignmentDue, agentDue);
     if (due <= 0.000001) continue;
 
-    const payoutId = generateId();
-    const payoutInput = {
-      orderId: order.id,
-      assignmentId: assignment.id,
-      agentId: assignment.agentId,
-      membershipId: null,
-      planId: null,
-      orderReturnId: null,
-      relatedEntryId: null,
-      kind: 'payout',
-      status: 'paid',
-      currency: source.currency,
-      calculationBasis: source.calculationBasis,
-      includeTax: false,
-      includeDeliveryCharge: false,
-      basisAmount: 0,
-      revenueAmount: 0,
-      costAmount: 0,
-      taxAmount: 0,
-      deliveryChargeAmount: 0,
-      ratePercent: 0,
-      amount: -due,
-      occurredAt: order.paidAt ?? order.updatedAt,
-      payoutReference: order.orderNumber,
-      settlementSource: 'automatic' as const,
-      notes: 'Automatically settled after the sales order was paid in full.',
-      createdBy: createdBy ?? null,
-    } satisfies Omit<AgentCommissionEntry, keyof ReturnType<typeof getSyncMetadata>
-      | 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'version' | 'isDeleted'>;
+    let remainingDue = due;
+    for (const funding of fundings) {
+      if (remainingDue <= 0.000001 || funding.availableAmount <= 0.000001) continue;
+      const amount = roundCommissionAmount(Math.min(remainingDue, funding.availableAmount));
+      const payoutId = generateId();
+      const payoutInput = {
+        orderId: order.id,
+        assignmentId: assignment.id,
+        agentId: assignment.agentId,
+        membershipId: null,
+        planId: null,
+        orderReturnId: null,
+        relatedEntryId: null,
+        kind: 'payout',
+        status: 'paid',
+        currency: source.currency,
+        calculationBasis: source.calculationBasis,
+        includeTax: false,
+        includeDeliveryCharge: false,
+        basisAmount: 0,
+        revenueAmount: 0,
+        costAmount: 0,
+        taxAmount: 0,
+        deliveryChargeAmount: 0,
+        ratePercent: 0,
+        amount: -amount,
+        occurredAt: order.paidAt ?? order.updatedAt,
+        payoutReference: order.orderNumber,
+        settlementSource: 'automatic' as const,
+        notes: 'Automatically settled after the sales order was paid in full.',
+        createdBy: createdBy ?? null,
+      } satisfies Omit<AgentCommissionEntry, keyof ReturnType<typeof getSyncMetadata>
+        | 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'version' | 'isDeleted'>;
 
-    const payment = await ensureCommissionPayoutTransaction(order.workspaceId, {
-      id: payoutId,
-      agentId: assignment.agentId,
-      amount: -due,
-      currency: source.currency,
-      occurredAt: payoutInput.occurredAt,
-      payoutReference: order.orderNumber,
-      settlementSource: payoutInput.settlementSource,
-    }, {
-      counterpartyName: await resolveAgentCounterpartyName(assignment.agentId),
-      paymentMethod: funding.paymentMethod,
-      notes: payoutInput.notes,
-      createdBy: createdBy ?? null,
-      accountId: funding.accountId,
-      accountNameSnapshot: funding.accountNameSnapshot,
-    });
+      const payment = await ensureCommissionPayoutTransaction(order.workspaceId, {
+        id: payoutId,
+        orderId: order.id,
+        agentId: assignment.agentId,
+        amount: -amount,
+        currency: source.currency,
+        occurredAt: payoutInput.occurredAt,
+        payoutReference: order.orderNumber,
+        settlementSource: payoutInput.settlementSource,
+      }, {
+        counterpartyName: await resolveAgentCounterpartyName(assignment.agentId),
+        paymentMethod: funding.paymentMethod,
+        notes: payoutInput.notes,
+        createdBy: createdBy ?? null,
+        accountId: funding.accountId,
+        accountNameSnapshot: funding.accountNameSnapshot,
+      });
 
-    try {
-      payouts.push(await appendEntry(order.workspaceId, payoutInput, payoutId));
-    } catch (error) {
       try {
-        const { softDeletePaymentTransaction } = await import('./payments');
-        await softDeletePaymentTransaction(payment);
-      } catch (cleanupError) {
-        console.error('[Sales Agent Commissions] Failed to roll back automatic settlement payment:', cleanupError);
+        payouts.push(await appendEntry(order.workspaceId, payoutInput, payoutId));
+        remainingDue = roundCommissionAmount(remainingDue - amount);
+        funding.availableAmount = roundCommissionAmount(funding.availableAmount - amount);
+      } catch (error) {
+        try {
+          const { softDeletePaymentTransaction } = await import('./payments');
+          await softDeletePaymentTransaction(payment);
+        } catch (cleanupError) {
+          console.error('[Sales Agent Commissions] Failed to roll back automatic settlement payment:', cleanupError);
+        }
+        throw error;
       }
-      throw error;
     }
   }
   return payouts;

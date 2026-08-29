@@ -255,6 +255,47 @@ export interface DeliveryCourierAccountBalance {
   amount: number;
 }
 
+export type DeliveryBalanceMetricTotals = {
+  weOweMerchants: Array<{ currency: CurrencyCode; amount: number }>;
+  merchantsOweUs: Array<{ currency: CurrencyCode; amount: number }>;
+  couriersOweUs: Array<{ currency: CurrencyCode; amount: number }>;
+  weOweCouriers: Array<{ currency: CurrencyCode; amount: number }>;
+};
+
+function aggregateAccountBalanceDirection(
+  balances: ReadonlyArray<{ currency: CurrencyCode; amount: number }>,
+  direction: "positive" | "negative",
+) {
+  const totals = new Map<CurrencyCode, number>();
+  for (const balance of balances) {
+    const amount = Number(balance.amount || 0);
+    if ((direction === "positive" && amount <= 0.000001) || (direction === "negative" && amount >= -0.000001)) continue;
+    const normalizedAmount = direction === "positive" ? amount : Math.abs(amount);
+    totals.set(balance.currency, (totals.get(balance.currency) ?? 0) + normalizedAmount);
+  }
+  return [...totals.entries()]
+    .map(([currency, amount]) => ({ currency, amount: Math.round((amount + Number.EPSILON) * 1_000_000) / 1_000_000 }))
+    .filter(({ amount }) => amount > 0.000001)
+    .sort((left, right) => left.currency.localeCompare(right.currency));
+}
+
+/**
+ * Splits the signed delivery account balances into the four user-facing
+ * counterparty directions. Amounts are aggregated only within the same
+ * currency; no implicit currency conversion is performed.
+ */
+export function summarizeDeliveryBalanceMetrics(
+  merchantBalances: ReadonlyArray<DeliveryMerchantAccountBalance>,
+  courierBalances: ReadonlyArray<DeliveryCourierAccountBalance>,
+): DeliveryBalanceMetricTotals {
+  return {
+    weOweMerchants: aggregateAccountBalanceDirection(merchantBalances, "positive"),
+    merchantsOweUs: aggregateAccountBalanceDirection(merchantBalances, "negative"),
+    couriersOweUs: aggregateAccountBalanceDirection(courierBalances, "positive"),
+    weOweCouriers: aggregateAccountBalanceDirection(courierBalances, "negative"),
+  };
+}
+
 /**
  * A display-only sale projection for the reporting surfaces. A delivery post
  * is not a POS sale: the COD amount belongs to the merchant. Only the fee

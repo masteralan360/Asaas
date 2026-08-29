@@ -182,6 +182,7 @@
         "view": "بینین",
         "all": "هەموو",
         "print": "چاپکردن",
+        "settings": "ڕێکخستنەکان",
         "yes": "بەڵێ",
         "no": "نەخێر",
         "name": "ناو",
@@ -1429,6 +1430,7 @@
             "destinationStorageHint": "کاتێک داواکارییەکە تەواو دەکرێت، کۆگا بۆ ئەم شوێنە زیاد دەکرێت.",
             "status": "دۆخ",
             "date": "بەروار",
+            "firstInstallmentDueDate": "یەکەم بەرواری وادەی قیست",
             "expectedDelivery": "کاتی گەیاندن",
             "currency": "دراو",
             "addProducts": "زیادکردنی بەرهەمەکان",
@@ -1488,7 +1490,8 @@
                 "invalidFreeBonus": "بۆنەسی خۆڕایی دروست بۆ {{productName}} بنووسە.",
                 "batchNotAvailable": "بار هەڵبژێردراو بۆ {{productName}} چیتر بەردەست نییە.",
                 "batchQuantityExceeded": "سەرچاوەی هەڵبژێردراو بۆ {{productName}} کۆگای بەسەری نییە.",
-                "non_financed_order_must_be_paid": "پێش تەرخانکردنی ئەم داواکارییە، دەبێت پارەکەی بە تەواوی بدرێت. بۆ تەرخانکردنی لەگەڵ بڕی ماوە، قەرز یان قیست وەک شێوازی پارەدان هەڵبژێرە."
+                "non_financed_order_must_be_paid": "پێش تەرخانکردنی ئەم داواکارییە، دەبێت پارەکەی بە تەواوی بدرێت. بۆ تەرخانکردنی لەگەڵ بڕی ماوە، قەرز یان قیست وەک شێوازی پارەدان هەڵبژێرە.",
+                "firstInstallmentDueDateRequired": "یەکەم بەرواری وادەی قیست هەڵبژێرە."
             }
         },
         "adjustments": {
@@ -2479,6 +2482,8 @@
         "checkoutLoading": "داخستنی...",
         "checkout": "پارەدان",
         "closeTicket": "داخستنی تیکەت",
+        "cookOrderTicket": "پسولەی داواکاری چێشتخانە",
+        "cookOrderTicketFailed": "نەتوانرا پسولەی داواکاری چێشتخانە چاپ بکرێت.",
         "ticketNotes": "تێبینییەکانی تیکەت",
         "addTicketNote": "زیادکردنی تێبینی",
         "ticketNotePlaceholder": "تێبینییەک بۆ ئەم تیکەتە زیاد بکە...",
@@ -4124,6 +4129,7 @@
                 "orderLoanDownPaymentReceived": "پارەدانی دەستپێکی قەرزی داواکاری وەرگیراو",
                 "paymentMade": "پارەی دراو",
                 "commissionPaid": "قازانجی پارەدراو",
+                "commissionSettledAutomatically": "قازانج بەخۆکار یەکلاوە",
                 "commissionEarned": "قازانجی بەدەستهاتوو",
                 "commissionReversed": "پاشگەزکردنەوەی قازانج",
                 "commissionAdjustment": "ڕێکخستنی قازانج",
@@ -6507,6 +6513,10 @@
             "courierHandovers": "تەسلیمکردنی نەقدی مەندوب",
             "courierFeePayables": "پارەدانەوەی کرێی مەندوبان",
             "courierPayables": "پارەدانەوەی مەندوبان",
+            "weOweMerchants": "ئێمە قەرزدارین بە بازرگانان",
+            "merchantsOweUs": "بازرگانان قەرزدارن بە ئێمە",
+            "couriersOweUs": "مەندوبان قەرزدارن بە ئێمە",
+            "weOweCouriers": "ئێمە قەرزدارین بە مەندوبان",
             "merchantPayouts": "پارەدانی بازرگانان",
             "settlementHistory": "مێژووی تەسویە"
         },
@@ -7411,6 +7421,13 @@
         "unknownMovement": "جووڵەی تۆمارکراو",
         "sourceModules": { "travelAgency": "ئاژانسی گەشت" },
         "transactionTypes": { "travelSale": "فرۆشتنی گەشت", "orderReturn": "گەڕاندنەوەی داواکاری" },
+        "movementStatusLabel": "دۆخ",
+        "movementStatus": {
+            "posted": "تۆمارکراو",
+            "partiallyReversed": "بەشێکی پێچەوانە کراوە",
+            "reversed": "پێچەوانە کراوە",
+            "reversedAmount": "{{amount}} پێچەوانە کراوە"
+        },
         "types": { "cash_drawer": "کشوی نەقد", "bank_account": "هەژماری بانکی", "digital_wallet": "جزدانی دیجیتاڵ", "other": "هیتر" },
         "accountIcon": "ئایکۆنی هەژمار",
         "chooseIcon": "ئایکۆنی هەژمار هەڵبژێرە",

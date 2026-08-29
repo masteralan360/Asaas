@@ -46,18 +46,12 @@ export function OrderAgentCommissionCard({
         const candidateAgent = directory.agentById.get(candidate.agentId)
         return canViewAllCommission || (canViewOwnCommission && Boolean(userId) && candidateAgent?.agent.linkedUserId === userId)
     })
-    const assignment = (canAssign || canViewAllCommission ? activeAssignments : visibleAssignments)[0] ?? null
-    const assignedAgent = assignment ? directory.agentById.get(assignment.agentId) : undefined
-    const canViewCommission = canViewAllCommission
-        || (canViewOwnCommission && Boolean(userId) && assignedAgent?.agent.linkedUserId === userId)
+    const displayedAssignments = canAssign || canViewAllCommission ? activeAssignments : visibleAssignments
     const canViewAssignment = canAssign || canViewAllCommission || visibleAssignments.length > 0
     const orderEntries = useMemo(() => entries
         .filter((entry) => !entry.isDeleted && entry.orderId === orderId)
         .sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime()),
     [entries, orderId])
-    const latestEntry = assignment
-        ? orderEntries.find((entry) => entry.assignmentId === assignment.id)
-        : undefined
 
     if (!canViewAssignment) return null
 
@@ -76,95 +70,91 @@ export function OrderAgentCommissionCard({
                             <Pencil className="h-3.5 w-3.5" />
                             {activeAssignments.length > 1
                                 ? t('salesAgentCommissions.manage')
-                                : assignment ? t('salesAgentCommissions.change') : t('salesAgentCommissions.assign')}
+                                : displayedAssignments.length > 0 ? t('salesAgentCommissions.change') : t('salesAgentCommissions.assign')}
                         </Button>
                     ) : null}
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
-                    {assignment ? (
-                        <>
-                            <div className="rounded-2xl border bg-background/80 p-4">
-                                <div className="font-semibold">{assignedAgent?.name || t('salesAgentCommissions.assignedFieldAgent')}</div>
-                                <div className="mt-1 text-xs text-muted-foreground">{t('salesAgentCommissions.assignedAt', { date: formatDateTime(assignment.assignedAt) })}</div>
-                                {assignedAgent?.plan ? (
-                                    <Badge variant="outline" className="mt-3 gap-1.5 border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300">
-                                        <BadgePercent className="h-3.5 w-3.5" />
-                                        {assignedAgent.plan.name} · {formatCommissionPlanTerms(assignedAgent.plan, iqdPreference)}
-                                    </Badge>
-                                ) : (
-                                    <Badge variant="outline" className="mt-3 border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                                        {t('salesAgentCommissions.noCommissionPlan')}
-                                    </Badge>
-                                )}
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                                <div className="rounded-2xl border bg-background/70 p-3">
-                                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                                        <MapPin className="h-3.5 w-3.5" /> {t('salesAgentCommissions.customerCity')}
-                                    </div>
-                                    <div className="mt-1 font-medium">{assignment.customerCitySnapshot || '—'}</div>
-                                </div>
-                                <div className="rounded-2xl border bg-background/70 p-3">
-                                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                                        <Truck className="h-3.5 w-3.5" /> {t('salesAgentCommissions.deliverySnapshot')}
-                                    </div>
-                                    <div className="mt-2 flex items-center justify-between gap-2">
-                                        <span className="text-muted-foreground">{t('salesAgentCommissions.customerCharge')}</span>
-                                        <span className="font-semibold">{formatCurrency(assignment.deliveryChargeAmount, (latestEntry?.currency as CurrencyCode | undefined) || orderCurrency, iqdPreference)}</span>
-                                    </div>
-                                    <div className="mt-1 flex items-center justify-between gap-2">
-                                        <span className="text-muted-foreground">{t('salesAgentCommissions.internalCost')}</span>
-                                        <span className="font-semibold">{formatCurrency(assignment.internalDeliveryCostAmount, (latestEntry?.currency as CurrencyCode | undefined) || orderCurrency, iqdPreference)}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            {(canAssign || canViewAllCommission ? activeAssignments : visibleAssignments).length > 1 ? (
-                                <div className="space-y-2 rounded-2xl border bg-background/70 p-3">
-                                    <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                                        {t('salesAgentCommissions.salesAgentBeneficiaries')}
-                                    </div>
-                                    {(canAssign || canViewAllCommission ? activeAssignments : visibleAssignments)
-                                        .filter((otherAssignment) => otherAssignment.id !== assignment.id)
-                                        .map((otherAssignment) => {
-                                        const otherAgent = directory.agentById.get(otherAssignment.agentId)
-                                        return (
-                                            <div key={otherAssignment.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                                                <span className="font-medium">{otherAgent?.name || t('salesAgentCommissions.assignedFieldAgent')}</span>
-                                                <span className="text-xs text-muted-foreground">
-                                                    {otherAgent?.plan?.name || t('salesAgentCommissions.noCommissionPlan')}
-                                                </span>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            ) : null}
-                            {canViewCommission ? (
-                                latestEntry ? (
-                                    <div className="rounded-2xl border bg-background/80 p-4">
-                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                            <Badge variant="outline" className={commissionStatusClass(latestEntry.status)}>
-                                                {commissionStatusLabel(latestEntry.status, t)}
-                                            </Badge>
-                                            <span className="text-xl font-black">{formatCurrency(latestEntry.amount, latestEntry.currency as CurrencyCode, iqdPreference)}</span>
-                                        </div>
-                                        <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                    {displayedAssignments.length > 0 ? (
+                        <div className="grid gap-3 xl:grid-cols-2">
+                            {displayedAssignments.map((assignment) => {
+                                const assignedAgent = directory.agentById.get(assignment.agentId)
+                                const canViewCommission = canViewAllCommission
+                                    || (canViewOwnCommission && Boolean(userId) && assignedAgent?.agent.linkedUserId === userId)
+                                const assignmentEntries = orderEntries.filter((entry) => entry.assignmentId === assignment.id)
+                                const sourceEntry = assignmentEntries.find((entry) => entry.kind === 'accrual')
+                                const latestEntry = assignmentEntries[0]
+                                const outstandingAmount = assignmentEntries
+                                    .filter((entry) => entry.kind !== 'estimate' && entry.kind !== 'approval')
+                                    .reduce((total, entry) => total + Number(entry.amount || 0), 0)
+                                const currency = (sourceEntry?.currency || latestEntry?.currency || orderCurrency) as CurrencyCode
+                                return (
+                                    <div key={assignment.id} className="space-y-3 rounded-2xl border bg-background/50 p-4">
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
                                             <div>
-                                                <div className="text-muted-foreground">{t('salesAgentCommissions.commissionBasis')}</div>
-                                                <div className="mt-1 font-semibold">{formatCurrency(latestEntry.basisAmount, latestEntry.currency as CurrencyCode, iqdPreference)}</div>
+                                                <div className="font-semibold">{assignedAgent?.name || t('salesAgentCommissions.assignedFieldAgent')}</div>
+                                                <div className="mt-1 text-xs text-muted-foreground">{t('salesAgentCommissions.assignedAt', { date: formatDateTime(assignment.assignedAt) })}</div>
                                             </div>
-                                            <div className="text-end">
-                                                <div className="text-muted-foreground">{t('salesAgentCommissions.rateSnapshot')}</div>
-                                                <div className="mt-1 font-semibold">{latestEntry.ratePercent}%</div>
+                                            {assignedAgent?.plan ? (
+                                                <Badge variant="outline" className="gap-1.5 border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300">
+                                                    <BadgePercent className="h-3.5 w-3.5" />
+                                                    {assignedAgent.plan.name} · {formatCommissionPlanTerms(assignedAgent.plan, iqdPreference)}
+                                                </Badge>
+                                            ) : (
+                                                <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                                                    {t('salesAgentCommissions.noCommissionPlan')}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                            <div className="rounded-xl border bg-background/70 p-3">
+                                                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                                                    <MapPin className="h-3.5 w-3.5" /> {t('salesAgentCommissions.customerCity')}
+                                                </div>
+                                                <div className="mt-1 font-medium">{assignment.customerCitySnapshot || '—'}</div>
+                                            </div>
+                                            <div className="rounded-xl border bg-background/70 p-3">
+                                                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                                                    <Truck className="h-3.5 w-3.5" /> {t('salesAgentCommissions.deliverySnapshot')}
+                                                </div>
+                                                <div className="mt-2 flex items-center justify-between gap-2">
+                                                    <span className="text-muted-foreground">{t('salesAgentCommissions.customerCharge')}</span>
+                                                    <span className="font-semibold">{formatCurrency(assignment.deliveryChargeAmount, currency, iqdPreference)}</span>
+                                                </div>
+                                                <div className="mt-1 flex items-center justify-between gap-2">
+                                                    <span className="text-muted-foreground">{t('salesAgentCommissions.internalCost')}</span>
+                                                    <span className="font-semibold">{formatCurrency(assignment.internalDeliveryCostAmount, currency, iqdPreference)}</span>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                ) : (
-                                    <div className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-                                        {t('salesAgentCommissions.lifecycleHint')}
+                                        {canViewCommission ? (sourceEntry ? (
+                                            <div className="rounded-xl border bg-background/80 p-3">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <Badge variant="outline" className={commissionStatusClass(latestEntry?.status || sourceEntry.status)}>
+                                                        {commissionStatusLabel(latestEntry?.status || sourceEntry.status, t)}
+                                                    </Badge>
+                                                    <span className="font-black">{formatCurrency(outstandingAmount, currency, iqdPreference)}</span>
+                                                </div>
+                                                <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                                                    <div>
+                                                        <div className="text-muted-foreground">{t('salesAgentCommissions.commissionBasis')}</div>
+                                                        <div className="mt-1 font-semibold">{formatCurrency(sourceEntry.basisAmount, currency, iqdPreference)}</div>
+                                                    </div>
+                                                    <div className="text-end">
+                                                        <div className="text-muted-foreground">{t('salesAgentCommissions.rateSnapshot')}</div>
+                                                        <div className="mt-1 font-semibold">{sourceEntry.ratePercent}%</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="rounded-xl border border-dashed p-3 text-sm text-muted-foreground">
+                                                {t('salesAgentCommissions.lifecycleHint')}
+                                            </div>
+                                        )) : null}
                                     </div>
                                 )
-                            ) : null}
-                        </>
+                            })}
+                        </div>
                     ) : (
                         <div className="rounded-2xl border border-dashed p-5 text-center text-sm text-muted-foreground">
                             {t('salesAgentCommissions.noSellingAgent')}

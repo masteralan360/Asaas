@@ -240,7 +240,7 @@ describe('buildPartnerAccountStatementLedger', () => {
         ])
     })
 
-    it('includes a sales-account agent commission lifecycle without double-counting its payout entry', () => {
+    it('presents a fully automatic agent commission settlement as one zero-net statement row', () => {
         const data = statementData()
         data.statementOrders = []
         data.settlementTransactions = [{
@@ -253,51 +253,43 @@ describe('buildPartnerAccountStatementLedger', () => {
             paidAt: '2026-01-06T10:00:00.000Z',
             createdAt: '2026-01-06T10:00:00.000Z',
             isDeleted: false,
-            referenceLabel: 'Agent commission payout SO-AGENT-1',
-            metadata: { orderId: 'agent-sale' }
+            sourceSubrecordId: 'commission-payout-entry',
+            referenceLabel: 'SO-AGENT-1',
+            metadata: { orderId: 'agent-sale', automaticSettlement: true }
         }] as any
         data.linkedOrderCodes = { 'agent-sale': 'SO-AGENT-1' }
         data.agentCommissionEntries = [
             {
                 id: 'commission-accrual',
                 orderId: 'agent-sale',
+                assignmentId: 'assignment-1',
                 agentId: 'agent-1',
                 kind: 'accrual',
-                amount: 50,
+                amount: 40,
                 currency: 'usd',
                 occurredAt: '2026-01-04T10:00:00.000Z',
                 createdAt: '2026-01-04T10:00:00.000Z',
                 isDeleted: false
             },
             {
-                id: 'commission-reversal',
-                orderId: 'agent-sale',
-                agentId: 'agent-1',
-                kind: 'reversal',
-                amount: -10,
-                currency: 'usd',
-                occurredAt: '2026-01-05T10:00:00.000Z',
-                createdAt: '2026-01-05T10:00:00.000Z',
-                isDeleted: false
-            },
-            {
                 id: 'commission-payout-entry',
                 orderId: 'agent-sale',
+                assignmentId: 'assignment-1',
                 agentId: 'agent-1',
                 kind: 'payout',
                 amount: -40,
                 currency: 'usd',
                 occurredAt: '2026-01-06T10:00:00.000Z',
                 createdAt: '2026-01-06T10:00:00.000Z',
+                settlementSource: 'automatic',
+                status: 'paid',
                 isDeleted: false
             }
         ] as any
 
         const ledger = buildPartnerAccountStatementLedger(data)[0]
         expect(ledger.entries.map((entry) => [entry.id, entry.reference, entry.descriptionKey, entry.delta])).toEqual([
-            ['agent-commission:commission-accrual', 'SO-AGENT-1', 'commissionEarned', -50],
-            ['agent-commission:commission-reversal', 'SO-AGENT-1', 'commissionReversed', 10],
-            ['payment:commission-payment', 'SO-AGENT-1', 'commissionPaid', 40]
+            ['agent-commission-settlement:commission-payout-entry', 'SO-AGENT-1', 'commissionSettledAutomatically', 0]
         ])
         expect(ledger.closingBalance).toBe(0)
     })

@@ -3269,6 +3269,7 @@ export function POS() {
                 customerId: checkout.customer.id,
                 customerName: checkout.customer.name,
                 salesAccountAgentId: checkout.salesAccountAgentId ?? null,
+                commissionEnabled: checkout.commissionEnabled,
                 sourceStorageId: sourceStorageIds.length === 1 ? sourceStorageIds[0] : null,
                 items: orderItems,
                 subtotal,
@@ -3331,11 +3332,10 @@ export function POS() {
             playCheckoutSound()
             refreshExchangeRate()
             if (commissionAssignmentError) {
+                console.error('[POS] Commission attribution needs attention for completed quick order:', commissionAssignmentError)
                 toast({
                     title: t('salesAgentCommissions.assignmentNeedsAttention'),
-                    description: commissionAssignmentError instanceof Error
-                        ? commissionAssignmentError.message
-                        : t('salesAgentCommissions.assignmentNeedsAttentionDescription'),
+                    description: t('salesAgentCommissions.assignmentNeedsAttentionDescription'),
                     variant: 'destructive'
                 })
             }
