@@ -18,6 +18,7 @@ import { convertCurrencyAmountWithAvailableSnapshot } from '@/lib/orderCurrency'
 import { getMissingProductCostMessage, hasValidProductCost } from '@/lib/productCost'
 import { mapSaleToUniversal } from '@/lib/mappings'
 import { INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY } from '@/lib/customTemplates'
+import { formatCookOrderTicketTimestamp } from '@/lib/cookOrderTicket'
 import { printService } from '@/services/printService'
 import { CheckoutSuccessModal } from '@/ui/components/pos/CheckoutSuccessModal'
 import { usePosReceiptPrinter } from '@/ui/components/pos/usePosReceiptPrinter'
@@ -131,10 +132,14 @@ async function createCookOrderTicketPdf({
     items,
     widthMm,
     direction,
+    locale,
+    printedAt,
 }: {
     items: InstantPosItem[]
     widthMm: number
     direction: 'ltr' | 'rtl'
+    locale: string
+    printedAt: Date
 }): Promise<Blob> {
     const widthPx = widthMm <= 58 ? 384 : 576
     const pixelsPerMm = widthPx / widthMm
@@ -143,12 +148,20 @@ async function createCookOrderTicketPdf({
     const titleFontPx = Math.round(pixelsPerMm * 4)
     const quantityFontPx = Math.round(pixelsPerMm * 3.4)
     const noteFontPx = Math.round(pixelsPerMm * 3.2)
+    const timestampFontPx = Math.round(pixelsPerMm * 2.8)
     const maxTextWidthPx = widthPx - (horizontalPaddingPx * 2)
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('2d')
     if (!context) throw new Error('Could not create the cook order ticket.')
 
     await document.fonts?.ready
+
+    context.font = `500 ${timestampFontPx}px Inter, Arial, sans-serif`
+    const timestampLines = wrapCookTicketText(
+        context,
+        formatCookOrderTicketTimestamp(locale, printedAt),
+        maxTextWidthPx,
+    )
 
     const rows = items.map((item) => {
         context.font = `700 ${titleFontPx}px Inter, Arial, sans-serif`
@@ -166,14 +179,19 @@ async function createCookOrderTicketPdf({
     const titleLineHeightPx = Math.round(titleFontPx * 1.25)
     const quantityLineHeightPx = Math.round(quantityFontPx * 1.25)
     const noteLineHeightPx = Math.round(noteFontPx * 1.3)
+    const timestampLineHeightPx = Math.round(timestampFontPx * 1.3)
+    const timestampGapPx = Math.round(pixelsPerMm * 2.5)
     const itemGapPx = Math.round(pixelsPerMm * 2.5)
-    const heightPx = verticalPaddingPx * 2 + rows.reduce((total, row) => (
-        total
-        + (row.nameLines.length * titleLineHeightPx)
-        + quantityLineHeightPx
-        + (row.noteLines.length * noteLineHeightPx)
-        + itemGapPx
-    ), 0)
+    const heightPx = verticalPaddingPx * 2
+        + (timestampLines.length * timestampLineHeightPx)
+        + timestampGapPx
+        + rows.reduce((total, row) => (
+            total
+            + (row.nameLines.length * titleLineHeightPx)
+            + quantityLineHeightPx
+            + (row.noteLines.length * noteLineHeightPx)
+            + itemGapPx
+        ), 0)
 
     canvas.width = widthPx
     canvas.height = heightPx
@@ -183,6 +201,13 @@ async function createCookOrderTicketPdf({
     context.textAlign = direction === 'rtl' ? 'right' : 'left'
     const textX = direction === 'rtl' ? widthPx - horizontalPaddingPx : horizontalPaddingPx
     let y = verticalPaddingPx
+
+    context.font = `500 ${timestampFontPx}px Inter, Arial, sans-serif`
+    for (const line of timestampLines) {
+        y += timestampLineHeightPx
+        context.fillText(line, textX, y)
+    }
+    y += timestampGapPx
 
     for (const row of rows) {
         context.font = `700 ${titleFontPx}px Inter, Arial, sans-serif`
@@ -1087,13 +1112,15 @@ export function InstantPOS() {
     }, [isPreprinting, preprintReceiptData, printPreprintReceipt, t, toast])
 
     const canCookOrderTicket = !!activeTicket && activeTicket.items.length > 0
-    const cookTicketDirection = useMemo<'ltr' | 'rtl'>(() => {
-        const printLanguage = features.print_lang && features.print_lang !== 'auto'
+    const cookTicketLocale = useMemo(() => (
+        features.print_lang && features.print_lang !== 'auto'
             ? features.print_lang
             : i18n.language
-        return printLanguage.startsWith('ar') || printLanguage.startsWith('ku') ? 'rtl' : 'ltr'
-    }, [features.print_lang, i18n.language])
-    const buildCookOrderTicketPdf = useCallback(async () => {
+    ), [features.print_lang, i18n.language])
+    const cookTicketDirection = useMemo<'ltr' | 'rtl'>(() => {
+        return cookTicketLocale.startsWith('ar') || cookTicketLocale.startsWith('ku') ? 'rtl' : 'ltr'
+    }, [cookTicketLocale])
+    const buildCookOrderTicketPdf = useCallback(async (printedAt: Date) => {
         if (!activeTicket || activeTicket.items.length === 0) {
             throw new Error('Cook order ticket items are not available.')
         }
@@ -1105,13 +1132,15 @@ export function InstantPOS() {
             items: activeTicket.items,
             widthMm: thermalPrinter?.roll_width_mm ?? 80,
             direction: cookTicketDirection,
+            locale: cookTicketLocale,
+            printedAt,
         })
-    }, [activeTicket, cookTicketDirection, features.thermal_printing, user?.workspaceId])
+    }, [activeTicket, cookTicketDirection, cookTicketLocale, features.thermal_printing, user?.workspaceId])
     const { printReceipt: printCookOrderTicket } = usePosReceiptPrinter({
         saleData: undefined,
         features,
         enabled: canCookOrderTicket,
-        receiptPdfBuilder: buildCookOrderTicketPdf,
+        receiptPdfBuilder: () => buildCookOrderTicketPdf(new Date()),
     })
 
     const handleCookOrderTicket = useCallback(async () => {
@@ -1119,8 +1148,10 @@ export function InstantPOS() {
 
         setIsPrintingCookOrderTicket(true)
         try {
+            const printedAt = new Date()
             await printCookOrderTicket({
-                title: `Cook_Order_Ticket_${activeTicket.number}`
+                title: `Cook_Order_Ticket_${activeTicket.number}`,
+                pdfBuilder: () => buildCookOrderTicketPdf(printedAt),
             })
         } catch (error) {
             console.error('[Instant POS] Failed to print cook order ticket:', error)
@@ -1132,7 +1163,7 @@ export function InstantPOS() {
         } finally {
             setIsPrintingCookOrderTicket(false)
         }
-    }, [activeTicket, canCookOrderTicket, isPrintingCookOrderTicket, printCookOrderTicket, t, toast])
+    }, [activeTicket, buildCookOrderTicketPdf, canCookOrderTicket, isPrintingCookOrderTicket, printCookOrderTicket, t, toast])
 
     const statusLabels = useMemo(() => ({
         pending: t('instantPos.status.pending') || 'Pending',
