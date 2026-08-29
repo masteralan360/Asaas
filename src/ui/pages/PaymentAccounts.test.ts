@@ -20,6 +20,9 @@ function paymentTransaction(overrides: Partial<PaymentTransaction>): PaymentTran
     version: 1,
     isDeleted: false,
     ...overrides,
+    // Keep the fixture valid even when callers omit the required sync metadata.
+    syncStatus: overrides.syncStatus ?? 'synced',
+    lastSyncedAt: overrides.lastSyncedAt ?? null,
   }
 }
 
