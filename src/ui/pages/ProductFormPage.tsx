@@ -38,12 +38,14 @@ import {
     fetchTableFromSupabase,
     findActiveProductBySku,
     getPrimaryStorageFromList,
+    replaceProductCommissionRule,
     replaceProductPriceBookItems,
     syncProductBarcodeCachesForWorkspace,
     updateProductBarcode,
     updateProduct,
     useCategories,
     usePriceBookCatalogState,
+    useProductCommissionCatalogState,
     useProduct,
     useProductBarcodes,
     useProducts,
@@ -53,6 +55,7 @@ import {
     type ProductBarcode,
     type PriceBookItem
 } from '@/local-db'
+import { hasEffectiveSalesAgentCommissionPermission, useWorkspacePermissions } from '@/permissions'
 import type { CurrencyCode } from '@/local-db/models'
 import { assetManager } from '@/lib/assetManager'
 import { normalizeBarcodeDigits, normalizeBarcodeScannerText } from '@/lib/barcodeScanner'
@@ -79,6 +82,11 @@ import {
     ProductPriceBookItemsEditor,
     type ProductPriceBookDraft
 } from '@/ui/components/ProductPriceBookItemsEditor'
+import {
+    ProductCommissionRuleEditor,
+    emptyProductCommissionRuleDraft,
+    type ProductCommissionRuleDraft
+} from '@/ui/components/commissions/ProductCommissionRuleEditor'
 import {
     Button,
     Card,
@@ -280,7 +288,8 @@ function mapProductToFormData(product: Product, hideCosts = false): ProductFormD
 function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?: string }) {
     const { t } = useTranslation()
     const { user } = useAuth()
-    const { features, hasCapability } = useWorkspace()
+    const { features, hasCapability, hasFeature } = useWorkspace()
+    const { permissionKeys } = useWorkspacePermissions()
     const hideCosts = useHideCosts()
     const [, navigate] = useLocation()
     const { toast } = useToast()
@@ -293,6 +302,14 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const workspaceId = user?.workspaceId || ''
     const { isDynamicUnit, options: unitOptions } = useUnitRegistry(workspaceId)
     const priceBooksEnabled = hasCapability('priceBooks')
+    const productCommissionsEnabled = hasFeature('sales_agent_commissions')
+        && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.managePlans')
+    const {
+        rules: productCommissionRules,
+        recipients: productCommissionRuleAgents,
+        isReady: isProductCommissionCatalogReady,
+        error: productCommissionCatalogError
+    } = useProductCommissionCatalogState(workspaceId || undefined, productCommissionsEnabled)
     const sourcePriceBookProductId = mode === 'create' ? undefined : product?.id
     const {
         priceBooks,
@@ -309,6 +326,14 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
             : [],
         [priceBookItems, sourcePriceBookProductId]
     )
+    const sourceProductCommissionRule = useMemo(() => (product?.id
+        ? productCommissionRules
+            .filter((rule) => rule.productId === product.id && rule.isActive && !rule.effectiveTo)
+            .sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom))[0]
+        : undefined), [product?.id, productCommissionRules])
+    const sourceProductCommissionAgentIds = useMemo(() => sourceProductCommissionRule
+        ? productCommissionRuleAgents.filter((row) => row.ruleId === sourceProductCommissionRule.id).map((row) => row.agentId)
+        : [], [productCommissionRuleAgents, sourceProductCommissionRule])
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const isClone = mode === 'clone'
     const isEditing = mode === 'edit'
@@ -348,6 +373,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
         )
     )
     const [priceBookRows, setPriceBookRows] = useState<ProductPriceBookDraft[]>([])
+    const [productCommissionDraft, setProductCommissionDraft] = useState<ProductCommissionRuleDraft>(() => emptyProductCommissionRuleDraft(features.default_currency))
     const [isSaving, setIsSaving] = useState(false)
     const [overrideAttention, setOverrideAttention] = useState(false)
     const [imageError, setImageError] = useState(false)
@@ -378,6 +404,8 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const initialFormSnapshotRef = useRef<string | null>(null)
     const initializedPriceBookRowsKeyRef = useRef<string | null>(null)
     const initialPriceBookRowsSnapshotRef = useRef<string | null>(null)
+    const initializedProductCommissionRuleKeyRef = useRef<string | null>(null)
+    const initialProductCommissionSnapshotRef = useRef<string | null>(null)
     const createdProductIdRef = useRef<string | null>(null)
 
     const isProductDirty = useMemo(() => {
@@ -425,7 +453,26 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
         return serializePriceBookDrafts(priceBookRows) !== initialPriceBookRowsSnapshotRef.current
     }, [isReadOnly, priceBookRows, priceBooksEnabled])
 
-    const isDirty = isProductDirty || arePriceBookRowsDirty
+    const isProductCommissionDirty = useMemo(() => (
+        productCommissionsEnabled
+        && !isReadOnly
+        && initialProductCommissionSnapshotRef.current !== null
+        && JSON.stringify(productCommissionDraft) !== initialProductCommissionSnapshotRef.current
+    ), [isReadOnly, productCommissionDraft, productCommissionsEnabled])
+
+    const productCommissionValidationMessage = useMemo(() => {
+        if (!productCommissionsEnabled || !productCommissionDraft.enabled) return null
+        const amount = Number(productCommissionDraft.amount)
+        if (!Number.isFinite(amount) || amount <= 0 || (productCommissionDraft.commissionType === 'percentage' && amount > 100)) {
+            return t('salesAgentCommissions.productCommission.invalidAmount')
+        }
+        if (productCommissionDraft.recipientScope === 'selected_assigned' && productCommissionDraft.agentIds.length === 0) {
+            return t('salesAgentCommissions.productCommission.invalidRecipients')
+        }
+        return null
+    }, [productCommissionDraft, productCommissionsEnabled, t])
+
+    const isDirty = isProductDirty || arePriceBookRowsDirty || isProductCommissionDirty
 
     const { showGuard, confirmNavigation, cancelNavigation, requestNavigation } = useUnsavedChangesGuard(isDirty)
 
@@ -572,6 +619,27 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     ])
 
     useEffect(() => {
+        if (!productCommissionsEnabled) return
+        const sourceKey = mode === 'create'
+            ? `create:${features.default_currency}`
+            : product ? `${mode}:${product.id}:${sourceProductCommissionRule?.id || 'none'}` : null
+        if (!sourceKey || initializedProductCommissionRuleKeyRef.current === sourceKey) return
+        const next = sourceProductCommissionRule ? {
+            enabled: true,
+            commissionType: sourceProductCommissionRule.commissionType,
+            amount: String(sourceProductCommissionRule.commissionType === 'fixed_amount'
+                ? sourceProductCommissionRule.fixedAmount || ''
+                : sourceProductCommissionRule.ratePercent || ''),
+            currency: sourceProductCommissionRule.fixedCurrency || formData.currency,
+            recipientScope: sourceProductCommissionRule.recipientScope,
+            agentIds: sourceProductCommissionAgentIds
+        } satisfies ProductCommissionRuleDraft : emptyProductCommissionRuleDraft(formData.currency)
+        setProductCommissionDraft(next)
+        initialProductCommissionSnapshotRef.current = JSON.stringify(next)
+        initializedProductCommissionRuleKeyRef.current = sourceKey
+    }, [features.default_currency, formData.currency, mode, product, productCommissionsEnabled, sourceProductCommissionAgentIds, sourceProductCommissionRule])
+
+    useEffect(() => {
         if (overrideAttention && priceBookRows.length > 0) {
             setOverrideAttention(false)
         }
@@ -705,6 +773,24 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                 variant: 'destructive',
                 title: t('common.error', { defaultValue: 'Error' }),
                 description: error.message
+            })
+            return
+        }
+
+        const normalizedErrorMessage = error instanceof Error ? error.message.toLowerCase() : ''
+        if (
+            normalizedErrorMessage.includes('product commission')
+            || normalizedErrorMessage.includes('eligible field agents')
+            || normalizedErrorMessage.includes('at least one agent')
+        ) {
+            toast({
+                variant: 'destructive',
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: normalizedErrorMessage.includes('currency')
+                    ? t('salesAgentCommissions.errors.commissionExchangeRateUnavailable')
+                    : normalizedErrorMessage.includes('agent')
+                        ? t('salesAgentCommissions.productCommission.invalidRecipients')
+                        : t('salesAgentCommissions.productCommission.invalidAmount')
             })
             return
         }
@@ -908,6 +994,28 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
             return false
         }
 
+        if (productCommissionsEnabled && isProductCommissionDirty && !isProductCommissionCatalogReady) {
+            toast({
+                title: productCommissionCatalogError
+                    ? t('common.error', { defaultValue: 'Error' })
+                    : t('salesAgentCommissions.productCommission.loading'),
+                description: productCommissionCatalogError
+                    ? t('salesAgentCommissions.productCommission.loadingError')
+                    : t('salesAgentCommissions.productCommission.loadingDescription'),
+                ...(productCommissionCatalogError ? { variant: 'destructive' as const } : {})
+            })
+            return false
+        }
+
+        if (productCommissionValidationMessage) {
+            toast({
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: productCommissionValidationMessage,
+                variant: 'destructive'
+            })
+            return false
+        }
+
         setIsSaving(true)
 
         try {
@@ -986,6 +1094,26 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                 const savedRows = mapPriceBookItemsToDrafts(savedItems)
                 setPriceBookRows(savedRows)
                 initialPriceBookRowsSnapshotRef.current = serializePriceBookDrafts(savedRows)
+            }
+
+            if (productCommissionsEnabled && isProductCommissionDirty) {
+                await replaceProductCommissionRule(
+                    workspaceId,
+                    savedProductId,
+                    productCommissionDraft.enabled ? {
+                        commissionType: productCommissionDraft.commissionType,
+                        ratePercent: productCommissionDraft.commissionType === 'percentage'
+                            ? Number(productCommissionDraft.amount) : 0,
+                        fixedAmount: productCommissionDraft.commissionType === 'fixed_amount'
+                            ? Number(productCommissionDraft.amount) : null,
+                        fixedCurrency: productCommissionDraft.commissionType === 'fixed_amount'
+                            ? productCommissionDraft.currency : null,
+                        recipientScope: productCommissionDraft.recipientScope,
+                        agentIds: productCommissionDraft.agentIds,
+                        createdBy: user?.id || null
+                    } : null
+                )
+                initialProductCommissionSnapshotRef.current = JSON.stringify(productCommissionDraft)
             }
 
             initialFormSnapshotRef.current = JSON.stringify(formData)
@@ -1186,7 +1314,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                         <Button
                             type="submit"
                             form="product-form-page"
-                            disabled={isSaving || (priceBooksEnabled && !isPriceBookCatalogReady)}
+                            disabled={isSaving || (priceBooksEnabled && !isPriceBookCatalogReady) || Boolean(productCommissionValidationMessage)}
                             className="h-10 gap-2 px-4 font-bold"
                             data-tour-id="tutorial-product-save"
                         >
@@ -1939,6 +2067,31 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                     </div>
                                 )
                             ) : null}
+                            {productCommissionsEnabled ? (
+                                isProductCommissionCatalogReady ? (
+                                    <ProductCommissionRuleEditor
+                                        workspaceId={workspaceId}
+                                        draft={productCommissionDraft}
+                                        onChange={setProductCommissionDraft}
+                                        iqdDisplayPreference={features.iqd_display_preference}
+                                        validationMessage={productCommissionValidationMessage}
+                                        disabled={isReadOnly || isSaving}
+                                    />
+                                ) : (
+                                    <div className="border-t border-border/60 pt-6">
+                                        <div className={cn(
+                                            'rounded-2xl border px-4 py-6 text-center text-sm',
+                                            productCommissionCatalogError
+                                                ? 'border-destructive/40 bg-destructive/5 text-destructive'
+                                                : 'border-dashed border-border/70 bg-muted/20 text-muted-foreground'
+                                        )}>
+                                            {productCommissionCatalogError
+                                                ? t('salesAgentCommissions.productCommission.loadingError')
+                                                : t('salesAgentCommissions.productCommission.loading')}
+                                        </div>
+                                    </div>
+                                )
+                            ) : null}
                         </CardContent>
                     </Card>
 
@@ -2353,7 +2506,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                 <Button
                                     type="submit"
                                     form="product-form-page"
-                                    disabled={isSaving || (priceBooksEnabled && !isPriceBookCatalogReady)}
+                                    disabled={isSaving || (priceBooksEnabled && !isPriceBookCatalogReady) || Boolean(productCommissionValidationMessage)}
                                     className="h-12 w-full rounded-xl font-black"
                                     data-tour-id="tutorial-product-save"
                                 >
@@ -2496,7 +2649,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                     {t('common.unsavedChanges.continue') || 'Continue Editing'}
                                 </Button>
                                 <Button
-                                    disabled={isSaving || (priceBooksEnabled && !isPriceBookCatalogReady)}
+                                    disabled={isSaving || (priceBooksEnabled && !isPriceBookCatalogReady) || Boolean(productCommissionValidationMessage)}
                                     onClick={async () => {
                                         const didSave = await persistProduct({ navigateAfterSave: false })
                                         if (didSave) {

@@ -5,6 +5,7 @@ import {
     db,
     useAgent,
     useAgentCommissionEntries,
+    useAgentProductCommissionEntries,
     useBusinessPartner,
     useDeliveryLedgerEntries,
     useDeliveryMerchantProfiles,
@@ -35,6 +36,7 @@ export function usePartnerAccountStatement(
     const rawPartner = useBusinessPartner(partnerId || undefined)
     const agent = useAgent(rawPartner?.agentFacetId)
     const commissionEntries = useAgentCommissionEntries(workspaceId)
+    const productCommissionEntries = useAgentProductCommissionEntries(workspaceId)
     const salesOrders = useSalesOrders(workspaceId)
     const salesOrderReturns = useSalesOrderReturnsForWorkspace(workspaceId)
     const salesOrderReturnItems = useSalesOrderReturnItemsForWorkspace(workspaceId)
@@ -101,6 +103,12 @@ export function usePartnerAccountStatement(
             ? commissionEntries.filter((entry) => entry.agentId === salesAccountAgent.id)
             : [],
         [commissionEntries, salesAccountAgent]
+    )
+    const salesAccountProductCommissionEntries = useMemo(
+        () => salesAccountAgent
+            ? productCommissionEntries.filter((entry) => entry.agentId === salesAccountAgent.id)
+            : [],
+        [productCommissionEntries, salesAccountAgent]
     )
 
     const settlementTransactions = useMemo(() => {
@@ -169,6 +177,7 @@ export function usePartnerAccountStatement(
         const allOrders = [...partnerSalesOrders, ...partnerPurchaseOrders]
         return {
             period,
+            isAgentCommissionStatement: Boolean(salesAccountAgent),
             salesOrders: partnerSalesOrders,
             salesOrderReturns: partnerSalesOrderReturns,
             salesOrderReturnItems: partnerSalesOrderReturnItems,
@@ -183,11 +192,12 @@ export function usePartnerAccountStatement(
             ),
             settlementTransactions,
             agentCommissionEntries: salesAccountCommissionEntries,
+            agentProductCommissionEntries: salesAccountProductCommissionEntries,
             deliveryLedgerEntries: merchantDeliveryEntries,
             deliveryShipmentReferences,
             deliverySettlementReferences
         }
-    }, [deliverySettlementReferences, deliveryShipmentReferences, loanPayments, merchantDeliveryEntries, partner, partnerLoans, partnerPurchaseOrders, partnerSalesOrderReturnItems, partnerSalesOrderReturns, partnerSalesOrders, period, salesAccountCommissionEntries, settlementTransactions])
+    }, [deliverySettlementReferences, deliveryShipmentReferences, loanPayments, merchantDeliveryEntries, partner, partnerLoans, partnerPurchaseOrders, partnerSalesOrderReturnItems, partnerSalesOrderReturns, partnerSalesOrders, period, salesAccountCommissionEntries, salesAccountProductCommissionEntries, settlementTransactions])
 
     return {
         partner,

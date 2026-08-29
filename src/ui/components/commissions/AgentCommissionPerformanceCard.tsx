@@ -6,6 +6,7 @@ import { Link } from 'wouter'
 import { formatCurrency, formatDateTime } from '@/lib/utils'
 import {
     useAgentCommissionEntries,
+    useAgentProductCommissionEntries,
     useSalesOrders,
     useSalesOrderAgentAssignments,
     type CurrencyCode,
@@ -51,6 +52,7 @@ export function AgentCommissionPerformanceCard({
     const { t } = useTranslation()
     const directory = useCommissionAgentDirectory(workspaceId)
     const allEntries = useAgentCommissionEntries(workspaceId)
+    const allProductEntries = useAgentProductCommissionEntries(workspaceId)
     const assignments = useSalesOrderAgentAssignments(workspaceId)
     const salesOrders = useSalesOrders(workspaceId)
     const orderNumberById = useMemo(
@@ -68,6 +70,14 @@ export function AgentCommissionPerformanceCard({
         .sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime()),
     [agentId, allEntries, endDate, startDate])
     const summary = useMemo(() => summarizeCommissionEntries(entries), [entries])
+    const productCommissionTotals = useMemo(() => allProductEntries
+        .filter((entry) => entry.agentId === agentId && !entry.isDeleted
+            && (!startDate || entry.occurredAt >= startDate)
+            && (!endDate || entry.occurredAt < endDate))
+        .reduce<Record<string, number>>((totals, entry) => {
+            totals[entry.currency] = (totals[entry.currency] || 0) + Number(entry.amount || 0)
+            return totals
+        }, {}), [agentId, allProductEntries, endDate, startDate])
     const entriesByOrderId = useMemo(() => {
         const rows = new Map<string, typeof allEntries>()
         for (const entry of allEntries) {
@@ -153,7 +163,7 @@ export function AgentCommissionPerformanceCard({
                         {t('salesAgentCommissions.noPlanPerformanceNotice')}
                     </div>
                 ) : null}
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
                     <PerformanceMetric label={t('salesAgentCommissions.assignedOrders')} icon={ReceiptText} value={String(assignedOrders.length)} />
                     <PerformanceMetric label={t('salesAgentCommissions.recognizedEarned')} icon={BadgeCheck} value={<CommissionCurrencyTotalsView totals={summary.earned} iqdPreference={iqdPreference} />} />
                     <PerformanceMetric label={t('salesAgentCommissions.approved')} icon={BadgePercent} value={<CommissionCurrencyTotalsView totals={summary.approved} iqdPreference={iqdPreference} />} />
@@ -168,6 +178,7 @@ export function AgentCommissionPerformanceCard({
                         )}
                     />
                     <PerformanceMetric label={t('salesAgentCommissions.due')} icon={CircleDollarSign} value={<CommissionCurrencyTotalsView totals={summary.due} iqdPreference={iqdPreference} />} />
+                    <PerformanceMetric label={t('salesAgentCommissions.productCommission.earned')} icon={BadgePercent} value={<CommissionCurrencyTotalsView totals={productCommissionTotals} iqdPreference={iqdPreference} />} />
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
@@ -202,6 +213,7 @@ export function AgentCommissionPerformanceCard({
                                         <TableHead className="text-end">{t('salesAgentCommissions.orderTotal')}</TableHead>
                                         <TableHead className="text-end">{t('salesAgentCommissions.basis')}</TableHead>
                                         <TableHead className="text-end">{t('salesAgentCommissions.commission')}</TableHead>
+                                        <TableHead className="text-end">{t('salesAgentCommissions.productCommission.total')}</TableHead>
                                         <TableHead className="text-end">{t('salesAgentCommissions.action')}</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -216,6 +228,9 @@ export function AgentCommissionPerformanceCard({
                                             entry.kind === 'accrual' && entry.assignmentId === assignment?.id
                                         ))
                                         const historicalBasisAmount = sourceEntry?.basisAmount ?? null
+                                        const productCommissionAmount = allProductEntries
+                                            .filter((entry) => entry.assignmentId === assignment?.id && entry.orderId === order.id && !entry.isDeleted)
+                                            .reduce((total, entry) => total + Number(entry.amount || 0), 0)
                                         return (
                                             <TableRow key={order.id}>
                                                 <TableCell className="font-semibold">{order.orderNumber}</TableCell>
@@ -235,6 +250,7 @@ export function AgentCommissionPerformanceCard({
                                                 <TableCell className="text-end font-semibold">{formatCurrency(order.total, order.currency, iqdPreference)}</TableCell>
                                                 <TableCell className="text-end">{historicalBasisAmount !== null && sourceEntry ? formatCurrency(historicalBasisAmount, sourceEntry.currency as CurrencyCode, iqdPreference) : '—'}</TableCell>
                                                 <TableCell className="text-end font-black">{orderEntries.length > 0 && sourceEntry ? formatCurrency(commissionAmount, sourceEntry.currency as CurrencyCode, iqdPreference) : '—'}</TableCell>
+                                                <TableCell className="text-end font-bold">{productCommissionAmount !== 0 && sourceEntry ? formatCurrency(productCommissionAmount, sourceEntry.currency as CurrencyCode, iqdPreference) : '—'}</TableCell>
                                                 <TableCell className="text-end">
                                                     <Button asChild variant="ghost" size="sm">
                                                         <Link href={`/orders/${order.id}`}>

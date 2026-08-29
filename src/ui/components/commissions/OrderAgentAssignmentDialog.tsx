@@ -96,6 +96,13 @@ export function OrderAgentAssignmentDialog({
                             orderCurrency={order.currency || features.default_currency}
                             orderTotal={order.total || 0}
                             exchangeRates={order.exchangeRates ?? []}
+                            orderItems={(order.items || []).map((item) => ({
+                                id: item.id,
+                                productId: item.productId,
+                                productName: item.productName,
+                                quantity: item.quantity,
+                                convertedUnitPrice: item.convertedUnitPrice
+                            }))}
                             availableCurrencies={availableCurrencies}
                             iqdDisplayPreference={features.iqd_display_preference}
                             disabled={isSaving}

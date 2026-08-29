@@ -240,6 +240,29 @@ describe('buildPartnerAccountStatementLedger', () => {
         ])
     })
 
+    it('shows immutable per-unit and line product commission snapshots without changing the account balance', () => {
+        const data = statementData()
+        data.itemizeSalesOrders = true
+        data.isAgentCommissionStatement = true
+        data.statementOrders = [{
+            id: 'commissioned-sale', orderNumber: 'SO-PRODUCT-1', customerId: 'agent-partner',
+            total: 30, currency: 'iqd', status: 'completed', createdAt: '2026-01-04T10:00:00.000Z',
+            isDeleted: false, linkedLoanId: null,
+            items: [{ id: 'product-line', productName: 'Service pack', quantity: 3, unit: 'pcs', lineTotal: 30 }]
+        }] as any
+        data.settlementTransactions = []
+        data.agentProductCommissionEntries = [{
+            id: 'product-commission-accrual', orderId: 'commissioned-sale', assignmentId: 'assignment-1', agentId: 'agent-1',
+            orderItemId: 'product-line', productId: 'product-1', kind: 'accrual', status: 'earned', currency: 'iqd',
+            commissionType: 'fixed_amount', ratePercent: 0, quantity: 3, basisAmountPerUnit: 10,
+            commissionPerUnit: 5, amount: 15, occurredAt: '2026-01-04T10:00:00.000Z', isDeleted: false
+        }] as any
+
+        const ledger = buildPartnerAccountStatementLedger(data)[0]
+        const entry = ledger.entries.find((row) => row.id === 'sales-order:commissioned-sale:item:product-line')
+        expect(entry).toMatchObject({ commissionPerProduct: 5, totalProductCommission: 15, delta: 30, runningBalance: 30 })
+    })
+
     it('presents a fully automatic agent commission settlement as one zero-net statement row', () => {
         const data = statementData()
         data.statementOrders = []

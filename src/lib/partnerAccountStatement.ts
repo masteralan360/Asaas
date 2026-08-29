@@ -1,5 +1,6 @@
 import type {
     AgentCommissionEntry,
+    AgentProductCommissionEntry,
     DeliveryLedgerEntry,
     Loan,
     LoanPayment,
@@ -31,6 +32,8 @@ export type PartnerAccountStatementData = {
      * keep the historical one-row-per-document presentation by default.
      */
     itemizeSalesOrders?: boolean
+    /** Enables product-commission columns on an eligible agent statement. */
+    isAgentCommissionStatement?: boolean
     salesOrders: SalesOrder[]
     salesOrderReturns?: OrderReturn[]
     salesOrderReturnItems?: OrderReturnItem[]
@@ -42,6 +45,8 @@ export type PartnerAccountStatementData = {
     settlementTransactions?: PaymentTransaction[]
     /** Commission activity is included only for a sales-account agent's own statement. */
     agentCommissionEntries?: AgentCommissionEntry[]
+    /** Historical product-line snapshots for an eligible agent statement. */
+    agentProductCommissionEntries?: AgentProductCommissionEntry[]
     /** Merchant-facing Post Service subledger entries. */
     deliveryLedgerEntries?: DeliveryLedgerEntry[]
     deliveryShipmentReferences?: Record<string, string>
@@ -114,6 +119,9 @@ export type PartnerAccountStatementEntry = {
     itemName?: string | null
     quantity?: number | null
     unit?: string | null
+    /** Historical commission explanation for agent product rows; never changes the account delta. */
+    commissionPerProduct?: number | null
+    totalProductCommission?: number | null
     currency: string
     /** Positive movements increase the amount due from the partner. */
     delta: number
@@ -338,6 +346,7 @@ function createOrderEntries(data: PartnerAccountStatementData): PartnerAccountSt
         returnItemsByReturnId.set(returnItem.returnId, rows)
     }
     const entries: PartnerAccountStatementEntry[] = []
+    const productCommissionEntries = (data.agentProductCommissionEntries || []).filter((entry) => !entry.isDeleted)
 
     for (const order of sourceOrders) {
         if (order.isDeleted || order.status === 'draft' || order.status === 'cancelled') continue
@@ -389,6 +398,12 @@ function createOrderEntries(data: PartnerAccountStatementData): PartnerAccountSt
                     itemName: item.productName,
                     quantity: Number(item.quantity || 0),
                     unit: item.unit || null,
+                    commissionPerProduct: productCommissionEntries
+                        .find((entry) => entry.orderId === salesOrder.id && entry.orderItemId === item.id && entry.kind === 'accrual')
+                        ?.commissionPerUnit ?? null,
+                    totalProductCommission: productCommissionEntries
+                        .filter((entry) => entry.orderId === salesOrder.id && entry.orderItemId === item.id && entry.kind === 'accrual')
+                        .reduce((sum, entry) => sum + Number(entry.amount || 0), 0) || null,
                     note: item.note || salesOrder.notes,
                     currency: salesOrder.currency,
                     delta: Math.abs(lineAmount),
@@ -448,6 +463,12 @@ function createOrderEntries(data: PartnerAccountStatementData): PartnerAccountSt
                     itemName: sourceItem?.productName || null,
                     quantity: -Math.abs(Number(returnItem.quantity || 0)),
                     unit: sourceItem?.unit || null,
+                    commissionPerProduct: productCommissionEntries
+                        .find((entry) => entry.orderId === salesOrder.id && entry.orderItemId === returnItem.orderItemId && entry.kind === 'accrual')
+                        ?.commissionPerUnit ?? null,
+                    totalProductCommission: productCommissionEntries
+                        .filter((entry) => entry.orderReturnId === orderReturn.id && entry.orderItemId === returnItem.orderItemId)
+                        .reduce((sum, entry) => sum + Number(entry.amount || 0), 0) || null,
                     returnReason: orderReturn.reason,
                     currency: salesOrder.currency,
                     delta: -Math.abs(Number(returnItem.refundAmount || 0)),

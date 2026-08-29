@@ -32,6 +32,10 @@ import type {
   SalesOrderAgentAssignmentSource,
   WorkspacePaymentMethod,
 } from "./models";
+import {
+  activeProductCommissionRule,
+  appendAgentProductCommissionEntry,
+} from "./productCommissions";
 import { addToOfflineMutations } from "./offlineMutations";
 
 const PLAN_TABLE = "agent_commission_plans";
@@ -414,26 +418,32 @@ export function calculateManualSalesOrderCommission(
     | "manualCommissionExchangeRateTimestamp"
     | "manualCommissionExchangeRates"
   >,
+  excludedProductBasis = 0,
 ): CommissionCalculation | null {
   const manual = getAssignmentManualSalesAgentCommission(assignment);
   if (!manual) return null;
   const orderTotal = Math.max(0, Number(order.total || 0));
+  // A product rule replaces normal commission for that line. Manual order
+  // commission follows the same rule: it is only calculated over the part of
+  // the order not covered by immutable product-line commission snapshots.
+  const eligibleTotal = Math.max(0, orderTotal - Math.max(0, excludedProductBasis));
+  const remainingRatio = orderTotal > 0 ? eligibleTotal / orderTotal : 0;
   const isEligibleOrder = order.status !== "cancelled"
     && order.returnStatus !== "full"
     && !order.isDeleted;
   const commissionAmount = !isEligibleOrder
     ? 0
     : manual.type === "percentage"
-      ? roundCommissionAmount(orderTotal * manual.sourceAmount / 100)
-      : manual.convertedAmount;
+      ? roundCommissionAmount(eligibleTotal * manual.sourceAmount / 100)
+      : roundCommissionAmount(manual.convertedAmount * remainingRatio);
 
   return {
     currency: order.currency,
-    revenueAmount: isEligibleOrder ? roundCommissionAmount(orderTotal) : 0,
+    revenueAmount: isEligibleOrder ? roundCommissionAmount(eligibleTotal) : 0,
     costAmount: 0,
     taxAmount: 0,
     deliveryChargeAmount: 0,
-    basisAmount: isEligibleOrder ? roundCommissionAmount(orderTotal) : 0,
+    basisAmount: isEligibleOrder ? roundCommissionAmount(eligibleTotal) : 0,
     ratePercent: manual.type === "percentage" ? manual.sourceAmount : 0,
     commissionAmount,
   };
@@ -1146,6 +1156,7 @@ export function calculateSalesOrderCommission(
     SalesOrderAgentAssignment,
     "deliveryChargeAmount" | "internalDeliveryCostAmount"
   > | null,
+  excludedProductIds: ReadonlySet<string> = new Set(),
 ): CommissionCalculation {
   const commissionType = resolveCommissionPlanType(plan.commissionType);
   const ratePercent = commissionType === "percentage" ? assertRate(plan.ratePercent) : 0;
@@ -1163,6 +1174,7 @@ export function calculateSalesOrderCommission(
 
   let itemRevenue = 0;
   let itemCost = 0;
+  let fullItemRevenue = 0;
   for (const item of order.items ?? []) {
     const returnedQuantity = Math.min(
       getOrderLineInventoryQuantity(item),
@@ -1170,8 +1182,13 @@ export function calculateSalesOrderCommission(
     );
     const netPaidQuantity = Math.max(0, getOrderLinePaidQuantity(item) - returnedQuantity);
     const netCostQuantity = Math.max(0, getOrderLineInventoryQuantity(item) - returnedQuantity);
-    itemRevenue += netPaidQuantity * Math.max(0, Number(item.convertedUnitPrice || 0));
-    itemCost += netCostQuantity * Math.max(0, Number(item.convertedCostPrice ?? item.costPrice ?? 0));
+    const itemRevenueAmount = netPaidQuantity * Math.max(0, Number(item.convertedUnitPrice || 0));
+    const itemCostAmount = netCostQuantity * Math.max(0, Number(item.convertedCostPrice ?? item.costPrice ?? 0));
+    fullItemRevenue += itemRevenueAmount;
+    if (!excludedProductIds.has(item.productId)) {
+      itemRevenue += itemRevenueAmount;
+      itemCost += itemCostAmount;
+    }
   }
 
   // Every normalized persisted adjustment changes the order's commercial
@@ -1183,16 +1200,16 @@ export function calculateSalesOrderCommission(
     const amount = Math.max(0, Number(adjustment.convertedAmount || 0));
     return total + (adjustment.type === "addition" ? amount : -amount);
   }, 0);
-  const merchandiseRevenue = Math.max(
-    0,
-    itemRevenue - Math.max(0, Number(order.discount || 0)) + orderAdjustmentNet,
-  );
-  const taxAmount = plan.includeTax ? Math.max(0, Number(order.tax || 0)) : 0;
+  const remainingRatio = fullItemRevenue > 0 ? itemRevenue / fullItemRevenue : 0;
+  const merchandiseRevenue = Math.max(0, itemRevenue
+    - Math.max(0, Number(order.discount || 0)) * remainingRatio
+    + orderAdjustmentNet * remainingRatio);
+  const taxAmount = plan.includeTax ? Math.max(0, Number(order.tax || 0)) * remainingRatio : 0;
   const deliveryChargeAmount = plan.includeDeliveryCharge
-    ? Math.max(0, Number(assignment?.deliveryChargeAmount || 0))
+    ? Math.max(0, Number(assignment?.deliveryChargeAmount || 0)) * remainingRatio
     : 0;
   const internalDeliveryCost = plan.includeDeliveryCharge
-    ? Math.max(0, Number(assignment?.internalDeliveryCostAmount || 0))
+    ? Math.max(0, Number(assignment?.internalDeliveryCostAmount || 0)) * remainingRatio
     : 0;
   const revenueAmount = merchandiseRevenue + taxAmount + deliveryChargeAmount;
   const costAmount = itemCost + internalDeliveryCost;
@@ -1221,7 +1238,7 @@ export function calculateSalesOrderCommission(
     basisAmount: roundCommissionAmount(basisAmount),
     ratePercent,
     commissionAmount: commissionType === "fixed_amount"
-      ? roundCommissionAmount(fixedCommission!.convertedAmount)
+      ? roundCommissionAmount(fixedCommission!.convertedAmount * remainingRatio)
       : roundCommissionAmount(basisAmount * ratePercent / 100),
   };
 }
@@ -1263,6 +1280,220 @@ async function findMembershipAndPlan(agentId: string, at: string) {
   if (!plan || plan.isDeleted) return null;
   if (plan.effectiveFrom > at || (plan.effectiveTo && at >= plan.effectiveTo)) return null;
   return { membership, plan };
+}
+
+type ProductCommissionTarget = {
+  orderItemId: string;
+  productId: string;
+  productNameSnapshot: string;
+  productSkuSnapshot: string | null;
+  unitSnapshot: string | null;
+  ruleId: string;
+  commissionType: CommissionPlanType;
+  ratePercent: number;
+  fixedSourceAmount: number | null;
+  fixedSourceCurrency: CurrencyCode | null;
+  fixedConversionRate: number | null;
+  fixedExchangeRateSource: string | null;
+  fixedExchangeRateTimestamp: string | null;
+  fixedExchangeRates: ExchangeRateSnapshot[] | null;
+  quantity: number;
+  basisAmountPerUnit: number;
+  commissionPerUnit: number;
+};
+
+function productCommissionEventAt(order: SalesOrder, assignment: SalesOrderAgentAssignment) {
+  const orderEventAt = [order.actualDeliveryDate, order.paidAt]
+    .filter((value): value is string => !!value)
+    .sort((left, right) => right.localeCompare(left))[0];
+  return [assignment.assignedAt, orderEventAt ?? order.updatedAt]
+    .sort((left, right) => right.localeCompare(left))[0];
+}
+
+async function getProductCommissionTargets(
+  order: SalesOrder,
+  assignment: SalesOrderAgentAssignment,
+  occurredAt: string,
+) {
+  if (order.status === 'cancelled' || order.returnStatus === 'full' || order.isDeleted || assignment.unassignedAt) {
+    return [] as ProductCommissionTarget[];
+  }
+  const productIds = [...new Set((order.items || []).map((item) => item.productId).filter(Boolean))];
+  if (productIds.length === 0) return [] as ProductCommissionTarget[];
+  const [rules, recipients] = await Promise.all([
+    db.product_commission_rules.where('workspaceId').equals(order.workspaceId)
+      .and((rule) => !rule.isDeleted && rule.isActive && productIds.includes(rule.productId))
+      .toArray(),
+    db.product_commission_rule_agents.where('workspaceId').equals(order.workspaceId)
+      .and((row) => !row.isDeleted)
+      .toArray(),
+  ]);
+  const recipientIdsByRule = new Map<string, Set<string>>();
+  for (const recipient of recipients) {
+    const values = recipientIdsByRule.get(recipient.ruleId) ?? new Set<string>();
+    values.add(recipient.agentId);
+    recipientIdsByRule.set(recipient.ruleId, values);
+  }
+
+  const orderedItems = (order.items || []).map((item) => {
+    const returnedQuantity = Math.min(getOrderLineInventoryQuantity(item), Math.max(0, Number(item.returnedQuantity ?? 0)));
+    const quantity = Math.max(0, getOrderLinePaidQuantity(item) - returnedQuantity);
+    const grossAmount = quantity * Math.max(0, Number(item.convertedUnitPrice || 0));
+    return { item, quantity, grossAmount };
+  });
+  const grossTotal = orderedItems.reduce((sum, item) => sum + item.grossAmount, 0);
+  const adjustmentNet = normalizeOrderAdjustments(order.orderAdjustments, order.currency)
+    .reduce((sum, adjustment) => sum + (adjustment.type === 'addition' ? 1 : -1) * Math.max(0, Number(adjustment.convertedAmount || 0)), 0);
+
+  const targets: ProductCommissionTarget[] = [];
+  for (const line of orderedItems) {
+    if (line.quantity <= 0) continue;
+    const rule = activeProductCommissionRule(rules, line.item.productId, occurredAt);
+    if (!rule) continue;
+    if (rule.recipientScope === 'selected_assigned' && !recipientIdsByRule.get(rule.id)?.has(assignment.agentId)) continue;
+    const allocation = grossTotal > 0 ? line.grossAmount / grossTotal : 0;
+    const basisAmountPerUnit = roundCommissionAmount(Math.max(0,
+      (line.grossAmount - Math.max(0, Number(order.discount || 0)) * allocation + adjustmentNet * allocation) / line.quantity,
+    ));
+    const commissionType = resolveCommissionPlanType(rule.commissionType);
+    let commissionPerUnit: number;
+    let fixedConversionRate: number | null = null;
+    let fixedExchangeRateSource: string | null = null;
+    let fixedExchangeRateTimestamp: string | null = null;
+    let fixedExchangeRates: ExchangeRateSnapshot[] | null = null;
+    if (commissionType === 'percentage') {
+      commissionPerUnit = roundCommissionAmount(basisAmountPerUnit * assertRate(rule.ratePercent) / 100);
+    } else {
+      const conversion = getAppliedCurrencyConversion(
+        assertMoney(rule.fixedAmount ?? 0, 'Product fixed commission'),
+        assertCommissionCurrency(rule.fixedCurrency),
+        order.currency,
+        order.exchangeRates,
+      );
+      if (!conversion) throw new Error('Exchange rate unavailable for the product commission currency');
+      commissionPerUnit = roundCommissionAmount(conversion.convertedAmount);
+      fixedConversionRate = conversion.exchangeRate;
+      fixedExchangeRateSource = conversion.exchangeRateSource;
+      fixedExchangeRateTimestamp = conversion.exchangeRateTimestamp;
+      fixedExchangeRates = conversion.exchangeRates;
+    }
+    targets.push({
+      orderItemId: line.item.id,
+      productId: line.item.productId,
+      productNameSnapshot: line.item.productName,
+      productSkuSnapshot: line.item.productSku || null,
+      unitSnapshot: line.item.unit || null,
+      ruleId: rule.id,
+      commissionType,
+      ratePercent: commissionType === 'percentage' ? assertRate(rule.ratePercent) : 0,
+      fixedSourceAmount: commissionType === 'fixed_amount' ? Number(rule.fixedAmount || 0) : null,
+      fixedSourceCurrency: commissionType === 'fixed_amount' ? rule.fixedCurrency || null : null,
+      fixedConversionRate,
+      fixedExchangeRateSource,
+      fixedExchangeRateTimestamp,
+      fixedExchangeRates,
+      quantity: line.quantity,
+      basisAmountPerUnit,
+      commissionPerUnit,
+    });
+  }
+  return targets;
+}
+
+async function reconcileProductCommissionLines(
+  order: SalesOrder,
+  assignment: SalesOrderAgentAssignment,
+  occurredAt: string,
+  createdBy?: string | null,
+  orderReturnId?: string | null,
+  eligible = true,
+) {
+  const [targets, existing] = await Promise.all([
+    eligible ? getProductCommissionTargets(order, assignment, occurredAt) : Promise.resolve([] as ProductCommissionTarget[]),
+    db.agent_product_commission_entries.where('assignmentId').equals(assignment.id)
+      .and((entry) => !entry.isDeleted && entry.orderId === order.id)
+      .toArray(),
+  ]);
+  const targetsByItemId = new Map(targets.map((target) => [target.orderItemId, target]));
+  const sourceEntries = existing.filter((entry) => entry.kind === 'accrual');
+  const sourceByItemId = new Map(sourceEntries.map((entry) => [entry.orderItemId, entry]));
+
+  for (const target of targets) {
+    const source = sourceByItemId.get(target.orderItemId);
+    if (!source) {
+      await appendAgentProductCommissionEntry(order.workspaceId, {
+        orderId: order.id, assignmentId: assignment.id, agentId: assignment.agentId,
+        orderItemId: target.orderItemId, productId: target.productId,
+        productNameSnapshot: target.productNameSnapshot, productSkuSnapshot: target.productSkuSnapshot,
+        unitSnapshot: target.unitSnapshot, ruleId: target.ruleId, orderReturnId: null, relatedEntryId: null,
+        kind: 'accrual', status: 'earned', currency: order.currency,
+        commissionType: target.commissionType, ratePercent: target.ratePercent,
+        fixedSourceAmount: target.fixedSourceAmount, fixedSourceCurrency: target.fixedSourceCurrency,
+        fixedConversionRate: target.fixedConversionRate, fixedExchangeRateSource: target.fixedExchangeRateSource,
+        fixedExchangeRateTimestamp: target.fixedExchangeRateTimestamp, fixedExchangeRates: target.fixedExchangeRates,
+        quantity: target.quantity, basisAmountPerUnit: target.basisAmountPerUnit,
+        commissionPerUnit: target.commissionPerUnit,
+        amount: roundCommissionAmount(target.quantity * target.commissionPerUnit),
+        occurredAt, notes: `Product commission accrued for ${order.orderNumber}`, createdBy: createdBy ?? null,
+      });
+      continue;
+    }
+    const recognizedQuantity = existing.filter((entry) => entry.orderItemId === target.orderItemId)
+      .reduce((sum, entry) => sum + Number(entry.quantity || 0), 0);
+    const quantityDelta = roundCommissionAmount(target.quantity - recognizedQuantity);
+    if (Math.abs(quantityDelta) <= 0.000001) continue;
+    await appendAgentProductCommissionEntry(order.workspaceId, {
+      orderId: order.id, assignmentId: assignment.id, agentId: assignment.agentId,
+      orderItemId: source.orderItemId, productId: source.productId,
+      productNameSnapshot: source.productNameSnapshot, productSkuSnapshot: source.productSkuSnapshot || null,
+      unitSnapshot: source.unitSnapshot || null, ruleId: source.ruleId || null,
+      orderReturnId: quantityDelta < 0 ? orderReturnId ?? null : null, relatedEntryId: source.id,
+      kind: quantityDelta < 0 ? 'reversal' : 'adjustment', status: quantityDelta < 0 ? 'reversed' : 'earned',
+      currency: source.currency, commissionType: source.commissionType, ratePercent: source.ratePercent,
+      fixedSourceAmount: source.fixedSourceAmount ?? null, fixedSourceCurrency: source.fixedSourceCurrency ?? null,
+      fixedConversionRate: source.fixedConversionRate ?? null, fixedExchangeRateSource: source.fixedExchangeRateSource ?? null,
+      fixedExchangeRateTimestamp: source.fixedExchangeRateTimestamp ?? null, fixedExchangeRates: source.fixedExchangeRates ?? null,
+      quantity: quantityDelta, basisAmountPerUnit: source.basisAmountPerUnit,
+      commissionPerUnit: source.commissionPerUnit,
+      amount: roundCommissionAmount(quantityDelta * source.commissionPerUnit), occurredAt: order.updatedAt,
+      notes: quantityDelta < 0 ? `Product commission reversed for ${order.orderNumber}` : `Product commission adjusted for ${order.orderNumber}`,
+      createdBy: createdBy ?? null,
+    });
+  }
+
+  for (const source of sourceEntries) {
+    if (targetsByItemId.has(source.orderItemId)) continue;
+    const recognizedQuantity = existing.filter((entry) => entry.orderItemId === source.orderItemId)
+      .reduce((sum, entry) => sum + Number(entry.quantity || 0), 0);
+    if (recognizedQuantity <= 0.000001) continue;
+    await appendAgentProductCommissionEntry(order.workspaceId, {
+      orderId: order.id, assignmentId: assignment.id, agentId: assignment.agentId,
+      orderItemId: source.orderItemId, productId: source.productId,
+      productNameSnapshot: source.productNameSnapshot, productSkuSnapshot: source.productSkuSnapshot || null,
+      unitSnapshot: source.unitSnapshot || null, ruleId: source.ruleId || null,
+      orderReturnId: orderReturnId ?? null, relatedEntryId: source.id,
+      kind: 'reversal', status: 'reversed', currency: source.currency,
+      commissionType: source.commissionType, ratePercent: source.ratePercent,
+      fixedSourceAmount: source.fixedSourceAmount ?? null, fixedSourceCurrency: source.fixedSourceCurrency ?? null,
+      fixedConversionRate: source.fixedConversionRate ?? null, fixedExchangeRateSource: source.fixedExchangeRateSource ?? null,
+      fixedExchangeRateTimestamp: source.fixedExchangeRateTimestamp ?? null, fixedExchangeRates: source.fixedExchangeRates ?? null,
+      quantity: -recognizedQuantity, basisAmountPerUnit: source.basisAmountPerUnit,
+      commissionPerUnit: source.commissionPerUnit,
+      amount: roundCommissionAmount(-recognizedQuantity * source.commissionPerUnit), occurredAt: order.updatedAt,
+      notes: `Product commission reversed for ${order.orderNumber}`, createdBy: createdBy ?? null,
+    });
+  }
+
+  const updated = await db.agent_product_commission_entries.where('assignmentId').equals(assignment.id)
+    .and((entry) => !entry.isDeleted && entry.orderId === order.id)
+    .toArray();
+  return {
+    productIds: new Set(targets.map((target) => target.productId)),
+    basisAmount: roundCommissionAmount(updated.reduce((sum, entry) => (
+      sum + Number(entry.quantity || 0) * Number(entry.basisAmountPerUnit || 0)
+    ), 0)),
+    amount: roundCommissionAmount(updated.reduce((sum, entry) => sum + Number(entry.amount || 0), 0)),
+  };
 }
 
 export async function accrueSalesOrderCommission(
@@ -1314,21 +1545,20 @@ async function accrueSalesOrderAssignmentCommission(
   if (existing) return existing;
 
   // A completed order may be attributed after delivery. In that case the
-  // assignment time, not the earlier delivery time, selects the effective
-  // membership and plan.
-  const orderEventAt = [order.actualDeliveryDate, order.paidAt]
-    .filter((value): value is string => !!value)
-    .sort((left, right) => right.localeCompare(left))[0];
-  const occurredAt = [
-    assignment.assignedAt,
-    orderEventAt ?? order.updatedAt,
-  ].sort((left, right) => right.localeCompare(left))[0];
+  // assignment time, not the earlier delivery time, selects its snapshot.
+  const occurredAt = productCommissionEventAt(order, assignment);
+  const productCommission = await reconcileProductCommissionLines(order, assignment, occurredAt, createdBy);
   const manualCommission = getAssignmentManualSalesAgentCommission(assignment);
   const terms = manualCommission ? null : await findMembershipAndPlan(assignment.agentId, occurredAt);
-  if (!terms && !manualCommission) return null;
+  if (!terms && !manualCommission && productCommission.amount <= 0) return null;
   const calculation = manualCommission
-    ? calculateManualSalesOrderCommission(order, assignment)
-    : calculateSalesOrderCommission(order, terms!.plan, assignment);
+    ? calculateManualSalesOrderCommission(order, assignment, productCommission.basisAmount)
+    : terms
+      ? calculateSalesOrderCommission(order, terms.plan, assignment, productCommission.productIds)
+      : {
+        currency: order.currency, revenueAmount: 0, costAmount: 0, taxAmount: 0,
+        deliveryChargeAmount: 0, basisAmount: 0, ratePercent: 0, commissionAmount: 0,
+      };
   if (!calculation) return null;
 
   return appendEntry(order.workspaceId, {
@@ -1342,21 +1572,25 @@ async function accrueSalesOrderAssignmentCommission(
     kind: "accrual",
     status: "earned",
     currency: calculation.currency,
-    calculationBasis: manualCommission ? "net_revenue" : terms!.plan.calculationBasis,
-    includeTax: manualCommission ? false : terms!.plan.includeTax,
-    includeDeliveryCharge: manualCommission ? false : terms!.plan.includeDeliveryCharge,
+    calculationBasis: manualCommission ? "net_revenue" : terms?.plan.calculationBasis ?? "net_revenue",
+    includeTax: manualCommission ? false : terms?.plan.includeTax ?? false,
+    includeDeliveryCharge: manualCommission ? false : terms?.plan.includeDeliveryCharge ?? false,
     basisAmount: calculation.basisAmount,
     revenueAmount: calculation.revenueAmount,
     costAmount: calculation.costAmount,
     taxAmount: calculation.taxAmount,
     deliveryChargeAmount: calculation.deliveryChargeAmount,
     ratePercent: calculation.ratePercent,
-    amount: calculation.commissionAmount,
+    planCommissionAmount: calculation.commissionAmount,
+    productCommissionAmount: productCommission.amount,
+    amount: roundCommissionAmount(calculation.commissionAmount + productCommission.amount),
     occurredAt,
     payoutReference: null,
     notes: manualCommission
       ? `Manual ${manualCommission.type === "percentage" ? "percentage" : "fixed"} commission accrued for sales order ${order.orderNumber}`
-      : `Commission accrued for sales order ${order.orderNumber}`,
+      : productCommission.amount > 0 && !terms
+        ? `Product commission accrued for sales order ${order.orderNumber}`
+        : `Commission accrued for sales order ${order.orderNumber}`,
     createdBy: createdBy ?? null,
   });
 }
@@ -1469,15 +1703,23 @@ async function reconcileSalesOrderAssignmentCommission(
   const accrualPlan = accrual.planId
     ? await db.agent_commission_plans.get(accrual.planId)
     : null;
+  const productCommission = await reconcileProductCommissionLines(
+    order,
+    assignment,
+    productCommissionEventAt(order, assignment),
+    createdBy,
+    null,
+    isEligible && !assignment.unassignedAt,
+  );
   const calculation = isEligible && !assignment.unassignedAt
-    ? accrual.membershipId == null && accrual.planId == null
-      ? calculateManualSalesOrderCommission(order, assignment)
+      ? accrual.membershipId == null && accrual.planId == null
+      ? calculateManualSalesOrderCommission(order, assignment, productCommission.basisAmount)
       : calculateSalesOrderCommission(order, accrualPlan ?? {
         ratePercent: accrual.ratePercent,
         calculationBasis: accrual.calculationBasis,
         includeTax: accrual.includeTax,
         includeDeliveryCharge: accrual.includeDeliveryCharge,
-      }, assignment)
+      }, assignment, productCommission.productIds)
     : {
       currency: accrual.currency,
       revenueAmount: 0,
@@ -1492,7 +1734,8 @@ async function reconcileSalesOrderAssignmentCommission(
   const recognized = roundCommissionAmount(entries
     .filter(isOrderTargetCommissionEntry)
     .reduce((sum, entry) => sum + entry.amount, 0));
-  const delta = roundCommissionAmount(calculation.commissionAmount - recognized);
+  const desiredAmount = roundCommissionAmount(calculation.commissionAmount + productCommission.amount);
+  const delta = roundCommissionAmount(desiredAmount - recognized);
   if (Math.abs(delta) <= 0.000001) return null;
 
   return appendEntry(order.workspaceId, {
@@ -1515,6 +1758,8 @@ async function reconcileSalesOrderAssignmentCommission(
     taxAmount: calculation.taxAmount,
     deliveryChargeAmount: calculation.deliveryChargeAmount,
     ratePercent: accrual.ratePercent,
+    planCommissionAmount: calculation.commissionAmount,
+    productCommissionAmount: productCommission.amount,
     amount: delta,
     occurredAt: order.updatedAt,
     payoutReference: null,
@@ -2037,12 +2282,20 @@ export async function reverseCommissionForOrderReturn(
       includeTax: accrual.includeTax,
       includeDeliveryCharge: accrual.includeDeliveryCharge,
     };
+    const productCommission = await reconcileProductCommissionLines(
+      order,
+      assignment,
+      productCommissionEventAt(order, assignment),
+      createdBy ?? orderReturn.returnedBy ?? null,
+      orderReturnId,
+      currentAssignment && order.status === 'completed' && (order.isPaid || order.paymentStatus === 'paid'),
+    );
     const targetCalculation = currentAssignment
       ? accrual.membershipId == null && accrual.planId == null
-        ? calculateManualSalesOrderCommission(order, assignment)
-        : calculateSalesOrderCommission(order, snapshotPlan ?? fallbackPlan, assignment)
+        ? calculateManualSalesOrderCommission(order, assignment, productCommission.basisAmount)
+        : calculateSalesOrderCommission(order, snapshotPlan ?? fallbackPlan, assignment, productCommission.productIds)
       : null;
-    const target = targetCalculation?.commissionAmount ?? 0;
+    const target = roundCommissionAmount((targetCalculation?.commissionAmount ?? 0) + productCommission.amount);
     const difference = roundCommissionAmount(target - recognized);
     if (difference >= 0) continue;
     const reversal = await reverseRecognizedAssignmentCommission(assignment, order, accrual, difference, {

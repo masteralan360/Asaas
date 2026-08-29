@@ -1204,6 +1204,13 @@ export function SalesOrderFormPage({
                                 orderCurrency={currency}
                                 orderTotal={preview}
                                 exchangeRates={adjustmentExchangeRates}
+                                orderItems={items.map((item) => ({
+                                    id: String(item.seq),
+                                    productId: item.productId,
+                                    productName: item.productSearch,
+                                    quantity: Number(item.quantity) || 0,
+                                    convertedUnitPrice: Number(item.unitPrice) || 0
+                                }))}
                                 availableCurrencies={Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]}
                                 iqdDisplayPreference={features.iqd_display_preference}
                                 disabled={isSaving}

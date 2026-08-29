@@ -138,6 +138,7 @@ function LedgerCard({
     i18n,
     language,
     showItemColumns,
+    showProductCommissionColumns,
     onNavigate
 }: {
     ledger: PartnerAccountStatementCurrencyLedger
@@ -146,6 +147,7 @@ function LedgerCard({
     i18n: I18n
     language: string
     showItemColumns: boolean
+    showProductCommissionColumns: boolean
     onNavigate: (path: string) => void
 }) {
     const display = (amount: number) => formatCurrency(Math.abs(amount), ledger.currency, iqdPreference)
@@ -199,6 +201,12 @@ function LedgerCard({
                                         <TableHead className="text-right">{t('businessPartners.accountStatement.quantity', { defaultValue: 'Quantity' })}</TableHead>
                                     </>
                                 ) : null}
+                                {showProductCommissionColumns ? (
+                                    <>
+                                        <TableHead className="min-w-32 text-right">{t('salesAgentCommissions.productCommission.perUnit')}</TableHead>
+                                        <TableHead className="min-w-36 text-right">{t('salesAgentCommissions.productCommission.lineTotal')}</TableHead>
+                                    </>
+                                ) : null}
                                 <TableHead className="text-right">{t('businessPartners.accountStatement.debit', { defaultValue: 'Debit' })}</TableHead>
                                 <TableHead className="text-right">{t('businessPartners.accountStatement.credit', { defaultValue: 'Credit' })}</TableHead>
                                 <TableHead className="text-right">{t('businessPartners.accountStatement.balance', { defaultValue: 'Balance' })}</TableHead>
@@ -207,7 +215,7 @@ function LedgerCard({
                         <TableBody>
                             {Math.abs(ledger.openingBalance) > 0.000001 ? (
                                 <TableRow className="bg-muted/20 font-medium">
-                                    <TableCell colSpan={showItemColumns ? 6 : 4}>{t('businessPartners.accountStatement.openingBalance', { defaultValue: 'Opening balance' })}</TableCell>
+                                    <TableCell colSpan={showItemColumns ? showProductCommissionColumns ? 8 : 6 : 4}>{t('businessPartners.accountStatement.openingBalance', { defaultValue: 'Opening balance' })}</TableCell>
                                     <TableCell className="text-right tabular-nums">{ledger.openingBalance > 0 ? display(ledger.openingBalance) : '—'}</TableCell>
                                     <TableCell className="text-right tabular-nums">{ledger.openingBalance < 0 ? display(ledger.openingBalance) : '—'}</TableCell>
                                     <TableCell className={cn('text-right font-bold tabular-nums', balanceClass(ledger.openingBalance))}>
@@ -233,6 +241,16 @@ function LedgerCard({
                                                 <TableCell className="min-w-40 whitespace-pre-wrap">{entry.itemName || '—'}</TableCell>
                                                 <TableCell className="text-right tabular-nums whitespace-nowrap">
                                                     {formatStatementQuantity(entry.quantity, entry.unit, language)}
+                                                </TableCell>
+                                            </>
+                                        ) : null}
+                                        {showProductCommissionColumns ? (
+                                            <>
+                                                <TableCell className="text-right font-medium tabular-nums whitespace-nowrap">
+                                                    {entry.commissionPerProduct == null ? '—' : display(entry.commissionPerProduct)}
+                                                </TableCell>
+                                                <TableCell className="text-right font-medium tabular-nums whitespace-nowrap">
+                                                    {entry.totalProductCommission == null ? '—' : display(entry.totalProductCommission)}
                                                 </TableCell>
                                             </>
                                         ) : null}
@@ -265,7 +283,7 @@ function LedgerCard({
                                 )
                             })}
                             <TableRow className="bg-muted/30 font-bold hover:bg-muted/30">
-                                <TableCell colSpan={showItemColumns ? 6 : 4} className="text-right">{t('common.total', { defaultValue: 'Total' })}</TableCell>
+                                <TableCell colSpan={showItemColumns ? showProductCommissionColumns ? 8 : 6 : 4} className="text-right">{t('common.total', { defaultValue: 'Total' })}</TableCell>
                                 <TableCell className="text-right tabular-nums">{display(ledger.debitTotal)}</TableCell>
                                 <TableCell className="text-right tabular-nums">{display(ledger.creditTotal)}</TableCell>
                                 <TableCell className={cn('text-right tabular-nums', balanceClass(ledger.closingBalance))}>
@@ -679,6 +697,7 @@ export function AccountStatements() {
                                 i18n={i18n}
                                 language={i18n.language}
                                 showItemColumns={itemizeSalesOrders}
+                                showProductCommissionColumns={isAgentStatement}
                                 onNavigate={navigate}
                             />
                         ))}

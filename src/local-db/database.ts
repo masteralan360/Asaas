@@ -40,8 +40,11 @@ import type {
   AgentExcludedCategory,
   AgentCommissionPlan,
   AgentCommissionMembership,
+  ProductCommissionRule,
+  ProductCommissionRuleAgent,
   SalesOrderAgentAssignment,
   AgentCommissionEntry,
+  AgentProductCommissionEntry,
   FleetVehicle,
   FleetVehicleAssignment,
   RentalVehicle,
@@ -470,8 +473,11 @@ export class AtlasDatabase extends Dexie {
   agent_excluded_categories!: EntityTable<AgentExcludedCategory, "id">;
   agent_commission_plans!: EntityTable<AgentCommissionPlan, "id">;
   agent_commission_memberships!: EntityTable<AgentCommissionMembership, "id">;
+  product_commission_rules!: EntityTable<ProductCommissionRule, "id">;
+  product_commission_rule_agents!: EntityTable<ProductCommissionRuleAgent, "id">;
   sales_order_agent_assignments!: EntityTable<SalesOrderAgentAssignment, "id">;
   agent_commission_entries!: EntityTable<AgentCommissionEntry, "id">;
+  agent_product_commission_entries!: EntityTable<AgentProductCommissionEntry, "id">;
   fleet_vehicles!: EntityTable<FleetVehicle, "id">;
   fleet_vehicle_assignments!: EntityTable<FleetVehicleAssignment, "id">;
   rental_vehicles!: EntityTable<RentalVehicle, "id">;
@@ -3380,6 +3386,15 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, shipmentId, requesterUserId, requesterAgentId, status, updatedAt, isDeleted, syncStatus, [workspaceId+shipmentId], [workspaceId+shipmentId+status], [workspaceId+requesterUserId], [workspaceId+status]",
     });
 
+    this.version(105).stores({
+      product_commission_rules:
+        "id, workspaceId, productId, isActive, effectiveFrom, effectiveTo, updatedAt, isDeleted, syncStatus, [workspaceId+productId], [workspaceId+isActive]",
+      product_commission_rule_agents:
+        "id, workspaceId, ruleId, agentId, updatedAt, isDeleted, syncStatus, [workspaceId+ruleId], [workspaceId+agentId], [ruleId+agentId]",
+      agent_product_commission_entries:
+        "id, workspaceId, orderId, assignmentId, agentId, orderItemId, productId, orderReturnId, kind, status, occurredAt, updatedAt, isDeleted, syncStatus, [workspaceId+orderId], [workspaceId+agentId], [assignmentId+orderItemId], [workspaceId+orderReturnId]",
+    });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }
@@ -3531,8 +3546,11 @@ export class AtlasDatabase extends Dexie {
       "agents",
       "agent_commission_plans",
       "agent_commission_memberships",
+      "product_commission_rules",
+      "product_commission_rule_agents",
       "sales_order_agent_assignments",
       "agent_commission_entries",
+      "agent_product_commission_entries",
       "fleet_vehicles",
       "fleet_vehicle_assignments",
       "rental_vehicles",
@@ -3781,9 +3799,12 @@ export async function clearDatabase(): Promise<void> {
       db.order_return_items,
       db.sale_product_exchanges,
       db.agent_commission_entries,
+      db.agent_product_commission_entries,
       db.sales_order_agent_assignments,
       db.agent_commission_memberships,
       db.agent_commission_plans,
+      db.product_commission_rule_agents,
+      db.product_commission_rules,
       db.syncQueue,
     ],
     async () => {
@@ -3847,9 +3868,12 @@ export async function clearDatabase(): Promise<void> {
       await db.order_return_items.clear();
       await db.sale_product_exchanges.clear();
       await db.agent_commission_entries.clear();
+      await db.agent_product_commission_entries.clear();
       await db.sales_order_agent_assignments.clear();
       await db.agent_commission_memberships.clear();
       await db.agent_commission_plans.clear();
+      await db.product_commission_rule_agents.clear();
+      await db.product_commission_rules.clear();
       await db.syncQueue.clear();
     },
   );

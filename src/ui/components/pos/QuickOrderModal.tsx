@@ -4,8 +4,11 @@ import { BadgePercent, Link2, Loader2, ShoppingCart, UserRound, X } from 'lucide
 
 import type { CartItem } from '@/types'
 import {
+    replaceSalesOrderAgentAssignments,
     useAgents,
     useBusinessPartners,
+    useProductCommissionRuleAgents,
+    useProductCommissionRules,
     type BusinessPartner,
     type CurrencyCode,
     type ExchangeRateSnapshot,
@@ -43,6 +46,10 @@ import {
     SalesOrderCommissionAssignmentSection,
     type SalesOrderCommissionAssignmentHandle
 } from '@/ui/components/commissions/SalesOrderCommissionAssignmentSection'
+import {
+    hasEligibleProductCommission,
+    ProductCommissionPreview
+} from '@/ui/components/commissions/ProductCommissionPreview'
 
 export type QuickOrderCheckoutData = {
     customer: BusinessPartner
@@ -118,6 +125,8 @@ export function QuickOrderModal({
         { roles: ['agent'], includeAgentRoles: true }
     )
     const agents = useAgents(canLoadAgents ? workspaceId : undefined)
+    const productCommissionRules = useProductCommissionRules(commissionAssignmentsEnabled ? workspaceId : undefined)
+    const productCommissionRuleAgents = useProductCommissionRuleAgents(commissionAssignmentsEnabled ? workspaceId : undefined)
     const selectedSalesAccount = useMemo(() => {
         if (!agentSalesAccountsEnabled) return null
         const agent = agents.find((candidate) => (
@@ -130,6 +139,28 @@ export function QuickOrderModal({
         const partner = agentPartners.find((candidate) => candidate.id === agent.businessPartnerId)
         return partner ? { agent, partner } : null
     }, [agentPartners, agentSalesAccountsEnabled, agents, salesAccountAgentId])
+    const commissionPreviewItems = useMemo(() => {
+        const sourceLines = cart.map((item) => {
+            const quantity = Math.max(0, Number(item.quantity) || 0)
+            const unitPrice = Math.max(0, Number(item.negotiated_price ?? item.discounted_price ?? item.price) || 0)
+            return { item, quantity, sourceTotal: quantity * unitPrice }
+        })
+        const sourceTotal = sourceLines.reduce((sum, line) => sum + line.sourceTotal, 0)
+        return sourceLines.map(({ item, quantity, sourceTotal: lineSourceTotal }) => ({
+            // Cart items do not have their final SalesOrder item id yet. The
+            // preview key only needs to be stable while the checkout is open.
+            id: `${item.product_id}:${item.storageId || ''}`,
+            productId: item.product_id,
+            productName: item.name,
+            quantity,
+            // The checkout total is already in settlement currency. Allocate
+            // it proportionally so the preview uses the same basis as the
+            // pending quick order, including a cart-level discount.
+            convertedUnitPrice: quantity > 0 && sourceTotal > 0
+                ? totalAmount * lineSourceTotal / sourceTotal / quantity
+                : 0
+        }))
+    }, [cart, totalAmount])
     const customerCommissionAgent = useMemo(() => {
         if (!commissionAssignmentsEnabled || !customer) return null
         return agents.find((agent) => (
@@ -140,8 +171,23 @@ export function QuickOrderModal({
         )) ?? null
     }, [agents, commissionAssignmentsEnabled, customer])
     const commissionRecipient = commissionAssignmentsEnabled
-        ? selectedSalesAccount?.agent ?? customerCommissionAgent
+        ? (selectedSalesAccount?.agent.agentType === 'field_agent' ? selectedSalesAccount.agent : customerCommissionAgent)
         : null
+    const productCommissionPreviewAgents = useMemo(() => commissionRecipient
+        ? [{
+            id: commissionRecipient.id,
+            name: selectedSalesAccount?.partner.name ?? customer?.name ?? t('salesAgentCommissions.salesAgent')
+        }]
+        : [], [commissionRecipient, customer?.name, selectedSalesAccount?.partner.name, t])
+    const hasAutomaticProductCommission = commissionRecipient
+        ? hasEligibleProductCommission({
+            items: commissionPreviewItems,
+            agentIds: [commissionRecipient.id],
+            rules: productCommissionRules,
+            recipients: productCommissionRuleAgents,
+            at: new Date().toISOString()
+        })
+        : false
 
     const paymentMethods = useMemo<PaymentMethodOption[]>(() => [
         ...STANDARD_PAYMENT_METHODS,
@@ -213,19 +259,40 @@ export function QuickOrderModal({
             }
         }
 
+        const shouldCreditCommission = includeCommission || hasAutomaticProductCommission
         try {
             await onSubmit({
                 customer: orderCounterparty!,
                 salesAccountAgentId: selectedSalesAccount?.agent.id ?? null,
-                commissionEnabled: includeCommission,
+                // A qualifying product commission is automatic. The optional
+                // credit-commission step remains only for per-order manual
+                // commission terms.
+                commissionEnabled: shouldCreditCommission,
                 paymentMethod,
                 installmentCount: 3,
                 installmentFrequency: 'monthly',
                 firstDueDate: isInstallmentBased ? firstDueDate : null,
                 paymentAccountId: paymentAccount?.id ?? null,
                 paymentAccountNameSnapshot: paymentAccount?.name ?? null,
-            }, includeCommission ? {
-                onOrderCreated: async (order) => commissionAssignmentRef.current?.save(order)
+            }, shouldCreditCommission ? {
+                onOrderCreated: async (order) => {
+                    if (includeCommission) {
+                        await commissionAssignmentRef.current?.save(order)
+                        return
+                    }
+                    // A sales account is assigned by the normal order
+                    // lifecycle. A customer who is an eligible field agent
+                    // needs the same beneficiary assignment created here.
+                    if (!commissionRecipient || selectedSalesAccount) return
+                    await replaceSalesOrderAgentAssignments(workspaceId, {
+                        orderId: order.id,
+                        assignedBy: commissionAssignedBy || undefined,
+                        assignments: [{
+                            agentId: commissionRecipient.id,
+                            assignmentSource: 'manual'
+                        }]
+                    })
+                }
             } : undefined)
         } catch (error) {
             const message = error instanceof Error ? error.message : ''
@@ -402,6 +469,18 @@ export function QuickOrderModal({
                         />
                         <p className="text-xs text-muted-foreground">{t('pos.quickOrder.installmentHint')}</p>
                     </div>
+                ) : null}
+
+                {commissionRecipient ? (
+                    <ProductCommissionPreview
+                        workspaceId={workspaceId}
+                        items={commissionPreviewItems}
+                        agentIds={[commissionRecipient.id]}
+                        agents={productCommissionPreviewAgents}
+                        currency={settlementCurrency}
+                        exchangeRates={commissionExchangeRates}
+                        iqdPreference={iqdPreference}
+                    />
                 ) : null}
 
                 {canCreditCommission ? (

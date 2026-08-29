@@ -61,8 +61,11 @@ const SYNC_PULL_TABLES = [
   "agent_excluded_categories",
   "agent_commission_plans",
   "agent_commission_memberships",
+  "product_commission_rules",
+  "product_commission_rule_agents",
   "sales_order_agent_assignments",
   "agent_commission_entries",
+  "agent_product_commission_entries",
   "fleet_vehicles",
   "fleet_vehicle_assignments",
   "rental_vehicles",
@@ -258,6 +261,13 @@ function getMutationParentKeys(mutation: MutationSyncOrderItem) {
       addParent("agents", "agentId", "agent_id");
       addParent("agent_commission_plans", "planId", "plan_id");
       break;
+    case "product_commission_rules":
+      addParent("products", "productId", "product_id");
+      break;
+    case "product_commission_rule_agents":
+      addParent("product_commission_rules", "ruleId", "rule_id");
+      addParent("agents", "agentId", "agent_id");
+      break;
     case "sales_order_agent_assignments":
       addParent("sales_orders", "orderId", "order_id");
       addParent("agents", "agentId", "agent_id");
@@ -271,6 +281,15 @@ function getMutationParentKeys(mutation: MutationSyncOrderItem) {
       addParent("agent_commission_plans", "planId", "plan_id");
       addParent("order_returns", "orderReturnId", "order_return_id");
       addParent("agent_commission_entries", "relatedEntryId", "related_entry_id");
+      break;
+    case "agent_product_commission_entries":
+      addParent("sales_orders", "orderId", "order_id");
+      addParent("sales_order_agent_assignments", "assignmentId", "assignment_id");
+      addParent("agents", "agentId", "agent_id");
+      addParent("products", "productId", "product_id");
+      addParent("product_commission_rules", "ruleId", "rule_id");
+      addParent("order_returns", "orderReturnId", "order_return_id");
+      addParent("agent_product_commission_entries", "relatedEntryId", "related_entry_id");
       break;
     case "sales_agent_commission_reconciliation":
       addParent("sales_orders", "orderId", "order_id");

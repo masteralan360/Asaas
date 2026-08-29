@@ -6,6 +6,7 @@ import { formatCurrency, formatDateTime } from '@/lib/utils'
 import {
     getActiveSalesOrderAgentAssignments,
     useAgentCommissionEntries,
+    useAgentProductCommissionEntries,
     useSalesOrderAgentAssignments,
     type CurrencyCode,
     type IQDDisplayPreference
@@ -39,6 +40,7 @@ export function OrderAgentCommissionCard({
     const { t } = useTranslation()
     const assignments = useSalesOrderAgentAssignments(workspaceId)
     const entries = useAgentCommissionEntries(workspaceId)
+    const productEntries = useAgentProductCommissionEntries(workspaceId)
     const directory = useCommissionAgentDirectory(workspaceId)
     const [dialogOpen, setDialogOpen] = useState(false)
     const activeAssignments = getActiveSalesOrderAgentAssignments(assignments, orderId)
@@ -82,6 +84,9 @@ export function OrderAgentCommissionCard({
                                 const canViewCommission = canViewAllCommission
                                     || (canViewOwnCommission && Boolean(userId) && assignedAgent?.agent.linkedUserId === userId)
                                 const assignmentEntries = orderEntries.filter((entry) => entry.assignmentId === assignment.id)
+                                const assignmentProductEntries = productEntries
+                                    .filter((entry) => !entry.isDeleted && entry.assignmentId === assignment.id && entry.orderId === orderId)
+                                    .sort((left, right) => left.productNameSnapshot.localeCompare(right.productNameSnapshot))
                                 const sourceEntry = assignmentEntries.find((entry) => entry.kind === 'accrual')
                                 const latestEntry = assignmentEntries[0]
                                 const outstandingAmount = assignmentEntries
@@ -151,6 +156,24 @@ export function OrderAgentCommissionCard({
                                                 {t('salesAgentCommissions.lifecycleHint')}
                                             </div>
                                         )) : null}
+                                        {canViewCommission && assignmentProductEntries.length > 0 ? (
+                                            <div className="space-y-2 rounded-xl border border-violet-500/20 bg-violet-500/[0.035] p-3">
+                                                <div className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                                                    {t('salesAgentCommissions.productCommission.orderBreakdown')}
+                                                </div>
+                                                {assignmentProductEntries.map((entry) => (
+                                                    <div key={entry.id} className="flex items-center justify-between gap-3 text-sm">
+                                                        <div className="min-w-0">
+                                                            <div className="truncate font-medium">{entry.productNameSnapshot}</div>
+                                                            <div className="text-xs text-muted-foreground">
+                                                                {entry.quantity} × {formatCurrency(entry.commissionPerUnit, entry.currency, iqdPreference)}
+                                                            </div>
+                                                        </div>
+                                                        <div className={entry.amount < 0 ? 'font-bold text-destructive' : 'font-bold'}>{formatCurrency(entry.amount, entry.currency, iqdPreference)}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : null}
                                     </div>
                                 )
                             })}

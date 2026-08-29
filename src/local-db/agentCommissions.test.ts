@@ -461,6 +461,126 @@ describe("sales agent commission lifecycle", () => {
     expect(adjustment).toMatchObject({ kind: "adjustment", amount: 10, currency: "usd" });
   });
 
+  it("replaces the normal plan only for configured product lines and reverses their historical unit snapshot", async () => {
+    const productCommissions = await import("./productCommissions");
+    const agent = fieldAgent(crypto.randomUUID());
+    const order = completedOrder(crypto.randomUUID());
+    const productCommissionId = order.items[0].productId;
+    const ordinaryProductId = crypto.randomUUID();
+    order.items = [
+      { ...order.items[0], id: "commission-line", productId: productCommissionId, quantity: 2, lineTotal: 200, convertedUnitPrice: 100 },
+      { ...order.items[0], id: "ordinary-line", productId: ordinaryProductId, quantity: 3, lineTotal: 300, convertedUnitPrice: 100 },
+    ];
+    order.subtotal = 500;
+    order.total = 500;
+    order.paidAmount = 500;
+    await db.agents.put(agent);
+    await db.sales_orders.put(order);
+
+    const plan = await commissions.createAgentCommissionPlan(WORKSPACE_ID, {
+      name: "Whole order revenue plan",
+      level: "whole-order-revenue",
+      ratePercent: 10,
+      calculationBasis: "net_revenue",
+    });
+    await commissions.setAgentCommissionMembership(WORKSPACE_ID, { agentId: agent.id, planId: plan.id });
+    await productCommissions.replaceProductCommissionRule(WORKSPACE_ID, productCommissionId, {
+      commissionType: "fixed_amount",
+      fixedAmount: 7,
+      fixedCurrency: "usd",
+      recipientScope: "all_assigned",
+    });
+
+    const assignment = await commissions.assignSalesOrderAgent(WORKSPACE_ID, {
+      orderId: order.id,
+      agentId: agent.id,
+    });
+    const accrual = await db.agent_commission_entries
+      .where("assignmentId").equals(assignment!.id)
+      .and((entry) => entry.kind === "accrual")
+      .first();
+    const productAccrual = await db.agent_product_commission_entries
+      .where("assignmentId").equals(assignment!.id)
+      .and((entry) => entry.kind === "accrual")
+      .first();
+
+    // The 10% plan applies to the ordinary $300 line only; the configured
+    // product earns $7 × 2 instead of another share of that plan.
+    expect(accrual).toMatchObject({ planCommissionAmount: 30, productCommissionAmount: 14, amount: 44 });
+    expect(productAccrual).toMatchObject({ quantity: 2, commissionPerUnit: 7, amount: 14 });
+
+    const returnedAt = new Date().toISOString();
+    await db.sales_orders.put({
+      ...order,
+      items: [{ ...order.items[0], returnedQuantity: 1 }, order.items[1]],
+      subtotal: 400,
+      total: 400,
+      returnedAmount: 100,
+      returnStatus: "partial",
+      updatedAt: returnedAt,
+      version: 2,
+    });
+    const orderReturn: OrderReturn = {
+      id: crypto.randomUUID(), workspaceId: WORKSPACE_ID, orderId: order.id,
+      reason: "Partial return", status: "posted", refundAmount: 100,
+      returnedAt, createdAt: returnedAt, updatedAt: returnedAt,
+      syncStatus: "synced", lastSyncedAt: returnedAt, version: 1, isDeleted: false,
+    };
+    await db.order_returns.put(orderReturn);
+    await commissions.reverseCommissionForOrderReturn(WORKSPACE_ID, orderReturn.id);
+
+    const productEntries = await db.agent_product_commission_entries
+      .where("assignmentId").equals(assignment!.id)
+      .toArray();
+    const recognizedProductCommission = productEntries.reduce((sum, entry) => sum + entry.amount, 0);
+    expect(productEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "reversal", quantity: -1, commissionPerUnit: 7, amount: -7, orderReturnId: orderReturn.id }),
+    ]));
+    expect(recognizedProductCommission).toBe(7);
+  });
+
+  it("creates a payable product-only percentage commission using a rounded per-unit snapshot", async () => {
+    const productCommissions = await import("./productCommissions");
+    const agent = fieldAgent(crypto.randomUUID());
+    const order = completedOrder(crypto.randomUUID());
+    order.items = [{
+      ...order.items[0], id: "percentage-line", quantity: 3,
+      convertedUnitPrice: 10.01, lineTotal: 30.03,
+    }];
+    order.subtotal = 30.03;
+    order.total = 30.03;
+    order.paidAmount = 30.03;
+    await db.agents.put(agent);
+    await db.sales_orders.put(order);
+    await productCommissions.replaceProductCommissionRule(WORKSPACE_ID, order.items[0].productId, {
+      commissionType: "percentage",
+      ratePercent: 12.5,
+      recipientScope: "selected_assigned",
+      agentIds: [agent.id],
+    });
+
+    const assignment = await commissions.assignSalesOrderAgent(WORKSPACE_ID, {
+      orderId: order.id,
+      agentId: agent.id,
+    });
+    const aggregate = await db.agent_commission_entries
+      .where("assignmentId").equals(assignment!.id)
+      .and((entry) => entry.kind === "accrual")
+      .first();
+    const line = await db.agent_product_commission_entries
+      .where("assignmentId").equals(assignment!.id)
+      .first();
+
+    expect(line).toMatchObject({
+      commissionType: "percentage", ratePercent: 12.5,
+      quantity: 3, commissionPerUnit: 1.25125, amount: 3.75375,
+    });
+    expect(aggregate).toMatchObject({
+      membershipId: null, planId: null,
+      planCommissionAmount: 0, productCommissionAmount: 3.75375, amount: 3.75375,
+    });
+  });
+
   it("rejects manual order commission when the assigned agent has an effective plan", async () => {
     const agent = fieldAgent(crypto.randomUUID());
     const order = completedOrder(crypto.randomUUID());

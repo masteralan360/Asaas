@@ -848,6 +848,8 @@ export type CommissionPlanType = "fixed_amount" | "percentage";
 /** A workspace-wide presentation structure for the sales-agent commission sheet. */
 export type SalesAgentCommissionSheetType = "normal" | "tier_based";
 export type ManualSalesAgentCommissionType = CommissionPlanType;
+/** Product rules use the same fixed/percentage terms as commission plans. */
+export type ProductCommissionRecipientScope = "all_assigned" | "selected_assigned";
 export type CommissionEntryKind =
   | "estimate"
   | "accrual"
@@ -894,6 +896,32 @@ export interface AgentCommissionMembership extends BaseEntity {
   assignedBy?: string | null;
   endedBy?: string | null;
   notes?: string | null;
+}
+
+/**
+ * Product-level commission terms. Rules are effective-dated and are never
+ * rewritten after they have been used by an order: editing creates a new
+ * revision so historical sales retain their original terms.
+ */
+export interface ProductCommissionRule extends BaseEntity {
+  productId: string;
+  commissionType: CommissionPlanType;
+  /** Percentage uses net line revenue; fixed amounts use `fixedCurrency`. */
+  ratePercent: number;
+  fixedAmount?: number | null;
+  fixedCurrency?: CurrencyCode | null;
+  recipientScope: ProductCommissionRecipientScope;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  isActive: boolean;
+  notes?: string | null;
+  createdBy?: string | null;
+}
+
+/** Selected recipients for a product rule. All-assigned rules deliberately have no rows here. */
+export interface ProductCommissionRuleAgent extends BaseEntity {
+  ruleId: string;
+  agentId: string;
 }
 
 /** Historical sales attribution; an order can have one active assignment per field agent. */
@@ -1030,11 +1058,55 @@ export interface AgentCommissionEntry extends BaseEntity {
   taxAmount: number;
   deliveryChargeAmount: number;
   ratePercent: number;
+  /** Split snapshots keep product incentives explainable without changing the payable amount. */
+  planCommissionAmount?: number | null;
+  productCommissionAmount?: number | null;
   amount: number;
   occurredAt: string;
   payoutReference?: string | null;
   /** Payouts are either historical/manual records or generated once an order is fully paid. */
   settlementSource?: "manual" | "automatic";
+  notes?: string | null;
+  createdBy?: string | null;
+}
+
+/**
+ * Immutable commission snapshot for one order item and one credited agent.
+ * It is the explanation layer for product commission; the aggregate
+ * `AgentCommissionEntry` remains the payable liability/payout ledger.
+ */
+export interface AgentProductCommissionEntry extends BaseEntity {
+  orderId: string;
+  assignmentId: string;
+  agentId: string;
+  orderItemId: string;
+  productId: string;
+  productNameSnapshot: string;
+  productSkuSnapshot?: string | null;
+  unitSnapshot?: string | null;
+  ruleId?: string | null;
+  orderReturnId?: string | null;
+  relatedEntryId?: string | null;
+  kind: "accrual" | "reversal" | "adjustment";
+  status: "earned" | "reversed";
+  currency: CurrencyCode;
+  commissionType: CommissionPlanType;
+  ratePercent: number;
+  fixedSourceAmount?: number | null;
+  fixedSourceCurrency?: CurrencyCode | null;
+  fixedConversionRate?: number | null;
+  fixedExchangeRateSource?: string | null;
+  fixedExchangeRateTimestamp?: string | null;
+  fixedExchangeRates?: ExchangeRateSnapshot[] | null;
+  /** Signed quantity: sold is positive, returned/reversed is negative. */
+  quantity: number;
+  /** Locked net line-revenue basis for exactly one product unit. */
+  basisAmountPerUnit: number;
+  /** Locked commission amount for exactly one product unit. */
+  commissionPerUnit: number;
+  /** Signed `quantity * commissionPerUnit`, retained for audit and statements. */
+  amount: number;
+  occurredAt: string;
   notes?: string | null;
   createdBy?: string | null;
 }
@@ -2317,8 +2389,11 @@ export interface SyncQueueItem {
     | "agent_excluded_categories"
     | "agent_commission_plans"
     | "agent_commission_memberships"
+    | "product_commission_rules"
+    | "product_commission_rule_agents"
     | "sales_order_agent_assignments"
     | "agent_commission_entries"
+    | "agent_product_commission_entries"
     | "sales_agent_commission_reconciliation"
     | "fleet_vehicles"
     | "fleet_vehicle_assignments"
@@ -2485,8 +2560,11 @@ export interface OfflineMutation {
     | "agent_excluded_categories"
     | "agent_commission_plans"
     | "agent_commission_memberships"
+    | "product_commission_rules"
+    | "product_commission_rule_agents"
     | "sales_order_agent_assignments"
     | "agent_commission_entries"
+    | "agent_product_commission_entries"
     | "sales_agent_commission_reconciliation"
     | "fleet_vehicles"
     | "fleet_vehicle_assignments"
