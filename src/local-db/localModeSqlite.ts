@@ -230,6 +230,19 @@ async function ensureCurrentWorkspaceColumn(connection: SqliteConnection) {
   `);
 }
 
+async function ensureCashierShiftActiveClaimsTable(
+  connection: SqliteConnection,
+) {
+  await connection.execute(`
+    CREATE TABLE IF NOT EXISTS cashier_shift_active_claims (
+      workspace_id TEXT NOT NULL,
+      cashier_user_id TEXT NOT NULL,
+      occurrence_id TEXT NOT NULL,
+      PRIMARY KEY (workspace_id, cashier_user_id)
+    )
+  `);
+}
+
 function isSupported() {
   return (
     testConnectionOverride !== undefined ||
@@ -357,9 +370,12 @@ async function ensureConnection() {
 
   if (!sqlitePromise) {
     sqlitePromise = (async () => {
+      let connection: SqliteConnection;
       if (isTauri()) {
         const { default: Database } = await import("@tauri-apps/plugin-sql");
-        const connection = await Database.load(LOCAL_MODE_SQLITE_PATH);
+        connection = (await Database.load(
+          LOCAL_MODE_SQLITE_PATH,
+        )) as SqliteConnection;
 
         await connection.execute("PRAGMA busy_timeout = 5000");
         await connection.execute("PRAGMA journal_mode = WAL");
@@ -381,12 +397,13 @@ async function ensureConnection() {
                 CREATE INDEX IF NOT EXISTS idx_local_entities_type_workspace
                 ON local_entities (entity_type, workspace_id)
             `);
-        await ensureCurrentWorkspaceColumn(connection as SqliteConnection);
-
-        return connection as SqliteConnection;
+        await ensureCurrentWorkspaceColumn(connection);
+      } else {
+        connection = createPwaSqliteConnection();
       }
 
-      return createPwaSqliteConnection();
+      await ensureCashierShiftActiveClaimsTable(connection);
+      return connection;
     })().catch((error) => {
       sqlitePromise = null;
       console.error(
@@ -784,6 +801,52 @@ async function seedCacheOnlySaleItemsFromDexie(
   return missingSaleItems.length > 0;
 }
 
+async function synchronizeCashierShiftActiveClaim(
+  connection: SqliteConnection,
+  row: Record<string, unknown>,
+  workspaceId: string | null,
+) {
+  const occurrenceId = typeof row.id === "string" ? row.id : null;
+  const cashierUserId =
+    typeof row.cashierUserId === "string" ? row.cashierUserId : null;
+  if (!workspaceId || !occurrenceId || !cashierUserId) return;
+
+  const ownsActiveClaim =
+    !row.isDeleted && (row.status === "active" || row.status === "paused");
+  if (!ownsActiveClaim) {
+    await connection.execute(
+      `
+        DELETE FROM cashier_shift_active_claims
+        WHERE workspace_id = $1 AND cashier_user_id = $2 AND occurrence_id = $3
+      `,
+      [workspaceId, cashierUserId, occurrenceId],
+    );
+    return;
+  }
+
+  const existing = await connection.select<Array<{ occurrence_id: string }>>(
+    `
+      SELECT occurrence_id
+      FROM cashier_shift_active_claims
+      WHERE workspace_id = $1 AND cashier_user_id = $2
+      LIMIT 1
+    `,
+    [workspaceId, cashierUserId],
+  );
+  if (existing[0] && existing[0].occurrence_id !== occurrenceId) {
+    throw new Error("This cashier already has an active shift.");
+  }
+  await connection.execute(
+    `
+      INSERT INTO cashier_shift_active_claims (workspace_id, cashier_user_id, occurrence_id)
+      VALUES ($1, $2, $3)
+      ON CONFLICT(workspace_id, cashier_user_id) DO UPDATE SET
+        occurrence_id = excluded.occurrence_id
+    `,
+    [workspaceId, cashierUserId, occurrenceId],
+  );
+}
+
 async function persistEntity(
   cacheDb: Dexie,
   tableName: LocalModeSqliteTableName,
@@ -851,6 +914,9 @@ async function persistEntity(
         `,
     [tableName, entityId, workspaceId, currentWorkspaceId, payload, updatedAt],
   );
+  if (tableName === "cashier_shift_occurrences") {
+    await synchronizeCashierShiftActiveClaim(connection, row, workspaceId);
+  }
 }
 
 async function deleteEntity(
@@ -904,6 +970,19 @@ async function deleteEntity(
         `,
     [tableName, entityId],
   );
+  if (tableName === "cashier_shift_occurrences") {
+    const cashierUserId =
+      typeof row.cashierUserId === "string" ? row.cashierUserId : null;
+    if (workspaceId && cashierUserId) {
+      await connection.execute(
+        `
+          DELETE FROM cashier_shift_active_claims
+          WHERE workspace_id = $1 AND cashier_user_id = $2 AND occurrence_id = $3
+        `,
+        [workspaceId, cashierUserId, entityId],
+      );
+    }
+  }
 }
 
 function isAuthoritativeLocalMutation(
@@ -1259,6 +1338,10 @@ export async function clearWorkspaceSqliteData(workspaceId: string) {
             WHERE workspace_id = $1
                OR (entity_type = 'workspaces' AND entity_id = $1)
         `,
+    [workspaceId],
+  );
+  await connection.execute(
+    "DELETE FROM cashier_shift_active_claims WHERE workspace_id = $1",
     [workspaceId],
   );
 

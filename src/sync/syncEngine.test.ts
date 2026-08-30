@@ -227,6 +227,7 @@ vi.mock('@/workspace/workspaceMode', () => ({
 import {
     fullSync,
     isExistingCommissionEntryRetry,
+    isRecoverableCashierShiftTerminalReplayMutation,
     isRecoverablePriceBookMutation,
     orderMutationsForSync,
     shouldApplyRemoteItem
@@ -298,6 +299,52 @@ describe('Price Book sync recovery', () => {
             expect(isRecoverablePriceBookMutation({ entityType: 'price_book_items', error })).toBe(false)
         }
         expect(isRecoverablePriceBookMutation({ entityType: 'products', error: 'permission denied' })).toBe(false)
+    })
+
+    it('retries only an interrupted terminal cashier-shift replay', () => {
+        const error = 'A cashier shift occurrence must start as active.'
+        expect(isRecoverableCashierShiftTerminalReplayMutation({
+            entityType: 'cashier_shift_occurrences',
+            operation: 'update',
+            payload: { status: 'terminated' },
+            error
+        })).toBe(true)
+        expect(isRecoverableCashierShiftTerminalReplayMutation({
+            entityType: 'cashier_shift_occurrences',
+            operation: 'create',
+            payload: { status: 'completed' },
+            error
+        })).toBe(true)
+        expect(isRecoverableCashierShiftTerminalReplayMutation({
+            entityType: 'cashier_shift_occurrences',
+            operation: 'update',
+            payload: { status: 'terminated' },
+            error: 'The occurrence policy must match its assignment.'
+        })).toBe(true)
+        expect(isRecoverableCashierShiftTerminalReplayMutation({
+            entityType: 'cashier_shift_occurrences',
+            operation: 'update',
+            payload: { status: 'terminated' },
+            error: 'A finalized cashier shift occurrence is immutable.'
+        })).toBe(true)
+        expect(isRecoverableCashierShiftTerminalReplayMutation({
+            entityType: 'cashier_shift_occurrences',
+            operation: 'update',
+            payload: { status: 'active' },
+            error
+        })).toBe(false)
+        expect(isRecoverableCashierShiftTerminalReplayMutation({
+            entityType: 'cashier_shift_occurrences',
+            operation: 'delete',
+            payload: { status: 'terminated' },
+            error
+        })).toBe(false)
+        expect(isRecoverableCashierShiftTerminalReplayMutation({
+            entityType: 'sales',
+            operation: 'update',
+            payload: { status: 'terminated' },
+            error
+        })).toBe(false)
     })
 
     it('applies the newer timestamp when concurrent rows have the same version', () => {

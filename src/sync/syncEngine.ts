@@ -200,6 +200,23 @@ export function isRecoverablePriceBookMutation(mutation: {
     );
 }
 
+export function isRecoverableCashierShiftTerminalReplayMutation(mutation: {
+  entityType: string;
+  operation: string;
+  payload?: Record<string, unknown>;
+  error?: string;
+}) {
+  const status = mutation.payload?.status;
+  return (
+    mutation.entityType === "cashier_shift_occurrences" &&
+    mutation.operation !== "delete" &&
+    (status === "completed" || status === "terminated") &&
+    /cashier shift occurrence must start as active|occurrence policy must match its assignment|finalized cashier shift occurrence is immutable/i.test(
+      mutation.error ?? "",
+    )
+  );
+}
+
 export function isExistingCommissionEntryRetry(
   error: { code?: unknown } | null | undefined,
   existingId: unknown,
@@ -793,7 +810,8 @@ export async function processMutationQueue(
         isSaleCreateMutation(mutation) ||
         isRetriableSaleReturnMutation(mutation) ||
         isRecoverableProductSkuKeyMutation(mutation) ||
-        isRecoverablePriceBookMutation(mutation),
+        isRecoverablePriceBookMutation(mutation) ||
+        isRecoverableCashierShiftTerminalReplayMutation(mutation),
     )
     .sortBy("createdAt");
   const mutations = mutationGroups

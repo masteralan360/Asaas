@@ -66,6 +66,7 @@ async function waitFor(predicate: () => boolean) {
 
 class RecordingSqliteConnection implements SqliteConnection {
   rows = new Map<string, string>();
+  activeCashierShiftClaims = new Map<string, string>();
   events: string[] = [];
   failEntityType: string | null = null;
   commitGate: Promise<void> | null = null;
@@ -80,11 +81,30 @@ class RecordingSqliteConnection implements SqliteConnection {
       this.rows.set(`${entityType}:${String(bindValues[1])}`, String(bindValues[4]));
     } else if (normalized.startsWith("DELETE FROM LOCAL_ENTITIES")) {
       this.rows.delete(`${String(bindValues[0])}:${String(bindValues[1])}`);
+    } else if (normalized.startsWith("INSERT INTO CASHIER_SHIFT_ACTIVE_CLAIMS")) {
+      this.activeCashierShiftClaims.set(
+        `${String(bindValues[0])}:${String(bindValues[1])}`,
+        String(bindValues[2]),
+      );
+    } else if (normalized.startsWith("DELETE FROM CASHIER_SHIFT_ACTIVE_CLAIMS")) {
+      const key = `${String(bindValues[0])}:${String(bindValues[1])}`;
+      if (
+        bindValues.length < 3 ||
+        this.activeCashierShiftClaims.get(key) === String(bindValues[2])
+      ) {
+        this.activeCashierShiftClaims.delete(key);
+      }
     }
     return { rowsAffected: 1 };
   }
 
-  async select<T>(): Promise<T> {
+  async select<T>(query?: string, bindValues: unknown[] = []): Promise<T> {
+    if (query?.includes("FROM cashier_shift_active_claims")) {
+      const occurrenceId = this.activeCashierShiftClaims.get(
+        `${String(bindValues[0])}:${String(bindValues[1])}`,
+      );
+      return (occurrenceId ? [{ occurrence_id: occurrenceId }] : []) as T;
+    }
     return [] as T;
   }
 
@@ -204,6 +224,30 @@ describe("local-mode SQLite authority", () => {
     expect(sqlite.events).toEqual(["begin", "commit"]);
     expect(settled).toBe(true);
     expect(sqlite.rows.has("categories:category-1")).toBe(true);
+  });
+
+  it("claims one active cashier occurrence atomically in Local-mode SQLite", async () => {
+    const first = {
+      ...entity("cashier_shift_occurrences", "cashier-shift-one"),
+      assignmentId: "assignment-one",
+      cashierUserId: "cashier-one",
+      status: "active",
+    } as any;
+    const second = {
+      ...entity("cashier_shift_occurrences", "cashier-shift-two"),
+      assignmentId: "assignment-two",
+      cashierUserId: "cashier-one",
+      status: "active",
+    } as any;
+
+    await testDb.cashier_shift_occurrences.put(first);
+    await expect(testDb.cashier_shift_occurrences.put(second)).rejects.toThrow(
+      "already has an active shift",
+    );
+    expect(
+      sqlite.activeCashierShiftClaims.get(`${WORKSPACE_ID}:cashier-one`),
+    ).toBe(first.id);
+    expect(await testDb.cashier_shift_occurrences.get(second.id)).toBeUndefined();
   });
 
   it("aborts the Dexie cache write when SQLite fails", async () => {

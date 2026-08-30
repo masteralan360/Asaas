@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import i18n from '@/i18n/config'
-import { formatCurrency, generateId, toSnakeCase } from '@/lib/utils'
+import { formatCurrency, generateId, toCamelCase, toSnakeCase } from '@/lib/utils'
 import { getSupabaseClientForTable, getSupabaseRemoteTableName } from '@/lib/supabaseSchema'
 import { isOnline } from '@/lib/network'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
@@ -15,6 +15,7 @@ import type {
   CashierShift,
   CashierShiftCurrencyCount,
   CashierShiftAssignment,
+  CashierShiftAssignmentMode,
   CashierShiftEarlyFinishPolicy,
   CashierShiftEarlyFinishRequestStatus,
   CashierShiftOccurrence,
@@ -33,7 +34,7 @@ import type {
   PaymentAccountManualOperationKind,
   PaymentTransaction,
   PaymentTransactionDirection,
-  WorkspacePaymentMethod,
+  WorkspacePaymentMethod
 } from './models'
 
 const _PAYMENT_ACCOUNT_TABLES = [
@@ -46,7 +47,7 @@ const _PAYMENT_ACCOUNT_TABLES = [
   'cashier_shift_assignments',
   'cashier_shift_occurrences',
   'cashier_shift_pause_requests',
-  'cashier_shift_pause_periods',
+  'cashier_shift_pause_periods'
 ] as const
 
 type PaymentAccountTable = (typeof _PAYMENT_ACCOUNT_TABLES)[number]
@@ -64,26 +65,44 @@ const CASHIER_SHIFT_EARLY_FINISH_POLICIES: CashierShiftEarlyFinishPolicy[] = [
   'scheduled_end',
   'time_before_end',
   'request_approval',
-  'free_with_reason',
+  'free_with_reason'
 ]
+const CASHIER_SHIFT_ASSIGNMENT_MODES: CashierShiftAssignmentMode[] = ['scheduled', 'manual', 'login_logout']
+
+/** Older cached rows are scheduled by definition; the migration makes this explicit. */
+export function getCashierShiftAssignmentMode(
+  value: Pick<CashierShiftAssignment | CashierShiftOccurrence, 'assignmentMode'>
+) {
+  return value.assignmentMode ?? 'scheduled'
+}
+
+function isActiveCashierShiftOccurrence(occurrence: Pick<CashierShiftOccurrence, 'status' | 'isDeleted'>) {
+  return !occurrence.isDeleted && (occurrence.status === 'active' || occurrence.status === 'paused')
+}
 
 function getLocalizedInsufficientFundsMessage(
   balance: number,
   currency: CurrencyCode,
   accountName?: string | null,
-  operation: 'transaction' | 'withdrawal' = 'transaction',
+  operation: 'transaction' | 'withdrawal' = 'transaction'
 ) {
   const formattedBalance = formatCurrency(balance, currency, 'د.ع')
   return operation === 'withdrawal'
     ? i18n.t('paymentAccounts.errors.insufficientFundsWithdrawal', {
-      balance: formattedBalance,
-      defaultValue: 'You do not have enough balance in this payment account to make this withdrawal. Current balance: {{balance}}.',
-    })
+        balance: formattedBalance,
+        defaultValue:
+          'You do not have enough balance in this payment account to make this withdrawal. Current balance: {{balance}}.'
+      })
     : i18n.t('paymentAccounts.errors.insufficientFunds', {
-      account: accountName || i18n.t('paymentAccounts.account', { defaultValue: 'this payment account' }),
-      balance: formattedBalance,
-      defaultValue: 'You do not have enough balance in {{account}} to proceed with this transaction. Current balance: {{balance}}.',
-    })
+        account:
+          accountName ||
+          i18n.t('paymentAccounts.account', {
+            defaultValue: 'this payment account'
+          }),
+        balance: formattedBalance,
+        defaultValue:
+          'You do not have enough balance in {{account}} to proceed with this transaction. Current balance: {{balance}}.'
+      })
 }
 
 function syncMeta(workspaceId: string, now: string) {
@@ -97,20 +116,22 @@ function cloudWorkspace(workspaceId: string) {
 }
 
 function payload(row: Record<string, unknown>) {
-  return toSnakeCase({ ...row, syncStatus: undefined, lastSyncedAt: undefined })
+  return toSnakeCase({
+    ...row,
+    syncStatus: undefined,
+    lastSyncedAt: undefined
+  })
 }
 
 function isRemoteUniqueViolation(error: unknown) {
-  return typeof error === 'object'
-    && error !== null
-    && (error as { code?: unknown }).code === '23505'
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === '23505'
 }
 
 async function persist<T extends { id: string; workspaceId: string }>(
   tableName: PaymentAccountTable,
   row: T,
   operation: 'create' | 'update' = 'create',
-  options: PersistOptions = {},
+  options: PersistOptions = {}
 ) {
   const table = db.table(tableName)
   if (!options.localAlreadyPersisted) await table.put(row)
@@ -124,9 +145,15 @@ async function persist<T extends { id: string; workspaceId: string }>(
 
   try {
     const client = getSupabaseClientForTable(tableName)
-    const { error } = await client.from(getSupabaseRemoteTableName(tableName)).upsert(payload(row as Record<string, unknown>))
+    const { error } = await client
+      .from(getSupabaseRemoteTableName(tableName))
+      .upsert(payload(row as Record<string, unknown>))
     if (error) throw error
-    const synced = { ...row, syncStatus: 'synced' as const, lastSyncedAt: new Date().toISOString() }
+    const synced = {
+      ...row,
+      syncStatus: 'synced' as const,
+      lastSyncedAt: new Date().toISOString()
+    }
     await table.put(synced)
     return synced
   } catch (error) {
@@ -144,12 +171,15 @@ async function persist<T extends { id: string; workspaceId: string }>(
 
 function usePaymentAccountTableState<T extends { id: string; workspaceId: string }>(
   tableName: PaymentAccountTable,
-  workspaceId?: string,
+  workspaceId?: string
 ) {
   const online = useNetworkStatus()
   const rows = useLiveQuery(
-    () => workspaceId ? db.table(tableName).where('workspaceId').equals(workspaceId).toArray() as Promise<T[]> : Promise.resolve([] as T[]),
-    [tableName, workspaceId],
+    () =>
+      workspaceId
+        ? (db.table(tableName).where('workspaceId').equals(workspaceId).toArray() as Promise<T[]>)
+        : Promise.resolve([] as T[]),
+    [tableName, workspaceId]
   )
 
   useEffect(() => {
@@ -161,13 +191,13 @@ function usePaymentAccountTableState<T extends { id: string; workspaceId: string
     rows: rows ?? [],
     // An undefined result means Dexie's first local read has not completed.
     // Do not confuse that with a real, empty account list in payment forms.
-    isReady: !workspaceId || rows !== undefined,
+    isReady: !workspaceId || rows !== undefined
   }
 }
 
 function usePaymentAccountTable<T extends { id: string; workspaceId: string }>(
   tableName: PaymentAccountTable,
-  workspaceId?: string,
+  workspaceId?: string
 ) {
   return usePaymentAccountTableState<T>(tableName, workspaceId).rows
 }
@@ -181,7 +211,7 @@ function normalizePaymentAccounts(rows: PaymentAccount[]) {
   const derivedPrimaryId = needsLegacyPrimary ? activeAccounts[0].id : null
 
   return accounts
-    .map((account) => account.id === derivedPrimaryId ? { ...account, isPrimary: true } : account)
+    .map((account) => (account.id === derivedPrimaryId ? { ...account, isPrimary: true } : account))
     .sort((a, b) => Number(!!b.isPrimary) - Number(!!a.isPrimary) || a.name.localeCompare(b.name))
 }
 
@@ -212,13 +242,16 @@ export function usePaymentAccountMovements(workspaceId?: string) {
   const rows = usePaymentAccountTable<PaymentAccountMovement>('payment_account_movements', workspaceId)
   return useMemo(
     () => rows.filter((row) => !row.isDeleted).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),
-    [rows],
+    [rows]
   )
 }
 
 export function useCashierShifts(workspaceId?: string) {
   const rows = usePaymentAccountTable<CashierShift>('cashier_shifts', workspaceId)
-  return useMemo(() => rows.filter((row) => !row.isDeleted).sort((a, b) => b.openedAt.localeCompare(a.openedAt)), [rows])
+  return useMemo(
+    () => rows.filter((row) => !row.isDeleted).sort((a, b) => b.openedAt.localeCompare(a.openedAt)),
+    [rows]
+  )
 }
 
 export function useCashierShiftCurrencyCounts(workspaceId?: string) {
@@ -230,7 +263,7 @@ export function useCashierShiftTemplates(workspaceId?: string) {
   const rows = usePaymentAccountTable<CashierShiftTemplate>('cashier_shift_templates', workspaceId)
   return useMemo(
     () => rows.filter((row) => !row.isDeleted).sort((left, right) => left.name.localeCompare(right.name)),
-    [rows],
+    [rows]
   )
 }
 
@@ -238,15 +271,20 @@ export function useCashierShiftAssignments(workspaceId?: string) {
   const rows = usePaymentAccountTable<CashierShiftAssignment>('cashier_shift_assignments', workspaceId)
   return useMemo(
     () => rows.filter((row) => !row.isDeleted).sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
-    [rows],
+    [rows]
   )
 }
 
 export function useCashierShiftOccurrences(workspaceId?: string) {
   const rows = usePaymentAccountTable<CashierShiftOccurrence>('cashier_shift_occurrences', workspaceId)
   return useMemo(
-    () => rows.filter((row) => !row.isDeleted).sort((left, right) => right.scheduledStartAt.localeCompare(left.scheduledStartAt)),
-    [rows],
+    () =>
+      rows
+        .filter((row) => !row.isDeleted)
+        .sort((left, right) =>
+          (right.scheduledStartAt ?? right.startedAt).localeCompare(left.scheduledStartAt ?? left.startedAt)
+        ),
+    [rows]
   )
 }
 
@@ -254,7 +292,7 @@ export function useCashierShiftPauseRequests(workspaceId?: string) {
   const rows = usePaymentAccountTable<CashierShiftPauseRequest>('cashier_shift_pause_requests', workspaceId)
   return useMemo(
     () => rows.filter((row) => !row.isDeleted).sort((left, right) => right.requestedAt.localeCompare(left.requestedAt)),
-    [rows],
+    [rows]
   )
 }
 
@@ -262,7 +300,7 @@ export function useCashierShiftPausePeriods(workspaceId?: string) {
   const rows = usePaymentAccountTable<CashierShiftPausePeriod>('cashier_shift_pause_periods', workspaceId)
   return useMemo(
     () => rows.filter((row) => !row.isDeleted).sort((left, right) => right.startedAt.localeCompare(left.startedAt)),
-    [rows],
+    [rows]
   )
 }
 
@@ -296,26 +334,47 @@ export interface CashierShiftCompletionEligibility {
  */
 export function getCashierShiftCompletionEligibility(
   occurrence: CashierShiftOccurrence,
-  now = new Date(),
+  now = new Date()
 ): CashierShiftCompletionEligibility {
   if (occurrence.status !== 'active') {
-    return { canComplete: false, requiresReason: false, requiresApprovalRequest: false, eligibleAt: null }
+    return {
+      canComplete: false,
+      requiresReason: false,
+      requiresApprovalRequest: false,
+      eligibleAt: null
+    }
+  }
+
+  // Unscheduled occurrences are governed by their explicit lifecycle actions,
+  // not a fabricated end window or early-finish rule.
+  if (getCashierShiftAssignmentMode(occurrence) !== 'scheduled' || !occurrence.scheduledEndAt) {
+    return {
+      canComplete: true,
+      requiresReason: false,
+      requiresApprovalRequest: false,
+      eligibleAt: null
+    }
   }
 
   const scheduledEnd = new Date(occurrence.scheduledEndAt)
   if (now >= scheduledEnd) {
-    return { canComplete: true, requiresReason: false, requiresApprovalRequest: false, eligibleAt: occurrence.scheduledEndAt }
+    return {
+      canComplete: true,
+      requiresReason: false,
+      requiresApprovalRequest: false,
+      eligibleAt: occurrence.scheduledEndAt
+    }
   }
 
   const policy = getEarlyFinishPolicy(occurrence)
   if (policy === 'time_before_end') {
     const offsetMinutes = Number(occurrence.earlyFinishOffsetMinutes || 0)
-    const eligibleAt = new Date(scheduledEnd.getTime() - (offsetMinutes * 60_000))
+    const eligibleAt = new Date(scheduledEnd.getTime() - offsetMinutes * 60_000)
     return {
       canComplete: offsetMinutes > 0 && now >= eligibleAt,
       requiresReason: false,
       requiresApprovalRequest: false,
-      eligibleAt: eligibleAt.toISOString(),
+      eligibleAt: eligibleAt.toISOString()
     }
   }
   if (policy === 'request_approval') {
@@ -323,14 +382,24 @@ export function getCashierShiftCompletionEligibility(
       canComplete: getEarlyFinishRequestStatus(occurrence) === 'approved',
       requiresReason: false,
       requiresApprovalRequest: getEarlyFinishRequestStatus(occurrence) !== 'approved',
-      eligibleAt: null,
+      eligibleAt: null
     }
   }
   if (policy === 'free_with_reason') {
-    return { canComplete: true, requiresReason: true, requiresApprovalRequest: false, eligibleAt: null }
+    return {
+      canComplete: true,
+      requiresReason: true,
+      requiresApprovalRequest: false,
+      eligibleAt: null
+    }
   }
 
-  return { canComplete: false, requiresReason: false, requiresApprovalRequest: false, eligibleAt: occurrence.scheduledEndAt }
+  return {
+    canComplete: false,
+    requiresReason: false,
+    requiresApprovalRequest: false,
+    eligibleAt: occurrence.scheduledEndAt
+  }
 }
 
 export interface CashierShiftCurrencySummary {
@@ -352,7 +421,7 @@ function roundCashierShiftAmount(value: number) {
  */
 export function summarizeCashierShiftTransactions(
   transactions: PaymentTransaction[],
-  cashierShiftOccurrenceId: string,
+  cashierShiftOccurrenceId: string
 ): CashierShiftCurrencySummary[] {
   const summaries = new Map<CurrencyCode, CashierShiftCurrencySummary>()
 
@@ -364,7 +433,7 @@ export function summarizeCashierShiftTransactions(
       incomingAmount: 0,
       outgoingAmount: 0,
       netAmount: 0,
-      transactionCount: 0,
+      transactionCount: 0
     }
     const delta = getPaymentAccountTransactionDelta(transaction)
     if (delta >= 0) current.incomingAmount += delta
@@ -379,7 +448,7 @@ export function summarizeCashierShiftTransactions(
       ...summary,
       incomingAmount: roundCashierShiftAmount(summary.incomingAmount),
       outgoingAmount: roundCashierShiftAmount(summary.outgoingAmount),
-      netAmount: roundCashierShiftAmount(summary.netAmount),
+      netAmount: roundCashierShiftAmount(summary.netAmount)
     }))
     .sort((left, right) => left.currency.localeCompare(right.currency))
 }
@@ -405,9 +474,10 @@ export interface SavePaymentAccountInput {
 export async function savePaymentAccount(workspaceId: string, input: SavePaymentAccountInput) {
   const now = new Date().toISOString()
   const existing = input.id ? await db.payment_accounts.get(input.id) : undefined
-  if (existing && existing.workspaceId !== workspaceId) throw new Error('Payment account does not belong to this workspace.')
+  if (existing && existing.workspaceId !== workspaceId)
+    throw new Error('Payment account does not belong to this workspace.')
 
-  const requestedOpeningBalances = existing ? [] : input.openingBalances ?? []
+  const requestedOpeningBalances = existing ? [] : (input.openingBalances ?? [])
   if (requestedOpeningBalances.length > 4) {
     throw new Error('A payment account can have opening balances in up to four currencies.')
   }
@@ -421,26 +491,23 @@ export async function savePaymentAccount(workspaceId: string, input: SavePayment
     return Number.isFinite(amount) && amount > 0
   })
 
-  const activeAccounts = (await db.payment_accounts.where('workspaceId').equals(workspaceId).toArray())
-    .filter((item) => !item.isDeleted && item.isActive && item.id !== existing?.id)
+  const activeAccounts = (await db.payment_accounts.where('workspaceId').equals(workspaceId).toArray()).filter(
+    (item) => !item.isDeleted && item.isActive && item.id !== existing?.id
+  )
   const isActive = input.isActive ?? existing?.isActive ?? true
-  const linkedPaymentMethod = isActive && input.accountType === 'digital_wallet'
-    ? input.linkedPaymentMethod === undefined
-      ? existing?.linkedPaymentMethod ?? null
-      : input.linkedPaymentMethod
-    : null
+  const linkedPaymentMethod =
+    isActive && input.accountType === 'digital_wallet'
+      ? input.linkedPaymentMethod === undefined
+        ? (existing?.linkedPaymentMethod ?? null)
+        : input.linkedPaymentMethod
+      : null
   if (linkedPaymentMethod && !DIGITAL_WALLET_PAYMENT_METHODS.includes(linkedPaymentMethod)) {
     throw new Error('Only supported digital payment methods can be linked to a Digital Wallet account.')
   }
   const hasOtherPrimary = activeAccounts.some((item) => item.isPrimary)
-  const shouldBePrimary = isActive && (
-    input.isPrimary === true
-    || existing?.isPrimary === true
-    || !hasOtherPrimary
-  )
-  const shouldBeDefaultForPaymentSelector = isActive && (
-    input.isDefaultForPaymentSelector ?? existing?.isDefaultForPaymentSelector ?? false
-  )
+  const shouldBePrimary = isActive && (input.isPrimary === true || existing?.isPrimary === true || !hasOtherPrimary)
+  const shouldBeDefaultForPaymentSelector =
+    isActive && (input.isDefaultForPaymentSelector ?? existing?.isDefaultForPaymentSelector ?? false)
   const account: PaymentAccount = {
     id: input.id ?? generateId(),
     workspaceId,
@@ -457,15 +524,16 @@ export async function savePaymentAccount(workspaceId: string, input: SavePayment
     updatedAt: now,
     version: (existing?.version ?? 0) + 1,
     isDeleted: false,
-    ...syncMeta(workspaceId, now),
+    ...syncMeta(workspaceId, now)
   }
 
   const relatedUpdates = activeAccounts.reduce<PaymentAccount[]>((updates, other) => {
     const shouldClearPrimary = account.isPrimary && other.isPrimary
     const shouldClearDefault = account.isDefaultForPaymentSelector && other.isDefaultForPaymentSelector
-    const shouldClearLinkedPaymentMethod = !!account.linkedPaymentMethod
-      && other.accountType === 'digital_wallet'
-      && other.linkedPaymentMethod === account.linkedPaymentMethod
+    const shouldClearLinkedPaymentMethod =
+      !!account.linkedPaymentMethod &&
+      other.accountType === 'digital_wallet' &&
+      other.linkedPaymentMethod === account.linkedPaymentMethod
     if (!shouldClearPrimary && !shouldClearDefault && !shouldClearLinkedPaymentMethod) return updates
 
     updates.push({
@@ -475,7 +543,7 @@ export async function savePaymentAccount(workspaceId: string, input: SavePayment
       linkedPaymentMethod: shouldClearLinkedPaymentMethod ? null : other.linkedPaymentMethod,
       updatedAt: now,
       version: other.version + 1,
-      ...syncMeta(workspaceId, now),
+      ...syncMeta(workspaceId, now)
     })
     return updates
   }, [])
@@ -503,7 +571,7 @@ export async function savePaymentAccount(workspaceId: string, input: SavePayment
         createdBy: input.createdBy ?? null,
         accountId: savedAccount.id,
         accountNameSnapshot: savedAccount.name,
-        metadata: { paymentAccountOpeningBalance: true },
+        metadata: { paymentAccountOpeningBalance: true }
       })
     }
   }
@@ -523,11 +591,12 @@ export async function deletePaymentAccount(workspaceId: string, accountId: strin
     .filter((item) => !item.isDeleted && item.isActive && item.id !== accountId)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name))
   const existingPrimary = activeRemaining.find((item) => item.isPrimary)
-  const accountActsAsPrimary = account.isPrimary || (
-    !existingPrimary
-    && [account, ...activeRemaining]
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name))[0]?.id === account.id
-  )
+  const accountActsAsPrimary =
+    account.isPrimary ||
+    (!existingPrimary &&
+      [account, ...activeRemaining].sort(
+        (a, b) => a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name)
+      )[0]?.id === account.id)
   const fallbackPrimary = accountActsAsPrimary && !existingPrimary ? activeRemaining[0] : undefined
   const deleted: PaymentAccount = {
     ...account,
@@ -537,7 +606,7 @@ export async function deletePaymentAccount(workspaceId: string, accountId: strin
     isDeleted: true,
     updatedAt: now,
     version: account.version + 1,
-    ...syncMeta(workspaceId, now),
+    ...syncMeta(workspaceId, now)
   }
   const promoted = fallbackPrimary
     ? {
@@ -545,7 +614,7 @@ export async function deletePaymentAccount(workspaceId: string, accountId: strin
         isPrimary: true,
         updatedAt: now,
         version: fallbackPrimary.version + 1,
-        ...syncMeta(workspaceId, now),
+        ...syncMeta(workspaceId, now)
       }
     : undefined
 
@@ -558,10 +627,7 @@ export async function deletePaymentAccount(workspaceId: string, accountId: strin
   return { deleted, fallbackPrimary: promoted ?? null }
 }
 
-export function getPaymentAccountBalanceSummary(
-  balances: PaymentAccountBalance[],
-  accountId: string,
-) {
+export function getPaymentAccountBalanceSummary(balances: PaymentAccountBalance[], accountId: string) {
   return balances
     .filter((balance) => balance.accountId === accountId && !balance.isDeleted)
     .sort((a, b) => a.currency.localeCompare(b.currency))
@@ -598,7 +664,7 @@ export interface RecordPaymentAccountManualOperationInput {
  */
 export async function recordPaymentAccountManualOperation(
   workspaceId: string,
-  input: RecordPaymentAccountManualOperationInput,
+  input: RecordPaymentAccountManualOperationInput
 ) {
   if (!input.canPost) throw new Error('You are not allowed to post payment-account movements.')
   if (input.kind === 'adjustment' && !input.isAdmin) {
@@ -639,11 +705,15 @@ export async function recordPaymentAccountManualOperation(
       throw new Error('Enter a valid counted balance for the adjustment.')
     }
     if (Math.abs(previousBalance - currentBalance) > 0.000001) {
-      throw new Error('This account changed while you were preparing the adjustment. Review the current posted balance and try again.')
+      throw new Error(
+        'This account changed while you were preparing the adjustment. Review the current posted balance and try again.'
+      )
     }
     const expectedDelta = countedBalance - currentBalance
     if (Math.abs(expectedDelta) <= 0.000001 || Math.abs(Math.abs(expectedDelta) - amount) > 0.000001) {
-      throw new Error('The adjustment amount must exactly match the difference between the counted and posted balances.')
+      throw new Error(
+        'The adjustment amount must exactly match the difference between the counted and posted balances.'
+      )
     }
     if ((expectedDelta > 0 && direction !== 'incoming') || (expectedDelta < 0 && direction !== 'outgoing')) {
       throw new Error('The adjustment direction does not match the counted balance.')
@@ -665,7 +735,7 @@ export async function recordPaymentAccountManualOperation(
     direction,
     amount,
     currency: input.currency,
-    paymentMethod: input.kind === 'adjustment' ? 'unknown' : input.paymentMethod ?? 'cash',
+    paymentMethod: input.kind === 'adjustment' ? 'unknown' : (input.paymentMethod ?? 'cash'),
     paidAt: input.occurredAt ?? new Date().toISOString(),
     referenceLabel: reason,
     note: input.notes?.trim() || null,
@@ -674,13 +744,15 @@ export async function recordPaymentAccountManualOperation(
     accountNameSnapshot: account.name,
     metadata: {
       paymentAccountOperation: input.kind,
-      ...(input.kind === 'adjustment' ? {
-        adjustmentReason: input.adjustmentReason ?? 'other',
-        previousBalance: currentBalance,
-        countedBalance: Number(input.countedBalance),
-        adjustmentAmount: direction === 'incoming' ? amount : -amount,
-      } : {}),
-    },
+      ...(input.kind === 'adjustment'
+        ? {
+            adjustmentReason: input.adjustmentReason ?? 'other',
+            previousBalance: currentBalance,
+            countedBalance: Number(input.countedBalance),
+            adjustmentAmount: direction === 'incoming' ? amount : -amount
+          }
+        : {})
+    }
   })
 }
 
@@ -695,7 +767,12 @@ export interface CreateCashierShiftInput {
  * reconciliation are intentionally outside this workflow.
  */
 export async function createCashierShift(workspaceId: string, input: CreateCashierShiftInput) {
-  if (input.account.workspaceId !== workspaceId || input.account.accountType !== 'cash_drawer' || !input.account.isActive || input.account.isDeleted) {
+  if (
+    input.account.workspaceId !== workspaceId ||
+    input.account.accountType !== 'cash_drawer' ||
+    !input.account.isActive ||
+    input.account.isDeleted
+  ) {
     throw new Error('Select an active cash drawer from this workspace.')
   }
   if (!input.cashierUserId || !input.cashierName.trim()) {
@@ -704,10 +781,10 @@ export async function createCashierShift(workspaceId: string, input: CreateCashi
 
   const [cashierUser, cashierProfile] = await Promise.all([
     db.users.get(input.cashierUserId),
-    db.profiles.get(input.cashierUserId),
+    db.profiles.get(input.cashierUserId)
   ])
-  const isWorkspaceMember = (!cashierUser?.isDeleted && cashierUser?.workspaceId === workspaceId)
-    || cashierProfile?.workspaceId === workspaceId
+  const isWorkspaceMember =
+    (!cashierUser?.isDeleted && cashierUser?.workspaceId === workspaceId) || cashierProfile?.workspaceId === workspaceId
   if (!isWorkspaceMember) {
     throw new Error('Select a workspace member for this cashier shift.')
   }
@@ -739,7 +816,7 @@ export async function createCashierShift(workspaceId: string, input: CreateCashi
     updatedAt: now,
     version: 1,
     isDeleted: false,
-    ...syncMeta(workspaceId, now),
+    ...syncMeta(workspaceId, now)
   }
 
   return persist('cashier_shifts', shift)
@@ -751,7 +828,7 @@ function timeToMinutes(value: string) {
   const hours = Number(match[1])
   const minutes = Number(match[2])
   if (hours > 23 || minutes > 59) return null
-  return (hours * 60) + minutes
+  return hours * 60 + minutes
 }
 
 function dateAtLocalTime(date: Date, time: string) {
@@ -761,7 +838,11 @@ function dateAtLocalTime(date: Date, time: string) {
   return next
 }
 
-export function getCashierShiftOccurrenceBounds(assignment: Pick<CashierShiftAssignment, 'startTime' | 'endTime'>, date: Date) {
+export function getCashierShiftOccurrenceBounds(
+  assignment: Pick<CashierShiftAssignment, 'startTime' | 'endTime'>,
+  date: Date
+) {
+  if (!assignment.startTime || !assignment.endTime) return null
   const start = dateAtLocalTime(date, assignment.startTime)
   const end = dateAtLocalTime(date, assignment.endTime)
   const startMinutes = timeToMinutes(assignment.startTime)
@@ -772,7 +853,7 @@ export function getCashierShiftOccurrenceBounds(assignment: Pick<CashierShiftAss
 }
 
 export function isCashierShiftWorkingDay(assignment: Pick<CashierShiftAssignment, 'workingDays'>, date: Date) {
-  return assignment.workingDays.includes(date.getDay())
+  return assignment.workingDays?.includes(date.getDay()) ?? false
 }
 
 export type CashierShiftListStatus = 'available' | CashierShiftOccurrence['status']
@@ -785,6 +866,7 @@ export interface CashierShiftListRow {
   occurrence?: CashierShiftOccurrence
   scheduledStartAt: string
   scheduledEndAt: string
+  assignmentMode: CashierShiftAssignmentMode
   status: CashierShiftListStatus
 }
 
@@ -798,9 +880,7 @@ function startOfLocalDay(date: Date) {
 
 function cashierShiftOccurrenceKey(assignmentId: string, scheduledStartAt: string) {
   const scheduledStart = new Date(scheduledStartAt)
-  const normalizedStartAt = Number.isNaN(scheduledStart.getTime())
-    ? scheduledStartAt
-    : scheduledStart.toISOString()
+  const normalizedStartAt = Number.isNaN(scheduledStart.getTime()) ? scheduledStartAt : scheduledStart.toISOString()
   return `${assignmentId}:${normalizedStartAt}`
 }
 
@@ -820,30 +900,62 @@ export function getCashierShiftListRows(input: {
   const assignmentById = new Map(
     input.assignments
       .filter((assignment) => assignment.cashierUserId === input.cashierUserId && !assignment.isDeleted)
-      .map((assignment) => [assignment.id, assignment]),
+      .map((assignment) => [assignment.id, assignment])
   )
   const rows = new Map<string, CashierShiftListRow>()
 
   for (const occurrence of input.occurrences) {
     if (occurrence.cashierUserId !== input.cashierUserId || occurrence.isDeleted) continue
     const assignment = assignmentById.get(occurrence.assignmentId)
-    const key = cashierShiftOccurrenceKey(occurrence.assignmentId, occurrence.scheduledStartAt)
+    const displayStartAt = occurrence.scheduledStartAt ?? occurrence.startedAt
+    const key = occurrence.scheduledStartAt
+      ? cashierShiftOccurrenceKey(occurrence.assignmentId, occurrence.scheduledStartAt)
+      : `occurrence:${occurrence.id}`
     rows.set(key, {
       key,
       assignment,
       occurrence,
-      scheduledStartAt: occurrence.scheduledStartAt,
-      scheduledEndAt: occurrence.scheduledEndAt,
-      status: cashierShiftOccurrenceListStatus(occurrence),
+      scheduledStartAt: displayStartAt,
+      scheduledEndAt: occurrence.scheduledEndAt ?? occurrence.startedAt,
+      assignmentMode: getCashierShiftAssignmentMode(occurrence),
+      status: cashierShiftOccurrenceListStatus(occurrence)
     })
   }
 
   const today = startOfLocalDay(input.now)
   const yesterday = new Date(today)
   yesterday.setDate(today.getDate() - 1)
+  const hasGlobalActiveOccurrence = input.occurrences.some(
+    (occurrence) =>
+      occurrence.cashierUserId === input.cashierUserId &&
+      !occurrence.isDeleted &&
+      isActiveCashierShiftOccurrence(occurrence)
+  )
 
   for (const assignment of assignmentById.values()) {
     if (!assignment.isActive) continue
+    // A cashier has one active occurrence across every mode. Preserve the
+    // real occurrence row above, but do not advertise another start target.
+    if (hasGlobalActiveOccurrence) continue
+    const assignmentMode = getCashierShiftAssignmentMode(assignment)
+    if (assignmentMode === 'login_logout') continue
+    if (assignmentMode === 'manual') {
+      if (!isCashierShiftWorkingDay(assignment, today)) continue
+      const key = `manual:${assignment.id}:${today.toDateString()}`
+      if (!rows.has(key)) {
+        rows.set(key, {
+          key,
+          assignment,
+          // These are display fields only. Manual occurrences themselves never
+          // persist a synthetic schedule.
+          scheduledStartAt: input.now.toISOString(),
+          scheduledEndAt: input.now.toISOString(),
+          assignmentMode,
+          status: 'available'
+        })
+      }
+      continue
+    }
     for (const date of [today, yesterday]) {
       if (!isCashierShiftWorkingDay(assignment, date)) continue
       const bounds = getCashierShiftOccurrenceBounds(assignment, date)
@@ -856,14 +968,24 @@ export function getCashierShiftListRows(input: {
         assignment,
         scheduledStartAt,
         scheduledEndAt: bounds.end.toISOString(),
-        status: 'available',
+        assignmentMode,
+        status: 'available'
       })
     }
   }
 
-  const priority: Record<CashierShiftListStatus, number> = { active: 0, paused: 1, available: 2, completed: 3, terminated: 4 }
-  return [...rows.values()].sort((left, right) => priority[left.status] - priority[right.status]
-    || new Date(left.scheduledStartAt).getTime() - new Date(right.scheduledStartAt).getTime())
+  const priority: Record<CashierShiftListStatus, number> = {
+    active: 0,
+    paused: 1,
+    available: 2,
+    completed: 3,
+    terminated: 4
+  }
+  return [...rows.values()].sort(
+    (left, right) =>
+      priority[left.status] - priority[right.status] ||
+      new Date(left.scheduledStartAt).getTime() - new Date(right.scheduledStartAt).getTime()
+  )
 }
 
 /** Real occurrences for administrators. Deliberately never expands recurring schedules. */
@@ -872,19 +994,31 @@ export function getCashierShiftTeamRows(input: {
   occurrences: CashierShiftOccurrence[]
 }): CashierShiftListRow[] {
   const assignmentsById = new Map(input.assignments.map((assignment) => [assignment.id, assignment]))
-  const priority: Record<CashierShiftListStatus, number> = { active: 0, paused: 1, completed: 2, terminated: 3, available: 4 }
+  const priority: Record<CashierShiftListStatus, number> = {
+    active: 0,
+    paused: 1,
+    completed: 2,
+    terminated: 3,
+    available: 4
+  }
   return input.occurrences
     .filter((occurrence) => !occurrence.isDeleted)
     .map((occurrence) => ({
-      key: cashierShiftOccurrenceKey(occurrence.assignmentId, occurrence.scheduledStartAt),
+      key: occurrence.scheduledStartAt
+        ? cashierShiftOccurrenceKey(occurrence.assignmentId, occurrence.scheduledStartAt)
+        : `occurrence:${occurrence.id}`,
       assignment: assignmentsById.get(occurrence.assignmentId),
       occurrence,
-      scheduledStartAt: occurrence.scheduledStartAt,
-      scheduledEndAt: occurrence.scheduledEndAt,
-      status: cashierShiftOccurrenceListStatus(occurrence),
+      scheduledStartAt: occurrence.scheduledStartAt ?? occurrence.startedAt,
+      scheduledEndAt: occurrence.scheduledEndAt ?? occurrence.startedAt,
+      assignmentMode: getCashierShiftAssignmentMode(occurrence),
+      status: cashierShiftOccurrenceListStatus(occurrence)
     }))
-    .sort((left, right) => priority[left.status] - priority[right.status]
-      || new Date(right.scheduledStartAt).getTime() - new Date(left.scheduledStartAt).getTime())
+    .sort(
+      (left, right) =>
+        priority[left.status] - priority[right.status] ||
+        new Date(right.scheduledStartAt).getTime() - new Date(left.scheduledStartAt).getTime()
+    )
 }
 
 export interface CreateCashierShiftTemplateInput {
@@ -914,7 +1048,7 @@ export async function createCashierShiftTemplate(workspaceId: string, input: Cre
     updatedAt: now,
     version: 1,
     isDeleted: false,
-    ...syncMeta(workspaceId, now),
+    ...syncMeta(workspaceId, now)
   }
   return persist('cashier_shift_templates', template)
 }
@@ -923,32 +1057,109 @@ export interface CreateCashierShiftAssignmentInput {
   account: PaymentAccount
   cashierUserId: string
   cashierName: string
+  assignmentMode?: CashierShiftAssignmentMode
   template?: CashierShiftTemplate | null
-  startTime: string
-  endTime: string
-  workingDays: number[]
+  startTime?: string | null
+  endTime?: string | null
+  workingDays?: number[]
   earlyFinishPolicy?: CashierShiftEarlyFinishPolicy
   earlyFinishOffsetMinutes?: number | null
 }
 
 interface ValidatedCashierShiftAssignmentInput {
-  earlyFinishPolicy: CashierShiftEarlyFinishPolicy
+  assignmentMode: CashierShiftAssignmentMode
+  earlyFinishPolicy: CashierShiftEarlyFinishPolicy | null
   earlyFinishOffsetMinutes: number | null
-  workingDays: number[]
+  workingDays: number[] | null
+  startTime: string | null
+  endTime: string | null
+  template: CashierShiftTemplate | null
 }
 
 async function validateCashierShiftAssignmentInput(
   workspaceId: string,
-  input: CreateCashierShiftAssignmentInput,
+  input: CreateCashierShiftAssignmentInput
 ): Promise<ValidatedCashierShiftAssignmentInput> {
-  const startMinutes = timeToMinutes(input.startTime)
-  const endMinutes = timeToMinutes(input.endTime)
-  if (input.account.workspaceId !== workspaceId || input.account.accountType !== 'cash_drawer' || !input.account.isActive || input.account.isDeleted) {
+  const assignmentMode = input.assignmentMode ?? 'scheduled'
+  if (!CASHIER_SHIFT_ASSIGNMENT_MODES.includes(assignmentMode)) {
+    throw new Error(i18n.t('paymentAccounts.errors.assignmentModeInvalid'))
+  }
+  if (
+    input.account.workspaceId !== workspaceId ||
+    input.account.accountType !== 'cash_drawer' ||
+    !input.account.isActive ||
+    input.account.isDeleted
+  ) {
     throw new Error('Select an active cash drawer from this workspace.')
   }
   if (!input.cashierUserId || !input.cashierName.trim()) {
     throw new Error('Select a workspace member for this cashier shift.')
   }
+  const workingDays = [...new Set(input.workingDays ?? [])].sort((left, right) => left - right)
+  if (workingDays.some((day) => day < 0 || day > 6 || !Number.isInteger(day))) {
+    throw new Error('Select valid working days.')
+  }
+  if (
+    input.template &&
+    (input.template.workspaceId !== workspaceId || input.template.isDeleted || !input.template.isActive)
+  ) {
+    throw new Error('Select an active shift template from this workspace.')
+  }
+
+  const [cashierUser, cashierProfile] = await Promise.all([
+    db.users.get(input.cashierUserId),
+    db.profiles.get(input.cashierUserId)
+  ])
+  const isWorkspaceMember =
+    (!cashierUser?.isDeleted && cashierUser?.workspaceId === workspaceId) || cashierProfile?.workspaceId === workspaceId
+  if (!isWorkspaceMember) throw new Error('Select a workspace member for this cashier shift.')
+
+  if (assignmentMode === 'login_logout') {
+    if (
+      input.template ||
+      input.startTime ||
+      input.endTime ||
+      workingDays.length ||
+      input.earlyFinishPolicy ||
+      input.earlyFinishOffsetMinutes != null
+    ) {
+      throw new Error(i18n.t('paymentAccounts.errors.loginLogoutAssignmentMustBeUnscheduled'))
+    }
+    return {
+      assignmentMode,
+      earlyFinishPolicy: null,
+      earlyFinishOffsetMinutes: null,
+      workingDays: null,
+      startTime: null,
+      endTime: null,
+      template: null
+    }
+  }
+
+  if (assignmentMode === 'manual') {
+    if (
+      input.template ||
+      input.startTime ||
+      input.endTime ||
+      input.earlyFinishPolicy ||
+      input.earlyFinishOffsetMinutes != null
+    ) {
+      throw new Error(i18n.t('paymentAccounts.errors.manualAssignmentMustBeUnscheduled'))
+    }
+    if (!workingDays.length) throw new Error('Select at least one working day.')
+    return {
+      assignmentMode,
+      earlyFinishPolicy: null,
+      earlyFinishOffsetMinutes: null,
+      workingDays,
+      startTime: null,
+      endTime: null,
+      template: null
+    }
+  }
+
+  const startMinutes = timeToMinutes(input.startTime ?? '')
+  const endMinutes = timeToMinutes(input.endTime ?? '')
   if (startMinutes === null || endMinutes === null || startMinutes === endMinutes) {
     throw new Error('Enter different valid start and end times.')
   }
@@ -956,61 +1167,157 @@ async function validateCashierShiftAssignmentInput(
   if (!CASHIER_SHIFT_EARLY_FINISH_POLICIES.includes(earlyFinishPolicy)) {
     throw new Error(i18n.t('paymentAccounts.errors.earlyFinishPolicyInvalid'))
   }
-  const shiftDurationMinutes = (endMinutes - startMinutes + (endMinutes <= startMinutes ? 1_440 : 0))
-  const earlyFinishOffsetMinutes = input.earlyFinishOffsetMinutes == null
-    ? null
-    : Number(input.earlyFinishOffsetMinutes)
+  const shiftDurationMinutes = endMinutes - startMinutes + (endMinutes <= startMinutes ? 1_440 : 0)
+  const earlyFinishOffsetMinutes =
+    input.earlyFinishOffsetMinutes == null ? null : Number(input.earlyFinishOffsetMinutes)
   if (earlyFinishPolicy === 'time_before_end') {
-    if (earlyFinishOffsetMinutes === null || !Number.isInteger(earlyFinishOffsetMinutes) || earlyFinishOffsetMinutes <= 0 || earlyFinishOffsetMinutes >= shiftDurationMinutes) {
+    if (
+      earlyFinishOffsetMinutes === null ||
+      !Number.isInteger(earlyFinishOffsetMinutes) ||
+      earlyFinishOffsetMinutes <= 0 ||
+      earlyFinishOffsetMinutes >= shiftDurationMinutes
+    ) {
       throw new Error(i18n.t('paymentAccounts.errors.earlyFinishOffsetInvalid'))
     }
   } else if (earlyFinishOffsetMinutes !== null) {
     throw new Error(i18n.t('paymentAccounts.errors.earlyFinishOffsetOnlyForTimedRule'))
   }
-  const workingDays = [...new Set(input.workingDays)].sort((left, right) => left - right)
-  if (workingDays.length === 0 || workingDays.some((day) => day < 0 || day > 6 || !Number.isInteger(day))) {
-    throw new Error('Select at least one working day.')
+  if (!workingDays.length) throw new Error('Select at least one working day.')
+  return {
+    assignmentMode,
+    earlyFinishPolicy,
+    earlyFinishOffsetMinutes,
+    workingDays,
+    startTime: input.startTime!,
+    endTime: input.endTime!,
+    template: input.template ?? null
   }
-  if (input.template && (input.template.workspaceId !== workspaceId || input.template.isDeleted || !input.template.isActive)) {
-    throw new Error('Select an active shift template from this workspace.')
-  }
+}
 
-  const [cashierUser, cashierProfile] = await Promise.all([
-    db.users.get(input.cashierUserId),
-    db.profiles.get(input.cashierUserId),
+function scheduledAssignmentsOverlap(
+  left: Pick<CashierShiftAssignment, 'startTime' | 'endTime' | 'workingDays'>,
+  right: Pick<CashierShiftAssignment, 'startTime' | 'endTime' | 'workingDays'>
+) {
+  if (!left.startTime || !left.endTime || !right.startTime || !right.endTime) return false
+  const leftStartMinutes = timeToMinutes(left.startTime)
+  const leftEndMinutes = timeToMinutes(left.endTime)
+  const rightStartMinutes = timeToMinutes(right.startTime)
+  const rightEndMinutes = timeToMinutes(right.endTime)
+  if (leftStartMinutes === null || leftEndMinutes === null || rightStartMinutes === null || rightEndMinutes === null)
+    return false
+
+  const intervals = (days: number[] | null | undefined, start: number, end: number) =>
+    (days ?? []).map((day) => {
+      const intervalStart = day * 1_440 + start
+      return {
+        start: intervalStart,
+        end: intervalStart + end - start + (end <= start ? 1_440 : 0)
+      }
+    })
+  const leftIntervals = intervals(left.workingDays, leftStartMinutes, leftEndMinutes)
+  const rightIntervals = intervals(right.workingDays, rightStartMinutes, rightEndMinutes)
+  return leftIntervals.some((leftInterval) =>
+    rightIntervals.some((rightInterval) =>
+      [-10_080, 0, 10_080].some(
+        (weekOffset) =>
+          leftInterval.start < rightInterval.end + weekOffset && rightInterval.start + weekOffset < leftInterval.end
+      )
+    )
+  )
+}
+
+/** Reject ambiguous enabled assignments before they reach a device or the server. */
+async function assertCashierShiftAssignmentConfiguration(
+  workspaceId: string,
+  candidate: Pick<
+    CashierShiftAssignment,
+    'id' | 'cashierUserId' | 'assignmentMode' | 'startTime' | 'endTime' | 'workingDays' | 'isActive' | 'isDeleted'
+  >
+) {
+  if (!candidate.isActive || candidate.isDeleted) return
+  const existing = await db.cashier_shift_assignments
+    .where('[workspaceId+cashierUserId]')
+    .equals([workspaceId, candidate.cashierUserId])
+    .toArray()
+  const candidateMode = getCashierShiftAssignmentMode(candidate)
+  for (const assignment of existing) {
+    if (assignment.id === candidate.id || assignment.isDeleted || !assignment.isActive) continue
+    const existingMode = getCashierShiftAssignmentMode(assignment)
+    if (candidateMode !== 'scheduled' && existingMode !== 'scheduled') {
+      throw new Error(i18n.t('paymentAccounts.errors.unscheduledAssignmentConflict'))
+    }
+    if (
+      candidateMode === 'scheduled' &&
+      existingMode === 'scheduled' &&
+      scheduledAssignmentsOverlap(candidate, assignment)
+    ) {
+      throw new Error(i18n.t('paymentAccounts.errors.scheduledAssignmentConflict'))
+    }
+  }
+}
+
+export async function isCashierShiftAssignmentLocked(workspaceId: string, assignmentId: string) {
+  const occurrence = await db.cashier_shift_occurrences
+    .where('assignmentId')
+    .equals(assignmentId)
+    .and((candidate) => candidate.workspaceId === workspaceId && isActiveCashierShiftOccurrence(candidate))
+    .first()
+  return Boolean(occurrence)
+}
+
+/** The auth layer uses this narrow lookup so unrelated users are never gated. */
+export async function getCashierLoginLogoutShiftState(workspaceId: string, cashierUserId: string) {
+  const [assignments, occurrences] = await Promise.all([
+    db.cashier_shift_assignments.where('[workspaceId+cashierUserId]').equals([workspaceId, cashierUserId]).toArray(),
+    db.cashier_shift_occurrences.where('[workspaceId+cashierUserId]').equals([workspaceId, cashierUserId]).toArray()
   ])
-  const isWorkspaceMember = (!cashierUser?.isDeleted && cashierUser?.workspaceId === workspaceId)
-    || cashierProfile?.workspaceId === workspaceId
-  if (!isWorkspaceMember) throw new Error('Select a workspace member for this cashier shift.')
+  const assignment =
+    assignments.find(
+      (candidate) =>
+        !candidate.isDeleted && candidate.isActive && getCashierShiftAssignmentMode(candidate) === 'login_logout'
+    ) ?? null
+  if (!assignment) return { assignment: null, activeOccurrence: null }
+  const activeOccurrence =
+    occurrences.find(
+      (candidate) => candidate.assignmentId === assignment.id && isActiveCashierShiftOccurrence(candidate)
+    ) ?? null
+  return { assignment, activeOccurrence }
+}
 
-  return { earlyFinishPolicy, earlyFinishOffsetMinutes, workingDays }
+async function assertCashierShiftAssignmentUnlocked(workspaceId: string, assignmentId: string) {
+  if (await isCashierShiftAssignmentLocked(workspaceId, assignmentId)) {
+    throw new Error(i18n.t('paymentAccounts.errors.cashierShiftAssignmentLocked'))
+  }
 }
 
 export async function createCashierShiftAssignment(workspaceId: string, input: CreateCashierShiftAssignmentInput) {
-  const { earlyFinishPolicy, earlyFinishOffsetMinutes, workingDays } = await validateCashierShiftAssignmentInput(workspaceId, input)
+  const validated = await validateCashierShiftAssignmentInput(workspaceId, input)
 
   const now = new Date().toISOString()
   const assignment: CashierShiftAssignment = {
     id: generateId(),
     workspaceId,
-    templateId: input.template?.id ?? null,
-    templateNameSnapshot: input.template?.name ?? null,
+    assignmentMode: validated.assignmentMode,
+    templateId: validated.template?.id ?? null,
+    templateNameSnapshot: validated.template?.name ?? null,
     accountId: input.account.id,
     accountNameSnapshot: input.account.name,
     cashierUserId: input.cashierUserId,
     cashierNameSnapshot: input.cashierName.trim(),
-    startTime: input.startTime,
-    endTime: input.endTime,
-    workingDays,
-    earlyFinishPolicy,
-    earlyFinishOffsetMinutes: earlyFinishPolicy === 'time_before_end' ? earlyFinishOffsetMinutes : null,
+    startTime: validated.startTime,
+    endTime: validated.endTime,
+    workingDays: validated.workingDays,
+    earlyFinishPolicy: validated.earlyFinishPolicy,
+    earlyFinishOffsetMinutes:
+      validated.earlyFinishPolicy === 'time_before_end' ? validated.earlyFinishOffsetMinutes : null,
     isActive: true,
     createdAt: now,
     updatedAt: now,
     version: 1,
     isDeleted: false,
-    ...syncMeta(workspaceId, now),
+    ...syncMeta(workspaceId, now)
   }
+  await assertCashierShiftAssignmentConfiguration(workspaceId, assignment)
   return persist('cashier_shift_assignments', assignment)
 }
 
@@ -1018,38 +1325,45 @@ export async function createCashierShiftAssignment(workspaceId: string, input: C
 export async function updateCashierShiftAssignment(
   workspaceId: string,
   assignmentId: string,
-  input: CreateCashierShiftAssignmentInput,
+  input: CreateCashierShiftAssignmentInput
 ) {
   const existing = await db.cashier_shift_assignments.get(assignmentId)
   if (!existing || existing.workspaceId !== workspaceId || existing.isDeleted) {
     throw new Error(i18n.t('paymentAccounts.errors.cashierShiftAssignmentUnavailable'))
   }
-  const { earlyFinishPolicy, earlyFinishOffsetMinutes, workingDays } = await validateCashierShiftAssignmentInput(workspaceId, input)
+  await assertCashierShiftAssignmentUnlocked(workspaceId, assignmentId)
+  const validated = await validateCashierShiftAssignmentInput(workspaceId, input)
   const now = new Date().toISOString()
   const assignment: CashierShiftAssignment = {
     ...existing,
-    templateId: input.template?.id ?? null,
-    templateNameSnapshot: input.template?.name ?? null,
+    assignmentMode: validated.assignmentMode,
+    templateId: validated.template?.id ?? null,
+    templateNameSnapshot: validated.template?.name ?? null,
     accountId: input.account.id,
     accountNameSnapshot: input.account.name,
     cashierUserId: input.cashierUserId,
     cashierNameSnapshot: input.cashierName.trim(),
-    startTime: input.startTime,
-    endTime: input.endTime,
-    workingDays,
-    earlyFinishPolicy,
-    earlyFinishOffsetMinutes: earlyFinishPolicy === 'time_before_end' ? earlyFinishOffsetMinutes : null,
+    startTime: validated.startTime,
+    endTime: validated.endTime,
+    workingDays: validated.workingDays,
+    earlyFinishPolicy: validated.earlyFinishPolicy,
+    earlyFinishOffsetMinutes:
+      validated.earlyFinishPolicy === 'time_before_end' ? validated.earlyFinishOffsetMinutes : null,
     updatedAt: now,
     version: existing.version + 1,
-    ...syncMeta(workspaceId, now),
+    ...syncMeta(workspaceId, now)
   }
+  await assertCashierShiftAssignmentConfiguration(workspaceId, assignment)
   return persist('cashier_shift_assignments', assignment, 'update')
 }
 
 export interface StartCashierShiftOccurrenceInput {
   assignmentId: string
   cashierUserId: string
-  scheduledStartAt: string
+  /** Required only for scheduled assignments and calculated in the current device's local time. */
+  scheduledStartAt?: string
+  /** Login/logout assignments can only be started by the explicit auth gate. */
+  source?: 'scheduled' | 'manual' | 'login'
 }
 
 export async function startCashierShiftOccurrence(workspaceId: string, input: StartCashierShiftOccurrenceInput) {
@@ -1060,19 +1374,40 @@ export async function startCashierShiftOccurrence(workspaceId: string, input: St
   if (assignment.cashierUserId !== input.cashierUserId) {
     throw new Error('Only the assigned cashier can start this shift.')
   }
-
-  const scheduledDate = new Date(input.scheduledStartAt)
-  const bounds = getCashierShiftOccurrenceBounds(assignment, scheduledDate)
-  if (!bounds || !isCashierShiftWorkingDay(assignment, bounds.start)) {
-    throw new Error('This shift is not scheduled for that day.')
-  }
-  if (bounds.start.toISOString() !== input.scheduledStartAt) {
-    throw new Error('The shift occurrence no longer matches its assigned schedule.')
-  }
-
+  const assignmentMode = getCashierShiftAssignmentMode(assignment)
   const now = new Date()
-  if (now < bounds.start || now >= bounds.end) {
-    throw new Error('This shift can only be started during its scheduled time.')
+  let scheduledStartAt: string | null = null
+  let scheduledEndAt: string | null = null
+  if (assignmentMode === 'scheduled') {
+    if (input.source && input.source !== 'scheduled')
+      throw new Error(i18n.t('paymentAccounts.errors.shiftStartModeMismatch'))
+    if (!input.scheduledStartAt) throw new Error('This shift occurrence requires its scheduled start time.')
+    const scheduledDate = new Date(input.scheduledStartAt)
+    const bounds = getCashierShiftOccurrenceBounds(assignment, scheduledDate)
+    if (!bounds || !isCashierShiftWorkingDay(assignment, bounds.start)) {
+      throw new Error('This shift is not scheduled for that day.')
+    }
+    if (bounds.start.toISOString() !== input.scheduledStartAt) {
+      throw new Error('The shift occurrence no longer matches its assigned schedule.')
+    }
+    if (now < bounds.start || now >= bounds.end) {
+      throw new Error('This shift can only be started during its scheduled time.')
+    }
+    scheduledStartAt = bounds.start.toISOString()
+    scheduledEndAt = bounds.end.toISOString()
+  } else if (assignmentMode === 'manual') {
+    if (input.source === 'login') throw new Error(i18n.t('paymentAccounts.errors.shiftStartModeMismatch'))
+    if (!isCashierShiftWorkingDay(assignment, now)) {
+      throw new Error(i18n.t('paymentAccounts.errors.manualShiftNotWorkingDay'))
+    }
+  } else if (input.source !== 'login') {
+    throw new Error(i18n.t('paymentAccounts.errors.loginLogoutShiftRequiresLogin'))
+  }
+
+  // Cloud and Hybrid starts must never be queued. The database claim owns the
+  // cross-device race; Local Mode owns the equivalent IndexedDB/SQLite claim.
+  if (cloudWorkspace(workspaceId) && !isOnline()) {
+    throw new Error(i18n.t('paymentAccounts.errors.onlineShiftStartRequired'))
   }
 
   const createdAt = now.toISOString()
@@ -1080,20 +1415,22 @@ export async function startCashierShiftOccurrence(workspaceId: string, input: St
     id: generateId(),
     workspaceId,
     assignmentId: assignment.id,
+    assignmentMode,
     templateId: assignment.templateId ?? null,
     templateNameSnapshot: assignment.templateNameSnapshot ?? null,
     accountId: assignment.accountId,
     accountNameSnapshot: assignment.accountNameSnapshot,
     cashierUserId: assignment.cashierUserId,
     cashierNameSnapshot: assignment.cashierNameSnapshot,
-    scheduledStartAt: bounds.start.toISOString(),
-    scheduledEndAt: bounds.end.toISOString(),
+    scheduledStartAt,
+    scheduledEndAt,
     startedAt: createdAt,
-    earlyFinishPolicy: getEarlyFinishPolicy(assignment),
-    earlyFinishOffsetMinutes: assignment.earlyFinishPolicy === 'time_before_end'
-      ? assignment.earlyFinishOffsetMinutes ?? null
-      : null,
-    earlyFinishRequestStatus: 'not_requested',
+    earlyFinishPolicy: assignmentMode === 'scheduled' ? getEarlyFinishPolicy(assignment) : null,
+    earlyFinishOffsetMinutes:
+      assignmentMode === 'scheduled' && assignment.earlyFinishPolicy === 'time_before_end'
+        ? (assignment.earlyFinishOffsetMinutes ?? null)
+        : null,
+    earlyFinishRequestStatus: assignmentMode === 'scheduled' ? 'not_requested' : null,
     earlyFinishRequestReason: null,
     earlyFinishRequestedAt: null,
     earlyFinishRequestedBy: null,
@@ -1108,37 +1445,73 @@ export async function startCashierShiftOccurrence(workspaceId: string, input: St
     updatedAt: createdAt,
     version: 1,
     isDeleted: false,
-    ...syncMeta(workspaceId, createdAt),
+    ...syncMeta(workspaceId, createdAt)
   }
 
-  // IndexedDB is also authoritative in Local mode, so place the validation and
-  // insert in one transaction. A cashier must formally complete an occurrence
-  // before another one can be started, even if the first scheduled window has
-  // already elapsed.
+  // A local claim is atomic in Local Mode. It also preserves the optimistic
+  // mirror only after a successful remote claim in Cloud/Hybrid Mode.
   await db.transaction('rw', db.cashier_shift_occurrences, async () => {
-    const existing = await db.cashier_shift_occurrences
-      .where('[assignmentId+scheduledStartAt]')
-      .equals([assignment.id, input.scheduledStartAt])
-      .first()
-    if (existing && !existing.isDeleted) throw new Error('This shift occurrence has already been started.')
+    if (assignmentMode === 'scheduled') {
+      const existing = await db.cashier_shift_occurrences
+        .where('[assignmentId+scheduledStartAt]')
+        .equals([assignment.id, scheduledStartAt!])
+        .first()
+      if (existing && !existing.isDeleted) throw new Error('This shift occurrence has already been started.')
+    }
 
     const activeOccurrence = await db.cashier_shift_occurrences
       .where('[workspaceId+cashierUserId]')
       .equals([workspaceId, input.cashierUserId])
-      .and((candidate) => !candidate.isDeleted && candidate.status === 'active')
+      .and((candidate) => isActiveCashierShiftOccurrence(candidate))
       .first()
     if (activeOccurrence) {
       throw new Error(i18n.t('paymentAccounts.activeShiftMustBeCompleted'))
     }
-
-    await db.cashier_shift_occurrences.put(occurrence)
+    if (isLocalWorkspaceMode(workspaceId)) await db.cashier_shift_occurrences.put(occurrence)
   })
 
-  return persist('cashier_shift_occurrences', occurrence, 'create', {
-    localAlreadyPersisted: true,
-    failOnRemoteConflict: true,
-    remoteConflictMessage: i18n.t('paymentAccounts.activeShiftMustBeCompleted'),
+  if (isLocalWorkspaceMode(workspaceId)) {
+    return persist('cashier_shift_occurrences', occurrence, 'create', {
+      localAlreadyPersisted: true
+    })
+  }
+
+  if (assignmentMode === 'login_logout') {
+    const pendingClosure = await db.cashier_shift_occurrences
+      .where('[workspaceId+cashierUserId]')
+      .equals([workspaceId, input.cashierUserId])
+      .and(
+        (candidate) =>
+          !candidate.isDeleted &&
+          getCashierShiftAssignmentMode(candidate) === 'login_logout' &&
+          candidate.status === 'completed' &&
+          candidate.syncStatus !== 'synced'
+      )
+      .first()
+    if (pendingClosure) throw new Error(i18n.t('paymentAccounts.errors.loginLogoutClosureSyncPending'))
+  }
+
+  const client = getSupabaseClientForTable('cashier_shift_occurrences')
+  const { data, error } = await client.rpc('claim_cashier_shift_occurrence', {
+    p_occurrence: payload(occurrence as unknown as Record<string, unknown>)
   })
+  if (error) {
+    if (isRemoteUniqueViolation(error)) throw new Error(i18n.t('paymentAccounts.activeShiftMustBeCompleted'))
+    throw error
+  }
+  const claimed = data
+    ? {
+        ...(toCamelCase(data as Record<string, unknown>) as unknown as CashierShiftOccurrence),
+        syncStatus: 'synced' as const,
+        lastSyncedAt: new Date().toISOString()
+      }
+    : {
+        ...occurrence,
+        syncStatus: 'synced' as const,
+        lastSyncedAt: new Date().toISOString()
+      }
+  await db.cashier_shift_occurrences.put(claimed)
+  return claimed
 }
 
 export interface CompleteCashierShiftOccurrenceInput {
@@ -1148,10 +1521,7 @@ export interface CompleteCashierShiftOccurrenceInput {
 }
 
 /** Complete a finished occurrence without making any balance or ledger changes. */
-export async function completeCashierShiftOccurrence(
-  workspaceId: string,
-  input: CompleteCashierShiftOccurrenceInput,
-) {
+export async function completeCashierShiftOccurrence(workspaceId: string, input: CompleteCashierShiftOccurrenceInput) {
   const occurrence = await db.cashier_shift_occurrences.get(input.occurrenceId)
   if (!occurrence || occurrence.workspaceId !== workspaceId || occurrence.isDeleted) {
     throw new Error('This shift occurrence is unavailable.')
@@ -1162,6 +1532,11 @@ export async function completeCashierShiftOccurrence(
   if (occurrence.status === 'completed') return occurrence
   if (occurrence.status !== 'active') {
     throw new Error(i18n.t('paymentAccounts.errors.shiftUnavailable'))
+  }
+
+  const assignmentMode = getCashierShiftAssignmentMode(occurrence)
+  if (assignmentMode === 'login_logout' && input.reason !== 'logged_out') {
+    throw new Error(i18n.t('paymentAccounts.errors.loginLogoutShiftRequiresLogout'))
   }
 
   const now = new Date()
@@ -1176,7 +1551,10 @@ export async function completeCashierShiftOccurrence(
     throw new Error(i18n.t('paymentAccounts.errors.earlyFinishNotAllowed'))
   }
 
-  const completionReason = normalizeCashierShiftReason(input.reason, eligibility.requiresReason)
+  const completionReason =
+    assignmentMode === 'login_logout'
+      ? 'logged_out'
+      : normalizeCashierShiftReason(input.reason, eligibility.requiresReason)
 
   const completedAt = now.toISOString()
   const completed: CashierShiftOccurrence = {
@@ -1187,7 +1565,7 @@ export async function completeCashierShiftOccurrence(
     completionReason,
     updatedAt: completedAt,
     version: occurrence.version + 1,
-    ...syncMeta(workspaceId, completedAt),
+    ...syncMeta(workspaceId, completedAt)
   }
   return persist('cashier_shift_occurrences', completed, 'update')
 }
@@ -1199,10 +1577,7 @@ export interface RequestCashierShiftEarlyFinishInput {
 }
 
 /** Submit the single auditable early-finish request allowed for an occurrence. */
-export async function requestCashierShiftEarlyFinish(
-  workspaceId: string,
-  input: RequestCashierShiftEarlyFinishInput,
-) {
+export async function requestCashierShiftEarlyFinish(workspaceId: string, input: RequestCashierShiftEarlyFinishInput) {
   const occurrence = await db.cashier_shift_occurrences.get(input.occurrenceId)
   if (!occurrence || occurrence.workspaceId !== workspaceId || occurrence.isDeleted || occurrence.status !== 'active') {
     throw new Error(i18n.t('paymentAccounts.errors.shiftUnavailable'))
@@ -1211,6 +1586,9 @@ export async function requestCashierShiftEarlyFinish(
     throw new Error(i18n.t('paymentAccounts.errors.onlyAssignedCashierCanRequestEarlyFinish'))
   }
   if (getEarlyFinishPolicy(occurrence) !== 'request_approval') {
+    throw new Error(i18n.t('paymentAccounts.errors.earlyFinishRequestNotEnabled'))
+  }
+  if (getCashierShiftAssignmentMode(occurrence) !== 'scheduled' || !occurrence.scheduledEndAt) {
     throw new Error(i18n.t('paymentAccounts.errors.earlyFinishRequestNotEnabled'))
   }
   if (new Date() >= new Date(occurrence.scheduledEndAt)) {
@@ -1229,7 +1607,7 @@ export async function requestCashierShiftEarlyFinish(
     earlyFinishRequestedBy: input.cashierUserId,
     updatedAt: requestedAt,
     version: occurrence.version + 1,
-    ...syncMeta(workspaceId, requestedAt),
+    ...syncMeta(workspaceId, requestedAt)
   }
   return persist('cashier_shift_occurrences', requested, 'update')
 }
@@ -1244,20 +1622,24 @@ export interface ReviewCashierShiftEarlyFinishRequestInput {
 /** Record an administrator's decision without completing the cashier's shift. */
 export async function reviewCashierShiftEarlyFinishRequest(
   workspaceId: string,
-  input: ReviewCashierShiftEarlyFinishRequestInput,
+  input: ReviewCashierShiftEarlyFinishRequestInput
 ) {
   const [occurrence, reviewer, reviewerProfile] = await Promise.all([
     db.cashier_shift_occurrences.get(input.occurrenceId),
     db.users.get(input.reviewerUserId),
-    db.profiles.get(input.reviewerUserId),
+    db.profiles.get(input.reviewerUserId)
   ])
   if (!occurrence || occurrence.workspaceId !== workspaceId || occurrence.isDeleted || occurrence.status !== 'active') {
     throw new Error(i18n.t('paymentAccounts.errors.shiftUnavailable'))
   }
-  const reviewerIsAdmin = (reviewer?.workspaceId === workspaceId && reviewer.role === 'admin')
-    || (reviewerProfile?.workspaceId === workspaceId && reviewerProfile.role === 'admin')
+  const reviewerIsAdmin =
+    (reviewer?.workspaceId === workspaceId && reviewer.role === 'admin') ||
+    (reviewerProfile?.workspaceId === workspaceId && reviewerProfile.role === 'admin')
   if (!reviewerIsAdmin) throw new Error(i18n.t('paymentAccounts.errors.earlyFinishAdminRequired'))
-  if (getEarlyFinishPolicy(occurrence) !== 'request_approval' || getEarlyFinishRequestStatus(occurrence) !== 'requested') {
+  if (
+    getEarlyFinishPolicy(occurrence) !== 'request_approval' ||
+    getEarlyFinishRequestStatus(occurrence) !== 'requested'
+  ) {
     throw new Error(i18n.t('paymentAccounts.errors.earlyFinishRequestNotPending'))
   }
 
@@ -1270,7 +1652,7 @@ export async function reviewCashierShiftEarlyFinishRequest(
     earlyFinishReviewNote: normalizeCashierShiftReason(input.reviewNote, false),
     updatedAt: reviewedAt,
     version: occurrence.version + 1,
-    ...syncMeta(workspaceId, reviewedAt),
+    ...syncMeta(workspaceId, reviewedAt)
   }
   return persist('cashier_shift_occurrences', reviewed, 'update')
 }
@@ -1286,16 +1668,14 @@ function normalizePauseRequestReason(value: string | null | undefined, required:
 
 async function assertCashierShiftAdmin(workspaceId: string, userId: string) {
   const [user, profile] = await Promise.all([db.users.get(userId), db.profiles.get(userId)])
-  const isAdmin = (user?.workspaceId === workspaceId && user.role === 'admin')
-    || (profile?.workspaceId === workspaceId && profile.role === 'admin')
+  const isAdmin =
+    (user?.workspaceId === workspaceId && user.role === 'admin') ||
+    (profile?.workspaceId === workspaceId && profile.role === 'admin')
   if (!isAdmin) throw new Error(i18n.t('paymentAccounts.errors.cashierShiftAdminRequired'))
 }
 
 async function getOpenCashierShiftPausePeriod(occurrenceId: string) {
-  const periods = await db.cashier_shift_pause_periods
-    .where('occurrenceId')
-    .equals(occurrenceId)
-    .toArray()
+  const periods = await db.cashier_shift_pause_periods.where('occurrenceId').equals(occurrenceId).toArray()
   return periods.find((period) => !period.isDeleted && !period.resumedAt) ?? null
 }
 
@@ -1305,12 +1685,18 @@ async function persistPauseTransition(input: {
   request?: CashierShiftPauseRequest
 }) {
   if (input.request) {
-    await persist('cashier_shift_pause_requests', input.request, 'update', { localAlreadyPersisted: true })
+    await persist('cashier_shift_pause_requests', input.request, 'update', {
+      localAlreadyPersisted: true
+    })
   }
   if (input.period) {
-    await persist('cashier_shift_pause_periods', input.period, input.period.version === 1 ? 'create' : 'update', { localAlreadyPersisted: true })
+    await persist('cashier_shift_pause_periods', input.period, input.period.version === 1 ? 'create' : 'update', {
+      localAlreadyPersisted: true
+    })
   }
-  return persist('cashier_shift_occurrences', input.occurrence, 'update', { localAlreadyPersisted: true })
+  return persist('cashier_shift_occurrences', input.occurrence, 'update', {
+    localAlreadyPersisted: true
+  })
 }
 
 export interface RequestCashierShiftPauseInput {
@@ -1322,25 +1708,24 @@ export interface RequestCashierShiftPauseInput {
 }
 
 /** Creates a durable request; it has no operational effect until an administrator approves it. */
-export async function requestCashierShiftPause(
-  workspaceId: string,
-  input: RequestCashierShiftPauseInput,
-) {
+export async function requestCashierShiftPause(workspaceId: string, input: RequestCashierShiftPauseInput) {
   const reason = normalizePauseRequestReason(input.reason, true)!
-  const requestedDurationMinutes = input.requestedDurationMinutes == null
-    ? null
-    : Number(input.requestedDurationMinutes)
+  const requestedDurationMinutes =
+    input.requestedDurationMinutes == null ? null : Number(input.requestedDurationMinutes)
   const requestedResumeAt = input.requestedResumeAt ? new Date(input.requestedResumeAt) : null
   const hasDuration = requestedDurationMinutes !== null
   const hasResumeTime = requestedResumeAt !== null
-  if (hasDuration === hasResumeTime
-    || (hasDuration && (!Number.isInteger(requestedDurationMinutes) || requestedDurationMinutes! <= 0))
-    || (hasResumeTime && Number.isNaN(requestedResumeAt!.getTime()))) {
+  if (
+    hasDuration === hasResumeTime ||
+    (hasDuration && (!Number.isInteger(requestedDurationMinutes) || requestedDurationMinutes! <= 0)) ||
+    (hasResumeTime && Number.isNaN(requestedResumeAt!.getTime()))
+  ) {
     throw new Error(i18n.t('paymentAccounts.errors.pauseTimingRequired'))
   }
 
   const now = new Date()
-  if (requestedResumeAt && requestedResumeAt <= now) throw new Error(i18n.t('paymentAccounts.errors.pauseResumeTimeInvalid'))
+  if (requestedResumeAt && requestedResumeAt <= now)
+    throw new Error(i18n.t('paymentAccounts.errors.pauseResumeTimeInvalid'))
 
   const requestedAt = now.toISOString()
   const request: CashierShiftPauseRequest = {
@@ -1361,12 +1746,17 @@ export async function requestCashierShiftPause(
     updatedAt: requestedAt,
     version: 1,
     isDeleted: false,
-    ...syncMeta(workspaceId, requestedAt),
+    ...syncMeta(workspaceId, requestedAt)
   }
 
   await db.transaction('rw', db.cashier_shift_occurrences, db.cashier_shift_pause_requests, async () => {
     const occurrence = await db.cashier_shift_occurrences.get(input.occurrenceId)
-    if (!occurrence || occurrence.workspaceId !== workspaceId || occurrence.isDeleted || occurrence.status !== 'active') {
+    if (
+      !occurrence ||
+      occurrence.workspaceId !== workspaceId ||
+      occurrence.isDeleted ||
+      occurrence.status !== 'active'
+    ) {
       throw new Error(i18n.t('paymentAccounts.errors.shiftUnavailable'))
     }
     if (occurrence.cashierUserId !== input.cashierUserId) {
@@ -1380,7 +1770,9 @@ export async function requestCashierShiftPause(
     await db.cashier_shift_pause_requests.put(request)
   })
 
-  return persist('cashier_shift_pause_requests', request, 'create', { localAlreadyPersisted: true })
+  return persist('cashier_shift_pause_requests', request, 'create', {
+    localAlreadyPersisted: true
+  })
 }
 
 export interface ReviewCashierShiftPauseRequestInput {
@@ -1391,10 +1783,7 @@ export interface ReviewCashierShiftPauseRequestInput {
 }
 
 /** Approving a request starts the pause in the same local transaction as the review. */
-export async function reviewCashierShiftPauseRequest(
-  workspaceId: string,
-  input: ReviewCashierShiftPauseRequestInput,
-) {
+export async function reviewCashierShiftPauseRequest(workspaceId: string, input: ReviewCashierShiftPauseRequestInput) {
   await assertCashierShiftAdmin(workspaceId, input.reviewerUserId)
   const reviewedAt = new Date().toISOString()
   const reviewNote = normalizePauseRequestReason(input.reviewNote, false)
@@ -1402,66 +1791,85 @@ export async function reviewCashierShiftPauseRequest(
   let requestResult: CashierShiftPauseRequest | null = null
   let periodResult: CashierShiftPausePeriod | undefined
 
-  await db.transaction('rw', db.cashier_shift_occurrences, db.cashier_shift_pause_requests, db.cashier_shift_pause_periods, async () => {
-    const request = await db.cashier_shift_pause_requests.get(input.requestId)
-    if (!request || request.workspaceId !== workspaceId || request.isDeleted || request.status !== 'pending') {
-      throw new Error(i18n.t('paymentAccounts.errors.pauseRequestNotPending'))
-    }
-    const occurrence = await db.cashier_shift_occurrences.get(request.occurrenceId)
-    if (!occurrence || occurrence.workspaceId !== workspaceId || occurrence.isDeleted || occurrence.status !== 'active'
-      || occurrence.cashierUserId !== request.cashierUserId) {
-      throw new Error(i18n.t('paymentAccounts.errors.shiftUnavailable'))
-    }
+  await db.transaction(
+    'rw',
+    db.cashier_shift_occurrences,
+    db.cashier_shift_pause_requests,
+    db.cashier_shift_pause_periods,
+    async () => {
+      const request = await db.cashier_shift_pause_requests.get(input.requestId)
+      if (!request || request.workspaceId !== workspaceId || request.isDeleted || request.status !== 'pending') {
+        throw new Error(i18n.t('paymentAccounts.errors.pauseRequestNotPending'))
+      }
+      const occurrence = await db.cashier_shift_occurrences.get(request.occurrenceId)
+      if (
+        !occurrence ||
+        occurrence.workspaceId !== workspaceId ||
+        occurrence.isDeleted ||
+        occurrence.status !== 'active' ||
+        occurrence.cashierUserId !== request.cashierUserId
+      ) {
+        throw new Error(i18n.t('paymentAccounts.errors.shiftUnavailable'))
+      }
 
-    const requestUpdate: CashierShiftPauseRequest = {
-      ...request,
-      status: input.decision,
-      reviewedAt,
-      reviewedBy: input.reviewerUserId,
-      reviewNote,
-      updatedAt: reviewedAt,
-      version: request.version + 1,
-      ...syncMeta(workspaceId, reviewedAt),
-    }
-    if (input.decision === 'approved') {
-      const period: CashierShiftPausePeriod = {
-        id: generateId(),
-        workspaceId,
-        occurrenceId: occurrence.id,
-        kind: 'cashier_request',
-        startedAt: reviewedAt,
-        initiatedBy: input.reviewerUserId,
-        note: request.reason,
-        pauseRequestId: request.id,
-        resumedAt: null,
-        resumedBy: null,
-        createdAt: reviewedAt,
+      const requestUpdate: CashierShiftPauseRequest = {
+        ...request,
+        status: input.decision,
+        reviewedAt,
+        reviewedBy: input.reviewerUserId,
+        reviewNote,
         updatedAt: reviewedAt,
-        version: 1,
-        isDeleted: false,
-        ...syncMeta(workspaceId, reviewedAt),
+        version: request.version + 1,
+        ...syncMeta(workspaceId, reviewedAt)
       }
-      requestUpdate.approvedPausePeriodId = period.id
-      const occurrenceUpdate: CashierShiftOccurrence = {
-        ...occurrence,
-        status: 'paused',
-        updatedAt: reviewedAt,
-        version: occurrence.version + 1,
-        ...syncMeta(workspaceId, reviewedAt),
+      if (input.decision === 'approved') {
+        const period: CashierShiftPausePeriod = {
+          id: generateId(),
+          workspaceId,
+          occurrenceId: occurrence.id,
+          kind: 'cashier_request',
+          startedAt: reviewedAt,
+          initiatedBy: input.reviewerUserId,
+          note: request.reason,
+          pauseRequestId: request.id,
+          resumedAt: null,
+          resumedBy: null,
+          createdAt: reviewedAt,
+          updatedAt: reviewedAt,
+          version: 1,
+          isDeleted: false,
+          ...syncMeta(workspaceId, reviewedAt)
+        }
+        requestUpdate.approvedPausePeriodId = period.id
+        const occurrenceUpdate: CashierShiftOccurrence = {
+          ...occurrence,
+          status: 'paused',
+          updatedAt: reviewedAt,
+          version: occurrence.version + 1,
+          ...syncMeta(workspaceId, reviewedAt)
+        }
+        await db.cashier_shift_pause_periods.put(period)
+        await db.cashier_shift_occurrences.put(occurrenceUpdate)
+        occurrenceResult = occurrenceUpdate
+        periodResult = period
+      } else {
+        occurrenceResult = occurrence
       }
-      await db.cashier_shift_pause_periods.put(period)
-      await db.cashier_shift_occurrences.put(occurrenceUpdate)
-      occurrenceResult = occurrenceUpdate
-      periodResult = period
-    } else {
-      occurrenceResult = occurrence
+      await db.cashier_shift_pause_requests.put(requestUpdate)
+      requestResult = requestUpdate
     }
-    await db.cashier_shift_pause_requests.put(requestUpdate)
-    requestResult = requestUpdate
+  )
+
+  await persistPauseTransition({
+    occurrence: occurrenceResult!,
+    request: requestResult!,
+    period: periodResult
   })
-
-  await persistPauseTransition({ occurrence: occurrenceResult!, request: requestResult!, period: periodResult })
-  return { occurrence: occurrenceResult!, request: requestResult!, period: periodResult ?? null }
+  return {
+    occurrence: occurrenceResult!,
+    request: requestResult!,
+    period: periodResult ?? null
+  }
 }
 
 export interface PauseCashierShiftOccurrenceInput {
@@ -1480,23 +1888,47 @@ export async function pauseCashierShiftOccurrence(workspaceId: string, input: Pa
   let periodResult: CashierShiftPausePeriod | null = null
   await db.transaction('rw', db.cashier_shift_occurrences, db.cashier_shift_pause_periods, async () => {
     const occurrence = await db.cashier_shift_occurrences.get(input.occurrenceId)
-    if (!occurrence || occurrence.workspaceId !== workspaceId || occurrence.isDeleted || occurrence.status !== 'active') {
+    if (
+      !occurrence ||
+      occurrence.workspaceId !== workspaceId ||
+      occurrence.isDeleted ||
+      occurrence.status !== 'active'
+    ) {
       throw new Error(i18n.t('paymentAccounts.errors.shiftUnavailable'))
     }
     const period: CashierShiftPausePeriod = {
-      id: generateId(), workspaceId, occurrenceId: occurrence.id, kind: input.kind, startedAt,
-      initiatedBy: input.initiatorUserId, note, pauseRequestId: null, resumedAt: null, resumedBy: null,
-      createdAt: startedAt, updatedAt: startedAt, version: 1, isDeleted: false, ...syncMeta(workspaceId, startedAt),
+      id: generateId(),
+      workspaceId,
+      occurrenceId: occurrence.id,
+      kind: input.kind,
+      startedAt,
+      initiatedBy: input.initiatorUserId,
+      note,
+      pauseRequestId: null,
+      resumedAt: null,
+      resumedBy: null,
+      createdAt: startedAt,
+      updatedAt: startedAt,
+      version: 1,
+      isDeleted: false,
+      ...syncMeta(workspaceId, startedAt)
     }
     const occurrenceUpdate: CashierShiftOccurrence = {
-      ...occurrence, status: 'paused', updatedAt: startedAt, version: occurrence.version + 1, ...syncMeta(workspaceId, startedAt),
+      ...occurrence,
+      status: 'paused',
+      updatedAt: startedAt,
+      version: occurrence.version + 1,
+      ...syncMeta(workspaceId, startedAt)
     }
     await db.cashier_shift_pause_periods.put(period)
     await db.cashier_shift_occurrences.put(occurrenceUpdate)
     occurrenceResult = occurrenceUpdate
     periodResult = period
   })
-  await persistPauseTransition({ occurrence: occurrenceResult!, period: periodResult! })
+  await persistPauseTransition({
+    occurrence: occurrenceResult!,
+    period: periodResult!
+  })
   return { occurrence: occurrenceResult!, period: periodResult! }
 }
 
@@ -1512,24 +1944,40 @@ export async function resumeCashierShiftOccurrence(workspaceId: string, input: R
   let periodResult: CashierShiftPausePeriod | null = null
   await db.transaction('rw', db.cashier_shift_occurrences, db.cashier_shift_pause_periods, async () => {
     const occurrence = await db.cashier_shift_occurrences.get(input.occurrenceId)
-    if (!occurrence || occurrence.workspaceId !== workspaceId || occurrence.isDeleted || occurrence.status !== 'paused') {
+    if (
+      !occurrence ||
+      occurrence.workspaceId !== workspaceId ||
+      occurrence.isDeleted ||
+      occurrence.status !== 'paused'
+    ) {
       throw new Error(i18n.t('paymentAccounts.errors.shiftNotPaused'))
     }
     const openPeriod = await getOpenCashierShiftPausePeriod(occurrence.id)
     if (!openPeriod) throw new Error(i18n.t('paymentAccounts.errors.pausePeriodUnavailable'))
     const periodUpdate: CashierShiftPausePeriod = {
-      ...openPeriod, resumedAt, resumedBy: input.resumedByUserId, updatedAt: resumedAt, version: openPeriod.version + 1,
-      ...syncMeta(workspaceId, resumedAt),
+      ...openPeriod,
+      resumedAt,
+      resumedBy: input.resumedByUserId,
+      updatedAt: resumedAt,
+      version: openPeriod.version + 1,
+      ...syncMeta(workspaceId, resumedAt)
     }
     const occurrenceUpdate: CashierShiftOccurrence = {
-      ...occurrence, status: 'active', updatedAt: resumedAt, version: occurrence.version + 1, ...syncMeta(workspaceId, resumedAt),
+      ...occurrence,
+      status: 'active',
+      updatedAt: resumedAt,
+      version: occurrence.version + 1,
+      ...syncMeta(workspaceId, resumedAt)
     }
     await db.cashier_shift_pause_periods.put(periodUpdate)
     await db.cashier_shift_occurrences.put(occurrenceUpdate)
     occurrenceResult = occurrenceUpdate
     periodResult = periodUpdate
   })
-  await persistPauseTransition({ occurrence: occurrenceResult!, period: periodResult! })
+  await persistPauseTransition({
+    occurrence: occurrenceResult!,
+    period: periodResult!
+  })
   return { occurrence: occurrenceResult!, period: periodResult! }
 }
 
@@ -1540,7 +1988,10 @@ export interface TerminateCashierShiftOccurrenceInput {
 }
 
 /** A terminal administrative close. A live pause interval is closed at the same timestamp. */
-export async function terminateCashierShiftOccurrence(workspaceId: string, input: TerminateCashierShiftOccurrenceInput) {
+export async function terminateCashierShiftOccurrence(
+  workspaceId: string,
+  input: TerminateCashierShiftOccurrenceInput
+) {
   await assertCashierShiftAdmin(workspaceId, input.terminatedByUserId)
   const terminatedAt = new Date().toISOString()
   const terminationReason = normalizePauseRequestReason(input.reason, false)
@@ -1548,28 +1999,45 @@ export async function terminateCashierShiftOccurrence(workspaceId: string, input
   let periodResult: CashierShiftPausePeriod | undefined
   await db.transaction('rw', db.cashier_shift_occurrences, db.cashier_shift_pause_periods, async () => {
     const occurrence = await db.cashier_shift_occurrences.get(input.occurrenceId)
-    if (!occurrence || occurrence.workspaceId !== workspaceId || occurrence.isDeleted
-      || (occurrence.status !== 'active' && occurrence.status !== 'paused')) {
+    if (
+      !occurrence ||
+      occurrence.workspaceId !== workspaceId ||
+      occurrence.isDeleted ||
+      (occurrence.status !== 'active' && occurrence.status !== 'paused')
+    ) {
       throw new Error(i18n.t('paymentAccounts.errors.shiftCannotBeTerminated'))
     }
     if (occurrence.status === 'paused') {
       const openPeriod = await getOpenCashierShiftPausePeriod(occurrence.id)
       if (!openPeriod) throw new Error(i18n.t('paymentAccounts.errors.pausePeriodUnavailable'))
       const periodUpdate: CashierShiftPausePeriod = {
-        ...openPeriod, resumedAt: terminatedAt, resumedBy: input.terminatedByUserId,
-        updatedAt: terminatedAt, version: openPeriod.version + 1, ...syncMeta(workspaceId, terminatedAt),
+        ...openPeriod,
+        resumedAt: terminatedAt,
+        resumedBy: input.terminatedByUserId,
+        updatedAt: terminatedAt,
+        version: openPeriod.version + 1,
+        ...syncMeta(workspaceId, terminatedAt)
       }
       await db.cashier_shift_pause_periods.put(periodUpdate)
       periodResult = periodUpdate
     }
     const occurrenceUpdate: CashierShiftOccurrence = {
-      ...occurrence, status: 'terminated', terminatedAt, terminatedBy: input.terminatedByUserId, terminationReason,
-      updatedAt: terminatedAt, version: occurrence.version + 1, ...syncMeta(workspaceId, terminatedAt),
+      ...occurrence,
+      status: 'terminated',
+      terminatedAt,
+      terminatedBy: input.terminatedByUserId,
+      terminationReason,
+      updatedAt: terminatedAt,
+      version: occurrence.version + 1,
+      ...syncMeta(workspaceId, terminatedAt)
     }
     await db.cashier_shift_occurrences.put(occurrenceUpdate)
     occurrenceResult = occurrenceUpdate
   })
-  await persistPauseTransition({ occurrence: occurrenceResult!, period: periodResult })
+  await persistPauseTransition({
+    occurrence: occurrenceResult!,
+    period: periodResult
+  })
   return { occurrence: occurrenceResult!, period: periodResult ?? null }
 }
 
@@ -1580,7 +2048,7 @@ export async function terminateCashierShiftOccurrence(workspaceId: string, input
  */
 export async function resolveActiveCashierShiftOccurrenceId(
   workspaceId: string,
-  input: { cashierUserId?: string | null; accountId?: string | null },
+  input: { cashierUserId?: string | null; accountId?: string | null }
 ) {
   if (!input.cashierUserId || !input.accountId) return null
 
@@ -1590,22 +2058,30 @@ export async function resolveActiveCashierShiftOccurrenceId(
     .equals([workspaceId, input.cashierUserId])
     .toArray()
 
-  return candidates
-    .filter((occurrence) => (
-      !occurrence.isDeleted
-      && occurrence.status === 'active'
-      && occurrence.accountId === input.accountId
-      && new Date(occurrence.startedAt) <= now
-      && now < new Date(occurrence.scheduledEndAt)
-    ))
-    .sort((left, right) => (
-      right.startedAt.localeCompare(left.startedAt)
-      || right.scheduledStartAt.localeCompare(left.scheduledStartAt)
-    ))[0]?.id ?? null
+  return (
+    candidates
+      .filter(
+        (occurrence) =>
+          !occurrence.isDeleted &&
+          occurrence.status === 'active' &&
+          occurrence.accountId === input.accountId &&
+          new Date(occurrence.startedAt) <= now &&
+          (getCashierShiftAssignmentMode(occurrence) !== 'scheduled' ||
+            !occurrence.scheduledEndAt ||
+            now < new Date(occurrence.scheduledEndAt))
+      )
+      .sort(
+        (left, right) =>
+          right.startedAt.localeCompare(left.startedAt) ||
+          (right.scheduledStartAt ?? right.startedAt).localeCompare(left.scheduledStartAt ?? left.startedAt)
+      )[0]?.id ?? null
+  )
 }
 
 /** The signed effect of a payment transaction on its selected payment account. */
-export function getPaymentAccountTransactionDelta(transaction: Pick<PaymentTransaction, 'amount' | 'direction' | 'isDeleted'>) {
+export function getPaymentAccountTransactionDelta(
+  transaction: Pick<PaymentTransaction, 'amount' | 'direction' | 'isDeleted'>
+) {
   if (transaction.isDeleted) return 0
   const amount = Number(transaction.amount)
   return transaction.direction === 'incoming' ? amount : -amount
@@ -1622,10 +2098,7 @@ export async function assertPaymentAccountTransactionsCanBeAppliedLocally(candid
 
   const rowsByWorkspace = new Map<string, PaymentTransaction[]>()
   for (const workspaceId of new Set(accountCandidates.map((transaction) => transaction.workspaceId))) {
-    rowsByWorkspace.set(
-      workspaceId,
-      await db.payment_transactions.where('workspaceId').equals(workspaceId).toArray(),
-    )
+    rowsByWorkspace.set(workspaceId, await db.payment_transactions.where('workspaceId').equals(workspaceId).toArray())
   }
 
   const groupedCandidates = new Map<string, PaymentTransaction[]>()
@@ -1642,14 +2115,18 @@ export async function assertPaymentAccountTransactionsCanBeAppliedLocally(candid
     }
 
     const candidateIds = new Set(group.map((item) => item.id))
-    const accountTransactions = (rowsByWorkspace.get(transaction.workspaceId) ?? [])
-      .filter((item) => item.accountId === transaction.accountId && item.currency === transaction.currency)
-    const currentBalance = accountTransactions
-      .reduce((total, item) => total + getPaymentAccountTransactionDelta(item), 0)
-    const projectedBalance = accountTransactions
-      .filter((item) => !candidateIds.has(item.id))
-      .reduce((total, item) => total + getPaymentAccountTransactionDelta(item), 0)
-      + group.reduce((total, item) => total + getPaymentAccountTransactionDelta(item), 0)
+    const accountTransactions = (rowsByWorkspace.get(transaction.workspaceId) ?? []).filter(
+      (item) => item.accountId === transaction.accountId && item.currency === transaction.currency
+    )
+    const currentBalance = accountTransactions.reduce(
+      (total, item) => total + getPaymentAccountTransactionDelta(item),
+      0
+    )
+    const projectedBalance =
+      accountTransactions
+        .filter((item) => !candidateIds.has(item.id))
+        .reduce((total, item) => total + getPaymentAccountTransactionDelta(item), 0) +
+      group.reduce((total, item) => total + getPaymentAccountTransactionDelta(item), 0)
 
     if (projectedBalance < -PAYMENT_ACCOUNT_BALANCE_EPSILON) {
       throw new Error(getLocalizedInsufficientFundsMessage(currentBalance, transaction.currency, account.name))
@@ -1669,9 +2146,13 @@ export async function assertPaymentAccountTransactionCanBeAppliedLocally(transac
 export async function mirrorPaymentAccountTransactionLocally(transaction: PaymentTransaction) {
   if (!transaction.accountId) return
   const now = transaction.updatedAt || new Date().toISOString()
-  const projectionSyncMeta = transaction.syncStatus === 'synced'
-    ? { syncStatus: 'synced' as const, lastSyncedAt: transaction.lastSyncedAt ?? now }
-    : syncMeta(transaction.workspaceId, now)
+  const projectionSyncMeta =
+    transaction.syncStatus === 'synced'
+      ? {
+          syncStatus: 'synced' as const,
+          lastSyncedAt: transaction.lastSyncedAt ?? now
+        }
+      : syncMeta(transaction.workspaceId, now)
   const delta = getPaymentAccountTransactionDelta(transaction)
   const previousMovement = await db.payment_account_movements.get(transaction.id)
   const previousDelta = Number(previousMovement?.deltaAmount || 0)
@@ -1694,7 +2175,7 @@ export async function mirrorPaymentAccountTransactionLocally(transaction: Paymen
     updatedAt: now,
     version: (previousMovement?.version ?? 0) + 1,
     isDeleted: transaction.isDeleted,
-    ...projectionSyncMeta,
+    ...projectionSyncMeta
   }
   const balance: PaymentAccountBalance = {
     id: existingBalance?.id ?? generateId(),
@@ -1706,7 +2187,7 @@ export async function mirrorPaymentAccountTransactionLocally(transaction: Paymen
     updatedAt: now,
     version: (existingBalance?.version ?? 0) + 1,
     isDeleted: false,
-    ...projectionSyncMeta,
+    ...projectionSyncMeta
   }
   await db.transaction('rw', db.payment_account_movements, db.payment_account_balances, async () => {
     await db.payment_account_movements.put(movement)

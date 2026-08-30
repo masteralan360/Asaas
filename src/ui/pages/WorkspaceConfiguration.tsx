@@ -495,7 +495,7 @@ export function WorkspaceConfiguration() {
                         <Button
                             variant="ghost"
                             className="w-full h-10 gap-2 text-muted-foreground"
-                            onClick={signOut}
+                            onClick={() => void signOut()}
                         >
                             <LogOut className="w-4 h-4" />
                             {t('signOut')}

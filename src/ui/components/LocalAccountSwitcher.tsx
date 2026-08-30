@@ -39,6 +39,8 @@ import {
 
 interface LocalAccountSwitcherProps {
   isCompact: boolean;
+  shiftBadge?: "ready" | "complete" | null;
+  manualShiftActiveDuration?: string | null;
 }
 
 function AccountAvatar({
@@ -74,6 +76,8 @@ function AccountAvatar({
 
 export function LocalAccountSwitcher({
   isCompact,
+  shiftBadge = null,
+  manualShiftActiveDuration = null,
 }: LocalAccountSwitcherProps) {
   const { t } = useTranslation();
   const { user, switchLocalAccount } = useAuth();
@@ -162,12 +166,56 @@ export function LocalAccountSwitcher({
             className={cn(
               "flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-2 text-start transition-colors hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
               isCompact && "flex-col gap-1 px-1",
+              manualShiftActiveDuration && "mb-3",
             )}
             title={t("accounts.openSwitcher", {
               defaultValue: "Switch local account",
             })}
           >
-            <AccountAvatar account={currentAccount} className="h-9 w-9 text-sm" />
+            <span className="relative shrink-0">
+              <AccountAvatar account={currentAccount} className="h-9 w-9 text-sm" />
+              {shiftBadge ? (
+                <span className="pointer-events-none absolute -bottom-1 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap">
+                  <span
+                    className={cn(
+                      "block rounded-[3px] border px-1.5 py-0.5 text-[8px] font-bold leading-none text-white shadow-sm",
+                      shiftBadge === "ready"
+                        ? "border-emerald-200 bg-emerald-500 dark:border-emerald-300/40"
+                        : "border-primary/30 bg-primary",
+                    )}
+                    title={t(
+                      shiftBadge === "ready"
+                        ? "paymentAccounts.readyShiftBadge"
+                        : "paymentAccounts.completeShiftBadge",
+                    )}
+                    aria-label={t(
+                      shiftBadge === "ready"
+                        ? "paymentAccounts.shiftStatuses.available"
+                        : "paymentAccounts.completeShift",
+                    )}
+                  >
+                    {t(
+                      shiftBadge === "ready"
+                        ? "paymentAccounts.readyShiftBadge"
+                        : "paymentAccounts.completeShiftBadge",
+                    )}
+                  </span>
+                  {manualShiftActiveDuration ? (
+                    <span
+                      className="absolute left-1/2 top-full -mt-px -translate-x-1/2 rounded-[3px] border border-muted-foreground/25 bg-muted px-1.5 py-0.5 font-mono text-[8px] font-bold leading-none text-muted-foreground shadow-sm"
+                      title={t("paymentAccounts.manualShiftActiveDuration", {
+                        time: manualShiftActiveDuration,
+                      })}
+                      aria-label={t("paymentAccounts.manualShiftActiveDuration", {
+                        time: manualShiftActiveDuration,
+                      })}
+                    >
+                      {manualShiftActiveDuration}
+                    </span>
+                  ) : null}
+                </span>
+              ) : null}
+            </span>
             {!isCompact && (
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">

@@ -3761,7 +3761,7 @@ export function Settings() {
                                             </div>
                                         </div>
                                     </div>
-                                    <Button variant="destructive" onClick={signOut}>
+                                    <Button variant="destructive" onClick={() => void signOut()}>
                                         {t('auth.signOut')}
                                     </Button>
                                 </CardContent>
