@@ -88,6 +88,9 @@ Use the `react-i18next` library for all text content that appears in the UI . Do
 1. Define text in the relevant language JSON file at `src/i18n/locales/`
 2. Refer to text via keys in JSX, for example: `<p>{t('welcomeMessage')}</p>`
 
+Before adding or translating terminology, search `src/i18n/locales/ku.json` and `src/i18n/locales/ar.json` for the widely used existing term and reuse it whenever applicable.
+Do not introduce alternate Kurdish or Arabic terms for an existing app concept unless the user explicitly requests a terminology change or its a new term that has to be introduced.
+
 Message toasts must also be localized and shown a User-Friendly message and not technical.
 
 ## Printing

@@ -1280,7 +1280,6 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                             orderId={order.id}
                             iqdPreference={iqd}
                             orderCurrency={currency}
-                            defaultCustomerCity={bizPartner?.city || ''}
                             canAssign={canAssignSalesAgents}
                             canViewAllCommission={canViewAllAgentCommissions}
                             canViewOwnCommission={canViewOwnAgentCommissions}

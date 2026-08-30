@@ -176,6 +176,15 @@ export function getAppliedCurrencyConversion(
     if (!Number.isFinite(amount) || amount < 0) return null
 
     const now = new Date().toISOString()
+    if (amount === 0) {
+        return {
+            convertedAmount: 0,
+            exchangeRate: 1,
+            exchangeRateSource: fromCurrency === toCurrency ? 'native' : 'zero_amount',
+            exchangeRateTimestamp: now,
+            exchangeRates: []
+        }
+    }
     if (fromCurrency === toCurrency) {
         return {
             convertedAmount: normalizeAmount(amount, toCurrency),

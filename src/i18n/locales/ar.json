@@ -7244,6 +7244,15 @@
     "assignmentHelp": "يحتسب هذا البيع بصورة مستقلة عن مستخدم مساحة العمل الذي أنشأ الطلب.",
     "appliedCommission": "النسبة المطبقة",
     "commissionOnOrderTotal": "النسبة على إجمالي الطلب",
+    "quickOrderSummary": {
+      "title": "عمولات مندوبي المبيعات",
+      "notIncludedInOrderTotal": "لا تُضاف إلى إجمالي الطلب",
+      "agentCount_one": "مندوب واحد",
+      "agentCount_other": "{{count}} مندوبين",
+      "configuredCommissionTotal": "إجمالي العمولة المُعدّة",
+      "calculatedOnCompletion": "تُحسب عند إكمال الطلب",
+      "commissionNeedsAttention": "تحتاج العمولة إلى مراجعة"
+    },
     "exchangeRateUnavailable": "سعر الصرف غير متاح",
     "convertedCommissionHint": "تم التحويل والحفظ بعملة {{currency}} باستخدام لقطة سعر الطلب.",
     "percentageCommissionHint": "تم الحساب من إجمالي الطلب الحالي: {{total}}.",

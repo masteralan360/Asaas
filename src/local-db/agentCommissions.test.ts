@@ -395,6 +395,27 @@ describe("sales agent commission lifecycle", () => {
     });
   });
 
+  it("calculates a zero fixed commission without an exchange-rate path", () => {
+    const order = { ...completedOrder(crypto.randomUUID()), currency: "usd" as const, exchangeRates: [] };
+
+    const calculation = commissions.calculateSalesOrderCommission(order, {
+      commissionType: "fixed_amount",
+      ratePercent: 0,
+      fixedAmount: 0,
+      fixedCurrency: "iqd",
+      calculationBasis: "net_profit",
+      includeTax: false,
+      includeDeliveryCharge: false,
+    });
+
+    expect(calculation).toMatchObject({
+      currency: "usd",
+      basisAmount: 400,
+      ratePercent: 0,
+      commissionAmount: 0,
+    });
+  });
+
   it("stores a tier label without changing the current commission calculation", async () => {
     const plan = await commissions.createAgentCommissionPlan(WORKSPACE_ID, {
       name: "Tiered sales",
@@ -607,6 +628,7 @@ describe("sales agent commission lifecycle", () => {
       name: "Level 1",
       level: "level_1",
       commissionType: "fixed_amount",
+      ratePercent: 0,
       fixedAmount: 10,
       fixedCurrency: "usd",
     });
@@ -1078,6 +1100,7 @@ describe("sales agent commission lifecycle", () => {
       name: "Zero fixed commission",
       level: "zero-fixed-commission",
       commissionType: "fixed_amount",
+      ratePercent: 0,
       fixedAmount: 0,
       fixedCurrency: "usd",
     });

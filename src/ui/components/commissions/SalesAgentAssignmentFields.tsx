@@ -92,7 +92,9 @@ export function SalesAgentAssignmentFields({
             ...value,
             agentId: nextAgentId,
             manualCommissionType: 'fixed_amount',
-            manualCommissionAmount: nextPlan?.commissionType === 'fixed_amount' ? String(nextPlan.fixedAmount ?? 0) : '',
+            manualCommissionAmount: nextPlan?.commissionType === 'fixed_amount'
+                ? Number(nextPlan.fixedAmount ?? 0) === 0 ? '' : String(nextPlan.fixedAmount)
+                : '',
             manualCommissionCurrency: nextPlan?.commissionType === 'fixed_amount'
                 ? nextPlan.fixedCurrency || orderCurrency
                 : orderCurrency
@@ -101,8 +103,9 @@ export function SalesAgentAssignmentFields({
     const usesManualCommission = Boolean(selectedAgent && !selectedAgent.plan)
     const hasFixedCommissionPlan = selectedAgent?.plan?.commissionType === 'fixed_amount'
     const planCommissionAmount = Number(selectedAgent?.plan?.fixedAmount ?? 0)
+    const planCommissionAmountValue = planCommissionAmount === 0 ? '' : String(planCommissionAmount)
     const hasPlanCommissionOverride = hasFixedCommissionPlan
-        && value.manualCommissionAmount !== String(planCommissionAmount)
+        && value.manualCommissionAmount !== planCommissionAmountValue
     const planCommissionCurrency = selectedAgent?.plan?.fixedCurrency || value.manualCommissionCurrency
     const manualAmount = Number(value.manualCommissionAmount)
     const manualConversion = usesManualCommission && value.manualCommissionType === 'fixed_amount'
@@ -304,7 +307,7 @@ export function SalesAgentAssignmentFields({
                                 size="sm"
                                 variant="ghost"
                                 className="gap-1.5"
-                                onClick={() => update('manualCommissionAmount', String(planCommissionAmount))}
+                                onClick={() => update('manualCommissionAmount', planCommissionAmountValue)}
                                 disabled={disabled}
                             >
                                 <RotateCcw className="h-3.5 w-3.5" />

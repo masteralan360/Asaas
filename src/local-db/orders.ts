@@ -14,7 +14,7 @@ import { getMissingPriceBookCostMessage, hasValidProductCost } from '@/lib/produ
 import { canBePurchased, isService } from '@/lib/catalogItem'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
-import { generateId } from '@/lib/utils'
+import { generateId, toCamelCase } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { readWorkspaceCache } from '@/workspace/workspaceCache'
 import { supabase } from '@/auth/supabase'
@@ -81,6 +81,7 @@ import type {
     TravelAgencySale
 } from './models'
 import { appendPaymentTransaction, synchronizeOrderPaymentReferences } from './payments'
+import { mirrorPaymentAccountTransactionLocally } from './paymentAccounts'
 
 export function isOrderFinancingMethod(method?: OrderPaymentMethod | null): method is 'loan' | 'installments' {
     return method === 'loan' || method === 'installments'
@@ -2131,7 +2132,7 @@ export async function recordOrderPayment(
     }
 }
 
-export async function createSalesOrder(
+async function buildSalesOrderEntity(
     workspaceId: string,
     data: CreateOrderInput<SalesOrder>,
     createdBy?: string | null
@@ -2164,6 +2165,17 @@ export async function createSalesOrder(
     if (confirmedAdjustments.length > 0) order.orderAdjustments = confirmedAdjustments
     else delete order.orderAdjustments
     order.nextDueDate = isOrderFinancingMethod(order.paymentMethod) ? order.firstDueDate || null : null
+
+    return order
+}
+
+export async function createSalesOrder(
+    workspaceId: string,
+    data: CreateOrderInput<SalesOrder>,
+    createdBy?: string | null
+) {
+    const order = await buildSalesOrderEntity(workspaceId, data, createdBy)
+    const status = order.status
 
     await assertSalesProductsHaveCosts(order)
 
@@ -2215,10 +2227,165 @@ export async function createSalesOrder(
     return createdOrder
 }
 
+type CompletedQuickSalesOrderRpcResult = {
+    order?: Record<string, unknown> | null
+    payment?: Record<string, unknown> | null
+    inventory?: Array<Record<string, unknown>> | null
+    stock_batches?: Array<Record<string, unknown>> | null
+}
+
+function normalizeCompletedQuickOrderRpcEntity<T extends { updatedAt?: string }>(
+    row: Record<string, unknown>,
+    syncedAt: string
+) {
+    return {
+        ...(toCamelCase(row) as unknown as T),
+        syncStatus: 'synced' as const,
+        lastSyncedAt: syncedAt
+    }
+}
+
+async function applyCompletedQuickOrderRpcResult(
+    workspaceId: string,
+    result: CompletedQuickSalesOrderRpcResult
+) {
+    if (!result.order) {
+        throw new Error('Quick Order completion did not return the completed order')
+    }
+
+    const syncedAt = new Date().toISOString()
+    const order = normalizeCompletedQuickOrderRpcEntity<SalesOrder>(result.order, syncedAt)
+    const payment = result.payment
+        ? normalizeCompletedQuickOrderRpcEntity<PaymentTransaction>(result.payment, syncedAt)
+        : null
+    const inventoryRows = (result.inventory ?? []).map((row) =>
+        normalizeCompletedQuickOrderRpcEntity<Inventory>(row, syncedAt)
+    )
+    const batchRows = (result.stock_batches ?? []).map((row) =>
+        normalizeCompletedQuickOrderRpcEntity<StockBatch>(row, syncedAt)
+    )
+
+    if (order.workspaceId !== workspaceId) {
+        throw new Error('Quick Order completion returned a different workspace')
+    }
+
+    await db.transaction(
+        'rw',
+        [db.sales_orders, db.payment_transactions, db.inventory, db.stock_batches],
+        async () => {
+            await db.sales_orders.put(order)
+            if (payment) {
+                await db.payment_transactions.put(payment)
+            }
+
+            for (const inventoryRow of inventoryRows) {
+                const duplicates = await db.inventory
+                    .where('[productId+storageId]')
+                    .equals([inventoryRow.productId, inventoryRow.storageId])
+                    .toArray()
+                for (const duplicate of duplicates) {
+                    if (duplicate.id !== inventoryRow.id && duplicate.workspaceId === workspaceId) {
+                        await db.inventory.delete(duplicate.id)
+                    }
+                }
+                await db.inventory.put(inventoryRow)
+            }
+
+            if (batchRows.length > 0) {
+                await db.stock_batches.bulkPut(batchRows)
+            }
+        }
+    )
+
+    await Promise.all(Array.from(new Set(inventoryRows.map((row) => row.productId))).map((productId) =>
+        syncProductStockSnapshot(productId, syncedAt, 'remote')
+    ))
+    if (payment) {
+        await mirrorPaymentAccountTransactionLocally(payment)
+    }
+
+    return order
+}
+
+async function completePaidQuickSalesOrderAtomically(
+    order: SalesOrder,
+    options?: {
+        onProgress?: (stage: CompletedSalesOrderProgressStage) => void
+    }
+) {
+    await assertSalesProductsHaveCosts(order)
+    options?.onProgress?.('reserving')
+    await assertSalesStockAvailable(order)
+    options?.onProgress?.('completing')
+
+    const payment = order.paidAmount > ORDER_AMOUNT_EPSILON
+        ? sanitizeSyncPayload('payment_transactions', {
+            id: generateId(),
+            workspaceId: order.workspaceId,
+            sourceRecordId: order.id,
+            direction: 'incoming',
+            amount: order.paidAmount,
+            currency: order.currency,
+            accountId: order.initialPaymentAccountId ?? null,
+            accountNameSnapshot: order.initialPaymentAccountNameSnapshot ?? null
+        })
+        : null
+    const payload = {
+        order: sanitizeSyncPayload(
+            'sales_orders',
+            order as unknown as Record<string, unknown>
+        ),
+        payment
+    }
+    const { data, error } = await runMutation('sales_orders.quick_order.complete', () =>
+        supabase.rpc('complete_quick_sales_order', { payload })
+    )
+    if (error) {
+        throw normalizeSupabaseActionError(error)
+    }
+
+    const completedOrder = await applyCompletedQuickOrderRpcResult(
+        order.workspaceId,
+        (data ?? {}) as CompletedQuickSalesOrderRpcResult
+    )
+
+    // Sales-account attribution is authoritative business data, so retain the
+    // existing awaited reconciliation when this uncommon option is selected.
+    if (completedOrder.salesAccountAgentId) {
+        await synchronizeSalesAccountCommissionBeneficiaryBestEffort(
+            order.workspaceId,
+            completedOrder.id,
+            completedOrder.createdBy
+        )
+    }
+
+    // Customer/partner totals and reorder suggestions are derived projections.
+    // Refresh them after the authoritative transaction without holding the POS
+    // success dialog behind more network round trips.
+    void Promise.all([
+        recalculateCustomerAndPartnerSummaries(
+            order.workspaceId,
+            completedOrder.customerId,
+            completedOrder.businessPartnerId
+        ),
+        (async () => {
+            const { evaluateReorderTransferRulesForProduct } = await import('./reorderTransferRules')
+            await Promise.all(Array.from(new Set(completedOrder.items.map((item) => item.productId))).map((productId) =>
+                evaluateReorderTransferRulesForProduct(order.workspaceId, productId)
+            ))
+        })()
+    ]).catch((projectionError) => {
+        console.error('[Orders] Failed to refresh Quick Order projections:', projectionError)
+    })
+
+    return completedOrder
+}
+
 /**
- * Creates a sales order through the normal draft -> pending -> completed
- * lifecycle.  This keeps the inventory, payment, and financing transitions
- * identical for callers that need an immediately completed sales order.
+ * Completes an immediately-paid online Quick Order through one atomic RPC.
+ * Financed, offline, and Local Mode orders retain the normal
+ * draft -> pending -> completed lifecycle because their financing/offline
+ * transitions have different durability requirements.
  */
 export type CompletedSalesOrderProgressStage = 'creating' | 'reserving' | 'completing'
 
@@ -2231,6 +2398,25 @@ export async function createCompletedSalesOrder(
     }
 ) {
     options?.onProgress?.('creating')
+
+    const canUseAtomicPaidCheckout = shouldUseCloudBusinessData(workspaceId)
+        && isOnline(workspaceId)
+        && !isOrderFinancingMethod(data.paymentMethod)
+        && data.isPaid === true
+        && Math.abs(Number(data.paidAmount ?? 0) - Number(data.total ?? 0)) <= ORDER_AMOUNT_EPSILON
+        && Number(data.balanceAmount ?? 0) <= ORDER_AMOUNT_EPSILON
+
+    if (canUseAtomicPaidCheckout) {
+        const completedAt = new Date().toISOString()
+        const order = await buildSalesOrderEntity(workspaceId, {
+            ...data,
+            status: 'completed',
+            actualDeliveryDate: completedAt,
+            reservedAt: completedAt
+        }, createdBy)
+        return completePaidQuickSalesOrderAtomically(order, options)
+    }
+
     const draft = await createSalesOrder(workspaceId, {
         ...data,
         status: 'draft',

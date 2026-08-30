@@ -7498,6 +7498,15 @@
     "assignmentHelp": "This credits the sale independently from the workspace user who created the order.",
     "appliedCommission": "Applied commission",
     "commissionOnOrderTotal": "Commission on order total",
+    "quickOrderSummary": {
+      "title": "Agent commissions",
+      "notIncludedInOrderTotal": "Not included in order total",
+      "agentCount_one": "{{count}} agent",
+      "agentCount_other": "{{count}} agents",
+      "configuredCommissionTotal": "Configured commission total",
+      "calculatedOnCompletion": "Calculated when the order is completed",
+      "commissionNeedsAttention": "Commission needs attention"
+    },
     "exchangeRateUnavailable": "Exchange rate unavailable",
     "convertedCommissionHint": "Converted and stored in {{currency}} using the order rate snapshot.",
     "percentageCommissionHint": "Calculated from the current order total: {{total}}.",

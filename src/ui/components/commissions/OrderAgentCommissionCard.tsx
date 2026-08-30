@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { BadgePercent, MapPin, Pencil, Truck, UserRoundCheck } from 'lucide-react'
+import { useMemo } from 'react'
+import { BadgePercent, MapPin, Truck, UserRoundCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { formatCurrency, formatDateTime } from '@/lib/utils'
@@ -11,9 +11,8 @@ import {
     type CurrencyCode,
     type IQDDisplayPreference
 } from '@/local-db'
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@/ui/components'
+import { Badge, Card, CardContent, CardHeader, CardTitle } from '@/ui/components'
 import { commissionStatusClass, commissionStatusLabel, formatCommissionPlanTerms } from './agentCommissionPresentation'
-import { OrderAgentAssignmentDialog } from './OrderAgentAssignmentDialog'
 import { useCommissionAgentDirectory } from './useCommissionAgentDirectory'
 
 export function OrderAgentCommissionCard({
@@ -21,7 +20,6 @@ export function OrderAgentCommissionCard({
     orderId,
     iqdPreference,
     orderCurrency,
-    defaultCustomerCity,
     canAssign,
     canViewAllCommission,
     canViewOwnCommission,
@@ -31,7 +29,6 @@ export function OrderAgentCommissionCard({
     orderId: string
     iqdPreference: IQDDisplayPreference
     orderCurrency: CurrencyCode
-    defaultCustomerCity?: string
     canAssign: boolean
     canViewAllCommission: boolean
     canViewOwnCommission: boolean
@@ -42,7 +39,6 @@ export function OrderAgentCommissionCard({
     const entries = useAgentCommissionEntries(workspaceId)
     const productEntries = useAgentProductCommissionEntries(workspaceId)
     const directory = useCommissionAgentDirectory(workspaceId)
-    const [dialogOpen, setDialogOpen] = useState(false)
     const activeAssignments = getActiveSalesOrderAgentAssignments(assignments, orderId)
     const visibleAssignments = activeAssignments.filter((candidate) => {
         const candidateAgent = directory.agentById.get(candidate.agentId)
@@ -58,25 +54,16 @@ export function OrderAgentCommissionCard({
     if (!canViewAssignment) return null
 
     return (
-        <>
-            <Card className="border-violet-500/20 bg-violet-500/[0.02]">
-                <CardHeader className="flex flex-row items-center justify-between gap-3">
-                    <CardTitle className="flex items-center gap-2">
-                        <UserRoundCheck className="h-5 w-5 text-violet-600" />
-                        {activeAssignments.length > 1
-                            ? t('salesAgentCommissions.salesAgentBeneficiaries')
-                            : t('salesAgentCommissions.salesAgent')}
-                    </CardTitle>
-                    {canAssign ? (
-                        <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setDialogOpen(true)}>
-                            <Pencil className="h-3.5 w-3.5" />
-                            {activeAssignments.length > 1
-                                ? t('salesAgentCommissions.manage')
-                                : displayedAssignments.length > 0 ? t('salesAgentCommissions.change') : t('salesAgentCommissions.assign')}
-                        </Button>
-                    ) : null}
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm">
+        <Card className="border-violet-500/20 bg-violet-500/[0.02]">
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <UserRoundCheck className="h-5 w-5 text-violet-600" />
+                    {activeAssignments.length > 1
+                        ? t('salesAgentCommissions.salesAgentBeneficiaries')
+                        : t('salesAgentCommissions.salesAgent')}
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
                     {displayedAssignments.length > 0 ? (
                         <div className="grid gap-3">
                             {displayedAssignments.map((assignment) => {
@@ -89,6 +76,9 @@ export function OrderAgentCommissionCard({
                                     .sort((left, right) => left.productNameSnapshot.localeCompare(right.productNameSnapshot))
                                 const sourceEntry = assignmentEntries.find((entry) => entry.kind === 'accrual')
                                 const latestEntry = assignmentEntries[0]
+                                const commissionAmount = assignmentEntries
+                                    .filter((entry) => ['accrual', 'reversal', 'adjustment'].includes(entry.kind))
+                                    .reduce((total, entry) => total + Number(entry.amount || 0), 0)
                                 const outstandingAmount = assignmentEntries
                                     .filter((entry) => entry.kind !== 'estimate' && entry.kind !== 'approval')
                                     .reduce((total, entry) => total + Number(entry.amount || 0), 0)
@@ -138,9 +128,18 @@ export function OrderAgentCommissionCard({
                                                     <Badge variant="outline" className={commissionStatusClass(latestEntry?.status || sourceEntry.status)}>
                                                         {commissionStatusLabel(latestEntry?.status || sourceEntry.status, t)}
                                                     </Badge>
-                                                    <span className="font-black">{formatCurrency(outstandingAmount, currency, iqdPreference)}</span>
+                                                    <div className="text-end">
+                                                        <div className="text-xs text-muted-foreground">{t('salesAgentCommissions.commissionAmount')}</div>
+                                                        <div className="mt-1 font-black">{formatCurrency(commissionAmount, currency, iqdPreference)}</div>
+                                                    </div>
                                                 </div>
                                                 <div className="mt-3 grid gap-3 text-xs">
+                                                    {Math.abs(outstandingAmount - commissionAmount) > 0.000001 ? (
+                                                        <div>
+                                                            <div className="text-muted-foreground">{t('salesAgentCommissions.due')}</div>
+                                                            <div className="mt-1 font-semibold">{formatCurrency(outstandingAmount, currency, iqdPreference)}</div>
+                                                        </div>
+                                                    ) : null}
                                                     <div>
                                                         <div className="text-muted-foreground">{t('salesAgentCommissions.commissionBasis')}</div>
                                                         <div className="mt-1 font-semibold">{formatCurrency(sourceEntry.basisAmount, currency, iqdPreference)}</div>
@@ -184,19 +183,7 @@ export function OrderAgentCommissionCard({
                         </div>
                     )}
                     <p className="text-xs text-muted-foreground">{t('salesAgentCommissions.postServiceOptional')}</p>
-                </CardContent>
-            </Card>
-
-            {dialogOpen ? (
-                <OrderAgentAssignmentDialog
-                    open={true}
-                    onOpenChange={setDialogOpen}
-                    workspaceId={workspaceId}
-                    orderId={orderId}
-                    defaultCustomerCity={defaultCustomerCity}
-                    assignedBy={userId}
-                />
-            ) : null}
-        </>
+            </CardContent>
+        </Card>
     )
 }

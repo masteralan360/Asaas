@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BadgePercent, Link2, Loader2, ShoppingCart, UserRound, X } from 'lucide-react'
 
 import type { CartItem } from '@/types'
 import {
-    replaceSalesOrderAgentAssignments,
     useAgents,
     useBusinessPartners,
     useProductCommissionRuleAgents,
@@ -44,7 +43,8 @@ import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelec
 import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import {
     SalesOrderCommissionAssignmentSection,
-    type SalesOrderCommissionAssignmentHandle
+    type SalesOrderCommissionAssignmentHandle,
+    type SalesOrderCommissionAssignmentSummary
 } from '@/ui/components/commissions/SalesOrderCommissionAssignmentSection'
 import {
     hasEligibleProductCommission,
@@ -68,6 +68,97 @@ export type QuickOrderSubmissionOptions = {
 }
 
 export type QuickOrderProgressStage = 'preparing' | 'creating' | 'reserving' | 'completing' | null
+
+function hasSameCommissionSummaries(
+    current: SalesOrderCommissionAssignmentSummary[],
+    next: SalesOrderCommissionAssignmentSummary[]
+) {
+    return current.length === next.length && current.every((summary, index) => {
+        const candidate = next[index]
+        return summary.agentId === candidate.agentId
+            && summary.agentName === candidate.agentName
+            && summary.planName === candidate.planName
+            && summary.amount === candidate.amount
+            && summary.ratePercent === candidate.ratePercent
+            && summary.status === candidate.status
+    })
+}
+
+function QuickOrderCommissionSummary({
+    summaries,
+    currency,
+    iqdPreference
+}: {
+    summaries: SalesOrderCommissionAssignmentSummary[]
+    currency: CurrencyCode
+    iqdPreference: 'IQD' | 'د.ع'
+}) {
+    const { t } = useTranslation()
+    const hasCompleteAmounts = summaries.every((summary) => summary.status === 'ready' && summary.amount !== null)
+    const totalCommission = summaries.reduce((total, summary) => total + (summary.amount ?? 0), 0)
+
+    return (
+        <div className="rounded-2xl border border-violet-500/30 bg-violet-500/[0.06] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-center gap-2 text-violet-950 dark:text-violet-100">
+                    <BadgePercent className="h-4 w-4 text-violet-600 dark:text-violet-300" />
+                    <div>
+                        <div className="text-sm font-semibold">{t('salesAgentCommissions.quickOrderSummary.title')}</div>
+                        <p className="mt-0.5 text-xs text-violet-900/75 dark:text-violet-100/75">
+                            {t('salesAgentCommissions.quickOrderSummary.notIncludedInOrderTotal')}
+                        </p>
+                    </div>
+                </div>
+                <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-xs font-semibold text-violet-700 dark:text-violet-300">
+                    {t('salesAgentCommissions.quickOrderSummary.agentCount', { count: summaries.length })}
+                </span>
+            </div>
+
+            <div className="mt-3 space-y-2">
+                {summaries.map((summary) => (
+                    <div key={summary.agentId} className="flex items-center justify-between gap-3 rounded-xl border border-violet-500/20 bg-background/70 px-3 py-2.5">
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 text-sm font-semibold">
+                                <UserRound className="h-3.5 w-3.5 shrink-0 text-violet-600 dark:text-violet-300" />
+                                <span className="truncate">{summary.agentName}</span>
+                            </div>
+                            <p className="mt-1 truncate text-xs text-muted-foreground">
+                                {summary.planName || t('salesAgentCommissions.noCommissionPlan')}
+                            </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                            <div className="text-sm font-bold tabular-nums text-violet-800 dark:text-violet-200">
+                                {summary.amount !== null
+                                    ? formatCurrency(summary.amount, currency, iqdPreference)
+                                    : summary.ratePercent !== null
+                                        ? `${summary.ratePercent}%`
+                                        : '—'}
+                            </div>
+                            <p className="mt-0.5 text-[11px] text-violet-900/70 dark:text-violet-100/70">
+                                {summary.status === 'ready'
+                                    ? t('salesAgentCommissions.commissionAmount')
+                                    : summary.status === 'calculated_on_completion'
+                                        ? t('salesAgentCommissions.quickOrderSummary.calculatedOnCompletion')
+                                        : summary.status === 'exchange_rate_unavailable'
+                                            ? t('salesAgentCommissions.exchangeRateUnavailable')
+                                            : summary.status === 'needs_amount'
+                                                ? t('salesAgentCommissions.quickOrderSummary.commissionNeedsAttention')
+                                                : t('salesAgentCommissions.noCommissionPlan')}
+                            </p>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {hasCompleteAmounts ? (
+                <div className="mt-3 flex items-center justify-between gap-3 border-t border-violet-500/25 pt-3 text-sm font-semibold text-violet-950 dark:text-violet-100">
+                    <span>{t('salesAgentCommissions.quickOrderSummary.configuredCommissionTotal')}</span>
+                    <span className="tabular-nums">{formatCurrency(totalCommission, currency, iqdPreference)}</span>
+                </div>
+            ) : null}
+        </div>
+    )
+}
 
 interface QuickOrderModalProps {
     isOpen: boolean
@@ -119,6 +210,10 @@ export function QuickOrderModal({
     const [firstDueDate, setFirstDueDate] = useState('')
     const [isCommissionPanelOpen, setIsCommissionPanelOpen] = useState(false)
     const [submitError, setSubmitError] = useState<string | null>(null)
+    const [commissionSummaries, setCommissionSummaries] = useState<SalesOrderCommissionAssignmentSummary[]>([])
+    const handleCommissionSummaryChange = useCallback((next: SalesOrderCommissionAssignmentSummary[]) => {
+        setCommissionSummaries((current) => hasSameCommissionSummaries(current, next) ? current : next)
+    }, [])
     const canLoadAgents = agentSalesAccountsEnabled || commissionAssignmentsEnabled
     const agentPartners = useBusinessPartners(
         canLoadAgents ? workspaceId : undefined,
@@ -161,17 +256,15 @@ export function QuickOrderModal({
                 : 0
         }))
     }, [cart, totalAmount])
-    const customerCommissionAgent = useMemo(() => {
-        if (!commissionAssignmentsEnabled || !customer) return null
-        return agents.find((agent) => (
-            agent.businessPartnerId === customer.id
-            && !agent.isDeleted
-            && agent.status === 'active'
-            && agent.agentType === 'field_agent'
-        )) ?? null
-    }, [agents, commissionAssignmentsEnabled, customer])
+    // A customer quick order follows the same beneficiary workflow as a sales
+    // order. Sales-account quick orders retain their focused attribution flow,
+    // because the selected sales account already identifies the counterparty.
+    const showCustomerCommissionAssignments = commissionAssignmentsEnabled
+        && Boolean(customer)
+        && !selectedSalesAccount
     const commissionRecipient = commissionAssignmentsEnabled
-        ? (selectedSalesAccount?.agent.agentType === 'field_agent' ? selectedSalesAccount.agent : customerCommissionAgent)
+        && selectedSalesAccount?.agent.agentType === 'field_agent'
+        ? selectedSalesAccount.agent
         : null
     const productCommissionPreviewAgents = useMemo(() => commissionRecipient
         ? [{
@@ -218,6 +311,7 @@ export function QuickOrderModal({
         setFirstDueDate('')
         setIsCommissionPanelOpen(false)
         setSubmitError(null)
+        setCommissionSummaries([])
     }, [isOpen])
 
     const validateQuickOrder = () => {
@@ -249,8 +343,9 @@ export function QuickOrderModal({
 
     const handleSubmit = async (includeCommission = false) => {
         if (!validateQuickOrder()) return
-        if (includeCommission) {
-            if (!commissionRecipient || !commissionAssignmentRef.current) return
+        const shouldSaveCommissionAssignments = includeCommission || showCustomerCommissionAssignments
+        if (shouldSaveCommissionAssignments) {
+            if (!commissionAssignmentRef.current) return
             try {
                 commissionAssignmentRef.current.validate()
             } catch (error) {
@@ -274,24 +369,9 @@ export function QuickOrderModal({
                 firstDueDate: isInstallmentBased ? firstDueDate : null,
                 paymentAccountId: paymentAccount?.id ?? null,
                 paymentAccountNameSnapshot: paymentAccount?.name ?? null,
-            }, shouldCreditCommission ? {
+            }, shouldSaveCommissionAssignments ? {
                 onOrderCreated: async (order) => {
-                    if (includeCommission) {
-                        await commissionAssignmentRef.current?.save(order)
-                        return
-                    }
-                    // A sales account is assigned by the normal order
-                    // lifecycle. A customer who is an eligible field agent
-                    // needs the same beneficiary assignment created here.
-                    if (!commissionRecipient || selectedSalesAccount) return
-                    await replaceSalesOrderAgentAssignments(workspaceId, {
-                        orderId: order.id,
-                        assignedBy: commissionAssignedBy || undefined,
-                        assignments: [{
-                            agentId: commissionRecipient.id,
-                            assignmentSource: 'manual'
-                        }]
-                    })
+                    await commissionAssignmentRef.current?.save(order)
                 }
             } : undefined)
         } catch (error) {
@@ -351,6 +431,7 @@ export function QuickOrderModal({
                                 setCustomer(null)
                                 setCustomerSearch('')
                                 setIsCommissionPanelOpen(false)
+                                setCommissionSummaries([])
                             }}
                             disabled={isSubmitting || isCommissionPanelOpen}
                         >
@@ -384,11 +465,13 @@ export function QuickOrderModal({
                                 setCustomerSearch(value)
                                 setCustomer(null)
                                 setIsCommissionPanelOpen(false)
+                                setCommissionSummaries([])
                             }}
                             onSelectPartner={(partner) => {
                                 setCustomer(partner)
                                 setCustomerSearch(partner.name)
                                 setIsCommissionPanelOpen(false)
+                                setCommissionSummaries([])
                             }}
                             disabled={isSubmitting || isCommissionPanelOpen}
                             placeholder={t('orders.form.selectCustomer')}
@@ -413,6 +496,7 @@ export function QuickOrderModal({
                                         setCustomer(null)
                                         setCustomerSearch('')
                                         setIsCommissionPanelOpen(false)
+                                        setCommissionSummaries([])
                                     }}
                                     disabled={isSubmitting || isCommissionPanelOpen}
                                 >
@@ -448,6 +532,24 @@ export function QuickOrderModal({
                         onValueChange={setPaymentAccount}
                         disabled={isSubmitting || isCommissionPanelOpen}
                         cashDrawerOnly={paymentMethod === 'cash'}
+                    />
+                ) : null}
+
+                {showCustomerCommissionAssignments ? (
+                    <SalesOrderCommissionAssignmentSection
+                        ref={commissionAssignmentRef}
+                        workspaceId={workspaceId}
+                        customerCity={customer?.city || ''}
+                        assignedBy={commissionAssignedBy}
+                        orderCurrency={settlementCurrency}
+                        orderTotal={totalAmount}
+                        exchangeRates={commissionExchangeRates}
+                        orderItems={commissionPreviewItems}
+                        availableCurrencies={commissionCurrencies}
+                        iqdDisplayPreference={iqdPreference}
+                        allowPlanCommissionAmountOverride
+                        onCommissionSummaryChange={handleCommissionSummaryChange}
+                        disabled={isSubmitting}
                     />
                 ) : null}
 
@@ -500,6 +602,14 @@ export function QuickOrderModal({
                             {t('pos.quickOrder.creditCommissionFor', { agent: selectedSalesAccount?.partner.name ?? customer?.name })}
                         </p>
                     </div>
+                ) : null}
+
+                {showCustomerCommissionAssignments && commissionSummaries.length > 0 ? (
+                    <QuickOrderCommissionSummary
+                        summaries={commissionSummaries}
+                        currency={settlementCurrency}
+                        iqdPreference={iqdPreference}
+                    />
                 ) : null}
 
                 <div className="rounded-2xl border bg-muted/20 p-4">

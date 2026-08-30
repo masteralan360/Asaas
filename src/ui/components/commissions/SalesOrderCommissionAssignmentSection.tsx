@@ -18,6 +18,10 @@ import {
     type SalesAgentAssignmentFieldValue
 } from './SalesAgentAssignmentFields'
 import { formatCommissionPlanTerms } from './agentCommissionPresentation'
+import {
+    summarizeSalesOrderAgentCommissions,
+    type SalesOrderCommissionAssignmentSummary
+} from './salesOrderCommissionSummary'
 import { useCommissionAgentDirectory } from './useCommissionAgentDirectory'
 import { ProductCommissionPreview, type ProductCommissionPreviewItem } from './ProductCommissionPreview'
 
@@ -28,6 +32,8 @@ export interface SalesOrderCommissionAssignmentHandle {
     }
     save: (order: Pick<SalesOrder, 'id' | 'currency' | 'total' | 'exchangeRates'>) => Promise<void>
 }
+
+export type { SalesOrderCommissionAssignmentSummary } from './salesOrderCommissionSummary'
 
 interface SalesOrderCommissionAssignmentSectionProps {
     workspaceId: string
@@ -48,6 +54,8 @@ interface SalesOrderCommissionAssignmentSectionProps {
     requireManualCommissionWhenNoPlan?: boolean
     /** Lets the Sales Order form override a fixed plan's amount for this order only. */
     allowPlanCommissionAmountOverride?: boolean
+    /** Receives the live, order-currency commission preview for selected beneficiaries. */
+    onCommissionSummaryChange?: (summaries: SalesOrderCommissionAssignmentSummary[]) => void
     compact?: boolean
     disabled?: boolean
 }
@@ -99,6 +107,7 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
     showOperationalFields = true,
     requireManualCommissionWhenNoPlan = false,
     allowPlanCommissionAmountOverride = false,
+    onCommissionSummaryChange,
     compact = false,
     disabled = false
 }, ref) {
@@ -203,7 +212,7 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
         setDrafts((current) => [...current, createDraft(orderCurrency, undefined, customerCity)])
     }, [customerCity, orderCurrency])
 
-    const resolveSelectedAgent = useCallback((draft: AssignmentDraft) => (
+    const resolveSelectedAgent = useCallback((draft: Pick<AssignmentDraft, 'agentId'>) => (
         directory.eligibleAgents.find((entry) => entry.agent.id === draft.agentId)
         || directory.agentById.get(draft.agentId)
     ), [directory.agentById, directory.eligibleAgents])
@@ -228,7 +237,7 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
                 return {
                     ...draft,
                     manualCommissionType: 'fixed_amount',
-                    manualCommissionAmount: String(plan.fixedAmount ?? 0),
+                    manualCommissionAmount: Number(plan.fixedAmount ?? 0) === 0 ? '' : String(plan.fixedAmount),
                     manualCommissionCurrency: plan.fixedCurrency || orderCurrency
                 }
             })
@@ -264,7 +273,7 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
         }
         const conversion = getAppliedCurrencyConversion(
             amount,
-            fixedPlan.fixedCurrency || draft.manualCommissionCurrency,
+            fixedPlan?.fixedCurrency || draft.manualCommissionCurrency,
             order.currency,
             order.exchangeRates ?? exchangeRates
         )
@@ -272,10 +281,29 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
         return {
             type: 'fixed_amount' as const,
             amount,
-            currency: fixedPlan.fixedCurrency || draft.manualCommissionCurrency,
+            currency: fixedPlan?.fixedCurrency || draft.manualCommissionCurrency,
             exchangeRates: conversion.exchangeRates
         }
     }, [exchangeRates, resolveSelectedAgent, t])
+
+    const commissionSummaries = useMemo(() => summarizeSalesOrderAgentCommissions({
+        drafts,
+        resolveAgent: (agentId) => {
+            const selectedAgent = resolveSelectedAgent({ agentId })
+            return selectedAgent ? {
+                id: selectedAgent.agent.id,
+                name: selectedAgent.name,
+                plan: selectedAgent.plan ?? null
+            } : undefined
+        },
+        orderCurrency,
+        orderTotal,
+        exchangeRates
+    }), [drafts, exchangeRates, orderCurrency, orderTotal, resolveSelectedAgent])
+
+    useEffect(() => {
+        onCommissionSummaryChange?.(commissionSummaries)
+    }, [commissionSummaries, onCommissionSummaryChange])
 
     const validate = useCallback(() => {
         let hasManualCommissionCurrencyConversion = false
