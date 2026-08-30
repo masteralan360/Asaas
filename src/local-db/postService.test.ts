@@ -14,6 +14,7 @@ let createDeliveryMerchantProfile: typeof import("./postService").createDelivery
 let createDeliveryShipment: typeof import("./postService").createDeliveryShipment;
 let createAndDispatchDeliveryShipment: typeof import("./postService").createAndDispatchDeliveryShipment;
 let createDeliveryRun: typeof import("./postService").createDeliveryRun;
+let adminEditAndRedispatchDeliveryShipment: typeof import("./postService").adminEditAndRedispatchDeliveryShipment;
 let transferReturnedDeliveryShipment: typeof import("./postService").transferReturnedDeliveryShipment;
 let updateDeliveryShipmentStatus: typeof import("./postService").updateDeliveryShipmentStatus;
 let settleDeliveryCourier: typeof import("./postService").settleDeliveryCourier;
@@ -72,7 +73,7 @@ describe("Post Service COD accounting", () => {
   beforeAll(async () => {
     installBrowserEnvironment();
     const postService = await import("./postService");
-    ({ createDeliveryMerchantProfile, createDeliveryShipment, createAndDispatchDeliveryShipment, createDeliveryRun, transferReturnedDeliveryShipment, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryCourierFee, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment, requestDeliveryShipmentCodAdjustment, reviewDeliveryShipmentCodAdjustment } = postService);
+    ({ createDeliveryMerchantProfile, createDeliveryShipment, createAndDispatchDeliveryShipment, createDeliveryRun, adminEditAndRedispatchDeliveryShipment, transferReturnedDeliveryShipment, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryCourierFee, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment, requestDeliveryShipmentCodAdjustment, reviewDeliveryShipmentCodAdjustment } = postService);
   });
 
   beforeEach(async () => {
@@ -770,6 +771,73 @@ describe("Post Service COD accounting", () => {
     expect(originalRunItem?.returnedAt).toBeTruthy();
     expect(transferRunItem).toMatchObject({ runId: transferRun.id, shipmentId: shipment.id, returnedAt: null });
     expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ previousStatus: "returned", status: "assigned", actorAgentId: replacementCourier.id, note: "Transfer after return" })]));
+  });
+
+  it("allows an admin to edit a received post and dispatch it in one operation", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const deliveryCourier = courier(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id, defaultFeeAmount: 5 });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id, recipientPhone: "07500000000", recipientAddress: "Baghdad", currency: "iqd", codAmount: 100,
+    });
+
+    const run = await adminEditAndRedispatchDeliveryShipment(WORKSPACE_ID, {
+      operationId: crypto.randomUUID(), shipmentId: shipment.id, expectedVersion: shipment.version, actorRole: "admin",
+      shipment: {
+        merchantProfileId: profile.id, recipientPhone: "07511111111", recipientAddress: "Erbil", description: "Updated parcel",
+        currency: "iqd", codAmount: 125, deliveryFee: 10, feePayer: "recipient", customerPaymentStatus: "cash_on_delivery",
+      },
+      agentId: deliveryCourier.id, courierDeliveryFee: 7, notes: "Corrected address",
+    });
+
+    const updated = await db.delivery_shipments.get(shipment.id);
+    const events = await db.delivery_shipment_events.where("[workspaceId+shipmentId]").equals([WORKSPACE_ID, shipment.id]).toArray();
+    expect(updated).toMatchObject({
+      status: "assigned", assignedAgentId: deliveryCourier.id, assignedRunId: run.id, recipientPhone: "07511111111",
+      recipientAddress: "Erbil", description: "Updated parcel", codAmount: 125, deliveryFee: 10, feePayer: "recipient", courierDeliveryFee: 7,
+    });
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ previousStatus: "received", status: "assigned", note: expect.stringContaining("recipient phone") }),
+    ]));
+    expect(await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray()).toHaveLength(0);
+  });
+
+  it("retires the prior manifest when an admin edits and redispatches an assigned post", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const originalCourier = courier(crypto.randomUUID());
+    const replacementCourier = courier(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    await db.agents.bulkPut([originalCourier, replacementCourier]);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id, recipientPhone: "07500000000", recipientAddress: "Baghdad", currency: "iqd", codAmount: 100,
+    });
+    const originalRun = await createDeliveryRun(WORKSPACE_ID, { agentId: originalCourier.id, shipmentIds: [shipment.id], courierDeliveryFee: 5 });
+    const assigned = await db.delivery_shipments.get(shipment.id);
+
+    const replacementRun = await adminEditAndRedispatchDeliveryShipment(WORKSPACE_ID, {
+      operationId: crypto.randomUUID(), shipmentId: shipment.id, expectedVersion: assigned!.version, actorRole: "admin",
+      shipment: {
+        merchantProfileId: profile.id, recipientPhone: "07500000000", recipientAddress: "New Baghdad", currency: "iqd", codAmount: 150,
+        customerPaymentStatus: "cash_on_delivery", deliveryFee: 0, feePayer: "merchant",
+      },
+      agentId: replacementCourier.id, courierDeliveryFee: 8,
+    });
+
+    const redispatched = await db.delivery_shipments.get(shipment.id);
+    const originalItem = await db.delivery_run_items.where("[runId+shipmentId]").equals([originalRun.id, shipment.id]).first();
+    const replacementItem = await db.delivery_run_items.where("[runId+shipmentId]").equals([replacementRun.id, shipment.id]).first();
+    expect(redispatched).toMatchObject({ status: "assigned", assignedAgentId: replacementCourier.id, assignedRunId: replacementRun.id, recipientAddress: "New Baghdad", codAmount: 150, courierDeliveryFee: 8 });
+    expect(originalItem?.returnedAt).toBeTruthy();
+    expect(replacementItem).toMatchObject({ returnedAt: null });
+
+    await expect(adminEditAndRedispatchDeliveryShipment(WORKSPACE_ID, {
+      operationId: crypto.randomUUID(), shipmentId: shipment.id, expectedVersion: redispatched!.version, actorRole: "staff" as "admin",
+      shipment: { merchantProfileId: profile.id, recipientPhone: "07500000000", recipientAddress: "Baghdad", currency: "iqd", codAmount: 1 },
+      agentId: replacementCourier.id,
+    })).rejects.toThrow("Only an administrator");
   });
 
   it("uses a daily PST tracking sequence in local workspaces", async () => {

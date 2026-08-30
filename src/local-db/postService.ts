@@ -145,6 +145,25 @@ export interface TransferReturnedDeliveryShipmentInput {
   createdBy?: string | null;
 }
 
+/**
+ * Administrative correction for a post that has not been completed. The post
+ * is always placed on a fresh manifest so the prior courier assignment stays
+ * auditable.
+ */
+export interface AdminEditAndRedispatchDeliveryShipmentInput {
+  operationId: string;
+  shipmentId: string;
+  expectedVersion: number;
+  actorRole: "admin";
+  actorUserId?: string | null;
+  shipment: Omit<CreateDeliveryShipmentInput, "sourceSalesOrderId" | "createdBy">;
+  agentId: string;
+  courierDeliveryFee?: number;
+  vehicleId?: string | null;
+  dispatchedAt?: string;
+  notes?: string | null;
+}
+
 export interface UpdateDeliveryShipmentStatusInput {
   status: Extract<
     DeliveryShipmentStatus,
@@ -1292,10 +1311,34 @@ export async function createDeliveryRun(workspaceId: string, input: CreateDelive
   return createDeliveryRunWithId(workspaceId, input);
 }
 
+type DeliveryShipmentRedispatchEdit = Pick<
+  DeliveryShipment,
+  | "merchantProfileId"
+  | "merchantBusinessPartnerId"
+  | "recipientPhone"
+  | "recipientAddress"
+  | "description"
+  | "currency"
+  | "codAmount"
+  | "customerPaymentStatus"
+  | "recipientPayoutAmount"
+  | "recipientPayoutFunding"
+  | "deliveryFee"
+  | "feePayer"
+>;
+
+type CreateDeliveryRunOptions = {
+  /** Used only by the admin correction flow. */
+  allowAssignedShipment?: boolean;
+  shipmentEdits?: ReadonlyMap<string, DeliveryShipmentRedispatchEdit>;
+  eventNotes?: ReadonlyMap<string, string | null>;
+};
+
 async function createDeliveryRunWithId(
   workspaceId: string,
   input: CreateDeliveryRunInput,
   runId?: string,
+  options?: CreateDeliveryRunOptions,
 ) {
   const agent = await db.agents.get(input.agentId);
   if (!agent || agent.isDeleted || agent.workspaceId !== workspaceId || agent.status !== "active" || agent.agentType !== "courier") {
@@ -1308,9 +1351,12 @@ async function createDeliveryRunWithId(
   const shipmentIds = [...new Set(input.shipmentIds.filter(Boolean))];
   if (shipmentIds.length === 0) throw new Error("Select at least one shipment");
   const shipments = await db.delivery_shipments.bulkGet(shipmentIds);
-  const dispatchableStatuses = input.allowReturnedShipment
-    ? ["received", "postponed", "returned"]
-    : ["received", "postponed"];
+  const dispatchableStatuses = [
+    "received",
+    "postponed",
+    ...(input.allowReturnedShipment ? ["returned"] : []),
+    ...(options?.allowAssignedShipment ? ["assigned"] : []),
+  ];
   if (shipments.some((shipment) => !shipment || shipment.isDeleted || shipment.workspaceId !== workspaceId || !dispatchableStatuses.includes(shipment.status))) {
     throw new Error("Only unassigned, received, or postponed shipments can be dispatched");
   }
@@ -1341,7 +1387,10 @@ async function createDeliveryRunWithId(
 
   const now = input.dispatchedAt ? new Date(input.dispatchedAt).toISOString() : new Date().toISOString();
   const returnedRunItems = (await Promise.all((shipments as DeliveryShipment[])
-    .filter((shipment) => shipment.status === "returned" && shipment.assignedRunId)
+    .filter((shipment) => (
+      shipment.assignedRunId
+      && (shipment.status === "returned" || (options?.allowAssignedShipment && shipment.status === "assigned"))
+    ))
     .map(async (shipment) => {
       const previousItem = await db.delivery_run_items
         .where("[runId+shipmentId]")
@@ -1374,8 +1423,10 @@ async function createDeliveryRunWithId(
   const items: DeliveryRunItem[] = [];
   const events: DeliveryShipmentEvent[] = [];
   for (const original of shipments as DeliveryShipment[]) {
+    const shipmentEdit = options?.shipmentEdits?.get(original.id);
     const updated: DeliveryShipment = {
       ...original,
+      ...shipmentEdit,
       status: "assigned",
       assignedAgentId: agent.id,
       assignedRunId: run.id,
@@ -1396,7 +1447,7 @@ async function createDeliveryRunWithId(
       shipmentId: original.id,
       previousStatus: original.status,
       status: "assigned",
-      note: normalizeText(input.notes),
+      note: options?.eventNotes?.get(original.id) ?? normalizeText(input.notes),
       actorUserId: input.createdBy ?? null,
       actorAgentId: agent.id,
       occurredAt: now,
@@ -1506,6 +1557,84 @@ export async function transferReturnedDeliveryShipment(workspaceId: string, inpu
     notes: input.notes,
     createdBy: input.createdBy,
     allowReturnedShipment: true,
+  });
+}
+
+export async function adminEditAndRedispatchDeliveryShipment(
+  workspaceId: string,
+  input: AdminEditAndRedispatchDeliveryShipmentInput,
+) {
+  if (input.actorRole !== "admin") {
+    throw new Error("Only an administrator can edit and redispatch a post");
+  }
+  const operationId = input.operationId.trim();
+  if (!operationId) throw new Error("A delivery operation ID is required");
+
+  const runId = await deliveryOperationId(`admin-redispatch:${operationId}:run`);
+  const existingRun = await db.delivery_runs.get(runId);
+  if (existingRun) {
+    if (existingRun.workspaceId !== workspaceId || existingRun.isDeleted) {
+      throw new Error("This admin redispatch operation cannot be resumed");
+    }
+    return existingRun;
+  }
+
+  const original = await db.delivery_shipments.get(input.shipmentId);
+  if (!original || original.isDeleted || original.workspaceId !== workspaceId) {
+    throw new Error("Shipment not found");
+  }
+  if (original.version !== input.expectedVersion) {
+    throw new Error("This post has changed. Refresh it before editing and redispatching");
+  }
+  if (!( ["received", "assigned"] as DeliveryShipmentStatus[]).includes(original.status)) {
+    throw new Error("Only received or assigned posts can be edited and redispatched");
+  }
+
+  const profile = await db.delivery_merchant_profiles.get(input.shipment.merchantProfileId);
+  if (!profile || profile.isDeleted || !profile.isActive || profile.workspaceId !== workspaceId) {
+    throw new Error("Select an active delivery merchant");
+  }
+  if (!input.shipment.recipientPhone.trim() || !input.shipment.recipientAddress.trim()) {
+    throw new Error("Recipient phone and delivery address are required");
+  }
+
+  const customerPaymentStatus = input.shipment.customerPaymentStatus ?? "cash_on_delivery";
+  const edit: DeliveryShipmentRedispatchEdit = {
+    merchantProfileId: profile.id,
+    merchantBusinessPartnerId: profile.businessPartnerId,
+    recipientPhone: input.shipment.recipientPhone.trim(),
+    recipientAddress: input.shipment.recipientAddress.trim(),
+    description: normalizeText(input.shipment.description),
+    currency: input.shipment.currency,
+    codAmount: customerPaymentStatus === "prepaid_electronically"
+      ? 0
+      : positiveMoney(input.shipment.codAmount, "COD amount", false),
+    customerPaymentStatus,
+    recipientPayoutAmount: positiveMoney(input.shipment.recipientPayoutAmount ?? 0, "Recipient payout amount"),
+    recipientPayoutFunding: input.shipment.recipientPayoutFunding ?? original.recipientPayoutFunding ?? "courier_advance",
+    deliveryFee: positiveMoney(input.shipment.deliveryFee ?? profile.defaultFeeAmount, "Delivery fee"),
+    feePayer: input.shipment.feePayer ?? profile.defaultFeePayer,
+  };
+  const changedFields = (Object.keys(edit) as Array<keyof DeliveryShipmentRedispatchEdit>)
+    .filter((key) => original[key] !== edit[key])
+    .map((key) => key.replace(/([A-Z])/g, " $1").toLowerCase());
+  const priorAssignment = original.assignedRunId
+    ? ` Previous manifest ${original.assignedRunId} was closed for redispatch.`
+    : "";
+  const auditNote = `Admin edited and redispatched this post${changedFields.length ? `: ${changedFields.join(", ")}.` : "."}${priorAssignment}`;
+
+  return createDeliveryRunWithId(workspaceId, {
+    agentId: input.agentId,
+    shipmentIds: [original.id],
+    courierDeliveryFee: input.courierDeliveryFee,
+    vehicleId: input.vehicleId,
+    dispatchedAt: input.dispatchedAt,
+    notes: input.notes,
+    createdBy: input.actorUserId,
+  }, runId, {
+    allowAssignedShipment: true,
+    shipmentEdits: new Map([[original.id, edit]]),
+    eventNotes: new Map([[original.id, auditNote]]),
   });
 }
 

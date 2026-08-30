@@ -6675,6 +6675,9 @@
             "payMerchant": "Pay merchant",
             "receiveMerchantRepayment": "Receive merchant payment",
             "editMerchant": "Edit merchant",
+            "editAndRedispatch": "Edit & redispatch",
+            "saveAndRedispatch": "Save & redispatch",
+            "redispatching": "Saving & redispatching…",
             "saveMerchant": "Save merchant",
             "deleteMerchant": "Delete merchant",
             "cancel": "Cancel",
@@ -6964,6 +6967,11 @@
                 "title": "New post",
                 "description": "Recipient details stay on the post. Save them as a Business Partner only when you need a lasting CRM record."
             },
+            "editAndRedispatch": {
+                "title": "Edit & redispatch post",
+                "description": "Update {{trackingNumber}} and create a fresh courier manifest.",
+                "dispatchDetails": "Redispatch details"
+            },
             "quickDispatch": {
                 "title": "Quick dispatch",
                 "description": "Create this post and assign it to a courier immediately."
@@ -7057,6 +7065,9 @@
             "postTransferred": "Post transferred",
             "postTransferredDescription": "{{run}} was assigned to the new courier.",
             "transferPostFailed": "Could not transfer post",
+            "postEditedAndRedispatched": "Post edited and redispatched",
+            "postEditedAndRedispatchedDescription": "{{run}} was created with the updated post details.",
+            "editAndRedispatchFailed": "Could not edit and redispatch post",
             "postMarked": "Post marked {{status}}",
             "updatePostFailed": "Could not update post",
             "courierHandoverRecorded": "Courier handover recorded",
@@ -7112,7 +7123,11 @@
             "merchantDeleteHistory": "A merchant with delivery history cannot be permanently deleted. Make it inactive instead.",
             "quickDispatchRequirements": "Complete the merchant, recipient phone, delivery address, and courier before assigning this post.",
             "postCreatedAssignmentPending": "The post was created, but its assignment is still pending. Retry to assign the same post.",
-            "quickDispatchUnavailable": "This post is no longer available for quick dispatch."
+            "quickDispatchUnavailable": "This post is no longer available for quick dispatch.",
+            "adminRedispatchOnly": "Only an administrator can edit and redispatch a post.",
+            "redispatchStatusOnly": "Only received or assigned posts can be edited and redispatched.",
+            "redispatchChanged": "This post has changed. Refresh it before editing and redispatching.",
+            "redispatchUnavailable": "This edit-and-redispatch operation can no longer be resumed."
         }
     },
     "carRental": {

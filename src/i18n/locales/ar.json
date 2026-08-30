@@ -6421,6 +6421,9 @@
             "payMerchant": "دفع التاجر",
             "receiveMerchantRepayment": "استلام دفعة التاجر",
             "editMerchant": "تعديل التاجر",
+            "editAndRedispatch": "تعديل وإعادة التوزيع",
+            "saveAndRedispatch": "حفظ وإعادة التوزيع",
+            "redispatching": "جارٍ الحفظ وإعادة التوزيع…",
             "saveMerchant": "حفظ التاجر",
             "deleteMerchant": "حذف التاجر",
             "cancel": "إلغاء",
@@ -6710,6 +6713,11 @@
                 "title": "شحنة جديدة",
                 "description": "تبقى بيانات المستلم في الشحنة. احفظها كشريك أعمال فقط عندما تحتاج إلى سجل CRM دائم."
             },
+            "editAndRedispatch": {
+                "title": "تعديل وإعادة توزيع الشحنة",
+                "description": "حدّث {{trackingNumber}} وأنشئ كشفاً جديداً للمندوب.",
+                "dispatchDetails": "تفاصيل إعادة التوزيع"
+            },
             "quickDispatch": {
                 "title": "توزيع سريع",
                 "description": "أنشئ هذه الشحنة وعيّنها لمندوب فوراً."
@@ -6803,6 +6811,9 @@
             "postTransferred": "تم نقل الشحنة",
             "postTransferredDescription": "تم تعيين {{run}} إلى المندوب الجديد.",
             "transferPostFailed": "تعذر نقل الشحنة",
+            "postEditedAndRedispatched": "تم تعديل الشحنة وإعادة توزيعها",
+            "postEditedAndRedispatchedDescription": "تم إنشاء {{run}} بتفاصيل الشحنة المحدّثة.",
+            "editAndRedispatchFailed": "تعذر تعديل الشحنة وإعادة توزيعها",
             "postMarked": "تم تحديد حالة الشحنة: {{status}}",
             "updatePostFailed": "تعذر تحديث الشحنة",
             "courierHandoverRecorded": "تم تسجيل تسليم المندوب",
@@ -6858,7 +6869,11 @@
             "merchantDeleteHistory": "لا يمكن حذف تاجر لديه سجل توصيل نهائياً. اجعله غير نشط بدلاً من ذلك.",
             "quickDispatchRequirements": "أكمل التاجر وهاتف المستلم وعنوان التوصيل والمندوب قبل تعيين هذه الشحنة.",
             "postCreatedAssignmentPending": "تم إنشاء الشحنة، لكن تعيينها ما زال معلقاً. أعد المحاولة لتعيين الشحنة نفسها.",
-            "quickDispatchUnavailable": "لم تعد هذه الشحنة متاحة للتوزيع السريع."
+            "quickDispatchUnavailable": "لم تعد هذه الشحنة متاحة للتوزيع السريع.",
+            "adminRedispatchOnly": "يمكن للمسؤول فقط تعديل الشحنة وإعادة توزيعها.",
+            "redispatchStatusOnly": "يمكن تعديل وإعادة توزيع الشحنات المستلمة أو المعينة فقط.",
+            "redispatchChanged": "تغيرت هذه الشحنة. حدّثها قبل تعديلها وإعادة توزيعها.",
+            "redispatchUnavailable": "لا يمكن استئناف عملية التعديل وإعادة التوزيع هذه."
         }
     },
     "carRental": {

@@ -5,7 +5,7 @@ import { Banknote, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, C
 
 import { useAuth } from "@/auth";
 import {
-  closeDeliveryRun, createAndDispatchDeliveryShipment, createBusinessPartner, createDeliveryMerchantProfile, createDeliveryRun, createDeliveryShipment, hardDeleteDeliveryMerchantProfile, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment,
+  adminEditAndRedispatchDeliveryShipment, closeDeliveryRun, createAndDispatchDeliveryShipment, createBusinessPartner, createDeliveryMerchantProfile, createDeliveryRun, createDeliveryShipment, hardDeleteDeliveryMerchantProfile, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment,
   refreshPostServiceTab, requestDeliveryShipmentCodAdjustment, reviewDeliveryShipmentCodAdjustment, settleDeliveryCourier, summarizeDeliveryBalanceMetrics, updateBusinessPartner, updateDeliveryMerchantProfile, updateDeliveryShipmentStatus, useAgents, useBusinessPartners, useCourierDeliveryAccountBalances, useCourierDeliveryBalances,
   useDeliveryMerchantProfiles, useDeliveryRuns, useDeliverySettlements, useDeliveryShipmentCodAdjustmentRequests, useDeliveryShipmentEvents, useDeliveryShipments, useFleetVehicles,
   transferReturnedDeliveryShipment, useMerchantDeliveryAccountBalances, useMerchantDeliveryBalances, useDeliveryLedgerEntries, type Agent, type BusinessPartner, type CreateDeliveryShipmentInput, type CurrencyCode, type DeliveryCustomerPaymentStatus, type DeliveryMerchantProfile, type DeliveryRecipientPayoutFunding, type DeliveryShipment, type DeliveryShipmentCodAdjustmentRequest, type DeliveryShipmentEvent, type DeliveryShipmentStatus, type PaymentAccount, type PostServiceTab, type WorkspacePaymentMethod,
@@ -114,6 +114,20 @@ const initialShipmentForm = (currency: CurrencyCode): ShipmentForm => ({
   merchantProfileId: "", recipientPhone: "", recipientAddress: "", description: "", currency, codAmount: "", customerPaymentStatus: "cash_on_delivery", recipientPayoutAmount: "", recipientPayoutFunding: "courier_advance", deliveryFee: "", feePayer: "merchant",
 });
 
+const shipmentFormFromShipment = (shipment: DeliveryShipment): ShipmentForm => ({
+  merchantProfileId: shipment.merchantProfileId,
+  recipientPhone: shipment.recipientPhone,
+  recipientAddress: shipment.recipientAddress,
+  description: shipment.description ?? "",
+  currency: shipment.currency,
+  codAmount: shipment.customerPaymentStatus === "cash_on_delivery" ? String(shipment.codAmount) : "",
+  customerPaymentStatus: shipment.customerPaymentStatus,
+  recipientPayoutAmount: shipment.recipientPayoutAmount > 0 ? String(shipment.recipientPayoutAmount) : "",
+  recipientPayoutFunding: shipment.recipientPayoutFunding ?? "courier_advance",
+  deliveryFee: String(shipment.deliveryFee),
+  feePayer: shipment.feePayer,
+});
+
 function shipmentStatusClass(status: DeliveryShipmentStatus) {
   if (status === "delivered") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
   if (status === "returned" || status === "cancelled") return "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300";
@@ -206,6 +220,10 @@ function localizedError(t: TFunction, error: unknown) {
     "Post created but assignment could not be completed. Retry to finish assigning the same post.": "postCreatedAssignmentPending",
     "This post is no longer available for quick dispatch": "quickDispatchUnavailable",
     "This quick dispatch operation cannot be resumed": "quickDispatchUnavailable",
+    "Only an administrator can edit and redispatch a post": "adminRedispatchOnly",
+    "Only received or assigned posts can be edited and redispatched": "redispatchStatusOnly",
+    "This post has changed. Refresh it before editing and redispatching": "redispatchChanged",
+    "This admin redispatch operation cannot be resumed": "redispatchUnavailable",
   };
   return keys[message] ? t(`postService.errors.${keys[message]}`) : message || t("postService.errors.generic");
 }
@@ -222,6 +240,7 @@ export function PostService() {
   const isAdmin = user?.role === "admin";
   const isEditor = user?.role === "admin" || user?.role === "staff";
   const canDispatch = isEditor && hasPermission("postService.dispatch");
+  const canAdminEditAndRedispatch = isAdmin && hasPermission("postService.dispatch");
   const canSettle = isEditor && hasPermission("postService.settle");
   const currencies = useMemo(() => Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[], [features.allowed_currencies, features.default_currency]);
   const partners = useBusinessPartners(workspaceId, { includeAgentRoles: true });
@@ -299,6 +318,14 @@ export function PostService() {
   const [transferVehicleId, setTransferVehicleId] = useState("none");
   const [transferNotes, setTransferNotes] = useState("");
   const [isTransferring, setIsTransferring] = useState(false);
+  const [editRedispatchTarget, setEditRedispatchTarget] = useState<DeliveryShipment | null>(null);
+  const [editRedispatchForm, setEditRedispatchForm] = useState<ShipmentForm>(() => initialShipmentForm(features.default_currency));
+  const [showEditRecipientPayout, setShowEditRecipientPayout] = useState(false);
+  const [editRedispatchOperationId, setEditRedispatchOperationId] = useState<string | null>(null);
+  const [editRedispatchAgentId, setEditRedispatchAgentId] = useState("");
+  const [editRedispatchCourierDeliveryFee, setEditRedispatchCourierDeliveryFee] = useState("");
+  const [editRedispatchVehicleId, setEditRedispatchVehicleId] = useState("none");
+  const [editRedispatchNotes, setEditRedispatchNotes] = useState("");
   const [statusTarget, setStatusTarget] = useState<DeliveryShipment | null>(null);
   const [nextStatus, setNextStatus] = useState<"delivered" | "postponed" | "returned">("delivered");
   const [statusNote, setStatusNote] = useState("");
@@ -661,6 +688,15 @@ export function PostService() {
     && shipmentForm.recipientAddress.trim()
     && isCodAmountValid,
   );
+  const isEditRedispatchCodAmountValid = editRedispatchForm.customerPaymentStatus === "prepaid_electronically"
+    || (editRedispatchForm.codAmount.trim().length > 0 && parseFormattedNumber(editRedispatchForm.codAmount) > 0);
+  const isEditRedispatchFormValid = Boolean(
+    editRedispatchForm.merchantProfileId
+    && editRedispatchForm.recipientPhone.trim()
+    && editRedispatchForm.recipientAddress.trim()
+    && editRedispatchAgentId
+    && isEditRedispatchCodAmountValid,
+  );
   const isQuickDispatchFormValid = Boolean(quickDispatchAgentId);
   function resetQuickDispatch() {
     setQuickDispatchOpen(false);
@@ -706,6 +742,18 @@ export function PostService() {
       recipientPayoutAmount: value === "cash_on_delivery" ? "" : current.recipientPayoutAmount,
     }));
     setShowRecipientPayout(value === "prepaid_electronically");
+  }
+  function updateEditRedispatchForm<Key extends keyof ShipmentForm>(key: Key, value: ShipmentForm[Key]) {
+    setEditRedispatchForm((current) => ({ ...current, [key]: value }));
+  }
+  function handleEditRedispatchCustomerPaymentStatusChange(value: DeliveryCustomerPaymentStatus) {
+    setEditRedispatchForm((current) => ({
+      ...current,
+      customerPaymentStatus: value,
+      codAmount: value === "prepaid_electronically" ? "" : current.codAmount,
+      recipientPayoutAmount: value === "cash_on_delivery" ? "" : current.recipientPayoutAmount,
+    }));
+    setShowEditRecipientPayout(value === "prepaid_electronically");
   }
   function toggleShipment(shipmentId: string, checked: boolean) {
     setSelectedShipmentIds((current) => { const next = new Set(current); if (checked) next.add(shipmentId); else next.delete(shipmentId); return next; });
@@ -837,6 +885,33 @@ export function PostService() {
     setTransferCourierDeliveryFee("");
     setTransferVehicleId("none");
     setTransferNotes("");
+  }
+  function openEditAndRedispatchDialog(shipment: DeliveryShipment) {
+    const currentRun = shipment.assignedRunId ? runs.find((run) => run.id === shipment.assignedRunId) : null;
+    setEditRedispatchTarget(shipment);
+    setEditRedispatchForm(shipmentFormFromShipment(shipment));
+    setShowEditRecipientPayout(shipment.customerPaymentStatus === "prepaid_electronically" || shipment.recipientPayoutAmount > 0);
+    setEditRedispatchOperationId(generateId());
+    setEditRedispatchAgentId(shipment.assignedAgentId ?? "");
+    setEditRedispatchCourierDeliveryFee(String(shipment.courierDeliveryFee ?? (shipment.assignedAgentId ? agents.find((agent) => agent.id === shipment.assignedAgentId)?.courierDeliveryFee ?? 0 : 0)));
+    setEditRedispatchVehicleId(currentRun?.vehicleId ?? "none");
+    setEditRedispatchNotes("");
+  }
+  function closeEditAndRedispatchDialog(force = false) {
+    if (isSubmitting && !force) return;
+    setEditRedispatchTarget(null);
+    setEditRedispatchForm(initialShipmentForm(features.default_currency));
+    setShowEditRecipientPayout(false);
+    setEditRedispatchOperationId(null);
+    setEditRedispatchAgentId("");
+    setEditRedispatchCourierDeliveryFee("");
+    setEditRedispatchVehicleId("none");
+    setEditRedispatchNotes("");
+  }
+  function handleEditRedispatchCourierChange(agentId: string) {
+    setEditRedispatchAgentId(agentId);
+    const courier = agents.find((agent) => agent.id === agentId);
+    setEditRedispatchCourierDeliveryFee(String(courier?.courierDeliveryFee ?? 0));
   }
   function handleTransferCourierChange(agentId: string) {
     setTransferAgentId(agentId);
@@ -988,6 +1063,43 @@ export function PostService() {
       toast({ title: t("postService.messages.transferPostFailed"), description: localizedError(t, error), variant: "destructive" });
     } finally {
       setIsTransferring(false);
+    }
+  }
+  async function handleEditAndRedispatchPost(event: FormEvent) {
+    event.preventDefault();
+    if (!workspaceId || !editRedispatchTarget || !canAdminEditAndRedispatch || !isEditRedispatchFormValid) return;
+    setIsSubmitting(true);
+    try {
+      const run = await adminEditAndRedispatchDeliveryShipment(workspaceId, {
+        operationId: editRedispatchOperationId ?? generateId(),
+        shipmentId: editRedispatchTarget.id,
+        expectedVersion: editRedispatchTarget.version,
+        actorRole: "admin",
+        actorUserId: user?.id ?? null,
+        shipment: {
+          merchantProfileId: editRedispatchForm.merchantProfileId,
+          recipientPhone: editRedispatchForm.recipientPhone,
+          recipientAddress: editRedispatchForm.recipientAddress,
+          description: editRedispatchForm.description || null,
+          currency: editRedispatchForm.currency,
+          codAmount: parseFormattedNumber(editRedispatchForm.codAmount || "0"),
+          customerPaymentStatus: editRedispatchForm.customerPaymentStatus,
+          recipientPayoutAmount: parseFormattedNumber(editRedispatchForm.recipientPayoutAmount || "0"),
+          recipientPayoutFunding: editRedispatchForm.recipientPayoutFunding,
+          deliveryFee: parseFormattedNumber(editRedispatchForm.deliveryFee || "0"),
+          feePayer: editRedispatchForm.feePayer,
+        },
+        agentId: editRedispatchAgentId,
+        courierDeliveryFee: parseFormattedNumber(editRedispatchCourierDeliveryFee || "0"),
+        vehicleId: editRedispatchVehicleId === "none" ? null : editRedispatchVehicleId,
+        notes: editRedispatchNotes || null,
+      });
+      toast({ title: t("postService.messages.postEditedAndRedispatched"), description: t("postService.messages.postEditedAndRedispatchedDescription", { run: run.runNumber }) });
+      closeEditAndRedispatchDialog(true);
+    } catch (error) {
+      toast({ title: t("postService.messages.editAndRedispatchFailed"), description: localizedError(t, error), variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
     }
   }
   function closeStatusDialog() {
@@ -1150,15 +1262,15 @@ export function PostService() {
               <Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="ps-9" placeholder={t("postService.placeholders.searchPosts")} />
             </div>
             <div className={cn("grid grid-cols-1 gap-4", postsViewMode === "grid" ? "md:grid-cols-2 2xl:grid-cols-3" : "md:hidden")}>
-              <ShipmentGrid t={t} shipments={searchedShipments} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier?.id ?? null} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} />
+              <ShipmentGrid t={t} shipments={searchedShipments} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onEditAndRedispatch={openEditAndRedispatchDialog} canAdminEditAndRedispatch={canAdminEditAndRedispatch} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier?.id ?? null} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} />
             </div>
-            {postsViewMode === "details" && <div className="hidden overflow-x-auto md:block"><ShipmentTable t={t} shipments={searchedShipments} footer={postsTotalsFooter} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier?.id ?? null} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} /></div>}
+            {postsViewMode === "details" && <div className="hidden overflow-x-auto md:block"><ShipmentTable t={t} shipments={searchedShipments} footer={postsTotalsFooter} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onEditAndRedispatch={openEditAndRedispatchDialog} canAdminEditAndRedispatch={canAdminEditAndRedispatch} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier?.id ?? null} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} /></div>}
           </CardContent>
         </Card>
       </TabsContent>
       {isAdmin && <>
       <TabsContent value="dispatch" className="mt-4 space-y-4"><Card><CardHeader><CardTitle>{t("postService.cards.createManifest")}</CardTitle></CardHeader><CardContent>{canDispatch ? <form className="grid gap-4 md:grid-cols-2" onSubmit={handleDispatch}><Field label={t("postService.form.postsSelected")}><div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">{t("postService.selectedAndAvailable", { selected: selectedCount, available: assignableShipments.length })}</div></Field><Field label={t("postService.form.courier")}><Select value={dispatchAgentId} onValueChange={handleDispatchCourierChange}><SelectTrigger><SelectValue placeholder={t("postService.placeholders.selectCourier")} /></SelectTrigger><SelectContent>{agents.filter((agent) => agent.status === "active" && agent.agentType === "courier").map((agent) => <SelectItem key={agent.id} value={agent.id}>{agentNameById.get(agent.id)} · {agent.zone}</SelectItem>)}</SelectContent></Select></Field><Field label={t("postService.form.courierDeliveryFee")}><div className="grid gap-1"><div className="relative"><Input className="pe-12" value={formatNumericInput(dispatchCourierDeliveryFee)} onChange={(event) => setDispatchCourierDeliveryFee(sanitizeNumericInput(event.target.value, { allowDecimal: true }))} inputMode="decimal" placeholder="0" disabled={!dispatchAgentId} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(features.default_currency, features.iqd_display_preference)}</span></div><p className="text-xs text-muted-foreground">{t("postService.form.courierDeliveryFeeHint")}</p></div></Field><Field label={t("postService.form.vehicleOptional")}><Select value={dispatchVehicleId} onValueChange={setDispatchVehicleId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">{t("postService.options.noVehicle")}</SelectItem>{vehicles.filter((vehicle) => vehicle.status === "active").map((vehicle) => <SelectItem key={vehicle.id} value={vehicle.id}>{vehicle.plateNumber} · {vehicle.model}</SelectItem>)}</SelectContent></Select></Field><Field label={t("postService.form.manifestNote")}><Input value={dispatchNotes} onChange={(event) => setDispatchNotes(event.target.value)} placeholder={t("postService.placeholders.manifestNote")} /></Field><div className="md:col-span-2"><Button disabled={isSubmitting || !dispatchAgentId || selectedCount === 0} type="submit"><Send className="me-2 h-4 w-4" />{t("postService.actions.assignSelected")}</Button></div></form> : <p className="text-sm text-muted-foreground">{t("postService.permissionRequired.dispatch")}</p>}</CardContent></Card><Card><CardHeader><CardTitle>{t("postService.cards.recentRuns")}</CardTitle></CardHeader><CardContent className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>{t("postService.table.run")}</TableHead><TableHead>{t("postService.table.courier")}</TableHead><TableHead>{t("postService.table.courierDeliveryFee")}</TableHead><TableHead>{t("postService.table.dispatched")}</TableHead><TableHead>{t("postService.table.status")}</TableHead><TableHead /></TableRow></TableHeader><TableBody>{runs.length === 0 ? <EmptyRow columns={6} label={t("postService.empty.noRuns")} /> : runs.map((run) => <TableRow key={run.id}><TableCell className="font-medium">{run.runNumber}</TableCell><TableCell>{agentNameById.get(run.agentId)}</TableCell><TableCell>{formatCurrency(run.courierDeliveryFee ?? 0, features.default_currency, features.iqd_display_preference)}</TableCell><TableCell>{formatDateTime(run.dispatchedAt)}</TableCell><TableCell><Badge variant="outline">{t(`postService.runStatus.${run.status}`)}</Badge></TableCell><TableCell className="text-end">{canDispatch && run.status === "open" && <Button size="sm" variant="outline" onClick={() => void handleCloseRun(run.id)}>{t("postService.actions.closeRun")}</Button>}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card></TabsContent>
-      <TabsContent value="my-deliveries" className="mt-4"><Card><CardHeader><CardTitle>{t("postService.cards.myAssignedPosts")}</CardTitle></CardHeader><CardContent className="overflow-x-auto">{linkedCourier ? <ShipmentTable t={t} shipments={shipments.filter((shipment) => shipment.assignedAgentId === linkedCourier.id)} selectedIds={new Set()} onToggle={() => undefined} canSelect={false} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier.id} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} /> : <div className="py-10 text-center text-sm text-muted-foreground">{t("postService.empty.noLinkedCourier")}</div>}</CardContent></Card></TabsContent>
+      <TabsContent value="my-deliveries" className="mt-4"><Card><CardHeader><CardTitle>{t("postService.cards.myAssignedPosts")}</CardTitle></CardHeader><CardContent className="overflow-x-auto">{linkedCourier ? <ShipmentTable t={t} shipments={shipments.filter((shipment) => shipment.assignedAgentId === linkedCourier.id)} selectedIds={new Set()} onToggle={() => undefined} canSelect={false} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onEditAndRedispatch={openEditAndRedispatchDialog} canAdminEditAndRedispatch={canAdminEditAndRedispatch} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier.id} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} settlementNetByShipment={perShipmentSettlementNet} /> : <div className="py-10 text-center text-sm text-muted-foreground">{t("postService.empty.noLinkedCourier")}</div>}</CardContent></Card></TabsContent>
       <TabsContent value="merchants" className="mt-4">
         <Card>
           <CardHeader className="flex-row items-center justify-between"><CardTitle>{t("postService.cards.deliveryMerchants")}</CardTitle>{isAdmin && <Button size="sm" onClick={() => setMerchantDialogOpen(true)}><Plus className="me-2 h-4 w-4" />{t("postService.actions.enableMerchant")}</Button>}</CardHeader>
@@ -1440,6 +1552,52 @@ export function PostService() {
         }] : []),
       ]}
     />
+    <AppDialog open={!!editRedispatchTarget} onOpenChange={(open) => { if (!open) closeEditAndRedispatchDialog(); }}>
+      <AppDialogContent
+        className="max-w-3xl"
+        showCloseButton={!isSubmitting}
+        onPointerDownOutside={(event) => { if (isSubmitting) event.preventDefault(); }}
+        onEscapeKeyDown={(event) => { event.preventDefault(); if (!isSubmitting) closeEditAndRedispatchDialog(); }}
+      >
+        <form onSubmit={handleEditAndRedispatchPost} className="flex min-h-0 flex-1 flex-col">
+          <AppDialogHeader>
+            <AppDialogTitle>{t("postService.dialogs.editAndRedispatch.title")}</AppDialogTitle>
+            <AppDialogDescription>{t("postService.dialogs.editAndRedispatch.description", { trackingNumber: editRedispatchTarget?.trackingNumber })}</AppDialogDescription>
+          </AppDialogHeader>
+          <AppDialogBody className="grid gap-4 py-5 sm:grid-cols-2">
+            <Field label={t("postService.form.merchant")}>
+              <Select value={editRedispatchForm.merchantProfileId} onValueChange={(value) => { const profile = profileById.get(value); updateEditRedispatchForm("merchantProfileId", value); if (profile) { updateEditRedispatchForm("deliveryFee", String(profile.defaultFeeAmount)); updateEditRedispatchForm("feePayer", profile.defaultFeePayer); } }} disabled={isSubmitting}>
+                <SelectTrigger><SelectValue placeholder={t("postService.placeholders.selectMerchant")} /></SelectTrigger>
+                <SelectContent>{merchantProfiles.filter((profile) => profile.isActive).map((profile) => <SelectItem key={profile.id} value={profile.id}>{profileNameById.get(profile.id)}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            <Field label={t("postService.form.recipientPhone")}><Input required inputMode="tel" autoComplete="tel" value={editRedispatchForm.recipientPhone} onChange={(event) => updateEditRedispatchForm("recipientPhone", event.target.value)} disabled={isSubmitting} /></Field>
+            <div className="sm:col-span-2"><Field label={t("postService.form.deliveryAddress")}><Textarea required value={editRedispatchForm.recipientAddress} onChange={(event) => updateEditRedispatchForm("recipientAddress", event.target.value)} disabled={isSubmitting} /></Field></div>
+            <Field label={t("postService.form.description")}><Input value={editRedispatchForm.description} onChange={(event) => updateEditRedispatchForm("description", event.target.value)} placeholder={t("postService.placeholders.parcelDescription")} disabled={isSubmitting} /></Field>
+            <CurrencySelector value={editRedispatchForm.currency} onChange={(value: CurrencyCode) => updateEditRedispatchForm("currency", value)} label={t("postService.form.currency")} iqdDisplayPreference={features.iqd_display_preference} allowedCurrencies={currencies} disabled={isSubmitting} />
+            <Field label={t("postService.form.customerPaymentStatus")}>
+              <Select value={editRedispatchForm.customerPaymentStatus} onValueChange={handleEditRedispatchCustomerPaymentStatusChange} disabled={isSubmitting}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="cash_on_delivery">{t("postService.customerPaymentStatus.cash_on_delivery")}</SelectItem><SelectItem value="prepaid_electronically">{t("postService.customerPaymentStatus.prepaid_electronically")}</SelectItem></SelectContent>
+              </Select>
+            </Field>
+            <Field label={t("postService.form.codAmount")}><div className="space-y-1.5"><div className="relative"><Input className="pe-12" value={formatNumericInput(editRedispatchForm.codAmount)} onChange={(event) => updateEditRedispatchForm("codAmount", sanitizeNumericInput(event.target.value, { allowDecimal: editRedispatchForm.currency !== "iqd" }))} inputMode={editRedispatchForm.currency === "iqd" ? "numeric" : "decimal"} placeholder="0" disabled={isSubmitting || editRedispatchForm.customerPaymentStatus === "prepaid_electronically"} aria-invalid={!isEditRedispatchCodAmountValid} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(editRedispatchForm.currency, features.iqd_display_preference)}</span></div>{editRedispatchForm.customerPaymentStatus === "cash_on_delivery" && !isEditRedispatchCodAmountValid ? <p className="text-xs text-destructive">{t("postService.errors.cashOnDeliveryCodRequired")}</p> : null}</div></Field>
+            {showEditRecipientPayout || editRedispatchForm.customerPaymentStatus === "prepaid_electronically" ? <div className="space-y-3 sm:col-span-2"><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><div className="flex items-center justify-between gap-2"><Label>{t("postService.form.recipientPayoutAmount")}</Label>{editRedispatchForm.customerPaymentStatus === "cash_on_delivery" ? <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 px-2 text-muted-foreground" disabled={isSubmitting} onClick={() => { updateEditRedispatchForm("recipientPayoutAmount", ""); setShowEditRecipientPayout(false); }}><X className="h-3.5 w-3.5" />{t("common.remove")}</Button> : null}</div><div className="relative"><Input className="pe-12" value={formatNumericInput(editRedispatchForm.recipientPayoutAmount)} onChange={(event) => updateEditRedispatchForm("recipientPayoutAmount", sanitizeNumericInput(event.target.value, { allowDecimal: editRedispatchForm.currency !== "iqd" }))} inputMode={editRedispatchForm.currency === "iqd" ? "numeric" : "decimal"} placeholder="0" disabled={isSubmitting} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(editRedispatchForm.currency, features.iqd_display_preference)}</span></div></div><Field label={t("postService.form.recipientPayoutFunding")}><Select value={editRedispatchForm.recipientPayoutFunding} onValueChange={(value: DeliveryRecipientPayoutFunding) => updateEditRedispatchForm("recipientPayoutFunding", value)} disabled={isSubmitting}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="courier_advance">{t("postService.recipientPayoutFunding.courier_advance")}</SelectItem><SelectItem value="workspace_payment">{t("postService.recipientPayoutFunding.workspace_payment")}</SelectItem></SelectContent></Select></Field></div><p className="text-xs text-muted-foreground">{t(`postService.form.recipientPayoutFundingHint.${editRedispatchForm.recipientPayoutFunding}`)}</p></div> : <Button type="button" variant="outline" className="h-auto min-h-10 justify-start gap-2 border-dashed text-muted-foreground hover:text-foreground" disabled={isSubmitting} onClick={() => setShowEditRecipientPayout(true)}><HandCoins className="h-4 w-4" />{t("postService.actions.addRecipientPayout")}</Button>}
+            <Field label={t("postService.form.deliveryFee")}><div className="relative"><Input className="pe-12" value={formatNumericInput(editRedispatchForm.deliveryFee)} onChange={(event) => updateEditRedispatchForm("deliveryFee", sanitizeNumericInput(event.target.value, { allowDecimal: editRedispatchForm.currency !== "iqd" }))} inputMode={editRedispatchForm.currency === "iqd" ? "numeric" : "decimal"} placeholder="0" disabled={isSubmitting} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(editRedispatchForm.currency, features.iqd_display_preference)}</span></div></Field>
+            <Field label={t("postService.form.feePayer")}><Select value={editRedispatchForm.feePayer} onValueChange={(value: "merchant" | "recipient") => updateEditRedispatchForm("feePayer", value)} disabled={isSubmitting}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="merchant">{t("postService.feePayer.merchant")}</SelectItem><SelectItem value="recipient">{t("postService.feePayer.recipient")}</SelectItem></SelectContent></Select></Field>
+            <div className="sm:col-span-2 border-t pt-4"><p className="mb-3 flex items-center gap-2 text-sm font-semibold"><Send className="h-4 w-4" />{t("postService.dialogs.editAndRedispatch.dispatchDetails")}</p></div>
+            <Field label={t("postService.form.courier")}><Select value={editRedispatchAgentId} onValueChange={handleEditRedispatchCourierChange} disabled={isSubmitting}><SelectTrigger><SelectValue placeholder={t("postService.placeholders.selectCourier")} /></SelectTrigger><SelectContent>{agents.filter((agent) => agent.status === "active" && agent.agentType === "courier").map((agent) => <SelectItem key={agent.id} value={agent.id}>{agentNameById.get(agent.id) ?? t("postService.unknownCourier")} · {agent.zone}</SelectItem>)}</SelectContent></Select></Field>
+            <Field label={t("postService.form.courierDeliveryFee")}><div className="grid gap-1"><div className="relative"><Input className="pe-12" value={formatNumericInput(editRedispatchCourierDeliveryFee)} onChange={(event) => setEditRedispatchCourierDeliveryFee(sanitizeNumericInput(event.target.value, { allowDecimal: true }))} inputMode="decimal" placeholder="0" disabled={isSubmitting || !editRedispatchAgentId} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(editRedispatchForm.currency, features.iqd_display_preference)}</span></div><p className="text-xs text-muted-foreground">{t("postService.form.courierDeliveryFeeHint")}</p></div></Field>
+            <Field label={t("postService.form.vehicleOptional")}><Select value={editRedispatchVehicleId} onValueChange={setEditRedispatchVehicleId} disabled={isSubmitting}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">{t("postService.options.noVehicle")}</SelectItem>{vehicles.filter((vehicle) => vehicle.status === "active").map((vehicle) => <SelectItem key={vehicle.id} value={vehicle.id}>{vehicle.plateNumber} · {vehicle.model}</SelectItem>)}</SelectContent></Select></Field>
+            <Field label={t("postService.form.dispatchNote")}><Input value={editRedispatchNotes} onChange={(event) => setEditRedispatchNotes(event.target.value)} placeholder={t("postService.placeholders.manifestNote")} disabled={isSubmitting} /></Field>
+          </AppDialogBody>
+          <AppDialogFooter>
+            <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={isSubmitting} onClick={() => closeEditAndRedispatchDialog()}>{t("postService.actions.cancel")}</Button>
+            <Button type="submit" className="w-full gap-2 sm:w-auto" disabled={isSubmitting || !isEditRedispatchFormValid}><Send className="h-4 w-4" />{isSubmitting ? t("postService.actions.redispatching") : t("postService.actions.saveAndRedispatch")}</Button>
+          </AppDialogFooter>
+        </form>
+      </AppDialogContent>
+    </AppDialog>
     <AppDialog open={!!statusTarget} onOpenChange={(open) => { if (!open) closeStatusDialog(); }}>
       <AppDialogContent
         className="max-w-xl"
@@ -1721,7 +1879,7 @@ function PostsViewModeToggle({ t, value, onChange }: { t: TFunction; value: Post
     <Button type="button" size="sm" variant={value === "grid" ? "secondary" : "ghost"} className="gap-1.5" aria-pressed={value === "grid"} onClick={() => onChange("grid")}><LayoutGrid className="h-4 w-4" />{t("postService.view.grid")}</Button>
   </div>;
 }
-function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onRequestCodChange, onReviewCodChange, pendingCodAdjustmentByShipment, canRequestCodChange, requesterCourierId, canReviewCodChange, onOpenSettlementNet, onOpenPostSettlements, onReceiveMerchantRepayment, merchantRepaymentAmountByShipment, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, settlementNetByShipment, footer }: {
+function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onEditAndRedispatch, canAdminEditAndRedispatch, onRequestCodChange, onReviewCodChange, pendingCodAdjustmentByShipment, canRequestCodChange, requesterCourierId, canReviewCodChange, onOpenSettlementNet, onOpenPostSettlements, onReceiveMerchantRepayment, merchantRepaymentAmountByShipment, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, settlementNetByShipment, footer }: {
   t: TFunction;
   shipments: DeliveryShipment[];
   selectedIds: Set<string>;
@@ -1731,6 +1889,8 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
   agentNameById: Map<string, string>;
   onStatus: (shipment: DeliveryShipment, status: "delivered" | "postponed" | "returned") => void;
   onTransfer: (shipment: DeliveryShipment) => void;
+  onEditAndRedispatch: (shipment: DeliveryShipment) => void;
+  canAdminEditAndRedispatch: boolean;
   onRequestCodChange: (shipment: DeliveryShipment) => void;
   onReviewCodChange: (request: DeliveryShipmentCodAdjustmentRequest) => void;
   pendingCodAdjustmentByShipment: ReadonlyMap<string, DeliveryShipmentCodAdjustmentRequest>;
@@ -1776,6 +1936,7 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
         <TableCell><SettlementStatusBadge t={t} kind="payout" status={payoutStatusByShipment.get(shipment.id) ?? "none"} /></TableCell>
         <TableCell className="text-end"><div className="flex justify-end gap-1">
           {canPlayVoiceReason && voiceReasonEvent && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onPlayVoiceReason(voiceReasonEvent)}><Play className="h-4 w-4" />{t("postService.actions.playback")}</Button>}
+          {canAdminEditAndRedispatch && ["received", "assigned"].includes(shipment.status) && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onEditAndRedispatch(shipment)}><Pencil className="h-4 w-4" />{t("postService.actions.editAndRedispatch")}</Button>}
           {canUpdate && shipment.status === "assigned" && <>{!pendingCodAdjustment && <Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "delivered")} title={t("postService.actions.markDelivered")}><CheckCircle2 className="h-4 w-4 text-emerald-600" /></Button>}<Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "postponed")} title={t("postService.actions.postpone")}><History className="h-4 w-4 text-amber-600" /></Button><Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "returned")} title={t("postService.actions.return")}><Undo2 className="h-4 w-4 text-rose-600" /></Button></>}
           {canRequestCodChange && !pendingCodAdjustment && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onRequestCodChange(shipment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.requestChange")}</Button>}
           {canReviewCodChange && pendingCodAdjustment && <Button size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onReviewCodChange(pendingCodAdjustment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.reviewChange")}</Button>}
@@ -1788,7 +1949,7 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
     {footer ? <TableFooter><TableRow className="hover:bg-transparent"><TableCell colSpan={canSelect ? 12 : 11} className="bg-muted/40 py-3">{footer}</TableCell></TableRow></TableFooter> : null}
   </Table>;
 }
-function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onRequestCodChange, onReviewCodChange, pendingCodAdjustmentByShipment, canRequestCodChange, requesterCourierId, canReviewCodChange, onOpenSettlementNet, onOpenPostSettlements, onReceiveMerchantRepayment, merchantRepaymentAmountByShipment, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, settlementNetByShipment }: {
+function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onEditAndRedispatch, canAdminEditAndRedispatch, onRequestCodChange, onReviewCodChange, pendingCodAdjustmentByShipment, canRequestCodChange, requesterCourierId, canReviewCodChange, onOpenSettlementNet, onOpenPostSettlements, onReceiveMerchantRepayment, merchantRepaymentAmountByShipment, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, settlementNetByShipment }: {
   t: TFunction;
   shipments: DeliveryShipment[];
   selectedIds: Set<string>;
@@ -1798,6 +1959,8 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
   agentNameById: Map<string, string>;
   onStatus: (shipment: DeliveryShipment, status: "delivered" | "postponed" | "returned") => void;
   onTransfer: (shipment: DeliveryShipment) => void;
+  onEditAndRedispatch: (shipment: DeliveryShipment) => void;
+  canAdminEditAndRedispatch: boolean;
   onRequestCodChange: (shipment: DeliveryShipment) => void;
   onReviewCodChange: (request: DeliveryShipmentCodAdjustmentRequest) => void;
   pendingCodAdjustmentByShipment: ReadonlyMap<string, DeliveryShipmentCodAdjustmentRequest>;
@@ -1880,8 +2043,9 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
           <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg border px-2.5 py-2"><span className="text-xs text-muted-foreground">{t("postService.table.merchantPayout")}</span><SettlementStatusBadge t={t} kind="payout" status={payoutStatusByShipment.get(shipment.id) ?? "none"} /></div>
         </div>
 
-        {(canPlayVoiceReason && voiceReasonEvent || canUpdate && shipment.status === "assigned" || canRequestCodChange && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) || canReviewCodChange && pendingCodAdjustment || canTransfer && shipment.status === "returned" || canSettle && shipment.status === "delivered") && <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
+        {(canPlayVoiceReason && voiceReasonEvent || canAdminEditAndRedispatch && ["received", "assigned"].includes(shipment.status) || canUpdate && shipment.status === "assigned" || canRequestCodChange && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) || canReviewCodChange && pendingCodAdjustment || canTransfer && shipment.status === "returned" || canSettle && shipment.status === "delivered") && <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
           {canPlayVoiceReason && voiceReasonEvent && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onPlayVoiceReason(voiceReasonEvent)}><Play className="h-4 w-4" />{t("postService.actions.playback")}</Button>}
+          {canAdminEditAndRedispatch && ["received", "assigned"].includes(shipment.status) && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onEditAndRedispatch(shipment)}><Pencil className="h-4 w-4" />{t("postService.actions.editAndRedispatch")}</Button>}
           {canUpdate && shipment.status === "assigned" && <>
             {!pendingCodAdjustment && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => onStatus(shipment, "delivered")}><CheckCircle2 className="h-4 w-4" />{t("postService.actions.markDelivered")}</Button>}
             <Button type="button" size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onStatus(shipment, "postponed")}><History className="h-4 w-4" />{t("postService.actions.postpone")}</Button>
