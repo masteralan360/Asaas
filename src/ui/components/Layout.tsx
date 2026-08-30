@@ -1,8 +1,21 @@
-import { type ReactNode, Suspense } from 'react'
+import { type ReactNode, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'wouter'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/auth'
-import { db, useReorderTransferRules } from '@/local-db'
+import {
+    db,
+    completeCashierShiftOccurrence,
+    getCashierShiftCompletionEligibility,
+    getCashierShiftOccurrenceBounds,
+    isCashierShiftWorkingDay,
+    requestCashierShiftEarlyFinish,
+    startCashierShiftOccurrence,
+    type CashierShiftAssignment,
+    type CashierShiftOccurrence,
+    useCashierShiftAssignments,
+    useCashierShiftOccurrences,
+    useReorderTransferRules,
+} from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { isDemoWorkspace } from '@/demo'
 import { useWorkspacePermissions } from '@/permissions'
@@ -58,11 +71,30 @@ import {
     GitBranch,
     Loader2,
     AlertTriangle,
-    Clock
+    Clock,
+    CircleCheck,
+    ClipboardCheck,
+    ShieldCheck
 } from 'lucide-react'
-import { useState } from 'react'
 import { Button } from './button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './dialog'
+import {
+    AppDialog,
+    AppDialogBody,
+    AppDialogContent,
+    AppDialogDescription,
+    AppDialogFooter,
+    AppDialogHeader,
+    AppDialogTitle,
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from './dialog'
+import { PressAndHoldButton } from './PressAndHoldButton'
+import { Textarea } from './textarea'
+import { useToast } from './use-toast'
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -79,13 +111,34 @@ import {
 } from './ui/context-menu'
 
 import { useTranslation } from 'react-i18next'
-import { useEffect, useRef } from 'react'
 import { supabase, isSupabaseConfigured } from '@/auth/supabase'
 import { isMobile, isDesktop } from '@/lib/platform'
 import { useWebHaptics } from 'web-haptics/react'
 
 interface LayoutProps {
     children: ReactNode
+}
+
+type SidebarCashierShiftStatus = 'available' | 'active'
+
+interface SidebarCashierShift {
+    assignment: CashierShiftAssignment
+    occurrence?: CashierShiftOccurrence
+    scheduledStartAt: string
+    scheduledEndAt: string
+    status: SidebarCashierShiftStatus
+}
+
+function startOfLocalDay(date: Date) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+function formatSidebarShiftCountdown(milliseconds: number) {
+    const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1_000))
+    const hours = Math.floor(totalSeconds / 3_600)
+    const minutes = Math.floor((totalSeconds % 3_600) / 60)
+
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
 }
 
 
@@ -164,8 +217,11 @@ export function Layout({ children }: LayoutProps) {
     } = useWorkspaceBranchSwitcher()
     const { trigger: triggerHaptic } = useWebHaptics({ debug: true })
     const reorderRules = useReorderTransferRules(activeWorkspace?.id)
+    const cashierShiftAssignments = useCashierShiftAssignments(user?.workspaceId)
+    const cashierShiftOccurrences = useCashierShiftOccurrences(user?.workspaceId)
 
     const { t, i18n } = useTranslation()
+    const { toast } = useToast()
     // @ts-ignore
     const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__
     const {
@@ -246,6 +302,25 @@ export function Layout({ children }: LayoutProps) {
     const [assistantOpen, setAssistantOpen] = useState(false)
     const [assistantInitialQuery, setAssistantInitialQuery] = useState<string | undefined>(undefined)
     const [usageModalOpen, setUsageModalOpen] = useState(false)
+    const [cashierShiftNow, setCashierShiftNow] = useState(() => new Date())
+    const [cashierShiftStartDialogOpen, setCashierShiftStartDialogOpen] = useState(false)
+    const [cashierShiftCompleteDialogOpen, setCashierShiftCompleteDialogOpen] = useState(false)
+    const [cashierShiftEarlyFinishRequestDialogOpen, setCashierShiftEarlyFinishRequestDialogOpen] = useState(false)
+    const [startingCashierShift, setStartingCashierShift] = useState(false)
+    const [completingCashierShift, setCompletingCashierShift] = useState(false)
+    const [requestingCashierShiftEarlyFinish, setRequestingCashierShiftEarlyFinish] = useState(false)
+    const [cashierShiftCompletionReason, setCashierShiftCompletionReason] = useState('')
+    const [cashierShiftEarlyFinishReason, setCashierShiftEarlyFinishReason] = useState('')
+    const canUseCashierShiftQuickStart = hasFeature('payment_accounts')
+        && hasFeature('cashier_shift_control')
+        && hasPermission('cashierShiftControl.access')
+
+    useEffect(() => {
+        if (!canUseCashierShiftQuickStart) return
+
+        const intervalId = window.setInterval(() => setCashierShiftNow(new Date()), 1_000)
+        return () => window.clearInterval(intervalId)
+    }, [canUseCashierShiftQuickStart])
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text)
@@ -445,7 +520,7 @@ export function Layout({ children }: LayoutProps) {
             console.log('[Layout] Workspace is LOCKED. Redirecting to /locked-workspace')
             setLocation('/locked-workspace')
         }
-    }, [isLocked, location])
+    }, [isLocked, location, setLocation])
 
     // Listen for currency converter popup event from ExchangeRateIndicator
     useEffect(() => {
@@ -580,6 +655,170 @@ export function Layout({ children }: LayoutProps) {
         isDesktopDevice: isDesktop(),
         whatsappStatus
     })
+
+    const sidebarCashierShift = useMemo<SidebarCashierShift | null>(() => {
+        if (!canUseCashierShiftQuickStart || !user?.id) return null
+
+        const myAssignments = cashierShiftAssignments.filter((assignment) => (
+            !assignment.isDeleted
+            && assignment.isActive
+            && assignment.cashierUserId === user.id
+        ))
+        const myOccurrences = cashierShiftOccurrences
+            .filter((occurrence) => !occurrence.isDeleted && occurrence.cashierUserId === user.id)
+        const activeOccurrence = myOccurrences.find((occurrence) => occurrence.status === 'active')
+        if (activeOccurrence) {
+            const activeAssignment = cashierShiftAssignments.find((assignment) => assignment.id === activeOccurrence.assignmentId)
+            if (!activeAssignment) return null
+            return {
+                assignment: activeAssignment,
+                occurrence: activeOccurrence,
+                scheduledStartAt: activeOccurrence.scheduledStartAt,
+                scheduledEndAt: activeOccurrence.scheduledEndAt,
+                status: 'active',
+            }
+        }
+        const occurrencesBySchedule = new Map(
+            myOccurrences
+                .map((occurrence) => [`${occurrence.assignmentId}:${occurrence.scheduledStartAt}`, occurrence]),
+        )
+        const today = startOfLocalDay(cashierShiftNow)
+        const candidateDates = [today, new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)]
+        const candidates: SidebarCashierShift[] = []
+
+        for (const assignment of myAssignments) {
+            for (const date of candidateDates) {
+                if (!isCashierShiftWorkingDay(assignment, date)) continue
+                const bounds = getCashierShiftOccurrenceBounds(assignment, date)
+                if (!bounds || cashierShiftNow < bounds.start || cashierShiftNow >= bounds.end) continue
+
+                const occurrence = occurrencesBySchedule.get(`${assignment.id}:${bounds.start.toISOString()}`)
+                candidates.push({
+                    assignment,
+                    scheduledStartAt: bounds.start.toISOString(),
+                    scheduledEndAt: bounds.end.toISOString(),
+                    status: occurrence ? 'active' : 'available',
+                })
+            }
+        }
+
+        return candidates.sort((left, right) => (
+            Number(right.status === 'active') - Number(left.status === 'active')
+            || new Date(left.scheduledEndAt).getTime() - new Date(right.scheduledEndAt).getTime()
+        ))[0] ?? null
+    }, [canUseCashierShiftQuickStart, cashierShiftAssignments, cashierShiftNow, cashierShiftOccurrences, user?.id])
+
+    const startSidebarCashierShift = async () => {
+        if (
+            !user?.workspaceId
+            || !user.id
+            || !sidebarCashierShift
+            || sidebarCashierShift.status !== 'available'
+        ) return
+
+        setStartingCashierShift(true)
+        try {
+            await startCashierShiftOccurrence(user.workspaceId, {
+                assignmentId: sidebarCashierShift.assignment.id,
+                cashierUserId: user.id,
+                scheduledStartAt: sidebarCashierShift.scheduledStartAt,
+            })
+            toast({ title: t('paymentAccounts.shiftStarted') })
+            setCashierShiftStartDialogOpen(false)
+        } catch {
+            toast({
+                title: t('common.error'),
+                description: t('paymentAccounts.startShiftFailed'),
+                variant: 'destructive',
+            })
+        } finally {
+            setStartingCashierShift(false)
+        }
+    }
+
+    const sidebarCompletionEligibility = sidebarCashierShift?.status === 'active' && sidebarCashierShift.occurrence
+        ? getCashierShiftCompletionEligibility(sidebarCashierShift.occurrence, cashierShiftNow)
+        : null
+    const sidebarCanRequestEarlyFinish = Boolean(
+        sidebarCashierShift?.status === 'active'
+        && sidebarCashierShift.occurrence?.earlyFinishPolicy === 'request_approval'
+        && sidebarCashierShift.occurrence.earlyFinishRequestStatus === 'not_requested'
+        && cashierShiftNow < new Date(sidebarCashierShift.scheduledEndAt),
+    )
+    const sidebarActiveShiftActionLabel = sidebarCompletionEligibility?.canComplete
+        ? t('paymentAccounts.completeShift')
+        : sidebarCanRequestEarlyFinish
+            ? t('paymentAccounts.requestEarlyFinish')
+            : t('paymentAccounts.viewShiftDetails')
+
+    const openSidebarActiveShiftAction = () => {
+        if (!sidebarCashierShift?.occurrence) return
+        if (sidebarCompletionEligibility?.canComplete) {
+            setCashierShiftCompletionReason('')
+            setCashierShiftCompleteDialogOpen(true)
+            return
+        }
+        if (sidebarCanRequestEarlyFinish) {
+            setCashierShiftEarlyFinishReason('')
+            setCashierShiftEarlyFinishRequestDialogOpen(true)
+            return
+        }
+        setLocation(`/payment-accounts/cashier-shifts/${sidebarCashierShift.occurrence.id}`)
+    }
+
+    const completeSidebarCashierShift = async () => {
+        if (!user?.workspaceId || !user.id || !sidebarCashierShift?.occurrence) return
+        setCompletingCashierShift(true)
+        try {
+            await completeCashierShiftOccurrence(user.workspaceId, {
+                occurrenceId: sidebarCashierShift.occurrence.id,
+                cashierUserId: user.id,
+                reason: cashierShiftCompletionReason,
+            })
+            toast({ title: t('paymentAccounts.shiftCompleted') })
+            setCashierShiftCompleteDialogOpen(false)
+        } catch {
+            toast({
+                title: t('common.error'),
+                description: t('paymentAccounts.completeShiftFailed'),
+                variant: 'destructive',
+            })
+        } finally {
+            setCompletingCashierShift(false)
+        }
+    }
+
+    const requestSidebarCashierShiftEarlyFinish = async () => {
+        if (!user?.workspaceId || !user.id || !sidebarCashierShift?.occurrence) return
+        setRequestingCashierShiftEarlyFinish(true)
+        try {
+            await requestCashierShiftEarlyFinish(user.workspaceId, {
+                occurrenceId: sidebarCashierShift.occurrence.id,
+                cashierUserId: user.id,
+                reason: cashierShiftEarlyFinishReason,
+            })
+            toast({ title: t('paymentAccounts.earlyFinishRequestSubmitted') })
+            setCashierShiftEarlyFinishRequestDialogOpen(false)
+        } catch {
+            toast({
+                title: t('common.error'),
+                description: t('paymentAccounts.earlyFinishRequestFailed'),
+                variant: 'destructive',
+            })
+        } finally {
+            setRequestingCashierShiftEarlyFinish(false)
+        }
+    }
+
+    const sidebarShiftCountdown = sidebarCashierShift && cashierShiftNow < new Date(sidebarCashierShift.scheduledEndAt)
+        ? formatSidebarShiftCountdown(new Date(sidebarCashierShift.scheduledEndAt).getTime() - cashierShiftNow.getTime())
+        : null
+    const sidebarShiftEndsInLabel = sidebarShiftCountdown
+        ? t('paymentAccounts.shiftEndsIn', { time: sidebarShiftCountdown })
+        : ''
+    const formatSidebarShiftDateTime = (value: string) => new Intl.DateTimeFormat(i18n.language, {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    }).format(new Date(value))
 
     const today = new Date().toISOString().slice(0, 10)
     const reorderAutomationCount = reorderRules.filter((rule) =>
@@ -1311,16 +1550,76 @@ export function Layout({ children }: LayoutProps) {
                                     <LocalAccountSwitcher isCompact={isSidebarMini && !mobileSidebarOpen} />
                                 ) : (
                                     <>
-                                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-emerald-600 flex items-center justify-center text-sm font-bold text-white overflow-hidden shadow-sm">
-                                            {user?.profileUrl ? (
-                                                <img
-                                                    src={user.profileUrl.startsWith('http') ? user.profileUrl : platformService.convertFileSrc(user.profileUrl)}
-                                                    alt={user.name}
-                                                    className="w-full h-full object-cover"
+                                        <div className="relative shrink-0" title={sidebarShiftEndsInLabel || undefined}>
+                                            {sidebarCashierShift?.status === 'available' ? (
+                                                <PressAndHoldButton
+                                                    onComplete={() => { void startSidebarCashierShift() }}
+                                                    onShortPress={() => setCashierShiftStartDialogOpen(true)}
+                                                    idleLabel={t('paymentAccounts.holdToStartShift')}
+                                                    holdingLabel={t('paymentAccounts.keepHoldingToStartShift')}
+                                                    loadingLabel={t('paymentAccounts.startingShift')}
+                                                    isLoading={startingCashierShift}
+                                                    iconOnly
+                                                    variant="ghost"
+                                                    progressVariant="ring"
+                                                    progressClassName="text-amber-400 drop-shadow-[0_0_5px_rgba(251,191,36,0.9)]"
+                                                    className="h-9 w-9 rounded-full bg-transparent p-0 ring-2 ring-amber-400 ring-offset-2 ring-offset-background hover:bg-transparent"
+                                                    icon={user?.profileUrl ? (
+                                                        <img
+                                                            src={user.profileUrl.startsWith('http') ? user.profileUrl : platformService.convertFileSrc(user.profileUrl)}
+                                                            alt={user.name}
+                                                            className="h-9 w-9 rounded-full object-cover"
+                                                        />
+                                                    ) : (
+                                                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-primary to-emerald-600 text-sm font-bold text-white shadow-sm">
+                                                            {user?.name?.charAt(0).toUpperCase() || 'U'}
+                                                        </span>
+                                                    )}
+                                                    title={t('paymentAccounts.startShift')}
                                                 />
+                                            ) : sidebarCashierShift?.status === 'active' ? (
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={openSidebarActiveShiftAction}
+                                                    className="h-9 w-9 rounded-full bg-transparent p-0 hover:bg-transparent"
+                                                    title={sidebarActiveShiftActionLabel}
+                                                    aria-label={sidebarActiveShiftActionLabel}
+                                                >
+                                                    <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary to-emerald-600 text-sm font-bold text-white shadow-sm ring-2 ring-amber-400 ring-offset-2 ring-offset-background">
+                                                    {user?.profileUrl ? (
+                                                        <img
+                                                            src={user.profileUrl.startsWith('http') ? user.profileUrl : platformService.convertFileSrc(user.profileUrl)}
+                                                            alt={user.name}
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    ) : (
+                                                        user?.name?.charAt(0).toUpperCase() || 'U'
+                                                    )}
+                                                    </span>
+                                                </Button>
                                             ) : (
-                                                user?.name?.charAt(0).toUpperCase() || 'U'
+                                                <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary to-emerald-600 text-sm font-bold text-white shadow-sm">
+                                                    {user?.profileUrl ? (
+                                                        <img
+                                                            src={user.profileUrl.startsWith('http') ? user.profileUrl : platformService.convertFileSrc(user.profileUrl)}
+                                                            alt={user.name}
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    ) : (
+                                                        user?.name?.charAt(0).toUpperCase() || 'U'
+                                                    )}
+                                                </div>
                                             )}
+                                            {sidebarShiftCountdown ? (
+                                                <span
+                                                    className="pointer-events-none absolute bottom-0 left-1/2 z-[60] min-w-[26px] -translate-x-1/2 rounded-full border border-amber-300/80 bg-amber-400 px-1 py-0.5 text-center text-[8px] font-bold leading-none text-amber-950 shadow-sm dark:border-amber-200/30 dark:bg-amber-300"
+                                                    title={sidebarShiftEndsInLabel}
+                                                >
+                                                    {sidebarShiftCountdown}
+                                                </span>
+                                            ) : null}
                                         </div>
 
                                         {(isSidebarMini && !mobileSidebarOpen) ? (
@@ -1380,6 +1679,150 @@ export function Layout({ children }: LayoutProps) {
                             )}
                         </div>
                     </aside>
+
+                    {sidebarCashierShift?.status === 'available' ? (
+                        <AppDialog
+                            open={cashierShiftStartDialogOpen}
+                            onOpenChange={(open) => !startingCashierShift && setCashierShiftStartDialogOpen(open)}
+                        >
+                            <AppDialogContent
+                                className="max-w-xl"
+                                showCloseButton={!startingCashierShift}
+                                onPointerDownOutside={(event) => startingCashierShift && event.preventDefault()}
+                                onEscapeKeyDown={(event) => startingCashierShift && event.preventDefault()}
+                            >
+                                <AppDialogHeader>
+                                    <AppDialogTitle>{t('paymentAccounts.startShift')}</AppDialogTitle>
+                                    <AppDialogDescription>{t('paymentAccounts.startShiftConfirmationDescription')}</AppDialogDescription>
+                                </AppDialogHeader>
+                                <AppDialogBody>
+                                    <div className="grid gap-4">
+                                        <div className="rounded-2xl border border-border/60 p-4">
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('paymentAccounts.yourShiftWillStart')}</p>
+                                            <p className="mt-2 font-semibold">{formatSidebarShiftDateTime(sidebarCashierShift.scheduledStartAt)}</p>
+                                        </div>
+                                        <div className="rounded-2xl border border-border/60 p-4">
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('paymentAccounts.yourShiftWillEnd')}</p>
+                                            <p className="mt-2 font-semibold">{formatSidebarShiftDateTime(sidebarCashierShift.scheduledEndAt)}</p>
+                                        </div>
+                                    </div>
+                                </AppDialogBody>
+                                <AppDialogFooter>
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => setCashierShiftStartDialogOpen(false)}
+                                        disabled={startingCashierShift}
+                                    >
+                                        {t('common.cancel')}
+                                    </Button>
+                                    <PressAndHoldButton
+                                        onComplete={() => { void startSidebarCashierShift() }}
+                                        idleLabel={t('paymentAccounts.holdToStartShift')}
+                                        holdingLabel={t('paymentAccounts.keepHoldingToStartShift')}
+                                        loadingLabel={t('paymentAccounts.startingShift')}
+                                        isLoading={startingCashierShift}
+                                        icon={<ShieldCheck className="h-4 w-4" />}
+                                    />
+                                </AppDialogFooter>
+                            </AppDialogContent>
+                        </AppDialog>
+                    ) : null}
+
+                    {sidebarCashierShift?.status === 'active' && sidebarCashierShift.occurrence ? (
+                        <>
+                            <AppDialog
+                                open={cashierShiftCompleteDialogOpen}
+                                onOpenChange={(open) => !completingCashierShift && setCashierShiftCompleteDialogOpen(open)}
+                            >
+                                <AppDialogContent
+                                    className="max-w-xl"
+                                    showCloseButton={!completingCashierShift}
+                                    onPointerDownOutside={(event) => completingCashierShift && event.preventDefault()}
+                                    onEscapeKeyDown={(event) => completingCashierShift && event.preventDefault()}
+                                >
+                                    <AppDialogHeader>
+                                        <AppDialogTitle>{t('paymentAccounts.completeShift')}</AppDialogTitle>
+                                        <AppDialogDescription>
+                                            {sidebarCompletionEligibility?.requiresReason
+                                                ? t('paymentAccounts.earlyFinishReasonDescription')
+                                                : t('paymentAccounts.completeShiftConfirmationDescription')}
+                                        </AppDialogDescription>
+                                    </AppDialogHeader>
+                                    <AppDialogBody>
+                                        <div className="grid gap-4">
+                                            <div className="rounded-2xl border border-border/60 p-4">
+                                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('paymentAccounts.scheduledEnd')}</p>
+                                                <p className="mt-2 font-semibold">{formatSidebarShiftDateTime(sidebarCashierShift.scheduledEndAt)}</p>
+                                            </div>
+                                            {sidebarCompletionEligibility?.requiresReason ? (
+                                                <div className="grid gap-2">
+                                                    <label htmlFor="sidebar-cashier-shift-completion-reason" className="text-sm font-medium">{t('paymentAccounts.earlyFinishReason')}</label>
+                                                    <Textarea
+                                                        id="sidebar-cashier-shift-completion-reason"
+                                                        value={cashierShiftCompletionReason}
+                                                        onChange={(event) => setCashierShiftCompletionReason(event.target.value)}
+                                                        disabled={completingCashierShift}
+                                                    />
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    </AppDialogBody>
+                                    <AppDialogFooter>
+                                        <Button variant="outline" onClick={() => setCashierShiftCompleteDialogOpen(false)} disabled={completingCashierShift}>{t('common.cancel')}</Button>
+                                        <PressAndHoldButton
+                                            onComplete={() => { void completeSidebarCashierShift() }}
+                                            idleLabel={t('paymentAccounts.holdToCompleteShift')}
+                                            holdingLabel={t('paymentAccounts.keepHoldingToCompleteShift')}
+                                            loadingLabel={t('paymentAccounts.completingShift')}
+                                            isLoading={completingCashierShift}
+                                            disabled={sidebarCompletionEligibility?.requiresReason && !cashierShiftCompletionReason.trim()}
+                                            icon={<CircleCheck className="h-4 w-4" />}
+                                        />
+                                    </AppDialogFooter>
+                                </AppDialogContent>
+                            </AppDialog>
+
+                            <AppDialog
+                                open={cashierShiftEarlyFinishRequestDialogOpen}
+                                onOpenChange={(open) => !requestingCashierShiftEarlyFinish && setCashierShiftEarlyFinishRequestDialogOpen(open)}
+                            >
+                                <AppDialogContent
+                                    className="max-w-xl"
+                                    showCloseButton={!requestingCashierShiftEarlyFinish}
+                                    onPointerDownOutside={(event) => requestingCashierShiftEarlyFinish && event.preventDefault()}
+                                    onEscapeKeyDown={(event) => requestingCashierShiftEarlyFinish && event.preventDefault()}
+                                >
+                                    <AppDialogHeader>
+                                        <AppDialogTitle>{t('paymentAccounts.requestEarlyFinish')}</AppDialogTitle>
+                                        <AppDialogDescription>{t('paymentAccounts.requestEarlyFinishDescription')}</AppDialogDescription>
+                                    </AppDialogHeader>
+                                    <AppDialogBody>
+                                        <div className="grid gap-2">
+                                            <label htmlFor="sidebar-cashier-shift-early-finish-reason" className="text-sm font-medium">{t('paymentAccounts.earlyFinishReason')}</label>
+                                            <Textarea
+                                                id="sidebar-cashier-shift-early-finish-reason"
+                                                value={cashierShiftEarlyFinishReason}
+                                                onChange={(event) => setCashierShiftEarlyFinishReason(event.target.value)}
+                                                disabled={requestingCashierShiftEarlyFinish}
+                                            />
+                                        </div>
+                                    </AppDialogBody>
+                                    <AppDialogFooter>
+                                        <Button variant="outline" onClick={() => setCashierShiftEarlyFinishRequestDialogOpen(false)} disabled={requestingCashierShiftEarlyFinish}>{t('common.cancel')}</Button>
+                                        <PressAndHoldButton
+                                            onComplete={() => { void requestSidebarCashierShiftEarlyFinish() }}
+                                            idleLabel={t('paymentAccounts.holdToRequestEarlyFinish')}
+                                            holdingLabel={t('paymentAccounts.keepHoldingToRequestEarlyFinish')}
+                                            loadingLabel={t('paymentAccounts.requestingEarlyFinish')}
+                                            isLoading={requestingCashierShiftEarlyFinish}
+                                            disabled={!cashierShiftEarlyFinishReason.trim()}
+                                            icon={<ClipboardCheck className="h-4 w-4" />}
+                                        />
+                                    </AppDialogFooter>
+                                </AppDialogContent>
+                            </AppDialog>
+                        </>
+                    ) : null}
 
                     {/* Main content Scroll Container */}
                     <div className={cn(

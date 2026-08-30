@@ -2156,6 +2156,8 @@ export interface PaymentTransaction extends BaseEntity {
   /** Optional payment-account context. Undefined/null preserves legacy flows. */
   accountId?: string | null;
   accountNameSnapshot?: string | null;
+  /** The active cashier-shift occurrence that owned this payment when it was posted. */
+  cashierShiftOccurrenceId?: string | null;
   reversalOfTransactionId?: string | null;
   metadata?: Record<string, unknown> | null;
 }
@@ -2253,7 +2255,23 @@ export interface DeliveryShipmentCodAdjustmentRequest extends BaseEntity {
 
 export type CashierShiftStatus = 'open' | 'closed';
 
-export type CashierShiftOccurrenceStatus = 'active' | 'completed';
+export type CashierShiftOccurrenceStatus = 'active' | 'paused' | 'completed' | 'terminated';
+
+export type CashierShiftPauseRequestStatus = 'pending' | 'approved' | 'rejected';
+
+export type CashierShiftPauseKind = 'cashier_request' | 'admin' | 'emergency';
+
+export type CashierShiftEarlyFinishPolicy =
+  | 'scheduled_end'
+  | 'time_before_end'
+  | 'request_approval'
+  | 'free_with_reason';
+
+export type CashierShiftEarlyFinishRequestStatus =
+  | 'not_requested'
+  | 'requested'
+  | 'approved'
+  | 'rejected';
 
 export interface CashierShift extends BaseEntity {
   accountId: string;
@@ -2297,6 +2315,10 @@ export interface CashierShiftAssignment extends BaseEntity {
   endTime: string;
   /** JavaScript weekday numbers: Sunday 0 through Saturday 6. */
   workingDays: number[];
+  /** Controls whether and how the cashier may formally finish before schedule end. */
+  earlyFinishPolicy: CashierShiftEarlyFinishPolicy;
+  /** Required only for the `time_before_end` policy. */
+  earlyFinishOffsetMinutes?: number | null;
   isActive: boolean;
 }
 
@@ -2312,7 +2334,53 @@ export interface CashierShiftOccurrence extends BaseEntity {
   scheduledStartAt: string;
   scheduledEndAt: string;
   startedAt: string;
+  /** Immutable snapshot of the assigned early-finish policy. */
+  earlyFinishPolicy: CashierShiftEarlyFinishPolicy;
+  earlyFinishOffsetMinutes?: number | null;
+  earlyFinishRequestStatus: CashierShiftEarlyFinishRequestStatus;
+  earlyFinishRequestReason?: string | null;
+  earlyFinishRequestedAt?: string | null;
+  earlyFinishRequestedBy?: string | null;
+  earlyFinishReviewedAt?: string | null;
+  earlyFinishReviewedBy?: string | null;
+  earlyFinishReviewNote?: string | null;
   status: CashierShiftOccurrenceStatus;
+  /** Persisted only when the assigned cashier formally completes the occurrence. */
+  completedAt?: string | null;
+  completedBy?: string | null;
+  /** Required when a cashier uses the free early-finish policy before schedule end. */
+  completionReason?: string | null;
+  /** Terminal administrative close metadata. */
+  terminatedAt?: string | null;
+  terminatedBy?: string | null;
+  terminationReason?: string | null;
+}
+
+/** A cashier's request to temporarily pause one already-started occurrence. */
+export interface CashierShiftPauseRequest extends BaseEntity {
+  occurrenceId: string;
+  cashierUserId: string;
+  reason: string;
+  requestedDurationMinutes?: number | null;
+  requestedResumeAt?: string | null;
+  status: CashierShiftPauseRequestStatus;
+  requestedAt: string;
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
+  reviewNote?: string | null;
+  approvedPausePeriodId?: string | null;
+}
+
+/** One immutable pause interval. It is closed by setting resume metadata, never overwritten. */
+export interface CashierShiftPausePeriod extends BaseEntity {
+  occurrenceId: string;
+  kind: CashierShiftPauseKind;
+  startedAt: string;
+  initiatedBy: string;
+  note?: string | null;
+  pauseRequestId?: string | null;
+  resumedAt?: string | null;
+  resumedBy?: string | null;
 }
 
 export interface PaymentObligation {
@@ -2377,6 +2445,8 @@ export interface SyncQueueItem {
     | "cashier_shift_templates"
     | "cashier_shift_assignments"
     | "cashier_shift_occurrences"
+    | "cashier_shift_pause_requests"
+    | "cashier_shift_pause_periods"
     | "budget_settings"
     | "budget_allocations"
     | "expense_series"
@@ -2548,6 +2618,8 @@ export interface OfflineMutation {
     | "cashier_shift_templates"
     | "cashier_shift_assignments"
     | "cashier_shift_occurrences"
+    | "cashier_shift_pause_requests"
+    | "cashier_shift_pause_periods"
     | "budget_settings"
     | "budget_allocations"
     | "expense_series"

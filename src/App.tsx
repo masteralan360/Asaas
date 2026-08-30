@@ -358,6 +358,9 @@ const PaymentAccounts = lazy(() =>
 const CashierShifts = lazy(() =>
   import("@/ui/pages/CashierShifts").then((m) => ({ default: m.CashierShifts })),
 );
+const CashierShiftDetails = lazy(() =>
+  import("@/ui/pages/CashierShiftDetails").then((m) => ({ default: m.CashierShiftDetails })),
+);
 const DirectTransactions = lazy(() =>
   import("@/ui/pages/DirectTransactions").then((m) => ({
     default: m.DirectTransactions,
@@ -2158,6 +2161,17 @@ function App() {
                         <ProtectedRoute requiredFeature="products" requiredPermission="products.access">
                           <Layout>
                             <ProductCreatePage />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/payment-accounts/cashier-shifts/:shiftId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="cashier_shift_control"
+                          requiredPermission="cashierShiftControl.access"
+                        >
+                          <Layout>
+                            <CashierShiftDetails />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

@@ -482,6 +482,18 @@ export function buildWorkspaceNavigation({
             },
           ]
           : []),
+        ...(hasFeature("payment_accounts")
+          && hasFeature("cashier_shift_control")
+          && !canAccessPermission("paymentAccounts.access")
+          && canAccessPermission("cashierShiftControl.access")
+          ? [
+            {
+              name: t("paymentAccounts.cashierShifts", { defaultValue: "Cashier Shifts" }),
+              href: "/payment-accounts/cashier-shifts",
+              icon: CalendarClock,
+            },
+          ]
+          : []),
         ...(hasFeature("direct_transactions") && canAccessPermission("directTransaction.access")
           ? [
             {

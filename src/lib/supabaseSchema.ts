@@ -79,7 +79,9 @@ const paymentAccountTables = new Set([
     'cashier_shift_currency_counts',
     'cashier_shift_templates',
     'cashier_shift_assignments',
-    'cashier_shift_occurrences'
+    'cashier_shift_occurrences',
+    'cashier_shift_pause_requests',
+    'cashier_shift_pause_periods'
 ])
 
 // The client-side names remain explicit and descriptive, while three physical

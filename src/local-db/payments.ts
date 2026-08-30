@@ -23,6 +23,7 @@ import { getOrderBalanceAmount } from './orderInstallments'
 import {
     assertPaymentAccountTransactionCanBeAppliedLocally,
     mirrorPaymentAccountTransactionLocally,
+    resolveActiveCashierShiftOccurrenceId,
 } from './paymentAccounts'
 import type {
     CurrencyCode,
@@ -1304,6 +1305,12 @@ export async function appendPaymentTransaction(
     const reversedTransaction = input.reversalOfTransactionId && input.accountId === undefined
         ? await db.payment_transactions.get(input.reversalOfTransactionId)
         : undefined
+    const accountId = input.accountId ?? reversedTransaction?.accountId ?? null
+    const accountNameSnapshot = input.accountNameSnapshot ?? reversedTransaction?.accountNameSnapshot ?? null
+    const cashierShiftOccurrenceId = await resolveActiveCashierShiftOccurrenceId(workspaceId, {
+        cashierUserId: input.createdBy,
+        accountId,
+    })
     const transaction: PaymentTransaction = {
         id: input.id ?? generateId(),
         workspaceId,
@@ -1320,8 +1327,9 @@ export async function appendPaymentTransaction(
         referenceLabel: input.referenceLabel?.trim() || null,
         note: input.note?.trim() || null,
         createdBy: input.createdBy || null,
-        accountId: input.accountId ?? reversedTransaction?.accountId ?? null,
-        accountNameSnapshot: input.accountNameSnapshot ?? reversedTransaction?.accountNameSnapshot ?? null,
+        accountId,
+        accountNameSnapshot,
+        cashierShiftOccurrenceId,
         reversalOfTransactionId: input.reversalOfTransactionId ?? null,
         metadata: input.metadata ?? null,
         createdAt: now,

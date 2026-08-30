@@ -78,7 +78,7 @@ export function OrderAgentCommissionCard({
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
                     {displayedAssignments.length > 0 ? (
-                        <div className="grid gap-3 xl:grid-cols-2">
+                        <div className="grid gap-3">
                             {displayedAssignments.map((assignment) => {
                                 const assignedAgent = directory.agentById.get(assignment.agentId)
                                 const canViewCommission = canViewAllCommission
@@ -111,7 +111,7 @@ export function OrderAgentCommissionCard({
                                                 </Badge>
                                             )}
                                         </div>
-                                        <div className="grid gap-3 sm:grid-cols-2">
+                                        <div className="grid gap-3">
                                             <div className="rounded-xl border bg-background/70 p-3">
                                                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
                                                     <MapPin className="h-3.5 w-3.5" /> {t('salesAgentCommissions.customerCity')}
@@ -140,12 +140,12 @@ export function OrderAgentCommissionCard({
                                                     </Badge>
                                                     <span className="font-black">{formatCurrency(outstandingAmount, currency, iqdPreference)}</span>
                                                 </div>
-                                                <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                                                <div className="mt-3 grid gap-3 text-xs">
                                                     <div>
                                                         <div className="text-muted-foreground">{t('salesAgentCommissions.commissionBasis')}</div>
                                                         <div className="mt-1 font-semibold">{formatCurrency(sourceEntry.basisAmount, currency, iqdPreference)}</div>
                                                     </div>
-                                                    <div className="text-end">
+                                                    <div>
                                                         <div className="text-muted-foreground">{t('salesAgentCommissions.rateSnapshot')}</div>
                                                         <div className="mt-1 font-semibold">{sourceEntry.ratePercent}%</div>
                                                     </div>

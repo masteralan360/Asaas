@@ -116,14 +116,14 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
                 agentId: fixedRecipientAgentId
             }]
         }
-        return [createDraft(orderCurrency, undefined, customerCity)]
+        return []
     })
 
     useEffect(() => {
         if (!editingOrderId) return
         setDrafts(activeAssignments.length > 0
             ? activeAssignments.map((assignment) => createDraft(orderCurrency, assignment, customerCity))
-            : [createDraft(orderCurrency, undefined, customerCity)])
+            : [])
     }, [activeAssignments, customerCity, editingOrderId, orderCurrency])
 
     useEffect(() => {
@@ -154,7 +154,7 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
     useEffect(() => {
         if (fixedRecipientAgentId === undefined) return
         setDrafts((current) => {
-            if (!fixedRecipientAgentId) return [createDraft(orderCurrency, undefined, customerCity)]
+            if (!fixedRecipientAgentId) return []
             const assignmentSource = salesAccountAgentId === fixedRecipientAgentId
                 ? 'sales_account'
                 : fixedRecipientAssignmentSource
@@ -193,11 +193,8 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
         setDrafts((current) => current.map((draft) => draft.key === key ? { ...draft, ...value } : draft))
     }, [])
     const removeDraft = useCallback((key: string) => {
-        setDrafts((current) => {
-            const next = current.filter((draft) => draft.key !== key)
-            return next.length > 0 ? next : [createDraft(orderCurrency, undefined, customerCity)]
-        })
-    }, [customerCity, orderCurrency])
+        setDrafts((current) => current.filter((draft) => draft.key !== key))
+    }, [])
     const addDraft = useCallback(() => {
         setDrafts((current) => [...current, createDraft(orderCurrency, undefined, customerCity)])
     }, [customerCity, orderCurrency])

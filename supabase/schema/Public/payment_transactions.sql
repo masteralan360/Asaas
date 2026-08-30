@@ -14,6 +14,9 @@ CREATE TABLE public.payment_transactions (
   reference_label text NULL,
   note text NULL,
   created_by uuid NULL,
+  cashier_shift_occurrence_id uuid NULL REFERENCES payment_accounts.cashier_shift_occurrences(id) ON DELETE RESTRICT,
+  account_id uuid NULL REFERENCES payment_accounts.accounts(id) ON DELETE RESTRICT,
+  account_name_snapshot text NULL,
   reversal_of_transaction_id uuid NULL,
   metadata jsonb NULL DEFAULT '{}'::jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -35,6 +38,10 @@ CREATE INDEX IF NOT EXISTS idx_payment_transactions_workspace_source
 
 CREATE INDEX IF NOT EXISTS idx_payment_transactions_reversal
   ON public.payment_transactions (reversal_of_transaction_id);
+
+CREATE INDEX IF NOT EXISTS idx_payment_transactions_workspace_cashier_shift_occurrence
+  ON public.payment_transactions (workspace_id, cashier_shift_occurrence_id, paid_at DESC)
+  WHERE cashier_shift_occurrence_id IS NOT NULL AND NOT is_deleted;
 
 ALTER TABLE public.payment_transactions ENABLE ROW LEVEL SECURITY;
 

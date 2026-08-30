@@ -15,7 +15,12 @@ import type {
   CashierShift,
   CashierShiftCurrencyCount,
   CashierShiftAssignment,
+  CashierShiftEarlyFinishPolicy,
+  CashierShiftEarlyFinishRequestStatus,
   CashierShiftOccurrence,
+  CashierShiftPauseKind,
+  CashierShiftPausePeriod,
+  CashierShiftPauseRequest,
   CashierShiftTemplate,
   CurrencyCode,
   DigitalWalletPaymentMethod,
@@ -31,7 +36,7 @@ import type {
   WorkspacePaymentMethod,
 } from './models'
 
-const PAYMENT_ACCOUNT_TABLES = [
+const _PAYMENT_ACCOUNT_TABLES = [
   'payment_accounts',
   'payment_account_balances',
   'payment_account_movements',
@@ -40,12 +45,27 @@ const PAYMENT_ACCOUNT_TABLES = [
   'cashier_shift_templates',
   'cashier_shift_assignments',
   'cashier_shift_occurrences',
+  'cashier_shift_pause_requests',
+  'cashier_shift_pause_periods',
 ] as const
 
-type PaymentAccountTable = (typeof PAYMENT_ACCOUNT_TABLES)[number]
+type PaymentAccountTable = (typeof _PAYMENT_ACCOUNT_TABLES)[number]
+
+interface PersistOptions {
+  localAlreadyPersisted?: boolean
+  failOnRemoteConflict?: boolean
+  remoteConflictMessage?: string
+}
 
 /** Keep floating-point input noise from creating an unusable negative balance. */
 const PAYMENT_ACCOUNT_BALANCE_EPSILON = 0.000001
+const CASHIER_SHIFT_REASON_MAX_LENGTH = 1_000
+const CASHIER_SHIFT_EARLY_FINISH_POLICIES: CashierShiftEarlyFinishPolicy[] = [
+  'scheduled_end',
+  'time_before_end',
+  'request_approval',
+  'free_with_reason',
+]
 
 function getLocalizedInsufficientFundsMessage(
   balance: number,
@@ -80,13 +100,20 @@ function payload(row: Record<string, unknown>) {
   return toSnakeCase({ ...row, syncStatus: undefined, lastSyncedAt: undefined })
 }
 
+function isRemoteUniqueViolation(error: unknown) {
+  return typeof error === 'object'
+    && error !== null
+    && (error as { code?: unknown }).code === '23505'
+}
+
 async function persist<T extends { id: string; workspaceId: string }>(
   tableName: PaymentAccountTable,
   row: T,
   operation: 'create' | 'update' = 'create',
+  options: PersistOptions = {},
 ) {
   const table = db.table(tableName)
-  await table.put(row)
+  if (!options.localAlreadyPersisted) await table.put(row)
 
   if (!cloudWorkspace(row.workspaceId)) return row
 
@@ -103,6 +130,11 @@ async function persist<T extends { id: string; workspaceId: string }>(
     await table.put(synced)
     return synced
   } catch (error) {
+    if (options.failOnRemoteConflict && isRemoteUniqueViolation(error)) {
+      await table.delete(row.id)
+      throw new Error(options.remoteConflictMessage ?? 'This record conflicts with an existing record.')
+    }
+
     // Account configuration and shift records follow Atlas's normal offline
     // queue contract. The payment itself remains the financial source of truth.
     await addToOfflineMutations(tableName, row.id, operation, row as Record<string, unknown>, row.workspaceId)
@@ -216,6 +248,140 @@ export function useCashierShiftOccurrences(workspaceId?: string) {
     () => rows.filter((row) => !row.isDeleted).sort((left, right) => right.scheduledStartAt.localeCompare(left.scheduledStartAt)),
     [rows],
   )
+}
+
+export function useCashierShiftPauseRequests(workspaceId?: string) {
+  const rows = usePaymentAccountTable<CashierShiftPauseRequest>('cashier_shift_pause_requests', workspaceId)
+  return useMemo(
+    () => rows.filter((row) => !row.isDeleted).sort((left, right) => right.requestedAt.localeCompare(left.requestedAt)),
+    [rows],
+  )
+}
+
+export function useCashierShiftPausePeriods(workspaceId?: string) {
+  const rows = usePaymentAccountTable<CashierShiftPausePeriod>('cashier_shift_pause_periods', workspaceId)
+  return useMemo(
+    () => rows.filter((row) => !row.isDeleted).sort((left, right) => right.startedAt.localeCompare(left.startedAt)),
+    [rows],
+  )
+}
+
+function getEarlyFinishPolicy(value: Pick<CashierShiftAssignment | CashierShiftOccurrence, 'earlyFinishPolicy'>) {
+  return value.earlyFinishPolicy ?? 'scheduled_end'
+}
+
+function getEarlyFinishRequestStatus(occurrence: CashierShiftOccurrence): CashierShiftEarlyFinishRequestStatus {
+  return occurrence.earlyFinishRequestStatus ?? 'not_requested'
+}
+
+function normalizeCashierShiftReason(value: string | null | undefined, required: boolean) {
+  const reason = value?.trim() || null
+  if (required && !reason) throw new Error(i18n.t('paymentAccounts.errors.earlyFinishReasonRequired'))
+  if (reason && reason.length > CASHIER_SHIFT_REASON_MAX_LENGTH) {
+    throw new Error(i18n.t('paymentAccounts.errors.earlyFinishReasonTooLong'))
+  }
+  return reason
+}
+
+export interface CashierShiftCompletionEligibility {
+  canComplete: boolean
+  requiresReason: boolean
+  requiresApprovalRequest: boolean
+  eligibleAt: string | null
+}
+
+/**
+ * Evaluates an occurrence's immutable early-finish policy. Reaching the
+ * scheduled end always permits completion, regardless of the selected policy.
+ */
+export function getCashierShiftCompletionEligibility(
+  occurrence: CashierShiftOccurrence,
+  now = new Date(),
+): CashierShiftCompletionEligibility {
+  if (occurrence.status !== 'active') {
+    return { canComplete: false, requiresReason: false, requiresApprovalRequest: false, eligibleAt: null }
+  }
+
+  const scheduledEnd = new Date(occurrence.scheduledEndAt)
+  if (now >= scheduledEnd) {
+    return { canComplete: true, requiresReason: false, requiresApprovalRequest: false, eligibleAt: occurrence.scheduledEndAt }
+  }
+
+  const policy = getEarlyFinishPolicy(occurrence)
+  if (policy === 'time_before_end') {
+    const offsetMinutes = Number(occurrence.earlyFinishOffsetMinutes || 0)
+    const eligibleAt = new Date(scheduledEnd.getTime() - (offsetMinutes * 60_000))
+    return {
+      canComplete: offsetMinutes > 0 && now >= eligibleAt,
+      requiresReason: false,
+      requiresApprovalRequest: false,
+      eligibleAt: eligibleAt.toISOString(),
+    }
+  }
+  if (policy === 'request_approval') {
+    return {
+      canComplete: getEarlyFinishRequestStatus(occurrence) === 'approved',
+      requiresReason: false,
+      requiresApprovalRequest: getEarlyFinishRequestStatus(occurrence) !== 'approved',
+      eligibleAt: null,
+    }
+  }
+  if (policy === 'free_with_reason') {
+    return { canComplete: true, requiresReason: true, requiresApprovalRequest: false, eligibleAt: null }
+  }
+
+  return { canComplete: false, requiresReason: false, requiresApprovalRequest: false, eligibleAt: occurrence.scheduledEndAt }
+}
+
+export interface CashierShiftCurrencySummary {
+  currency: CurrencyCode
+  incomingAmount: number
+  outgoingAmount: number
+  netAmount: number
+  transactionCount: number
+}
+
+function roundCashierShiftAmount(value: number) {
+  return Number(value.toFixed(6))
+}
+
+/**
+ * Builds an audit-friendly per-currency view from transactions explicitly
+ * linked to an occurrence. Signed reversals are reflected as the inverse cash
+ * movement, so a reversal never inflates either side of the shift summary.
+ */
+export function summarizeCashierShiftTransactions(
+  transactions: PaymentTransaction[],
+  cashierShiftOccurrenceId: string,
+): CashierShiftCurrencySummary[] {
+  const summaries = new Map<CurrencyCode, CashierShiftCurrencySummary>()
+
+  for (const transaction of transactions) {
+    if (transaction.isDeleted || transaction.cashierShiftOccurrenceId !== cashierShiftOccurrenceId) continue
+
+    const current = summaries.get(transaction.currency) ?? {
+      currency: transaction.currency,
+      incomingAmount: 0,
+      outgoingAmount: 0,
+      netAmount: 0,
+      transactionCount: 0,
+    }
+    const delta = getPaymentAccountTransactionDelta(transaction)
+    if (delta >= 0) current.incomingAmount += delta
+    else current.outgoingAmount += Math.abs(delta)
+    current.netAmount += delta
+    current.transactionCount += 1
+    summaries.set(transaction.currency, current)
+  }
+
+  return [...summaries.values()]
+    .map((summary) => ({
+      ...summary,
+      incomingAmount: roundCashierShiftAmount(summary.incomingAmount),
+      outgoingAmount: roundCashierShiftAmount(summary.outgoingAmount),
+      netAmount: roundCashierShiftAmount(summary.netAmount),
+    }))
+    .sort((left, right) => left.currency.localeCompare(right.currency))
 }
 
 export interface SavePaymentAccountInput {
@@ -609,6 +775,118 @@ export function isCashierShiftWorkingDay(assignment: Pick<CashierShiftAssignment
   return assignment.workingDays.includes(date.getDay())
 }
 
+export type CashierShiftListStatus = 'available' | CashierShiftOccurrence['status']
+
+/** A persisted occurrence or the one shift that the cashier can start right now. */
+export interface CashierShiftListRow {
+  key: string
+  /** Only required for a not-yet-started, currently available schedule row. */
+  assignment?: CashierShiftAssignment
+  occurrence?: CashierShiftOccurrence
+  scheduledStartAt: string
+  scheduledEndAt: string
+  status: CashierShiftListStatus
+}
+
+function cashierShiftOccurrenceListStatus(occurrence: CashierShiftOccurrence): CashierShiftOccurrence['status'] {
+  return occurrence.status
+}
+
+function startOfLocalDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+function cashierShiftOccurrenceKey(assignmentId: string, scheduledStartAt: string) {
+  const scheduledStart = new Date(scheduledStartAt)
+  const normalizedStartAt = Number.isNaN(scheduledStart.getTime())
+    ? scheduledStartAt
+    : scheduledStart.toISOString()
+  return `${assignmentId}:${normalizedStartAt}`
+}
+
+/**
+ * Produces the cashier's real shift history and any currently startable shift.
+ * Recurring schedules deliberately do not become speculative past or future
+ * rows, as those are not shift occurrences until the cashier starts one.
+ */
+export function getCashierShiftListRows(input: {
+  assignments: CashierShiftAssignment[]
+  occurrences: CashierShiftOccurrence[]
+  cashierUserId?: string
+  now: Date
+}): CashierShiftListRow[] {
+  if (!input.cashierUserId) return []
+
+  const assignmentById = new Map(
+    input.assignments
+      .filter((assignment) => assignment.cashierUserId === input.cashierUserId && !assignment.isDeleted)
+      .map((assignment) => [assignment.id, assignment]),
+  )
+  const rows = new Map<string, CashierShiftListRow>()
+
+  for (const occurrence of input.occurrences) {
+    if (occurrence.cashierUserId !== input.cashierUserId || occurrence.isDeleted) continue
+    const assignment = assignmentById.get(occurrence.assignmentId)
+    const key = cashierShiftOccurrenceKey(occurrence.assignmentId, occurrence.scheduledStartAt)
+    rows.set(key, {
+      key,
+      assignment,
+      occurrence,
+      scheduledStartAt: occurrence.scheduledStartAt,
+      scheduledEndAt: occurrence.scheduledEndAt,
+      status: cashierShiftOccurrenceListStatus(occurrence),
+    })
+  }
+
+  const today = startOfLocalDay(input.now)
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+
+  for (const assignment of assignmentById.values()) {
+    if (!assignment.isActive) continue
+    for (const date of [today, yesterday]) {
+      if (!isCashierShiftWorkingDay(assignment, date)) continue
+      const bounds = getCashierShiftOccurrenceBounds(assignment, date)
+      if (!bounds || input.now < bounds.start || input.now >= bounds.end) continue
+      const scheduledStartAt = bounds.start.toISOString()
+      const key = cashierShiftOccurrenceKey(assignment.id, scheduledStartAt)
+      if (rows.has(key)) continue
+      rows.set(key, {
+        key,
+        assignment,
+        scheduledStartAt,
+        scheduledEndAt: bounds.end.toISOString(),
+        status: 'available',
+      })
+    }
+  }
+
+  const priority: Record<CashierShiftListStatus, number> = { active: 0, paused: 1, available: 2, completed: 3, terminated: 4 }
+  return [...rows.values()].sort((left, right) => priority[left.status] - priority[right.status]
+    || new Date(left.scheduledStartAt).getTime() - new Date(right.scheduledStartAt).getTime())
+}
+
+/** Real occurrences for administrators. Deliberately never expands recurring schedules. */
+export function getCashierShiftTeamRows(input: {
+  assignments: CashierShiftAssignment[]
+  occurrences: CashierShiftOccurrence[]
+}): CashierShiftListRow[] {
+  const assignmentsById = new Map(input.assignments.map((assignment) => [assignment.id, assignment]))
+  const priority: Record<CashierShiftListStatus, number> = { active: 0, paused: 1, completed: 2, terminated: 3, available: 4 }
+  return input.occurrences
+    .filter((occurrence) => !occurrence.isDeleted)
+    .map((occurrence) => ({
+      key: cashierShiftOccurrenceKey(occurrence.assignmentId, occurrence.scheduledStartAt),
+      assignment: assignmentsById.get(occurrence.assignmentId),
+      occurrence,
+      scheduledStartAt: occurrence.scheduledStartAt,
+      scheduledEndAt: occurrence.scheduledEndAt,
+      status: cashierShiftOccurrenceListStatus(occurrence),
+    }))
+    .sort((left, right) => priority[left.status] - priority[right.status]
+      || new Date(right.scheduledStartAt).getTime() - new Date(left.scheduledStartAt).getTime())
+}
+
 export interface CreateCashierShiftTemplateInput {
   name: string
   startTime: string
@@ -649,9 +927,20 @@ export interface CreateCashierShiftAssignmentInput {
   startTime: string
   endTime: string
   workingDays: number[]
+  earlyFinishPolicy?: CashierShiftEarlyFinishPolicy
+  earlyFinishOffsetMinutes?: number | null
 }
 
-export async function createCashierShiftAssignment(workspaceId: string, input: CreateCashierShiftAssignmentInput) {
+interface ValidatedCashierShiftAssignmentInput {
+  earlyFinishPolicy: CashierShiftEarlyFinishPolicy
+  earlyFinishOffsetMinutes: number | null
+  workingDays: number[]
+}
+
+async function validateCashierShiftAssignmentInput(
+  workspaceId: string,
+  input: CreateCashierShiftAssignmentInput,
+): Promise<ValidatedCashierShiftAssignmentInput> {
   const startMinutes = timeToMinutes(input.startTime)
   const endMinutes = timeToMinutes(input.endTime)
   if (input.account.workspaceId !== workspaceId || input.account.accountType !== 'cash_drawer' || !input.account.isActive || input.account.isDeleted) {
@@ -662,6 +951,21 @@ export async function createCashierShiftAssignment(workspaceId: string, input: C
   }
   if (startMinutes === null || endMinutes === null || startMinutes === endMinutes) {
     throw new Error('Enter different valid start and end times.')
+  }
+  const earlyFinishPolicy = input.earlyFinishPolicy ?? 'scheduled_end'
+  if (!CASHIER_SHIFT_EARLY_FINISH_POLICIES.includes(earlyFinishPolicy)) {
+    throw new Error(i18n.t('paymentAccounts.errors.earlyFinishPolicyInvalid'))
+  }
+  const shiftDurationMinutes = (endMinutes - startMinutes + (endMinutes <= startMinutes ? 1_440 : 0))
+  const earlyFinishOffsetMinutes = input.earlyFinishOffsetMinutes == null
+    ? null
+    : Number(input.earlyFinishOffsetMinutes)
+  if (earlyFinishPolicy === 'time_before_end') {
+    if (earlyFinishOffsetMinutes === null || !Number.isInteger(earlyFinishOffsetMinutes) || earlyFinishOffsetMinutes <= 0 || earlyFinishOffsetMinutes >= shiftDurationMinutes) {
+      throw new Error(i18n.t('paymentAccounts.errors.earlyFinishOffsetInvalid'))
+    }
+  } else if (earlyFinishOffsetMinutes !== null) {
+    throw new Error(i18n.t('paymentAccounts.errors.earlyFinishOffsetOnlyForTimedRule'))
   }
   const workingDays = [...new Set(input.workingDays)].sort((left, right) => left - right)
   if (workingDays.length === 0 || workingDays.some((day) => day < 0 || day > 6 || !Number.isInteger(day))) {
@@ -679,6 +983,12 @@ export async function createCashierShiftAssignment(workspaceId: string, input: C
     || cashierProfile?.workspaceId === workspaceId
   if (!isWorkspaceMember) throw new Error('Select a workspace member for this cashier shift.')
 
+  return { earlyFinishPolicy, earlyFinishOffsetMinutes, workingDays }
+}
+
+export async function createCashierShiftAssignment(workspaceId: string, input: CreateCashierShiftAssignmentInput) {
+  const { earlyFinishPolicy, earlyFinishOffsetMinutes, workingDays } = await validateCashierShiftAssignmentInput(workspaceId, input)
+
   const now = new Date().toISOString()
   const assignment: CashierShiftAssignment = {
     id: generateId(),
@@ -692,6 +1002,8 @@ export async function createCashierShiftAssignment(workspaceId: string, input: C
     startTime: input.startTime,
     endTime: input.endTime,
     workingDays,
+    earlyFinishPolicy,
+    earlyFinishOffsetMinutes: earlyFinishPolicy === 'time_before_end' ? earlyFinishOffsetMinutes : null,
     isActive: true,
     createdAt: now,
     updatedAt: now,
@@ -700,6 +1012,38 @@ export async function createCashierShiftAssignment(workspaceId: string, input: C
     ...syncMeta(workspaceId, now),
   }
   return persist('cashier_shift_assignments', assignment)
+}
+
+/** Updates the recurring schedule only. Existing occurrences retain their immutable snapshots. */
+export async function updateCashierShiftAssignment(
+  workspaceId: string,
+  assignmentId: string,
+  input: CreateCashierShiftAssignmentInput,
+) {
+  const existing = await db.cashier_shift_assignments.get(assignmentId)
+  if (!existing || existing.workspaceId !== workspaceId || existing.isDeleted) {
+    throw new Error(i18n.t('paymentAccounts.errors.cashierShiftAssignmentUnavailable'))
+  }
+  const { earlyFinishPolicy, earlyFinishOffsetMinutes, workingDays } = await validateCashierShiftAssignmentInput(workspaceId, input)
+  const now = new Date().toISOString()
+  const assignment: CashierShiftAssignment = {
+    ...existing,
+    templateId: input.template?.id ?? null,
+    templateNameSnapshot: input.template?.name ?? null,
+    accountId: input.account.id,
+    accountNameSnapshot: input.account.name,
+    cashierUserId: input.cashierUserId,
+    cashierNameSnapshot: input.cashierName.trim(),
+    startTime: input.startTime,
+    endTime: input.endTime,
+    workingDays,
+    earlyFinishPolicy,
+    earlyFinishOffsetMinutes: earlyFinishPolicy === 'time_before_end' ? earlyFinishOffsetMinutes : null,
+    updatedAt: now,
+    version: existing.version + 1,
+    ...syncMeta(workspaceId, now),
+  }
+  return persist('cashier_shift_assignments', assignment, 'update')
 }
 
 export interface StartCashierShiftOccurrenceInput {
@@ -727,14 +1071,9 @@ export async function startCashierShiftOccurrence(workspaceId: string, input: St
   }
 
   const now = new Date()
-  if (now < bounds.start || now > bounds.end) {
+  if (now < bounds.start || now >= bounds.end) {
     throw new Error('This shift can only be started during its scheduled time.')
   }
-  const existing = await db.cashier_shift_occurrences
-    .where('[assignmentId+scheduledStartAt]')
-    .equals([assignment.id, input.scheduledStartAt])
-    .first()
-  if (existing && !existing.isDeleted) throw new Error('This shift occurrence has already been started.')
 
   const createdAt = now.toISOString()
   const occurrence: CashierShiftOccurrence = {
@@ -750,14 +1089,519 @@ export async function startCashierShiftOccurrence(workspaceId: string, input: St
     scheduledStartAt: bounds.start.toISOString(),
     scheduledEndAt: bounds.end.toISOString(),
     startedAt: createdAt,
+    earlyFinishPolicy: getEarlyFinishPolicy(assignment),
+    earlyFinishOffsetMinutes: assignment.earlyFinishPolicy === 'time_before_end'
+      ? assignment.earlyFinishOffsetMinutes ?? null
+      : null,
+    earlyFinishRequestStatus: 'not_requested',
+    earlyFinishRequestReason: null,
+    earlyFinishRequestedAt: null,
+    earlyFinishRequestedBy: null,
+    earlyFinishReviewedAt: null,
+    earlyFinishReviewedBy: null,
+    earlyFinishReviewNote: null,
     status: 'active',
+    completedAt: null,
+    completedBy: null,
+    completionReason: null,
     createdAt,
     updatedAt: createdAt,
     version: 1,
     isDeleted: false,
     ...syncMeta(workspaceId, createdAt),
   }
-  return persist('cashier_shift_occurrences', occurrence)
+
+  // IndexedDB is also authoritative in Local mode, so place the validation and
+  // insert in one transaction. A cashier must formally complete an occurrence
+  // before another one can be started, even if the first scheduled window has
+  // already elapsed.
+  await db.transaction('rw', db.cashier_shift_occurrences, async () => {
+    const existing = await db.cashier_shift_occurrences
+      .where('[assignmentId+scheduledStartAt]')
+      .equals([assignment.id, input.scheduledStartAt])
+      .first()
+    if (existing && !existing.isDeleted) throw new Error('This shift occurrence has already been started.')
+
+    const activeOccurrence = await db.cashier_shift_occurrences
+      .where('[workspaceId+cashierUserId]')
+      .equals([workspaceId, input.cashierUserId])
+      .and((candidate) => !candidate.isDeleted && candidate.status === 'active')
+      .first()
+    if (activeOccurrence) {
+      throw new Error(i18n.t('paymentAccounts.activeShiftMustBeCompleted'))
+    }
+
+    await db.cashier_shift_occurrences.put(occurrence)
+  })
+
+  return persist('cashier_shift_occurrences', occurrence, 'create', {
+    localAlreadyPersisted: true,
+    failOnRemoteConflict: true,
+    remoteConflictMessage: i18n.t('paymentAccounts.activeShiftMustBeCompleted'),
+  })
+}
+
+export interface CompleteCashierShiftOccurrenceInput {
+  occurrenceId: string
+  cashierUserId: string
+  reason?: string | null
+}
+
+/** Complete a finished occurrence without making any balance or ledger changes. */
+export async function completeCashierShiftOccurrence(
+  workspaceId: string,
+  input: CompleteCashierShiftOccurrenceInput,
+) {
+  const occurrence = await db.cashier_shift_occurrences.get(input.occurrenceId)
+  if (!occurrence || occurrence.workspaceId !== workspaceId || occurrence.isDeleted) {
+    throw new Error('This shift occurrence is unavailable.')
+  }
+  if (occurrence.cashierUserId !== input.cashierUserId) {
+    throw new Error('Only the assigned cashier can complete this shift.')
+  }
+  if (occurrence.status === 'completed') return occurrence
+  if (occurrence.status !== 'active') {
+    throw new Error(i18n.t('paymentAccounts.errors.shiftUnavailable'))
+  }
+
+  const now = new Date()
+  const eligibility = getCashierShiftCompletionEligibility(occurrence, now)
+  if (!eligibility.canComplete) {
+    if (eligibility.requiresApprovalRequest) {
+      throw new Error(i18n.t('paymentAccounts.errors.earlyFinishApprovalRequired'))
+    }
+    if (occurrence.earlyFinishPolicy === 'time_before_end') {
+      throw new Error(i18n.t('paymentAccounts.errors.earlyFinishNotAvailableYet'))
+    }
+    throw new Error(i18n.t('paymentAccounts.errors.earlyFinishNotAllowed'))
+  }
+
+  const completionReason = normalizeCashierShiftReason(input.reason, eligibility.requiresReason)
+
+  const completedAt = now.toISOString()
+  const completed: CashierShiftOccurrence = {
+    ...occurrence,
+    status: 'completed',
+    completedAt,
+    completedBy: input.cashierUserId,
+    completionReason,
+    updatedAt: completedAt,
+    version: occurrence.version + 1,
+    ...syncMeta(workspaceId, completedAt),
+  }
+  return persist('cashier_shift_occurrences', completed, 'update')
+}
+
+export interface RequestCashierShiftEarlyFinishInput {
+  occurrenceId: string
+  cashierUserId: string
+  reason: string
+}
+
+/** Submit the single auditable early-finish request allowed for an occurrence. */
+export async function requestCashierShiftEarlyFinish(
+  workspaceId: string,
+  input: RequestCashierShiftEarlyFinishInput,
+) {
+  const occurrence = await db.cashier_shift_occurrences.get(input.occurrenceId)
+  if (!occurrence || occurrence.workspaceId !== workspaceId || occurrence.isDeleted || occurrence.status !== 'active') {
+    throw new Error(i18n.t('paymentAccounts.errors.shiftUnavailable'))
+  }
+  if (occurrence.cashierUserId !== input.cashierUserId) {
+    throw new Error(i18n.t('paymentAccounts.errors.onlyAssignedCashierCanRequestEarlyFinish'))
+  }
+  if (getEarlyFinishPolicy(occurrence) !== 'request_approval') {
+    throw new Error(i18n.t('paymentAccounts.errors.earlyFinishRequestNotEnabled'))
+  }
+  if (new Date() >= new Date(occurrence.scheduledEndAt)) {
+    throw new Error(i18n.t('paymentAccounts.errors.earlyFinishRequestNoLongerNeeded'))
+  }
+  if (getEarlyFinishRequestStatus(occurrence) !== 'not_requested') {
+    throw new Error(i18n.t('paymentAccounts.errors.earlyFinishRequestAlreadyHandled'))
+  }
+
+  const requestedAt = new Date().toISOString()
+  const requested: CashierShiftOccurrence = {
+    ...occurrence,
+    earlyFinishRequestStatus: 'requested',
+    earlyFinishRequestReason: normalizeCashierShiftReason(input.reason, true),
+    earlyFinishRequestedAt: requestedAt,
+    earlyFinishRequestedBy: input.cashierUserId,
+    updatedAt: requestedAt,
+    version: occurrence.version + 1,
+    ...syncMeta(workspaceId, requestedAt),
+  }
+  return persist('cashier_shift_occurrences', requested, 'update')
+}
+
+export interface ReviewCashierShiftEarlyFinishRequestInput {
+  occurrenceId: string
+  reviewerUserId: string
+  decision: 'approved' | 'rejected'
+  reviewNote?: string | null
+}
+
+/** Record an administrator's decision without completing the cashier's shift. */
+export async function reviewCashierShiftEarlyFinishRequest(
+  workspaceId: string,
+  input: ReviewCashierShiftEarlyFinishRequestInput,
+) {
+  const [occurrence, reviewer, reviewerProfile] = await Promise.all([
+    db.cashier_shift_occurrences.get(input.occurrenceId),
+    db.users.get(input.reviewerUserId),
+    db.profiles.get(input.reviewerUserId),
+  ])
+  if (!occurrence || occurrence.workspaceId !== workspaceId || occurrence.isDeleted || occurrence.status !== 'active') {
+    throw new Error(i18n.t('paymentAccounts.errors.shiftUnavailable'))
+  }
+  const reviewerIsAdmin = (reviewer?.workspaceId === workspaceId && reviewer.role === 'admin')
+    || (reviewerProfile?.workspaceId === workspaceId && reviewerProfile.role === 'admin')
+  if (!reviewerIsAdmin) throw new Error(i18n.t('paymentAccounts.errors.earlyFinishAdminRequired'))
+  if (getEarlyFinishPolicy(occurrence) !== 'request_approval' || getEarlyFinishRequestStatus(occurrence) !== 'requested') {
+    throw new Error(i18n.t('paymentAccounts.errors.earlyFinishRequestNotPending'))
+  }
+
+  const reviewedAt = new Date().toISOString()
+  const reviewed: CashierShiftOccurrence = {
+    ...occurrence,
+    earlyFinishRequestStatus: input.decision,
+    earlyFinishReviewedAt: reviewedAt,
+    earlyFinishReviewedBy: input.reviewerUserId,
+    earlyFinishReviewNote: normalizeCashierShiftReason(input.reviewNote, false),
+    updatedAt: reviewedAt,
+    version: occurrence.version + 1,
+    ...syncMeta(workspaceId, reviewedAt),
+  }
+  return persist('cashier_shift_occurrences', reviewed, 'update')
+}
+
+function normalizePauseRequestReason(value: string | null | undefined, required: boolean) {
+  const reason = value?.trim() || null
+  if (required && !reason) throw new Error(i18n.t('paymentAccounts.errors.pauseReasonRequired'))
+  if (reason && reason.length > CASHIER_SHIFT_REASON_MAX_LENGTH) {
+    throw new Error(i18n.t('paymentAccounts.errors.pauseReasonTooLong'))
+  }
+  return reason
+}
+
+async function assertCashierShiftAdmin(workspaceId: string, userId: string) {
+  const [user, profile] = await Promise.all([db.users.get(userId), db.profiles.get(userId)])
+  const isAdmin = (user?.workspaceId === workspaceId && user.role === 'admin')
+    || (profile?.workspaceId === workspaceId && profile.role === 'admin')
+  if (!isAdmin) throw new Error(i18n.t('paymentAccounts.errors.cashierShiftAdminRequired'))
+}
+
+async function getOpenCashierShiftPausePeriod(occurrenceId: string) {
+  const periods = await db.cashier_shift_pause_periods
+    .where('occurrenceId')
+    .equals(occurrenceId)
+    .toArray()
+  return periods.find((period) => !period.isDeleted && !period.resumedAt) ?? null
+}
+
+async function persistPauseTransition(input: {
+  occurrence: CashierShiftOccurrence
+  period?: CashierShiftPausePeriod
+  request?: CashierShiftPauseRequest
+}) {
+  if (input.request) {
+    await persist('cashier_shift_pause_requests', input.request, 'update', { localAlreadyPersisted: true })
+  }
+  if (input.period) {
+    await persist('cashier_shift_pause_periods', input.period, input.period.version === 1 ? 'create' : 'update', { localAlreadyPersisted: true })
+  }
+  return persist('cashier_shift_occurrences', input.occurrence, 'update', { localAlreadyPersisted: true })
+}
+
+export interface RequestCashierShiftPauseInput {
+  occurrenceId: string
+  cashierUserId: string
+  reason: string
+  requestedDurationMinutes?: number | null
+  requestedResumeAt?: string | null
+}
+
+/** Creates a durable request; it has no operational effect until an administrator approves it. */
+export async function requestCashierShiftPause(
+  workspaceId: string,
+  input: RequestCashierShiftPauseInput,
+) {
+  const reason = normalizePauseRequestReason(input.reason, true)!
+  const requestedDurationMinutes = input.requestedDurationMinutes == null
+    ? null
+    : Number(input.requestedDurationMinutes)
+  const requestedResumeAt = input.requestedResumeAt ? new Date(input.requestedResumeAt) : null
+  const hasDuration = requestedDurationMinutes !== null
+  const hasResumeTime = requestedResumeAt !== null
+  if (hasDuration === hasResumeTime
+    || (hasDuration && (!Number.isInteger(requestedDurationMinutes) || requestedDurationMinutes! <= 0))
+    || (hasResumeTime && Number.isNaN(requestedResumeAt!.getTime()))) {
+    throw new Error(i18n.t('paymentAccounts.errors.pauseTimingRequired'))
+  }
+
+  const now = new Date()
+  if (requestedResumeAt && requestedResumeAt <= now) throw new Error(i18n.t('paymentAccounts.errors.pauseResumeTimeInvalid'))
+
+  const requestedAt = now.toISOString()
+  const request: CashierShiftPauseRequest = {
+    id: generateId(),
+    workspaceId,
+    occurrenceId: input.occurrenceId,
+    cashierUserId: input.cashierUserId,
+    reason,
+    requestedDurationMinutes,
+    requestedResumeAt: requestedResumeAt?.toISOString() ?? null,
+    status: 'pending',
+    requestedAt,
+    reviewedAt: null,
+    reviewedBy: null,
+    reviewNote: null,
+    approvedPausePeriodId: null,
+    createdAt: requestedAt,
+    updatedAt: requestedAt,
+    version: 1,
+    isDeleted: false,
+    ...syncMeta(workspaceId, requestedAt),
+  }
+
+  await db.transaction('rw', db.cashier_shift_occurrences, db.cashier_shift_pause_requests, async () => {
+    const occurrence = await db.cashier_shift_occurrences.get(input.occurrenceId)
+    if (!occurrence || occurrence.workspaceId !== workspaceId || occurrence.isDeleted || occurrence.status !== 'active') {
+      throw new Error(i18n.t('paymentAccounts.errors.shiftUnavailable'))
+    }
+    if (occurrence.cashierUserId !== input.cashierUserId) {
+      throw new Error(i18n.t('paymentAccounts.errors.onlyAssignedCashierCanRequestPause'))
+    }
+    const pending = await db.cashier_shift_pause_requests
+      .where('[occurrenceId+status]')
+      .equals([input.occurrenceId, 'pending'])
+      .first()
+    if (pending && !pending.isDeleted) throw new Error(i18n.t('paymentAccounts.errors.pauseRequestAlreadyPending'))
+    await db.cashier_shift_pause_requests.put(request)
+  })
+
+  return persist('cashier_shift_pause_requests', request, 'create', { localAlreadyPersisted: true })
+}
+
+export interface ReviewCashierShiftPauseRequestInput {
+  requestId: string
+  reviewerUserId: string
+  decision: 'approved' | 'rejected'
+  reviewNote?: string | null
+}
+
+/** Approving a request starts the pause in the same local transaction as the review. */
+export async function reviewCashierShiftPauseRequest(
+  workspaceId: string,
+  input: ReviewCashierShiftPauseRequestInput,
+) {
+  await assertCashierShiftAdmin(workspaceId, input.reviewerUserId)
+  const reviewedAt = new Date().toISOString()
+  const reviewNote = normalizePauseRequestReason(input.reviewNote, false)
+  let occurrenceResult: CashierShiftOccurrence | null = null
+  let requestResult: CashierShiftPauseRequest | null = null
+  let periodResult: CashierShiftPausePeriod | undefined
+
+  await db.transaction('rw', db.cashier_shift_occurrences, db.cashier_shift_pause_requests, db.cashier_shift_pause_periods, async () => {
+    const request = await db.cashier_shift_pause_requests.get(input.requestId)
+    if (!request || request.workspaceId !== workspaceId || request.isDeleted || request.status !== 'pending') {
+      throw new Error(i18n.t('paymentAccounts.errors.pauseRequestNotPending'))
+    }
+    const occurrence = await db.cashier_shift_occurrences.get(request.occurrenceId)
+    if (!occurrence || occurrence.workspaceId !== workspaceId || occurrence.isDeleted || occurrence.status !== 'active'
+      || occurrence.cashierUserId !== request.cashierUserId) {
+      throw new Error(i18n.t('paymentAccounts.errors.shiftUnavailable'))
+    }
+
+    const requestUpdate: CashierShiftPauseRequest = {
+      ...request,
+      status: input.decision,
+      reviewedAt,
+      reviewedBy: input.reviewerUserId,
+      reviewNote,
+      updatedAt: reviewedAt,
+      version: request.version + 1,
+      ...syncMeta(workspaceId, reviewedAt),
+    }
+    if (input.decision === 'approved') {
+      const period: CashierShiftPausePeriod = {
+        id: generateId(),
+        workspaceId,
+        occurrenceId: occurrence.id,
+        kind: 'cashier_request',
+        startedAt: reviewedAt,
+        initiatedBy: input.reviewerUserId,
+        note: request.reason,
+        pauseRequestId: request.id,
+        resumedAt: null,
+        resumedBy: null,
+        createdAt: reviewedAt,
+        updatedAt: reviewedAt,
+        version: 1,
+        isDeleted: false,
+        ...syncMeta(workspaceId, reviewedAt),
+      }
+      requestUpdate.approvedPausePeriodId = period.id
+      const occurrenceUpdate: CashierShiftOccurrence = {
+        ...occurrence,
+        status: 'paused',
+        updatedAt: reviewedAt,
+        version: occurrence.version + 1,
+        ...syncMeta(workspaceId, reviewedAt),
+      }
+      await db.cashier_shift_pause_periods.put(period)
+      await db.cashier_shift_occurrences.put(occurrenceUpdate)
+      occurrenceResult = occurrenceUpdate
+      periodResult = period
+    } else {
+      occurrenceResult = occurrence
+    }
+    await db.cashier_shift_pause_requests.put(requestUpdate)
+    requestResult = requestUpdate
+  })
+
+  await persistPauseTransition({ occurrence: occurrenceResult!, request: requestResult!, period: periodResult })
+  return { occurrence: occurrenceResult!, request: requestResult!, period: periodResult ?? null }
+}
+
+export interface PauseCashierShiftOccurrenceInput {
+  occurrenceId: string
+  initiatorUserId: string
+  kind: Extract<CashierShiftPauseKind, 'admin' | 'emergency'>
+  note?: string | null
+}
+
+/** Administrator-only direct pause. The kind is retained as audit data. */
+export async function pauseCashierShiftOccurrence(workspaceId: string, input: PauseCashierShiftOccurrenceInput) {
+  await assertCashierShiftAdmin(workspaceId, input.initiatorUserId)
+  const startedAt = new Date().toISOString()
+  const note = normalizePauseRequestReason(input.note, false)
+  let occurrenceResult: CashierShiftOccurrence | null = null
+  let periodResult: CashierShiftPausePeriod | null = null
+  await db.transaction('rw', db.cashier_shift_occurrences, db.cashier_shift_pause_periods, async () => {
+    const occurrence = await db.cashier_shift_occurrences.get(input.occurrenceId)
+    if (!occurrence || occurrence.workspaceId !== workspaceId || occurrence.isDeleted || occurrence.status !== 'active') {
+      throw new Error(i18n.t('paymentAccounts.errors.shiftUnavailable'))
+    }
+    const period: CashierShiftPausePeriod = {
+      id: generateId(), workspaceId, occurrenceId: occurrence.id, kind: input.kind, startedAt,
+      initiatedBy: input.initiatorUserId, note, pauseRequestId: null, resumedAt: null, resumedBy: null,
+      createdAt: startedAt, updatedAt: startedAt, version: 1, isDeleted: false, ...syncMeta(workspaceId, startedAt),
+    }
+    const occurrenceUpdate: CashierShiftOccurrence = {
+      ...occurrence, status: 'paused', updatedAt: startedAt, version: occurrence.version + 1, ...syncMeta(workspaceId, startedAt),
+    }
+    await db.cashier_shift_pause_periods.put(period)
+    await db.cashier_shift_occurrences.put(occurrenceUpdate)
+    occurrenceResult = occurrenceUpdate
+    periodResult = period
+  })
+  await persistPauseTransition({ occurrence: occurrenceResult!, period: periodResult! })
+  return { occurrence: occurrenceResult!, period: periodResult! }
+}
+
+export interface ResumeCashierShiftOccurrenceInput {
+  occurrenceId: string
+  resumedByUserId: string
+}
+
+export async function resumeCashierShiftOccurrence(workspaceId: string, input: ResumeCashierShiftOccurrenceInput) {
+  await assertCashierShiftAdmin(workspaceId, input.resumedByUserId)
+  const resumedAt = new Date().toISOString()
+  let occurrenceResult: CashierShiftOccurrence | null = null
+  let periodResult: CashierShiftPausePeriod | null = null
+  await db.transaction('rw', db.cashier_shift_occurrences, db.cashier_shift_pause_periods, async () => {
+    const occurrence = await db.cashier_shift_occurrences.get(input.occurrenceId)
+    if (!occurrence || occurrence.workspaceId !== workspaceId || occurrence.isDeleted || occurrence.status !== 'paused') {
+      throw new Error(i18n.t('paymentAccounts.errors.shiftNotPaused'))
+    }
+    const openPeriod = await getOpenCashierShiftPausePeriod(occurrence.id)
+    if (!openPeriod) throw new Error(i18n.t('paymentAccounts.errors.pausePeriodUnavailable'))
+    const periodUpdate: CashierShiftPausePeriod = {
+      ...openPeriod, resumedAt, resumedBy: input.resumedByUserId, updatedAt: resumedAt, version: openPeriod.version + 1,
+      ...syncMeta(workspaceId, resumedAt),
+    }
+    const occurrenceUpdate: CashierShiftOccurrence = {
+      ...occurrence, status: 'active', updatedAt: resumedAt, version: occurrence.version + 1, ...syncMeta(workspaceId, resumedAt),
+    }
+    await db.cashier_shift_pause_periods.put(periodUpdate)
+    await db.cashier_shift_occurrences.put(occurrenceUpdate)
+    occurrenceResult = occurrenceUpdate
+    periodResult = periodUpdate
+  })
+  await persistPauseTransition({ occurrence: occurrenceResult!, period: periodResult! })
+  return { occurrence: occurrenceResult!, period: periodResult! }
+}
+
+export interface TerminateCashierShiftOccurrenceInput {
+  occurrenceId: string
+  terminatedByUserId: string
+  reason?: string | null
+}
+
+/** A terminal administrative close. A live pause interval is closed at the same timestamp. */
+export async function terminateCashierShiftOccurrence(workspaceId: string, input: TerminateCashierShiftOccurrenceInput) {
+  await assertCashierShiftAdmin(workspaceId, input.terminatedByUserId)
+  const terminatedAt = new Date().toISOString()
+  const terminationReason = normalizePauseRequestReason(input.reason, false)
+  let occurrenceResult: CashierShiftOccurrence | null = null
+  let periodResult: CashierShiftPausePeriod | undefined
+  await db.transaction('rw', db.cashier_shift_occurrences, db.cashier_shift_pause_periods, async () => {
+    const occurrence = await db.cashier_shift_occurrences.get(input.occurrenceId)
+    if (!occurrence || occurrence.workspaceId !== workspaceId || occurrence.isDeleted
+      || (occurrence.status !== 'active' && occurrence.status !== 'paused')) {
+      throw new Error(i18n.t('paymentAccounts.errors.shiftCannotBeTerminated'))
+    }
+    if (occurrence.status === 'paused') {
+      const openPeriod = await getOpenCashierShiftPausePeriod(occurrence.id)
+      if (!openPeriod) throw new Error(i18n.t('paymentAccounts.errors.pausePeriodUnavailable'))
+      const periodUpdate: CashierShiftPausePeriod = {
+        ...openPeriod, resumedAt: terminatedAt, resumedBy: input.terminatedByUserId,
+        updatedAt: terminatedAt, version: openPeriod.version + 1, ...syncMeta(workspaceId, terminatedAt),
+      }
+      await db.cashier_shift_pause_periods.put(periodUpdate)
+      periodResult = periodUpdate
+    }
+    const occurrenceUpdate: CashierShiftOccurrence = {
+      ...occurrence, status: 'terminated', terminatedAt, terminatedBy: input.terminatedByUserId, terminationReason,
+      updatedAt: terminatedAt, version: occurrence.version + 1, ...syncMeta(workspaceId, terminatedAt),
+    }
+    await db.cashier_shift_occurrences.put(occurrenceUpdate)
+    occurrenceResult = occurrenceUpdate
+  })
+  await persistPauseTransition({ occurrence: occurrenceResult!, period: periodResult })
+  return { occurrence: occurrenceResult!, period: periodResult ?? null }
+}
+
+/**
+ * Resolves the one occurrence that owns a payment at posting time. This never
+ * uses `paidAt`: a backdated payment is still owned by the shift that was
+ * actually active when the cashier posted it.
+ */
+export async function resolveActiveCashierShiftOccurrenceId(
+  workspaceId: string,
+  input: { cashierUserId?: string | null; accountId?: string | null },
+) {
+  if (!input.cashierUserId || !input.accountId) return null
+
+  const now = new Date()
+  const candidates = await db.cashier_shift_occurrences
+    .where('[workspaceId+cashierUserId]')
+    .equals([workspaceId, input.cashierUserId])
+    .toArray()
+
+  return candidates
+    .filter((occurrence) => (
+      !occurrence.isDeleted
+      && occurrence.status === 'active'
+      && occurrence.accountId === input.accountId
+      && new Date(occurrence.startedAt) <= now
+      && now < new Date(occurrence.scheduledEndAt)
+    ))
+    .sort((left, right) => (
+      right.startedAt.localeCompare(left.startedAt)
+      || right.scheduledStartAt.localeCompare(left.scheduledStartAt)
+    ))[0]?.id ?? null
 }
 
 /** The signed effect of a payment transaction on its selected payment account. */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
     getPressAndHoldProgress,
+    isShortPress,
     WORKSPACE_PAYMENT_HOLD_DURATION_MS
 } from './pressAndHold'
 
@@ -11,7 +12,7 @@ describe('press-and-hold payment confirmation', () => {
             elapsedMs: 1_499,
             complete: false
         })
-        expect(getPressAndHoldProgress(1_000, 2_000, 500).complete).toBe(false)
+        expect(getPressAndHoldProgress(1_000, 2_000).complete).toBe(false)
     })
 
     it('completes at 1.5 seconds and clamps progress', () => {
@@ -29,5 +30,11 @@ describe('press-and-hold payment confirmation', () => {
             progress: 0,
             complete: false
         })
+    })
+
+    it('treats only a quick tap as a single click', () => {
+        expect(isShortPress(1_000, 1_299)).toBe(true)
+        expect(isShortPress(1_000, 1_300)).toBe(false)
+        expect(isShortPress(1_000, 900)).toBe(true)
     })
 })

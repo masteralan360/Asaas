@@ -74,6 +74,8 @@ import type {
   CashierShiftTemplate,
   CashierShiftAssignment,
   CashierShiftOccurrence,
+  CashierShiftPauseRequest,
+  CashierShiftPausePeriod,
   BudgetSettings,
   BudgetAllocation,
   ExpenseSeries,
@@ -519,6 +521,8 @@ export class AtlasDatabase extends Dexie {
   cashier_shift_templates!: EntityTable<CashierShiftTemplate, "id">;
   cashier_shift_assignments!: EntityTable<CashierShiftAssignment, "id">;
   cashier_shift_occurrences!: EntityTable<CashierShiftOccurrence, "id">;
+  cashier_shift_pause_requests!: EntityTable<CashierShiftPauseRequest, "id">;
+  cashier_shift_pause_periods!: EntityTable<CashierShiftPausePeriod, "id">;
   sales_orders!: EntityTable<SalesOrder, "id">;
   purchase_orders!: EntityTable<PurchaseOrder, "id">;
   order_installments!: EntityTable<OrderInstallment, "id">;
@@ -3393,6 +3397,60 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, ruleId, agentId, updatedAt, isDeleted, syncStatus, [workspaceId+ruleId], [workspaceId+agentId], [ruleId+agentId]",
       agent_product_commission_entries:
         "id, workspaceId, orderId, assignmentId, agentId, orderItemId, productId, orderReturnId, kind, status, occurredAt, updatedAt, isDeleted, syncStatus, [workspaceId+orderId], [workspaceId+agentId], [assignmentId+orderItemId], [workspaceId+orderReturnId]",
+    });
+
+    this.version(106).stores({
+      payment_transactions:
+        "id, workspaceId, paidAt, accountId, cashierShiftOccurrenceId, sourceModule, sourceType, sourceRecordId, sourceSubrecordId, direction, reversalOfTransactionId, updatedAt, isDeleted, syncStatus, [workspaceId+paidAt], [workspaceId+accountId], [workspaceId+cashierShiftOccurrenceId], [workspaceId+sourceType+sourceRecordId]",
+      cashier_shift_occurrences:
+        "id, workspaceId, assignmentId, cashierUserId, scheduledStartAt, status, completedAt, completedBy, updatedAt, isDeleted, syncStatus, [workspaceId+cashierUserId], [workspaceId+scheduledStartAt], [workspaceId+completedAt], [cashierUserId+scheduledStartAt], [assignmentId+scheduledStartAt]",
+    });
+
+    this.version(107).stores({
+      cashier_shift_assignments:
+        "id, workspaceId, templateId, accountId, cashierUserId, earlyFinishPolicy, isActive, updatedAt, isDeleted, syncStatus, [workspaceId+cashierUserId], [workspaceId+isActive], [cashierUserId+isActive]",
+      cashier_shift_occurrences:
+        "id, workspaceId, assignmentId, cashierUserId, scheduledStartAt, earlyFinishPolicy, earlyFinishRequestStatus, status, completedAt, completedBy, updatedAt, isDeleted, syncStatus, [workspaceId+cashierUserId], [workspaceId+scheduledStartAt], [workspaceId+earlyFinishRequestStatus], [workspaceId+completedAt], [cashierUserId+scheduledStartAt], [assignmentId+scheduledStartAt]",
+    }).upgrade(async (transaction) => {
+      const assignments = await transaction.table('cashier_shift_assignments').toArray() as CashierShiftAssignment[];
+      await Promise.all(assignments
+        .filter((assignment) => !assignment.earlyFinishPolicy)
+        .map((assignment) => transaction.table('cashier_shift_assignments').update(assignment.id, {
+          earlyFinishPolicy: 'scheduled_end',
+          earlyFinishOffsetMinutes: null,
+        })));
+
+      const occurrences = await transaction.table('cashier_shift_occurrences').toArray() as CashierShiftOccurrence[];
+      await Promise.all(occurrences
+        .filter((occurrence) => !occurrence.earlyFinishPolicy)
+        .map((occurrence) => transaction.table('cashier_shift_occurrences').update(occurrence.id, {
+          earlyFinishPolicy: 'scheduled_end',
+          earlyFinishOffsetMinutes: null,
+          earlyFinishRequestStatus: 'not_requested',
+          earlyFinishRequestReason: null,
+          earlyFinishRequestedAt: null,
+          earlyFinishRequestedBy: null,
+          earlyFinishReviewedAt: null,
+          earlyFinishReviewedBy: null,
+          earlyFinishReviewNote: null,
+          completionReason: null,
+        })));
+    });
+
+    this.version(108).stores({
+      cashier_shift_occurrences:
+        "id, workspaceId, assignmentId, cashierUserId, scheduledStartAt, earlyFinishPolicy, earlyFinishRequestStatus, status, completedAt, completedBy, terminatedAt, terminatedBy, updatedAt, isDeleted, syncStatus, [workspaceId+cashierUserId], [workspaceId+scheduledStartAt], [workspaceId+status], [workspaceId+earlyFinishRequestStatus], [workspaceId+completedAt], [workspaceId+terminatedAt], [cashierUserId+scheduledStartAt], [assignmentId+scheduledStartAt]",
+      cashier_shift_pause_requests:
+        "id, workspaceId, occurrenceId, cashierUserId, status, requestedAt, reviewedAt, updatedAt, isDeleted, syncStatus, [workspaceId+occurrenceId], [workspaceId+status], [occurrenceId+status], [cashierUserId+requestedAt]",
+      cashier_shift_pause_periods:
+        "id, workspaceId, occurrenceId, kind, startedAt, resumedAt, updatedAt, isDeleted, syncStatus, [workspaceId+occurrenceId], [occurrenceId+resumedAt], [workspaceId+startedAt]",
+    }).upgrade(async (transaction) => {
+      const occurrences = await transaction.table('cashier_shift_occurrences').toArray() as CashierShiftOccurrence[];
+      await Promise.all(occurrences.map((occurrence) => transaction.table('cashier_shift_occurrences').update(occurrence.id, {
+        terminatedAt: occurrence.terminatedAt ?? null,
+        terminatedBy: occurrence.terminatedBy ?? null,
+        terminationReason: occurrence.terminationReason ?? null,
+      })));
     });
 
     this.registerLocalModeSqliteAuthority();

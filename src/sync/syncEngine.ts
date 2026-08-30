@@ -126,6 +126,8 @@ const SYNC_PULL_TABLES = [
   "cashier_shift_templates",
   "cashier_shift_assignments",
   "cashier_shift_occurrences",
+  "cashier_shift_pause_requests",
+  "cashier_shift_pause_periods",
   "payment_transactions",
   "clinical_presets",
   "manual_entry_templates",
@@ -345,6 +347,13 @@ function getMutationParentKeys(mutation: MutationSyncOrderItem) {
       break;
     case "cashier_shift_occurrences":
       addParent("cashier_shift_assignments", "assignmentId", "assignment_id");
+      break;
+    case "cashier_shift_pause_requests":
+      addParent("cashier_shift_occurrences", "occurrenceId", "occurrence_id");
+      break;
+    case "cashier_shift_pause_periods":
+      addParent("cashier_shift_occurrences", "occurrenceId", "occurrence_id");
+      addParent("cashier_shift_pause_requests", "pauseRequestId", "pause_request_id");
       break;
     case "delivery_ledger_entries":
       addParent("delivery_shipments", "shipmentId", "shipment_id");

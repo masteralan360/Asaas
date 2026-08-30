@@ -1194,27 +1194,33 @@ export function SalesOrderFormPage({
                             </CardContent>
                         </Card>
                         {canAssignSalesAgents ? (
-                            <SalesOrderCommissionAssignmentSection
-                                ref={commissionAssignmentRef}
-                                workspaceId={workspaceId}
-                                editingOrderId={editingOrderId}
-                                salesAccountAgentId={selectedSalesAccount?.agent.id ?? null}
-                                customerCity={selectedCustomer?.city || ''}
-                                assignedBy={user?.id}
-                                orderCurrency={currency}
-                                orderTotal={preview}
-                                exchangeRates={adjustmentExchangeRates}
-                                orderItems={items.map((item) => ({
-                                    id: String(item.seq),
-                                    productId: item.productId,
-                                    productName: item.productSearch,
-                                    quantity: Number(item.quantity) || 0,
-                                    convertedUnitPrice: Number(item.unitPrice) || 0
-                                }))}
-                                availableCurrencies={Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]}
-                                iqdDisplayPreference={features.iqd_display_preference}
-                                disabled={isSaving}
-                            />
+                            <PartnerRequiredSection
+                                locked={isCustomerSelectionRequired}
+                                unlockLabel={t('orders.form.selectBusinessPartnerToUnlock')}
+                                onLockedInteraction={highlightCustomerInformation}
+                            >
+                                <SalesOrderCommissionAssignmentSection
+                                    ref={commissionAssignmentRef}
+                                    workspaceId={workspaceId}
+                                    editingOrderId={editingOrderId}
+                                    salesAccountAgentId={selectedSalesAccount?.agent.id ?? null}
+                                    customerCity={selectedCustomer?.city || ''}
+                                    assignedBy={user?.id}
+                                    orderCurrency={currency}
+                                    orderTotal={preview}
+                                    exchangeRates={adjustmentExchangeRates}
+                                    orderItems={items.map((item) => ({
+                                        id: String(item.seq),
+                                        productId: item.productId,
+                                        productName: item.productSearch,
+                                        quantity: Number(item.quantity) || 0,
+                                        convertedUnitPrice: Number(item.unitPrice) || 0
+                                    }))}
+                                    availableCurrencies={Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]}
+                                    iqdDisplayPreference={features.iqd_display_preference}
+                                    disabled={isSaving}
+                                />
+                            </PartnerRequiredSection>
                         ) : null}
                         <LoanPartyPickerDialog
                             isOpen={isCustomerPickerOpen}

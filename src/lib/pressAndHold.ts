@@ -1,6 +1,7 @@
 export const WORKSPACE_PAYMENT_HOLD_DURATION_MS = 1_500
 export const ORDER_STATUS_ADVANCE_HOLD_DURATION_MS = 600
 export const MIN_HOLD_DURATION_MS = 250
+export const SHORT_PRESS_MAX_DURATION_MS = 300
 
 export interface PressAndHoldProgress {
     elapsedMs: number
@@ -25,4 +26,12 @@ export function getPressAndHoldProgress(
         progress,
         complete: elapsedMs >= safeDuration
     }
+}
+
+export function isShortPress(
+    startedAt: number,
+    now: number,
+    maxDurationMs = SHORT_PRESS_MAX_DURATION_MS
+): boolean {
+    return Math.max(0, now - startedAt) < maxDurationMs
 }

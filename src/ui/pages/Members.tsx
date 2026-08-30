@@ -153,6 +153,8 @@ const PERMISSION_MODULE_DEFAULT_LABELS: Record<string, string> = {
 
 const PERMISSION_MODULE_PLAN_MODULES: Partial<Record<WorkspacePermissionModule, PlanModuleKey>> = {
     payment: 'payments',
+    paymentAccounts: 'payment_accounts',
+    cashierShiftControl: 'cashier_shift_control',
     directTransaction: 'direct_transactions',
     businessPartners: 'business_partners',
     agents: 'agents',
