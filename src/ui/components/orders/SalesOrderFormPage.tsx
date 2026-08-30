@@ -1218,6 +1218,7 @@ export function SalesOrderFormPage({
                                     }))}
                                     availableCurrencies={Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]}
                                     iqdDisplayPreference={features.iqd_display_preference}
+                                    allowPlanCommissionAmountOverride
                                     disabled={isSaving}
                                 />
                             </PartnerRequiredSection>

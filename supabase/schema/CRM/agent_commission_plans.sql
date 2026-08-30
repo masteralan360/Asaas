@@ -28,7 +28,7 @@ CREATE TABLE crm.agent_commission_plans (
       AND fixed_currency IS NULL)
     OR (commission_type = 'fixed_amount'
       AND rate_percent = 0
-      AND fixed_amount > 0
+      AND fixed_amount >= 0
       AND fixed_currency IS NOT NULL)
   )
 );

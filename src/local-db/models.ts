@@ -870,9 +870,9 @@ export interface SalesOrderAgentAssignment extends BaseEntity {
   deliveryChargeAmount: number
   internalDeliveryCostAmount: number
   /**
-   * Optional order-only fallback for an assigned field agent without an
-   * effective commission membership. Fixed amounts retain the original input
-   * currency and a locked conversion into the order currency.
+   * Optional order-only commission fallback or plan-amount override. Fixed
+   * amounts retain the original input currency and a locked conversion into
+   * the order currency without changing the workspace commission plan.
    */
   manualCommissionType?: ManualSalesAgentCommissionType | null
   manualCommissionSourceAmount?: number | null

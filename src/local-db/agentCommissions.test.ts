@@ -14,6 +14,14 @@ const WORKSPACE_ID = "00000000-0000-4000-8000-000000000919";
 let commissions: typeof import("./agentCommissions");
 
 function installBrowserEnvironment() {
+  Object.defineProperty(globalThis.URL, "createObjectURL", {
+    configurable: true,
+    value: () => "blob:vitest",
+  });
+  Object.defineProperty(globalThis, "DOMMatrix", {
+    configurable: true,
+    value: class DOMMatrix {},
+  });
   const rows = new Map<string, string>();
   const storage = {
     get length() { return rows.size; },
@@ -30,16 +38,25 @@ function installBrowserEnvironment() {
     value: {
       localStorage: storage,
       sessionStorage: storage,
+      URL: globalThis.URL,
       location: { origin: "http://localhost", hash: "", pathname: "/" },
       addEventListener: () => undefined,
       removeEventListener: () => undefined,
     },
   });
+  const documentHead = { appendChild: () => undefined };
   Object.defineProperty(globalThis, "document", {
     configurable: true,
     value: {
       visibilityState: "visible",
       documentElement: { lang: "en", dir: "ltr" },
+      head: documentHead,
+      getElementsByTagName: () => [documentHead],
+      createElement: () => ({
+        setAttribute: () => undefined,
+        appendChild: () => undefined,
+      }),
+      createTextNode: () => ({}),
       addEventListener: () => undefined,
       removeEventListener: () => undefined,
     },
@@ -581,7 +598,7 @@ describe("sales agent commission lifecycle", () => {
     });
   });
 
-  it("rejects manual order commission when the assigned agent has an effective plan", async () => {
+  it("saves an order-specific fixed amount override for an agent with an effective plan", async () => {
     const agent = fieldAgent(crypto.randomUUID());
     const order = completedOrder(crypto.randomUUID());
     await db.agents.put(agent);
@@ -589,6 +606,53 @@ describe("sales agent commission lifecycle", () => {
     const plan = await commissions.createAgentCommissionPlan(WORKSPACE_ID, {
       name: "Level 1",
       level: "level_1",
+      commissionType: "fixed_amount",
+      fixedAmount: 10,
+      fixedCurrency: "usd",
+    });
+    await commissions.setAgentCommissionMembership(WORKSPACE_ID, {
+      agentId: agent.id,
+      planId: plan.id,
+    });
+
+    const assignment = await commissions.assignSalesOrderAgent(WORKSPACE_ID, {
+      orderId: order.id,
+      agentId: agent.id,
+      manualCommission: {
+        type: "fixed_amount",
+        amount: 25,
+        currency: "usd",
+      },
+    });
+    const accrual = await db.agent_commission_entries
+      .where("assignmentId")
+      .equals(assignment!.id)
+      .and((entry) => entry.kind === "accrual")
+      .first();
+
+    expect(assignment).toMatchObject({
+      manualCommissionType: "fixed_amount",
+      manualCommissionSourceAmount: 25,
+      manualCommissionSourceCurrency: "usd",
+      manualCommissionConvertedAmount: 25,
+    });
+    expect(accrual).toMatchObject({
+      currency: "usd",
+      planCommissionAmount: 25,
+      amount: 25,
+    });
+    expect((await db.agent_commission_plans.get(plan.id))?.fixedAmount).toBe(10);
+  });
+
+  it("rejects an order commission amount override for a percentage plan", async () => {
+    const agent = fieldAgent(crypto.randomUUID());
+    const order = completedOrder(crypto.randomUUID());
+    await db.agents.put(agent);
+    await db.sales_orders.put(order);
+    const plan = await commissions.createAgentCommissionPlan(WORKSPACE_ID, {
+      name: "Percentage plan",
+      level: "percentage-plan",
+      commissionType: "percentage",
       ratePercent: 10,
     });
     await commissions.setAgentCommissionMembership(WORKSPACE_ID, {
@@ -604,7 +668,7 @@ describe("sales agent commission lifecycle", () => {
         amount: 25,
         currency: "usd",
       },
-    })).rejects.toThrow("commission plan");
+    })).rejects.toThrow("fixed commission plans");
   });
 
   it("includes standard and post-return order adjustments in commissionable revenue", () => {
@@ -1007,6 +1071,27 @@ describe("sales agent commission lifecycle", () => {
       level: "enterprise-sales",
       ratePercent: 7,
     })).rejects.toThrow("already has a commission plan");
+  });
+
+  it("accepts zero as a fixed commission amount when creating and updating a plan", async () => {
+    const plan = await commissions.createAgentCommissionPlan(WORKSPACE_ID, {
+      name: "Zero fixed commission",
+      level: "zero-fixed-commission",
+      commissionType: "fixed_amount",
+      fixedAmount: 0,
+      fixedCurrency: "usd",
+    });
+
+    expect(plan).toMatchObject({
+      commissionType: "fixed_amount",
+      fixedAmount: 0,
+      fixedCurrency: "usd",
+    });
+
+    const updated = await commissions.updateAgentCommissionPlan(plan.id, {
+      fixedAmount: 0,
+    });
+    expect(updated.fixedAmount).toBe(0);
   });
 
   it("revises used plan terms without rewriting accruals or late historical events", async () => {

@@ -166,6 +166,10 @@ export interface ReplaceSalesOrderAgentAssignmentsInput {
 }
 
 export interface ManualSalesAgentCommissionInput {
+  /**
+   * An order-specific commission fallback or an override of an agent's
+   * effective plan terms. It never changes the workspace commission plan.
+   */
   type: ManualSalesAgentCommissionType;
   /** Fixed amount or percentage, depending on `type`. */
   amount: number;
@@ -276,9 +280,6 @@ function resolveCommissionPlanTerms(input: {
   }
 
   const fixedAmount = assertMoney(input.fixedAmount ?? fallback?.fixedAmount ?? 0, "Fixed commission");
-  if (fixedAmount <= 0) {
-    throw new Error("Fixed commission amount must be greater than zero");
-  }
   return {
     commissionType,
     ratePercent: 0,
@@ -303,15 +304,12 @@ function resolveManualSalesAgentCommission(
   input: ManualSalesAgentCommissionInput,
 ): ResolvedManualSalesAgentCommission {
   const sourceAmount = assertMoney(input.amount, "Manual commission");
-  if (sourceAmount <= 0) {
-    throw new Error("Manual commission must be greater than zero");
+  if (sourceAmount < 0) {
+    throw new Error("Manual commission must be zero or greater");
   }
 
   if (input.type === "percentage") {
     const ratePercent = assertRate(sourceAmount);
-    if (ratePercent <= 0) {
-      throw new Error("Manual commission percentage must be greater than zero");
-    }
     const now = new Date().toISOString();
     return {
       type: "percentage",
@@ -368,9 +366,9 @@ function getAssignmentManualSalesAgentCommission(
     (type !== "fixed_amount" && type !== "percentage")
     || !sourceCurrency
     || !Number.isFinite(sourceAmount)
-    || sourceAmount <= 0
+    || sourceAmount < 0
     || !Number.isFinite(convertedAmount)
-    || convertedAmount <= 0
+    || convertedAmount < 0
     || !Number.isFinite(exchangeRate)
     || exchangeRate <= 0
     || !assignment.manualCommissionExchangeRateSource
@@ -1956,7 +1954,16 @@ export async function assignSalesOrderAgent(
   if (manualCommission) {
     const existingTerms = await findMembershipAndPlan(input.agentId, requestedAssignedAt);
     if (existingTerms) {
-      throw new Error("This sales agent has a commission plan; remove the manual order commission");
+      const planType = resolveCommissionPlanType(existingTerms.plan.commissionType);
+      if (planType !== "fixed_amount" || manualCommission.type !== "fixed_amount") {
+        throw new Error("Order commission amount overrides are available only for fixed commission plans");
+      }
+      if (
+        manualCommission.type === "fixed_amount"
+        && manualCommission.sourceCurrency !== existingTerms.plan.fixedCurrency
+      ) {
+        throw new Error("Order commission overrides must use the commission plan currency");
+      }
     }
   }
   const keepsCurrentSnapshots = current

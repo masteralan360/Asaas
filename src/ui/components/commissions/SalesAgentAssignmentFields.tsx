@@ -1,4 +1,4 @@
-import { BadgePercent, MapPin, Truck, UserRound } from 'lucide-react'
+import { BadgePercent, MapPin, RotateCcw, Truck, UserRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { getAppliedCurrencyConversion } from '@/lib/orderCurrency'
@@ -8,6 +8,7 @@ import type { CommissionAgentDirectoryEntry } from './useCommissionAgentDirector
 import { formatCommissionPlanTerms } from './agentCommissionPresentation'
 import {
     Badge,
+    Button,
     CurrencySelector,
     Input,
     Label,
@@ -47,6 +48,7 @@ interface SalesAgentAssignmentFieldsProps {
     showAgentSummary?: boolean
     showReason?: boolean
     showOperationalFields?: boolean
+    allowPlanCommissionAmountOverride?: boolean
     lockAgentSelection?: boolean
     disabled?: boolean
 }
@@ -66,6 +68,7 @@ export function SalesAgentAssignmentFields({
     showAgentSummary = true,
     showReason = false,
     showOperationalFields = true,
+    allowPlanCommissionAmountOverride = false,
     lockAgentSelection = false,
     disabled = false
 }: SalesAgentAssignmentFieldsProps) {
@@ -84,15 +87,23 @@ export function SalesAgentAssignmentFields({
     const selectAgent = (agentId: string) => {
         const nextAgentId = agentId === UNASSIGNED_VALUE ? '' : agentId
         if (nextAgentId === value.agentId) return
+        const nextPlan = selectableAgents.find((entry) => entry.agent.id === nextAgentId)?.plan
         onChange({
             ...value,
             agentId: nextAgentId,
             manualCommissionType: 'fixed_amount',
-            manualCommissionAmount: '',
-            manualCommissionCurrency: orderCurrency
+            manualCommissionAmount: nextPlan?.commissionType === 'fixed_amount' ? String(nextPlan.fixedAmount ?? 0) : '',
+            manualCommissionCurrency: nextPlan?.commissionType === 'fixed_amount'
+                ? nextPlan.fixedCurrency || orderCurrency
+                : orderCurrency
         })
     }
     const usesManualCommission = Boolean(selectedAgent && !selectedAgent.plan)
+    const hasFixedCommissionPlan = selectedAgent?.plan?.commissionType === 'fixed_amount'
+    const planCommissionAmount = Number(selectedAgent?.plan?.fixedAmount ?? 0)
+    const hasPlanCommissionOverride = hasFixedCommissionPlan
+        && value.manualCommissionAmount !== String(planCommissionAmount)
+    const planCommissionCurrency = selectedAgent?.plan?.fixedCurrency || value.manualCommissionCurrency
     const manualAmount = Number(value.manualCommissionAmount)
     const manualConversion = usesManualCommission && value.manualCommissionType === 'fixed_amount'
         ? getAppliedCurrencyConversion(manualAmount, value.manualCommissionCurrency, orderCurrency, exchangeRates)
@@ -245,6 +256,61 @@ export function SalesAgentAssignmentFields({
                                     : t('salesAgentCommissions.percentageCommissionHint', { total: formatCurrency(orderTotal, orderCurrency, iqdDisplayPreference) })}
                             </p>
                         </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {hasFixedCommissionPlan && allowPlanCommissionAmountOverride ? (
+                <div className="space-y-4 rounded-2xl border border-violet-500/30 bg-violet-500/[0.06] p-4">
+                    <div>
+                        <h3 className="font-semibold text-violet-950 dark:text-violet-100">{t('salesAgentCommissions.orderCommissionAmount')}</h3>
+                        <p className="mt-1 text-sm text-violet-900/80 dark:text-violet-100/80">
+                            {t('salesAgentCommissions.orderCommissionAmountDescription')}
+                        </p>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                        <div className="space-y-2">
+                            <Label htmlFor={fieldId('plan-commission-amount')}>{t('salesAgentCommissions.commissionAmount')}</Label>
+                            <Input
+                                id={fieldId('plan-commission-amount')}
+                                inputMode="decimal"
+                                value={formatNumericInput(value.manualCommissionAmount)}
+                                onChange={(event) => update('manualCommissionAmount', sanitizeNumericInput(event.target.value, {
+                                    allowDecimal: true,
+                                    maxFractionDigits: 3
+                                }))}
+                                disabled={disabled}
+                                placeholder="0"
+                                aria-invalid={!value.manualCommissionAmount.trim()}
+                                className={!value.manualCommissionAmount.trim() ? 'border-destructive' : undefined}
+                            />
+                        </div>
+                        <div className="rounded-xl border bg-background/70 px-3 py-2 text-sm font-semibold">
+                            {planCommissionCurrency.toUpperCase()}
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background/70 p-3">
+                        <div>
+                            <div className="text-xs font-medium text-muted-foreground">{t('salesAgentCommissions.appliedCommission')}</div>
+                            <div className="mt-1 text-base font-bold">
+                                {Number(value.manualCommissionAmount) > 0
+                                    ? formatCurrency(Number(value.manualCommissionAmount), planCommissionCurrency, iqdDisplayPreference)
+                                    : formatCurrency(0, planCommissionCurrency, iqdDisplayPreference)}
+                            </div>
+                        </div>
+                        {hasPlanCommissionOverride ? (
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="gap-1.5"
+                                onClick={() => update('manualCommissionAmount', String(planCommissionAmount))}
+                                disabled={disabled}
+                            >
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                {t('salesAgentCommissions.usePlanCommissionAmount')}
+                            </Button>
+                        ) : null}
                     </div>
                 </div>
             ) : null}

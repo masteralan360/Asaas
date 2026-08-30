@@ -173,7 +173,7 @@ export function getAppliedCurrencyConversion(
     toCurrency: CurrencyCode,
     snapshot?: ExchangeRateSnapshot[] | null
 ): AppliedCurrencyConversion | null {
-    if (!Number.isFinite(amount) || amount <= 0) return null
+    if (!Number.isFinite(amount) || amount < 0) return null
 
     const now = new Date().toISOString()
     if (fromCurrency === toCurrency) {

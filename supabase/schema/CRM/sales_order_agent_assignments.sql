@@ -37,15 +37,15 @@ CREATE TABLE crm.sales_order_agent_assignments (
       AND manual_commission_exchange_rate_timestamp IS NULL
       AND manual_commission_exchange_rates IS NULL)
     OR (manual_commission_type = 'fixed_amount'
-      AND manual_commission_source_amount > 0
+      AND manual_commission_source_amount >= 0
       AND manual_commission_source_currency IS NOT NULL
-      AND manual_commission_converted_amount > 0
+      AND manual_commission_converted_amount >= 0
       AND manual_commission_exchange_rate > 0
       AND NULLIF(btrim(manual_commission_exchange_rate_source), '') IS NOT NULL
       AND manual_commission_exchange_rate_timestamp IS NOT NULL
       AND jsonb_typeof(COALESCE(manual_commission_exchange_rates, '[]'::jsonb)) = 'array')
     OR (manual_commission_type = 'percentage'
-      AND manual_commission_source_amount > 0
+      AND manual_commission_source_amount >= 0
       AND manual_commission_source_amount <= 100
       AND manual_commission_source_currency IS NOT NULL
       AND manual_commission_converted_amount >= 0

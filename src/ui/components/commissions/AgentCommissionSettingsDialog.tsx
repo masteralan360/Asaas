@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, ShieldCheck, Trash2, Truck } from 'lucide-react'
+import { Plus, ShieldCheck, Trash2, Truck, UserMinus, UserPlus, UsersRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatLocalDateValue, formatNumericInput, generateId, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
 
 import { createAgentCommissionPlan, deleteAgentCommissionPlan, setAgentCommissionMembership, updateAgentCommissionPlan, type AgentCommissionPlan, type CommissionCalculationBasis, type CommissionPlanLevel, type CommissionPlanType, type CurrencyCode, type SalesAgentCommissionSheetType } from '@/local-db'
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, CurrencySelector, DateTimePicker, DeleteConfirmationModal, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, Textarea, useToast } from '@/ui/components'
+import { AppDialog, AppDialogBody, AppDialogContent, AppDialogDescription, AppDialogFooter, AppDialogHeader, AppDialogTitle, Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, CurrencySelector, DateTimePicker, DeleteConfirmationModal, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, Textarea, useToast } from '@/ui/components'
 import { useWorkspace } from '@/workspace'
 import { getCurrentCommissionPlanRevision } from './agentCommissionPresentation'
 import { useCommissionAgentDirectory } from './useCommissionAgentDirectory'
@@ -82,6 +82,8 @@ export function AgentCommissionSettingsForm({ workspaceId, userId, onCancel }: A
     const [isSaving, setIsSaving] = useState(false)
     const [planToDelete, setPlanToDelete] = useState<PlanDraft | null>(null)
     const [isDeletingPlan, setIsDeletingPlan] = useState(false)
+    const [planToManageAgents, setPlanToManageAgents] = useState<PlanDraft | null>(null)
+    const [managedAgentIds, setManagedAgentIds] = useState<string[]>([])
     const fieldAgents = useMemo(() => directory.agents.filter((entry) => entry.agent.agentType === 'field_agent'), [directory.agents])
 
     useEffect(() => {
@@ -114,6 +116,37 @@ export function AgentCommissionSettingsForm({ workspaceId, userId, onCancel }: A
         setMembershipSelections((current) => Object.fromEntries(Object.entries(current).map(([agentId, planId]) => [agentId, planId === level ? NO_PLAN_VALUE : planId])))
     }
 
+    function isSelectedForPlan(selection: string | undefined, plan: Pick<PlanDraft, 'id' | 'level'>) {
+        return selection === planToken(plan) || Boolean(plan.id && selection === plan.id)
+    }
+
+    function openAgentManager(plan: PlanDraft) {
+        setPlanToManageAgents(plan)
+        setManagedAgentIds(fieldAgents
+            .filter((entry) => isSelectedForPlan(membershipSelections[entry.agent.id], plan))
+            .map((entry) => entry.agent.id))
+    }
+
+    function toggleManagedAgent(agentId: string) {
+        setManagedAgentIds((current) => current.includes(agentId)
+            ? current.filter((id) => id !== agentId)
+            : [...current, agentId])
+    }
+
+    function applyManagedAgents() {
+        const plan = planToManageAgents
+        if (!plan) return
+        const selectedAgentIds = new Set(managedAgentIds)
+        const token = planToken(plan)
+        setMembershipSelections((current) => Object.fromEntries(fieldAgents.map((entry) => {
+            const agentId = entry.agent.id
+            const selection = current[agentId] || NO_PLAN_VALUE
+            if (selectedAgentIds.has(agentId)) return [agentId, token]
+            return [agentId, isSelectedForPlan(selection, plan) ? NO_PLAN_VALUE : selection]
+        })))
+        setPlanToManageAgents(null)
+    }
+
     async function handleDeletePlan() {
         const plan = planToDelete
         if (!plan?.id) return
@@ -139,7 +172,7 @@ export function AgentCommissionSettingsForm({ workspaceId, userId, onCancel }: A
             !draft.name.trim()
             || (draft.commissionType === 'percentage'
                 ? !Number.isFinite(Number(draft.ratePercent)) || Number(draft.ratePercent) < 0 || Number(draft.ratePercent) > 100
-                : !Number.isFinite(Number(draft.fixedAmount)) || Number(draft.fixedAmount) <= 0)
+                : !Number.isFinite(Number(draft.fixedAmount)) || Number(draft.fixedAmount) < 0)
         ))
         if (invalidDraft) {
             toast({
@@ -508,6 +541,21 @@ export function AgentCommissionSettingsForm({ workspaceId, userId, onCancel }: A
                                                         disabled={isSaving}
                                                     />
                                                 </div>
+                                                <div className="flex justify-end border-t pt-4 lg:col-span-2">
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        className="gap-2"
+                                                        onClick={() => openAgentManager(draft)}
+                                                        disabled={isSaving || isDeletingPlan || !draft.isActive}
+                                                    >
+                                                        <UsersRound className="h-4 w-4" />
+                                                        {t('salesAgentCommissions.manageAgents')}
+                                                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs leading-none">
+                                                            {fieldAgents.filter((entry) => isSelectedForPlan(membershipSelections[entry.agent.id], draft)).length}
+                                                        </span>
+                                                    </Button>
+                                                </div>
                                             </div>
                                         </section>
                                     ))}
@@ -611,6 +659,91 @@ export function AgentCommissionSettingsForm({ workspaceId, userId, onCancel }: A
                 </aside>
             </div>
         </form>
+        <AppDialog
+            open={Boolean(planToManageAgents)}
+            onOpenChange={(open) => {
+                if (!open && !isSaving) setPlanToManageAgents(null)
+            }}
+        >
+            <AppDialogContent className="max-w-2xl">
+                <AppDialogHeader>
+                    <div className="flex items-start gap-3">
+                        <div className="rounded-xl bg-violet-500/10 p-2 text-violet-700 dark:text-violet-300">
+                            <UsersRound className="h-5 w-5" />
+                        </div>
+                        <div className="space-y-1">
+                            <AppDialogTitle>
+                                {t('salesAgentCommissions.manageAgentsTitle', {
+                                    level: planToManageAgents?.name.trim() || t('salesAgentCommissions.newCommissionLevel')
+                                })}
+                            </AppDialogTitle>
+                            <AppDialogDescription>{t('salesAgentCommissions.manageAgentsDescription')}</AppDialogDescription>
+                        </div>
+                    </div>
+                </AppDialogHeader>
+                <AppDialogBody className="space-y-4">
+                    {planToManageAgents ? (
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-500/20 bg-violet-500/[0.05] p-4">
+                            <div>
+                                <div className="text-xs font-medium text-muted-foreground">{t('salesAgentCommissions.commissionLevel')}</div>
+                                <div className="mt-1 font-semibold">{planToManageAgents.name.trim() || t('salesAgentCommissions.newCommissionLevel')}</div>
+                            </div>
+                            <Badge variant="outline" className="border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300">
+                                {t('salesAgentCommissions.managedAgentsCount', { count: managedAgentIds.length })}
+                            </Badge>
+                        </div>
+                    ) : null}
+                    {fieldAgents.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                            {t('salesAgentCommissions.noFieldAgents')}
+                        </div>
+                    ) : (
+                        <div className="divide-y overflow-hidden rounded-2xl border">
+                            {fieldAgents.map((entry) => {
+                                const isManaged = managedAgentIds.includes(entry.agent.id)
+                                return (
+                                    <div key={entry.agent.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
+                                        <div className="min-w-0">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="font-semibold">{entry.name}</span>
+                                                <Badge variant="outline" className={entry.agent.status === 'active' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground'}>
+                                                    {entry.agent.status === 'active' ? t('salesAgentCommissions.active') : t('salesAgentCommissions.inactive')}
+                                                </Badge>
+                                                {isManaged ? (
+                                                    <Badge variant="outline" className="border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300">
+                                                        {t('salesAgentCommissions.assignedToLevel')}
+                                                    </Badge>
+                                                ) : null}
+                                            </div>
+                                            <div className="mt-1 text-xs text-muted-foreground">{entry.agent.zone}</div>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant={isManaged ? 'outline' : 'default'}
+                                            className="gap-1.5"
+                                            onClick={() => toggleManagedAgent(entry.agent.id)}
+                                            disabled={isSaving}
+                                        >
+                                            {isManaged ? <UserMinus className="h-3.5 w-3.5" /> : <UserPlus className="h-3.5 w-3.5" />}
+                                            {isManaged ? t('salesAgentCommissions.removeAgentFromLevel') : t('salesAgentCommissions.addAgentToLevel')}
+                                        </Button>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
+                </AppDialogBody>
+                <AppDialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setPlanToManageAgents(null)} disabled={isSaving}>
+                        {t('salesAgentCommissions.cancel')}
+                    </Button>
+                    <Button type="button" onClick={applyManagedAgents} disabled={isSaving}>
+                        {t('common.done', { defaultValue: 'Done' })}
+                    </Button>
+                </AppDialogFooter>
+            </AppDialogContent>
+        </AppDialog>
         <DeleteConfirmationModal
             isOpen={Boolean(planToDelete)}
             onClose={() => {

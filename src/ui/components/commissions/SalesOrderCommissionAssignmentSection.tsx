@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { Plus, Trash2, UsersRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -46,6 +46,8 @@ interface SalesOrderCommissionAssignmentSectionProps {
     fixedRecipientAssignmentSource?: AssignmentDraft['assignmentSource']
     showOperationalFields?: boolean
     requireManualCommissionWhenNoPlan?: boolean
+    /** Lets the Sales Order form override a fixed plan's amount for this order only. */
+    allowPlanCommissionAmountOverride?: boolean
     compact?: boolean
     disabled?: boolean
 }
@@ -96,6 +98,7 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
     fixedRecipientAssignmentSource = 'manual',
     showOperationalFields = true,
     requireManualCommissionWhenNoPlan = false,
+    allowPlanCommissionAmountOverride = false,
     compact = false,
     disabled = false
 }, ref) {
@@ -118,6 +121,7 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
         }
         return []
     })
+    const initializedPlanCommissionDraftKeys = useRef(new Set<string>())
 
     useEffect(() => {
         if (!editingOrderId) return
@@ -204,18 +208,52 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
         || directory.agentById.get(draft.agentId)
     ), [directory.agentById, directory.eligibleAgents])
 
+    useEffect(() => {
+        setDrafts((current) => {
+            const draftsToInitialize = new Set<string>()
+            for (const draft of current) {
+                if (initializedPlanCommissionDraftKeys.current.has(draft.key)) continue
+                const selectedAgent = resolveSelectedAgent(draft)
+                if (!selectedAgent) continue
+                initializedPlanCommissionDraftKeys.current.add(draft.key)
+                const plan = selectedAgent.plan
+                if (plan?.commissionType === 'fixed_amount' && !draft.manualCommissionAmount.trim()) {
+                    draftsToInitialize.add(draft.key)
+                }
+            }
+            if (draftsToInitialize.size === 0) return current
+            return current.map((draft) => {
+                if (!draftsToInitialize.has(draft.key)) return draft
+                const plan = resolveSelectedAgent(draft)!.plan!
+                return {
+                    ...draft,
+                    manualCommissionType: 'fixed_amount',
+                    manualCommissionAmount: String(plan.fixedAmount ?? 0),
+                    manualCommissionCurrency: plan.fixedCurrency || orderCurrency
+                }
+            })
+        })
+    }, [drafts, orderCurrency, resolveSelectedAgent])
+
     const getManualCommissionInput = useCallback((
         draft: AssignmentDraft,
         order: Pick<SalesOrder, 'currency' | 'total' | 'exchangeRates'>
     ) => {
         const selectedAgent = resolveSelectedAgent(draft)
-        if (!draft.agentId || selectedAgent?.plan) return null
+        const fixedPlan = selectedAgent?.plan?.commissionType === 'fixed_amount'
+            ? selectedAgent.plan
+            : null
+        if (!draft.agentId || (selectedAgent?.plan && !fixedPlan)) return null
+        if (!draft.manualCommissionAmount.trim()) {
+            if (fixedPlan) throw new Error(t('salesAgentCommissions.errors.planCommissionAmountRequired'))
+            return null
+        }
         const amount = Number(draft.manualCommissionAmount)
-        if (!draft.manualCommissionAmount.trim()) return null
-        if (!Number.isFinite(amount) || amount <= 0) {
+        if (!Number.isFinite(amount) || amount < 0 || (!fixedPlan && amount <= 0)) {
             throw new Error(t('salesAgentCommissions.errors.manualCommissionPositive'))
         }
-        if (draft.manualCommissionType === 'percentage') {
+        const commissionType = fixedPlan ? 'fixed_amount' : draft.manualCommissionType
+        if (commissionType === 'percentage') {
             if (amount > 100) throw new Error(t('salesAgentCommissions.errors.manualCommissionPercentageMax'))
             return {
                 type: 'percentage' as const,
@@ -226,7 +264,7 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
         }
         const conversion = getAppliedCurrencyConversion(
             amount,
-            draft.manualCommissionCurrency,
+            fixedPlan.fixedCurrency || draft.manualCommissionCurrency,
             order.currency,
             order.exchangeRates ?? exchangeRates
         )
@@ -234,7 +272,7 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
         return {
             type: 'fixed_amount' as const,
             amount,
-            currency: draft.manualCommissionCurrency,
+            currency: fixedPlan.fixedCurrency || draft.manualCommissionCurrency,
             exchangeRates: conversion.exchangeRates
         }
     }, [exchangeRates, resolveSelectedAgent, t])
@@ -266,7 +304,11 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
             const fixedPlanCurrency = selectedAgent?.plan?.commissionType === 'fixed_amount'
                 ? selectedAgent.plan.fixedCurrency
                 : null
-            const requiresPlanConversion = Boolean(fixedPlanCurrency && fixedPlanCurrency !== orderCurrency)
+            const requiresPlanConversion = Boolean(
+                fixedPlanCurrency
+                && fixedPlanCurrency !== orderCurrency
+                && !draft.manualCommissionAmount.trim()
+            )
             if (requiresPlanConversion && !getAppliedCurrencyConversion(
                 1,
                 fixedPlanCurrency!,
@@ -379,6 +421,7 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
                                     showAgentSummary={!compact}
                                     showReason={Boolean(draft.assignmentId)}
                                     showOperationalFields={showOperationalFields}
+                                    allowPlanCommissionAmountOverride={allowPlanCommissionAmountOverride}
                                     lockAgentSelection={isSalesAccountBeneficiary || fixedRecipientAgentId !== undefined}
                                     disabled={disabled}
                                 />
