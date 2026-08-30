@@ -146,9 +146,9 @@ export interface TransferReturnedDeliveryShipmentInput {
 }
 
 /**
- * Administrative correction for a post that has not been completed. The post
- * is always placed on a fresh manifest so the prior courier assignment stays
- * auditable.
+ * Administrative correction for a post that has not been completed. Received
+ * posts are dispatched; assigned posts are placed on a fresh manifest so the
+ * prior courier assignment stays auditable.
  */
 export interface AdminEditAndRedispatchDeliveryShipmentInput {
   operationId: string;
@@ -162,6 +162,15 @@ export interface AdminEditAndRedispatchDeliveryShipmentInput {
   vehicleId?: string | null;
   dispatchedAt?: string;
   notes?: string | null;
+}
+
+/** Administrative correction for a received post that remains unassigned. */
+export interface AdminEditReceivedDeliveryShipmentInput {
+  shipmentId: string;
+  expectedVersion: number;
+  actorRole: "admin";
+  actorUserId?: string | null;
+  shipment: Omit<CreateDeliveryShipmentInput, "sourceSalesOrderId" | "createdBy">;
 }
 
 export interface UpdateDeliveryShipmentStatusInput {
@@ -1495,11 +1504,11 @@ export async function createAndDispatchDeliveryShipment(
   const operationId = input.operationId.trim();
   if (!operationId) throw new Error("A delivery operation ID is required");
 
-  const shipmentId = await deliveryOperationId(`quick-dispatch:${operationId}:shipment`);
-  const runId = await deliveryOperationId(`quick-dispatch:${operationId}:run`);
+  const shipmentId = await deliveryOperationId(`create-and-dispatch:${operationId}:shipment`);
+  const runId = await deliveryOperationId(`create-and-dispatch:${operationId}:run`);
   let shipment = await db.delivery_shipments.get(shipmentId);
   if (shipment && (shipment.workspaceId !== workspaceId || shipment.isDeleted)) {
-    throw new Error("This quick dispatch operation cannot be resumed");
+    throw new Error("This create-and-dispatch operation cannot be resumed");
   }
   if (!shipment) {
     shipment = await createDeliveryShipmentWithId(workspaceId, input.shipment, shipmentId);
@@ -1508,7 +1517,7 @@ export async function createAndDispatchDeliveryShipment(
   const existingRun = await db.delivery_runs.get(runId);
   if (existingRun) {
     if (existingRun.workspaceId !== workspaceId || existingRun.isDeleted) {
-      throw new Error("This quick dispatch operation cannot be resumed");
+      throw new Error("This create-and-dispatch operation cannot be resumed");
     }
     return { shipment, run: existingRun };
   }
@@ -1520,7 +1529,7 @@ export async function createAndDispatchDeliveryShipment(
     }
   }
   if (shipment.status !== "received") {
-    throw new Error("This post is no longer available for quick dispatch");
+    throw new Error("This post is no longer available for create and dispatch");
   }
 
   try {
@@ -1621,7 +1630,8 @@ export async function adminEditAndRedispatchDeliveryShipment(
   const priorAssignment = original.assignedRunId
     ? ` Previous manifest ${original.assignedRunId} was closed for redispatch.`
     : "";
-  const auditNote = `Admin edited and redispatched this post${changedFields.length ? `: ${changedFields.join(", ")}.` : "."}${priorAssignment}`;
+  const auditAction = original.status === "assigned" ? "redispatched" : "dispatched";
+  const auditNote = `Admin edited and ${auditAction} this post${changedFields.length ? `: ${changedFields.join(", ")}.` : "."}${priorAssignment}`;
 
   return createDeliveryRunWithId(workspaceId, {
     agentId: input.agentId,
@@ -1636,6 +1646,82 @@ export async function adminEditAndRedispatchDeliveryShipment(
     shipmentEdits: new Map([[original.id, edit]]),
     eventNotes: new Map([[original.id, auditNote]]),
   });
+}
+
+export async function adminEditReceivedDeliveryShipment(
+  workspaceId: string,
+  input: AdminEditReceivedDeliveryShipmentInput,
+) {
+  if (input.actorRole !== "admin") {
+    throw new Error("Only an administrator can edit a received post");
+  }
+
+  const original = await db.delivery_shipments.get(input.shipmentId);
+  if (!original || original.isDeleted || original.workspaceId !== workspaceId) {
+    throw new Error("Shipment not found");
+  }
+  if (original.version !== input.expectedVersion) {
+    throw new Error("This post has changed. Refresh it before editing");
+  }
+  if (original.status !== "received") {
+    throw new Error("Only received posts can be edited without dispatch");
+  }
+
+  const profile = await db.delivery_merchant_profiles.get(input.shipment.merchantProfileId);
+  if (!profile || profile.isDeleted || !profile.isActive || profile.workspaceId !== workspaceId) {
+    throw new Error("Select an active delivery merchant");
+  }
+  if (!input.shipment.recipientPhone.trim() || !input.shipment.recipientAddress.trim()) {
+    throw new Error("Recipient phone and delivery address are required");
+  }
+
+  const customerPaymentStatus = input.shipment.customerPaymentStatus ?? "cash_on_delivery";
+  const edit: DeliveryShipmentRedispatchEdit = {
+    merchantProfileId: profile.id,
+    merchantBusinessPartnerId: profile.businessPartnerId,
+    recipientPhone: input.shipment.recipientPhone.trim(),
+    recipientAddress: input.shipment.recipientAddress.trim(),
+    description: normalizeText(input.shipment.description),
+    currency: input.shipment.currency,
+    codAmount: customerPaymentStatus === "prepaid_electronically"
+      ? 0
+      : positiveMoney(input.shipment.codAmount, "COD amount", false),
+    customerPaymentStatus,
+    recipientPayoutAmount: positiveMoney(input.shipment.recipientPayoutAmount ?? 0, "Recipient payout amount"),
+    recipientPayoutFunding: input.shipment.recipientPayoutFunding ?? original.recipientPayoutFunding ?? "courier_advance",
+    deliveryFee: positiveMoney(input.shipment.deliveryFee ?? profile.defaultFeeAmount, "Delivery fee"),
+    feePayer: input.shipment.feePayer ?? profile.defaultFeePayer,
+  };
+  const changedFields = (Object.keys(edit) as Array<keyof DeliveryShipmentRedispatchEdit>)
+    .filter((key) => original[key] !== edit[key])
+    .map((key) => key.replace(/([A-Z])/g, " $1").toLowerCase());
+  const now = new Date().toISOString();
+  const updated: DeliveryShipment = {
+    ...original,
+    ...edit,
+    updatedAt: now,
+    version: original.version + 1,
+    ...getSyncMetadata(workspaceId, now),
+  };
+  const event = makeBase(workspaceId, {
+    shipmentId: original.id,
+    previousStatus: "received" as const,
+    status: "received" as const,
+    note: `Admin edited this received post${changedFields.length ? `: ${changedFields.join(", ")}.` : "."}`,
+    actorUserId: input.actorUserId ?? null,
+    actorAgentId: null,
+    occurredAt: now,
+  }) as DeliveryShipmentEvent;
+
+  await db.transaction("rw", [db.delivery_shipments, db.delivery_shipment_events], async () => {
+    await db.delivery_shipments.put(updated);
+    await db.delivery_shipment_events.put(event);
+  });
+  await syncEntitiesInDependencyOrder(workspaceId, [
+    [SHIPMENT_TABLE, [updated]],
+    [EVENT_TABLE, [event]],
+  ]);
+  return updated;
 }
 
 export async function updateDeliveryShipmentStatus(

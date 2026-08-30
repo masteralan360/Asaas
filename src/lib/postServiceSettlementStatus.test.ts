@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { DeliveryLedgerEntry } from "@/local-db";
 
-import { courierHandoverStatusByShipment, courierSettlementBreakdownByParty, merchantPayoutStatusByShipment, merchantSettlementBreakdownByParty } from "./postServiceSettlementStatus";
+import { courierHandoverStatusByShipment, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, merchantPayoutStatusByShipment, merchantSettlementBreakdownByParty } from "./postServiceSettlementStatus";
 
 const NOW = "2026-08-17T10:00:00.000Z";
 
@@ -27,6 +27,15 @@ function entry(partial: Partial<DeliveryLedgerEntry> & Pick<DeliveryLedgerEntry,
     ...partial,
   };
 }
+
+describe("isDeliveryShipmentCompleted", () => {
+  it("requires delivery plus settled courier handover and merchant payout", () => {
+    const settlement = new Map([["s1", "settled" as const]]);
+    expect(isDeliveryShipmentCompleted({ id: "s1", status: "delivered" }, settlement, settlement)).toBe(true);
+    expect(isDeliveryShipmentCompleted({ id: "s1", status: "delivered" }, new Map([["s1", "partial" as const]]), settlement)).toBe(false);
+    expect(isDeliveryShipmentCompleted({ id: "s1", status: "assigned" }, settlement, settlement)).toBe(false);
+  });
+});
 
 describe("courierHandoverStatusByShipment", () => {
   it("marks delivered collections as outstanding until remitted", () => {

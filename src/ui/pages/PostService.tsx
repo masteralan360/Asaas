@@ -5,7 +5,7 @@ import { Banknote, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, C
 
 import { useAuth } from "@/auth";
 import {
-  adminEditAndRedispatchDeliveryShipment, closeDeliveryRun, createAndDispatchDeliveryShipment, createBusinessPartner, createDeliveryMerchantProfile, createDeliveryRun, createDeliveryShipment, hardDeleteDeliveryMerchantProfile, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment,
+  adminEditAndRedispatchDeliveryShipment, adminEditReceivedDeliveryShipment, closeDeliveryRun, createAndDispatchDeliveryShipment, createBusinessPartner, createDeliveryMerchantProfile, createDeliveryRun, createDeliveryShipment, hardDeleteDeliveryMerchantProfile, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment,
   refreshPostServiceTab, requestDeliveryShipmentCodAdjustment, reviewDeliveryShipmentCodAdjustment, settleDeliveryCourier, summarizeDeliveryBalanceMetrics, updateBusinessPartner, updateDeliveryMerchantProfile, updateDeliveryShipmentStatus, useAgents, useBusinessPartners, useCourierDeliveryAccountBalances, useCourierDeliveryBalances,
   useDeliveryMerchantProfiles, useDeliveryRuns, useDeliverySettlements, useDeliveryShipmentCodAdjustmentRequests, useDeliveryShipmentEvents, useDeliveryShipments, useFleetVehicles,
   transferReturnedDeliveryShipment, useMerchantDeliveryAccountBalances, useMerchantDeliveryBalances, useDeliveryLedgerEntries, type Agent, type BusinessPartner, type CreateDeliveryShipmentInput, type CurrencyCode, type DeliveryCustomerPaymentStatus, type DeliveryMerchantProfile, type DeliveryRecipientPayoutFunding, type DeliveryShipment, type DeliveryShipmentCodAdjustmentRequest, type DeliveryShipmentEvent, type DeliveryShipmentStatus, type PaymentAccount, type PostServiceTab, type WorkspacePaymentMethod,
@@ -14,7 +14,7 @@ import { cn, formatCurrency, formatDateTime, formatNumericInput, generateId, par
 import { STANDARD_PAYMENT_METHODS } from "@/lib/paymentMethods";
 import { isDateInDateRange } from "@/lib/dateRangeFilters";
 import { getLanguageDirection } from "@/lib/i18nRouting";
-import { courierHandoverStatusByShipment, courierSettlementBreakdownByParty, merchantPayoutStatusByShipment, merchantSettlementBreakdownByParty, type ShipmentSettlementBreakdown, type ShipmentSettlementStatus } from "@/lib/postServiceSettlementStatus";
+import { courierHandoverStatusByShipment, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, merchantPayoutStatusByShipment, merchantSettlementBreakdownByParty, type ShipmentSettlementBreakdown, type ShipmentSettlementStatus } from "@/lib/postServiceSettlementStatus";
 import { useWorkspacePermissions } from "@/permissions";
 import { useDateRange } from "@/context/DateRangeContext";
 import { ModulePageFreshness } from "@/ui/components/ModulePageFreshness";
@@ -24,10 +24,10 @@ import { PartnerAutocompleteInput } from "@/ui/components/crm/PartnerAutocomplet
 import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from "@/ui/components/crm/BusinessPartnerFormDialog";
 import { DeleteConfirmationModal } from "@/ui/components/DeleteConfirmationModal";
 import {
-  AppDialog, AppDialogBody, AppDialogContent, AppDialogDescription, AppDialogFooter, AppDialogHeader, AppDialogTitle, MultipleModalLayout,
+  AppDialog, AppDialogBody, AppDialogContent, AppDialogDescription, AppDialogFooter, AppDialogHeader, AppDialogTitle,
   Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, CurrencySelector, Dialog, DialogBody, DialogContent, DialogDescription,
   DialogFooter, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Label, Select, SelectContent, SelectItem, SelectTrigger,
-  SelectValue, Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow, Tabs, TabsContent, TabsList,
+  SelectValue, Switch, Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow, Tabs, TabsContent, TabsList,
   TabsTrigger, Textarea, useToast,
 } from "@/ui/components";
 import { PaymentMethodSelector } from "@/ui/components/PaymentMethodSelector";
@@ -218,8 +218,11 @@ function localizedError(t: TFunction, error: unknown) {
     "A merchant with delivery history cannot be permanently deleted. Make it inactive instead.": "merchantDeleteHistory",
     "The post has no outstanding amount to settle": "postNoOutstanding",
     "Post created but assignment could not be completed. Retry to finish assigning the same post.": "postCreatedAssignmentPending",
-    "This post is no longer available for quick dispatch": "quickDispatchUnavailable",
-    "This quick dispatch operation cannot be resumed": "quickDispatchUnavailable",
+    "This post is no longer available for create and dispatch": "createAndDispatchUnavailable",
+    "This create-and-dispatch operation cannot be resumed": "createAndDispatchUnavailable",
+    "Only an administrator can edit a received post": "adminEditReceivedOnly",
+    "Only received posts can be edited without dispatch": "receivedEditStatusOnly",
+    "This post has changed. Refresh it before editing": "receivedEditChanged",
     "Only an administrator can edit and redispatch a post": "adminRedispatchOnly",
     "Only received or assigned posts can be edited and redispatched": "redispatchStatusOnly",
     "This post has changed. Refresh it before editing and redispatching": "redispatchChanged",
@@ -273,9 +276,10 @@ export function PostService() {
   const [handoverFilter, setHandoverFilter] = useState<PostSettlementFilter>("all");
   const [payoutFilter, setPayoutFilter] = useState<PostSettlementFilter>("all");
   const [showCompleted, setShowCompleted] = useState(false);
+  const [completedOnly, setCompletedOnly] = useState(false);
   // A post is "completed" once it is delivered, its collected cash has been
   // fully handed over by the courier, and the merchant has been paid out.
-  const isCompletedShipment = useCallback((shipment: DeliveryShipment) => shipment.status === "delivered" && courierHandoverStatuses.get(shipment.id) === "settled" && merchantPayoutStatuses.get(shipment.id) === "settled", [courierHandoverStatuses, merchantPayoutStatuses]);
+  const isCompletedShipment = useCallback((shipment: DeliveryShipment) => isDeliveryShipmentCompleted(shipment, courierHandoverStatuses, merchantPayoutStatuses), [courierHandoverStatuses, merchantPayoutStatuses]);
   const pendingCodAdjustmentByShipment = useMemo(() => {
     const result = new Map<string, DeliveryShipmentCodAdjustmentRequest>();
     for (const request of codAdjustmentRequests) {
@@ -283,18 +287,16 @@ export function PostService() {
     }
     return result;
   }, [codAdjustmentRequests]);
-  const visibleShipments = useMemo(() => shipments.filter((shipment) => isDateInDateRange(shipment.createdAt, dateRange, customDates) && (showCompleted || !isCompletedShipment(shipment)) && (statusFilter === "all" || shipment.status === statusFilter) && (!pendingCodChangeFilter || pendingCodAdjustmentByShipment.has(shipment.id)) && (handoverFilter === "all" || (courierHandoverStatuses.get(shipment.id) ?? null) === handoverFilter) && (payoutFilter === "all" || (merchantPayoutStatuses.get(shipment.id) ?? null) === payoutFilter)), [shipments, statusFilter, pendingCodChangeFilter, pendingCodAdjustmentByShipment, handoverFilter, payoutFilter, showCompleted, isCompletedShipment, dateRange, customDates, courierHandoverStatuses, merchantPayoutStatuses]);
+  const visibleShipments = useMemo(() => shipments.filter((shipment) => isDateInDateRange(shipment.createdAt, dateRange, customDates) && (completedOnly ? isCompletedShipment(shipment) : showCompleted || !isCompletedShipment(shipment)) && (statusFilter === "all" || shipment.status === statusFilter) && (!pendingCodChangeFilter || pendingCodAdjustmentByShipment.has(shipment.id)) && (handoverFilter === "all" || (courierHandoverStatuses.get(shipment.id) ?? null) === handoverFilter) && (payoutFilter === "all" || (merchantPayoutStatuses.get(shipment.id) ?? null) === payoutFilter)), [shipments, statusFilter, pendingCodChangeFilter, pendingCodAdjustmentByShipment, handoverFilter, payoutFilter, showCompleted, completedOnly, isCompletedShipment, dateRange, customDates, courierHandoverStatuses, merchantPayoutStatuses]);
   const [shipmentDialogOpen, setShipmentDialogOpen] = useState(false);
   const [shipmentForm, setShipmentForm] = useState<ShipmentForm>(() => initialShipmentForm(features.default_currency));
   const [showRecipientPayout, setShowRecipientPayout] = useState(false);
-  const [quickDispatchOpen, setQuickDispatchOpen] = useState(false);
-  const [quickDispatchOperationId, setQuickDispatchOperationId] = useState<string | null>(null);
-  const [quickDispatchAgentId, setQuickDispatchAgentId] = useState("");
-  const [quickDispatchCourierDeliveryFee, setQuickDispatchCourierDeliveryFee] = useState("");
-  const [quickDispatchVehicleId, setQuickDispatchVehicleId] = useState("none");
-  const [quickDispatchNotes, setQuickDispatchNotes] = useState("");
-  const [quickDispatchError, setQuickDispatchError] = useState<string | null>(null);
-  const quickDispatchTriggerRef = useRef<HTMLButtonElement>(null);
+  const [newPostDispatchEnabled, setNewPostDispatchEnabled] = useState(false);
+  const [newPostOperationId, setNewPostOperationId] = useState<string | null>(null);
+  const [newPostDispatchAgentId, setNewPostDispatchAgentId] = useState("");
+  const [newPostCourierDeliveryFee, setNewPostCourierDeliveryFee] = useState("");
+  const [newPostVehicleId, setNewPostVehicleId] = useState("none");
+  const [newPostDispatchNotes, setNewPostDispatchNotes] = useState("");
   const [merchantDialogOpen, setMerchantDialogOpen] = useState(false);
   const [supplierPartnerDialogOpen, setSupplierPartnerDialogOpen] = useState(false);
   const [isSavingSupplierPartner, setIsSavingSupplierPartner] = useState(false);
@@ -321,6 +323,7 @@ export function PostService() {
   const [editRedispatchTarget, setEditRedispatchTarget] = useState<DeliveryShipment | null>(null);
   const [editRedispatchForm, setEditRedispatchForm] = useState<ShipmentForm>(() => initialShipmentForm(features.default_currency));
   const [showEditRecipientPayout, setShowEditRecipientPayout] = useState(false);
+  const [editReceivedDispatchEnabled, setEditReceivedDispatchEnabled] = useState(false);
   const [editRedispatchOperationId, setEditRedispatchOperationId] = useState<string | null>(null);
   const [editRedispatchAgentId, setEditRedispatchAgentId] = useState("");
   const [editRedispatchCourierDeliveryFee, setEditRedispatchCourierDeliveryFee] = useState("");
@@ -569,10 +572,14 @@ export function PostService() {
   const assignableShipments = shipments.filter((shipment) => ["received", "postponed"].includes(shipment.status));
   const postStatusMetrics = useMemo(() => {
     const counts = new Map<DeliveryShipmentStatus, number>();
-    for (const shipment of shipments) counts.set(shipment.status, (counts.get(shipment.status) ?? 0) + 1);
+    for (const shipment of shipments) {
+      if (shipment.status === "delivered" && isCompletedShipment(shipment)) continue;
+      counts.set(shipment.status, (counts.get(shipment.status) ?? 0) + 1);
+    }
     const statuses = isAdmin ? ADMIN_STATUS_CARD_STATUSES : STAFF_STATUS_CARD_STATUSES;
     return statuses.map((status) => ({ status, value: counts.get(status) ?? 0 }));
-  }, [isAdmin, shipments]);
+  }, [isAdmin, isCompletedShipment, shipments]);
+  const completedPostCount = useMemo(() => shipments.filter(isCompletedShipment).length, [isCompletedShipment, shipments]);
   const pendingCodAdjustmentCount = useMemo(
     () => codAdjustmentRequests.filter((request) => request.status === "pending").length,
     [codAdjustmentRequests],
@@ -654,12 +661,25 @@ export function PostService() {
 
   const handlePostStatusMetricClick = useCallback((status: DeliveryShipmentStatus) => {
     setPendingCodChangeFilter(false);
+    setCompletedOnly(false);
+    setShowCompleted(false);
     setStatusFilter((current) => current === status ? "all" : status);
     handleTabChange("posts");
     setPendingPostsStatusShortcut(true);
   }, [handleTabChange]);
 
+  const handleCompletedPostMetricClick = useCallback(() => {
+    const nextCompletedOnly = !completedOnly;
+    setPendingCodChangeFilter(false);
+    setCompletedOnly(nextCompletedOnly);
+    setShowCompleted(nextCompletedOnly);
+    setStatusFilter(nextCompletedOnly ? "delivered" : "all");
+    handleTabChange("posts");
+    setPendingPostsStatusShortcut(true);
+  }, [completedOnly, handleTabChange]);
+
   const handlePendingCodChangeMetricClick = useCallback(() => {
+    setCompletedOnly(false);
     setPendingCodChangeFilter((current) => !current);
     setStatusFilter("all");
     handleTabChange("posts");
@@ -690,47 +710,35 @@ export function PostService() {
   );
   const isEditRedispatchCodAmountValid = editRedispatchForm.customerPaymentStatus === "prepaid_electronically"
     || (editRedispatchForm.codAmount.trim().length > 0 && parseFormattedNumber(editRedispatchForm.codAmount) > 0);
+  const isEditingReceivedPost = editRedispatchTarget?.status === "received";
+  const shouldDispatchEditedPost = Boolean(editRedispatchTarget && (editRedispatchTarget.status === "assigned" || editReceivedDispatchEnabled));
   const isEditRedispatchFormValid = Boolean(
     editRedispatchForm.merchantProfileId
     && editRedispatchForm.recipientPhone.trim()
     && editRedispatchForm.recipientAddress.trim()
-    && editRedispatchAgentId
+    && (!shouldDispatchEditedPost || editRedispatchAgentId)
     && isEditRedispatchCodAmountValid,
   );
-  const isQuickDispatchFormValid = Boolean(quickDispatchAgentId);
-  function resetQuickDispatch() {
-    setQuickDispatchOpen(false);
-    setQuickDispatchOperationId(null);
-    setQuickDispatchAgentId("");
-    setQuickDispatchCourierDeliveryFee("");
-    setQuickDispatchVehicleId("none");
-    setQuickDispatchNotes("");
-    setQuickDispatchError(null);
-  }
+  const isNewPostFormValid = Boolean(isShipmentFormValid && (!newPostDispatchEnabled || newPostDispatchAgentId));
   function resetShipmentForm() {
     setShipmentForm(initialShipmentForm(features.default_currency));
     setShowRecipientPayout(false);
-    resetQuickDispatch();
+    setNewPostDispatchEnabled(false);
+    setNewPostOperationId(null);
+    setNewPostDispatchAgentId("");
+    setNewPostCourierDeliveryFee("");
+    setNewPostVehicleId("none");
+    setNewPostDispatchNotes("");
   }
-  function closeShipmentFlow() {
+  function closeShipmentFlow(force = false) {
+    if (isSubmitting && !force) return;
     setShipmentDialogOpen(false);
     resetShipmentForm();
   }
-  function openQuickDispatch() {
-    if (!isShipmentFormValid || !canDispatch || isSubmitting) return;
-    setQuickDispatchOperationId((current) => current ?? generateId());
-    setQuickDispatchError(null);
-    setQuickDispatchOpen(true);
-  }
-  function closeQuickDispatch() {
-    if (isSubmitting) return;
-    setQuickDispatchError(null);
-    setQuickDispatchOpen(false);
-  }
-  function handleQuickDispatchCourierChange(agentId: string) {
-    setQuickDispatchAgentId(agentId);
+  function handleNewPostDispatchCourierChange(agentId: string) {
+    setNewPostDispatchAgentId(agentId);
     const courier = agents.find((agent) => agent.id === agentId);
-    setQuickDispatchCourierDeliveryFee(String(courier?.courierDeliveryFee ?? 0));
+    setNewPostCourierDeliveryFee(String(courier?.courierDeliveryFee ?? 0));
   }
   function handleCustomerPaymentStatusChange(value: DeliveryCustomerPaymentStatus) {
     setShipmentForm((current) => ({
@@ -891,8 +899,9 @@ export function PostService() {
     setEditRedispatchTarget(shipment);
     setEditRedispatchForm(shipmentFormFromShipment(shipment));
     setShowEditRecipientPayout(shipment.customerPaymentStatus === "prepaid_electronically" || shipment.recipientPayoutAmount > 0);
-    setEditRedispatchOperationId(generateId());
-    setEditRedispatchAgentId(shipment.assignedAgentId ?? "");
+    setEditReceivedDispatchEnabled(false);
+    setEditRedispatchOperationId(shipment.status === "assigned" ? generateId() : null);
+    setEditRedispatchAgentId(shipment.status === "assigned" ? shipment.assignedAgentId ?? "" : "");
     setEditRedispatchCourierDeliveryFee(String(shipment.courierDeliveryFee ?? (shipment.assignedAgentId ? agents.find((agent) => agent.id === shipment.assignedAgentId)?.courierDeliveryFee ?? 0 : 0)));
     setEditRedispatchVehicleId(currentRun?.vehicleId ?? "none");
     setEditRedispatchNotes("");
@@ -902,6 +911,7 @@ export function PostService() {
     setEditRedispatchTarget(null);
     setEditRedispatchForm(initialShipmentForm(features.default_currency));
     setShowEditRecipientPayout(false);
+    setEditReceivedDispatchEnabled(false);
     setEditRedispatchOperationId(null);
     setEditRedispatchAgentId("");
     setEditRedispatchCourierDeliveryFee("");
@@ -926,14 +936,6 @@ export function PostService() {
       setMerchantDialogOpen(false); setSelectedMerchantPartner(null); setMerchantName(""); setMerchantFee("");
     } catch (error) { toast({ title: t("postService.messages.enableMerchantFailed"), description: localizedError(t, error), variant: "destructive" }); } finally { setIsSubmitting(false); }
   }
-  async function handleCreateShipment(event: FormEvent) {
-    event.preventDefault(); if (!workspaceId || !isAdmin) return; setIsSubmitting(true);
-    try {
-      await createDeliveryShipment(workspaceId, shipmentPayload());
-      toast({ title: t("postService.messages.postCreated"), description: t("postService.messages.postCreatedDescription") });
-      closeShipmentFlow();
-    } catch (error) { toast({ title: t("postService.messages.createPostFailed"), description: localizedError(t, error), variant: "destructive" }); } finally { setIsSubmitting(false); }
-  }
   function shipmentPayload(): CreateDeliveryShipmentInput {
     return {
       merchantProfileId: shipmentForm.merchantProfileId,
@@ -950,33 +952,33 @@ export function PostService() {
       createdBy: user?.id ?? null,
     };
   }
-  async function handleCreateAndQuickDispatch(event: FormEvent) {
+  async function handleCreatePost(event: FormEvent) {
     event.preventDefault();
-    if (!workspaceId || !isAdmin || !canDispatch) return;
-    if (!isShipmentFormValid || !isQuickDispatchFormValid) {
-      setQuickDispatchError(t("postService.errors.quickDispatchRequirements"));
-      return;
-    }
-    const operationId = quickDispatchOperationId ?? generateId();
-    setQuickDispatchOperationId(operationId);
-    setQuickDispatchError(null);
+    if (!workspaceId || !isAdmin || (newPostDispatchEnabled && !canDispatch)) return;
+    if (!isNewPostFormValid) return;
     setIsSubmitting(true);
     try {
-      const { run } = await createAndDispatchDeliveryShipment(workspaceId, {
-        operationId,
-        shipment: shipmentPayload(),
-        agentId: quickDispatchAgentId,
-        courierDeliveryFee: parseFormattedNumber(quickDispatchCourierDeliveryFee || "0"),
-        vehicleId: quickDispatchVehicleId === "none" ? null : quickDispatchVehicleId,
-        notes: quickDispatchNotes || null,
-        createdBy: user?.id ?? null,
-      });
-      toast({ title: t("postService.messages.postCreatedAndAssigned"), description: t("postService.messages.postCreatedAndAssignedDescription", { run: run.runNumber }) });
-      closeShipmentFlow();
+      if (newPostDispatchEnabled) {
+        const operationId = newPostOperationId ?? generateId();
+        setNewPostOperationId(operationId);
+        const { run } = await createAndDispatchDeliveryShipment(workspaceId, {
+          operationId,
+          shipment: shipmentPayload(),
+          agentId: newPostDispatchAgentId,
+          courierDeliveryFee: parseFormattedNumber(newPostCourierDeliveryFee || "0"),
+          vehicleId: newPostVehicleId === "none" ? null : newPostVehicleId,
+          notes: newPostDispatchNotes || null,
+          createdBy: user?.id ?? null,
+        });
+        toast({ title: t("postService.messages.postCreatedAndAssigned"), description: t("postService.messages.postCreatedAndAssignedDescription", { run: run.runNumber }) });
+      } else {
+        await createDeliveryShipment(workspaceId, shipmentPayload());
+        toast({ title: t("postService.messages.postCreated"), description: t("postService.messages.postCreatedDescription") });
+      }
+      closeShipmentFlow(true);
     } catch (error) {
       const description = localizedError(t, error);
-      setQuickDispatchError(description);
-      toast({ title: t("postService.messages.quickDispatchFailed"), description, variant: "destructive" });
+      toast({ title: t(newPostDispatchEnabled ? "postService.messages.createPostAndAssignFailed" : "postService.messages.createPostFailed"), description, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -1070,34 +1072,54 @@ export function PostService() {
     if (!workspaceId || !editRedispatchTarget || !canAdminEditAndRedispatch || !isEditRedispatchFormValid) return;
     setIsSubmitting(true);
     try {
-      const run = await adminEditAndRedispatchDeliveryShipment(workspaceId, {
-        operationId: editRedispatchOperationId ?? generateId(),
-        shipmentId: editRedispatchTarget.id,
-        expectedVersion: editRedispatchTarget.version,
-        actorRole: "admin",
-        actorUserId: user?.id ?? null,
-        shipment: {
-          merchantProfileId: editRedispatchForm.merchantProfileId,
-          recipientPhone: editRedispatchForm.recipientPhone,
-          recipientAddress: editRedispatchForm.recipientAddress,
-          description: editRedispatchForm.description || null,
-          currency: editRedispatchForm.currency,
-          codAmount: parseFormattedNumber(editRedispatchForm.codAmount || "0"),
-          customerPaymentStatus: editRedispatchForm.customerPaymentStatus,
-          recipientPayoutAmount: parseFormattedNumber(editRedispatchForm.recipientPayoutAmount || "0"),
-          recipientPayoutFunding: editRedispatchForm.recipientPayoutFunding,
-          deliveryFee: parseFormattedNumber(editRedispatchForm.deliveryFee || "0"),
-          feePayer: editRedispatchForm.feePayer,
-        },
-        agentId: editRedispatchAgentId,
-        courierDeliveryFee: parseFormattedNumber(editRedispatchCourierDeliveryFee || "0"),
-        vehicleId: editRedispatchVehicleId === "none" ? null : editRedispatchVehicleId,
-        notes: editRedispatchNotes || null,
-      });
-      toast({ title: t("postService.messages.postEditedAndRedispatched"), description: t("postService.messages.postEditedAndRedispatchedDescription", { run: run.runNumber }) });
+      const shipment = {
+        merchantProfileId: editRedispatchForm.merchantProfileId,
+        recipientPhone: editRedispatchForm.recipientPhone,
+        recipientAddress: editRedispatchForm.recipientAddress,
+        description: editRedispatchForm.description || null,
+        currency: editRedispatchForm.currency,
+        codAmount: parseFormattedNumber(editRedispatchForm.codAmount || "0"),
+        customerPaymentStatus: editRedispatchForm.customerPaymentStatus,
+        recipientPayoutAmount: parseFormattedNumber(editRedispatchForm.recipientPayoutAmount || "0"),
+        recipientPayoutFunding: editRedispatchForm.recipientPayoutFunding,
+        deliveryFee: parseFormattedNumber(editRedispatchForm.deliveryFee || "0"),
+        feePayer: editRedispatchForm.feePayer,
+      };
+      if (shouldDispatchEditedPost) {
+        const operationId = editRedispatchOperationId ?? generateId();
+        setEditRedispatchOperationId(operationId);
+        const run = await adminEditAndRedispatchDeliveryShipment(workspaceId, {
+          operationId,
+          shipmentId: editRedispatchTarget.id,
+          expectedVersion: editRedispatchTarget.version,
+          actorRole: "admin",
+          actorUserId: user?.id ?? null,
+          shipment,
+          agentId: editRedispatchAgentId,
+          courierDeliveryFee: parseFormattedNumber(editRedispatchCourierDeliveryFee || "0"),
+          vehicleId: editRedispatchVehicleId === "none" ? null : editRedispatchVehicleId,
+          notes: editRedispatchNotes || null,
+        });
+        toast({
+          title: t(editRedispatchTarget.status === "assigned" ? "postService.messages.postEditedAndRedispatched" : "postService.messages.postEditedAndDispatched"),
+          description: t(editRedispatchTarget.status === "assigned" ? "postService.messages.postEditedAndRedispatchedDescription" : "postService.messages.postEditedAndDispatchedDescription", { run: run.runNumber }),
+        });
+      } else {
+        await adminEditReceivedDeliveryShipment(workspaceId, {
+          shipmentId: editRedispatchTarget.id,
+          expectedVersion: editRedispatchTarget.version,
+          actorRole: "admin",
+          actorUserId: user?.id ?? null,
+          shipment,
+        });
+        toast({ title: t("postService.messages.postUpdated"), description: t("postService.messages.postUpdatedDescription") });
+      }
       closeEditAndRedispatchDialog(true);
     } catch (error) {
-      toast({ title: t("postService.messages.editAndRedispatchFailed"), description: localizedError(t, error), variant: "destructive" });
+      const messageKey = shouldDispatchEditedPost
+        ? editRedispatchTarget.status === "assigned" ? "postService.messages.editAndRedispatchFailed" : "postService.messages.editAndDispatchFailed"
+        : "postService.messages.updatePostFailed";
+      toast({ title: t(messageKey), description: localizedError(t, error), variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -1229,8 +1251,8 @@ export function PostService() {
   return <div className="w-full min-w-0 space-y-6 overflow-x-hidden">
     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><h1 className="flex items-center gap-2 text-2xl font-bold"><PackageCheck className="h-6 w-6 text-primary" />{t("postService.title")}</h1><p className="text-muted-foreground">{t("postService.subtitle")} <ModulePageFreshness className="ms-2" /></p></div>{isAdmin && <div className="flex flex-wrap gap-2"><Button variant="outline" className="gap-2" onClick={() => setMerchantDialogOpen(true)}><Store className="h-4 w-4" />{t("postService.actions.enableMerchant")}</Button><Button className="gap-2" onClick={() => setShipmentDialogOpen(true)}><Plus className="h-4 w-4" />{t("postService.actions.newPost")}</Button></div>}</div>
     <div className="space-y-3">
-      <div className={cn("grid sm:grid-cols-2", isAdmin ? "gap-3 lg:grid-cols-7" : "gap-4 xl:grid-cols-5")}>{postStatusMetrics.map(({ status, value }) => <StatusMetric key={status} compact={isAdmin} icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={!pendingCodChangeFilter && statusFilter === status} onClick={() => handlePostStatusMetricClick(status)} />)}{isAdmin ? <StatusMetric compact icon={FilePenLine} title={t("postService.status.requestChange")} value={pendingCodAdjustmentCount} active={pendingCodChangeFilter} onClick={handlePendingCodChangeMetricClick} /> : null}</div>
-      {isAdmin ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-7">{deliveryBalanceMetrics.map((metric) => <DeliveryBalanceMetric key={metric.id} {...metric} />)}</div> : null}
+      <div className={cn("grid sm:grid-cols-2", isAdmin ? "gap-3 lg:grid-cols-6" : "gap-4 xl:grid-cols-5")}>{postStatusMetrics.filter(({ status }) => !isAdmin || !["returned", "cancelled"].includes(status)).map(({ status, value }) => <StatusMetric key={status} compact={isAdmin} icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={!pendingCodChangeFilter && !completedOnly && statusFilter === status} onClick={() => handlePostStatusMetricClick(status)} />)}{isAdmin ? <><StatusMetric compact icon={PackageCheck} title={t("postService.status.completed")} value={completedPostCount} active={completedOnly} onClick={handleCompletedPostMetricClick} /><StatusMetric compact icon={FilePenLine} title={t("postService.status.requestChange")} value={pendingCodAdjustmentCount} active={pendingCodChangeFilter} onClick={handlePendingCodChangeMetricClick} /></> : null}</div>
+      {isAdmin ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">{postStatusMetrics.filter(({ status }) => status === "returned" || status === "cancelled").map(({ status, value }) => <StatusMetric key={status} compact icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={!pendingCodChangeFilter && !completedOnly && statusFilter === status} onClick={() => handlePostStatusMetricClick(status)} />)}{deliveryBalanceMetrics.map((metric) => <DeliveryBalanceMetric key={metric.id} {...metric} />)}</div> : null}
     </div>
     <Tabs value={activeTab} onValueChange={handleTabChange} className="min-w-0"><TabsList className="h-auto w-full max-w-full flex-wrap justify-start gap-1 sm:w-auto"><TabsTrigger value="posts"><ClipboardList className="me-2 h-4 w-4" />{t("postService.tabs.posts")}</TabsTrigger>{isAdmin && <><TabsTrigger value="dispatch"><Send className="me-2 h-4 w-4" />{t("postService.tabs.dispatch")}</TabsTrigger><TabsTrigger value="my-deliveries"><Route className="me-2 h-4 w-4" />{t("postService.tabs.myDeliveries")}</TabsTrigger><TabsTrigger value="merchants"><Store className="me-2 h-4 w-4" />{t("postService.tabs.merchants")}</TabsTrigger><TabsTrigger value="courier"><Truck className="me-2 h-4 w-4" />{t("postService.tabs.courier")}</TabsTrigger><TabsTrigger value="settlements"><Banknote className="me-2 h-4 w-4" />{t("postService.tabs.settlements")}</TabsTrigger></>}</TabsList>
       <TabsContent ref={postsPanelRef} value="posts" tabIndex={-1} className="mt-4 min-w-0 scroll-mt-24 outline-none">
@@ -1246,11 +1268,11 @@ export function PostService() {
             <div className="flex flex-col gap-2 sm:items-end">
               <span className="text-sm text-muted-foreground">{t("postService.selectedForDispatch", { count: selectedCount })}</span>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                <FilterDropdown dir={pageDirection} value={statusFilter} icon={statusFilterIcons[statusFilter]} label={t("common.status")} options={statusFilterOptions(t)} onChange={(value) => { setPendingCodChangeFilter(false); setStatusFilter(value as PostStatusFilter); }} />
+                <FilterDropdown dir={pageDirection} value={statusFilter} icon={statusFilterIcons[statusFilter]} label={t("common.status")} options={statusFilterOptions(t)} onChange={(value) => { setPendingCodChangeFilter(false); setCompletedOnly(false); setStatusFilter(value as PostStatusFilter); }} />
                 <FilterDropdown dir={pageDirection} value={handoverFilter} icon={settlementFilterIcons[handoverFilter]} label={t("postService.table.cashHandover")} options={settlementFilterOptions(t, t("postService.settlementStatus.handedOver"))} onChange={(value) => setHandoverFilter(value as PostSettlementFilter)} />
                 <FilterDropdown dir={pageDirection} value={payoutFilter} icon={settlementFilterIcons[payoutFilter]} label={t("postService.table.merchantPayout")} options={settlementFilterOptions(t, t("postService.settlementStatus.paid"))} onChange={(value) => setPayoutFilter(value as PostSettlementFilter)} />
                 <label className="flex cursor-pointer select-none items-center gap-2 text-sm font-medium">
-                  <Checkbox className="h-5 w-5 rounded-[6px]" checked={showCompleted} onCheckedChange={(checked) => setShowCompleted(checked === true)} />
+                  <Checkbox className="h-5 w-5 rounded-[6px]" checked={showCompleted} onCheckedChange={(checked) => { const nextShowCompleted = checked === true; setShowCompleted(nextShowCompleted); if (!nextShowCompleted) setCompletedOnly(false); }} />
                   {t("postService.filters.showCompleted")}
                 </label>
               </div>
@@ -1447,111 +1469,49 @@ export function PostService() {
         : t("postService.dialogs.addCourier.title", { defaultValue: "Add Courier" })}
       onSubmit={handleAgentSubmit}
     />
-    <MultipleModalLayout
-      open={shipmentDialogOpen}
-      onOpenChange={(open) => {
-        if (!open) closeShipmentFlow();
-        else setShipmentDialogOpen(true);
-      }}
-      closeDisabled={isSubmitting}
-      onCloseLastPanel={quickDispatchOpen ? closeQuickDispatch : undefined}
-      lastPanelTriggerRef={quickDispatchTriggerRef}
-      breakpoint="xl"
-      align="center"
-      gapClassName="gap-5"
-      panels={[
-        {
-          id: "new-post",
-          label: t("postService.dialogs.newPost.title"),
-          className: "w-full xl:w-[42rem] xl:flex-none",
-          content: <form onSubmit={quickDispatchOpen ? (event) => event.preventDefault() : handleCreateShipment} className="flex min-h-0 flex-1 flex-col">
-        <AppDialogHeader className="relative">
-          <AppDialogTitle>{t("postService.dialogs.newPost.title")}</AppDialogTitle>
-          <AppDialogDescription>{t("postService.dialogs.newPost.description")}</AppDialogDescription>
-          {!quickDispatchOpen ? <Button type="button" variant="ghost" size="icon" className="absolute end-4 top-4 h-8 w-8 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={isSubmitting} aria-label={t("common.close")} onClick={closeShipmentFlow}><X className="h-4 w-4" /></Button> : null}
-        </AppDialogHeader>
-        <AppDialogBody className="grid gap-4 py-5 sm:grid-cols-2">
-            {quickDispatchOpen && !isShipmentFormValid ? <div className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive" role="alert">{t("postService.errors.quickDispatchRequirements")}</div> : null}
-            <Field label={t("postService.form.merchant")}>
-              <Select value={shipmentForm.merchantProfileId} onValueChange={(value) => { const profile = profileById.get(value); updateShipmentForm("merchantProfileId", value); if (profile) { updateShipmentForm("deliveryFee", String(profile.defaultFeeAmount)); updateShipmentForm("feePayer", profile.defaultFeePayer); } }}>
-                <SelectTrigger><SelectValue placeholder={t("postService.placeholders.selectMerchant")} /></SelectTrigger>
-                <SelectContent>
-                  {merchantProfiles.filter((profile) => profile.isActive).map((profile) => <SelectItem key={profile.id} value={profile.id}>{profileNameById.get(profile.id)}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label={t("postService.form.recipientPhone")}><Input required inputMode="tel" autoComplete="tel" value={shipmentForm.recipientPhone} onChange={(event) => updateShipmentForm("recipientPhone", event.target.value)} /></Field>
-            <div className="sm:col-span-2">
-              <Field label={t("postService.form.deliveryAddress")}><Textarea required value={shipmentForm.recipientAddress} onChange={(event) => updateShipmentForm("recipientAddress", event.target.value)} /></Field>
+    <AppDialog open={shipmentDialogOpen} onOpenChange={(open) => { if (!open) closeShipmentFlow(); else setShipmentDialogOpen(true); }}>
+      <AppDialogContent
+        className="max-w-3xl"
+        showCloseButton={!isSubmitting}
+        onPointerDownOutside={(event) => { if (isSubmitting) event.preventDefault(); }}
+        onEscapeKeyDown={(event) => { event.preventDefault(); if (!isSubmitting) closeShipmentFlow(); }}
+      >
+        <form onSubmit={handleCreatePost} className="flex min-h-0 flex-1 flex-col">
+          <AppDialogHeader>
+            <AppDialogTitle>{t("postService.dialogs.newPost.title")}</AppDialogTitle>
+            <AppDialogDescription>{t("postService.dialogs.newPost.description")}</AppDialogDescription>
+          </AppDialogHeader>
+          <AppDialogBody className="grid gap-4 py-5 sm:grid-cols-2">
+            <Field label={t("postService.form.merchant")}><Select value={shipmentForm.merchantProfileId} onValueChange={(value) => { const profile = profileById.get(value); updateShipmentForm("merchantProfileId", value); if (profile) { updateShipmentForm("deliveryFee", String(profile.defaultFeeAmount)); updateShipmentForm("feePayer", profile.defaultFeePayer); } }} disabled={isSubmitting}><SelectTrigger><SelectValue placeholder={t("postService.placeholders.selectMerchant")} /></SelectTrigger><SelectContent>{merchantProfiles.filter((profile) => profile.isActive).map((profile) => <SelectItem key={profile.id} value={profile.id}>{profileNameById.get(profile.id)}</SelectItem>)}</SelectContent></Select></Field>
+            <Field label={t("postService.form.recipientPhone")}><Input required inputMode="tel" autoComplete="tel" value={shipmentForm.recipientPhone} onChange={(event) => updateShipmentForm("recipientPhone", event.target.value)} disabled={isSubmitting} /></Field>
+            <div className="sm:col-span-2"><Field label={t("postService.form.deliveryAddress")}><Textarea required value={shipmentForm.recipientAddress} onChange={(event) => updateShipmentForm("recipientAddress", event.target.value)} disabled={isSubmitting} /></Field></div>
+            <Field label={t("postService.form.description")}><Input value={shipmentForm.description} onChange={(event) => updateShipmentForm("description", event.target.value)} placeholder={t("postService.placeholders.parcelDescription")} disabled={isSubmitting} /></Field>
+            <CurrencySelector value={shipmentForm.currency} onChange={(value: CurrencyCode) => updateShipmentForm("currency", value)} label={t("postService.form.currency")} iqdDisplayPreference={features.iqd_display_preference} allowedCurrencies={currencies} disabled={isSubmitting} />
+            <Field label={t("postService.form.customerPaymentStatus")}><Select value={shipmentForm.customerPaymentStatus} onValueChange={handleCustomerPaymentStatusChange} disabled={isSubmitting}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash_on_delivery">{t("postService.customerPaymentStatus.cash_on_delivery")}</SelectItem><SelectItem value="prepaid_electronically">{t("postService.customerPaymentStatus.prepaid_electronically")}</SelectItem></SelectContent></Select></Field>
+            <Field label={t("postService.form.codAmount")}><div className="space-y-1.5"><div className="relative"><Input className="pe-12" value={formatNumericInput(shipmentForm.codAmount)} onChange={(event) => updateShipmentForm("codAmount", sanitizeNumericInput(event.target.value, { allowDecimal: shipmentForm.currency !== "iqd" }))} inputMode={shipmentForm.currency === "iqd" ? "numeric" : "decimal"} placeholder="0" disabled={isSubmitting || shipmentForm.customerPaymentStatus === "prepaid_electronically"} aria-invalid={!isCodAmountValid} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(shipmentForm.currency, features.iqd_display_preference)}</span></div>{shipmentForm.customerPaymentStatus === "cash_on_delivery" && !isCodAmountValid ? <p className="text-xs text-destructive">{t("postService.errors.cashOnDeliveryCodRequired")}</p> : null}</div></Field>
+            {showRecipientPayout || shipmentForm.customerPaymentStatus === "prepaid_electronically" ? <div className="space-y-3 sm:col-span-2"><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><div className="flex items-center justify-between gap-2"><Label>{t("postService.form.recipientPayoutAmount")}</Label>{shipmentForm.customerPaymentStatus === "cash_on_delivery" ? <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 px-2 text-muted-foreground" disabled={isSubmitting} onClick={() => { updateShipmentForm("recipientPayoutAmount", ""); setShowRecipientPayout(false); }}><X className="h-3.5 w-3.5" />{t("common.remove")}</Button> : null}</div><div className="relative"><Input className="pe-12" value={formatNumericInput(shipmentForm.recipientPayoutAmount)} onChange={(event) => updateShipmentForm("recipientPayoutAmount", sanitizeNumericInput(event.target.value, { allowDecimal: shipmentForm.currency !== "iqd" }))} inputMode={shipmentForm.currency === "iqd" ? "numeric" : "decimal"} placeholder="0" disabled={isSubmitting} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(shipmentForm.currency, features.iqd_display_preference)}</span></div></div><Field label={t("postService.form.recipientPayoutFunding")}><Select value={shipmentForm.recipientPayoutFunding} onValueChange={(value: DeliveryRecipientPayoutFunding) => updateShipmentForm("recipientPayoutFunding", value)} disabled={isSubmitting}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="courier_advance">{t("postService.recipientPayoutFunding.courier_advance")}</SelectItem><SelectItem value="workspace_payment">{t("postService.recipientPayoutFunding.workspace_payment")}</SelectItem></SelectContent></Select></Field></div><p className="text-xs text-muted-foreground">{t(`postService.form.recipientPayoutFundingHint.${shipmentForm.recipientPayoutFunding}`)}</p></div> : <Button type="button" variant="outline" className="h-auto min-h-10 justify-start gap-2 border-dashed text-muted-foreground hover:text-foreground" disabled={isSubmitting} onClick={() => setShowRecipientPayout(true)}><HandCoins className="h-4 w-4" />{t("postService.actions.addRecipientPayout")}</Button>}
+            <Field label={t("postService.form.deliveryFee")}><div className="relative"><Input className="pe-12" value={formatNumericInput(shipmentForm.deliveryFee)} onChange={(event) => updateShipmentForm("deliveryFee", sanitizeNumericInput(event.target.value, { allowDecimal: shipmentForm.currency !== "iqd" }))} inputMode={shipmentForm.currency === "iqd" ? "numeric" : "decimal"} placeholder="0" disabled={isSubmitting} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(shipmentForm.currency, features.iqd_display_preference)}</span></div></Field>
+            <Field label={t("postService.form.feePayer")}><Select value={shipmentForm.feePayer} onValueChange={(value: "merchant" | "recipient") => updateShipmentForm("feePayer", value)} disabled={isSubmitting}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="merchant">{t("postService.feePayer.merchant")}</SelectItem><SelectItem value="recipient">{t("postService.feePayer.recipient")}</SelectItem></SelectContent></Select></Field>
+            <div className="sm:col-span-2 rounded-xl border bg-muted/30 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1"><p className="flex items-center gap-2 text-sm font-semibold"><Send className="h-4 w-4" />{t("postService.dialogs.newPost.dispatchDetails")}</p><p className="text-xs text-muted-foreground">{t("postService.dialogs.newPost.dispatchNowDescription")}</p></div>
+                <div className="flex shrink-0 items-center gap-2"><Label htmlFor="new-post-dispatch" className="text-sm font-medium">{t("postService.dialogs.newPost.dispatchNow")}</Label><Switch id="new-post-dispatch" checked={newPostDispatchEnabled} onCheckedChange={setNewPostDispatchEnabled} disabled={isSubmitting || !canDispatch} /></div>
+              </div>
+              <div className={cn("mt-4 grid gap-4 transition-opacity sm:grid-cols-2", !newPostDispatchEnabled && "opacity-50")} aria-disabled={!newPostDispatchEnabled}>
+                <Field label={t("postService.form.courier")}><Select value={newPostDispatchAgentId} onValueChange={handleNewPostDispatchCourierChange} disabled={isSubmitting || !newPostDispatchEnabled}><SelectTrigger><SelectValue placeholder={t("postService.placeholders.selectCourier")} /></SelectTrigger><SelectContent>{agents.filter((agent) => agent.status === "active" && agent.agentType === "courier").map((agent) => <SelectItem key={agent.id} value={agent.id}>{agentNameById.get(agent.id) ?? t("postService.unknownCourier")} · {agent.zone}</SelectItem>)}</SelectContent></Select></Field>
+                <Field label={t("postService.form.courierDeliveryFee")}><div className="grid gap-1"><div className="relative"><Input className="pe-12" value={formatNumericInput(newPostCourierDeliveryFee)} onChange={(event) => setNewPostCourierDeliveryFee(sanitizeNumericInput(event.target.value, { allowDecimal: true }))} inputMode="decimal" placeholder="0" disabled={isSubmitting || !newPostDispatchEnabled || !newPostDispatchAgentId} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(shipmentForm.currency, features.iqd_display_preference)}</span></div><p className="text-xs text-muted-foreground">{t("postService.form.courierDeliveryFeeHint")}</p></div></Field>
+                <Field label={t("postService.form.vehicleOptional")}><Select value={newPostVehicleId} onValueChange={setNewPostVehicleId} disabled={isSubmitting || !newPostDispatchEnabled}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">{t("postService.options.noVehicle")}</SelectItem>{vehicles.filter((vehicle) => vehicle.status === "active").map((vehicle) => <SelectItem key={vehicle.id} value={vehicle.id}>{vehicle.plateNumber} · {vehicle.model}</SelectItem>)}</SelectContent></Select></Field>
+                <Field label={t("postService.form.dispatchNote")}><Input value={newPostDispatchNotes} onChange={(event) => setNewPostDispatchNotes(event.target.value)} placeholder={t("postService.placeholders.manifestNote")} disabled={isSubmitting || !newPostDispatchEnabled} /></Field>
+              </div>
             </div>
-            <Field label={t("postService.form.description")}><Input value={shipmentForm.description} onChange={(event) => updateShipmentForm("description", event.target.value)} placeholder={t("postService.placeholders.parcelDescription")} /></Field>
-            <CurrencySelector value={shipmentForm.currency} onChange={(value: CurrencyCode) => updateShipmentForm("currency", value)} label={t("postService.form.currency")} iqdDisplayPreference={features.iqd_display_preference} allowedCurrencies={currencies} />
-            <Field label={t("postService.form.customerPaymentStatus")}>
-              <Select value={shipmentForm.customerPaymentStatus} onValueChange={handleCustomerPaymentStatusChange}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="cash_on_delivery">{t("postService.customerPaymentStatus.cash_on_delivery")}</SelectItem><SelectItem value="prepaid_electronically">{t("postService.customerPaymentStatus.prepaid_electronically")}</SelectItem></SelectContent>
-              </Select>
-            </Field>
-            <Field label={t("postService.form.codAmount")}><div className="space-y-1.5"><div className="relative"><Input className="pe-12" value={formatNumericInput(shipmentForm.codAmount)} onChange={(event) => updateShipmentForm("codAmount", sanitizeNumericInput(event.target.value, { allowDecimal: shipmentForm.currency !== "iqd" }))} inputMode={shipmentForm.currency === "iqd" ? "numeric" : "decimal"} placeholder="0" disabled={shipmentForm.customerPaymentStatus === "prepaid_electronically"} aria-invalid={!isCodAmountValid} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(shipmentForm.currency, features.iqd_display_preference)}</span></div>{shipmentForm.customerPaymentStatus === "cash_on_delivery" && !isCodAmountValid ? <p className="text-xs text-destructive">{t("postService.errors.cashOnDeliveryCodRequired")}</p> : null}</div></Field>
-            {showRecipientPayout || shipmentForm.customerPaymentStatus === "prepaid_electronically" ? <div className="space-y-3 sm:col-span-2"><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><div className="flex items-center justify-between gap-2"><Label>{t("postService.form.recipientPayoutAmount")}</Label>{shipmentForm.customerPaymentStatus === "cash_on_delivery" ? <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 px-2 text-muted-foreground" onClick={() => { updateShipmentForm("recipientPayoutAmount", ""); setShowRecipientPayout(false); }}><X className="h-3.5 w-3.5" />{t("common.remove")}</Button> : null}</div><div className="relative"><Input className="pe-12" value={formatNumericInput(shipmentForm.recipientPayoutAmount)} onChange={(event) => updateShipmentForm("recipientPayoutAmount", sanitizeNumericInput(event.target.value, { allowDecimal: shipmentForm.currency !== "iqd" }))} inputMode={shipmentForm.currency === "iqd" ? "numeric" : "decimal"} placeholder="0" /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(shipmentForm.currency, features.iqd_display_preference)}</span></div></div><Field label={t("postService.form.recipientPayoutFunding")}><Select value={shipmentForm.recipientPayoutFunding} onValueChange={(value: DeliveryRecipientPayoutFunding) => updateShipmentForm("recipientPayoutFunding", value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="courier_advance">{t("postService.recipientPayoutFunding.courier_advance")}</SelectItem><SelectItem value="workspace_payment">{t("postService.recipientPayoutFunding.workspace_payment")}</SelectItem></SelectContent></Select></Field></div><p className="text-xs text-muted-foreground">{t(`postService.form.recipientPayoutFundingHint.${shipmentForm.recipientPayoutFunding}`)}</p></div> : <Button type="button" variant="outline" className="h-auto min-h-10 justify-start gap-2 border-dashed text-muted-foreground hover:text-foreground" onClick={() => setShowRecipientPayout(true)}><HandCoins className="h-4 w-4" />{t("postService.actions.addRecipientPayout")}</Button>}
-            <Field label={t("postService.form.deliveryFee")}><div className="relative"><Input className="pe-12" value={formatNumericInput(shipmentForm.deliveryFee)} onChange={(event) => updateShipmentForm("deliveryFee", sanitizeNumericInput(event.target.value, { allowDecimal: shipmentForm.currency !== "iqd" }))} inputMode={shipmentForm.currency === "iqd" ? "numeric" : "decimal"} placeholder="0" /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(shipmentForm.currency, features.iqd_display_preference)}</span></div></Field>
-            <Field label={t("postService.form.feePayer")}>
-              <Select value={shipmentForm.feePayer} onValueChange={(value: "merchant" | "recipient") => updateShipmentForm("feePayer", value)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="merchant">{t("postService.feePayer.merchant")}</SelectItem>
-                  <SelectItem value="recipient">{t("postService.feePayer.recipient")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-        </AppDialogBody>
-        {!quickDispatchOpen ? <AppDialogFooter>
-          <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={isSubmitting} onClick={closeShipmentFlow}>{t("postService.actions.cancel")}</Button>
-          {isShipmentFormValid && canDispatch ? <Button ref={quickDispatchTriggerRef} type="button" variant="outline" className="w-full gap-2 sm:w-auto" disabled={isSubmitting} onClick={openQuickDispatch}><Send className="h-4 w-4" />{t("postService.actions.quickDispatch")}</Button> : null}
-          <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || !isShipmentFormValid}>{t("postService.actions.createPost")}</Button>
-        </AppDialogFooter> : null}
-          </form>,
-        },
-        ...(quickDispatchOpen ? [{
-          id: "quick-dispatch",
-          label: t("postService.dialogs.quickDispatch.title"),
-          className: "w-full xl:w-[34rem] xl:flex-none",
-          content: <form onSubmit={handleCreateAndQuickDispatch} className="flex min-h-0 flex-1 flex-col">
-        <AppDialogHeader className="relative">
-          <AppDialogTitle>{t("postService.dialogs.quickDispatch.title")}</AppDialogTitle>
-          <AppDialogDescription>{t("postService.dialogs.quickDispatch.description")}</AppDialogDescription>
-          <Button type="button" variant="ghost" size="icon" className="absolute end-4 top-4 h-8 w-8 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={isSubmitting} aria-label={t("common.close")} onClick={closeQuickDispatch}><X className="h-4 w-4" /></Button>
-        </AppDialogHeader>
-        <AppDialogBody className="grid gap-4 py-5 sm:grid-cols-2">
-          <Field label={t("postService.form.courier")}>
-            <Select value={quickDispatchAgentId} onValueChange={handleQuickDispatchCourierChange} disabled={isSubmitting}>
-              <SelectTrigger><SelectValue placeholder={t("postService.placeholders.selectCourier")} /></SelectTrigger>
-              <SelectContent>{agents.filter((agent) => agent.status === "active" && agent.agentType === "courier").map((agent) => <SelectItem key={agent.id} value={agent.id}>{agentNameById.get(agent.id) ?? t("postService.unknownCourier")} · {agent.zone}</SelectItem>)}</SelectContent>
-            </Select>
-          </Field>
-          <Field label={t("postService.form.courierDeliveryFee")}>
-            <div className="grid gap-1">
-              <div className="relative"><Input className="pe-12" value={formatNumericInput(quickDispatchCourierDeliveryFee)} onChange={(event) => setQuickDispatchCourierDeliveryFee(sanitizeNumericInput(event.target.value, { allowDecimal: true }))} inputMode="decimal" placeholder="0" disabled={isSubmitting || !quickDispatchAgentId} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(features.default_currency, features.iqd_display_preference)}</span></div>
-              <p className="text-xs text-muted-foreground">{t("postService.form.courierDeliveryFeeHint")}</p>
-            </div>
-          </Field>
-          <Field label={t("postService.form.vehicleOptional")}>
-            <Select value={quickDispatchVehicleId} onValueChange={setQuickDispatchVehicleId} disabled={isSubmitting}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="none">{t("postService.options.noVehicle")}</SelectItem>{vehicles.filter((vehicle) => vehicle.status === "active").map((vehicle) => <SelectItem key={vehicle.id} value={vehicle.id}>{vehicle.plateNumber} · {vehicle.model}</SelectItem>)}</SelectContent>
-            </Select>
-          </Field>
-          <Field label={t("postService.form.dispatchNote")}><Input value={quickDispatchNotes} onChange={(event) => setQuickDispatchNotes(event.target.value)} placeholder={t("postService.placeholders.manifestNote")} disabled={isSubmitting} /></Field>
-          {quickDispatchError ? <p className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive" role="alert">{quickDispatchError}</p> : null}
-        </AppDialogBody>
-        <AppDialogFooter>
-          <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={isSubmitting} onClick={closeShipmentFlow}>{t("postService.actions.cancel")}</Button>
-          <Button type="submit" className="w-full gap-2 sm:w-auto" disabled={isSubmitting || !isShipmentFormValid || !isQuickDispatchFormValid}><Send className="h-4 w-4" />{isSubmitting ? t("postService.actions.creatingAndAssigning") : t("postService.actions.createPostAndAssign")}</Button>
-        </AppDialogFooter>
-          </form>,
-        }] : []),
-      ]}
-    />
+          </AppDialogBody>
+          <AppDialogFooter>
+            <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={isSubmitting} onClick={() => closeShipmentFlow()}>{t("postService.actions.cancel")}</Button>
+            <Button type="submit" className="w-full gap-2 sm:w-auto" disabled={isSubmitting || !isNewPostFormValid}>{newPostDispatchEnabled ? <Send className="h-4 w-4" /> : <PackageCheck className="h-4 w-4" />}{isSubmitting ? (newPostDispatchEnabled ? t("postService.actions.creatingAndAssigning") : t("common.processing")) : (newPostDispatchEnabled ? t("postService.actions.createPostAndAssign") : t("postService.actions.createPost"))}</Button>
+          </AppDialogFooter>
+        </form>
+      </AppDialogContent>
+    </AppDialog>
     <AppDialog open={!!editRedispatchTarget} onOpenChange={(open) => { if (!open) closeEditAndRedispatchDialog(); }}>
       <AppDialogContent
         className="max-w-3xl"
@@ -1561,8 +1521,8 @@ export function PostService() {
       >
         <form onSubmit={handleEditAndRedispatchPost} className="flex min-h-0 flex-1 flex-col">
           <AppDialogHeader>
-            <AppDialogTitle>{t("postService.dialogs.editAndRedispatch.title")}</AppDialogTitle>
-            <AppDialogDescription>{t("postService.dialogs.editAndRedispatch.description", { trackingNumber: editRedispatchTarget?.trackingNumber })}</AppDialogDescription>
+            <AppDialogTitle>{t(isEditingReceivedPost ? "postService.dialogs.editAndDispatch.title" : "postService.dialogs.editAndRedispatch.title")}</AppDialogTitle>
+            <AppDialogDescription>{t(isEditingReceivedPost ? "postService.dialogs.editAndDispatch.description" : "postService.dialogs.editAndRedispatch.description", { trackingNumber: editRedispatchTarget?.trackingNumber })}</AppDialogDescription>
           </AppDialogHeader>
           <AppDialogBody className="grid gap-4 py-5 sm:grid-cols-2">
             <Field label={t("postService.form.merchant")}>
@@ -1585,15 +1545,22 @@ export function PostService() {
             {showEditRecipientPayout || editRedispatchForm.customerPaymentStatus === "prepaid_electronically" ? <div className="space-y-3 sm:col-span-2"><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><div className="flex items-center justify-between gap-2"><Label>{t("postService.form.recipientPayoutAmount")}</Label>{editRedispatchForm.customerPaymentStatus === "cash_on_delivery" ? <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 px-2 text-muted-foreground" disabled={isSubmitting} onClick={() => { updateEditRedispatchForm("recipientPayoutAmount", ""); setShowEditRecipientPayout(false); }}><X className="h-3.5 w-3.5" />{t("common.remove")}</Button> : null}</div><div className="relative"><Input className="pe-12" value={formatNumericInput(editRedispatchForm.recipientPayoutAmount)} onChange={(event) => updateEditRedispatchForm("recipientPayoutAmount", sanitizeNumericInput(event.target.value, { allowDecimal: editRedispatchForm.currency !== "iqd" }))} inputMode={editRedispatchForm.currency === "iqd" ? "numeric" : "decimal"} placeholder="0" disabled={isSubmitting} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(editRedispatchForm.currency, features.iqd_display_preference)}</span></div></div><Field label={t("postService.form.recipientPayoutFunding")}><Select value={editRedispatchForm.recipientPayoutFunding} onValueChange={(value: DeliveryRecipientPayoutFunding) => updateEditRedispatchForm("recipientPayoutFunding", value)} disabled={isSubmitting}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="courier_advance">{t("postService.recipientPayoutFunding.courier_advance")}</SelectItem><SelectItem value="workspace_payment">{t("postService.recipientPayoutFunding.workspace_payment")}</SelectItem></SelectContent></Select></Field></div><p className="text-xs text-muted-foreground">{t(`postService.form.recipientPayoutFundingHint.${editRedispatchForm.recipientPayoutFunding}`)}</p></div> : <Button type="button" variant="outline" className="h-auto min-h-10 justify-start gap-2 border-dashed text-muted-foreground hover:text-foreground" disabled={isSubmitting} onClick={() => setShowEditRecipientPayout(true)}><HandCoins className="h-4 w-4" />{t("postService.actions.addRecipientPayout")}</Button>}
             <Field label={t("postService.form.deliveryFee")}><div className="relative"><Input className="pe-12" value={formatNumericInput(editRedispatchForm.deliveryFee)} onChange={(event) => updateEditRedispatchForm("deliveryFee", sanitizeNumericInput(event.target.value, { allowDecimal: editRedispatchForm.currency !== "iqd" }))} inputMode={editRedispatchForm.currency === "iqd" ? "numeric" : "decimal"} placeholder="0" disabled={isSubmitting} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(editRedispatchForm.currency, features.iqd_display_preference)}</span></div></Field>
             <Field label={t("postService.form.feePayer")}><Select value={editRedispatchForm.feePayer} onValueChange={(value: "merchant" | "recipient") => updateEditRedispatchForm("feePayer", value)} disabled={isSubmitting}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="merchant">{t("postService.feePayer.merchant")}</SelectItem><SelectItem value="recipient">{t("postService.feePayer.recipient")}</SelectItem></SelectContent></Select></Field>
-            <div className="sm:col-span-2 border-t pt-4"><p className="mb-3 flex items-center gap-2 text-sm font-semibold"><Send className="h-4 w-4" />{t("postService.dialogs.editAndRedispatch.dispatchDetails")}</p></div>
-            <Field label={t("postService.form.courier")}><Select value={editRedispatchAgentId} onValueChange={handleEditRedispatchCourierChange} disabled={isSubmitting}><SelectTrigger><SelectValue placeholder={t("postService.placeholders.selectCourier")} /></SelectTrigger><SelectContent>{agents.filter((agent) => agent.status === "active" && agent.agentType === "courier").map((agent) => <SelectItem key={agent.id} value={agent.id}>{agentNameById.get(agent.id) ?? t("postService.unknownCourier")} · {agent.zone}</SelectItem>)}</SelectContent></Select></Field>
-            <Field label={t("postService.form.courierDeliveryFee")}><div className="grid gap-1"><div className="relative"><Input className="pe-12" value={formatNumericInput(editRedispatchCourierDeliveryFee)} onChange={(event) => setEditRedispatchCourierDeliveryFee(sanitizeNumericInput(event.target.value, { allowDecimal: true }))} inputMode="decimal" placeholder="0" disabled={isSubmitting || !editRedispatchAgentId} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(editRedispatchForm.currency, features.iqd_display_preference)}</span></div><p className="text-xs text-muted-foreground">{t("postService.form.courierDeliveryFeeHint")}</p></div></Field>
-            <Field label={t("postService.form.vehicleOptional")}><Select value={editRedispatchVehicleId} onValueChange={setEditRedispatchVehicleId} disabled={isSubmitting}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">{t("postService.options.noVehicle")}</SelectItem>{vehicles.filter((vehicle) => vehicle.status === "active").map((vehicle) => <SelectItem key={vehicle.id} value={vehicle.id}>{vehicle.plateNumber} · {vehicle.model}</SelectItem>)}</SelectContent></Select></Field>
-            <Field label={t("postService.form.dispatchNote")}><Input value={editRedispatchNotes} onChange={(event) => setEditRedispatchNotes(event.target.value)} placeholder={t("postService.placeholders.manifestNote")} disabled={isSubmitting} /></Field>
+            <div className={cn("sm:col-span-2", isEditingReceivedPost ? "rounded-xl border bg-muted/30 p-4" : "border-t pt-4")}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1"><p className="flex items-center gap-2 text-sm font-semibold"><Send className="h-4 w-4" />{t(isEditingReceivedPost ? "postService.dialogs.editAndDispatch.dispatchDetails" : "postService.dialogs.editAndRedispatch.dispatchDetails")}</p>{isEditingReceivedPost ? <p className="text-xs text-muted-foreground">{t("postService.dialogs.editAndDispatch.dispatchNowDescription")}</p> : null}</div>
+                {isEditingReceivedPost ? <div className="flex shrink-0 items-center gap-2"><Label htmlFor="edit-received-post-dispatch" className="text-sm font-medium">{t("postService.dialogs.editAndDispatch.dispatchNow")}</Label><Switch id="edit-received-post-dispatch" checked={editReceivedDispatchEnabled} onCheckedChange={setEditReceivedDispatchEnabled} disabled={isSubmitting || !canDispatch} /></div> : null}
+              </div>
+              <div className={cn("mt-4 grid gap-4 transition-opacity sm:grid-cols-2", isEditingReceivedPost && !editReceivedDispatchEnabled && "opacity-50")} aria-disabled={isEditingReceivedPost && !editReceivedDispatchEnabled}>
+                <Field label={t("postService.form.courier")}><Select value={editRedispatchAgentId} onValueChange={handleEditRedispatchCourierChange} disabled={isSubmitting || (isEditingReceivedPost && !editReceivedDispatchEnabled)}><SelectTrigger><SelectValue placeholder={t("postService.placeholders.selectCourier")} /></SelectTrigger><SelectContent>{agents.filter((agent) => agent.status === "active" && agent.agentType === "courier").map((agent) => <SelectItem key={agent.id} value={agent.id}>{agentNameById.get(agent.id) ?? t("postService.unknownCourier")} · {agent.zone}</SelectItem>)}</SelectContent></Select></Field>
+                <Field label={t("postService.form.courierDeliveryFee")}><div className="grid gap-1"><div className="relative"><Input className="pe-12" value={formatNumericInput(editRedispatchCourierDeliveryFee)} onChange={(event) => setEditRedispatchCourierDeliveryFee(sanitizeNumericInput(event.target.value, { allowDecimal: true }))} inputMode="decimal" placeholder="0" disabled={isSubmitting || (isEditingReceivedPost && !editReceivedDispatchEnabled) || !editRedispatchAgentId} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(editRedispatchForm.currency, features.iqd_display_preference)}</span></div><p className="text-xs text-muted-foreground">{t("postService.form.courierDeliveryFeeHint")}</p></div></Field>
+                <Field label={t("postService.form.vehicleOptional")}><Select value={editRedispatchVehicleId} onValueChange={setEditRedispatchVehicleId} disabled={isSubmitting || (isEditingReceivedPost && !editReceivedDispatchEnabled)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">{t("postService.options.noVehicle")}</SelectItem>{vehicles.filter((vehicle) => vehicle.status === "active").map((vehicle) => <SelectItem key={vehicle.id} value={vehicle.id}>{vehicle.plateNumber} · {vehicle.model}</SelectItem>)}</SelectContent></Select></Field>
+                <Field label={t("postService.form.dispatchNote")}><Input value={editRedispatchNotes} onChange={(event) => setEditRedispatchNotes(event.target.value)} placeholder={t("postService.placeholders.manifestNote")} disabled={isSubmitting || (isEditingReceivedPost && !editReceivedDispatchEnabled)} /></Field>
+              </div>
+            </div>
           </AppDialogBody>
           <AppDialogFooter>
             <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={isSubmitting} onClick={() => closeEditAndRedispatchDialog()}>{t("postService.actions.cancel")}</Button>
-            <Button type="submit" className="w-full gap-2 sm:w-auto" disabled={isSubmitting || !isEditRedispatchFormValid}><Send className="h-4 w-4" />{isSubmitting ? t("postService.actions.redispatching") : t("postService.actions.saveAndRedispatch")}</Button>
+            <Button type="submit" className="w-full gap-2 sm:w-auto" disabled={isSubmitting || !isEditRedispatchFormValid}>{shouldDispatchEditedPost ? <Send className="h-4 w-4" /> : <PackageCheck className="h-4 w-4" />}{isSubmitting ? (shouldDispatchEditedPost ? t(editRedispatchTarget?.status === "assigned" ? "postService.actions.redispatching" : "postService.actions.dispatching") : t("common.processing")) : (shouldDispatchEditedPost ? t(editRedispatchTarget?.status === "assigned" ? "postService.actions.saveAndRedispatch" : "postService.actions.saveAndDispatch") : t("postService.actions.savePost"))}</Button>
           </AppDialogFooter>
         </form>
       </AppDialogContent>
@@ -1936,7 +1903,7 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
         <TableCell><SettlementStatusBadge t={t} kind="payout" status={payoutStatusByShipment.get(shipment.id) ?? "none"} /></TableCell>
         <TableCell className="text-end"><div className="flex justify-end gap-1">
           {canPlayVoiceReason && voiceReasonEvent && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onPlayVoiceReason(voiceReasonEvent)}><Play className="h-4 w-4" />{t("postService.actions.playback")}</Button>}
-          {canAdminEditAndRedispatch && ["received", "assigned"].includes(shipment.status) && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onEditAndRedispatch(shipment)}><Pencil className="h-4 w-4" />{t("postService.actions.editAndRedispatch")}</Button>}
+          {canAdminEditAndRedispatch && ["received", "assigned"].includes(shipment.status) && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onEditAndRedispatch(shipment)}><Pencil className="h-4 w-4" />{t(shipment.status === "received" ? "postService.actions.editAndDispatch" : "postService.actions.editAndRedispatch")}</Button>}
           {canUpdate && shipment.status === "assigned" && <>{!pendingCodAdjustment && <Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "delivered")} title={t("postService.actions.markDelivered")}><CheckCircle2 className="h-4 w-4 text-emerald-600" /></Button>}<Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "postponed")} title={t("postService.actions.postpone")}><History className="h-4 w-4 text-amber-600" /></Button><Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "returned")} title={t("postService.actions.return")}><Undo2 className="h-4 w-4 text-rose-600" /></Button></>}
           {canRequestCodChange && !pendingCodAdjustment && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onRequestCodChange(shipment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.requestChange")}</Button>}
           {canReviewCodChange && pendingCodAdjustment && <Button size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onReviewCodChange(pendingCodAdjustment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.reviewChange")}</Button>}
@@ -2045,7 +2012,7 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
 
         {(canPlayVoiceReason && voiceReasonEvent || canAdminEditAndRedispatch && ["received", "assigned"].includes(shipment.status) || canUpdate && shipment.status === "assigned" || canRequestCodChange && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) || canReviewCodChange && pendingCodAdjustment || canTransfer && shipment.status === "returned" || canSettle && shipment.status === "delivered") && <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
           {canPlayVoiceReason && voiceReasonEvent && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onPlayVoiceReason(voiceReasonEvent)}><Play className="h-4 w-4" />{t("postService.actions.playback")}</Button>}
-          {canAdminEditAndRedispatch && ["received", "assigned"].includes(shipment.status) && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onEditAndRedispatch(shipment)}><Pencil className="h-4 w-4" />{t("postService.actions.editAndRedispatch")}</Button>}
+          {canAdminEditAndRedispatch && ["received", "assigned"].includes(shipment.status) && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onEditAndRedispatch(shipment)}><Pencil className="h-4 w-4" />{t(shipment.status === "received" ? "postService.actions.editAndDispatch" : "postService.actions.editAndRedispatch")}</Button>}
           {canUpdate && shipment.status === "assigned" && <>
             {!pendingCodAdjustment && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => onStatus(shipment, "delivered")}><CheckCircle2 className="h-4 w-4" />{t("postService.actions.markDelivered")}</Button>}
             <Button type="button" size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onStatus(shipment, "postponed")}><History className="h-4 w-4" />{t("postService.actions.postpone")}</Button>

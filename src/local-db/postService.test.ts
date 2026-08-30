@@ -14,6 +14,7 @@ let createDeliveryMerchantProfile: typeof import("./postService").createDelivery
 let createDeliveryShipment: typeof import("./postService").createDeliveryShipment;
 let createAndDispatchDeliveryShipment: typeof import("./postService").createAndDispatchDeliveryShipment;
 let createDeliveryRun: typeof import("./postService").createDeliveryRun;
+let adminEditReceivedDeliveryShipment: typeof import("./postService").adminEditReceivedDeliveryShipment;
 let adminEditAndRedispatchDeliveryShipment: typeof import("./postService").adminEditAndRedispatchDeliveryShipment;
 let transferReturnedDeliveryShipment: typeof import("./postService").transferReturnedDeliveryShipment;
 let updateDeliveryShipmentStatus: typeof import("./postService").updateDeliveryShipmentStatus;
@@ -73,7 +74,7 @@ describe("Post Service COD accounting", () => {
   beforeAll(async () => {
     installBrowserEnvironment();
     const postService = await import("./postService");
-    ({ createDeliveryMerchantProfile, createDeliveryShipment, createAndDispatchDeliveryShipment, createDeliveryRun, adminEditAndRedispatchDeliveryShipment, transferReturnedDeliveryShipment, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryCourierFee, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment, requestDeliveryShipmentCodAdjustment, reviewDeliveryShipmentCodAdjustment } = postService);
+    ({ createDeliveryMerchantProfile, createDeliveryShipment, createAndDispatchDeliveryShipment, createDeliveryRun, adminEditReceivedDeliveryShipment, adminEditAndRedispatchDeliveryShipment, transferReturnedDeliveryShipment, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryCourierFee, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment, requestDeliveryShipmentCodAdjustment, reviewDeliveryShipmentCodAdjustment } = postService);
   });
 
   beforeEach(async () => {
@@ -135,7 +136,7 @@ describe("Post Service COD accounting", () => {
     ]));
   });
 
-  it("retries quick dispatch without creating a duplicate post or manifest", async () => {
+  it("retries create and dispatch without creating a duplicate post or manifest", async () => {
     const merchant = partner(crypto.randomUUID());
     const deliveryCourier = { ...courier(crypto.randomUUID()), courierDeliveryFee: 15 };
     await db.business_partners.put(merchant);
@@ -802,6 +803,37 @@ describe("Post Service COD accounting", () => {
       expect.objectContaining({ previousStatus: "received", status: "assigned", note: expect.stringContaining("recipient phone") }),
     ]));
     expect(await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray()).toHaveLength(0);
+  });
+
+  it("allows an admin to edit a received post without dispatching it", async () => {
+    const merchant = partner(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id, defaultFeeAmount: 5 });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id, recipientPhone: "07500000000", recipientAddress: "Baghdad", currency: "iqd", codAmount: 100,
+    });
+
+    const updated = await adminEditReceivedDeliveryShipment(WORKSPACE_ID, {
+      shipmentId: shipment.id, expectedVersion: shipment.version, actorRole: "admin",
+      shipment: {
+        merchantProfileId: profile.id, recipientPhone: "07511111111", recipientAddress: "Erbil", description: "Corrected parcel",
+        currency: "iqd", codAmount: 125, deliveryFee: 10, feePayer: "recipient", customerPaymentStatus: "cash_on_delivery",
+      },
+    });
+
+    expect(updated).toMatchObject({
+      status: "received", assignedAgentId: null, assignedRunId: null, recipientPhone: "07511111111", recipientAddress: "Erbil",
+      description: "Corrected parcel", codAmount: 125, deliveryFee: 10, feePayer: "recipient", version: shipment.version + 1,
+    });
+    expect(await db.delivery_runs.where("workspaceId").equals(WORKSPACE_ID).toArray()).toHaveLength(0);
+    const events = await db.delivery_shipment_events.where("[workspaceId+shipmentId]").equals([WORKSPACE_ID, shipment.id]).toArray();
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ previousStatus: "received", status: "received", note: expect.stringContaining("recipient phone") }),
+    ]));
+    await expect(adminEditReceivedDeliveryShipment(WORKSPACE_ID, {
+      shipmentId: shipment.id, expectedVersion: updated.version, actorRole: "staff" as "admin",
+      shipment: { merchantProfileId: profile.id, recipientPhone: "07500000000", recipientAddress: "Baghdad", currency: "iqd", codAmount: 1 },
+    })).rejects.toThrow("Only an administrator");
   });
 
   it("retires the prior manifest when an admin edits and redispatches an assigned post", async () => {

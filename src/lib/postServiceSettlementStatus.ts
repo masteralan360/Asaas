@@ -1,4 +1,4 @@
-import type { DeliveryLedgerEntry } from "@/local-db";
+import type { DeliveryLedgerEntry, DeliveryShipment } from "@/local-db";
 
 export type ShipmentSettlementStatus = "settled" | "partial" | "outstanding";
 
@@ -10,6 +10,20 @@ export interface ShipmentSettlementBreakdown {
   paid: number;
   /** Remaining obligation after FIFO allocation. */
   outstanding: number;
+}
+
+/**
+ * A delivery post is complete only after delivery and both of its settlement
+ * obligations have been cleared.
+ */
+export function isDeliveryShipmentCompleted(
+  shipment: Pick<DeliveryShipment, "id" | "status">,
+  courierHandoverStatuses: ReadonlyMap<string, ShipmentSettlementStatus>,
+  merchantPayoutStatuses: ReadonlyMap<string, ShipmentSettlementStatus>,
+) {
+  return shipment.status === "delivered"
+    && courierHandoverStatuses.get(shipment.id) === "settled"
+    && merchantPayoutStatuses.get(shipment.id) === "settled";
 }
 
 /** Grouped by `${partyId}:${currency}` in chronological (oldest first) order. */
