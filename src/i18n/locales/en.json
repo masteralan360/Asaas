@@ -7142,7 +7142,7 @@
             "receivedEditStatusOnly": "Only received posts can be edited without dispatch.",
             "receivedEditChanged": "This post has changed. Refresh it before editing.",
             "adminRedispatchOnly": "Only an administrator can edit and redispatch a post.",
-            "redispatchStatusOnly": "Only received or assigned posts can be edited and redispatched.",
+            "redispatchStatusOnly": "Only received, assigned, or postponed posts can be edited and redispatched.",
             "redispatchChanged": "This post has changed. Refresh it before editing and redispatching.",
             "redispatchUnavailable": "This edit-and-redispatch operation can no longer be resumed."
         }

@@ -224,7 +224,7 @@ function localizedError(t: TFunction, error: unknown) {
     "Only received posts can be edited without dispatch": "receivedEditStatusOnly",
     "This post has changed. Refresh it before editing": "receivedEditChanged",
     "Only an administrator can edit and redispatch a post": "adminRedispatchOnly",
-    "Only received or assigned posts can be edited and redispatched": "redispatchStatusOnly",
+    "Only received, assigned, or postponed posts can be edited and redispatched": "redispatchStatusOnly",
     "This post has changed. Refresh it before editing and redispatching": "redispatchChanged",
     "This admin redispatch operation cannot be resumed": "redispatchUnavailable",
   };
@@ -711,7 +711,7 @@ export function PostService() {
   const isEditRedispatchCodAmountValid = editRedispatchForm.customerPaymentStatus === "prepaid_electronically"
     || (editRedispatchForm.codAmount.trim().length > 0 && parseFormattedNumber(editRedispatchForm.codAmount) > 0);
   const isEditingReceivedPost = editRedispatchTarget?.status === "received";
-  const shouldDispatchEditedPost = Boolean(editRedispatchTarget && (editRedispatchTarget.status === "assigned" || editReceivedDispatchEnabled));
+  const shouldDispatchEditedPost = Boolean(editRedispatchTarget && (editRedispatchTarget.status !== "received" || editReceivedDispatchEnabled));
   const isEditRedispatchFormValid = Boolean(
     editRedispatchForm.merchantProfileId
     && editRedispatchForm.recipientPhone.trim()
@@ -900,8 +900,8 @@ export function PostService() {
     setEditRedispatchForm(shipmentFormFromShipment(shipment));
     setShowEditRecipientPayout(shipment.customerPaymentStatus === "prepaid_electronically" || shipment.recipientPayoutAmount > 0);
     setEditReceivedDispatchEnabled(false);
-    setEditRedispatchOperationId(shipment.status === "assigned" ? generateId() : null);
-    setEditRedispatchAgentId(shipment.status === "assigned" ? shipment.assignedAgentId ?? "" : "");
+    setEditRedispatchOperationId(shipment.status !== "received" ? generateId() : null);
+    setEditRedispatchAgentId(shipment.status !== "received" ? shipment.assignedAgentId ?? "" : "");
     setEditRedispatchCourierDeliveryFee(String(shipment.courierDeliveryFee ?? (shipment.assignedAgentId ? agents.find((agent) => agent.id === shipment.assignedAgentId)?.courierDeliveryFee ?? 0 : 0)));
     setEditRedispatchVehicleId(currentRun?.vehicleId ?? "none");
     setEditRedispatchNotes("");
@@ -1101,8 +1101,8 @@ export function PostService() {
           notes: editRedispatchNotes || null,
         });
         toast({
-          title: t(editRedispatchTarget.status === "assigned" ? "postService.messages.postEditedAndRedispatched" : "postService.messages.postEditedAndDispatched"),
-          description: t(editRedispatchTarget.status === "assigned" ? "postService.messages.postEditedAndRedispatchedDescription" : "postService.messages.postEditedAndDispatchedDescription", { run: run.runNumber }),
+          title: t(editRedispatchTarget.status !== "received" ? "postService.messages.postEditedAndRedispatched" : "postService.messages.postEditedAndDispatched"),
+          description: t(editRedispatchTarget.status !== "received" ? "postService.messages.postEditedAndRedispatchedDescription" : "postService.messages.postEditedAndDispatchedDescription", { run: run.runNumber }),
         });
       } else {
         await adminEditReceivedDeliveryShipment(workspaceId, {
@@ -1117,7 +1117,7 @@ export function PostService() {
       closeEditAndRedispatchDialog(true);
     } catch (error) {
       const messageKey = shouldDispatchEditedPost
-        ? editRedispatchTarget.status === "assigned" ? "postService.messages.editAndRedispatchFailed" : "postService.messages.editAndDispatchFailed"
+        ? editRedispatchTarget.status !== "received" ? "postService.messages.editAndRedispatchFailed" : "postService.messages.editAndDispatchFailed"
         : "postService.messages.updatePostFailed";
       toast({ title: t(messageKey), description: localizedError(t, error), variant: "destructive" });
     } finally {
@@ -1560,7 +1560,7 @@ export function PostService() {
           </AppDialogBody>
           <AppDialogFooter>
             <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={isSubmitting} onClick={() => closeEditAndRedispatchDialog()}>{t("postService.actions.cancel")}</Button>
-            <Button type="submit" className="w-full gap-2 sm:w-auto" disabled={isSubmitting || !isEditRedispatchFormValid}>{shouldDispatchEditedPost ? <Send className="h-4 w-4" /> : <PackageCheck className="h-4 w-4" />}{isSubmitting ? (shouldDispatchEditedPost ? t(editRedispatchTarget?.status === "assigned" ? "postService.actions.redispatching" : "postService.actions.dispatching") : t("common.processing")) : (shouldDispatchEditedPost ? t(editRedispatchTarget?.status === "assigned" ? "postService.actions.saveAndRedispatch" : "postService.actions.saveAndDispatch") : t("postService.actions.savePost"))}</Button>
+            <Button type="submit" className="w-full gap-2 sm:w-auto" disabled={isSubmitting || !isEditRedispatchFormValid}>{shouldDispatchEditedPost ? <Send className="h-4 w-4" /> : <PackageCheck className="h-4 w-4" />}{isSubmitting ? (shouldDispatchEditedPost ? t(editRedispatchTarget?.status !== "received" ? "postService.actions.redispatching" : "postService.actions.dispatching") : t("common.processing")) : (shouldDispatchEditedPost ? t(editRedispatchTarget?.status !== "received" ? "postService.actions.saveAndRedispatch" : "postService.actions.saveAndDispatch") : t("postService.actions.savePost"))}</Button>
           </AppDialogFooter>
         </form>
       </AppDialogContent>
@@ -1903,8 +1903,8 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
         <TableCell><SettlementStatusBadge t={t} kind="payout" status={payoutStatusByShipment.get(shipment.id) ?? "none"} /></TableCell>
         <TableCell className="text-end"><div className="flex justify-end gap-1">
           {canPlayVoiceReason && voiceReasonEvent && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onPlayVoiceReason(voiceReasonEvent)}><Play className="h-4 w-4" />{t("postService.actions.playback")}</Button>}
-          {canAdminEditAndRedispatch && ["received", "assigned"].includes(shipment.status) && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onEditAndRedispatch(shipment)}><Pencil className="h-4 w-4" />{t(shipment.status === "received" ? "postService.actions.editAndDispatch" : "postService.actions.editAndRedispatch")}</Button>}
-          {canUpdate && shipment.status === "assigned" && <>{!pendingCodAdjustment && <Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "delivered")} title={t("postService.actions.markDelivered")}><CheckCircle2 className="h-4 w-4 text-emerald-600" /></Button>}<Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "postponed")} title={t("postService.actions.postpone")}><History className="h-4 w-4 text-amber-600" /></Button><Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "returned")} title={t("postService.actions.return")}><Undo2 className="h-4 w-4 text-rose-600" /></Button></>}
+          {canAdminEditAndRedispatch && ["received", "assigned", "postponed"].includes(shipment.status) && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onEditAndRedispatch(shipment)}><Pencil className="h-4 w-4" />{t(shipment.status === "received" ? "postService.actions.editAndDispatch" : "postService.actions.editAndRedispatch")}</Button>}
+          {canUpdate && ["assigned", "postponed"].includes(shipment.status) && <>{!pendingCodAdjustment && <Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "delivered")} title={t("postService.actions.markDelivered")}><CheckCircle2 className="h-4 w-4 text-emerald-600" /></Button>}{shipment.status === "assigned" ? <Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "postponed")} title={t("postService.actions.postpone")}><History className="h-4 w-4 text-amber-600" /></Button> : null}<Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "returned")} title={t("postService.actions.return")}><Undo2 className="h-4 w-4 text-rose-600" /></Button></>}
           {canRequestCodChange && !pendingCodAdjustment && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onRequestCodChange(shipment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.requestChange")}</Button>}
           {canReviewCodChange && pendingCodAdjustment && <Button size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onReviewCodChange(pendingCodAdjustment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.reviewChange")}</Button>}
           {canTransfer && shipment.status === "returned" && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onTransfer(shipment)}><Send className="h-4 w-4" />{t("postService.actions.transferPost")}</Button>}
@@ -2010,12 +2010,12 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
           <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg border px-2.5 py-2"><span className="text-xs text-muted-foreground">{t("postService.table.merchantPayout")}</span><SettlementStatusBadge t={t} kind="payout" status={payoutStatusByShipment.get(shipment.id) ?? "none"} /></div>
         </div>
 
-        {(canPlayVoiceReason && voiceReasonEvent || canAdminEditAndRedispatch && ["received", "assigned"].includes(shipment.status) || canUpdate && shipment.status === "assigned" || canRequestCodChange && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) || canReviewCodChange && pendingCodAdjustment || canTransfer && shipment.status === "returned" || canSettle && shipment.status === "delivered") && <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
+        {(canPlayVoiceReason && voiceReasonEvent || canAdminEditAndRedispatch && ["received", "assigned", "postponed"].includes(shipment.status) || canUpdate && ["assigned", "postponed"].includes(shipment.status) || canRequestCodChange && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) || canReviewCodChange && pendingCodAdjustment || canTransfer && shipment.status === "returned" || canSettle && shipment.status === "delivered") && <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
           {canPlayVoiceReason && voiceReasonEvent && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onPlayVoiceReason(voiceReasonEvent)}><Play className="h-4 w-4" />{t("postService.actions.playback")}</Button>}
-          {canAdminEditAndRedispatch && ["received", "assigned"].includes(shipment.status) && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onEditAndRedispatch(shipment)}><Pencil className="h-4 w-4" />{t(shipment.status === "received" ? "postService.actions.editAndDispatch" : "postService.actions.editAndRedispatch")}</Button>}
-          {canUpdate && shipment.status === "assigned" && <>
+          {canAdminEditAndRedispatch && ["received", "assigned", "postponed"].includes(shipment.status) && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onEditAndRedispatch(shipment)}><Pencil className="h-4 w-4" />{t(shipment.status === "received" ? "postService.actions.editAndDispatch" : "postService.actions.editAndRedispatch")}</Button>}
+          {canUpdate && ["assigned", "postponed"].includes(shipment.status) && <>
             {!pendingCodAdjustment && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => onStatus(shipment, "delivered")}><CheckCircle2 className="h-4 w-4" />{t("postService.actions.markDelivered")}</Button>}
-            <Button type="button" size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onStatus(shipment, "postponed")}><History className="h-4 w-4" />{t("postService.actions.postpone")}</Button>
+            {shipment.status === "assigned" ? <Button type="button" size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onStatus(shipment, "postponed")}><History className="h-4 w-4" />{t("postService.actions.postpone")}</Button> : null}
             <Button type="button" size="sm" variant="outline" className="gap-1.5 border-rose-500/30 text-rose-700 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-300" onClick={() => onStatus(shipment, "returned")}><Undo2 className="h-4 w-4" />{t("postService.actions.return")}</Button>
           </>}
           {canRequestCodChange && !pendingCodAdjustment && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onRequestCodChange(shipment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.requestChange")}</Button>}

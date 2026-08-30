@@ -1337,8 +1337,8 @@ type DeliveryShipmentRedispatchEdit = Pick<
 >;
 
 type CreateDeliveryRunOptions = {
-  /** Used only by the admin correction flow. */
-  allowAssignedShipment?: boolean;
+  /** Used only by the admin correction flow to replace an active manifest. */
+  allowActiveManifestShipment?: boolean;
   shipmentEdits?: ReadonlyMap<string, DeliveryShipmentRedispatchEdit>;
   eventNotes?: ReadonlyMap<string, string | null>;
 };
@@ -1364,7 +1364,7 @@ async function createDeliveryRunWithId(
     "received",
     "postponed",
     ...(input.allowReturnedShipment ? ["returned"] : []),
-    ...(options?.allowAssignedShipment ? ["assigned"] : []),
+    ...(options?.allowActiveManifestShipment ? ["assigned"] : []),
   ];
   if (shipments.some((shipment) => !shipment || shipment.isDeleted || shipment.workspaceId !== workspaceId || !dispatchableStatuses.includes(shipment.status))) {
     throw new Error("Only unassigned, received, or postponed shipments can be dispatched");
@@ -1398,7 +1398,7 @@ async function createDeliveryRunWithId(
   const returnedRunItems = (await Promise.all((shipments as DeliveryShipment[])
     .filter((shipment) => (
       shipment.assignedRunId
-      && (shipment.status === "returned" || (options?.allowAssignedShipment && shipment.status === "assigned"))
+      && (shipment.status === "returned" || (options?.allowActiveManifestShipment && ["assigned", "postponed"].includes(shipment.status)))
     ))
     .map(async (shipment) => {
       const previousItem = await db.delivery_run_items
@@ -1595,8 +1595,8 @@ export async function adminEditAndRedispatchDeliveryShipment(
   if (original.version !== input.expectedVersion) {
     throw new Error("This post has changed. Refresh it before editing and redispatching");
   }
-  if (!( ["received", "assigned"] as DeliveryShipmentStatus[]).includes(original.status)) {
-    throw new Error("Only received or assigned posts can be edited and redispatched");
+  if (!( ["received", "assigned", "postponed"] as DeliveryShipmentStatus[]).includes(original.status)) {
+    throw new Error("Only received, assigned, or postponed posts can be edited and redispatched");
   }
 
   const profile = await db.delivery_merchant_profiles.get(input.shipment.merchantProfileId);
@@ -1630,7 +1630,7 @@ export async function adminEditAndRedispatchDeliveryShipment(
   const priorAssignment = original.assignedRunId
     ? ` Previous manifest ${original.assignedRunId} was closed for redispatch.`
     : "";
-  const auditAction = original.status === "assigned" ? "redispatched" : "dispatched";
+  const auditAction = original.status === "received" ? "dispatched" : "redispatched";
   const auditNote = `Admin edited and ${auditAction} this post${changedFields.length ? `: ${changedFields.join(", ")}.` : "."}${priorAssignment}`;
 
   return createDeliveryRunWithId(workspaceId, {
@@ -1642,7 +1642,7 @@ export async function adminEditAndRedispatchDeliveryShipment(
     notes: input.notes,
     createdBy: input.actorUserId,
   }, runId, {
-    allowAssignedShipment: true,
+    allowActiveManifestShipment: true,
     shipmentEdits: new Map([[original.id, edit]]),
     eventNotes: new Map([[original.id, auditNote]]),
   });

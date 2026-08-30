@@ -676,6 +676,48 @@ describe("Post Service COD accounting", () => {
     await expect(updateDeliveryShipmentStatus(shipment.id, { status, actorAgentId: deliveryCourier.id })).resolves.toBeDefined();
   });
 
+  it("allows the assigned courier to resolve a postponed post as delivered", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const deliveryCourier = courier(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id, defaultFeeAmount: 10 });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id, recipientPhone: "07500000000", recipientAddress: "Baghdad", currency: "iqd", codAmount: 100,
+      deliveryFee: 10, feePayer: "merchant",
+    });
+    await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id], courierDeliveryFee: 5 });
+    await updateDeliveryShipmentStatus(shipment.id, { status: "postponed", actorAgentId: deliveryCourier.id });
+
+    await expect(updateDeliveryShipmentStatus(shipment.id, { status: "delivered", actorAgentId: crypto.randomUUID() })).rejects.toThrow("assigned to them");
+    await updateDeliveryShipmentStatus(shipment.id, { status: "delivered", actorAgentId: deliveryCourier.id });
+
+    expect(await db.delivery_shipments.get(shipment.id)).toMatchObject({ status: "delivered", assignedAgentId: deliveryCourier.id });
+    const events = await db.delivery_shipment_events.where("[workspaceId+shipmentId]").equals([WORKSPACE_ID, shipment.id]).toArray();
+    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ previousStatus: "postponed", status: "delivered", actorAgentId: deliveryCourier.id })]));
+    const entries = await db.delivery_ledger_entries.where("[workspaceId+shipmentId]").equals([WORKSPACE_ID, shipment.id]).toArray();
+    expect(entries.map((entry) => entry.kind).sort()).toEqual(["courier_collection", "courier_delivery_fee", "merchant_cod_payable", "merchant_fee"]);
+  });
+
+  it("allows the assigned courier to resolve a postponed post as returned without accounting entries", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const deliveryCourier = courier(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id, recipientPhone: "07500000000", recipientAddress: "Baghdad", currency: "iqd", codAmount: 100,
+    });
+    await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
+    await updateDeliveryShipmentStatus(shipment.id, { status: "postponed", actorAgentId: deliveryCourier.id });
+    await updateDeliveryShipmentStatus(shipment.id, { status: "returned", actorAgentId: deliveryCourier.id });
+
+    expect(await db.delivery_shipments.get(shipment.id)).toMatchObject({ status: "returned", assignedAgentId: deliveryCourier.id });
+    const events = await db.delivery_shipment_events.where("[workspaceId+shipmentId]").equals([WORKSPACE_ID, shipment.id]).toArray();
+    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ previousStatus: "postponed", status: "returned", actorAgentId: deliveryCourier.id })]));
+    expect(await db.delivery_ledger_entries.where("[workspaceId+shipmentId]").equals([WORKSPACE_ID, shipment.id]).toArray()).toHaveLength(0);
+  });
+
   it("accepts and persists a voice-only returned or postponed reason", async () => {
     const merchant = partner(crypto.randomUUID());
     const deliveryCourier = courier(crypto.randomUUID());
@@ -870,6 +912,43 @@ describe("Post Service COD accounting", () => {
       shipment: { merchantProfileId: profile.id, recipientPhone: "07500000000", recipientAddress: "Baghdad", currency: "iqd", codAmount: 1 },
       agentId: replacementCourier.id,
     })).rejects.toThrow("Only an administrator");
+  });
+
+  it("retires the prior manifest when an admin edits and redispatches a postponed post", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const originalCourier = courier(crypto.randomUUID());
+    const replacementCourier = courier(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    await db.agents.bulkPut([originalCourier, replacementCourier]);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id, recipientPhone: "07500000000", recipientAddress: "Baghdad", currency: "iqd", codAmount: 100,
+    });
+    const originalRun = await createDeliveryRun(WORKSPACE_ID, { agentId: originalCourier.id, shipmentIds: [shipment.id], courierDeliveryFee: 5 });
+    await updateDeliveryShipmentStatus(shipment.id, { status: "postponed", actorAgentId: originalCourier.id });
+    const postponed = await db.delivery_shipments.get(shipment.id);
+
+    const replacementRun = await adminEditAndRedispatchDeliveryShipment(WORKSPACE_ID, {
+      operationId: crypto.randomUUID(), shipmentId: shipment.id, expectedVersion: postponed!.version, actorRole: "admin",
+      shipment: {
+        merchantProfileId: profile.id, recipientPhone: "07500000000", recipientAddress: "Corrected Baghdad", currency: "iqd", codAmount: 150,
+        customerPaymentStatus: "cash_on_delivery", deliveryFee: 0, feePayer: "merchant",
+      },
+      agentId: replacementCourier.id, courierDeliveryFee: 8,
+    });
+
+    const redispatched = await db.delivery_shipments.get(shipment.id);
+    const originalItem = await db.delivery_run_items.where("[runId+shipmentId]").equals([originalRun.id, shipment.id]).first();
+    const replacementItem = await db.delivery_run_items.where("[runId+shipmentId]").equals([replacementRun.id, shipment.id]).first();
+    const events = await db.delivery_shipment_events.where("[workspaceId+shipmentId]").equals([WORKSPACE_ID, shipment.id]).toArray();
+
+    expect(redispatched).toMatchObject({ status: "assigned", assignedAgentId: replacementCourier.id, assignedRunId: replacementRun.id, recipientAddress: "Corrected Baghdad", codAmount: 150, courierDeliveryFee: 8 });
+    expect(originalItem?.returnedAt).toBeTruthy();
+    expect(replacementItem).toMatchObject({ returnedAt: null });
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ previousStatus: "postponed", status: "assigned", note: expect.stringContaining("redispatched") }),
+    ]));
+    expect(await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray()).toHaveLength(0);
   });
 
   it("uses a daily PST tracking sequence in local workspaces", async () => {
