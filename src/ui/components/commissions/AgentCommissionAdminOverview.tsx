@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
-import { BadgeCheck, BadgePercent, CircleDollarSign, ReceiptText, RotateCcw, SlidersHorizontal } from 'lucide-react'
+import { BadgeCheck, BadgePercent, CircleDollarSign, Eye, ReceiptText, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { useAgentCommissionEntries, useSalesOrderAgentAssignments, useSalesOrders, type CurrencyCode, type IQDDisplayPreference } from '@/local-db'
+import { useAgentCommissionEntries, useSalesOrderAgentAssignments, useSalesOrders, type IQDDisplayPreference } from '@/local-db'
 import {
     Badge,
     Button,
@@ -25,15 +25,11 @@ import { AgentCommissionSettlementDialog } from './AgentCommissionSettlementDial
 export function AgentCommissionAdminOverview({
     workspaceId,
     iqdPreference,
-    defaultCurrency,
-    canSettle = false,
-    userId
+    canReview = false
 }: {
     workspaceId: string
     iqdPreference: IQDDisplayPreference
-    defaultCurrency: CurrencyCode
-    canSettle?: boolean
-    userId?: string | null
+    canReview?: boolean
 }) {
     const { t } = useTranslation()
     const entries = useAgentCommissionEntries(workspaceId)
@@ -93,11 +89,6 @@ export function AgentCommissionAdminOverview({
                         value={<CommissionCurrencyTotalsView totals={summary.earned} iqdPreference={iqdPreference} />}
                     />
                     <OverviewMetric
-                        label={t('salesAgentCommissions.approved')}
-                        icon={BadgePercent}
-                        value={<CommissionCurrencyTotalsView totals={summary.approved} iqdPreference={iqdPreference} />}
-                    />
-                    <OverviewMetric
                         label={t('salesAgentCommissions.paidReversed')}
                         icon={RotateCcw}
                         value={(
@@ -132,11 +123,10 @@ export function AgentCommissionAdminOverview({
                                     <TableHead className="text-end">{t('salesAgentCommissions.returned')}</TableHead>
                                     <TableHead className="text-end">{t('salesAgentCommissions.cancelledZero')}</TableHead>
                                     <TableHead className="text-end">{t('salesAgentCommissions.recognized')}</TableHead>
-                                    <TableHead className="text-end">{t('salesAgentCommissions.approved')}</TableHead>
                                     <TableHead className="text-end">{t('salesAgentCommissions.paid')}</TableHead>
                                     <TableHead className="text-end">{t('salesAgentCommissions.reversed')}</TableHead>
                                     <TableHead className="text-end">{t('salesAgentCommissions.due')}</TableHead>
-                                    {canSettle ? <TableHead className="text-end">{t('salesAgentCommissions.action')}</TableHead> : null}
+                                    {canReview ? <TableHead className="text-end">{t('salesAgentCommissions.action')}</TableHead> : null}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -158,14 +148,13 @@ export function AgentCommissionAdminOverview({
                                         <TableCell className="text-end font-semibold text-orange-600">{returnedOrders}</TableCell>
                                         <TableCell className="text-end font-semibold text-rose-600">{cancelledOrders} / {zeroValueOrders}</TableCell>
                                         <TableCell className="text-end font-semibold"><CommissionCurrencyTotalsView totals={agentSummary.earned} iqdPreference={iqdPreference} /></TableCell>
-                                        <TableCell className="text-end font-semibold"><CommissionCurrencyTotalsView totals={agentSummary.approved} iqdPreference={iqdPreference} /></TableCell>
                                         <TableCell className="text-end font-semibold text-emerald-600"><CommissionCurrencyTotalsView totals={agentSummary.paid} iqdPreference={iqdPreference} /></TableCell>
                                         <TableCell className="text-end font-semibold text-rose-600"><CommissionCurrencyTotalsView totals={agentSummary.reversed} iqdPreference={iqdPreference} /></TableCell>
                                         <TableCell className="text-end font-black"><CommissionCurrencyTotalsView totals={agentSummary.due} iqdPreference={iqdPreference} /></TableCell>
-                                        {canSettle ? (
+                                        {canReview ? (
                                             <TableCell className="text-end">
                                                 <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setSettlementAgentId(entry.agent.id)}>
-                                                    <SlidersHorizontal className="h-3.5 w-3.5" /> {t('salesAgentCommissions.manage')}
+                                                    <Eye className="h-3.5 w-3.5" /> {t('salesAgentCommissions.review')}
                                                 </Button>
                                             </TableCell>
                                         ) : null}
@@ -181,12 +170,9 @@ export function AgentCommissionAdminOverview({
                     open={true}
                     onOpenChange={(open) => { if (!open) setSettlementAgentId(null) }}
                     workspaceId={workspaceId}
-                    agentId={settlementAgentId}
                     agentName={directory.agentById.get(settlementAgentId)?.name || t('salesAgentCommissions.agent')}
                     entries={entries.filter((entry) => entry.agentId === settlementAgentId && !entry.isDeleted)}
                     iqdPreference={iqdPreference}
-                    defaultCurrency={defaultCurrency}
-                    userId={userId}
                 />
             ) : null}
         </Card>

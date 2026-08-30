@@ -189,9 +189,7 @@ export function Agents() {
                     <AgentCommissionAdminOverview
                         workspaceId={user.workspaceId}
                         iqdPreference={features.iqd_display_preference}
-                        defaultCurrency={features.default_currency}
-                        canSettle={canSettleCommissions}
-                        userId={user.id}
+                        canReview={canViewAllCommissions || canSettleCommissions}
                     />
                 ) : null}
 

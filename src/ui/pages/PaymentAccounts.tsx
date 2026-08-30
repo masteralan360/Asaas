@@ -43,6 +43,7 @@ import {
   AppDialog,
   AppDialogBody,
   AppDialogContent,
+  AppDialogDescription,
   AppDialogFooter,
   AppDialogHeader,
   AppDialogTitle,
@@ -88,6 +89,38 @@ const MAX_OPENING_BALANCE_CURRENCIES = 4
 interface OpeningBalanceRow {
   currency: CurrencyCode
   amount: string
+}
+
+type AdjustmentWarningLanguage = 'english' | 'arabic' | 'kurdish'
+
+const ADJUSTMENT_WARNING_LANGUAGE_CONTENT: Record<AdjustmentWarningLanguage, {
+  language: string
+  direction: 'ltr' | 'rtl'
+  labelKey: string
+  messageKey: string
+  labelClassName: string
+}> = {
+  english: {
+    language: 'en',
+    direction: 'ltr',
+    labelKey: 'paymentAccounts.adjustmentGateEnglishLabel',
+    messageKey: 'paymentAccounts.adjustmentGateEnglishMessage',
+    labelClassName: 'uppercase',
+  },
+  arabic: {
+    language: 'ar',
+    direction: 'rtl',
+    labelKey: 'paymentAccounts.adjustmentGateArabicLabel',
+    messageKey: 'paymentAccounts.adjustmentGateArabicMessage',
+    labelClassName: '',
+  },
+  kurdish: {
+    language: 'ckb',
+    direction: 'rtl',
+    labelKey: 'paymentAccounts.adjustmentGateKurdishLabel',
+    messageKey: 'paymentAccounts.adjustmentGateKurdishMessage',
+    labelClassName: '',
+  },
 }
 
 const PAYMENT_ACCOUNT_ADJUSTMENT_REASON_KEYS: PaymentAccountAdjustmentReason[] = [
@@ -144,6 +177,13 @@ function humanizeIdentifier(value: string) {
   return value
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function adjustmentWarningLanguageOrder(language: string): AdjustmentWarningLanguage[] {
+  const normalizedLanguage = language.toLowerCase()
+  if (normalizedLanguage.startsWith('ar')) return ['arabic', 'kurdish', 'english']
+  if (normalizedLanguage.startsWith('ku') || normalizedLanguage.startsWith('ckb')) return ['kurdish', 'arabic', 'english']
+  return ['english', 'kurdish', 'arabic']
 }
 
 function sourceModuleLabel(transaction: PaymentTransaction | null, t: ReturnType<typeof useTranslation>['t']) {
@@ -350,7 +390,7 @@ function applyMovementFilters(entries: AccountMovementEntry[], filters: AccountM
 }
 
 export function PaymentAccounts() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { toast } = useToast()
   const { user } = useAuth()
   const { features } = useWorkspace()
@@ -381,6 +421,7 @@ export function PaymentAccounts() {
   const [movementFilters, setMovementFilters] = useState<AccountMovementFilters>(DEFAULT_MOVEMENT_FILTERS)
   const [draftMovementFilters, setDraftMovementFilters] = useState<AccountMovementFilters>(DEFAULT_MOVEMENT_FILTERS)
   const [movementFilterDialogOpen, setMovementFilterDialogOpen] = useState(false)
+  const [adjustmentWarningOpen, setAdjustmentWarningOpen] = useState(false)
   const [accountOperationKind, setAccountOperationKind] = useState<PaymentAccountManualOperationKind | null>(null)
   const [accountOperationCurrency, setAccountOperationCurrency] = useState<CurrencyCode>('iqd')
   const [accountOperationAmount, setAccountOperationAmount] = useState('')
@@ -396,6 +437,7 @@ export function PaymentAccounts() {
     () => accounts.find((account) => account.id === selectedAccountId) ?? null,
     [accounts, selectedAccountId],
   )
+  const adjustmentWarningLanguages = adjustmentWarningLanguageOrder(i18n.language)
   const activeAccountCount = useMemo(
     () => accounts.filter((account) => account.isActive).length,
     [accounts],
@@ -742,6 +784,16 @@ export function PaymentAccounts() {
     setAccountOperationDate(new Date())
   }
 
+  const openAdjustmentWarning = () => {
+    if (!selectedAccount || !isAdmin) return
+    setAdjustmentWarningOpen(true)
+  }
+
+  const confirmAdjustmentWarning = () => {
+    setAdjustmentWarningOpen(false)
+    openAccountOperation('adjustment')
+  }
+
   const closeAccountOperation = () => {
     if (postingAccountOperation) return
     setAccountOperationKind(null)
@@ -937,10 +989,17 @@ export function PaymentAccounts() {
                     {t('paymentAccounts.withdraw')}
                   </Button>
                   {isAdmin ? (
-                    <Button type="button" size="sm" variant="outline" className="border-amber-500/30 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300" onClick={() => openAccountOperation('adjustment')}>
-                      <ShieldAlert className="mr-2 h-4 w-4" />
-                      {t('paymentAccounts.adjustBalance')}
-                    </Button>
+                    <PressAndHoldButton
+                      size="sm"
+                      variant="outline"
+                      onComplete={openAdjustmentWarning}
+                      idleLabel={t('paymentAccounts.holdToOpenAdjustmentWarning')}
+                      holdingLabel={t('paymentAccounts.keepHoldingToOpenAdjustmentWarning')}
+                      loadingLabel={t('paymentAccounts.openingAdjustmentWarning')}
+                      isLoading={adjustmentWarningOpen}
+                      icon={<ShieldAlert className="h-4 w-4" />}
+                      className="border-amber-500/30 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
+                    />
                   ) : null}
                 </div>
               ) : null}
@@ -1157,6 +1216,57 @@ export function PaymentAccounts() {
             </div>
           </AppDialogBody>
           <AppDialogFooter><Button type="button" variant="ghost" onClick={() => setDraftMovementFilters(DEFAULT_MOVEMENT_FILTERS)}><RotateCcw className="mr-2 h-4 w-4" />{t('ledger.filters.resetDraft', { defaultValue: 'Reset Draft' })}</Button><div className="flex gap-2"><Button type="button" variant="outline" onClick={() => setMovementFilterDialogOpen(false)}>{t('common.cancel', { defaultValue: 'Cancel' })}</Button><Button type="button" onClick={() => { setMovementFilters(draftMovementFilters); setMovementFilterDialogOpen(false) }}>{t('paymentAccounts.applyMovementFilters', { count: draftPreviewMovementEntries.length, defaultValue: 'Apply Filters ({{count}})' })}</Button></div></AppDialogFooter>
+        </AppDialogContent>
+      </AppDialog>
+
+      <AppDialog open={adjustmentWarningOpen} onOpenChange={setAdjustmentWarningOpen}>
+        <AppDialogContent className="max-w-2xl" showCloseButton>
+          <AppDialogHeader>
+            <AppDialogTitle className="flex items-center gap-3 text-amber-700 dark:text-amber-300">
+              <span className="rounded-xl bg-amber-500/10 p-2"><ShieldAlert className="h-5 w-5" /></span>
+              {t('paymentAccounts.adjustmentGateTitle')}
+            </AppDialogTitle>
+            <AppDialogDescription>{t('paymentAccounts.adjustmentGateDescription')}</AppDialogDescription>
+          </AppDialogHeader>
+          <AppDialogBody>
+            <div className="grid gap-4">
+              <div className="flex items-center gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/[0.07] p-4">
+                <span className="rounded-xl bg-amber-500/10 p-2 text-amber-700 dark:text-amber-300"><PaymentAccountIcon iconKey={selectedAccount?.iconKey} accountType={selectedAccount?.accountType} className="h-5 w-5" /></span>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('paymentAccounts.accountActionAccount')}</p>
+                  <p className="truncate font-semibold">{selectedAccount?.name}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-3">
+                {adjustmentWarningLanguages.map((warningLanguage) => {
+                  const content = ADJUSTMENT_WARNING_LANGUAGE_CONTENT[warningLanguage]
+                  return (
+                    <section
+                      key={warningLanguage}
+                      lang={content.language}
+                      dir={content.direction}
+                      className={cn('rounded-2xl border border-border/60 bg-secondary/10 p-4', content.direction === 'rtl' && 'text-right')}
+                    >
+                      <p className={cn('text-xs font-bold tracking-wide text-muted-foreground', content.labelClassName)}>{t(content.labelKey)}</p>
+                      <p className="mt-2 text-sm leading-relaxed">{t(content.messageKey)}</p>
+                    </section>
+                  )
+                })}
+              </div>
+            </div>
+          </AppDialogBody>
+          <AppDialogFooter>
+            <Button type="button" variant="outline" onClick={() => setAdjustmentWarningOpen(false)}>{t('common.cancel')}</Button>
+            <PressAndHoldButton
+              onComplete={confirmAdjustmentWarning}
+              idleLabel={t('paymentAccounts.holdToConfirmAdjustmentWarning')}
+              holdingLabel={t('paymentAccounts.keepHoldingToConfirmAdjustmentWarning')}
+              loadingLabel={t('paymentAccounts.openingAdjustmentForm')}
+              icon={<ShieldAlert className="h-4 w-4" />}
+              className="min-w-[220px] bg-amber-600 text-white hover:bg-amber-700"
+            />
+          </AppDialogFooter>
         </AppDialogContent>
       </AppDialog>
 

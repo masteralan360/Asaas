@@ -9,6 +9,7 @@ import { useDateRange } from '@/context/DateRangeContext'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { buildConversionRates } from '@/lib/budget'
 import { convertToStoreBase } from '@/lib/currency'
+import { getLedgerFlowSign, isLedgerCashFlowDirection, summarizeLedgerCashFlow, type LedgerReportingDirection } from '@/lib/ledgerFlow'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { setPendingSaleDetailsId } from '@/lib/saleNavigation'
 import {
@@ -83,7 +84,7 @@ import { useWorkspace } from '@/workspace'
 import { useTheme } from '@/ui/components/theme-provider'
 import { getDateRangeBounds, isDateInDateRange } from '@/lib/dateRangeFilters'
 
-type LedgerDirection = 'incoming' | 'outgoing'
+type LedgerDirection = LedgerReportingDirection
 type LedgerSourceModule = 'pos' | 'instant_pos' | 'orders' | 'expenses' | 'payroll' | 'loans' | 'real_estate' | 'activities' | 'clinical_appointments' | 'manual' | 'payment_accounts' | 'exchange' | 'post_service' | 'car_rental'
 type LedgerRelationRole = 'origin' | 'repayment' | 'settlement'
 type LedgerEntryType =
@@ -391,6 +392,10 @@ function directionFilterLabel(direction: LedgerDirection, t: any) {
             return t('ledger.direction.inflow', { defaultValue: 'Inflow' })
         case 'outgoing':
             return t('ledger.direction.outflow', { defaultValue: 'Outflow' })
+        case 'opening':
+            return t('ledger.direction.opening', { defaultValue: 'Opening' })
+        case 'adjustment':
+            return t('ledger.direction.adjustment', { defaultValue: 'Adjustment' })
     }
 }
 
@@ -583,9 +588,14 @@ function formatNetSummary(entries: LedgerEntry[], iqdPreference: IQDDisplayPrefe
 
     const totals = new Map<string, number>()
     entries.forEach((entry) => {
-        const signedAmount = entry.direction === 'incoming' ? entry.amount : -entry.amount
+        const signedAmount = getLedgerFlowSign(entry.direction) * entry.amount
+        if (signedAmount === 0) return
         totals.set(entry.currency, (totals.get(entry.currency) || 0) + signedAmount)
     })
+
+    if (totals.size === 0) {
+        return ['0']
+    }
 
     return Array.from(totals.entries())
         .sort(([left], [right]) => left.localeCompare(right))
@@ -1113,7 +1123,9 @@ function buildPaymentLedgerEntry(
             transactionId: transaction.id,
             date: transaction.paidAt,
             type: 'payment_account_opening_balance',
-            direction: transaction.direction,
+            // It increases the payment account, but it is an opening position
+            // rather than cash received during this reporting period.
+            direction: 'opening',
             amount: transaction.amount,
             currency: transaction.currency,
             sourceModule: 'payment_accounts',
@@ -1121,6 +1133,7 @@ function buildPaymentLedgerEntry(
             partner: null,
             businessPartnerId: null,
             paymentMethod: transaction.paymentMethod,
+            paymentAccount: transaction.accountNameSnapshot || null,
             notes: transaction.note?.trim() || null,
             description: t('paymentAccounts.openingBalanceDescription', { defaultValue: 'Opening amount recorded when this payment account was created.' }),
             routePath: '/payment-accounts'
@@ -1137,7 +1150,9 @@ function buildPaymentLedgerEntry(
             transactionId: transaction.id,
             date: transaction.paidAt,
             type: transaction.sourceType,
-            direction: transaction.direction,
+            direction: transaction.sourceType === 'payment_account_adjustment'
+                ? 'adjustment'
+                : transaction.direction,
             amount: transaction.amount,
             currency: transaction.currency,
             sourceModule: 'payment_accounts',
@@ -1823,9 +1838,7 @@ export function Ledger() {
         return filteredEntries.map(entry => ({
             [t('ledger.table.date') || 'Date']: formatDateTime(entry.date),
             [t('ledger.table.type') || 'Type']: ledgerTypeLabel(entry.type, t),
-            [t('ledger.table.direction') || 'Direction']: entry.direction === 'incoming'
-                ? t('ledger.direction.inflow', { defaultValue: 'Inflow' })
-                : t('ledger.direction.outflow', { defaultValue: 'Outflow' }),
+            [t('ledger.table.direction') || 'Direction']: directionFilterLabel(entry.direction, t),
             [t('ledger.table.amount') || 'Amount']: entry.amount,
             [t('common.currency') || 'Currency']: entry.currency?.toUpperCase() || '',
             [t('ledger.table.partner') || 'Partner']: entry.partner || '',
@@ -1846,6 +1859,14 @@ export function Ledger() {
     )
     const visibleOutgoingEntries = useMemo(
         () => visibleEntries.filter((entry) => entry.direction === 'outgoing'),
+        [visibleEntries]
+    )
+    const visibleOpeningEntries = useMemo(
+        () => visibleEntries.filter((entry) => entry.direction === 'opening'),
+        [visibleEntries]
+    )
+    const visibleAdjustmentEntries = useMemo(
+        () => visibleEntries.filter((entry) => entry.direction === 'adjustment'),
         [visibleEntries]
     )
 
@@ -1995,6 +2016,10 @@ export function Ledger() {
         setCurrentPage(1)
     }
 
+    const cashFlowEntries = useMemo(
+        () => filteredEntries.filter((entry) => isLedgerCashFlowDirection(entry.direction)),
+        [filteredEntries]
+    )
     const inflowEntries = useMemo(
         () => filteredEntries.filter((entry) => entry.direction === 'incoming'),
         [filteredEntries]
@@ -2012,8 +2037,8 @@ export function Ledger() {
         [features.iqd_display_preference, outflowEntries]
     )
     const netFlow = useMemo(
-        () => formatNetSummary(filteredEntries, features.iqd_display_preference),
-        [features.iqd_display_preference, filteredEntries]
+        () => formatNetSummary(cashFlowEntries, features.iqd_display_preference),
+        [cashFlowEntries, features.iqd_display_preference]
     )
     const totalInflowInBaseCurrency = useMemo(
         () => inflowEntries.reduce(
@@ -2030,16 +2055,15 @@ export function Ledger() {
         [baseCurrency, outflowEntries, rates]
     )
     const netFlowInBaseCurrency = useMemo(
-        () => filteredEntries.reduce(
-            (total, entry) => total + (entry.direction === 'incoming' ? 1 : -1)
-                * convertToStoreBase(entry.amount, entry.currency, baseCurrency, rates),
-            0
-        ),
-        [baseCurrency, filteredEntries, rates]
+        () => summarizeLedgerCashFlow(
+            cashFlowEntries,
+            (entry) => convertToStoreBase(entry.amount, entry.currency, baseCurrency, rates)
+        ).net,
+        [baseCurrency, cashFlowEntries, rates]
     )
     const hasMultipleInflowCurrencies = new Set(inflowEntries.map((entry) => entry.currency)).size > 1
     const hasMultipleOutflowCurrencies = new Set(outflowEntries.map((entry) => entry.currency)).size > 1
-    const hasMultipleNetFlowCurrencies = new Set(filteredEntries.map((entry) => entry.currency)).size > 1
+    const hasMultipleNetFlowCurrencies = new Set(cashFlowEntries.map((entry) => entry.currency)).size > 1
 
     const renderCurrencySummary = (
         values: string[],
@@ -2081,8 +2105,8 @@ export function Ledger() {
         let periodStart = now
         let previousStart = now
 
-        if (filteredEntries.length > 0) {
-            const dates = filteredEntries.map(e => new Date(e.date).getTime())
+        if (cashFlowEntries.length > 0) {
+            const dates = cashFlowEntries.map(e => new Date(e.date).getTime())
             const minDate = new Date(Math.min(...dates))
             const maxDate = new Date(Math.max(...dates))
             periodStart = minDate
@@ -2102,6 +2126,8 @@ export function Ledger() {
         const hourlyData = new Array(24).fill(0).map((_, i) => ({ hour: `${i}:00`, inflow: 0, outflow: 0, count: 0 }))
 
         allEntries.forEach((entry) => {
+            if (!isLedgerCashFlowDirection(entry.direction)) return
+
             const date = new Date(entry.date)
             if (date > now) return
 
@@ -2180,9 +2206,9 @@ export function Ledger() {
             topModulesData,
             hourlyData
         }
-    }, [allEntries, filteredEntries, baseCurrency, rates])
+    }, [allEntries, cashFlowEntries, baseCurrency, rates])
     const trendCurrencyMode = useMemo(() => {
-        const currencies = Array.from(new Set(filteredEntries.map((entry) => entry.currency)))
+        const currencies = Array.from(new Set(cashFlowEntries.map((entry) => entry.currency)))
 
         if (currencies.length <= 1) {
             return {
@@ -2195,11 +2221,11 @@ export function Ledger() {
             currency: baseCurrency,
             usesBaseEquivalent: true
         }
-    }, [baseCurrency, filteredEntries])
+    }, [baseCurrency, cashFlowEntries])
     const ledgerTrendData = useMemo(() => {
         const points = new Map<string, LedgerTrendPoint>()
 
-        filteredEntries.forEach((entry) => {
+        cashFlowEntries.forEach((entry) => {
             const dateKey = toLedgerDateKey(entry.date)
             const point = points.get(dateKey) || {
                 dateKey,
@@ -2214,7 +2240,7 @@ export function Ledger() {
             if (entry.direction === 'incoming') {
                 point.inflow += amount
                 point.net += amount
-            } else {
+            } else if (entry.direction === 'outgoing') {
                 point.outflow += amount
                 point.net -= amount
             }
@@ -2223,7 +2249,7 @@ export function Ledger() {
         })
 
         return Array.from(points.values()).sort((left, right) => left.dateKey.localeCompare(right.dateKey))
-    }, [baseCurrency, filteredEntries, rates, trendCurrencyMode.usesBaseEquivalent])
+    }, [baseCurrency, cashFlowEntries, rates, trendCurrencyMode.usesBaseEquivalent])
     const usesEquivalentTrend = trendCurrencyMode.usesBaseEquivalent
     const netFlowIsNegative = useMemo(
         () => ledgerTrendData.reduce((sum, point) => sum + point.net, 0) < 0,
@@ -2418,12 +2444,28 @@ export function Ledger() {
                                         <span className={cn(
                                             'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
                                             compactColumns && 'gap-0.5 px-1.5 text-[9px]',
-                                            entry.direction === 'incoming'
+                                            entry.direction === 'adjustment'
+                                                ? 'border-violet-200 bg-violet-50 text-violet-700'
+                                                : entry.direction === 'opening'
+                                                ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                                : entry.direction === 'incoming'
                                                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                                                 : 'border-amber-200 bg-amber-50 text-amber-700'
                                         )}>
-                                            {entry.direction === 'incoming' ? <ArrowDownLeft className="h-3 w-3" /> : <ArrowUpRight className="h-3 w-3" />}
-                                            {entry.direction === 'incoming' ? t('ledger.direction.in', { defaultValue: 'IN' }) : t('ledger.direction.out', { defaultValue: 'OUT' })}
+                                            {entry.direction === 'adjustment'
+                                                ? <SlidersHorizontal className="h-3 w-3" />
+                                                : entry.direction === 'opening'
+                                                    ? <Wallet className="h-3 w-3" />
+                                                : entry.direction === 'incoming'
+                                                    ? <ArrowDownLeft className="h-3 w-3" />
+                                                    : <ArrowUpRight className="h-3 w-3" />}
+                                            {entry.direction === 'adjustment'
+                                                ? t('ledger.direction.adjust', { defaultValue: 'ADJ' })
+                                                : entry.direction === 'opening'
+                                                    ? t('ledger.direction.open', { defaultValue: 'OPEN' })
+                                                : entry.direction === 'incoming'
+                                                    ? t('ledger.direction.in', { defaultValue: 'IN' })
+                                                    : t('ledger.direction.out', { defaultValue: 'OUT' })}
                                         </span>
                                     </TableCell>
                                     <TableCell className={cn(compactColumns && 'align-top px-2 py-3')}>{formatCurrency(entry.amount, entry.currency, features.iqd_display_preference)}</TableCell>
@@ -3076,6 +3118,48 @@ export function Ledger() {
                                     { compactTransactionId: true, compactColumns: true, hideDescriptionNotes: true, hideActions: true }
                                 )}
                             </section>
+
+                            <section className="min-w-0 overflow-x-auto rounded-3xl border border-sky-500/15 bg-sky-500/[0.03]">
+                                <div className="flex items-center justify-between border-b border-sky-500/15 px-5 py-4">
+                                    <div>
+                                        <div className="text-sm font-bold text-sky-700">
+                                            {t('ledger.direction.opening', { defaultValue: 'Opening' })}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                            {t('ledger.table.openingBalanceDescription', { defaultValue: 'Opening balances are retained for audit but do not affect cash-flow totals.' })}
+                                        </p>
+                                    </div>
+                                    <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-3 py-1 text-xs font-bold text-sky-700">
+                                        {visibleOpeningEntries.length}
+                                    </span>
+                                </div>
+                                {renderEntriesTable(
+                                    visibleOpeningEntries,
+                                    t('ledger.table.noOpening', { defaultValue: 'No opening-balance entries on this page.' }),
+                                    { compactTransactionId: true, compactColumns: true, hideDescriptionNotes: true, hideActions: true }
+                                )}
+                            </section>
+
+                            <section className="min-w-0 overflow-x-auto rounded-3xl border border-violet-500/15 bg-violet-500/[0.03]">
+                                <div className="flex items-center justify-between border-b border-violet-500/15 px-5 py-4">
+                                    <div>
+                                        <div className="text-sm font-bold text-violet-700">
+                                            {t('ledger.direction.adjustment', { defaultValue: 'Adjustment' })}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                            {t('ledger.table.adjustmentDescription', { defaultValue: 'Balance corrections are retained for audit but do not affect cash-flow totals.' })}
+                                        </p>
+                                    </div>
+                                    <span className="rounded-full border border-violet-500/20 bg-violet-500/10 px-3 py-1 text-xs font-bold text-violet-700">
+                                        {visibleAdjustmentEntries.length}
+                                    </span>
+                                </div>
+                                {renderEntriesTable(
+                                    visibleAdjustmentEntries,
+                                    t('ledger.table.noAdjustment', { defaultValue: 'No adjustment entries on this page.' }),
+                                    { compactTransactionId: true, compactColumns: true, hideDescriptionNotes: true, hideActions: true }
+                                )}
+                            </section>
                         </div>
                     ) : renderEntriesTable(
                         visibleEntries,
@@ -3144,7 +3228,7 @@ export function Ledger() {
                                             <Label>{t('ledger.filters.direction', { defaultValue: 'Direction' })}</Label>
                                             <LedgerMultiSelect
                                                 value={draftFilters.direction}
-                                                options={['incoming', 'outgoing']}
+                                                options={['incoming', 'outgoing', 'opening', 'adjustment']}
                                                 allLabel={t('ledger.direction.allDirections', { defaultValue: 'All Directions' })}
                                                 getOptionLabel={(direction) => directionFilterLabel(direction, t)}
                                                 onChange={(direction) => setDraftFilters((current) => ({ ...current, direction }))}
