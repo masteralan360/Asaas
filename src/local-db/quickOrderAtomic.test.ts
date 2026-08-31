@@ -329,7 +329,10 @@ describe('atomic POS Quick Order completion', () => {
             'complete_quick_sales_order',
             expect.objectContaining({
                 payload: expect.objectContaining({
-                    order: expect.objectContaining({ status: 'completed' }),
+                    order: expect.objectContaining({
+                        status: 'completed',
+                        exchange_rates: []
+                    }),
                     payment: expect.objectContaining({ amount: 100 })
                 })
             })

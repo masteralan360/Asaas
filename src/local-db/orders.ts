@@ -2333,7 +2333,14 @@ async function completePaidQuickSalesOrderAtomically(
     const payload = {
         order: sanitizeSyncPayload(
             'sales_orders',
-            order as unknown as Record<string, unknown>
+            {
+                ...order,
+                // The Quick Order RPC receives a JSON document. A JavaScript
+                // null becomes JSON `null` through `->`, which is a scalar in
+                // PostgreSQL rather than a SQL NULL; commission reconciliation
+                // correctly expects an exchange-rate array instead.
+                exchangeRates: order.exchangeRates ?? []
+            } as unknown as Record<string, unknown>
         ),
         payment
     }
