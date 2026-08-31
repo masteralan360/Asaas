@@ -101,13 +101,15 @@ export function DateTimePicker({
           variant={"outline"}
           disabled={disabled}
           className={cn(
-            "w-full justify-start text-left font-normal h-10 px-4 rounded-xl border-border/60",
+            "w-full min-w-0 justify-start gap-2 text-start font-normal h-10 px-4 rounded-xl border-border/60",
             !date && "text-muted-foreground",
             buttonClassName
           )}
         >
-          {hasDate ? <CalendarIcon className="mr-2 h-4 w-4" /> : <Clock className="mr-2 h-4 w-4" />}
-          {formattedValue ? <span className="truncate">{formattedValue}</span> : <span>{placeholder}</span>}
+          {hasDate ? <CalendarIcon className="h-4 w-4 shrink-0" /> : <Clock className="h-4 w-4 shrink-0" />}
+          {formattedValue
+            ? <span className="min-w-0 truncate">{formattedValue}</span>
+            : <span className="min-w-0 truncate">{placeholder}</span>}
         </Button>
       </PopoverTrigger>
       <PopoverContent

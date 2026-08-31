@@ -634,6 +634,90 @@ describe('order-linked financing', () => {
         })
     })
 
+    it('posts simple order-loan initial payments as loan repayments for sales and purchases', async () => {
+        const customer = await createCustomer()
+        const { storage, product } = await createStockedSalesProduct(100)
+        const salesDraft = await createSalesOrder(
+            WORKSPACE_ID,
+            salesOrderInput(customer.id, product, storage.id, {
+                method: 'loan',
+                total: 100,
+                initialPayment: 20
+            })
+        )
+
+        expect((await db.payment_transactions.where('sourceRecordId').equals(salesDraft.id).toArray())).toHaveLength(0)
+
+        const reservedSalesOrder = await updateSalesOrderStatus(salesDraft.id, 'pending')
+        const salesLoan = await db.loans.get(reservedSalesOrder.linkedLoanId!)
+        const salesLoanPayments = await db.loan_payments.where('loanId').equals(salesLoan!.id).toArray()
+        const salesTransactions = await db.payment_transactions
+            .where('[workspaceId+sourceType+sourceRecordId]')
+            .equals([WORKSPACE_ID, 'simple_loan', salesLoan!.id])
+            .toArray()
+
+        expect(salesLoan).toMatchObject({
+            direction: 'lent',
+            loanCategory: 'simple',
+            principalAmount: 100,
+            totalPaidAmount: 20,
+            balanceAmount: 80
+        })
+        expect(salesLoanPayments).toHaveLength(1)
+        expect(salesLoanPayments[0]).toMatchObject({ amount: 20, paymentMethod: 'cash' })
+        expect(salesTransactions).toHaveLength(1)
+        expect(salesTransactions[0]).toMatchObject({
+            direction: 'incoming',
+            amount: 20,
+            sourceSubrecordId: salesLoanPayments[0].id,
+            metadata: expect.objectContaining({
+                loanPaymentId: salesLoanPayments[0].id,
+                isOrderLoanInitialRepayment: true
+            })
+        })
+        expect(await db.sales_orders.get(reservedSalesOrder.id)).toMatchObject({
+            paidAmount: 20,
+            balanceAmount: 80,
+            paymentStatus: 'partial'
+        })
+
+        const supplier = await createSupplier(null)
+        const purchaseDraft = await createPurchaseOrder(
+            WORKSPACE_ID,
+            purchaseOrderInput(supplier.id, {
+                method: 'loan',
+                total: 100,
+                initialPayment: 20
+            })
+        )
+        const orderedPurchaseOrder = await updatePurchaseOrderStatus(purchaseDraft.id, 'ordered')
+        const purchaseLoan = await db.loans.get(orderedPurchaseOrder.linkedLoanId!)
+        const purchaseLoanPayments = await db.loan_payments.where('loanId').equals(purchaseLoan!.id).toArray()
+        const purchaseTransactions = await db.payment_transactions
+            .where('[workspaceId+sourceType+sourceRecordId]')
+            .equals([WORKSPACE_ID, 'simple_loan', purchaseLoan!.id])
+            .toArray()
+
+        expect(purchaseLoan).toMatchObject({
+            direction: 'borrowed',
+            principalAmount: 100,
+            totalPaidAmount: 20,
+            balanceAmount: 80
+        })
+        expect(purchaseLoanPayments).toHaveLength(1)
+        expect(purchaseTransactions).toHaveLength(1)
+        expect(purchaseTransactions[0]).toMatchObject({
+            direction: 'outgoing',
+            amount: 20,
+            sourceSubrecordId: purchaseLoanPayments[0].id
+        })
+        expect(await db.purchase_orders.get(orderedPurchaseOrder.id)).toMatchObject({
+            paidAmount: 20,
+            balanceAmount: 80,
+            paymentStatus: 'partial'
+        })
+    })
+
     it('reverses a standard order payment when cancelling the order', async () => {
         const supplier = await createSupplier(200)
         const draft = await createPurchaseOrder(

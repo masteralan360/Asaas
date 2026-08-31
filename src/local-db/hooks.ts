@@ -6019,6 +6019,7 @@ interface LoanPaymentInput {
     createdBy?: string
     accountId?: string | null
     accountNameSnapshot?: string | null
+    isOrderLoanInitialRepayment?: boolean
 }
 
 export async function recordLoanPayment(workspaceId: string, input: LoanPaymentInput): Promise<{
@@ -6173,6 +6174,7 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
                     orderId: loan.orderId,
                     orderType: loan.orderType
                 } : {}),
+                ...(input.isOrderLoanInitialRepayment ? { isOrderLoanInitialRepayment: true } : {}),
                 touchedInstallmentIds: Array.from(touchedInstallmentIds)
             }
         })

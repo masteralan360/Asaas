@@ -34,6 +34,8 @@ Tests must cover both the successful path and important validation or failure pa
 
 ## Dialogs (required)
 
+Clearly mark every required form field in its label with an asterisk (`*`), including required title fields.
+
 Use the Atlas structured-dialog façade for every new workflow, form, detail, list, or editor modal. It supplies the app's responsive shell, fixed header and footer, safe-area spacing, and a scrollable body.
 
 ```tsx

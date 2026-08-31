@@ -1207,7 +1207,7 @@ export function PurchaseOrderFormPage({
                                         {isFinanced ? (
                                             <div className="grid gap-4 rounded-2xl border p-4 sm:grid-cols-2">
                                                 {isInstallmentBased ? <><div className="space-y-2">
-                                                    <Label htmlFor="purchase-installment-count">{t('orders.form.installmentCount', { defaultValue: 'Number of installments' })}</Label>
+                                                    <Label htmlFor="purchase-installment-count">{t('orders.form.installmentCount')}</Label>
                                                     <Input
                                                         id="purchase-installment-count"
                                                         type="number"
@@ -1218,42 +1218,46 @@ export function PurchaseOrderFormPage({
                                                     />
                                                 </div>
                                                     <div className="space-y-2">
-                                                        <Label>{t('orders.form.installmentFrequency', { defaultValue: 'Frequency' })}</Label>
+                                                        <Label>{t('orders.form.installmentFrequency')}</Label>
                                                         <Select value={installmentFrequency} onValueChange={(value) => setInstallmentFrequency(value as InstallmentFrequency)}>
                                                             <SelectTrigger><SelectValue /></SelectTrigger>
                                                             <SelectContent>
-                                                                <SelectItem value="weekly">{t('orders.form.weekly', { defaultValue: 'Weekly' })}</SelectItem>
-                                                                <SelectItem value="biweekly">{t('orders.form.biweekly', { defaultValue: 'Every two weeks' })}</SelectItem>
-                                                                <SelectItem value="monthly">{t('orders.form.monthly', { defaultValue: 'Monthly' })}</SelectItem>
+                                                                <SelectItem value="weekly">{t('orders.form.weekly')}</SelectItem>
+                                                                <SelectItem value="biweekly">{t('orders.form.biweekly')}</SelectItem>
+                                                                <SelectItem value="monthly">{t('orders.form.monthly')}</SelectItem>
                                                             </SelectContent>
                                                         </Select>
                                                     </div></> : null}
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="purchase-first-due">{isInstallmentBased
-                                                        ? t('orders.form.firstDueDate', { defaultValue: 'First due date' })
-                                                        : t('orders.form.dueDate', { defaultValue: 'Due date (optional)' })}</Label>
+                                                <div className="min-w-0 space-y-2">
+                                                    <Label className="block break-words" htmlFor="purchase-initial-payment">{isInstallmentBased
+                                                        ? t('orders.form.initialPayment')
+                                                        : t('orders.form.initialLoanRepayment')}</Label>
+                                                    <Input
+                                                        id="purchase-initial-payment"
+                                                        inputMode="decimal"
+                                                        placeholder="0"
+                                                        value={formatNumericInput(initialPaymentAmount)}
+                                                        onChange={(event) => setInitialPaymentAmount(sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 3 }))}
+                                                    />
+                                                </div>
+                                                <div className="min-w-0 space-y-2">
+                                                    <Label className="block break-words" htmlFor="purchase-first-due">{isInstallmentBased
+                                                        ? t('orders.form.firstDueDate')
+                                                        : t('orders.form.dueDate')}</Label>
                                                     <DateTimePicker
                                                         id="purchase-first-due"
                                                         mode="date"
                                                         date={parseLocalDateValue(firstDueDate)}
                                                         setDate={(value) => setFirstDueDate(formatLocalDateValue(value))}
-                                                        placeholder={t('orders.form.firstDueDate', { defaultValue: 'First due date' })}
-                                                    />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="purchase-initial-payment">{t('orders.form.initialPayment', { defaultValue: 'Initial payment' })}</Label>
-                                                    <Input
-                                                        id="purchase-initial-payment"
-                                                        type="number"
-                                                        min="0"
-                                                        max={preview}
-                                                        step={ORDER_DECIMAL_STEP}
-                                                        value={initialPaymentAmount}
-                                                        onChange={(event) => setInitialPaymentAmount(event.target.value)}
+                                                        placeholder={isInstallmentBased
+                                                            ? t('orders.form.firstDueDate')
+                                                            : t('orders.form.dueDatePlaceholder')}
                                                     />
                                                 </div>
                                                 <div className="flex items-center justify-between text-sm sm:col-span-2">
-                                                    <span className="text-muted-foreground">{t('orders.form.financedBalance', { defaultValue: 'Financed balance' })}</span>
+                                                    <span className="text-muted-foreground">{isInstallmentBased
+                                                        ? t('orders.form.financedBalance')
+                                                        : t('orders.form.remainingLoanBalance')}</span>
                                                     <span className="font-semibold">
                                                         {formatCurrency(Math.max(preview - initialPayment, 0), currency, features.iqd_display_preference)}
                                                     </span>

@@ -31,6 +31,7 @@ import {
     getOrderBalanceAmount,
     getOrderPaidAmount,
     getOrderPaymentStatus,
+    isDraftOrderLoanRepaymentPending,
     getActiveSalesOrderAgentAssignments,
     getPrimaryStorageFromList,
     isOrderApprovalRequested,
@@ -285,11 +286,24 @@ function formatPaymentStatus(t: (key: string, options?: Record<string, unknown>)
     if ((order as SalesOrder).returnStatus === 'full') {
         return t('sales.return.returnedStatus') || 'Returned'
     }
+    if (isDraftOrderLoanRepaymentPending(order)) {
+        return t('orders.draftFinancing.pendingActivation')
+    }
 
     const status = getOrderPaymentStatus(order)
     if (status === 'paid') return t('orders.status.paid', { defaultValue: 'Paid' })
     if (status === 'partial') return t('orders.status.partial', { defaultValue: 'Partially Paid' })
     return t('orders.status.unpaid', { defaultValue: 'Unpaid' })
+}
+
+function paymentStatusClass(order: SalesOrder | PurchaseOrder, isFullyReturnedSalesOrder: boolean) {
+    if (isFullyReturnedSalesOrder) return 'text-rose-600'
+    if (isDraftOrderLoanRepaymentPending(order)) return 'text-violet-600'
+
+    const status = getOrderPaymentStatus(order)
+    if (status === 'paid') return 'text-emerald-600'
+    if (status === 'partial') return 'text-sky-600'
+    return 'text-amber-600'
 }
 
 function filterOrdersByDate<T>(
@@ -1530,20 +1544,21 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                     <TableCell>{formatDate(row.createdAt)}</TableCell>
                                     <TableCell>{row.actualDeliveryDate ? formatDate(row.actualDeliveryDate) : '—'}</TableCell>
                                     <TableCell>
-                                        <div className="flex items-center gap-1.5">
-                                            <span className={cn(
-                                                'font-semibold',
-                                                isFullyReturnedSalesOrder
-                                                    ? 'text-rose-600'
-                                                    : getOrderPaymentStatus(row) === 'paid'
-                                                        ? 'text-emerald-600'
-                                                        : getOrderPaymentStatus(row) === 'partial'
-                                                            ? 'text-sky-600'
-                                                            : 'text-amber-600'
-                                            )}>
-                                                {formatPaymentStatus(t, row)}
-                                            </span>
-                                            {row.isLocked && <Lock className="h-3.5 w-3.5 text-muted-foreground" />}
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-1.5">
+                                                {isDraftOrderLoanRepaymentPending(row) && <Clock3 className="h-3.5 w-3.5 shrink-0 text-violet-600" />}
+                                                <span className={cn('font-semibold', paymentStatusClass(row, isFullyReturnedSalesOrder))}>
+                                                    {formatPaymentStatus(t, row)}
+                                                </span>
+                                                {row.isLocked && <Lock className="h-3.5 w-3.5 text-muted-foreground" />}
+                                            </div>
+                                            {isDraftOrderLoanRepaymentPending(row) ? (
+                                                <div className="mt-0.5 text-xs text-muted-foreground">
+                                                    {t('orders.draftFinancing.plannedInitialRepaymentSummary', {
+                                                        amount: formatCurrency(row.initialPaymentAmount, row.currency, features.iqd_display_preference)
+                                                    })}
+                                                </div>
+                                            ) : null}
                                         </div>
                                     </TableCell>
                                     <TableCell className="text-end">
@@ -1673,17 +1688,17 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                     <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('orders.paymentStatus', { defaultValue: 'Payment status' })}</div>
                                     <div className={cn(
                                         "text-[11px] font-bold flex items-center justify-center gap-1",
-                                        isFullyReturnedSalesOrder
-                                            ? 'text-rose-600'
-                                            : getOrderPaymentStatus(row) === 'paid'
-                                                ? "text-emerald-600"
-                                                : getOrderPaymentStatus(row) === 'partial'
-                                                    ? "text-sky-600"
-                                                    : "text-amber-600"
+                                        paymentStatusClass(row, isFullyReturnedSalesOrder)
                                     )}>
+                                        {isDraftOrderLoanRepaymentPending(row) && <Clock3 className="h-2.5 w-2.5 shrink-0" />}
                                         {formatPaymentStatus(t, row)}
                                         {row.isLocked && <Lock className="h-2.5 w-2.5 text-muted-foreground" />}
                                     </div>
+                                    {isDraftOrderLoanRepaymentPending(row) ? (
+                                        <div className="mt-0.5 text-[9px] font-medium normal-case text-muted-foreground">
+                                            {t('orders.draftFinancing.notPostedYet')}
+                                        </div>
+                                    ) : null}
                                 </div>
                             </div>
 

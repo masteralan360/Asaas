@@ -87,6 +87,31 @@ export function isOrderFinancingMethod(method?: OrderPaymentMethod | null): meth
     return method === 'loan' || method === 'installments'
 }
 
+/**
+ * A simple order loan is originated for the full order value. Its amount
+ * entered in the form is posted when the loan is activated, through the same
+ * repayment path as every later collection. Installments retain the separate
+ * down-payment model.
+ */
+function isSimpleOrderLoan(order: Pick<SalesOrder | PurchaseOrder, 'paymentMethod'>) {
+    return order.paymentMethod === 'loan'
+}
+
+/**
+ * A draft simple-loan order may carry a planned initial repayment, but it has
+ * not created a loan or posted a payment until the order is activated.
+ */
+export function isDraftOrderLoanRepaymentPending(order: Pick<SalesOrder | PurchaseOrder, 'status' | 'paymentMethod' | 'initialPaymentAmount' | 'linkedLoanId'>) {
+    return order.status === 'draft'
+        && order.paymentMethod === 'loan'
+        && !order.linkedLoanId
+        && Number(order.initialPaymentAmount || 0) > ORDER_AMOUNT_EPSILON
+}
+
+function isOrderLoanInitialRepaymentTransaction(payment: PaymentTransaction) {
+    return payment.metadata?.isOrderLoanInitialRepayment === true
+}
+
 type SimpleEntityTableName = 'customers' | 'suppliers'
 type OrderTableName = 'sales_orders' | 'purchase_orders'
 type OrderInstallmentTableName = 'order_installments'
@@ -1109,7 +1134,28 @@ async function listActiveOrderPayments(workspaceId: string, sourceType: 'sales_o
     return getActiveOrderPayments(rows)
 }
 
+async function hasLegacyOrderLoanDownPayment(orderType: OrderType, order: SalesOrder | PurchaseOrder) {
+    if (!isSimpleOrderLoan(order)) {
+        return false
+    }
+    const sourceType = orderType === 'sales' ? 'sales_order' : 'purchase_order'
+    const payments = await listActiveOrderPayments(order.workspaceId, sourceType, order.id)
+    return payments.some((payment) => payment.metadata?.isFinancingInitialPayment === true)
+}
+
+async function hasOrderLoanInitialRepayment(loanId: string, workspaceId: string) {
+    const payments = await db.payment_transactions
+        .where('[workspaceId+sourceType+sourceRecordId]')
+        .equals([workspaceId, 'simple_loan', loanId])
+        .toArray()
+    return payments.some(isOrderLoanInitialRepaymentTransaction)
+}
+
 async function appendInitialOrderPaymentTransaction(orderType: OrderType, order: SalesOrder | PurchaseOrder) {
+    if (isSimpleOrderLoan(order)) {
+        return
+    }
+
     const sourceType = orderType === 'sales' ? 'sales_order' : 'purchase_order'
     const isFinanced = isOrderFinancingMethod(order.paymentMethod)
     const paymentAmount = isFinanced
@@ -1244,8 +1290,11 @@ export async function mirrorLinkedOrderPaymentState(loan: Loan) {
         Math.max(0, order.initialPaymentAmount ?? Math.max(order.total - loan.principalAmount, 0)),
         order.currency
     )
+    const initialPaymentContribution = await hasOrderLoanInitialRepayment(loan.id, order.workspaceId)
+        ? 0
+        : initialPaymentAmount
     const paidAmount = roundOrderAmount(
-        Math.min(order.total, initialPaymentAmount + loan.totalPaidAmount),
+        Math.min(order.total, initialPaymentContribution + loan.totalPaidAmount),
         order.currency
     )
     const balanceAmount = roundOrderAmount(Math.max(loan.balanceAmount, 0), order.currency)
@@ -2511,6 +2560,7 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
 
     updated.nextDueDate = isOrderFinancingMethod(updated.paymentMethod) ? updated.firstDueDate || null : null
     await assertSalesProductsHaveCosts(updated)
+    await appendInitialOrderPaymentTransaction('sales', updated)
     await db.sales_orders.put(updated)
     const orderForSync = hasOrderAdjustmentsUpdate && confirmedAdjustments.length === 0
         ? { ...updated, orderAdjustments: null }
@@ -2578,8 +2628,20 @@ async function activateOrderFinancing(orderType: OrderType, order: SalesOrder | 
         }
         await Promise.all([
             fetchTableFromSupabase('loans', db.loans, order.workspaceId),
-            fetchTableFromSupabase('loan_installments', db.loan_installments, order.workspaceId)
+            fetchTableFromSupabase('loan_installments', db.loan_installments, order.workspaceId),
+            fetchTableFromSupabase('loan_payments', db.loan_payments, order.workspaceId),
+            fetchTableFromSupabase('payment_transactions', db.payment_transactions, order.workspaceId)
         ])
+        if (isSimpleOrderLoan(order)) {
+            const initialRepaymentTransactions = (await db.payment_transactions
+                .where('[workspaceId+sourceType+sourceRecordId]')
+                .equals([order.workspaceId, 'simple_loan', loanId])
+                .toArray())
+                .filter((payment) => !payment.isDeleted && !payment.reversalOfTransactionId)
+            await Promise.all(initialRepaymentTransactions.map((payment) =>
+                mirrorPaymentAccountTransactionLocally(payment)
+            ))
+        }
         return loanId
     }
 
@@ -2589,6 +2651,8 @@ async function activateOrderFinancing(orderType: OrderType, order: SalesOrder | 
     if (!partner) {
         throw new Error('Business partner not found')
     }
+    const initialPaymentIsRepayment = isSimpleOrderLoan(order)
+        && !(await hasLegacyOrderLoanDownPayment(orderType, order))
     const { createLoanFromOrder } = await import('./hooks')
     const result = await createLoanFromOrder(order.workspaceId, {
         orderId: order.id,
@@ -2602,7 +2666,9 @@ async function activateOrderFinancing(orderType: OrderType, order: SalesOrder | 
         borrowerPhone: partner.phone || '',
         borrowerAddress: [partner.address, partner.city, partner.country].filter(Boolean).join(', '),
         borrowerNationalId: '',
-        principalAmount: order.balanceAmount,
+        principalAmount: initialPaymentIsRepayment
+            ? order.total
+            : order.balanceAmount,
         settlementCurrency: order.currency,
         exchangeRateSnapshot: order.exchangeRates || null,
         installmentCount: order.paymentMethod === 'installments'
@@ -2613,6 +2679,33 @@ async function activateOrderFinancing(orderType: OrderType, order: SalesOrder | 
         notes: `Financing for ${orderType} order ${order.orderNumber}`,
         createdBy: order.createdBy || undefined
     })
+
+    const initialRepaymentAmount = initialPaymentIsRepayment
+        ? roundOrderAmount(Math.max(0, Number(order.initialPaymentAmount || 0)), order.currency)
+        : 0
+    if (initialRepaymentAmount > ORDER_AMOUNT_EPSILON) {
+        try {
+            const { recordLoanPayment } = await import('./hooks')
+            await recordLoanPayment(order.workspaceId, {
+                loanId: result.loan.id,
+                amount: initialRepaymentAmount,
+                paymentMethod: 'cash',
+                paidAt: order.updatedAt,
+                createdBy: order.createdBy || undefined,
+                accountId: order.initialPaymentAccountId ?? null,
+                accountNameSnapshot: order.initialPaymentAccountNameSnapshot ?? null,
+                isOrderLoanInitialRepayment: true
+            })
+        } catch (error) {
+            try {
+                const { cancelOrderLinkedLoan } = await import('./hooks')
+                await cancelOrderLinkedLoan(result.loan.id)
+            } catch (cleanupError) {
+                console.error('[Orders] Failed to roll back the order loan after its initial repayment failed:', cleanupError)
+            }
+            throw error
+        }
+    }
     return result.loan.id
 }
 
@@ -3170,6 +3263,9 @@ async function applySalesOrderReturnToFinancing(input: {
         db.loan_payments.where('loanId').equals(loan.id).and((item) => !item.isDeleted).toArray(),
         db.payment_transactions.where('workspaceId').equals(input.order.workspaceId).toArray()
     ])
+    const initialPaymentIsLoanRepayment = paymentTransactions.some((payment) =>
+        payment.sourceRecordId === loan.id && isOrderLoanInitialRepaymentTransaction(payment)
+    )
 
     const originalLoanBalance = roundAmount(Math.max(0, Number(loan.balanceAmount || 0)), loan.settlementCurrency)
     let remainingRefund = roundAmount(Math.max(0, input.returnAmount - originalLoanBalance), loan.settlementCurrency)
@@ -3217,7 +3313,9 @@ async function applySalesOrderReturnToFinancing(input: {
             .reduce((sum, payment) => sum + Math.max(0, Number(payment.amount || 0)), 0),
         loan.settlementCurrency
     )
-    const initialPaymentRefund = roundAmount(Math.max(0, remainingRefund), input.order.currency)
+    const initialPaymentRefund = initialPaymentIsLoanRepayment
+        ? 0
+        : roundAmount(Math.max(0, remainingRefund), input.order.currency)
     const nextInitialPayment = roundAmount(
         Math.max(0, Number(input.order.initialPaymentAmount || 0) - initialPaymentRefund),
         input.order.currency
@@ -3381,7 +3479,7 @@ async function applySalesOrderReturnToFinancing(input: {
         )
     ])
 
-    return { loan: updatedLoan, initialPaymentAmount: nextInitialPayment }
+    return { loan: updatedLoan, initialPaymentAmount: nextInitialPayment, initialPaymentIsLoanRepayment }
 }
 
 type PreparedSalesOrderReturn = {
@@ -3702,10 +3800,10 @@ export async function returnSalesOrder(input: ReturnSalesOrderInput) {
         initialPaymentAmount: financingResult?.initialPaymentAmount ?? order.initialPaymentAmount,
         isPaid: financingResult ? financingResult.loan.balanceAmount <= ORDER_AMOUNT_EPSILON : order.isPaid,
         paymentStatus: financingResult
-            ? financingResult.loan.balanceAmount <= ORDER_AMOUNT_EPSILON ? 'paid' : (financingResult.loan.totalPaidAmount + (financingResult.initialPaymentAmount || 0) > 0 ? 'partial' : 'unpaid')
+            ? financingResult.loan.balanceAmount <= ORDER_AMOUNT_EPSILON ? 'paid' : (financingResult.loan.totalPaidAmount + (financingResult.initialPaymentIsLoanRepayment ? 0 : financingResult.initialPaymentAmount || 0) > 0 ? 'partial' : 'unpaid')
             : order.paymentStatus,
         paidAmount: financingResult
-            ? roundAmount((financingResult.initialPaymentAmount || 0) + financingResult.loan.totalPaidAmount, order.currency)
+            ? roundAmount((financingResult.initialPaymentIsLoanRepayment ? 0 : financingResult.initialPaymentAmount || 0) + financingResult.loan.totalPaidAmount, order.currency)
             : order.paidAmount,
         balanceAmount: financingResult ? financingResult.loan.balanceAmount : order.balanceAmount,
         paidAt: financingResult?.loan.balanceAmount && financingResult.loan.balanceAmount > ORDER_AMOUNT_EPSILON ? null : order.paidAt,
@@ -3959,6 +4057,7 @@ export async function updatePurchaseOrder(id: string, data: Partial<PurchaseOrde
 
     updated.nextDueDate = isOrderFinancingMethod(updated.paymentMethod) ? updated.firstDueDate || null : null
     await assertPurchaseOrderItemsAreInventoryProducts(updated)
+    await appendInitialOrderPaymentTransaction('purchase', updated)
     await db.purchase_orders.put(updated)
     const orderForSync = hasOrderAdjustmentsUpdate && confirmedAdjustments.length === 0
         ? { ...updated, orderAdjustments: null }

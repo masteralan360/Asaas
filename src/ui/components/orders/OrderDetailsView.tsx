@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
-import { ArrowLeft, BadgeCheck, CalendarDays, CircleCheck, CreditCard, Eye, LayoutGrid, List, Loader2, Lock, Package, PackageCheck, Pencil, Plus, Printer, Receipt, RotateCcw, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse, XCircle } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, CalendarDays, CircleCheck, Clock3, CreditCard, Eye, LayoutGrid, List, Loader2, Lock, Package, PackageCheck, Pencil, Plus, Printer, Receipt, RotateCcw, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedOrderError } from '@/lib/orderErrors'
 import { ORDER_STATUS_ADVANCE_HOLD_DURATION_MS } from '@/lib/pressAndHold'
@@ -35,6 +35,7 @@ import {
     getOrderBalanceAmount,
     getOrderPaidAmount,
     getOrderPaymentStatus,
+    isDraftOrderLoanRepaymentPending,
     isOrderApprovalRequested,
     lockPurchaseOrder,
     lockSalesOrder,
@@ -787,6 +788,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
     const paidAmount = getOrderPaidAmount(order)
     const outstanding = getOrderBalanceAmount(order)
     const paymentStatus = getOrderPaymentStatus(order)
+    const hasPendingDraftLoanRepayment = isDraftOrderLoanRepaymentPending(order)
     const isFullyReturnedSalesOrder = isSales && (order as SalesOrder).returnStatus === 'full'
     const canCreatePostReturnAdjustment = isSales
         && salesOrderReturns.length > 0
@@ -1516,6 +1518,8 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                             'inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em]',
                                             isFullyReturnedSalesOrder
                                                 ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300'
+                                                : hasPendingDraftLoanRepayment
+                                                    ? 'bg-violet-500/10 text-violet-700 dark:text-violet-300'
                                                 : paymentStatus === 'paid'
                                                 ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
                                                 : paymentStatus === 'partial'
@@ -1524,6 +1528,8 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                         )}>
                                             {isFullyReturnedSalesOrder
                                                 ? (t('sales.return.returnedStatus') || 'Returned')
+                                                : hasPendingDraftLoanRepayment
+                                                    ? t('orders.draftFinancing.pendingActivation')
                                                 : paymentStatus === 'paid'
                                                 ? (t('orders.status.paid') || 'Paid')
                                                 : paymentStatus === 'partial'
@@ -1553,8 +1559,15 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                     <div className="mt-2 text-4xl font-black tracking-tight">{formatCurrency(order.total, currency, iqd)}</div>
                                     <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                                         <div>
-                                            <div className="text-xs text-muted-foreground">{t('orders.details.paidAmount', { defaultValue: 'Paid' })}</div>
-                                            <div className="font-semibold text-emerald-600">{formatCurrency(paidAmount, currency, iqd)}</div>
+                                            <div className="text-xs text-muted-foreground">{hasPendingDraftLoanRepayment
+                                                ? t('orders.draftFinancing.plannedInitialRepayment')
+                                                : t('orders.details.paidAmount', { defaultValue: 'Paid' })}</div>
+                                            <div className={cn('font-semibold', hasPendingDraftLoanRepayment ? 'text-violet-600' : 'text-emerald-600')}>
+                                                {formatCurrency(paidAmount, currency, iqd)}
+                                            </div>
+                                            {hasPendingDraftLoanRepayment ? (
+                                                <div className="mt-0.5 text-xs text-muted-foreground">{t('orders.draftFinancing.notPostedYet')}</div>
+                                            ) : null}
                                         </div>
                                         <div>
                                             <div className="text-xs text-muted-foreground">{t('orders.details.outstanding') || 'Outstanding'}</div>
@@ -1563,6 +1576,15 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                     </div>
                                 </div>
                             </div>
+
+                            {hasPendingDraftLoanRepayment ? (
+                                <div className="mt-4 flex items-start gap-2 rounded-2xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 text-sm text-violet-900 dark:text-violet-100">
+                                    <Clock3 className="mt-0.5 h-4 w-4 shrink-0" />
+                                    <p>{t('orders.draftFinancing.activationNotice', {
+                                        amount: formatCurrency(order.initialPaymentAmount, currency, iqd)
+                                    })}</p>
+                                </div>
+                            ) : null}
 
                             <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                                 <div className="rounded-2xl border bg-background/70 p-4">
