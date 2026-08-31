@@ -1,10 +1,10 @@
 import { useTranslation } from 'react-i18next'
-import { ArrowRight, CheckCircle2, ClipboardCheck } from 'lucide-react'
+import { ArrowRight, CheckCircle2, ClipboardCheck, X } from 'lucide-react'
 
 import type { CurrencyCode } from '@/local-db'
 import { formatCurrency } from '@/lib/utils'
 import type { WorkspaceFeatures } from '@/workspace'
-import { Button, Dialog, DialogContent, DialogTitle } from '@/ui/components'
+import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from '@/ui/components'
 
 export interface CompletedQuickOrder {
     id: string
@@ -39,13 +39,23 @@ export function QuickOrderSuccessModal({
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <DialogContent
                 onOpenAutoFocus={(event) => event.preventDefault()}
-                className="max-w-sm overflow-hidden rounded-[2.5rem] border-none p-0 shadow-2xl animate-in fade-in zoom-in duration-300"
+                showCloseButton={false}
+                className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-sm gap-0 overflow-y-auto rounded-[2.5rem] border-none p-0 shadow-2xl animate-in fade-in zoom-in duration-300"
             >
                 <DialogTitle className="sr-only">
                     {t('pos.quickOrder.completedTitle', { defaultValue: 'Order Completed' })}
                 </DialogTitle>
 
-                <div className="relative flex flex-col items-center justify-center gap-3 overflow-hidden bg-primary p-6 text-primary-foreground">
+                <div className="relative flex flex-col items-center justify-center gap-3 overflow-hidden bg-primary p-5 text-primary-foreground sm:p-6">
+                    <DialogClose asChild>
+                        <button
+                            type="button"
+                            className="absolute right-3 top-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/10 text-primary-foreground transition-colors hover:bg-black/20 rtl:right-auto rtl:left-3"
+                            aria-label={t('common.close')}
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
+                    </DialogClose>
                     <div className="absolute -right-16 -top-16 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
                     <div className="absolute -bottom-12 -left-12 h-24 w-24 rounded-full bg-black/10 blur-2xl" />
                     <div className="rounded-full bg-white/20 p-3 backdrop-blur-md animate-in zoom-in duration-500">
@@ -61,7 +71,7 @@ export function QuickOrderSuccessModal({
                     </div>
                 </div>
 
-                <div className="space-y-6 p-6">
+                <div className="space-y-5 p-5 sm:space-y-6 sm:p-6">
                     <div className="flex flex-col items-center gap-1">
                         <span className="text-sm font-bold uppercase tracking-widest text-muted-foreground/50">
                             {t('common.total', { defaultValue: 'Total' })}
@@ -74,18 +84,20 @@ export function QuickOrderSuccessModal({
                     <div className="flex flex-col gap-3">
                         <Button
                             size="lg"
-                            className="h-14 w-full rounded-xl text-lg shadow-lg shadow-primary/20 transition-all active:scale-95"
+                            className="h-auto min-h-12 w-full whitespace-normal rounded-xl px-4 py-3 text-base leading-tight shadow-lg shadow-primary/20 transition-all active:scale-95"
                             onClick={onOpenOrderDetails}
                             disabled={!order}
                         >
-                            <ClipboardCheck className="mr-3 h-6 w-6" />
-                            {t('pos.quickOrder.openDetails', { defaultValue: 'Open Order Details' })}
-                            <ArrowRight className="ml-auto h-5 w-5" />
+                            <ClipboardCheck className="h-5 w-5" />
+                            <span className="min-w-0 text-center">
+                                {t('pos.quickOrder.openDetails', { defaultValue: 'Open Order Details' })}
+                            </span>
+                            <ArrowRight className="h-5 w-5 rtl:rotate-180" />
                         </Button>
                         <Button
                             variant="outline"
                             size="lg"
-                            className="h-14 w-full rounded-xl border-2 text-lg transition-all active:scale-95"
+                            className="h-auto min-h-12 w-full whitespace-normal rounded-xl border-2 px-4 py-3 text-base leading-tight transition-all active:scale-95"
                             onClick={onClose}
                         >
                             {t('pos.continueSale', { defaultValue: 'Continue' })}

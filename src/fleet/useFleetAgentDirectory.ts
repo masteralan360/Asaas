@@ -1,8 +1,10 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useAgents, useBusinessPartners, useWorkspaceUsers } from "@/local-db";
 
 export function useFleetAgentDirectory(workspaceId?: string) {
+  const { t } = useTranslation();
   const agents = useAgents(workspaceId);
   const workspaceUsers = useWorkspaceUsers(workspaceId);
   const partners = useBusinessPartners(workspaceId, {
@@ -33,7 +35,7 @@ export function useFleetAgentDirectory(workspaceId?: string) {
     partners,
     partnerByAgentId,
     getAgentName: (agentId: string) =>
-      partnerByAgentId.get(agentId)?.name ?? "Unknown agent",
+      partnerByAgentId.get(agentId)?.name ?? t("fleet.unknownAgent"),
     getAgentProfileUrl: (agentId: string) => {
       const linkedUserId = agentById.get(agentId)?.linkedUserId;
       return linkedUserId

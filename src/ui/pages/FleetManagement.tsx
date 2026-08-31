@@ -1,4 +1,5 @@
 import { Car, History, MapPinned, Route, Users } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness';
 
 import { useAuth } from "@/auth";
@@ -18,6 +19,7 @@ import {
 import { useWorkspace } from "@/workspace";
 
 export function FleetManagement() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { isLocalMode, isDemoMode } = useWorkspace();
   const { hasPermission } = useWorkspacePermissions();
@@ -37,17 +39,15 @@ export function FleetManagement() {
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-bold">
           <MapPinned className="h-6 w-6 text-primary" />
-          Fleet Management
+          {t("fleet.title")}
         </h1>
         <p className="text-muted-foreground">
-          Manage vehicles and assignments, monitor consenting agents live, and
-          review sampled movement history. <ModulePageFreshness className="ms-2" />
+          {t("fleet.subtitle")} <ModulePageFreshness className="ms-2" />
         </p>
       </div>
       {(isLocalMode || isDemoMode) && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-200">
-          Vehicles and assignments remain available locally. Live tracking and
-          location history require a cloud or hybrid workspace.
+          {t("fleet.localWorkspaceNotice")}
         </div>
       )}
       <Tabs defaultValue={defaultTab}>
@@ -55,21 +55,21 @@ export function FleetManagement() {
           {canViewLive && (
             <TabsTrigger value="live">
               <Route className="mr-2 h-4 w-4" />
-              Live map
+              {t("fleet.tabs.liveMap")}
             </TabsTrigger>
           )}
           <TabsTrigger value="vehicles">
             <Car className="mr-2 h-4 w-4" />
-            Vehicles
+            {t("fleet.tabs.vehicles")}
           </TabsTrigger>
           <TabsTrigger value="assignments">
             <Users className="mr-2 h-4 w-4" />
-            Assignments
+            {t("fleet.tabs.assignments")}
           </TabsTrigger>
           {canViewHistory && (
             <TabsTrigger value="history">
               <History className="mr-2 h-4 w-4" />
-              History
+              {t("fleet.tabs.history")}
             </TabsTrigger>
           )}
         </TabsList>
@@ -77,7 +77,7 @@ export function FleetManagement() {
           <TabsContent value="live" className="mt-4">
             {isLocalMode || isDemoMode ? (
               <div className="rounded-xl border border-dashed p-12 text-center text-muted-foreground">
-                Live tracking is unavailable in local workspaces.
+                {t("fleet.liveTrackingUnavailable")}
               </div>
             ) : (
               <FleetLiveMap workspaceId={workspaceId} />
@@ -100,7 +100,7 @@ export function FleetManagement() {
           <TabsContent value="history" className="mt-4">
             {isLocalMode || isDemoMode ? (
               <div className="rounded-xl border border-dashed p-12 text-center text-muted-foreground">
-                Location history is unavailable in local workspaces.
+                {t("fleet.historyUnavailable")}
               </div>
             ) : (
               <FleetHistoryPanel workspaceId={workspaceId} />

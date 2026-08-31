@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
   createFleetAssignment,
@@ -36,6 +37,7 @@ export function FleetAssignmentDialog({
   open,
   onOpenChange,
 }: FleetAssignmentDialogProps) {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const vehicles = useFleetVehicles(workspaceId);
   const assignments = useFleetAssignments(workspaceId);
@@ -73,16 +75,15 @@ export function FleetAssignmentDialog({
         agentId,
         notes,
       });
-      toast({ title: "Vehicle assigned" });
+      toast({ title: t("fleet.messages.vehicleAssigned") });
       setVehicleId("");
       setAgentId("");
       setNotes("");
       onOpenChange(false);
-    } catch (error) {
+    } catch {
       toast({
-        title: "Could not create assignment",
-        description:
-          error instanceof Error ? error.message : "Unexpected fleet error",
+        title: t("fleet.messages.createAssignmentFailed"),
+        description: t("fleet.messages.tryAgain"),
         variant: "destructive",
       });
     } finally {
@@ -94,17 +95,17 @@ export function FleetAssignmentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Assign vehicle</DialogTitle>
+          <DialogTitle>{t("fleet.assignments.assignVehicle")}</DialogTitle>
           <DialogDescription>
-            Each agent and vehicle can have only one active assignment.
+            {t("fleet.assignments.dialogDescription")}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
-            <Label>Vehicle</Label>
+            <Label>{t("fleet.assignments.vehicleRequired")}</Label>
             <Select value={vehicleId} onValueChange={setVehicleId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select an available vehicle" />
+                <SelectValue placeholder={t("fleet.assignments.selectVehicle")} />
               </SelectTrigger>
               <SelectContent>
                 {availableVehicles.map((vehicle) => (
@@ -117,10 +118,10 @@ export function FleetAssignmentDialog({
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Agent</Label>
+            <Label>{t("fleet.assignments.agentRequired")}</Label>
             <Select value={agentId} onValueChange={setAgentId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select an available agent" />
+                <SelectValue placeholder={t("fleet.assignments.selectAgent")} />
               </SelectTrigger>
               <SelectContent>
                 {availableAgents.map((agent) => (
@@ -139,7 +140,7 @@ export function FleetAssignmentDialog({
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="assignment-notes">Notes</Label>
+            <Label htmlFor="assignment-notes">{t("fleet.notes")}</Label>
             <Textarea
               id="assignment-notes"
               value={notes}
@@ -149,13 +150,15 @@ export function FleetAssignmentDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             disabled={isSaving || !vehicleId || !agentId}
             onClick={handleSave}
           >
-            {isSaving ? "Assigning..." : "Assign vehicle"}
+            {isSaving
+              ? t("fleet.assignments.assigning")
+              : t("fleet.assignments.assignVehicle")}
           </Button>
         </DialogFooter>
       </DialogContent>

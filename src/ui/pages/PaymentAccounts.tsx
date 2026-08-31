@@ -225,7 +225,7 @@ function movementTypeLabel(transaction: PaymentTransaction | null, t: ReturnType
       ? t('ledger.type.installmentReceived', { defaultValue: 'Installment Received' })
       : t('ledger.type.installmentPaid', { defaultValue: 'Installment Paid' })
     case 'real_estate_commission': return t('ledger.type.realEstateCommission', { defaultValue: 'Real Estate Commission' })
-    case 'agent_commission_payout': return t('ledger.type.agentCommissionPayout', { defaultValue: 'Agent Commission Payout' })
+    case 'agent_commission_payout': return t('ledger.type.agentCommissionPayout')
     case 'activity_transaction': return t('ledger.type.activityTransaction', { defaultValue: 'Activity Transaction' })
     case 'activity_refund': return t('ledger.type.activityRefund', { defaultValue: 'Activity Refund' })
     case 'clinical_appointment': return t('ledger.type.clinicalAppointmentPayment', { defaultValue: 'Appointment Payment' })

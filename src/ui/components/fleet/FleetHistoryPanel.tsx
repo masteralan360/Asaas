@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { useFleetAgentDirectory } from "@/fleet/useFleetAgentDirectory";
 import { useFleetLocationHistory } from "@/fleet/useFleetLiveLocations";
@@ -31,6 +32,7 @@ interface FleetHistoryPanelProps {
 }
 
 export function FleetHistoryPanel({ workspaceId }: FleetHistoryPanelProps) {
+  const { t, i18n } = useTranslation();
   const { agents, getAgentName, getAgentProfileUrl } =
     useFleetAgentDirectory(workspaceId);
   const [agentId, setAgentId] = useState<string>("all");
@@ -58,13 +60,13 @@ export function FleetHistoryPanel({ workspaceId }: FleetHistoryPanelProps) {
       <Card>
         <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-end">
           <div className="min-w-64 space-y-2">
-            <label className="text-sm font-medium">Agent</label>
+            <label className="text-sm font-medium">{t("fleet.agent")}</label>
             <Select value={agentId} onValueChange={setAgentId}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All agents</SelectItem>
+                <SelectItem value="all">{t("fleet.history.allAgents")}</SelectItem>
                 {agents.map((agent) => (
                   <SelectItem key={agent.id} value={agent.id}>
                     <div className="flex items-center gap-2">
@@ -88,10 +90,10 @@ export function FleetHistoryPanel({ workspaceId }: FleetHistoryPanelProps) {
             <RefreshCw
               className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
             />
-            Refresh
+            {t("common.refresh")}
           </Button>
           <p className="text-sm text-muted-foreground">
-            Showing the latest {points.length} sampled points.
+            {t("fleet.history.latestPoints", { count: points.length })}
           </p>
         </CardContent>
       </Card>
@@ -133,12 +135,12 @@ export function FleetHistoryPanel({ workspaceId }: FleetHistoryPanelProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Agent</TableHead>
-                  <TableHead>Recorded</TableHead>
-                  <TableHead>Latitude</TableHead>
-                  <TableHead>Longitude</TableHead>
-                  <TableHead>Accuracy</TableHead>
-                  <TableHead>Speed</TableHead>
+                  <TableHead>{t("fleet.agent")}</TableHead>
+                  <TableHead>{t("fleet.history.recorded")}</TableHead>
+                  <TableHead>{t("fleet.history.latitude")}</TableHead>
+                  <TableHead>{t("fleet.history.longitude")}</TableHead>
+                  <TableHead>{t("fleet.history.accuracy")}</TableHead>
+                  <TableHead>{t("fleet.history.speed")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -156,16 +158,20 @@ export function FleetHistoryPanel({ workspaceId }: FleetHistoryPanelProps) {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {new Date(point.recordedAt).toLocaleString()}
+                      {new Date(point.recordedAt).toLocaleString(i18n.language)}
                     </TableCell>
                     <TableCell>{point.latitude.toFixed(6)}</TableCell>
                     <TableCell>{point.longitude.toFixed(6)}</TableCell>
                     <TableCell>
-                      {point.accuracy ? `${Math.round(point.accuracy)} m` : "-"}
+                      {point.accuracy
+                        ? t("fleet.meters", { value: Math.round(point.accuracy) })
+                        : "-"}
                     </TableCell>
                     <TableCell>
                       {point.speed != null
-                        ? `${Math.round(point.speed * 3.6)} km/h`
+                        ? t("fleet.kilometersPerHour", {
+                            value: Math.round(point.speed * 3.6),
+                          })
                         : "-"}
                     </TableCell>
                   </TableRow>
@@ -177,7 +183,7 @@ export function FleetHistoryPanel({ workspaceId }: FleetHistoryPanelProps) {
                       colSpan={6}
                       className="h-28 text-center text-muted-foreground"
                     >
-                      No sampled location history is available.
+                      {t("fleet.history.empty")}
                     </TableCell>
                   </TableRow>
                 )}

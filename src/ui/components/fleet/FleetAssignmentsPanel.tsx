@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link2, Plus } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import {
   endFleetAssignment,
@@ -32,6 +33,7 @@ export function FleetAssignmentsPanel({
   workspaceId,
   canManage,
 }: FleetAssignmentsPanelProps) {
+  const { t, i18n } = useTranslation();
   const assignments = useFleetAssignments(workspaceId);
   const vehicles = useFleetVehicles(workspaceId);
   const { getAgentName, getAgentProfileUrl } = useFleetAgentDirectory(workspaceId);
@@ -45,11 +47,11 @@ export function FleetAssignmentsPanel({
   async function handleEnd(assignmentId: string) {
     try {
       await endFleetAssignment(assignmentId);
-      toast({ title: "Assignment ended" });
-    } catch (error) {
+      toast({ title: t("fleet.messages.assignmentEnded") });
+    } catch {
       toast({
-        title: "Could not end assignment",
-        description: error instanceof Error ? error.message : "Unexpected error",
+        title: t("fleet.messages.endAssignmentFailed"),
+        description: t("fleet.messages.tryAgain"),
         variant: "destructive",
       });
     }
@@ -60,15 +62,15 @@ export function FleetAssignmentsPanel({
       <CardContent className="space-y-4 pt-6">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="font-semibold">Vehicle assignments</h2>
+            <h2 className="font-semibold">{t("fleet.assignments.title")}</h2>
             <p className="text-sm text-muted-foreground">
-              Current ownership and the complete assignment history.
+              {t("fleet.assignments.description")}
             </p>
           </div>
           {canManage && (
             <Button onClick={() => setDialogOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
-              Assign vehicle
+              {t("fleet.assignments.assignVehicle")}
             </Button>
           )}
         </div>
@@ -76,12 +78,12 @@ export function FleetAssignmentsPanel({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Agent</TableHead>
-                <TableHead>Vehicle</TableHead>
-                <TableHead>Assigned</TableHead>
-                <TableHead>Ended</TableHead>
-                <TableHead>Status</TableHead>
-                {canManage && <TableHead className="text-right">Action</TableHead>}
+                <TableHead>{t("fleet.agent")}</TableHead>
+                <TableHead>{t("fleet.vehicle")}</TableHead>
+                <TableHead>{t("fleet.assignments.assigned")}</TableHead>
+                <TableHead>{t("fleet.assignments.ended")}</TableHead>
+                <TableHead>{t("fleet.status")}</TableHead>
+                {canManage && <TableHead className="text-right">{t("fleet.action")}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -102,14 +104,14 @@ export function FleetAssignmentsPanel({
                     <TableCell>
                       {vehicle
                         ? `${vehicle.plateNumber} - ${vehicle.model}`
-                        : "Removed vehicle"}
+                        : t("fleet.assignments.removedVehicle")}
                     </TableCell>
                     <TableCell>
-                      {new Date(assignment.assignedAt).toLocaleString()}
+                      {new Date(assignment.assignedAt).toLocaleString(i18n.language)}
                     </TableCell>
                     <TableCell>
                       {assignment.endedAt
-                        ? new Date(assignment.endedAt).toLocaleString()
+                        ? new Date(assignment.endedAt).toLocaleString(i18n.language)
                         : "-"}
                     </TableCell>
                     <TableCell>
@@ -120,7 +122,7 @@ export function FleetAssignmentsPanel({
                             : "secondary"
                         }
                       >
-                        {assignment.status}
+                        {t(`fleet.assignmentStatus.${assignment.status}`)}
                       </Badge>
                     </TableCell>
                     {canManage && (
@@ -132,7 +134,7 @@ export function FleetAssignmentsPanel({
                             onClick={() => void handleEnd(assignment.id)}
                           >
                             <Link2 className="mr-2 h-4 w-4" />
-                            End
+                            {t("fleet.assignments.end")}
                           </Button>
                         )}
                       </TableCell>
@@ -146,7 +148,7 @@ export function FleetAssignmentsPanel({
                     colSpan={canManage ? 6 : 5}
                     className="h-28 text-center text-muted-foreground"
                   >
-                    No vehicle assignments yet.
+                    {t("fleet.assignments.empty")}
                   </TableCell>
                 </TableRow>
               )}

@@ -307,7 +307,7 @@ function ledgerTypeLabel(type: LedgerEntryType, t: any) {
         case 'real_estate_commission':
             return t('ledger.type.realEstateCommission', { defaultValue: 'Real Estate Commission' })
         case 'agent_commission_payout':
-            return t('ledger.type.agentCommissionPayout', { defaultValue: 'Agent Commission Payout' })
+            return t('ledger.type.agentCommissionPayout')
         case 'activity_transaction':
             return t('ledger.type.activityTransaction', { defaultValue: 'Activity Transaction' })
         case 'activity_refund':

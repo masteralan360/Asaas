@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { useFleetAgentDirectory } from "@/fleet/useFleetAgentDirectory";
 import { useFleetLiveLocations } from "@/fleet/useFleetLiveLocations";
@@ -23,19 +24,20 @@ interface FleetLiveMapProps {
 
 function locationState(recordedAt: string, isSharing: boolean) {
   if (!isSharing) {
-    return { label: "Stopped", variant: "secondary" as const, active: false };
+    return { key: "stopped", variant: "secondary" as const, active: false };
   }
   const age = Date.now() - Date.parse(recordedAt);
   if (age <= 30_000) {
-    return { label: "Live", variant: "success" as const, active: true };
+    return { key: "live", variant: "success" as const, active: true };
   }
   if (age <= 5 * 60_000) {
-    return { label: "Delayed", variant: "warning" as const, active: true };
+    return { key: "delayed", variant: "warning" as const, active: true };
   }
-  return { label: "Stale", variant: "secondary" as const, active: false };
+  return { key: "stale", variant: "secondary" as const, active: false };
 }
 
 export function FleetLiveMap({ workspaceId }: FleetLiveMapProps) {
+  const { t, i18n } = useTranslation();
   const mapRef = useRef<MapRef | null>(null);
   const { locations, isLoading, error, refresh } = useFleetLiveLocations(
     workspaceId,
@@ -76,15 +78,15 @@ export function FleetLiveMap({ workspaceId }: FleetLiveMapProps) {
         <CardContent className="space-y-3 pt-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="font-semibold">Location-enabled agents</h2>
+              <h2 className="font-semibold">{t("fleet.live.locationEnabledAgents")}</h2>
               <p className="text-xs text-muted-foreground">
-                Updates arrive through the secure fleet channel.
+                {t("fleet.live.secureChannelNote")}
               </p>
             </div>
             <Button
               size="icon"
               variant="ghost"
-              aria-label="Refresh live locations"
+              aria-label={t("fleet.live.refreshLocations")}
               onClick={() => void refresh()}
               disabled={isLoading}
             >
@@ -123,18 +125,20 @@ export function FleetLiveMap({ workspaceId }: FleetLiveMapProps) {
                       />
                       <span className="font-medium">{agentName}</span>
                     </div>
-                    <Badge variant={state.variant}>{state.label}</Badge>
+                    <Badge variant={state.variant}>
+                      {t(`fleet.liveStatus.${state.key}`)}
+                    </Badge>
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    {partner?.phone || "No phone"} ·{" "}
-                    {new Date(location.recordedAt).toLocaleTimeString()}
+                    {partner?.phone || t("fleet.live.noPhone")} ·{" "}
+                    {new Date(location.recordedAt).toLocaleTimeString(i18n.language)}
                   </div>
                 </button>
               );
             })}
             {locations.length === 0 && !isLoading && (
               <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-                No agents are sharing a location.
+                {t("fleet.live.noSharedLocations")}
               </div>
             )}
           </div>
@@ -186,13 +190,20 @@ export function FleetLiveMap({ workspaceId }: FleetLiveMapProps) {
                         {agentName}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Updated {new Date(location.recordedAt).toLocaleString()}
+                        {t("fleet.live.updatedAt", {
+                          date: new Date(location.recordedAt).toLocaleString(
+                            i18n.language,
+                          ),
+                        })}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Accuracy:{" "}
-                        {location.accuracy
-                          ? `${Math.round(location.accuracy)} m`
-                          : "unknown"}
+                        {t("fleet.live.accuracy", {
+                          accuracy: location.accuracy
+                            ? t("fleet.meters", {
+                                value: Math.round(location.accuracy),
+                              })
+                            : t("fleet.unknown"),
+                        })}
                       </p>
                       </div>
                     </div>

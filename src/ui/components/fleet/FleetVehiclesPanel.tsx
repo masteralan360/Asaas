@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import {
   deleteFleetVehicle,
@@ -31,6 +32,7 @@ export function FleetVehiclesPanel({
   workspaceId,
   canManage,
 }: FleetVehiclesPanelProps) {
+  const { t } = useTranslation();
   const vehicles = useFleetVehicles(workspaceId);
   const assignments = useFleetAssignments(workspaceId);
   const { toast } = useToast();
@@ -47,16 +49,16 @@ export function FleetVehiclesPanel({
   );
 
   async function handleDelete(vehicle: FleetVehicle) {
-    if (!window.confirm(`Delete vehicle ${vehicle.plateNumber}?`)) {
+    if (!window.confirm(t("fleet.vehicles.deleteConfirmation", { plateNumber: vehicle.plateNumber }))) {
       return;
     }
     try {
       await deleteFleetVehicle(vehicle.id);
-      toast({ title: "Vehicle deleted" });
-    } catch (error) {
+      toast({ title: t("fleet.messages.vehicleDeleted") });
+    } catch {
       toast({
-        title: "Could not delete vehicle",
-        description: error instanceof Error ? error.message : "Unexpected error",
+        title: t("fleet.messages.deleteVehicleFailed"),
+        description: t("fleet.messages.tryAgain"),
         variant: "destructive",
       });
     }
@@ -67,9 +69,9 @@ export function FleetVehiclesPanel({
       <CardContent className="space-y-4 pt-6">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="font-semibold">Fleet vehicles</h2>
+            <h2 className="font-semibold">{t("fleet.vehicles.title")}</h2>
             <p className="text-sm text-muted-foreground">
-              Reusable vehicles and their current availability.
+              {t("fleet.vehicles.description")}
             </p>
           </div>
           {canManage && (
@@ -80,7 +82,7 @@ export function FleetVehiclesPanel({
               }}
             >
               <Plus className="mr-2 h-4 w-4" />
-              Add vehicle
+              {t("fleet.vehicles.add")}
             </Button>
           )}
         </div>
@@ -88,12 +90,12 @@ export function FleetVehiclesPanel({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Plate</TableHead>
-                <TableHead>Vehicle</TableHead>
-                <TableHead>Year</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Assignment</TableHead>
-                {canManage && <TableHead className="text-right">Actions</TableHead>}
+                <TableHead>{t("fleet.vehicles.plate")}</TableHead>
+                <TableHead>{t("fleet.vehicle")}</TableHead>
+                <TableHead>{t("fleet.vehicles.year")}</TableHead>
+                <TableHead>{t("fleet.status")}</TableHead>
+                <TableHead>{t("fleet.vehicles.assignment")}</TableHead>
+                {canManage && <TableHead className="text-right">{t("common.actions")}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -114,13 +116,13 @@ export function FleetVehiclesPanel({
                             : "secondary"
                       }
                     >
-                      {vehicle.status}
+                      {t(`fleet.vehicleStatus.${vehicle.status}`)}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     {activeAssignmentByVehicle.has(vehicle.id)
-                      ? "Assigned"
-                      : "Available"}
+                      ? t("fleet.vehicles.assigned")
+                      : t("fleet.vehicles.available")}
                   </TableCell>
                   {canManage && (
                     <TableCell>
@@ -128,7 +130,9 @@ export function FleetVehiclesPanel({
                         <Button
                           size="icon"
                           variant="ghost"
-                          aria-label={`Edit ${vehicle.plateNumber}`}
+                          aria-label={t("fleet.vehicles.editAria", {
+                            plateNumber: vehicle.plateNumber,
+                          })}
                           onClick={() => {
                             setEditingVehicle(vehicle);
                             setDialogOpen(true);
@@ -139,7 +143,9 @@ export function FleetVehiclesPanel({
                         <Button
                           size="icon"
                           variant="ghost"
-                          aria-label={`Delete ${vehicle.plateNumber}`}
+                          aria-label={t("fleet.vehicles.deleteAria", {
+                            plateNumber: vehicle.plateNumber,
+                          })}
                           onClick={() => void handleDelete(vehicle)}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
@@ -155,7 +161,7 @@ export function FleetVehiclesPanel({
                     colSpan={canManage ? 6 : 5}
                     className="h-28 text-center text-muted-foreground"
                   >
-                    No fleet vehicles yet.
+                    {t("fleet.vehicles.empty")}
                   </TableCell>
                 </TableRow>
               )}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { supabase } from "@/auth/supabase";
 import type { FleetLocationPoint } from "@/local-db";
@@ -21,6 +22,7 @@ export function useFleetLiveLocations(
   workspaceId?: string,
   enabled = true,
 ): FleetLiveLocationsResult {
+  const { t } = useTranslation();
   const [locationsByAgent, setLocationsByAgent] = useState<
     Map<string, FleetLocationPoint>
   >(new Map());
@@ -57,16 +59,12 @@ export function useFleetLiveLocations(
         ),
       );
       setError(undefined);
-    } catch (fetchError) {
-      setError(
-        fetchError instanceof Error
-          ? fetchError.message
-          : "Failed to load live fleet locations",
-      );
+    } catch {
+      setError(t("fleet.errors.loadLiveLocations"));
     } finally {
       setIsLoading(false);
     }
-  }, [enabled, workspaceId]);
+  }, [enabled, t, workspaceId]);
 
   useEffect(() => {
     void refresh();
@@ -126,7 +124,7 @@ export function useFleetLiveLocations(
           channelStatus === "CHANNEL_ERROR" ||
           channelStatus === "TIMED_OUT"
         ) {
-          setError("Could not connect to live fleet database updates");
+          setError(t("fleet.errors.liveUpdatesUnavailable"));
         }
       });
 
@@ -155,7 +153,7 @@ export function useFleetLiveLocations(
       void supabase.removeChannel(databaseChannel);
       void supabase.removeChannel(broadcastChannel);
     };
-  }, [enabled, workspaceId]);
+  }, [enabled, t, workspaceId]);
 
   const locations = useMemo(
     () =>
@@ -173,6 +171,7 @@ export function useFleetLocationHistory(
   agentId?: string,
   enabled = true,
 ) {
+  const { t } = useTranslation();
   const [points, setPoints] = useState<FleetLocationPoint[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
@@ -204,16 +203,12 @@ export function useFleetLocationHistory(
       }
       setPoints((data ?? []).map(normalizeLocation));
       setError(undefined);
-    } catch (fetchError) {
-      setError(
-        fetchError instanceof Error
-          ? fetchError.message
-          : "Failed to load location history",
-      );
+    } catch {
+      setError(t("fleet.errors.loadHistory"));
     } finally {
       setIsLoading(false);
     }
-  }, [agentId, enabled, workspaceId]);
+  }, [agentId, enabled, t, workspaceId]);
 
   useEffect(() => {
     void refresh();

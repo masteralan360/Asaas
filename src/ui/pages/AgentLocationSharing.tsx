@@ -1,4 +1,5 @@
 import { LocateFixed, MapPin, Radio, ShieldCheck } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness';
 
 import { useFleetLocationSharing } from "@/fleet/FleetLocationSharingContext";
@@ -18,6 +19,7 @@ import {
 } from "@/ui/components";
 
 export function AgentLocationSharing() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const {
     linkedAgent,
@@ -38,16 +40,16 @@ export function AgentLocationSharing() {
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-bold">
           <LocateFixed className="h-6 w-6 text-primary" />
-          Share My Location
+          {t("fleet.shareLocation")}
         </h1>
         <p className="text-muted-foreground">
-          Explicitly enable foreground location sharing for fleet operations. <ModulePageFreshness className="ms-2" />
+          {t("fleet.shareLocationDescription")} <ModulePageFreshness className="ms-2" />
         </p>
       </div>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-3">
-            <span>{linkedAgent ? getAgentName(linkedAgent.id) : "Agent link required"}</span>
+            <span>{linkedAgent ? getAgentName(linkedAgent.id) : t("fleet.agentLinkRequired")}</span>
             <Badge
               variant={
                 status === "sharing"
@@ -57,20 +59,19 @@ export function AgentLocationSharing() {
                     : "secondary"
               }
             >
-              {status === "starting" ? "Starting" : status}
+              {t(`fleet.sharingStatus.${status}`)}
             </Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
           {!linkedAgent && (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
-              Your workspace user is not linked to an active agent. An admin must
-              link it from the Agents module before location sharing is available.
+              {t("fleet.agentLinkDescription")}
             </div>
           )}
           {!isSupported && (
             <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-              This device does not expose a supported geolocation service.
+              {t("fleet.geolocationUnsupported")}
             </div>
           )}
           {error && (
@@ -80,16 +81,22 @@ export function AgentLocationSharing() {
           )}
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg border p-3">
-              <p className="text-xs text-muted-foreground">Agent type</p>
-              <p className="font-medium">{linkedAgent?.agentType ?? "-"}</p>
+              <p className="text-xs text-muted-foreground">{t("fleet.agentType")}</p>
+              <p className="font-medium">
+                {linkedAgent
+                  ? t(`fleet.agentTypes.${linkedAgent.agentType}`)
+                  : "-"}
+              </p>
             </div>
             <div className="rounded-lg border p-3">
-              <p className="text-xs text-muted-foreground">Territory</p>
+              <p className="text-xs text-muted-foreground">{t("fleet.territory")}</p>
               <p className="font-medium">{linkedAgent?.zone ?? "-"}</p>
             </div>
             <div className="rounded-lg border p-3">
-              <p className="text-xs text-muted-foreground">Connection</p>
-              <p className="font-medium">{isOnline ? "Online" : "Offline"}</p>
+              <p className="text-xs text-muted-foreground">{t("fleet.connection")}</p>
+              <p className="font-medium">
+                {isOnline ? t("fleet.online") : t("fleet.offline")}
+              </p>
             </div>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -100,7 +107,7 @@ export function AgentLocationSharing() {
                 onClick={() => void startSharing()}
               >
                 <Radio className="mr-2 h-4 w-4" />
-                Start sharing
+                {t("fleet.startSharing")}
               </Button>
             ) : (
               <Button
@@ -108,16 +115,14 @@ export function AgentLocationSharing() {
                 variant="destructive"
                 onClick={() => void stopSharing()}
               >
-                Stop sharing
+                {t("fleet.stopSharing")}
               </Button>
             )}
           </div>
           <div className="flex gap-3 rounded-lg bg-muted/60 p-4 text-sm">
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
             <p>
-              Sharing starts only after you press the button. This release tracks
-              while Atlas remains open; native Android background tracking requires
-              a later foreground-service build.
+              {t("fleet.sharingPrivacyNotice")}
             </p>
           </div>
         </CardContent>

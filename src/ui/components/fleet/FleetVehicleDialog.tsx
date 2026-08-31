@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
   createFleetVehicle,
@@ -38,6 +39,7 @@ export function FleetVehicleDialog({
   open,
   onOpenChange,
 }: FleetVehicleDialogProps) {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [plateNumber, setPlateNumber] = useState("");
   const [make, setMake] = useState("");
@@ -82,14 +84,13 @@ export function FleetVehicleDialog({
         await createFleetVehicle(workspaceId, payload);
       }
       toast({
-        title: vehicle ? "Vehicle updated" : "Vehicle created",
+        title: t(vehicle ? "fleet.messages.vehicleUpdated" : "fleet.messages.vehicleCreated"),
       });
       onOpenChange(false);
-    } catch (error) {
+    } catch {
       toast({
-        title: "Could not save vehicle",
-        description:
-          error instanceof Error ? error.message : "Unexpected fleet error",
+        title: t("fleet.messages.saveVehicleFailed"),
+        description: t("fleet.messages.tryAgain"),
         variant: "destructive",
       });
     } finally {
@@ -101,14 +102,14 @@ export function FleetVehicleDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{vehicle ? "Edit vehicle" : "Add vehicle"}</DialogTitle>
+          <DialogTitle>{t(vehicle ? "fleet.vehicles.edit" : "fleet.vehicles.add")}</DialogTitle>
           <DialogDescription>
-            Maintain the reusable fleet asset separately from its agent assignment.
+            {t("fleet.vehicles.dialogDescription")}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-2 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="fleet-plate">Plate number</Label>
+            <Label htmlFor="fleet-plate">{t("fleet.vehicles.plateNumberRequired")}</Label>
             <Input
               id="fleet-plate"
               value={plateNumber}
@@ -117,7 +118,7 @@ export function FleetVehicleDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="fleet-model">Model</Label>
+            <Label htmlFor="fleet-model">{t("fleet.vehicles.modelRequired")}</Label>
             <Input
               id="fleet-model"
               value={model}
@@ -126,7 +127,7 @@ export function FleetVehicleDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="fleet-make">Make</Label>
+            <Label htmlFor="fleet-make">{t("fleet.vehicles.make")}</Label>
             <Input
               id="fleet-make"
               value={make}
@@ -135,7 +136,7 @@ export function FleetVehicleDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="fleet-year">Year</Label>
+            <Label htmlFor="fleet-year">{t("fleet.vehicles.year")}</Label>
             <Input
               id="fleet-year"
               type="number"
@@ -146,7 +147,7 @@ export function FleetVehicleDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="fleet-color">Color</Label>
+            <Label htmlFor="fleet-color">{t("fleet.vehicles.color")}</Label>
             <Input
               id="fleet-color"
               value={color}
@@ -154,7 +155,7 @@ export function FleetVehicleDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="fleet-vin">VIN</Label>
+            <Label htmlFor="fleet-vin">{t("fleet.vehicles.vin")}</Label>
             <Input
               id="fleet-vin"
               value={vin}
@@ -162,7 +163,7 @@ export function FleetVehicleDialog({
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label>Status</Label>
+            <Label>{t("fleet.status")}</Label>
             <Select
               value={status}
               onValueChange={(value) => setStatus(value as FleetVehicleStatus)}
@@ -171,14 +172,14 @@ export function FleetVehicleDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="maintenance">Maintenance</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="active">{t("fleet.vehicleStatus.active")}</SelectItem>
+                <SelectItem value="maintenance">{t("fleet.vehicleStatus.maintenance")}</SelectItem>
+                <SelectItem value="inactive">{t("fleet.vehicleStatus.inactive")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="fleet-notes">Notes</Label>
+            <Label htmlFor="fleet-notes">{t("fleet.notes")}</Label>
             <Textarea
               id="fleet-notes"
               value={notes}
@@ -188,13 +189,13 @@ export function FleetVehicleDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             onClick={handleSave}
             disabled={isSaving || !plateNumber.trim() || !model.trim()}
           >
-            {isSaving ? "Saving..." : "Save vehicle"}
+            {isSaving ? t("fleet.vehicles.saving") : t("fleet.vehicles.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

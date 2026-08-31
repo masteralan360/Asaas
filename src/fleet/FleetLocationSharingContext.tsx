@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth";
 import { isSupabaseConfigured, supabase } from "@/auth/supabase";
@@ -69,14 +71,17 @@ function distanceMeters(
   return radius * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
 }
 
-function geolocationErrorMessage(error: GeolocationPositionError) {
+function geolocationErrorMessage(
+  t: TFunction,
+  error: GeolocationPositionError,
+) {
   if (error.code === error.PERMISSION_DENIED) {
-    return "Location permission was denied. Enable it in your device settings.";
+    return t("fleet.errors.locationPermissionDenied");
   }
   if (error.code === error.POSITION_UNAVAILABLE) {
-    return "Your device could not determine its current location.";
+    return t("fleet.errors.positionUnavailable");
   }
-  return "Location tracking timed out. Check GPS and network access.";
+  return t("fleet.errors.locationTimedOut");
 }
 
 function isGeolocationPositionError(
@@ -143,6 +148,7 @@ export function FleetLocationSharingProvider({
 }: {
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { features, isLocalMode, isDemoMode } = useWorkspace();
   const isOnline = useNetworkStatus();
@@ -401,14 +407,14 @@ export function FleetLocationSharingProvider({
     if (!canShare || !user?.workspaceId || !user.id || !linkedAgent) {
       setError(
         isLocalMode || isDemoMode
-          ? "Live fleet tracking requires a cloud or hybrid workspace."
-          : "An active agent must be linked to your workspace user.",
+          ? t("fleet.errors.cloudWorkspaceRequired")
+          : t("fleet.errors.activeAgentRequired"),
       );
       setStatus("error");
       return;
     }
     if (!isOnline) {
-      setError("Connect to the internet before starting live location sharing.");
+      setError(t("fleet.errors.connectionRequired"));
       setStatus("error");
       return;
     }
@@ -459,7 +465,7 @@ export function FleetLocationSharingProvider({
             .single(),
       )) as { data?: { id: string } | null; error?: unknown };
       if (sessionError || !data?.id) {
-        throw sessionError || new Error("Failed to start a location session");
+        throw sessionError || new Error();
       }
       sessionIdRef.current = data.id;
 
@@ -478,7 +484,7 @@ export function FleetLocationSharingProvider({
           void handlePosition(position).catch((persistError) => {
             console.warn("[Fleet] Failed to persist location:", persistError);
             setError(
-              "Location was captured but could not be saved to Supabase. Check your connection and try again.",
+              t("fleet.errors.locationSaveFailed"),
             );
             setStatus("error");
             void stopSharing({ preserveErrorStatus: true });
@@ -489,10 +495,10 @@ export function FleetLocationSharingProvider({
             // Temporary GPS/network failures are common on mobile devices and do
             // not mean permission was revoked. Keep the watch active so it can
             // recover without forcing the agent to start sharing again.
-            setError("Waiting for a GPS signal. Location sharing will resume automatically.");
+            setError(t("fleet.errors.waitingForGps"));
             return;
           }
-          setError(geolocationErrorMessage(positionError));
+          setError(geolocationErrorMessage(t, positionError));
           setStatus("error");
           void stopSharing({ preserveErrorStatus: true });
         },
@@ -509,10 +515,8 @@ export function FleetLocationSharingProvider({
     } catch (startError) {
       setError(
         isGeolocationPositionError(startError)
-          ? geolocationErrorMessage(startError)
-          : startError instanceof Error
-          ? startError.message
-          : "Failed to start location sharing",
+          ? geolocationErrorMessage(t, startError)
+          : t("fleet.errors.startSharingFailed"),
       );
       setStatus("error");
       await stopSharing({ preserveErrorStatus: true });
@@ -526,6 +530,7 @@ export function FleetLocationSharingProvider({
     linkedAgent,
     status,
     stopSharing,
+    t,
     user?.id,
     user?.workspaceId,
   ]);

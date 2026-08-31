@@ -91,8 +91,8 @@ export function LoanAccountStatementPrintTemplate({
                             <th className="w-[16%] border border-slate-400 px-2 py-1.5 text-start">{t('common.date')}</th>
                             <th className="w-[22%] border border-slate-400 px-2 py-1.5 text-start">{t('common.reference')}</th>
                             <th className="w-[28%] border border-slate-400 px-2 py-1.5 text-start">{t('common.description')}</th>
-                            <th className="w-[11%] border border-slate-400 px-2 py-1.5 text-end">{t('loans.accountStatement.debit')}</th>
-                            <th className="w-[11%] border border-slate-400 px-2 py-1.5 text-end">{t('loans.accountStatement.credit')}</th>
+                            <th className="w-[11%] border border-slate-400 px-2 py-1.5 text-end">{t('businessPartners.accountStatement.debit')}</th>
+                            <th className="w-[11%] border border-slate-400 px-2 py-1.5 text-end">{t('businessPartners.accountStatement.credit')}</th>
                             <th className="w-[12%] border border-slate-400 px-2 py-1.5 text-end">{t('loans.accountStatement.balance')}</th>
                         </tr>
                     </thead>
