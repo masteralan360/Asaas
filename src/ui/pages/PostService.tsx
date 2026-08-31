@@ -6,7 +6,7 @@ import { Banknote, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, C
 import { useAuth } from "@/auth";
 import {
   adminEditAndRedispatchDeliveryShipment, adminEditReceivedDeliveryShipment, closeDeliveryRun, createAndDispatchDeliveryShipment, createBusinessPartner, createDeliveryMerchantProfile, createDeliveryRun, createDeliveryShipment, hardDeleteDeliveryMerchantProfile, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment,
-  refreshPostServiceTab, requestDeliveryShipmentCodAdjustment, reviewDeliveryShipmentCodAdjustment, settleDeliveryCourier, summarizeDeliveryBalanceMetrics, updateBusinessPartner, updateDeliveryMerchantProfile, updateDeliveryShipmentStatus, useAgents, useBusinessPartners, useCourierDeliveryAccountBalances, useCourierDeliveryBalances,
+  refreshPostServiceTab, requestDeliveryShipmentCodAdjustment, reviewDeliveryShipmentCodAdjustment, settleDeliveryCourier, summarizeDeliveryBalanceMetrics, updateBusinessPartner, updateDeliveryMerchantProfile, updateDeliveryShipmentStatus, useAgents, useBusinessPartners, useCourierDeliveryBalances,
   useDeliveryMerchantProfiles, useDeliveryRuns, useDeliverySettlements, useDeliveryShipmentCodAdjustmentRequests, useDeliveryShipmentEvents, useDeliveryShipments, useFleetVehicles,
   transferReturnedDeliveryShipment, useMerchantDeliveryAccountBalances, useMerchantDeliveryBalances, useDeliveryLedgerEntries, type Agent, type BusinessPartner, type CreateDeliveryShipmentInput, type CurrencyCode, type DeliveryCustomerPaymentStatus, type DeliveryMerchantProfile, type DeliveryRecipientPayoutFunding, type DeliveryShipment, type DeliveryShipmentCodAdjustmentRequest, type DeliveryShipmentEvent, type DeliveryShipmentStatus, type PaymentAccount, type PostServiceTab, type WorkspacePaymentMethod,
 } from "@/local-db";
@@ -15,6 +15,7 @@ import { STANDARD_PAYMENT_METHODS } from "@/lib/paymentMethods";
 import { isDateInDateRange } from "@/lib/dateRangeFilters";
 import { getLanguageDirection } from "@/lib/i18nRouting";
 import { courierHandoverStatusByShipment, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, merchantPayoutStatusByShipment, merchantSettlementBreakdownByParty, type ShipmentSettlementBreakdown, type ShipmentSettlementStatus } from "@/lib/postServiceSettlementStatus";
+import { summarizeCourierOutstandingCash, summarizeCourierPayables, summarizeStaffCourierObligationMetrics } from "@/lib/postServiceStaffCourierMetrics";
 import { useWorkspacePermissions } from "@/permissions";
 import { useDateRange } from "@/context/DateRangeContext";
 import { ModulePageFreshness } from "@/ui/components/ModulePageFreshness";
@@ -241,6 +242,7 @@ export function PostService() {
   const { toast } = useToast();
   const workspaceId = user?.workspaceId;
   const isAdmin = user?.role === "admin";
+  const isStaff = user?.role === "staff";
   const isEditor = user?.role === "admin" || user?.role === "staff";
   const canDispatch = isEditor && hasPermission("postService.dispatch");
   const canAdminEditAndRedispatch = isAdmin && hasPermission("postService.dispatch");
@@ -256,7 +258,6 @@ export function PostService() {
   const runs = useDeliveryRuns(workspaceId);
   const settlements = useDeliverySettlements(workspaceId);
   const courierBalances = useCourierDeliveryBalances(workspaceId);
-  const courierAccountBalances = useCourierDeliveryAccountBalances(workspaceId);
   const merchantBalances = useMerchantDeliveryBalances(workspaceId);
   const merchantAccountBalances = useMerchantDeliveryAccountBalances(workspaceId);
   const ledgerEntries = useDeliveryLedgerEntries(workspaceId);
@@ -569,6 +570,18 @@ export function PostService() {
     </div>
   );
   const linkedCourier = agents.find((agent) => agent.linkedUserId === user?.id && agent.status === "active" && agent.agentType === "courier");
+  const staffCourierObligationMetrics = useMemo(() => {
+    const obligations = summarizeStaffCourierObligationMetrics(linkedCourier?.id, courierBalances, courierPayables);
+    const formatTotal = (amounts: Array<{ currency: CurrencyCode; amount: number }>) => (
+      amounts.length > 0
+        ? amounts.map(({ currency, amount }) => formatCurrency(amount, currency, features.iqd_display_preference)).join(" + ")
+        : formatCurrency(0, features.default_currency, features.iqd_display_preference)
+    );
+    return [
+      { id: "i-owe-workspace", title: t("postService.cards.iOweWorkspace"), value: formatTotal(obligations.outstandingCash), icon: WalletCards, tone: "sky" as const },
+      { id: "workspace-owes-me", title: t("postService.cards.workspaceOwesMe"), value: formatTotal(obligations.courierPayable), icon: HandCoins, tone: "rose" as const },
+    ];
+  }, [courierBalances, courierPayables, features.default_currency, features.iqd_display_preference, linkedCourier?.id, t]);
   const assignableShipments = shipments.filter((shipment) => ["received", "postponed"].includes(shipment.status));
   const postStatusMetrics = useMemo(() => {
     const counts = new Map<DeliveryShipmentStatus, number>();
@@ -585,19 +598,21 @@ export function PostService() {
     [codAdjustmentRequests],
   );
   const deliveryBalanceMetrics = useMemo(() => {
-    const totals = summarizeDeliveryBalanceMetrics(merchantAccountBalances, courierAccountBalances);
+    const merchantTotals = summarizeDeliveryBalanceMetrics(merchantAccountBalances, []);
+    const outstandingCourierCash = summarizeCourierOutstandingCash(courierBalances);
+    const courierPayablesTotal = summarizeCourierPayables(courierPayables);
     const formatTotal = (amounts: Array<{ currency: CurrencyCode; amount: number }>) => (
       amounts.length > 0
         ? amounts.map(({ currency, amount }) => formatCurrency(amount, currency, features.iqd_display_preference)).join(" + ")
         : formatCurrency(0, features.default_currency, features.iqd_display_preference)
     );
     return [
-      { id: "we-owe-merchants", title: t("postService.cards.weOweMerchants"), value: formatTotal(totals.weOweMerchants), icon: Store, tone: "amber" as const },
-      { id: "merchants-owe-us", title: t("postService.cards.merchantsOweUs"), value: formatTotal(totals.merchantsOweUs), icon: HandCoins, tone: "emerald" as const },
-      { id: "couriers-owe-us", title: t("postService.cards.couriersOweUs"), value: formatTotal(totals.couriersOweUs), icon: WalletCards, tone: "sky" as const },
-      { id: "we-owe-couriers", title: t("postService.cards.weOweCouriers"), value: formatTotal(totals.weOweCouriers), icon: CircleDollarSign, tone: "rose" as const },
+      { id: "we-owe-merchants", title: t("postService.cards.weOweMerchants"), value: formatTotal(merchantTotals.weOweMerchants), icon: Store, tone: "amber" as const },
+      { id: "merchants-owe-us", title: t("postService.cards.merchantsOweUs"), value: formatTotal(merchantTotals.merchantsOweUs), icon: HandCoins, tone: "emerald" as const },
+      { id: "couriers-owe-us", title: t("postService.cards.couriersOweUs"), value: formatTotal(outstandingCourierCash), icon: WalletCards, tone: "sky" as const },
+      { id: "we-owe-couriers", title: t("postService.cards.weOweCouriers"), value: formatTotal(courierPayablesTotal), icon: CircleDollarSign, tone: "rose" as const },
     ];
-  }, [courierAccountBalances, features.default_currency, features.iqd_display_preference, merchantAccountBalances, t]);
+  }, [courierBalances, courierPayables, features.default_currency, features.iqd_display_preference, merchantAccountBalances, t]);
   const selectedCount = selectedShipmentIds.size;
   const enabledMerchantPartnerIds = useMemo(() => merchantProfiles.map((profile) => profile.businessPartnerId), [merchantProfiles]);
   const settlementNetSummary = settlementNetTarget ? perShipmentSettlementNet.get(settlementNetTarget.id) : undefined;
@@ -1251,8 +1266,8 @@ export function PostService() {
   return <div className="w-full min-w-0 space-y-6 overflow-x-hidden" dir={pageDirection}>
     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><h1 className="flex items-center gap-2 text-2xl font-bold"><PackageCheck className="h-6 w-6 text-primary" />{t("postService.title")}</h1><p className="text-muted-foreground">{t("postService.subtitle")} <ModulePageFreshness className="ms-2" /></p></div>{isAdmin && <div className="flex flex-wrap gap-2"><Button variant="outline" className="gap-2" onClick={() => setMerchantDialogOpen(true)}><Store className="h-4 w-4" />{t("postService.actions.enableMerchant")}</Button><Button className="gap-2" onClick={() => setShipmentDialogOpen(true)}><Plus className="h-4 w-4" />{t("postService.actions.newPost")}</Button></div>}</div>
     <div className="space-y-3">
-      <div className={cn("grid sm:grid-cols-2", isAdmin ? "gap-3 lg:grid-cols-6" : "gap-4 xl:grid-cols-5")}>{postStatusMetrics.filter(({ status }) => !isAdmin || !["returned", "cancelled"].includes(status)).map(({ status, value }) => <StatusMetric key={status} compact={isAdmin} icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={!pendingCodChangeFilter && !completedOnly && statusFilter === status} onClick={() => handlePostStatusMetricClick(status)} />)}{isAdmin ? <><StatusMetric compact icon={PackageCheck} title={t("postService.status.completed")} value={completedPostCount} active={completedOnly} onClick={handleCompletedPostMetricClick} /><StatusMetric compact icon={FilePenLine} title={t("postService.status.requestChange")} value={pendingCodAdjustmentCount} active={pendingCodChangeFilter} onClick={handlePendingCodChangeMetricClick} /></> : null}</div>
-      {isAdmin ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">{postStatusMetrics.filter(({ status }) => status === "returned" || status === "cancelled").map(({ status, value }) => <StatusMetric key={status} compact icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={!pendingCodChangeFilter && !completedOnly && statusFilter === status} onClick={() => handlePostStatusMetricClick(status)} />)}{deliveryBalanceMetrics.map((metric) => <DeliveryBalanceMetric key={metric.id} {...metric} />)}</div> : null}
+      <div className={cn("grid sm:grid-cols-2", isAdmin ? "gap-3 lg:grid-cols-6" : "gap-4 xl:grid-cols-6")}>{postStatusMetrics.filter(({ status }) => !isAdmin ? status !== "cancelled" : !["returned", "cancelled"].includes(status)).map(({ status, value }) => <StatusMetric key={status} compact={isAdmin} icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={!pendingCodChangeFilter && !completedOnly && statusFilter === status} onClick={() => handlePostStatusMetricClick(status)} />)}{isAdmin ? <><StatusMetric compact icon={PackageCheck} title={t("postService.status.completed")} value={completedPostCount} active={completedOnly} onClick={handleCompletedPostMetricClick} /><StatusMetric compact icon={FilePenLine} title={t("postService.status.requestChange")} value={pendingCodAdjustmentCount} active={pendingCodChangeFilter} onClick={handlePendingCodChangeMetricClick} /></> : <><StatusMetric icon={PackageCheck} title={t("postService.status.completed")} value={completedPostCount} active={completedOnly} onClick={handleCompletedPostMetricClick} />{postStatusMetrics.filter(({ status }) => status === "cancelled").map(({ status, value }) => <StatusMetric key={status} icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={!pendingCodChangeFilter && !completedOnly && statusFilter === status} onClick={() => handlePostStatusMetricClick(status)} />)}</>}</div>
+      {isAdmin ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">{postStatusMetrics.filter(({ status }) => status === "returned" || status === "cancelled").map(({ status, value }) => <StatusMetric key={status} compact icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={!pendingCodChangeFilter && !completedOnly && statusFilter === status} onClick={() => handlePostStatusMetricClick(status)} />)}{deliveryBalanceMetrics.map((metric) => <DeliveryBalanceMetric key={metric.id} {...metric} />)}</div> : isStaff ? <div className="grid gap-4 sm:grid-cols-2">{staffCourierObligationMetrics.map((metric) => <DeliveryBalanceMetric key={metric.id} {...metric} />)}</div> : null}
     </div>
     <Tabs value={activeTab} onValueChange={handleTabChange} dir={pageDirection} className="min-w-0"><TabsList className="h-auto w-full max-w-full flex-wrap justify-start gap-1 sm:w-auto"><TabsTrigger value="posts"><ClipboardList className="me-2 h-4 w-4" />{t("postService.tabs.posts")}</TabsTrigger>{isAdmin && <><TabsTrigger value="dispatch"><Send className="me-2 h-4 w-4" />{t("postService.tabs.dispatch")}</TabsTrigger><TabsTrigger value="my-deliveries"><Route className="me-2 h-4 w-4" />{t("postService.tabs.myDeliveries")}</TabsTrigger><TabsTrigger value="merchants"><Store className="me-2 h-4 w-4" />{t("postService.tabs.merchants")}</TabsTrigger><TabsTrigger value="courier"><Truck className="me-2 h-4 w-4" />{t("postService.tabs.courier")}</TabsTrigger><TabsTrigger value="settlements"><Banknote className="me-2 h-4 w-4" />{t("postService.tabs.settlements")}</TabsTrigger></>}</TabsList>
       <TabsContent ref={postsPanelRef} value="posts" tabIndex={-1} className="mt-4 min-w-0 scroll-mt-24 outline-none">

@@ -6,6 +6,7 @@ import { isOnline } from "@/lib/network";
 import { getSupabaseClientForTable } from "@/lib/supabaseSchema";
 import { runSupabaseAction } from "@/lib/supabaseRequest";
 import { generateId, toSnakeCase } from "@/lib/utils";
+import { isVisibleDeliveryLedgerEntry } from "@/lib/postServiceLedgerVisibility";
 import { courierSettlementBreakdownByParty, merchantSettlementBreakdownByParty } from "@/lib/postServiceSettlementStatus";
 import { useViewOwnRecordScope, type ViewOwnRecordScope } from "@/permissions/useViewOwnRecordScope";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
@@ -1088,10 +1089,11 @@ export function useDeliveryLedgerEntries(workspaceId?: string) {
         .toArray();
       if (!viewOwnScope.isRestricted) return entries;
 
-      const visibleShipmentIds = await getVisibleDeliveryShipmentIds(workspaceId, viewOwnScope);
-      return entries.filter((entry) => (
-        !!entry.shipmentId && visibleShipmentIds.has(entry.shipmentId)
-      ));
+      const [visibleShipmentIds, linkedCourierIds] = await Promise.all([
+        getVisibleDeliveryShipmentIds(workspaceId, viewOwnScope),
+        getLinkedCourierIds(workspaceId, viewOwnScope.userId),
+      ]);
+      return entries.filter((entry) => isVisibleDeliveryLedgerEntry(entry, visibleShipmentIds, linkedCourierIds));
     },
     [workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId],
   ) ?? [];

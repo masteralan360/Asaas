@@ -6713,6 +6713,8 @@
       "merchantsOweUs": "بازرگانان قەرزدارن بە ئێمە",
       "couriersOweUs": "مەندوبان قەرزدارن بە ئێمە",
       "weOweCouriers": "ئێمە قەرزدارین بە مەندوبان",
+      "iOweWorkspace": "قەرزدارم بە شوێنی کار",
+      "workspaceOwesMe": "شوێنی کار قەرزدارە بە من",
       "codChangeRequests": "داواکارییەکانی گۆڕینی پارە لە کاتی وەرگرتن",
       "merchantPayouts": "پارەدانی بازرگانان",
       "settlementHistory": "مێژووی تەسویە"

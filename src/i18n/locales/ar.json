@@ -6662,6 +6662,8 @@
       "merchantsOweUs": "التجار مدينون لنا",
       "couriersOweUs": "المندوبون مدينون لنا",
       "weOweCouriers": "علينا للمندوبين",
+      "iOweWorkspace": "أنا مدين لمساحة العمل",
+      "workspaceOwesMe": "مساحة العمل مدينة لي",
       "codChangeRequests": "طلبات تغيير مبلغ الدفع عند الاستلام",
       "merchantPayouts": "دفعات التجار",
       "settlementHistory": "سجل التسويات"

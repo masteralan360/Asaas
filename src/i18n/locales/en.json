@@ -6916,6 +6916,8 @@
       "merchantsOweUs": "Merchants owe us",
       "couriersOweUs": "Couriers owe us",
       "weOweCouriers": "We owe couriers",
+      "iOweWorkspace": "I owe the workspace",
+      "workspaceOwesMe": "The workspace owes me",
       "codChangeRequests": "COD change requests",
       "merchantPayouts": "Merchant payouts",
       "settlementHistory": "Settlement history"
