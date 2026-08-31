@@ -113,6 +113,18 @@
     "newNotification": "You have a new notification",
     "newNotificationTitle": "New Notification"
   },
+  "workspaceFreeUsage": {
+    "title": "Free usage granted",
+    "description": "Free usage has been applied to this workspace's current usage.",
+    "grantedAmount": "Granted free usage",
+    "acknowledge": "Got it"
+  },
+  "workspaceAdminMessage": {
+    "title": "Message from Atlas Admin",
+    "emptyBody": "You received a message from Atlas Admin.",
+    "acknowledge": "Got it",
+    "acknowledgeFailed": "The message could not be marked as seen. Please try again."
+  },
   "pageFind": {
     "label": "Find in this page",
     "placeholder": "Search this page...",

@@ -221,7 +221,7 @@ export function NotificationCenter() {
     }, [i18n.language, t])
 
     const announceNewNotifications = useCallback((nextItems: NotificationInboxRecord[]) => {
-        const freshItems = nextItems.filter((item) => !item.archived_at && !seenInboxNotificationIds.has(item.id))
+        const freshItems = nextItems.filter((item) => !item.archived_at && !item.read_at && !seenInboxNotificationIds.has(item.id))
         if (freshItems.length === 0) return
         for (const item of freshItems) seenInboxNotificationIds.add(item.id)
         showNotificationToast(freshItems.length)
@@ -294,7 +294,7 @@ export function NotificationCenter() {
                     seenInboxNotificationIds.add(nextItem.id)
                     return
                 }
-                if (!nextItem.archived_at && !seenInboxNotificationIds.has(nextItem.id)) {
+                if (!nextItem.archived_at && !nextItem.read_at && !seenInboxNotificationIds.has(nextItem.id)) {
                     seenInboxNotificationIds.add(nextItem.id)
                     showNotificationToast(1)
                     void sendDesktopNotification(nextItem)

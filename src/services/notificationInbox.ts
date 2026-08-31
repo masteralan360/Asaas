@@ -29,6 +29,15 @@ type NotificationInboxRow = Omit<NotificationInboxRecord, 'payload'> & {
 
 export type NotificationInboxRealtimePayload = RealtimePostgresChangesPayload<Record<string, unknown>>
 
+type NotificationInboxSubscriber = (payload: NotificationInboxRealtimePayload) => void
+
+type NotificationInboxRealtimeSubscription = {
+    channel: ReturnType<typeof supabase.channel>
+    subscribers: Set<NotificationInboxSubscriber>
+}
+
+const realtimeSubscriptionsByUserId = new Map<string, NotificationInboxRealtimeSubscription>()
+
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -102,29 +111,51 @@ export async function markAllNotificationInboxRead() {
 
 export function subscribeToNotificationInbox(
     userId: string,
-    callback: (payload: NotificationInboxRealtimePayload) => void,
+    callback: NotificationInboxSubscriber,
 ) {
     if (isLocalWorkspaceMode(getActiveBusinessWorkspaceId())) {
         return () => undefined
     }
 
-    const channel = supabase
-        .channel(`notifications-inbox-${userId}`)
-        .on(
-            'postgres_changes',
-            {
-                event: '*',
-                schema: 'notifications',
-                table: 'inbox',
-                filter: `user_id=eq.${userId}`,
-            },
-            callback,
-        )
-        .subscribe((status) => {
-            console.log(`[Notifications] Inbox realtime: ${status}`)
-        })
+    let subscription = realtimeSubscriptionsByUserId.get(userId)
+    if (!subscription) {
+        const subscribers = new Set<NotificationInboxSubscriber>()
+        let createdSubscription: NotificationInboxRealtimeSubscription | null = null
+        const channel = supabase
+            .channel(`notifications-inbox-${userId}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'notifications',
+                    table: 'inbox',
+                    filter: `user_id=eq.${userId}`,
+                },
+                (payload) => {
+                    for (const subscriber of createdSubscription?.subscribers ?? []) {
+                        subscriber(payload)
+                    }
+                },
+            )
+            .subscribe((status) => {
+                console.log(`[Notifications] Inbox realtime: ${status}`)
+            })
+
+        createdSubscription = { channel, subscribers }
+        realtimeSubscriptionsByUserId.set(userId, createdSubscription)
+        subscription = createdSubscription
+    }
+
+    subscription.subscribers.add(callback)
 
     return () => {
-        void supabase.removeChannel(channel)
+        const activeSubscription = realtimeSubscriptionsByUserId.get(userId)
+        if (!activeSubscription) return
+
+        activeSubscription.subscribers.delete(callback)
+        if (activeSubscription.subscribers.size === 0) {
+            realtimeSubscriptionsByUserId.delete(userId)
+            void supabase.removeChannel(activeSubscription.channel)
+        }
     }
 }

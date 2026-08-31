@@ -1460,6 +1460,115 @@ SELECT ok(
   'an approved entitlement has one terminal audit transition'
 );
 
+-- Free usage is a non-credit reduction of the canonical charged counter. It
+-- creates a normal unread inbox item for the workspace administrator.
+UPDATE public.workspace_usage
+SET data_transfer_bytes = 1000000000
+WHERE workspace_id = '91000000-0000-0000-0000-000000000004';
+
+SELECT lives_ok(
+  $$SELECT public.admin_grant_workspace_free_usage(
+    '91000000-0000-0000-0000-000000000004',
+    1500000000
+  )$$,
+  'a free-usage grant can exceed current charged usage'
+);
+
+SELECT is(
+  (
+    SELECT data_transfer_bytes
+    FROM public.workspace_usage
+    WHERE workspace_id = '91000000-0000-0000-0000-000000000004'
+  ),
+  0::bigint,
+  'a free-usage grant clamps charged usage at zero and creates no carry-forward credit'
+);
+
+SELECT is(
+  (
+    SELECT count(*)
+    FROM notifications.inbox
+    WHERE workspace_id = '91000000-0000-0000-0000-000000000004'
+      AND user_id = '92000000-0000-0000-0000-000000000004'
+      AND notification_type = 'workspace_free_usage_granted'
+      AND read_at IS NULL
+      AND payload ->> 'granted_bytes' = '1500000000'
+  ),
+  1::bigint,
+  'the free-usage grant creates a normal unread notification for the workspace administrator'
+);
+
+SET LOCAL ROLE authenticated;
+SELECT set_config(
+  'request.jwt.claims',
+  '{"sub":"92000000-0000-0000-0000-000000000004","role":"authenticated"}',
+  true
+);
+SELECT is(
+  public.mark_notification_inbox_read(
+    (
+      SELECT id
+      FROM notifications.inbox
+      WHERE workspace_id = '91000000-0000-0000-0000-000000000004'
+        AND user_id = '92000000-0000-0000-0000-000000000004'
+        AND notification_type = 'workspace_free_usage_granted'
+      ORDER BY created_at DESC
+      LIMIT 1
+    )
+  ),
+  true,
+  'the workspace administrator can acknowledge the free-usage notification'
+);
+RESET ROLE;
+
+SELECT is(
+  (
+    SELECT count(*)
+    FROM notifications.inbox
+    WHERE workspace_id = '91000000-0000-0000-0000-000000000004'
+      AND user_id = '92000000-0000-0000-0000-000000000004'
+      AND notification_type = 'workspace_free_usage_granted'
+      AND read_at IS NOT NULL
+  ),
+  1::bigint,
+  'acknowledging the free-usage notification marks the normal inbox item as seen'
+);
+
+-- Admin messages use the same existing inbox stream. Each workspace admin
+-- receives an individually addressed unread notification without a new table.
+SELECT lives_ok(
+  $$SELECT public.admin_send_workspace_message(
+    '91000000-0000-0000-0000-000000000004',
+    'Your workspace has an important update.'
+  )$$,
+  'an admin-console message can be sent to a workspace'
+);
+
+SELECT is(
+  (
+    SELECT count(*)
+    FROM notifications.inbox
+    WHERE workspace_id = '91000000-0000-0000-0000-000000000004'
+      AND user_id = '92000000-0000-0000-0000-000000000004'
+      AND notification_type = 'admin_workspace_message'
+      AND title = 'Message from Atlas Admin'
+      AND body = 'Your workspace has an important update.'
+      AND read_at IS NULL
+  ),
+  1::bigint,
+  'an admin-console message creates a normal unread inbox notification for the workspace administrator'
+);
+
+SELECT throws_ok(
+  $$SELECT public.admin_send_workspace_message(
+    '91000000-0000-0000-0000-000000000004',
+    '   '
+  )$$,
+  'P0001',
+  'Message is required',
+  'blank workspace messages are rejected'
+);
+
 SELECT * FROM finish();
 
 ROLLBACK;

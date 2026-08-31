@@ -1,3 +1,5 @@
+import { formatFreeUsageGigabytes } from './freeUsageGrants'
+
 type NotificationPayload = Record<string, unknown> | null | undefined
 
 export type NotificationLanguage = 'en' | 'ar' | 'ku'
@@ -120,6 +122,81 @@ export function localizeNotification(input: NotificationLocalizationInput, reque
   const fallbackTitle = readString(input.title) || formatNotificationTypeFallback(notificationType)
   const fallbackBody = readString(input.body)
   const fallbackActionLabel = readString(input.actionLabel) || (language === 'ar' ? '\u0641\u062a\u062d' : language === 'ku' ? '\u06a9\u0631\u062f\u0646\u06d5\u0648\u06d5' : 'Open')
+
+  if (notificationType === 'admin_workspace_message') {
+    if (language === 'ar') {
+      return {
+        language,
+        title: '\u0631\u0633\u0627\u0644\u0629 \u0645\u0646 \u0627\u062f\u0645\u064a\u0646 \u0623\u0637\u0644\u0633',
+        body: fallbackBody,
+        actionLabel: '\u0641\u062a\u062d',
+        actionUrl,
+        typeLabel: '\u0631\u0633\u0627\u0626\u0644 \u0627\u0644\u0627\u062f\u0645\u064a\u0646',
+      }
+    }
+
+    if (language === 'ku') {
+      return {
+        language,
+        title: '\u067e\u06d5\u06cc\u0627\u0645\u06ce\u06a9 \u0644\u06d5 \u0626\u0627\u062f\u0645\u06cc\u0646\u06cc \u0626\u06d5\u062a\u06b5\u0627\u0633',
+        body: fallbackBody,
+        actionLabel: '\u06a9\u0631\u062f\u0646\u06d5\u0648\u06d5',
+        actionUrl,
+        typeLabel: '\u067e\u06d5\u06cc\u0627\u0645\u06d5\u06a9\u0627\u0646\u06cc \u0626\u0627\u062f\u0645\u06cc\u0646',
+      }
+    }
+
+    return {
+      language,
+      title: 'Message from Atlas Admin',
+      body: fallbackBody,
+      actionLabel: 'Open',
+      actionUrl,
+      typeLabel: 'Admin Messages',
+    }
+  }
+
+  if (notificationType === 'workspace_free_usage_granted') {
+    let grantedGb = ''
+    if (typeof payload.granted_bytes === 'string' || typeof payload.granted_bytes === 'number') {
+      try {
+        grantedGb = formatFreeUsageGigabytes(payload.granted_bytes, toLocale(language))
+      } catch {
+        grantedGb = ''
+      }
+    }
+
+    if (language === 'ar') {
+      return {
+        language,
+        title: '\u062a\u0645 \u0645\u0646\u062d \u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0645\u062c\u0627\u0646\u064a',
+        body: grantedGb ? `\u062a\u0645\u062a \u0625\u0636\u0627\u0641\u0629 ${grantedGb} GB \u0645\u0646 \u0627\u0644\u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0627\u0644\u0645\u062c\u0627\u0646\u064a \u0625\u0644\u0649 \u0645\u0633\u0627\u062d\u0629 \u0627\u0644\u0639\u0645\u0644.` : fallbackBody,
+        actionLabel: '\u0641\u062a\u062d',
+        actionUrl,
+        typeLabel: '\u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0645\u062c\u0627\u0646\u064a',
+      }
+    }
+
+    if (language === 'ku') {
+      return {
+        language,
+        title: '\u0628\u06d5\u06a9\u0627\u0631\u0647\u06ce\u0646\u0627\u0646\u06cc \u0628\u06d5\u062e\u06c6\u0695\u0627\u06cc\u06cc \u0628\u06d5\u062e\u0634\u0631\u0627',
+        body: grantedGb ? `${grantedGb} GB \u0628\u06d5\u06a9\u0627\u0631\u0647\u06ce\u0646\u0627\u0646\u06cc \u0628\u06d5\u062e\u06c6\u0695\u0627\u06cc\u06cc \u0628\u06c6 \u0634\u0648\u06ce\u0646\u06cc \u06a9\u0627\u0631\u06d5\u06a9\u06d5\u062a \u0632\u06cc\u0627\u062f \u06a9\u0631\u0627.` : fallbackBody,
+        actionLabel: '\u06a9\u0631\u062f\u0646\u06d5\u0648\u06d5',
+        actionUrl,
+        typeLabel: '\u0628\u06d5\u06a9\u0627\u0631\u0647\u06ce\u0646\u0627\u0646\u06cc \u0628\u06d5\u062e\u06c6\u0695\u0627\u06cc\u06cc',
+      }
+    }
+
+    return {
+      language,
+      title: 'Free usage granted',
+      body: grantedGb ? `${grantedGb} GB of free usage was added to your workspace.` : fallbackBody,
+      actionLabel: 'Open',
+      actionUrl,
+      typeLabel: 'Free Usage',
+    }
+  }
 
   if (notificationType === 'marketplace_order_pending') {
     const orderNumber = readString(payload.order_number)

@@ -113,6 +113,18 @@
     "newNotification": "ئاگادارییەکی نوێت هەیە",
     "newNotificationTitle": "ئاگاداری نوێ"
   },
+  "workspaceFreeUsage": {
+    "title": "بەکارهێنانی بەخۆڕایی بەخشرا",
+    "description": "بەکارهێنانی بەخۆڕایی بۆ بەکارهێنانی ئێستای شوێنی کارەکە جێبەجێ کرا.",
+    "grantedAmount": "بەکارهێنانی بەخۆڕایی بەخشراو",
+    "acknowledge": "باشە"
+  },
+  "workspaceAdminMessage": {
+    "title": "پەیامێک لە ئادمینی ئەتڵاس",
+    "emptyBody": "پەیامێکت لە ئادمینی ئەتڵاس وەرگرتووە.",
+    "acknowledge": "باشە",
+    "acknowledgeFailed": "نەتوانرا پەیامەکە وەک خوێندراو نیشان بدرێت. تکایە دووبارە هەوڵ بدەوە."
+  },
   "pageFind": {
     "label": "گەڕان لەم پەڕەیەدا",
     "placeholder": "لەو پەڕەیەدا بگەڕێ...",

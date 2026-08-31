@@ -113,6 +113,18 @@
     "newNotification": "لديك إشعار جديد",
     "newNotificationTitle": "إشعار جديد"
   },
+  "workspaceFreeUsage": {
+    "title": "تم منح استخدام مجاني",
+    "description": "تم تطبيق الاستخدام المجاني على استخدام مساحة العمل الحالي.",
+    "grantedAmount": "الاستخدام المجاني الممنوح",
+    "acknowledge": "حسناً"
+  },
+  "workspaceAdminMessage": {
+    "title": "رسالة من ادمين أطلس",
+    "emptyBody": "تلقيت رسالة من ادمين أطلس.",
+    "acknowledge": "حسناً",
+    "acknowledgeFailed": "تعذر وضع علامة على الرسالة كمقروءة. حاول مرة أخرى."
+  },
   "pageFind": {
     "label": "البحث في هذه الصفحة",
     "placeholder": "ابحث في هذه الصفحة...",

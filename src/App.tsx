@@ -8,6 +8,7 @@ import { DeviceTokenBootstrap } from "@/ui/components/DeviceTokenBootstrap";
 import { SubscriptionExpiryWarningModal } from "@/ui/components/SubscriptionExpiryWarningModal";
 import { WorkspacePaymentController, WorkspacePaymentStatusDialog } from "@/ui/components/WorkspacePaymentDialog";
 import { WorkspaceExtraDaysDialog } from "@/ui/components/WorkspaceExtraDaysDialog";
+import { WorkspaceAdminMessageDialog } from "@/ui/components/WorkspaceAdminMessageDialog";
 import { lazy, Suspense, useEffect, useCallback, useState } from "react";
 import { usePatchNotes } from "@/hooks/usePatchNotes";
 import { Clock3, Download, LoaderCircle, RotateCw, Upload } from "lucide-react";
@@ -1396,6 +1397,7 @@ function App() {
               <WorkspacePaymentController />
               <WorkspacePaymentStatusDialog />
               <WorkspaceExtraDaysDialog />
+              <WorkspaceAdminMessageDialog />
               <FaviconHandler />
               <AutoSyncOverlay />
               <OfflineEntryOverlay />

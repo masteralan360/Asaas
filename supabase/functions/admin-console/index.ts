@@ -84,6 +84,20 @@ type RefreshWorkspaceUsageRequest = {
     workspaceId?: string | null
 }
 
+type GrantWorkspaceFreeUsageRequest = {
+    action: 'grantWorkspaceFreeUsage'
+    passkey?: string
+    workspaceId?: string
+    gbAmount?: string | number
+}
+
+type SendWorkspaceAdminMessageRequest = {
+    action: 'sendWorkspaceAdminMessage'
+    passkey?: string
+    workspaceId?: string
+    message?: string
+}
+
 type ListWorkspacePaymentConfigurationsRequest = {
     action: 'listWorkspacePaymentConfigurations'
     passkey?: string
@@ -130,6 +144,8 @@ type AdminConsoleRequest =
     | ListWorkspaceUsageRequest
     | UpdateWorkspaceUsageRequest
     | RefreshWorkspaceUsageRequest
+    | GrantWorkspaceFreeUsageRequest
+    | SendWorkspaceAdminMessageRequest
     | ListWorkspacePaymentConfigurationsRequest
     | UpsertWorkspacePaymentConfigurationRequest
     | ListWorkspacePaymentTransactionsRequest
@@ -151,6 +167,7 @@ type AdminPasskeyAccess =
     | { ok: false; response: Response }
 
 const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n
+const BYTES_PER_GB = 1_000_000_000n
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const PAYMENT_TRANSACTION_STATUSES = new Set(['pending', 'approved', 'rejected', 'expired'])
 
@@ -297,6 +314,34 @@ function reconcileChargedUsage(chargedValue: string | null): { chargedValue: str
     }
 
     return { chargedValue: charged.toString() }
+}
+
+function normalizePositiveGbToBytes(value: unknown): { value: string; error?: string } {
+    const normalized = typeof value === 'number'
+        ? (Number.isFinite(value) ? String(value) : '')
+        : typeof value === 'string'
+            ? value.trim()
+            : ''
+
+    if (!/^\d{1,10}(?:\.\d{1,6})?$/.test(normalized)) {
+        return { value: '0', error: 'Free usage must be a positive GB value with up to 6 decimal places' }
+    }
+
+    const [wholePart, fractionalPart = ''] = normalized.split('.')
+    const bytes = (BigInt(wholePart) * BYTES_PER_GB)
+        + (fractionalPart
+            ? (BigInt(fractionalPart) * BYTES_PER_GB) / (10n ** BigInt(fractionalPart.length))
+            : 0n)
+
+    if (bytes <= 0n) {
+        return { value: '0', error: 'Free usage must be greater than zero' }
+    }
+
+    if (bytes > POSTGRES_BIGINT_MAX) {
+        return { value: '0', error: 'Free usage is too large to store safely' }
+    }
+
+    return { value: bytes.toString() }
 }
 
 function normalizeUsagePeriodStart(value: unknown): { value: string; error?: string } {
@@ -1002,6 +1047,61 @@ async function refreshWorkspaceUsage(
     return jsonResponse({ success: true })
 }
 
+async function grantWorkspaceFreeUsage(
+    adminClient: ReturnType<typeof createAdminClient>,
+    body: GrantWorkspaceFreeUsageRequest
+) {
+    const workspaceId = body.workspaceId?.trim() ?? ''
+    if (!UUID_PATTERN.test(workspaceId)) {
+        return errorResponse('A valid workspace is required')
+    }
+
+    const grantedBytes = normalizePositiveGbToBytes(body.gbAmount)
+    if (grantedBytes.error) {
+        return errorResponse(grantedBytes.error)
+    }
+
+    const { data, error } = await adminClient.rpc('admin_grant_workspace_free_usage', {
+        p_workspace_id: workspaceId,
+        p_granted_bytes: grantedBytes.value
+    })
+
+    if (error) {
+        return errorResponse(error.message, 400)
+    }
+
+    return jsonResponse(Array.isArray(data) ? data[0] ?? { success: true } : data ?? { success: true })
+}
+
+async function sendWorkspaceAdminMessage(
+    adminClient: ReturnType<typeof createAdminClient>,
+    body: SendWorkspaceAdminMessageRequest
+) {
+    const workspaceId = body.workspaceId?.trim() ?? ''
+    if (!UUID_PATTERN.test(workspaceId)) {
+        return errorResponse('A valid workspace is required')
+    }
+
+    const message = normalizeOptionalText(body.message, 'Message', 2000)
+    if (message.error) {
+        return errorResponse(message.error)
+    }
+    if (!message.value) {
+        return errorResponse('Message is required')
+    }
+
+    const { data, error } = await adminClient.rpc('admin_send_workspace_message', {
+        p_workspace_id: workspaceId,
+        p_message: message.value
+    })
+
+    if (error) {
+        return errorResponse(error.message, 400)
+    }
+
+    return jsonResponse(Array.isArray(data) ? data[0] ?? { success: true } : data ?? { success: true })
+}
+
 async function listWorkspacePaymentConfigurations(
     adminClient: ReturnType<typeof createAdminClient>
 ) {
@@ -1264,6 +1364,14 @@ Deno.serve(async (req) => {
 
         if (body.action === 'refreshWorkspaceUsage') {
             return await refreshWorkspaceUsage(adminClient, body)
+        }
+
+        if (body.action === 'grantWorkspaceFreeUsage') {
+            return await grantWorkspaceFreeUsage(adminClient, body)
+        }
+
+        if (body.action === 'sendWorkspaceAdminMessage') {
+            return await sendWorkspaceAdminMessage(adminClient, body)
         }
 
         if (body.action === 'listWorkspacePaymentConfigurations') {
