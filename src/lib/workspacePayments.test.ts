@@ -224,6 +224,25 @@ describe('workspace payments', () => {
         })).toBe(true)
     })
 
+    it('does not fall back to the legacy subscription expiry for usage billing', () => {
+        const now = new Date('2026-07-15T00:00:00.000Z')
+
+        expect(getWorkspacePaymentExpiryDate({
+            subscriptionExpiresAt: '2026-07-01T00:00:00.000Z',
+            renewalDueAt: null,
+            hasUsageLimits: true,
+            summary: null
+        })).toBeNull()
+
+        expect(isWorkspacePaymentAccessExpired({
+            subscriptionExpiresAt: '2026-07-01T00:00:00.000Z',
+            renewalDueAt: null,
+            hasUsageLimits: true,
+            summary: null,
+            now
+        })).toBe(false)
+    })
+
     it('does not apply subscription expiry after the server enables usage billing', () => {
         const usageBilling = summary({
             eligibility: {

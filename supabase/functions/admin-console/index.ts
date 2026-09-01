@@ -630,42 +630,29 @@ async function updateWorkspaceSubscription(
         typedUsageStatus?.has_limits
         || paymentConfiguration?.usage_enabled === true
     )
-    const targetWorkspaceId = usageEnabled && typedUsageStatus?.workspace_id
-        ? String(typedUsageStatus.workspace_id)
-        : workspaceId
+    if (usageEnabled) {
+        return errorResponse('Usage-based workspaces use Renewal due. Update that deadline instead of the subscription expiry.', 400)
+    }
+
     const subscriptionExpired = parsedExpiry.getTime() < Date.now()
-    const update = usageEnabled
-        ? { subscription_expires_at: parsedExpiry.toISOString() }
-        : {
-            subscription_expires_at: parsedExpiry.toISOString(),
-            locked_workspace: subscriptionExpired,
-            usage_limit_locked: false,
-            payment_renewal_locked: false,
-            subscription_expiry_locked: subscriptionExpired
-        }
+    const update = {
+        subscription_expires_at: parsedExpiry.toISOString(),
+        locked_workspace: subscriptionExpired,
+        usage_limit_locked: false,
+        payment_renewal_locked: false,
+        subscription_expiry_locked: subscriptionExpired
+    }
 
     const { error } = await adminClient
         .from('workspaces')
         .update(update)
-        .eq('id', targetWorkspaceId)
+        .eq('id', workspaceId)
 
     if (error) {
         return errorResponse(error.message, 500)
     }
 
-    // A new reset day can move the current cycle boundary. Apply it immediately
-    // so the admin and workspace clients see the correct counters right away.
-    if (usageEnabled) {
-        const { error: syncError } = await adminClient.rpc('sync_workspace_usage_periods', {
-            p_workspace_id: targetWorkspaceId
-        })
-
-        if (syncError) {
-            return errorResponse(syncError.message, 500)
-        }
-    }
-
-    return jsonResponse({ success: true, usageEnabled })
+    return jsonResponse({ success: true, usageEnabled: false })
 }
 
 async function listOverrides(
@@ -1139,6 +1126,9 @@ async function upsertWorkspacePaymentConfiguration(
         if (typeof body.isPaymentEnabled !== 'boolean' || typeof body.usageEnabled !== 'boolean') {
             console.error('upsert error: boolean type check failed (date-only path)')
             return errorResponse('Payment enabled and usage enabled must be true or false')
+        }
+        if (body.usageEnabled && body.renewalDueAt !== undefined && !body.renewalDueAt) {
+            return errorResponse('Renewal due is required for usage-based workspaces')
         }
 
         const updates: Record<string, unknown> = {}

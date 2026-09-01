@@ -401,7 +401,7 @@ export function getWorkspacePaymentExpiryDate(options: {
     return isUsageMode
         ? options.summary?.configuration?.renewalDueAt
             ?? options.renewalDueAt
-            ?? options.subscriptionExpiresAt
+            ?? null
         : options.subscriptionExpiresAt
 }
 
