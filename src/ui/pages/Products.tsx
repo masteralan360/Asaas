@@ -2,21 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
-import { ArrowDown, ArrowUp, ArrowUpDown, Barcode, BookOpen, Boxes, ChevronDown, ChevronRight, CircleAlert, Copy, FileSpreadsheet, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Barcode, BookOpen, Boxes, ChevronDown, ChevronRight, CircleAlert, Copy, FileSpreadsheet, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Tags, Trash2 } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import {
-    createCategory,
     createProduct,
-    deleteCategory,
     deleteProduct,
-    updateCategory,
     useCategories,
     usePriceBookCatalogState,
     useInventory,
     useProducts,
     useStorages,
-    type Category,
     type CurrencyCode,
     type Product
 } from '@/local-db'
@@ -50,6 +46,7 @@ import { printPdfBlob } from '@/services/pdfPrintService'
 import { BarcodeLabelTemplate } from '@/ui/components/BarcodeLabelTemplate'
 import { PriceBookManagementDialog } from '@/ui/components/PriceBookManagementDialog'
 import { ProductImportPreviewModal } from '@/ui/components/ProductImportPreviewModal'
+import { ProductCategoryManagerDialog } from '@/ui/components/products/ProductCategoryManagerDialog'
 import {
     Button,
     Card,
@@ -83,7 +80,6 @@ import {
     TableHead,
     TableHeader,
     TableRow,
-    Textarea,
     Tooltip,
     TooltipContent,
     TooltipProvider,
@@ -92,8 +88,6 @@ import {
     PrintPreviewModal,
     useToast
 } from '@/ui/components'
-
-const emptyCategoryFormData = { name: '', description: '' }
 
 type ProductCloneTargetStorage = {
     id: string
@@ -308,10 +302,8 @@ export function Products() {
     useEffect(() => {
         localStorage.setItem('products_page_size', String(pageSize))
     }, [pageSize])
-    const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false)
+    const [isProductCategoryManagerOpen, setIsProductCategoryManagerOpen] = useState(false)
     const [isPriceBookDialogOpen, setIsPriceBookDialogOpen] = useState(false)
-    const [editingCategory, setEditingCategory] = useState<Category | null>(null)
-    const [categoryFormData, setCategoryFormData] = useState(emptyCategoryFormData)
     const [adjustmentDialogOpen, setAdjustmentDialogOpen] = useState(false)
     const [selectedProductForStock, setSelectedProductForStock] = useState<string | undefined>()
     const [isLoading, setIsLoading] = useState(false)
@@ -320,14 +312,11 @@ export function Products() {
     const [isPreparingProductImport, setIsPreparingProductImport] = useState(false)
     const [productImport, setProductImport] = useState<PreparedProductImport | null>(null)
     const productImportInputRef = useRef<HTMLInputElement>(null)
-    const [pulseCategorySubmit, setPulseCategorySubmit] = useState(false)
-    const [outsideClickCount, setOutsideClickCount] = useState(0)
-    const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false)
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
         return (localStorage.getItem('products_view_mode') as 'table' | 'grid') || 'table'
     })
     const [deleteModalOpen, setDeleteModalOpen] = useState(false)
-    const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string; type: 'product' | 'category' } | null>(null)
+    const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null)
     const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set())
     const [isBranchCloneSelectionMode, setIsBranchCloneSelectionMode] = useState(false)
     const [isBarcodeSelectionMode, setIsBarcodeSelectionMode] = useState(false)
@@ -346,26 +335,7 @@ export function Products() {
         }
     }, [priceBooksEnabled])
 
-    const productsAttachedToDeleteCategory = useMemo(() => {
-        if (itemToDelete?.type !== 'category') {
-            return []
-        }
-
-        const categoryName = itemToDelete.name.trim()
-        return products.filter((product) =>
-            product.categoryId === itemToDelete.id
-            || (!product.categoryId && categoryName.length > 0 && product.category?.trim() === categoryName)
-        )
-    }, [itemToDelete, products])
-
-    const deleteConfirmationDescription = itemToDelete?.type === 'category'
-        ? productsAttachedToDeleteCategory.length > 0
-            ? t('categories.deleteWarningWithProducts', {
-                count: productsAttachedToDeleteCategory.length,
-                defaultValue: 'This category has {{count}} product attached. If you continue, the category will be deleted and those products will be moved to No Category.'
-            })
-            : t('categories.deleteWarning')
-        : t('products.deleteWarning')
+    const deleteConfirmationDescription = t('products.deleteWarning')
 
     useEffect(() => {
         localStorage.setItem('products_view_mode', viewMode)
@@ -464,64 +434,6 @@ export function Products() {
                 ?? ''
         })
     }, [cloneTargets, selectedCloneTargetWorkspaceId])
-
-    const isCategoryDirty = () => {
-        if (!isCategoryDialogOpen) return false
-
-        const sourceData = editingCategory
-            ? { name: editingCategory.name, description: editingCategory.description || '' }
-            : emptyCategoryFormData
-
-        return JSON.stringify(categoryFormData) !== JSON.stringify(sourceData)
-    }
-
-    const resetCategoryDialog = () => {
-        setEditingCategory(null)
-        setCategoryFormData(emptyCategoryFormData)
-        setOutsideClickCount(0)
-        setIsCategoryDialogOpen(false)
-    }
-
-    const handleCategoryOutsideClick = (event: Event) => {
-        if (!isCategoryDirty()) return
-
-        event.preventDefault()
-        const nextCount = outsideClickCount + 1
-
-        if (nextCount >= 3) {
-            setShowUnsavedChangesModal(true)
-            setOutsideClickCount(0)
-            return
-        }
-
-        setOutsideClickCount(nextCount)
-        setPulseCategorySubmit(true)
-        setTimeout(() => setPulseCategorySubmit(false), 1000)
-    }
-
-    const handleCategoryDialogChange = (open: boolean) => {
-        if (!open && isCategoryDirty()) {
-            setShowUnsavedChangesModal(true)
-            return
-        }
-
-        if (!open) {
-            resetCategoryDialog()
-            return
-        }
-
-        setIsCategoryDialogOpen(true)
-    }
-
-    const handleDiscardChanges = () => {
-        setShowUnsavedChangesModal(false)
-        resetCategoryDialog()
-    }
-
-    const handleSaveDirtyChanges = () => {
-        setShowUnsavedChangesModal(false)
-        void handleCategorySubmit({ preventDefault: () => { } } as React.FormEvent)
-    }
 
     const getDisplayImageUrl = (url?: string) => {
         if (!url) return ''
@@ -842,46 +754,8 @@ export function Products() {
         navigate(`/products/${product.id}/clone`)
     }
 
-    const handleOpenCategoryDialog = (category?: Category) => {
-        setOutsideClickCount(0)
-
-        if (category) {
-            setEditingCategory(category)
-            setCategoryFormData({ name: category.name, description: category.description || '' })
-        } else {
-            setEditingCategory(null)
-            setCategoryFormData(emptyCategoryFormData)
-        }
-
-        setIsCategoryDialogOpen(true)
-    }
-
-    const handleCategorySubmit = async (event: React.FormEvent) => {
-        event.preventDefault()
-        setIsLoading(true)
-
-        try {
-            if (editingCategory) {
-                await updateCategory(editingCategory.id, categoryFormData)
-            } else {
-                await createCategory(workspaceId, categoryFormData)
-            }
-
-            resetCategoryDialog()
-        } catch (error) {
-            console.error('Error saving category:', error)
-        } finally {
-            setIsLoading(false)
-        }
-    }
-
-    const handleDeleteCategory = (category: Category) => {
-        setItemToDelete({ id: category.id, name: category.name, type: 'category' })
-        setDeleteModalOpen(true)
-    }
-
     const handleDeleteProduct = (product: Product) => {
-        setItemToDelete({ id: product.id, name: product.name, type: 'product' })
+        setItemToDelete({ id: product.id, name: product.name })
         setDeleteModalOpen(true)
     }
 
@@ -1216,11 +1090,7 @@ export function Products() {
         setIsLoading(true)
 
         try {
-            if (itemToDelete.type === 'product') {
-                await deleteProduct(itemToDelete.id)
-            } else {
-                await deleteCategory(itemToDelete.id)
-            }
+            await deleteProduct(itemToDelete.id)
 
             setDeleteModalOpen(false)
             setItemToDelete(null)
@@ -1343,9 +1213,9 @@ export function Products() {
                                     Print Barcodes
                                 </Button>
                             )}
-                            <Button variant="outline" onClick={() => handleOpenCategoryDialog()}>
-                                <Plus className="h-4 w-4" />
-                                {t('products.addCategory')}
+                            <Button variant="outline" onClick={() => setIsProductCategoryManagerOpen(true)}>
+                                <Tags className="h-4 w-4" />
+                                {t('categories.manager.title')}
                             </Button>
                             {priceBooksEnabled && (
                                 <Button variant="outline" onClick={() => setIsPriceBookDialogOpen(true)}>
@@ -2025,67 +1895,11 @@ export function Products() {
                 previewPrintActionLabel="Print"
             />
 
-            <Dialog open={isCategoryDialogOpen} onOpenChange={handleCategoryDialogChange}>
-                <DialogContent className="max-w-md" onPointerDownOutside={handleCategoryOutsideClick}>
-                    <DialogHeader>
-                        <DialogTitle>{editingCategory ? t('categories.editCategory') : t('categories.addCategory')}</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleCategorySubmit} className="space-y-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="cat-name">{t('categories.form.name')}</Label>
-                            <Input
-                                id="cat-name"
-                                value={categoryFormData.name}
-                                onChange={(event) => setCategoryFormData((current) => ({ ...current, name: event.target.value }))}
-                                placeholder={t('categories.form.name')}
-                                required
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="cat-description">{t('categories.form.description')}</Label>
-                            <Textarea
-                                id="cat-description"
-                                value={categoryFormData.description}
-                                onChange={(event) => setCategoryFormData((current) => ({ ...current, description: event.target.value }))}
-                                placeholder={t('categories.form.description')}
-                                rows={3}
-                            />
-                        </div>
-
-                        {!editingCategory && categories.length > 0 && (
-                            <div className="border-t pt-4">
-                                <Label className="mb-2 block text-sm font-medium">Existing Categories</Label>
-                                <div className="max-h-40 space-y-2 overflow-y-auto pr-2">
-                                    {categories.map((category) => (
-                                        <div key={category.id} className="group flex items-center justify-between rounded-md bg-muted/50 p-2">
-                                            <span className="text-sm">{category.name}</span>
-                                            <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                                                <Button type="button" size="icon" variant="ghost" aria-label={t('common.edit') || 'Edit'} className="h-7 w-7" onClick={() => handleOpenCategoryDialog(category)}>
-                                                    <Pencil className="h-3 w-3" />
-                                                </Button>
-                                                <Button type="button" size="icon" variant="ghost" aria-label={t('common.delete') || 'Delete'} className="h-7 w-7 text-destructive" onClick={() => handleDeleteCategory(category)}>
-                                                    <Trash2 className="h-3 w-3" />
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        <DialogFooter>
-                            {editingCategory && (
-                                <Button type="button" variant="ghost" onClick={() => handleOpenCategoryDialog()}>
-                                    Cancel Edit
-                                </Button>
-                            )}
-                            <Button type="submit" disabled={isLoading} className={cn(pulseCategorySubmit && 'animate-save-pulse')}>
-                                {isLoading ? (t('common.loading') || 'Loading...') : editingCategory ? t('common.save') : t('common.create')}
-                            </Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
+            <ProductCategoryManagerDialog
+                open={isProductCategoryManagerOpen}
+                onOpenChange={setIsProductCategoryManagerOpen}
+                workspaceId={workspaceId}
+            />
 
             <PriceBookManagementDialog
                 open={isPriceBookDialogOpen}
@@ -2094,37 +1908,6 @@ export function Products() {
                 createdBy={user?.id}
                 enabled={priceBooksEnabled}
             />
-
-            <Dialog open={showUnsavedChangesModal} onOpenChange={setShowUnsavedChangesModal}>
-                <DialogContent className="max-w-lg overflow-hidden border-primary/20 p-0 shadow-2xl">
-                    <div className="border-b bg-muted/30 p-6">
-                        <DialogHeader>
-                            <DialogTitle className="flex items-center gap-2 text-xl text-primary">
-                                <Info className="h-6 w-6" />
-                                {t('common.unsavedChanges.title') || 'Unsaved Changes'}
-                            </DialogTitle>
-                        </DialogHeader>
-                    </div>
-                    <div className="p-8">
-                        <p className="text-lg font-medium leading-relaxed text-foreground/90">
-                            {t('common.unsavedChanges.message') || 'You have unsaved changes. Would you like to save them now or discard everything?'}
-                        </p>
-                    </div>
-                    <DialogFooter className="flex w-full flex-col gap-3 border-t bg-muted/20 p-6 sm:flex-row">
-                        <Button variant="ghost" onClick={() => setShowUnsavedChangesModal(false)} className="order-last h-11 w-full text-muted-foreground sm:order-first sm:w-auto">
-                            {t('common.unsavedChanges.continue') || 'Continue Editing'}
-                        </Button>
-                        <div className="flex flex-1 flex-col gap-3 sm:flex-row">
-                            <Button variant="destructive" onClick={handleDiscardChanges} className="h-11 flex-1 text-base font-bold">
-                                {t('common.unsavedChanges.discard') || 'Discard Changes'}
-                            </Button>
-                            <Button variant="default" onClick={handleSaveDirtyChanges} className="h-11 flex-1 text-base font-bold">
-                                {t('common.unsavedChanges.save') || 'Save Changes'}
-                            </Button>
-                        </div>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
 
             <Dialog open={branchCloneDialogOpen} onOpenChange={(open) => !isBranchCloning && setBranchCloneDialogOpen(open)}>
                 <DialogContent className="max-w-md">
@@ -2220,7 +2003,7 @@ export function Products() {
                 onConfirm={confirmDelete}
                 itemName={itemToDelete?.name}
                 isLoading={isLoading}
-                title={itemToDelete?.type === 'category' ? t('categories.confirmDelete') : t('products.confirmDelete')}
+                title={t('products.confirmDelete')}
                 description={deleteConfirmationDescription}
             />
 

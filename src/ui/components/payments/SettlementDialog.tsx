@@ -28,6 +28,7 @@ interface SettlementDialogProps {
     open: boolean
     onOpenChange: (open: boolean) => void
     obligation: PaymentObligation | null
+    initialPaidAt?: string
     isSubmitting?: boolean
     includeLoanAdjustment?: boolean
     onSubmit: (input: {
@@ -51,6 +52,7 @@ export function SettlementDialog({
     open,
     onOpenChange,
     obligation,
+    initialPaidAt,
     isSubmitting = false,
     includeLoanAdjustment = false,
     onSubmit
@@ -83,7 +85,7 @@ export function SettlementDialog({
 
         setPaymentMethod('cash')
         setPaymentAccount(null)
-        setPaidAt(formatLocalDateTimeValue(new Date()))
+        setPaidAt(initialPaidAt || formatLocalDateTimeValue(new Date()))
         setAmount(String(obligation?.amount || ''))
         setNote('')
         setCounterpartyName(defaultCounterpartyName)
@@ -93,7 +95,7 @@ export function SettlementDialog({
                 name: defaultCounterpartyName
             }
             : null)
-    }, [defaultBusinessPartnerId, defaultCounterpartyName, open, obligation?.amount, obligation?.id])
+    }, [defaultBusinessPartnerId, defaultCounterpartyName, initialPaidAt, open, obligation?.amount, obligation?.id])
 
     const selectedPaidAt = parseLocalDateTimeValue(paidAt)
 

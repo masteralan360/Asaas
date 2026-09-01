@@ -65,6 +65,7 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "employees",
   "budget_settings",
   "budget_allocations",
+  "expense_categories",
   "expense_series",
   "expense_items",
   "payroll_statuses",

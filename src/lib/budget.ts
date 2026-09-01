@@ -50,6 +50,31 @@ export function isValidMonthKey(value: MonthKey): boolean {
     return toMonthNumber(value) !== null
 }
 
+/**
+ * Keeps a payment timestamp in the accounting month currently being viewed.
+ * The current clock time is retained, while the day is clamped for shorter
+ * months (for example, March 31 becomes February 28/29).
+ */
+export function getPaymentDateForMonth(month: string, referenceDate: Date = new Date()): Date {
+    const monthKey = month as MonthKey
+    if (!isValidMonthKey(monthKey)) {
+        return new Date(referenceDate)
+    }
+
+    const [year, monthIndex] = monthKey.split('-').map(Number)
+    const day = Math.min(referenceDate.getDate(), getDaysInMonth(monthKey))
+
+    return new Date(
+        year,
+        monthIndex - 1,
+        day,
+        referenceDate.getHours(),
+        referenceDate.getMinutes(),
+        referenceDate.getSeconds(),
+        referenceDate.getMilliseconds()
+    )
+}
+
 export function compareMonthKeys(left: MonthKey, right: MonthKey): number {
 
     const leftMonth = toMonthNumber(left)

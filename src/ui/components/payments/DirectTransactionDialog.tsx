@@ -23,6 +23,7 @@ import {
     SelectItem,
     SelectTrigger,
     SelectValue,
+    SelectionCards,
     Textarea,
     Tooltip,
     TooltipContent,
@@ -373,41 +374,28 @@ export function DirectTransactionDialog({
                                             </TooltipProvider>
                                         </div>
 
-                                        <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label={t('directTransactionModal.partnerAccount.title', { defaultValue: 'Partner account treatment' })}>
-                                            <label
-                                                className={`cursor-pointer rounded-lg border p-3 transition-colors ${partnerAccountTreatment === 'cash_only' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'} ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
-                                            >
-                                                <input
-                                                    type="radio"
-                                                    name="partner-account-treatment"
-                                                    value="cash_only"
-                                                    className="sr-only"
-                                                    checked={partnerAccountTreatment === 'cash_only'}
-                                                    onChange={() => {
-                                                        setPartnerAccountTreatment('cash_only')
-                                                        setPartnerAccountEffect('none')
-                                                    }}
-                                                    disabled={isSubmitting}
-                                                />
-                                                <span className="block text-sm font-semibold">{t('directTransactionModal.partnerAccount.cashOnly', { defaultValue: 'Cash record only' })}</span>
-                                                <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{t('directTransactionModal.partnerAccount.cashOnlyDescription', { defaultValue: 'Keep this in cash flow only; do not change the partner account statement.' })}</span>
-                                            </label>
-                                            <label
-                                                className={`cursor-pointer rounded-lg border p-3 transition-colors ${partnerAccountTreatment === 'account_movement' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'} ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
-                                            >
-                                                <input
-                                                    type="radio"
-                                                    name="partner-account-treatment"
-                                                    value="account_movement"
-                                                    className="sr-only"
-                                                    checked={partnerAccountTreatment === 'account_movement'}
-                                                    onChange={() => setPartnerAccountTreatment('account_movement')}
-                                                    disabled={isSubmitting}
-                                                />
-                                                <span className="block text-sm font-semibold">{t('directTransactionModal.partnerAccount.accountMovement', { defaultValue: 'Partner account movement' })}</span>
-                                                <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{t('directTransactionModal.partnerAccount.accountMovementDescription', { defaultValue: 'Post this as a debit or credit in the selected partner’s account statement.' })}</span>
-                                            </label>
-                                        </div>
+                                        <SelectionCards
+                                            name="partner-account-treatment"
+                                            ariaLabel={t('directTransactionModal.partnerAccount.title', { defaultValue: 'Partner account treatment' })}
+                                            value={partnerAccountTreatment === 'unselected' ? null : partnerAccountTreatment}
+                                            onValueChange={(value) => {
+                                                setPartnerAccountTreatment(value)
+                                                if (value === 'cash_only') setPartnerAccountEffect('none')
+                                            }}
+                                            disabled={isSubmitting}
+                                            options={[
+                                                {
+                                                    value: 'cash_only',
+                                                    title: t('directTransactionModal.partnerAccount.cashOnly', { defaultValue: 'Cash record only' }),
+                                                    description: t('directTransactionModal.partnerAccount.cashOnlyDescription', { defaultValue: 'Keep this in cash flow only; do not change the partner account statement.' })
+                                                },
+                                                {
+                                                    value: 'account_movement',
+                                                    title: t('directTransactionModal.partnerAccount.accountMovement', { defaultValue: 'Partner account movement' }),
+                                                    description: t('directTransactionModal.partnerAccount.accountMovementDescription', { defaultValue: 'Post this as a debit or credit in the selected partner’s account statement.' })
+                                                }
+                                            ]}
+                                        />
 
                                         {partnerAccountTreatment === 'unselected' ? (
                                             <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
@@ -418,26 +406,18 @@ export function DirectTransactionDialog({
                                         {partnerAccountTreatment === 'account_movement' ? (
                                             <fieldset className="grid gap-2">
                                                 <legend className="text-sm font-medium">{t('directTransactionModal.partnerAccount.movementType', { defaultValue: 'How should it affect the partner account?' })}</legend>
-                                                <div className="grid gap-2 sm:grid-cols-2">
-                                                    {partnerAccountEffectOptions.map((option) => (
-                                                        <label
-                                                            key={option.value}
-                                                            className={`cursor-pointer rounded-lg border p-3 transition-colors ${partnerAccountEffect === option.value ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'} ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
-                                                        >
-                                                            <input
-                                                                type="radio"
-                                                                name="partner-account-effect"
-                                                                value={option.value}
-                                                                className="sr-only"
-                                                                checked={partnerAccountEffect === option.value}
-                                                                onChange={() => setPartnerAccountEffect(option.value)}
-                                                                disabled={isSubmitting}
-                                                            />
-                                                            <span className="block text-sm font-semibold">{t(`directTransactionModal.partnerAccount.${option.labelKey}`)}</span>
-                                                            <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{t(`directTransactionModal.partnerAccount.${option.descriptionKey}`)}</span>
-                                                        </label>
-                                                    ))}
-                                                </div>
+                                                <SelectionCards
+                                                    name="partner-account-effect"
+                                                    ariaLabel={t('directTransactionModal.partnerAccount.movementType', { defaultValue: 'How should it affect the partner account?' })}
+                                                    value={partnerAccountEffect === 'none' ? null : partnerAccountEffect}
+                                                    onValueChange={(value) => setPartnerAccountEffect(value)}
+                                                    disabled={isSubmitting}
+                                                    options={partnerAccountEffectOptions.map((option) => ({
+                                                        value: option.value,
+                                                        title: t(`directTransactionModal.partnerAccount.${option.labelKey}`),
+                                                        description: t(`directTransactionModal.partnerAccount.${option.descriptionKey}`)
+                                                    }))}
+                                                />
                                                 {selectedPartnerAccountEffect ? (
                                                     <p role="status" className="text-xs text-primary">
                                                         {t('directTransactionModal.partnerAccount.effectPreview', {

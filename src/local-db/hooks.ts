@@ -1859,7 +1859,9 @@ export function fetchTableFromSupabase<T extends { id: string, syncStatus: any, 
 }
 
 async function saveEntity<T extends { id: string }>(tableName: string, table: any, entity: T, workspaceId: string) {
-    if (isOnline()) {
+    const usesCloudBusinessData = shouldUseCloudBusinessData(workspaceId)
+    const online = isOnline(workspaceId)
+    if (usesCloudBusinessData && online) {
         const client = getSupabaseClientForTable(tableName)
         const payload = toSnakeCase({ ...entity, syncStatus: undefined, lastSyncedAt: undefined })
         const { error } = await runMutation(`${tableName}.create`, () => client.from(tableName).insert(payload))
@@ -1870,7 +1872,9 @@ async function saveEntity<T extends { id: string }>(tableName: string, table: an
         await table.add(entity)
     } else {
         await table.add(entity)
-        await addToOfflineMutations(tableName as any, entity.id, 'create', entity as unknown as Record<string, unknown>, workspaceId)
+        if (usesCloudBusinessData) {
+            await addToOfflineMutations(tableName as any, entity.id, 'create', entity as unknown as Record<string, unknown>, workspaceId)
+        }
     }
 }
 
@@ -1878,17 +1882,22 @@ async function updateEntity<T extends { id: string, workspaceId: string, version
     const now = new Date().toISOString()
     const existing = await table.get(id)
     if (!existing) throw new Error('Entity not found')
+    const usesCloudBusinessData = shouldUseCloudBusinessData(existing.workspaceId)
+    const online = isOnline(existing.workspaceId)
+    const syncStatus = usesCloudBusinessData
+        ? (online ? 'synced' : 'pending')
+        : 'synced'
 
     const updated = {
         ...existing,
         ...data,
         updatedAt: now,
-        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
-        lastSyncedAt: isOnline() ? now : existing.lastSyncedAt,
+        syncStatus: syncStatus as any,
+        lastSyncedAt: syncStatus === 'synced' ? now : existing.lastSyncedAt,
         version: existing.version + 1
     }
 
-    if (isOnline()) {
+    if (usesCloudBusinessData && online) {
         const client = getSupabaseClientForTable(tableName)
         const payload = toSnakeCase({ ...data, updatedAt: now })
         const { error } = await runMutation(`${tableName}.update`, () => client.from(tableName).update(payload).eq('id', id))
@@ -1896,7 +1905,9 @@ async function updateEntity<T extends { id: string, workspaceId: string, version
         await table.put(updated)
     } else {
         await table.put(updated)
-        await addToOfflineMutations(tableName as any, id, 'update', updated as unknown as Record<string, unknown>, existing.workspaceId)
+        if (usesCloudBusinessData) {
+            await addToOfflineMutations(tableName as any, id, 'update', updated as unknown as Record<string, unknown>, existing.workspaceId)
+        }
     }
 }
 
@@ -3801,6 +3812,124 @@ export function useExpenseSeries(workspaceId: string | undefined, options?: { in
     }, [isOnline, workspaceId])
 
     return series ?? []
+}
+
+export class DuplicateExpenseCategoryNameError extends Error {
+    constructor() {
+        super('Duplicate expense category name')
+        this.name = 'DuplicateExpenseCategoryNameError'
+    }
+}
+
+export class ExpenseCategoryInUseError extends Error {
+    constructor() {
+        super('Expense category is in use')
+        this.name = 'ExpenseCategoryInUseError'
+    }
+}
+
+function normalizeExpenseCategoryName(name: string) {
+    return name.trim().replace(/\s+/g, ' ')
+}
+
+async function assertExpenseCategoryNameAvailable(workspaceId: string, name: string, categoryId?: string) {
+    const normalizedName = normalizeExpenseCategoryName(name).toLocaleLowerCase()
+    const duplicate = await db.expense_categories
+        .where('workspaceId')
+        .equals(workspaceId)
+        .and((category) =>
+            !category.isDeleted
+            && category.id !== categoryId
+            && normalizeExpenseCategoryName(category.name).toLocaleLowerCase() === normalizedName
+        )
+        .first()
+
+    if (duplicate) {
+        throw new DuplicateExpenseCategoryNameError()
+    }
+}
+
+export function useExpenseCategories(workspaceId: string | undefined) {
+    const isOnline = useNetworkStatus()
+    const categories = useLiveQuery(
+        () => workspaceId
+            ? db.expense_categories
+                .where('workspaceId')
+                .equals(workspaceId)
+                .and((category) => !category.isDeleted)
+                .sortBy('name')
+            : [],
+        [workspaceId]
+    )
+
+    useEffect(() => {
+        if (isOnline && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+            void fetchTableFromSupabase('expense_categories', db.expense_categories, workspaceId)
+        }
+    }, [isOnline, workspaceId])
+
+    return categories ?? []
+}
+
+export async function createExpenseCategory(workspaceId: string, name: string) {
+    const normalizedName = normalizeExpenseCategoryName(name)
+    if (!normalizedName) {
+        throw new Error('Expense category name is required')
+    }
+
+    await assertExpenseCategoryNameAvailable(workspaceId, normalizedName)
+
+    const now = new Date().toISOString()
+    const online = isOnline(workspaceId)
+    const usesCloudBusinessData = shouldUseCloudBusinessData(workspaceId)
+    const category = {
+        id: generateId(),
+        workspaceId,
+        name: normalizedName,
+        createdAt: now,
+        updatedAt: now,
+        syncStatus: (usesCloudBusinessData && online ? 'synced' : usesCloudBusinessData ? 'pending' : 'synced') as const,
+        lastSyncedAt: usesCloudBusinessData && online ? now : null,
+        version: 1,
+        isDeleted: false
+    }
+
+    await saveEntity('expense_categories', db.expense_categories, category, workspaceId)
+    return category
+}
+
+export async function updateExpenseCategory(id: string, name: string): Promise<void> {
+    const existing = await db.expense_categories.get(id)
+    if (!existing || existing.isDeleted) {
+        throw new Error('Expense category not found')
+    }
+
+    const normalizedName = normalizeExpenseCategoryName(name)
+    if (!normalizedName) {
+        throw new Error('Expense category name is required')
+    }
+
+    await assertExpenseCategoryNameAvailable(existing.workspaceId, normalizedName, id)
+    await updateEntity('expense_categories', db.expense_categories, id, { name: normalizedName })
+}
+
+export async function deleteExpenseCategory(id: string): Promise<void> {
+    const existing = await db.expense_categories.get(id)
+    if (!existing || existing.isDeleted) {
+        return
+    }
+
+    const linkedExpense = await db.expense_series
+        .where('categoryId')
+        .equals(id)
+        .and((series) => !series.isDeleted)
+        .first()
+
+    if (linkedExpense) {
+        throw new ExpenseCategoryInUseError()
+    }
+
+    await updateEntity('expense_categories', db.expense_categories, id, { isDeleted: true })
 }
 
 export async function createExpenseSeries(

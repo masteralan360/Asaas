@@ -78,6 +78,7 @@ import type {
   CashierShiftPausePeriod,
   BudgetSettings,
   BudgetAllocation,
+  ExpenseCategory,
   ExpenseSeries,
   ExpenseItem,
   PayrollStatus,
@@ -438,6 +439,7 @@ export class AtlasDatabase extends Dexie {
   employees!: EntityTable<Employee, 'id'>
   budget_settings!: EntityTable<BudgetSettings, 'id'>
   budget_allocations!: EntityTable<BudgetAllocation, 'id'>
+  expense_categories!: EntityTable<ExpenseCategory, 'id'>
   expense_series!: EntityTable<ExpenseSeries, 'id'>
   expense_items!: EntityTable<ExpenseItem, 'id'>
   payroll_statuses!: EntityTable<PayrollStatus, 'id'>
@@ -3065,6 +3067,11 @@ export class AtlasDatabase extends Dexie {
         )
       })
 
+    this.version(110).stores({
+      expense_categories: 'id, workspaceId, name, updatedAt, isDeleted, syncStatus, [workspaceId+name], [workspaceId+updatedAt]',
+      expense_series: 'id, workspaceId, categoryId, recurrence, startMonth, endMonth, isDeleted'
+    })
+
     this.registerLocalModeSqliteAuthority()
     this.registerLocalModeSyncHooks()
   }
@@ -3246,6 +3253,7 @@ export class AtlasDatabase extends Dexie {
       'clinical_presets',
       'budget_settings',
       'budget_allocations',
+      'expense_categories',
       'expense_series',
       'expense_items',
       'payroll_statuses',

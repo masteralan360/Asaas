@@ -3,6 +3,7 @@ import { supabase } from '@/auth/supabase'
 const budgetTables = new Set([
     'budget_settings',
     'budget_allocations',
+    'expense_categories',
     'expense_series',
     'expense_items',
     'payroll_statuses',

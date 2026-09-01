@@ -14,7 +14,9 @@ import {
     Receipt,
     User,
     Trash2,
-    Printer
+    Printer,
+    Loader2,
+    Tags
 } from 'lucide-react'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -28,6 +30,7 @@ import {
     setBudgetSettings,
     useBudgetAllocations,
     setBudgetAllocation,
+    useExpenseCategories,
     useExpenseSeries,
     useExpenseItems,
     createExpenseSeries,
@@ -62,11 +65,12 @@ import {
     type PayrollItem,
     monthKeyFromDate,
     addMonths,
-    buildDueDate
+    buildDueDate,
+    getPaymentDateForMonth
 } from '@/lib/budget'
 import { buildRevenueAnalysisRecords, calculateRevenueAnalysisNetProfitBase } from '@/lib/revenueAnalysis'
 import { convertToStoreBase } from '@/lib/currency'
-import { formatCurrency, formatDate, formatNumberWithCommas, parseFormattedNumber, cn } from '@/lib/utils'
+import { formatCurrency, formatDate, formatLocalDateTimeValue, formatNumberWithCommas, parseFormattedNumber, cn } from '@/lib/utils'
 import {
     Button,
     Card,
@@ -87,7 +91,6 @@ import {
     SelectItem,
     SelectTrigger,
     SelectValue,
-    Switch,
     Tabs,
     TabsContent,
     TabsList,
@@ -97,12 +100,14 @@ import {
     CurrencySelector,
     DeleteConfirmationModal,
     SettlementDialog,
-    PrintPreviewModal
+    PrintPreviewModal,
+    SelectionCards
 } from '@/ui/components'
 import { BudgetSnoozeModal, type BudgetSnoozeOption } from '@/ui/components/budget/BudgetSnoozeModal'
 import { BudgetLockPromptModal } from '@/ui/components/budget/BudgetLockPromptModal'
 import { MonthlyBudgetAllocationModal } from '@/ui/components/budget/MonthlyBudgetAllocationModal'
 import { BudgetPrintTemplate } from '@/ui/components/budget/BudgetPrintTemplate'
+import { ExpenseCategoryManagerDialog } from '@/ui/components/budget/ExpenseCategoryManagerDialog'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import type { TemplatePreview } from '@/lib/pdfPreviewStore'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
@@ -124,7 +129,11 @@ interface LockTarget {
     item: ExpenseItem | ReturnType<typeof buildPayrollItems>[number] | ReturnType<typeof buildDividendItems>['items'][number]
 }
 
-function buildExpensePaymentObligation(item: ExpenseItem, series: ExpenseSeries | null): PaymentObligation {
+function buildExpensePaymentObligation(
+    item: ExpenseItem,
+    series: ExpenseSeries | null,
+    categoryName?: string | null
+): PaymentObligation {
     return {
         id: `expense-item:${item.id}`,
         workspaceId: item.workspaceId,
@@ -139,7 +148,7 @@ function buildExpensePaymentObligation(item: ExpenseItem, series: ExpenseSeries 
         counterpartyName: null,
         referenceLabel: series?.name || 'Expense',
         title: series?.name || 'Expense',
-        subtitle: series?.category || item.month,
+        subtitle: categoryName || series?.category || item.month,
         status: 'open',
         routePath: '/budget',
         metadata: {
@@ -461,6 +470,7 @@ export function Budget() {
     const isBudgetLoading = budgetSettingsList === undefined
 
     const budgetAllocations = useBudgetAllocations(workspaceId)
+    const expenseCategories = useExpenseCategories(workspaceId)
     const expenseSeries = useExpenseSeries(workspaceId)
     const employees = useEmployees(workspaceId)
     const payrollStatuses = usePayrollStatuses(workspaceId)
@@ -505,6 +515,7 @@ export function Budget() {
     const [startMonthInput, setStartMonthInput] = useState(currentMonthKey)
 
     const [isAllocationModalOpen, setIsAllocationModalOpen] = useState(false)
+    const [isExpenseCategoryManagerOpen, setIsExpenseCategoryManagerOpen] = useState(false)
 
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
     const [editingSeries, setEditingSeries] = useState<ExpenseSeries | null>(null)
@@ -513,10 +524,11 @@ export function Budget() {
     const [expenseAmount, setExpenseAmount] = useState('')
     const [expenseCurrency, setExpenseCurrency] = useState<CurrencyCode>(baseCurrency)
     const [expenseDueDay, setExpenseDueDay] = useState(1)
-    const [expenseRecurrence, setExpenseRecurrence] = useState<ExpenseRecurrence>('monthly')
-    const [expenseSubcategory, setExpenseSubcategory] = useState('')
-    const [expenseAlreadyPaid, setExpenseAlreadyPaid] = useState(false)
+    const [expenseRecurrence, setExpenseRecurrence] = useState<ExpenseRecurrence | null>(null)
+    const [expenseCategoryId, setExpenseCategoryId] = useState('')
+    const [expenseAlreadyPaid, setExpenseAlreadyPaid] = useState<boolean | null>(null)
     const [expensePaymentAccount, setExpensePaymentAccount] = useState<PaymentAccount | null>(null)
+    const [isSavingExpense, setIsSavingExpense] = useState(false)
 
     const [deleteTarget, setDeleteTarget] = useState<{
         type: 'series' | 'occurrence';
@@ -533,6 +545,11 @@ export function Budget() {
     const [settlementTarget, setSettlementTarget] = useState<PaymentObligation | null>(null)
     const [isSubmittingSettlement, setIsSubmittingSettlement] = useState(false)
     const [showPrintPreview, setShowPrintPreview] = useState(false)
+
+    const settlementInitialPaidAt = useMemo(
+        () => formatLocalDateTimeValue(getPaymentDateForMonth(selectedMonth)),
+        [selectedMonth]
+    )
 
     const expenseItems = useExpenseItems(workspaceId, selectedMonth)
 
@@ -569,7 +586,7 @@ export function Budget() {
         setExpenseCurrency(editingSeries.currency)
         setExpenseDueDay(editingSeries.dueDay)
         setExpenseRecurrence(editingSeries.recurrence)
-        setExpenseSubcategory(editingSeries.subcategory || '')
+        setExpenseCategoryId(editingSeries.categoryId || '')
     }, [editingSeries])
 
     const monthOptions = useMemo(() => {
@@ -597,6 +614,17 @@ export function Budget() {
     }, [budgetSettings?.startMonth, currentMonthKey, budgetAllocations, expenseSeries, i18n.language])
 
     const seriesById = useMemo(() => new Map(expenseSeries.map(series => [series.id, series] as const)), [expenseSeries])
+    const expenseCategoryById = useMemo(
+        () => new Map(expenseCategories.map(category => [category.id, category] as const)),
+        [expenseCategories]
+    )
+    const selectedExpenseCategory = expenseCategoryById.get(expenseCategoryId) || null
+    const getExpenseCategoryName = useCallback(
+        (series: ExpenseSeries | null) => series?.categoryId
+            ? expenseCategoryById.get(series.categoryId)?.name || series.category || null
+            : series?.category || null,
+        [expenseCategoryById]
+    )
 
     const expenseRows = useMemo<ExpenseRow[]>(() => {
         return expenseItems.map(item => ({
@@ -829,9 +857,9 @@ export function Budget() {
         setExpenseAmount('')
         setExpenseCurrency(baseCurrency)
         setExpenseDueDay(1)
-        setExpenseRecurrence('monthly')
-        setExpenseSubcategory('')
-        setExpenseAlreadyPaid(false)
+        setExpenseRecurrence(null)
+        setExpenseCategoryId('')
+        setExpenseAlreadyPaid(null)
         setExpensePaymentAccount(null)
         setEditingSeries(null)
         setEditingItem(null)
@@ -839,7 +867,7 @@ export function Budget() {
 
     const handleSaveExpense = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault()
-        if (!workspaceId) return
+        if (!workspaceId || isSavingExpense) return
 
         const amountValue = parseFormattedNumber(expenseAmount || '0')
         if (!expenseName.trim() || amountValue <= 0) {
@@ -849,10 +877,33 @@ export function Budget() {
             })
             return
         }
+        if (!expenseRecurrence) {
+            toast({
+                title: t('common.error') || 'Error',
+                description: t('budget.form.recurrenceRequired') || 'Select an expense frequency.'
+            })
+            return
+        }
+        if (!selectedExpenseCategory) {
+            toast({
+                title: t('common.error') || 'Error',
+                description: t('budget.expenseCategories.selectorRequired'),
+                variant: 'destructive'
+            })
+            return
+        }
+        if (!editingSeries && expenseAlreadyPaid === null) {
+            toast({
+                title: t('common.error') || 'Error',
+                description: t('budget.form.paymentStatusRequired') || 'Select a payment status.'
+            })
+            return
+        }
 
         const dueDay = Math.min(Math.max(Number(expenseDueDay) || 1, 1), 31)
         const dueDate = buildDueDate(selectedMonth as any, dueDay)
 
+        setIsSavingExpense(true)
         try {
             if (editingSeries) {
                 await updateExpenseSeries(editingSeries.id, {
@@ -861,7 +912,9 @@ export function Budget() {
                     currency: expenseCurrency,
                     dueDay,
                     recurrence: expenseRecurrence,
-                    subcategory: expenseSubcategory.trim() || null
+                    categoryId: selectedExpenseCategory.id,
+                    category: selectedExpenseCategory.name,
+                    subcategory: null
                 })
 
                 if (editingItem) {
@@ -880,8 +933,9 @@ export function Budget() {
                     recurrence: expenseRecurrence,
                     startMonth: selectedMonth,
                     endMonth: null,
-                    category: null,
-                    subcategory: expenseSubcategory.trim() || null
+                    categoryId: selectedExpenseCategory.id,
+                    category: selectedExpenseCategory.name,
+                    subcategory: null
                 })
 
                 if (dueDate <= new Date().toISOString().slice(0, 10)) {
@@ -901,7 +955,7 @@ export function Budget() {
 
                     await recordObligationSettlement(
                         workspaceId,
-                        buildExpensePaymentObligation(createdItem, createdSeries),
+                        buildExpensePaymentObligation(createdItem, createdSeries, selectedExpenseCategory.name),
                         {
                             paymentMethod: 'cash',
                             paidAt: new Date().toISOString(),
@@ -925,8 +979,16 @@ export function Budget() {
                 description: error?.message || 'Failed to save expense.',
                 variant: 'destructive'
             })
+        } finally {
+            setIsSavingExpense(false)
         }
     }
+
+    const canSaveExpense = !!expenseName.trim()
+        && parseFormattedNumber(expenseAmount || '0') > 0
+        && !!expenseRecurrence
+        && !!selectedExpenseCategory
+        && (editingSeries !== null || expenseAlreadyPaid !== null)
 
     const handleBudgetSettlement = async (input: {
         paymentMethod: WorkspacePaymentMethod
@@ -969,7 +1031,7 @@ export function Budget() {
             if (target.type === 'expense') {
                 const item = target.item as ExpenseItem
                 const series = expenseSeries.find((entry) => entry.id === item.seriesId) || null
-                setSettlementTarget(buildExpensePaymentObligation(item, series))
+                setSettlementTarget(buildExpensePaymentObligation(item, series, getExpenseCategoryName(series)))
                 return
             } else if (target.type === 'payroll') {
                 const item = target.item as ReturnType<typeof buildPayrollItems>[number]
@@ -1229,8 +1291,23 @@ export function Budget() {
                         <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" />
                         {t('budget.startPoint') || 'Start'}
                     </Button>
+                    <Button
+                        variant="outline"
+                        onClick={() => setIsExpenseCategoryManagerOpen(true)}
+                        className="h-10 rounded-xl"
+                        disabled={!canEdit}
+                    >
+                        <Tags className="mr-2 h-4 w-4 text-muted-foreground" />
+                        {t('budget.expenseCategories.button')}
+                    </Button>
                 </div>
             </div>
+
+            <ExpenseCategoryManagerDialog
+                open={isExpenseCategoryManagerOpen}
+                onOpenChange={setIsExpenseCategoryManagerOpen}
+                workspaceId={workspaceId}
+            />
 
             <MonthlyBudgetAllocationModal
                 open={isAllocationModalOpen}
@@ -1325,7 +1402,7 @@ export function Budget() {
                                 <BudgetItemRow
                                     key={item.id}
                                     title={series?.name || t('budget.deletedSeries') || 'Deleted Series'}
-                                    subtitle={series?.category || t('monthlyComparison.fallback.uncategorized')}
+                                    subtitle={getExpenseCategoryName(series) || t('monthlyComparison.fallback.uncategorized')}
                                     amount={item.amount}
                                     currency={item.currency}
                                     status={item.status}
@@ -1427,7 +1504,14 @@ export function Budget() {
                 </TabsContent>
             </Tabs>
 
-            <Dialog open={isExpenseModalOpen} onOpenChange={(open) => { if (!open) resetExpenseForm(); setIsExpenseModalOpen(open) }}>
+            <Dialog
+                open={isExpenseModalOpen}
+                onOpenChange={(open) => {
+                    if (isSavingExpense) return
+                    if (!open) resetExpenseForm()
+                    setIsExpenseModalOpen(open)
+                }}
+            >
                 <DialogContent layout="structured" className="max-w-4xl">
                     <DialogHeader layout="structured">
                         <DialogTitle>{editingSeries ? t('common.edit') : t('budget.addExpense') || 'New Expense'}</DialogTitle>
@@ -1437,12 +1521,12 @@ export function Budget() {
                         <DialogBody>
                             <div className="grid gap-4">
                                 <div className="grid gap-2">
-                                    <Label>{t('common.description') || 'Description'}</Label>
+                                    <Label>{t('common.description') || 'Description'} <span className="text-destructive">*</span></Label>
                                     <Input value={expenseName} onChange={(e) => setExpenseName(e.target.value)} />
                                 </div>
                                 <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
                                     <div className="grid gap-2">
-                                        <Label>{t('common.amount') || 'Amount'}</Label>
+                                        <Label>{t('common.amount') || 'Amount'} <span className="text-destructive">*</span></Label>
                                         <Input value={expenseAmount} onChange={(e) => setExpenseAmount(formatNumberWithCommas(e.target.value))} />
                                     </div>
                                     <CurrencySelector value={expenseCurrency} onChange={setExpenseCurrency} iqdDisplayPreference={iqdPreference} />
@@ -1452,23 +1536,65 @@ export function Budget() {
                                         <Label>{t('budget.dueDay') || 'Due Day (1-31)'}</Label>
                                         <Input type="number" min={1} max={31} value={expenseDueDay} onChange={(e) => setExpenseDueDay(Number(e.target.value))} />
                                     </div>
-                                    <div className="flex items-center justify-between rounded-xl border border-border/60 px-3 py-2">
-                                        <div>
-                                            <Label className="text-xs uppercase">{t('budget.recurring') || 'Recurring'}</Label>
-                                            <p className="text-xs text-muted-foreground">{t('budget.recurringDesc') || 'Repeat every month'}</p>
-                                        </div>
-                                        <Switch checked={expenseRecurrence === 'monthly'} onCheckedChange={(checked) => setExpenseRecurrence(checked ? 'monthly' : 'one_time')} />
+                                    <div className="grid gap-3 rounded-xl border border-border bg-muted/20 p-3">
+                                        <Label>{t('budget.form.recurrenceTitle') || 'Expense frequency *'}</Label>
+                                        <SelectionCards
+                                            name="expense-recurrence"
+                                            ariaLabel={t('budget.form.recurrenceTitle') || 'Expense frequency *'}
+                                            value={expenseRecurrence}
+                                            onValueChange={setExpenseRecurrence}
+                                            disabled={isSavingExpense}
+                                            options={[
+                                                {
+                                                    value: 'one_time',
+                                                    title: t('budget.form.oneTimeExpense') || 'One-time expense',
+                                                    description: t('budget.form.oneTimeExpenseDescription') || 'This expense will be added only for the selected month.'
+                                                },
+                                                {
+                                                    value: 'monthly',
+                                                    title: t('budget.form.recurringExpense') || 'Recurring expense',
+                                                    description: t('budget.form.recurringExpenseDescription') || 'This expense will be automatically repeated every month.'
+                                                }
+                                            ]}
+                                        />
+                                        {!expenseRecurrence ? (
+                                            <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                                                {t('budget.form.recurrenceSelectionRequired') || 'Select one option to continue.'}
+                                            </p>
+                                        ) : null}
                                     </div>
                                 </div>
                                 {!editingSeries && (
-                                    <div className="flex items-center justify-between rounded-xl border border-border/60 px-3 py-2">
-                                        <div>
-                                            <Label className="text-xs uppercase">{t('budget.form.alreadyPaid') || 'Already paid'}</Label>
-                                            <p className="text-xs text-muted-foreground">
-                                                {t('budget.form.alreadyPaidDescription') || 'Record this expense as paid when saving.'}
+                                    <div className="grid gap-3 rounded-xl border border-border bg-muted/20 p-3">
+                                        <Label>{t('budget.form.paymentStatus') || 'Payment status'} <span className="text-destructive">*</span></Label>
+                                        <SelectionCards
+                                            name="expense-payment-status"
+                                            ariaLabel={t('budget.form.paymentStatus') || 'Payment status'}
+                                            value={expenseAlreadyPaid === null ? null : expenseAlreadyPaid ? 'paid' : 'unpaid'}
+                                            onValueChange={(value) => {
+                                                const isPaid = value === 'paid'
+                                                setExpenseAlreadyPaid(isPaid)
+                                                if (!isPaid) setExpensePaymentAccount(null)
+                                            }}
+                                            disabled={isSavingExpense}
+                                            options={[
+                                                {
+                                                    value: 'unpaid',
+                                                    title: t('budget.form.unpaid') || 'Unpaid',
+                                                    description: t('budget.form.unpaidDescription') || 'Record this expense as unpaid. You can record the payment later.'
+                                                },
+                                                {
+                                                    value: 'paid',
+                                                    title: t('budget.form.alreadyPaid') || 'Already paid',
+                                                    description: t('budget.form.alreadyPaidDescription') || 'Record this expense as paid when saving.'
+                                                }
+                                            ]}
+                                        />
+                                        {expenseAlreadyPaid === null ? (
+                                            <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                                                {t('budget.form.paymentStatusSelectionRequired') || 'Select one option to continue.'}
                                             </p>
-                                        </div>
-                                        <Switch checked={expenseAlreadyPaid} onCheckedChange={setExpenseAlreadyPaid} />
+                                        ) : null}
                                     </div>
                                 )}
                                 {!editingSeries && expenseAlreadyPaid ? (
@@ -1480,17 +1606,41 @@ export function Budget() {
                                     />
                                 ) : null}
                                 <div className="grid gap-2">
-                                    <Label>{t('budget.form.subcategory') || 'Subcategory'}</Label>
-                                    <Input value={expenseSubcategory} onChange={(e) => setExpenseSubcategory(e.target.value)} />
+                                    <Label htmlFor="expense-category">
+                                        {t('budget.expenseCategories.selectorLabel')} <span className="text-destructive">*</span>
+                                    </Label>
+                                    <Select
+                                        value={expenseCategoryId || undefined}
+                                        onValueChange={setExpenseCategoryId}
+                                        disabled={isSavingExpense}
+                                    >
+                                        <SelectTrigger id="expense-category">
+                                            <SelectValue
+                                                placeholder={expenseCategories.length > 0
+                                                    ? t('budget.expenseCategories.selectorPlaceholder')
+                                                    : t('budget.expenseCategories.selectorEmpty')}
+                                            />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {expenseCategories.map((category) => (
+                                                <SelectItem key={category.id} value={category.id}>
+                                                    {category.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                             </div>
                         </DialogBody>
 
                         <DialogFooter layout="structured">
-                            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsExpenseModalOpen(false)}>
+                            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsExpenseModalOpen(false)} disabled={isSavingExpense}>
                                 {t('common.cancel') || 'Cancel'}
                             </Button>
-                            <Button type="submit" className="w-full sm:w-auto">{t('common.save') || 'Save'}</Button>
+                            <Button type="submit" className="w-full sm:w-auto" disabled={isSavingExpense || !canSaveExpense}>
+                                {isSavingExpense ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                {isSavingExpense ? t('common.saving') || 'Saving...' : t('common.save') || 'Save'}
+                            </Button>
                         </DialogFooter>
                     </form>
                 </DialogContent>
@@ -1521,6 +1671,7 @@ export function Budget() {
                     }
                 }}
                 obligation={settlementTarget}
+                initialPaidAt={settlementInitialPaidAt}
                 isSubmitting={isSubmittingSettlement}
                 onSubmit={handleBudgetSettlement}
             />

@@ -1616,6 +1616,10 @@ export interface BudgetAllocation extends BaseEntity {
   allocationValue?: number
 }
 
+export interface ExpenseCategory extends BaseEntity {
+  name: string
+}
+
 export interface ExpenseSeries extends BaseEntity {
   name: string
   amount: number
@@ -1624,7 +1628,9 @@ export interface ExpenseSeries extends BaseEntity {
   recurrence: ExpenseRecurrence
   startMonth: string
   endMonth?: string | null
+  categoryId?: string | null
   category?: string | null
+  /** @deprecated Kept so existing expense records remain readable. */
   subcategory?: string | null
 }
 
@@ -2326,6 +2332,7 @@ export interface SyncQueueItem {
     | 'cashier_shift_pause_periods'
     | 'budget_settings'
     | 'budget_allocations'
+    | 'expense_categories'
     | 'expense_series'
     | 'expense_items'
     | 'payroll_statuses'
@@ -2499,6 +2506,7 @@ export interface OfflineMutation {
     | 'cashier_shift_pause_periods'
     | 'budget_settings'
     | 'budget_allocations'
+    | 'expense_categories'
     | 'expense_series'
     | 'expense_items'
     | 'payroll_statuses'
