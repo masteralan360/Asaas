@@ -1,7 +1,7 @@
 {
   "name": "atlas",
   "private": true,
-  "version": "0.6.18",
+  "version": "0.6.19",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -33,7 +33,7 @@
     "optimize:tips": "node scripts/optimize-tips.mjs",
     "prebuild": "npm run optimize:tips",
     "dev": "vite --host",
-    "build": "npx tsc -b && vite build",
+    "build": "node scripts/build.mjs",
     "lint": "eslint . && npm run lint:dialogs",
     "lint:dialogs": "node scripts/check-dialog-conventions.mjs",
     "preview": "vite preview",
@@ -156,5 +156,5 @@
     "vitest": "^4.1.8",
     "workbox-window": "^7.1.0"
   },
-  "min_version": "0.6.18"
+  "min_version": "0.6.19"
 }

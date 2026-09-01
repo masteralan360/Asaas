@@ -13,7 +13,9 @@
 
   void setWebView(com.atlas.app.RustWebView);
   java.lang.Class getAppClass(...);
+  int getId();
   java.lang.String getVersion();
+  int startActivity(...);
 }
 
 -keep class com.atlas.app.Ipc {

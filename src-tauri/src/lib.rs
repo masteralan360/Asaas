@@ -163,6 +163,7 @@ fn open_file_path(path: String) -> Result<(), String> {
 }
 
 /// Creates a desktop shortcut that opens the app and navigates directly to the given module route.
+#[cfg(desktop)]
 #[tauri::command]
 fn create_desktop_shortcut(
     app: tauri::AppHandle,
@@ -242,6 +243,16 @@ fn create_desktop_shortcut(
     }
 
     Ok(())
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+fn create_desktop_shortcut(
+    _app: tauri::AppHandle,
+    _module_name: String,
+    _module_href: String,
+) -> Result<(), String> {
+    Err("Desktop shortcuts are not supported on mobile devices.".into())
 }
 
 /// Check if a file or directory exists at the given path.
