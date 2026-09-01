@@ -155,12 +155,13 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
         let refreshTimeout: number | undefined
         let latestRequestId = 0
 
-        const fetchUsageStatus = async () => {
+        const fetchUsageStatus = async (options: { includePayg?: boolean } = {}) => {
+            const includePayg = options.includePayg !== false
             const requestId = ++latestRequestId
             try {
                 const [statusResult, paygResult] = await Promise.allSettled([
                     getWorkspaceUsageStatus(workspaceId),
-                    getWorkspacePaygSummary()
+                    includePayg ? getWorkspacePaygSummary() : Promise.resolve(null)
                 ])
                 if (statusResult.status === 'rejected') throw statusResult.reason
                 const status = statusResult.value
@@ -169,8 +170,9 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
                 // for a server-side monthly reset.
                 if (!cancelled && requestId === latestRequestId) {
                     setUsageStatus(status)
-                    if (paygResult.status === 'fulfilled') {
-                        setPaygSummary(paygResult.value.enabled ? paygResult.value : null)
+                    if (includePayg && paygResult.status === 'fulfilled') {
+                        const nextPaygSummary = paygResult.value
+                        setPaygSummary(nextPaygSummary?.enabled ? nextPaygSummary : null)
                     }
                     setUsageHistory((current) => (
                         status
@@ -226,13 +228,20 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
                 window.clearTimeout(refreshTimeout)
             }
 
-            refreshTimeout = window.setTimeout(fetchUsageStatus, WORKSPACE_USAGE_REFRESH_DELAY_MS)
+            refreshTimeout = window.setTimeout(() => {
+                void fetchUsageStatus({ includePayg: false })
+            }, WORKSPACE_USAGE_REFRESH_DELAY_MS)
         }
 
         void fetchUsageStatus()
-        const intervalId = window.setInterval(fetchUsageStatus, WORKSPACE_USAGE_REFRESH_INTERVAL_MS)
+        const intervalId = window.setInterval(() => {
+            void fetchUsageStatus()
+        }, WORKSPACE_USAGE_REFRESH_INTERVAL_MS)
+        const refreshUsageOnFocus = () => {
+            void fetchUsageStatus()
+        }
         window.addEventListener(WORKSPACE_USAGE_UPDATED_EVENT, scheduleUsageRefresh)
-        window.addEventListener('focus', fetchUsageStatus)
+        window.addEventListener('focus', refreshUsageOnFocus)
 
         return () => {
             cancelled = true
@@ -244,7 +253,7 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
                 window.clearTimeout(refreshTimeout)
             }
             window.removeEventListener(WORKSPACE_USAGE_UPDATED_EVENT, scheduleUsageRefresh)
-            window.removeEventListener('focus', fetchUsageStatus)
+            window.removeEventListener('focus', refreshUsageOnFocus)
         }
     }, [enabled, workspaceId])
 
